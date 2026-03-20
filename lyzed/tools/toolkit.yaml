@@ -1,0 +1,75 @@
+## Roska File Descriptor — tools/toolkit.py
+file: tools/toolkit.py
+lines: 382
+purpose: "Toolkit ABC — base class for all 118 provider toolkits. Registration, filtering, caching, HITL."
+tags: [abc, toolkit, registration, caching, hitl]
+ctx: "All toolkits inherit this. Constructor pattern: define tools list → super().__init__(name, tools). Auto-registers via _register_tools()."
+
+types:
+  - name: Toolkit
+    kind: struct
+    vis: pub
+    ctx: "Base class for all tool providers. Manages tool registration, filtering, caching, and HITL flags."
+    fields:
+      - {name: name, type: str, ctx: "Toolkit identifier"}
+      - {name: tools, type: "Sequence[Union[Callable, Function]]", ctx: "Raw tools to register"}
+      - {name: functions, type: "OrderedDict[str, Function]", ctx: "Registered sync functions"}
+      - {name: async_functions, type: "OrderedDict[str, Function]", ctx: "Registered async functions"}
+      - {name: instructions, type: "Optional[str]", ctx: "Toolkit instructions for agent"}
+      - {name: add_instructions, type: bool, ctx: "Include instructions in prompt (default: False)"}
+      - {name: include_tools, type: "Optional[list[str]]", ctx: "Whitelist of tool names"}
+      - {name: exclude_tools, type: "Optional[list[str]]", ctx: "Blacklist of tool names"}
+      - {name: requires_confirmation_tools, type: "list[str]", ctx: "Tools needing HITL confirmation"}
+      - {name: external_execution_required_tools, type: "list[str]", ctx: "Tools requiring external execution"}
+      - {name: stop_after_tool_call_tools, type: "list[str]", ctx: "Tools that stop agent loop"}
+      - {name: show_result_tools, type: "list[str]", ctx: "Tools whose results are shown to user"}
+      - {name: cache_results, type: bool, ctx: "Enable result caching (default: False)"}
+      - {name: cache_ttl, type: int, ctx: "Cache TTL seconds (default: 3600)"}
+      - {name: cache_dir, type: "Optional[str]", ctx: "Cache directory path"}
+
+functions:
+  - name: __init__
+    sig: "(name, tools, async_tools, instructions, include_tools, exclude_tools, requires_confirmation_tools, external_execution_required_tools, stop_after_tool_call_tools, show_result_tools, cache_results, cache_ttl, cache_dir, auto_register) -> None"
+    vis: pub
+    ctx: "Initialize toolkit, validate filters, auto-register tools"
+    lines: [15, 88]
+    calls: [_check_tools_filters, _register_tools, _register_async_tools]
+
+  - name: register
+    sig: "(self, function: Union[Callable, Function], name: Optional[str]) -> None"
+    vis: pub
+    ctx: "Register a single tool — wraps callable in Function, detects async, stores in functions/async_functions dict"
+    lines: [153, 206]
+    calls: [Function.from_callable, _register_decorated_tool]
+
+  - name: _register_decorated_tool
+    sig: "(self, function: Function, name: Optional[str], is_async: bool) -> None"
+    ctx: "Register pre-decorated Function — applies HITL flags, caching, stores in dict"
+    lines: [208, 302]
+
+  - name: get_functions
+    sig: "(self) -> Dict[str, Function]"
+    vis: pub
+    lines: [304, 310]
+
+  - name: get_async_functions
+    sig: "(self) -> Dict[str, Function]"
+    vis: pub
+    lines: [312, 325]
+
+  - name: connect
+    sig: "(self) -> None"
+    vis: pub
+    ctx: "Override in subclasses needing connection setup (e.g. OAuth, DB)"
+    lines: [332, 338]
+
+  - name: close
+    sig: "(self) -> None"
+    vis: pub
+    ctx: "Override in subclasses needing cleanup"
+    lines: [340, 346]
+
+  - name: _check_path
+    sig: "(self, file_name: str, base_dir: Path, restrict_to_base_dir: bool) -> Tuple[bool, Path]"
+    ctx: "Path traversal protection — validates file path stays within base_dir"
+    lines: [348, 376]

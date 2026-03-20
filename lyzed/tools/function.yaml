@@ -1,0 +1,147 @@
+## Roska File Descriptor — tools/function.py
+file: tools/function.py
+lines: 1328
+purpose: "Function/FunctionCall — tool wrapping, JSON Schema generation, pre/post hooks, sync/async execution, caching"
+tags: [function, execution, hooks, schema, hitl, caching]
+ctx: "Function wraps any callable into an LLM tool. FunctionCall handles execution with hooks, confirmation, user input, external execution. Pydantic BaseModel."
+
+types:
+  - name: UserInputField
+    kind: struct
+    vis: pub
+    ctx: "Schema for HITL structured user input fields"
+    fields:
+      - {name: name, type: str, ctx: "Field name"}
+      - {name: field_type, type: Type, ctx: "Python type"}
+      - {name: description, type: "Optional[str]", ctx: "Field description"}
+      - {name: value, type: "Optional[Any]", ctx: "User-provided value"}
+
+  - name: UserFeedbackOption
+    kind: struct
+    vis: pub
+    ctx: "Single option in a feedback question"
+    fields:
+      - {name: label, type: str}
+      - {name: description, type: "Optional[str]"}
+      - {name: selected, type: bool}
+
+  - name: UserFeedbackQuestion
+    kind: struct
+    vis: pub
+    ctx: "Structured feedback question with options"
+    fields:
+      - {name: question, type: str}
+      - {name: header, type: "Optional[str]"}
+      - {name: options, type: "Optional[List[UserFeedbackOption]]"}
+      - {name: multi_select, type: bool}
+      - {name: selected_options, type: "Optional[List[str]]"}
+
+  - name: Function
+    kind: struct
+    vis: pub
+    ctx: "Wraps any callable as an LLM tool with JSON Schema params, hooks, HITL, and caching"
+    fields:
+      - {name: name, type: str, ctx: "Tool name"}
+      - {name: description, type: "Optional[str]", ctx: "From docstring"}
+      - {name: parameters, type: "Dict[str, Any]", ctx: "JSON Schema for parameters"}
+      - {name: strict, type: "Optional[bool]", ctx: "Enforce strict schema"}
+      - {name: instructions, type: "Optional[str]", ctx: "Usage instructions for LLM"}
+      - {name: add_instructions, type: bool, ctx: "Include in prompt (default: True)"}
+      - {name: entrypoint, type: "Optional[Callable]", ctx: "Actual callable"}
+      - {name: show_result, type: bool, ctx: "Show result to user"}
+      - {name: stop_after_tool_call, type: bool, ctx: "Stop agent loop after call"}
+      - {name: pre_hook, type: "Optional[Callable]", ctx: "Pre-execution hook"}
+      - {name: post_hook, type: "Optional[Callable]", ctx: "Post-execution hook"}
+      - {name: tool_hooks, type: "Optional[List[Callable]]", ctx: "Chained tool hooks"}
+      - {name: requires_confirmation, type: "Optional[bool]", ctx: "HITL: manual approval"}
+      - {name: requires_user_input, type: "Optional[bool]", ctx: "HITL: structured input"}
+      - {name: user_input_fields, type: "Optional[List[str]]", ctx: "HITL: field names"}
+      - {name: user_input_schema, type: "Optional[List[UserInputField]]", ctx: "HITL: input schema"}
+      - {name: external_execution, type: "Optional[bool]", ctx: "HITL: external system execution"}
+      - {name: external_execution_silent, type: "Optional[bool]", ctx: "Silent external execution"}
+      - {name: approval_type, type: "Optional[str]", ctx: "'required' | 'audit'"}
+      - {name: cache_results, type: bool, ctx: "Cache tool results"}
+      - {name: cache_dir, type: "Optional[str]", ctx: "Cache directory"}
+      - {name: cache_ttl, type: int, ctx: "Cache TTL seconds"}
+      - {name: _agent, type: "Optional[Any]", ctx: "Back-reference to agent"}
+      - {name: _run_context, type: "Optional[RunContext]", ctx: "Current run context"}
+      - {name: _images, type: "Optional[Sequence[Image]]", ctx: "Media attachments"}
+
+  - name: FunctionExecutionResult
+    kind: struct
+    vis: pub
+    ctx: "Result of tool execution"
+    fields:
+      - {name: status, type: 'Literal["success", "failure"]'}
+      - {name: result, type: "Optional[Any]"}
+      - {name: error, type: "Optional[str]"}
+      - {name: updated_session_state, type: "Optional[Dict[str, Any]]"}
+      - {name: images, type: "Optional[List[Image]]"}
+      - {name: videos, type: "Optional[List[Video]]"}
+      - {name: audios, type: "Optional[List[Audio]]"}
+      - {name: files, type: "Optional[List[File]]"}
+
+  - name: FunctionCall
+    kind: struct
+    vis: pub
+    ctx: "Execution wrapper — handles pre/post hooks, nested execution chains, sync/async, caching"
+    fields:
+      - {name: function, type: Function}
+      - {name: arguments, type: "Optional[Dict[str, Any]]"}
+      - {name: result, type: "Optional[Any]"}
+      - {name: call_id, type: "Optional[str]"}
+      - {name: error, type: "Optional[str]"}
+
+  - name: ToolResult
+    kind: struct
+    vis: pub
+    ctx: "Structured tool output with media"
+    fields:
+      - {name: content, type: str}
+      - {name: images, type: "Optional[List[Image]]"}
+      - {name: videos, type: "Optional[List[Video]]"}
+      - {name: audios, type: "Optional[List[Audio]]"}
+      - {name: files, type: "Optional[List[File]]"}
+
+functions:
+  - name: from_callable
+    sig: "@classmethod (c: Callable, name: Optional[str], strict: bool) -> Function"
+    vis: pub
+    ctx: "Create Function from any callable — extracts docstring, parses signature to JSON Schema"
+    lines: [277, 394]
+
+  - name: process_entrypoint
+    sig: "(self, strict: bool) -> None"
+    vis: pub
+    ctx: "Process callable into JSON Schema — handles type annotations, defaults, required fields"
+    lines: [396, 545]
+
+  - name: execute
+    sig: "(self) -> FunctionExecutionResult"
+    vis: pub
+    ctx: "Sync execution — pre_hook → build_args → nested_chain → entrypoint → post_hook → result"
+    lines: [1010, 1095]
+    calls: [_handle_pre_hook, _build_entrypoint_args, _build_nested_execution_chain, _handle_post_hook]
+
+  - name: aexecute
+    sig: "async (self) -> FunctionExecutionResult"
+    vis: pub
+    is_async: true
+    ctx: "Async execution — same pipeline as execute but async"
+    lines: [1218, 1318]
+    calls: [_handle_pre_hook_async, _build_entrypoint_args, _build_nested_execution_chain_async, _handle_post_hook_async]
+
+  - name: _build_nested_execution_chain
+    sig: "(self, entrypoint_args: Dict[str, Any]) -> None"
+    ctx: "Build hook chain: tool_hooks wrap entrypoint in nested layers"
+    lines: [962, 1008]
+
+  - name: _handle_pre_hook
+    sig: "(self) -> None"
+    ctx: "Execute pre-hook with built hook args"
+    lines: [825, 851]
+
+  - name: _handle_post_hook
+    sig: "(self) -> None"
+    ctx: "Execute post-hook with result"
+    lines: [853, 879]
