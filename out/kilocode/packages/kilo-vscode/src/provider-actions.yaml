@@ -1,0 +1,305 @@
+## Roska File Descriptor — src/provider-actions.ts
+file: src/provider-actions.ts
+lines: 301
+purpose: Provider action handlers extracted from KiloProvider to stay under max-lines. These are pure async functions that operate on the SDK client — no vscode dependency.
+imports:
+- sym: '@kilocode/sdk/v2.KiloClient'
+  kind: typing
+- sym: ./shared/custom-provider.validateProviderID as validateProviderIDShared
+- sym: ./shared/custom-provider.sanitizeCustomProviderConfig
+- sym: ./shared/provider-model.KILO_AUTO
+- sym: ./shared/provider-model.parseModelString
+types:
+- name: AuthState
+  kind: enum
+  decorators:
+  - type
+  variants:
+  - name: '"wellknown"'
+  lines:
+  - 14
+  - 14
+- name: PostMessage
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 84
+  - 84
+- name: GetErrorMessage
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 85
+  - 85
+- name: ActionContext
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: client
+    type: KiloClient
+  - name: postMessage
+    type: PostMessage
+  - name: getErrorMessage
+    type: GetErrorMessage
+  - name: workspaceDir
+    type: string
+  - name: disposeGlobal
+    type: '(reason: string) => Promise<void>'
+  - name: fetchAndSendProviders
+    type: () => Promise<void>
+  lines:
+  - 87
+  - 94
+functions:
+- name: fetchProviderData
+  sig: 'fetchProviderData(client: KiloClient, dir: string)'
+  is_async: true
+  lines:
+  - 17
+  - 32
+  detail:
+    calls:
+    - Promise.all
+    - Promise.resolve
+    - |-
+      client.provider
+                .auth
+    - |-
+      client.provider
+                .auth({ directory: dir }, { throwOnError: true })
+                .then
+    - |-
+      client.provider
+                .auth({ directory: dir }, { throwOnError: true })
+                .then((r) => r...
+    - client.provider.list
+- name: buildActionContext
+  sig: |-
+    buildActionContext(
+      client: KiloClient,
+      post: (msg: unknown) => void,
+      errFn: (err: unknown) => string,
+      dir: string,
+      refresh: () => Promise<void>,
+    ): ActionContext
+  lines:
+  - 34
+  - 53
+  detail: {}
+- name: isModelSelection
+  sig: 'isModelSelection(r: unknown)'
+  lines:
+  - 55
+  - 62
+  detail: {}
+- name: validateRecents
+  sig: 'validateRecents(raw: unknown): Array<{ providerID: string; modelID: string }>'
+  lines:
+  - 65
+  - 71
+  detail:
+    calls:
+    - Array.isArray
+    - |-
+      raw
+          .filter
+    - |-
+      raw
+          .filter(isModelSelection)
+          .slice
+    - |-
+      raw
+          .filter(isModelSelection)
+          .slice(0, 5)
+          .map
+- name: computeDefaultSelection
+  sig: |-
+    computeDefaultSelection(
+      cachedConfig: { config?: { model?: string } } | null,
+      vscodePID: string,
+      vscodeMID: string,
+    ): { providerID: string; modelID: string }
+  lines:
+  - 73
+  - 82
+  detail:
+    calls:
+    - parseModelString
+- name: postError
+  sig: |-
+    postError(
+      ctx: ActionContext,
+      requestId: string,
+      providerID: string,
+      action: "connect" | "disconnect" | "authorize",
+      message: string,
+    )
+  lines:
+  - 96
+  - 104
+  detail:
+    calls:
+    - ctx.postMessage
+- name: validateID
+  sig: |-
+    validateID(
+      ctx: ActionContext,
+      requestId: string,
+      providerID: string,
+      action: "connect" | "disconnect" | "authorize",
+    ): string | null
+  lines:
+  - 106
+  - 116
+  detail:
+    calls:
+    - postError
+    - validateProviderIDShared
+- name: connectProvider
+  sig: 'connectProvider(ctx: ActionContext, requestId: string, providerID: string, apiKey: string)'
+  is_async: true
+  lines:
+  - 118
+  - 129
+  detail:
+    calls:
+    - ctx.client.auth.set
+    - ctx.disposeGlobal
+    - ctx.fetchAndSendProviders
+    - ctx.getErrorMessage
+    - ctx.postMessage
+    - postError
+    - validateID
+- name: authorizeProviderOAuth
+  sig: |-
+    authorizeProviderOAuth(
+      ctx: ActionContext,
+      requestId: string,
+      providerID: string,
+      method: number,
+    )
+  is_async: true
+  lines:
+  - 131
+  - 158
+  detail:
+    calls:
+    - ctx.client.provider.oauth.authorize
+    - ctx.getErrorMessage
+    - ctx.postMessage
+    - postError
+    - validateID
+- name: completeProviderOAuth
+  sig: |-
+    completeProviderOAuth(
+      ctx: ActionContext,
+      requestId: string,
+      providerID: string,
+      method: number,
+      code?: string,
+    )
+  is_async: true
+  lines:
+  - 160
+  - 186
+  detail:
+    calls:
+    - ctx.client.provider.oauth.callback
+    - ctx.disposeGlobal
+    - ctx.fetchAndSendProviders
+    - ctx.getErrorMessage
+    - ctx.postMessage
+    - postError
+    - validateID
+- name: disconnectProvider
+  sig: |-
+    disconnectProvider(
+      ctx: ActionContext,
+      requestId: string,
+      providerID: string,
+      cachedConfigMessage: unknown,
+      setCachedConfig: (msg: unknown) => void,
+    )
+  is_async: true
+  lines:
+  - 188
+  - 241
+  detail:
+    calls:
+    - console.warn
+    - ctx.client.auth.remove
+    - ctx.client.global.config.get
+    - ctx.client.global.config.update
+    - ctx.disposeGlobal
+    - ctx.fetchAndSendProviders
+    - ctx.getErrorMessage
+    - ctx.postMessage
+    - disabled.includes
+    - postError
+    - setCachedConfig
+    - validateID
+- name: saveCustomProvider
+  sig: |-
+    saveCustomProvider(
+      ctx: ActionContext,
+      requestId: string,
+      providerID: string,
+      provider: Record<string, unknown>,
+      apiKey: string | undefined,
+      cachedConfigMessage: unknown,
+      setCachedConfig: (msg: unknown) => void,
+    )
+  is_async: true
+  lines:
+  - 243
+  - 301
+  detail:
+    calls:
+    - ctx.client.auth.remove
+    - ctx.client.auth.set
+    - ctx.client.global.config.get
+    - ctx.client.global.config.update
+    - ctx.getErrorMessage
+    - ctx.postMessage
+    - disabled.filter
+    - postError
+    - refresh
+    - sanitizeCustomProviderConfig
+    - setCachedConfig
+    - validateID
+exports:
+- name: AuthState
+  kind: type
+- name: PostMessage
+  kind: type
+- name: GetErrorMessage
+  kind: type
+- name: ActionContext
+  kind: type
+- name: fetchProviderData
+  kind: func
+- name: buildActionContext
+  kind: func
+- name: isModelSelection
+  kind: func
+- name: validateRecents
+  kind: func
+- name: computeDefaultSelection
+  kind: func
+- name: postError
+  kind: func
+- name: validateID
+  kind: func
+- name: connectProvider
+  kind: func
+- name: authorizeProviderOAuth
+  kind: func
+- name: completeProviderOAuth
+  kind: func
+- name: disconnectProvider
+  kind: func
+- name: saveCustomProvider
+  kind: func

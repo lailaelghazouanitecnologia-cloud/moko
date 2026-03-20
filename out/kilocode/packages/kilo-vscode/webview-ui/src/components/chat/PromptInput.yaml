@@ -1,0 +1,610 @@
+## Roska File Descriptor — chat/PromptInput.tsx
+file: chat/PromptInput.tsx
+lines: 878
+purpose: PromptInput component Text input with send/abort buttons, ghost-text autocomplete, and @ file mention support
+imports:
+- sym: solid-js.Component
+- sym: solid-js.createSignal
+- sym: solid-js.createEffect
+- sym: solid-js.on
+- sym: solid-js.For
+- sym: solid-js.Index
+- sym: solid-js.onCleanup
+- sym: solid-js.onMount
+- sym: solid-js.Show
+- sym: solid-js.untrack
+- sym: '@kilocode/kilo-ui/button.Button'
+- sym: '@kilocode/kilo-ui/dialog.Dialog'
+- sym: '@kilocode/kilo-ui/icon-button.IconButton'
+- sym: '@kilocode/kilo-ui/tooltip.Tooltip'
+- sym: '@kilocode/kilo-ui/file-icon.FileIcon'
+- sym: '@kilocode/kilo-ui/context/dialog.useDialog'
+- sym: ../../context/session.useSession
+- sym: ../../context/server.useServer
+- sym: ../../context/language.useLanguage
+- sym: ../../context/vscode.useVSCode
+- sym: ../../context/worktree-mode.useWorktreeMode
+- sym: ../shared/ModelSelector.ModelSelector
+- sym: ../shared/ModeSwitcher.ModeSwitcher
+- sym: ../shared/ThinkingSelector.ThinkingSelector
+- sym: ../../hooks/useFileMention.useFileMention
+- sym: ../../hooks/useSlashCommand.useSlashCommand
+- sym: ../../hooks/useImageAttachments.useImageAttachments
+- sym: ../../hooks/usePromptHistory.usePromptHistory
+- sym: '@kilocode/kilo-ui/lucide.WandSparkles'
+- sym: ./prompt-input-utils.fileName
+- sym: ./prompt-input-utils.dirName
+- sym: ./prompt-input-utils.buildHighlightSegments
+- sym: ./prompt-input-utils.atEnd
+- sym: ../../types/messages.ReviewComment
+  kind: typing
+- sym: ../../types/messages.TextPart
+  kind: typing
+- sym: ../../utils/review-comment-markdown.formatReviewCommentsMarkdown
+data:
+- name: AUTOCOMPLETE_DEBOUNCE_MS
+  type: number
+  val: '500'
+- name: MIN_TEXT_LENGTH
+  type: number
+  val: '3'
+- name: drafts
+  type: any
+  val: new Map<string, string>()
+- name: reviewDrafts
+  type: any
+  val: new Map<string, ReviewComment[]>()
+- name: session
+  type: any
+  val: useSession()
+- name: server
+  type: any
+  val: useServer()
+- name: language
+  type: any
+  val: useLanguage()
+- name: vscode
+  type: any
+  val: useVSCode()
+- name: worktree
+  type: any
+  val: useWorktreeMode()
+- name: dialog
+  type: any
+  val: useDialog()
+- name: mention
+  type: any
+  val: useFileMention(vscode)
+- name: excluded
+  type: any
+  val: 'worktree ? new Set(["sessions"]) : undefined'
+- name: slash
+  type: any
+  val: useSlashCommand(vscode, excluded)
+- name: imageAttach
+  type: any
+  val: useImageAttachments()
+- name: history
+  type: any
+  val: usePromptHistory()
+- name: '[text, setText]'
+  type: any
+  val: createSignal("")
+- name: '[ghostText, setGhostText]'
+  type: any
+  val: createSignal("")
+- name: '[reviewComments, setReviewComments]'
+  type: any
+  val: createSignal<ReviewComment[]>([])
+- name: '[chatAutocompleteEnabled, setChatAutocompleteEnabled]'
+  type: any
+  val: createSignal(false)
+- name: '[enhancing, setEnhancing]'
+  type: any
+  val: createSignal(false)
+- name: enhanceCounter
+  type: number
+  val: '0'
+- name: preEnhanceText
+  type: string | null
+  val: 'null'
+- name: textareaRef
+  type: HTMLTextAreaElement | undefined
+- name: highlightRef
+  type: HTMLDivElement | undefined
+- name: dropdownRef
+  type: HTMLDivElement | undefined
+- name: slashDropdownRef
+  type: HTMLDivElement | undefined
+- name: debounceTimer
+  type: ReturnType<typeof setTimeout> | undefined
+- name: requestCounter
+  type: number
+  val: '0'
+- name: REVIEW_PREFIX
+  type: any
+  val: /^## Review Comments\n[\s\S]*?\n\n/
+- name: unsubscribe
+  type: any
+  val: |-
+    vscode.onMessage((message) => {
+        if (message.type === "chatCompletionResult") {
+          const result = message as { typ...
+- name: all
+  type: any
+  val: slash.results()
+- name: actions
+  type: any
+  val: all.filter((c) => c.action)
+- name: server
+  type: any
+  val: all.filter((c) => !c.action)
+- name: offset
+  type: any
+  val: actions.length
+types:
+- name: PromptInputProps
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: blocked
+    type: () => boolean
+  lines:
+  - 46
+  - 48
+functions:
+- name: mergeReviewComments
+  sig: 'mergeReviewComments(current: ReviewComment[], incoming: ReviewComment[]): ReviewComment[]'
+  lines:
+  - 37
+  - 44
+  detail:
+    calls:
+    - current.map
+    - map.set
+    - map.values
+    - new Map
+- name: sessionKey
+  sig: sessionKey()
+  lines:
+  - 63
+  - 63
+- name: replaceReviewComments
+  sig: 'replaceReviewComments(next: ReviewComment[])'
+  lines:
+  - 73
+  - 80
+  detail:
+    calls:
+    - reviewDrafts.delete
+    - reviewDrafts.set
+    - sessionKey
+    - setReviewComments
+- name: clearReviewComments
+  sig: clearReviewComments()
+  lines:
+  - 82
+  - 82
+- name: removeReviewComment
+  sig: 'removeReviewComment(id: string)'
+  lines:
+  - 84
+  - 86
+  detail:
+    calls:
+    - replaceReviewComments
+    - reviewComments
+    - reviewComments().filter
+- name: openReviewFile
+  sig: 'openReviewFile(item: ReviewComment)'
+  lines:
+  - 88
+  - 97
+  detail:
+    calls:
+    - dialog.close
+    - session.currentSessionID
+    - vscode.postMessage
+- name: side
+  sig: 'side(item: ReviewComment)'
+  lines:
+  - 99
+  - 99
+- name: reviewChipTitle
+  sig: 'reviewChipTitle(item: ReviewComment)'
+  lines:
+  - 100
+  - 100
+- name: showReviewCommentDialog
+  sig: 'showReviewCommentDialog(item: ReviewComment)'
+  lines:
+  - 102
+  - 134
+  detail:
+    calls:
+    - dialog.show
+- name: onFocusPrompt
+  sig: onFocusPrompt()
+  lines:
+  - 188
+  - 188
+- name: onNewTaskRequest
+  sig: onNewTaskRequest()
+  lines:
+  - 193
+  - 198
+  detail:
+    calls:
+    - drafts.set
+    - session.clearCurrentSession
+    - text
+    - text().trim
+- name: onCompact
+  sig: onCompact()
+  lines:
+  - 203
+  - 208
+  detail:
+    calls:
+    - session.compact
+    - session.messages
+    - session.selected
+    - session.status
+- name: isBusy
+  sig: isBusy()
+  lines:
+  - 212
+  - 212
+- name: isDisabled
+  sig: isDisabled()
+  lines:
+  - 213
+  - 213
+- name: hasInput
+  sig: hasInput()
+  lines:
+  - 214
+  - 214
+- name: canSend
+  sig: canSend()
+  lines:
+  - 215
+  - 215
+- name: showStop
+  sig: showStop()
+  lines:
+  - 216
+  - 216
+- name: isAtEnd
+  sig: isAtEnd()
+  lines:
+  - 217
+  - 218
+- name: placeholder
+  sig: placeholder()
+  lines:
+  - 219
+  - 228
+  detail:
+    calls:
+    - language.t
+    - server.connectionState
+- name: requestAutocomplete
+  sig: 'requestAutocomplete(val: string)'
+  lines:
+  - 348
+  - 356
+  detail:
+    calls:
+    - chatAutocompleteEnabled
+    - isAtEnd
+    - isDisabled
+    - setGhostText
+    - vscode.postMessage
+- name: acceptSuggestion
+  sig: acceptSuggestion()
+  lines:
+  - 358
+  - 371
+  detail:
+    calls:
+    - adjustHeight
+    - ghostText
+    - setGhostText
+    - setText
+    - text
+    - vscode.postMessage
+- name: dismissSuggestion
+  sig: dismissSuggestion()
+  lines:
+  - 373
+  - 373
+- name: clearIfNotAtEnd
+  sig: clearIfNotAtEnd()
+  lines:
+  - 374
+  - 377
+- name: scrollToActiveItem
+  sig: scrollToActiveItem()
+  lines:
+  - 379
+  - 384
+  detail:
+    calls:
+    - active.scrollIntoView
+    - dropdownRef.querySelectorAll
+    - mention.mentionIndex
+- name: scrollToActiveSlashItem
+  sig: scrollToActiveSlashItem()
+  lines:
+  - 386
+  - 391
+  detail:
+    calls:
+    - active.scrollIntoView
+    - slash.index
+    - slashDropdownRef.querySelectorAll
+- name: syncHighlightScroll
+  sig: syncHighlightScroll()
+  lines:
+  - 393
+  - 397
+  detail: {}
+- name: adjustHeight
+  sig: adjustHeight()
+  lines:
+  - 399
+  - 403
+  detail:
+    calls:
+    - Math.min
+- name: handlePaste
+  sig: 'handlePaste(e: ClipboardEvent)'
+  lines:
+  - 405
+  - 414
+  detail:
+    calls:
+    - imageAttach.handlePaste
+    - requestAnimationFrame
+- name: handleInput
+  sig: 'handleInput(e: InputEvent)'
+  lines:
+  - 416
+  - 437
+  detail:
+    calls:
+    - adjustHeight
+    - clearTimeout
+    - history.reset
+    - mention.onInput
+    - mention.showMention
+    - setGhostText
+    - setText
+    - setTimeout
+    - slash.onInput
+    - slash.show
+    - syncHighlightScroll
+- name: handleKeyDown
+  sig: 'handleKeyDown(e: KeyboardEvent)'
+  lines:
+  - 439
+  - 517
+  detail:
+    calls:
+    - acceptSuggestion
+    - adjustHeight
+    - dismissSuggestion
+    - e.preventDefault
+    - e.stopPropagation
+    - ghostText
+    - handleSend
+    - history.navigate
+    - isAtEnd
+    - isBusy
+    - mention.onKeyDown
+    - queueMicrotask
+    - session.abort
+    - setGhostText
+    - setText
+    - slash.onKeyDown
+    - text
+    - textareaRef.setSelectionRange
+- name: canEnhance
+  sig: canEnhance()
+  lines:
+  - 519
+  - 519
+- name: handleEnhance
+  sig: handleEnhance()
+  lines:
+  - 521
+  - 539
+  detail:
+    calls:
+    - adjustHeight
+    - enhancing
+    - isBusy
+    - isDisabled
+    - language.t
+    - setEnhancing
+    - setGhostText
+    - setText
+    - text
+    - text().trim
+    - textareaRef.focus
+    - vscode.postMessage
+- name: handleSend
+  sig: handleSend()
+  lines:
+  - 541
+  - 603
+  detail:
+    calls:
+    - clearReviewComments
+    - clearTimeout
+    - draft.match
+    - draft.slice
+    - draft.slice(cmdMatch![0].length).trim
+    - drafts.delete
+    - formatReviewCommentsMarkdown
+    - history.append
+    - history.reset
+    - imageAttach.clear
+    - imageAttach.images
+    - imgs.map
+    - isDisabled
+    - matched.action
+    - mention.closeMention
+    - mention.parseFileAttachments
+    - props.blocked
+    - reviewComments
+    - session.selected
+    - session.sendCommand
+    - session.sendMessage
+    - sessionKey
+    - setGhostText
+    - setText
+    - slash.close
+    - slash.commands
+    - slash.commands().find
+    - text
+    - text().trim
+exports:
+- name: PromptInputProps
+  kind: type
+- name: mergeReviewComments
+  kind: func
+- name: sessionKey
+  kind: func
+- name: replaceReviewComments
+  kind: func
+- name: clearReviewComments
+  kind: func
+- name: removeReviewComment
+  kind: func
+- name: openReviewFile
+  kind: func
+- name: side
+  kind: func
+- name: reviewChipTitle
+  kind: func
+- name: showReviewCommentDialog
+  kind: func
+- name: onFocusPrompt
+  kind: func
+- name: onNewTaskRequest
+  kind: func
+- name: onCompact
+  kind: func
+- name: isBusy
+  kind: func
+- name: isDisabled
+  kind: func
+- name: hasInput
+  kind: func
+- name: canSend
+  kind: func
+- name: showStop
+  kind: func
+- name: isAtEnd
+  kind: func
+- name: placeholder
+  kind: func
+- name: requestAutocomplete
+  kind: func
+- name: acceptSuggestion
+  kind: func
+- name: dismissSuggestion
+  kind: func
+- name: clearIfNotAtEnd
+  kind: func
+- name: scrollToActiveItem
+  kind: func
+- name: scrollToActiveSlashItem
+  kind: func
+- name: syncHighlightScroll
+  kind: func
+- name: adjustHeight
+  kind: func
+- name: handlePaste
+  kind: func
+- name: handleInput
+  kind: func
+- name: handleKeyDown
+  kind: func
+- name: canEnhance
+  kind: func
+- name: handleEnhance
+  kind: func
+- name: handleSend
+  kind: func
+- name: AUTOCOMPLETE_DEBOUNCE_MS
+  kind: data
+- name: MIN_TEXT_LENGTH
+  kind: data
+- name: drafts
+  kind: data
+- name: reviewDrafts
+  kind: data
+- name: session
+  kind: data
+- name: server
+  kind: data
+- name: language
+  kind: data
+- name: vscode
+  kind: data
+- name: worktree
+  kind: data
+- name: dialog
+  kind: data
+- name: mention
+  kind: data
+- name: excluded
+  kind: data
+- name: slash
+  kind: data
+- name: imageAttach
+  kind: data
+- name: history
+  kind: data
+- name: '[text, setText]'
+  kind: data
+- name: '[ghostText, setGhostText]'
+  kind: data
+- name: '[reviewComments, setReviewComments]'
+  kind: data
+- name: '[chatAutocompleteEnabled, setChatAutocompleteEnabled]'
+  kind: data
+- name: '[enhancing, setEnhancing]'
+  kind: data
+- name: enhanceCounter
+  kind: data
+- name: preEnhanceText
+  kind: data
+- name: textareaRef
+  kind: data
+- name: highlightRef
+  kind: data
+- name: dropdownRef
+  kind: data
+- name: slashDropdownRef
+  kind: data
+- name: debounceTimer
+  kind: data
+- name: requestCounter
+  kind: data
+- name: REVIEW_PREFIX
+  kind: data
+- name: unsubscribe
+  kind: data
+- name: all
+  kind: data
+- name: actions
+  kind: data
+- name: server
+  kind: data
+- name: offset
+  kind: data

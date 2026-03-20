@@ -1,0 +1,291 @@
+## Roska File Descriptor — agent-manager/GitStatsPoller.ts
+file: agent-manager/GitStatsPoller.ts
+lines: 300
+imports:
+- sym: fs.fs
+- sym: path.path
+- sym: '@kilocode/sdk/v2/client.KiloClient'
+  kind: typing
+- sym: '@kilocode/sdk/v2/client.FileDiff'
+  kind: typing
+- sym: ./WorktreeStateManager.remoteRef
+- sym: ./WorktreeStateManager.type Worktree
+- sym: ./GitOps.GitOps
+  kind: typing
+- sym: ./git-import.normalizePath
+types:
+- name: WorktreeStats
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: worktreeId
+    type: string
+  - name: files
+    type: number
+  - name: additions
+    type: number
+  - name: deletions
+    type: number
+  - name: ahead
+    type: number
+  - name: behind
+    type: number
+  lines:
+  - 8
+  - 15
+- name: LocalStats
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: branch
+    type: string
+  - name: files
+    type: number
+  - name: additions
+    type: number
+  - name: deletions
+    type: number
+  - name: ahead
+    type: number
+  - name: behind
+    type: number
+  lines:
+  - 17
+  - 24
+- name: WorktreePresence
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: worktreeId
+    type: string
+  - name: missing
+    type: boolean
+  lines:
+  - 26
+  - 29
+- name: WorktreePresenceResult
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: worktrees
+    type: WorktreePresence[]
+  - name: degraded
+    type: boolean
+  lines:
+  - 31
+  - 34
+- name: GitStatsPollerOptions
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: getWorktrees
+    type: () => Worktree[]
+  - name: getWorkspaceRoot
+    type: () => string | undefined
+  - name: getClient
+    type: () => KiloClient
+  - name: git
+    type: GitOps
+  - name: onStats
+    type: '(stats: WorktreeStats[]) => void'
+  - name: onLocalStats
+    type: '(stats: LocalStats) => void'
+  - name: onWorktreePresence
+    type: '(result: WorktreePresenceResult) => void'
+  - name: log
+    type: '(...args: unknown[]) => void'
+  - name: intervalMs
+    type: number
+  lines:
+  - 36
+  - 46
+- name: GitStatsPoller
+  kind: struct
+  fields:
+  - name: timer
+    type: ReturnType<typeof setTimeout> | undefined
+  - name: active
+    type: any
+    default: 'false'
+  - name: busy
+    type: any
+    default: 'false'
+  - name: lastHash
+    type: string | undefined
+  - name: lastLocalHash
+    type: string | undefined
+  - name: lastLocalStats
+    type: LocalStats | undefined
+  - name: lastStats
+    type: |-
+      Record<
+          string,
+          { files: number; additions: number; deletions: number; ahead: number; behind: number }
+        >
+    default: '{}'
+  - name: intervalMs
+    type: number
+  - name: git
+    type: GitOps
+  - name: skipWorktreeIds
+    type: any
+    default: new Set<string>()
+  methods:
+  - name: constructor
+    sig: 'constructor(private readonly options: GitStatsPollerOptions)'
+    lines:
+    - 63
+    - 66
+    detail: {}
+  - name: skipWorktree
+    sig: 'skipWorktree(id: string): void'
+    lines:
+    - 68
+    - 70
+    detail:
+      calls:
+      - this.skipWorktreeIds.add
+  - name: unskipWorktree
+    sig: 'unskipWorktree(id: string): void'
+    lines:
+    - 72
+    - 74
+    detail:
+      calls:
+      - this.skipWorktreeIds.delete
+  - name: setEnabled
+    sig: 'setEnabled(enabled: boolean): void'
+    lines:
+    - 76
+    - 83
+    detail:
+      calls:
+      - this.start
+      - this.stop
+  - name: stop
+    sig: 'stop(): void'
+    lines:
+    - 85
+    - 96
+    detail:
+      calls:
+      - clearTimeout
+  - name: poll
+    sig: 'poll(): Promise<void>'
+    vis: private
+    lines:
+    - 111
+    - 119
+    detail:
+      calls:
+      - Promise.resolve
+      - this.fetch
+      - this.fetch().finally
+  - name: fetch
+    sig: 'fetch(): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 121
+    - 132
+    detail:
+      calls:
+      - |-
+        (() => {
+              try {
+                return this.options.getClient()
+              } catch (err) {
+                this.opti...
+      - Promise.all
+      - this.fetchLocalStats
+      - this.fetchWorktreeStats
+  - name: fetchWorktreeStats
+    sig: 'fetchWorktreeStats(client: KiloClient | undefined): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 134
+    - 209
+    detail:
+      calls:
+      - |-
+        (
+              await Promise.all(
+                active.map(async (wt) => {
+                  try {
+                    const base...
+      - Promise.all
+      - active.map
+      - new Set
+      - presence.worktrees.filter
+      - presence.worktrees.filter((item) => item.missing).map
+      - |-
+        stats
+              .map
+      - |-
+        stats
+              .map(
+                (item) => `${item.worktreeId}:${item.files}:${item.additions}:${item.delet...
+      - stats.reduce
+      - this.options.getWorktrees
+      - this.options.onStats
+      - this.options.onWorktreePresence
+      - this.probeWorktreePresence
+      - worktrees.filter
+  - name: probeWorktreePresence
+    sig: 'probeWorktreePresence(worktrees: Worktree[]): Promise<WorktreePresenceResult>'
+    is_async: true
+    vis: private
+    lines:
+    - 211
+    - 239
+    detail:
+      calls:
+      - Promise.all
+      - this.git.listWorktreePaths
+      - this.git.listWorktreePaths(root).catch
+      - this.options.getWorkspaceRoot
+      - worktrees.map
+  - name: fetchLocalStats
+    sig: 'fetchLocalStats(client: KiloClient | undefined): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 241
+    - 299
+    detail:
+      calls:
+      - Promise.all
+      - client.worktree.diffSummary
+      - diffs.reduce
+      - this.git.aheadBehind
+      - this.git.currentBranch
+      - this.git.resolveDefaultBranch
+      - this.git.resolveRemote
+      - this.git.resolveRemote(root, branch).catch
+      - this.git.resolveTrackingBranch
+      - this.git.workingTreeStats
+      - this.options.getWorkspaceRoot
+      - this.options.log
+      - this.options.onLocalStats
+  lines:
+  - 48
+  - 300
+exports:
+- name: WorktreeStats
+  kind: type
+- name: LocalStats
+  kind: type
+- name: WorktreePresence
+  kind: type
+- name: WorktreePresenceResult
+  kind: type
+- name: GitStatsPollerOptions
+  kind: type
+- name: GitStatsPoller
+  kind: type

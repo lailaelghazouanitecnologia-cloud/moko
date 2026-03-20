@@ -1,0 +1,118 @@
+## Roska File Descriptor — handlers/cloud-session.ts
+file: handlers/cloud-session.ts
+lines: 222
+purpose: Cloud session handlers — extracted from KiloProvider. Manages fetching cloud sessions, previewing them, and the "import + send" flow that clones a cloud session locally on first message. No vscode dependency.
+imports:
+- sym: '@kilocode/sdk/v2/client.KiloClient'
+  kind: typing
+- sym: '@kilocode/sdk/v2/client.Session'
+  kind: typing
+- sym: '@kilocode/sdk/v2/client.TextPartInput'
+  kind: typing
+- sym: '@kilocode/sdk/v2/client.FilePartInput'
+  kind: typing
+- sym: ../../services/cli-backend/types.CloudSessionData
+  kind: typing
+- sym: ../../services/cli-backend/types.EditorContext
+  kind: typing
+- sym: ../../kilo-provider-utils.getErrorMessage
+- sym: ../../kilo-provider-utils.sessionToWebview
+- sym: ../../kilo-provider-utils.mapCloudSessionMessageToWebviewMessage
+types:
+- name: CloudSessionContext
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: readonly
+    type: KiloClient | null
+  - name: currentSession
+    type: Session | null
+  - name: readonly
+    type: Set<string>
+  - name: readonly
+    type: |-
+      {
+          recordMessageSessionId(messageId: string, sessionId: string): void
+        }
+  - name: postMessage
+    type: 'method: postMessage(msg: unknown): void'
+  - name: getWorkspaceDirectory
+    type: 'method: getWorkspaceDirectory(sessionId?: string): string'
+  - name: gatherEditorContext
+    type: 'method: gatherEditorContext(): Promise<EditorContext>'
+  lines:
+  - 12
+  - 22
+functions:
+- name: handleRequestCloudSessions
+  sig: |-
+    handleRequestCloudSessions(
+      ctx: CloudSessionContext,
+      message: { cursor?: string; limit?: number; gitUrl?: string },
+    ): Promise<void>
+  is_async: true
+  lines:
+  - 25
+  - 53
+  detail:
+    calls:
+    - console.error
+    - ctx.client.kilo.cloudSessions
+    - ctx.postMessage
+- name: handleRequestCloudSessionData
+  sig: 'handleRequestCloudSessionData(ctx: CloudSessionContext, sessionId: string): Promise<void>'
+  is_async: true
+  lines:
+  - 59
+  - 97
+  detail:
+    calls:
+    - (data.messages ?? []).filter
+    - (data.messages ?? []).filter((m) => m.info).map
+    - console.error
+    - ctx.client.kilo.cloud.session.get
+    - ctx.postMessage
+- name: handleImportAndSend
+  sig: |-
+    handleImportAndSend(
+      ctx: CloudSessionContext,
+      cloudSessionId: string,
+      text: string,
+      messageID?: string,
+      providerID?: string,
+      modelID?: string,
+      agent?: string,
+      variant?: string,
+      files?: Array<{ mime: string; url: string }>,
+      command?: string,
+      commandArgs?: string,
+    ): Promise<void>
+  is_async: true
+  lines:
+  - 104
+  - 222
+  detail:
+    calls:
+    - console.error
+    - ctx.client.kilo.cloud.session.import
+    - ctx.client.session.command
+    - ctx.client.session.promptAsync
+    - ctx.connectionService.recordMessageSessionId
+    - ctx.gatherEditorContext
+    - ctx.getWorkspaceDirectory
+    - ctx.postMessage
+    - ctx.trackedSessionIds.add
+    - files?.map
+    - getErrorMessage
+    - parts.push
+    - sessionToWebview
+exports:
+- name: CloudSessionContext
+  kind: type
+- name: handleRequestCloudSessions
+  kind: func
+- name: handleRequestCloudSessionData
+  kind: func
+- name: handleImportAndSend
+  kind: func
