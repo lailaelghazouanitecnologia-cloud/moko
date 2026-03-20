@@ -5,6 +5,7 @@ mod model;
 mod olevel;
 mod opcodes;
 mod parse;
+mod parse_ts;
 
 use clap::Parser as ClapParser;
 use std::collections::BTreeMap;
@@ -45,6 +46,16 @@ struct Cli {
     /// Enable opcode extraction (Depth 3 body-level opcodes)
     #[arg(long)]
     opcodes: bool,
+
+    /// Language to parse (auto-detected from files if not specified)
+    #[arg(long, default_value = "auto")]
+    lang: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum Lang {
+    Python,
+    TypeScript,
 }
 
 fn main() {
@@ -66,29 +77,51 @@ fn real_main() {
 
     std::fs::create_dir_all(&cli.output).expect("Failed to create output directory");
 
-    // Collect all Python files
-    let py_files: Vec<PathBuf> = WalkDir::new(&cli.input)
+    // Detect language
+    let lang = detect_language(&cli);
+    let extensions: &[&str] = match lang {
+        Lang::Python => &["py"],
+        Lang::TypeScript => &["ts", "tsx"],
+    };
+
+    // Collect source files
+    let source_files: Vec<PathBuf> = WalkDir::new(&cli.input)
         .into_iter()
         .filter_map(|e| e.ok())
         .filter(|e| {
-            e.path().extension().map_or(false, |ext| ext == "py")
-                && !e.path().to_string_lossy().contains("__pycache__")
-                && !e.path().to_string_lossy().contains(".egg-info")
+            let path_str = e.path().to_string_lossy();
+            e.path().extension().map_or(false, |ext| {
+                extensions.iter().any(|x| ext == *x)
+            })
+                && !path_str.contains("__pycache__")
+                && !path_str.contains(".egg-info")
+                && !path_str.contains("node_modules")
+                && !path_str.contains(".d.ts") // skip declaration files
+                && !path_str.contains("/dist/")
+                && !path_str.contains("/build/")
         })
         .map(|e| e.path().to_path_buf())
         .collect();
 
-    eprintln!("[lyzed-ts] Found {} Python files in {:?}", py_files.len(), cli.input);
-
-    let mut parser = parse::create_parser();
+    eprintln!("[lyzed-ts] Found {} {:?} files in {:?}", source_files.len(), lang, cli.input);
 
     // Build module tree from directory structure
-    let mut workspace = build_workspace(&cli, &py_files, &mut parser);
+    let mut workspace = match lang {
+        Lang::Python => {
+            let mut parser = parse::create_parser();
+            build_workspace(&cli, &source_files, &mut parser, Lang::Python)
+        }
+        Lang::TypeScript => {
+            let mut parser = parse_ts::create_parser();
+            build_workspace(&cli, &source_files, &mut parser, Lang::TypeScript)
+        }
+    };
 
-    // Extract opcodes if requested (Depth 3)
-    if cli.opcodes {
+    // Extract opcodes if requested (Depth 3) — Python only for now
+    if cli.opcodes && lang == Lang::Python {
         eprintln!("[lyzed-ts] Extracting opcodes (iterative)...");
-        extract_all_opcodes(&mut workspace, &cli.input, &mut parser);
+        let mut py_parser = parse::create_parser();
+        extract_all_opcodes(&mut workspace, &cli.input, &mut py_parser);
     }
 
     // Apply O-level filtering
@@ -230,15 +263,38 @@ fn find_function_at_line<'a>(root: &'a tree_sitter::Node<'a>, line: usize) -> Op
     None
 }
 
+fn detect_language(cli: &Cli) -> Lang {
+    if cli.lang == "python" || cli.lang == "py" {
+        return Lang::Python;
+    }
+    if cli.lang == "typescript" || cli.lang == "ts" {
+        return Lang::TypeScript;
+    }
+    // Auto-detect: count files by extension
+    let mut py_count = 0;
+    let mut ts_count = 0;
+    for entry in WalkDir::new(&cli.input).into_iter().filter_map(|e| e.ok()) {
+        if let Some(ext) = entry.path().extension() {
+            match ext.to_str().unwrap_or("") {
+                "py" => py_count += 1,
+                "ts" | "tsx" => ts_count += 1,
+                _ => {}
+            }
+        }
+    }
+    if ts_count > py_count { Lang::TypeScript } else { Lang::Python }
+}
+
 fn build_workspace(
     cli: &Cli,
-    py_files: &[PathBuf],
+    source_files: &[PathBuf],
     parser: &mut tree_sitter::Parser,
+    lang: Lang,
 ) -> model::Workspace {
     // Group files by module path (first directory component)
     let mut top_modules: BTreeMap<String, Vec<PathBuf>> = BTreeMap::new();
 
-    for f in py_files {
+    for f in source_files {
         let rel = f.strip_prefix(&cli.input).unwrap_or(f);
         let components: Vec<String> = rel
             .components()
@@ -259,7 +315,7 @@ fn build_workspace(
     let mut total_lines = 0;
 
     for (mod_name, files) in &top_modules {
-        let module = build_module(mod_name, files, &cli.input, parser);
+        let module = build_module(mod_name, files, &cli.input, parser, lang);
         total_files += count_files(&module);
         total_lines += module.total_lines;
         modules.push(module);
@@ -282,6 +338,7 @@ fn build_module(
     files: &[PathBuf],
     root: &Path,
     parser: &mut tree_sitter::Parser,
+    lang: Lang,
 ) -> model::Module {
     // Separate direct files from submodule files
     let mut direct_files = Vec::new();
@@ -325,7 +382,10 @@ fn build_module(
         total_lines += line_count;
 
         eprintln!("  parsing: {} ({} lines)", rel_path, line_count);
-        let fd = parse::parse_file(parser, &source, &rel_path, line_count);
+        let fd = match lang {
+            Lang::Python => parse::parse_file(parser, &source, &rel_path, line_count),
+            Lang::TypeScript => parse_ts::parse_file(parser, &source, &rel_path, line_count),
+        };
         file_descs.push(fd);
     }
 
@@ -337,15 +397,15 @@ fn build_module(
         } else {
             root.join(name)
         };
-        let sub = build_module(sub_name, sub_files, &sub_root, parser);
+        let sub = build_module(sub_name, sub_files, &sub_root, parser, lang);
         total_lines += sub.total_lines;
         submodules.push(sub);
     }
 
-    // Extract module purpose from __init__.py docstring
+    // Extract module purpose from __init__.py or index.ts
     let purpose = file_descs
         .iter()
-        .find(|f| f.file.ends_with("__init__.py"))
+        .find(|f| f.file.ends_with("__init__.py") || f.file.ends_with("index.ts") || f.file.ends_with("index.tsx"))
         .and_then(|f| f.purpose.clone());
 
     model::Module {
