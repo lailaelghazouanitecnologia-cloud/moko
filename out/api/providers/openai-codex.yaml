@@ -1,0 +1,256 @@
+## Roska File Descriptor — providers/openai-codex.ts
+file: providers/openai-codex.ts
+lines: 732
+imports:
+- sym: '@shared/api.ModelInfo'
+- sym: '@shared/api.OpenAiCodexModelId'
+- sym: '@shared/api.openAiCodexDefaultModelId'
+- sym: '@shared/api.openAiCodexModels'
+- sym: '@shared/storage/types.normalizeOpenaiReasoningEffort'
+- sym: openai.OpenAI
+- sym: openai/resources/chat/completions.ChatCompletionTool
+  kind: typing
+- sym: undici.MessageEvent as UndiciMessageEvent
+- sym: undici.WebSocket as UndiciWebSocket
+- sym: '@/integrations/openai-codex/oauth.openAiCodexOAuthManager'
+- sym: '@/services/EnvUtils.buildExternalBasicHeaders'
+- sym: '@/services/feature-flags.featureFlagsService'
+- sym: '@/shared/messages/content.ClineStorageMessage'
+- sym: '@/shared/net.fetch'
+- sym: '@/shared/proto/cline/models.ApiFormat'
+- sym: '@/shared/services/feature-flags/feature-flags.FeatureFlag'
+- sym: '@/shared/services/Logger.Logger'
+- sym: ../.ApiHandler
+- sym: ../.CommonApiHandlerOptions
+- sym: ../transform/openai-response-format.convertToOpenAIResponsesInput
+- sym: ../transform/stream.ApiStream
+- sym: ../transform/stream.ApiStreamUsageChunk
+data:
+- name: CODEX_API_BASE_URL
+  type: string
+  val: '"https://chatgpt.com/backend-api/codex"'
+- name: CODEX_RESPONSES_WEBSOCKET_URL
+  type: string
+  val: '"wss://chatgpt.com/backend-api/codex/responses"'
+types:
+- name: OpenAiCodexHandlerOptions
+  kind: trait
+  bases:
+  - CommonApiHandlerOptions
+  decorators:
+  - interface
+  fields:
+  - name: reasoningEffort
+    type: string
+  - name: apiModelId
+    type: string
+  lines:
+  - 27
+  - 30
+- name: OpenAiCodexHandler
+  kind: struct
+  ctx: Session ID for the Codex API (persists for the lifetime of the handler)
+  bases:
+  - ApiHandler
+  fields:
+  - name: options
+    type: OpenAiCodexHandlerOptions
+  - name: client
+    type: OpenAI
+  - name: responsesWs
+    type: UndiciWebSocket | undefined
+  - name: websocketRequestInFlight
+    type: any
+    default: 'false'
+  - name: sessionId
+    type: string
+  - name: abortController
+    type: AbortController
+  - name: pendingToolCallId
+    type: string | undefined
+  - name: pendingToolCallName
+    type: string | undefined
+  methods:
+  - name: constructor
+    sig: 'constructor(options: OpenAiCodexHandlerOptions)'
+    lines:
+    - 55
+    - 58
+    detail:
+      calls:
+      - uuidv7
+  - name: createMessage
+    sig: 'createMessage(systemPrompt: string, messages: ClineStorageMessage[], tools?: ChatCompletionTool[]): ApiStream'
+    is_async: true
+    lines:
+    - 100
+    - 143
+    detail:
+      calls:
+      - /unauthorized|invalid token|not authenticated|authentication|401/i.test
+      - String
+      - convertToOpenAIResponsesInput
+      - new Error
+      - openAiCodexOAuthManager.forceRefreshAccessToken
+      - openAiCodexOAuthManager.getAccessToken
+      - this.buildRequestBody
+      - this.executeRequest
+      - this.getModel
+      - this.useWebsocketMode
+  - name: buildRequestBody
+    sig: "buildRequestBody(\n\t\tmodel: { id: string; info: ModelInfo },\n\t\tformattedInput: any,\n\t\tsystemPrompt: string,\n\t\ttools?: ChatCompletionTool[],\n\t\tpreviousResponseId?: string,\n\t): any"
+    vis: private
+    lines:
+    - 152
+    - 196
+    detail:
+      calls:
+      - normalizeOpenaiReasoningEffort
+      - "tools\n\t\t\t\t.filter"
+      - "tools\n\t\t\t\t.filter((tool: any) => tool?.type === \"function\")\n\t\t\t\t.map"
+  - name: executeRequest
+    sig: "executeRequest(\n\t\trequestBody: any,\n\t\tfallbackRequestBody: any,\n\t\tmodel: { id: string; info: ModelInfo },\n\t\taccessToken: string,\n\t\tuseWebsocketMode: boolean,\n\t): ApiStream"
+    is_async: true
+    vis: private
+    lines:
+    - 198
+    - 267
+    detail:
+      calls:
+      - (client as any).responses.create
+      - Logger.error
+      - buildExternalBasicHeaders
+      - new AbortController
+      - new Error
+      - new OpenAI
+      - openAiCodexOAuthManager.getAccountId
+      - os.arch
+      - os.platform
+      - os.release
+      - process.version.slice
+      - this.closeResponsesWebsocket
+      - this.createResponseStreamWebsocket
+      - this.makeCodexRequest
+      - this.processEvent
+  - name: createResponseStreamWebsocket
+    sig: "createResponseStreamWebsocket(\n\t\tprimaryParams: OpenAI.Responses.ResponseCreateParamsStreaming,\n\t\tfallbackParams: OpenAI.Responses.ResponseCreateParamsStreaming,\n\t\taccessToken: string,\n\t\tcodexHeaders: Record<string, string>,\n\t\tmodel: { id: string; info: ModelInfo },\n\t): ApiStream"
+    is_async: true
+    vis: private
+    lines:
+    - 269
+    - 299
+    detail:
+      calls:
+      - Logger.log
+      - this.closeResponsesWebsocket
+      - this.createResponseEventsViaWebsocket
+      - this.processEvent
+      - this.shouldRetryWebsocketWithFullContext
+  - name: ensureResponsesWebsocket
+    sig: 'ensureResponsesWebsocket(accessToken: string, codexHeaders: Record<string, string>): Promise<UndiciWebSocket>'
+    is_async: true
+    vis: private
+    lines:
+    - 316
+    - 356
+    detail:
+      calls:
+      - new Promise
+      - new UndiciWebSocket
+      - this.closeResponsesWebsocket
+  - name: createResponseEventsViaWebsocket
+    sig: "createResponseEventsViaWebsocket(\n\t\tparams: OpenAI.Responses.ResponseCreateParamsStreaming,\n\t\taccessToken: string,\n\t\tcodexHeaders: Record<string, string>,\n\t): AsyncGenerator<OpenAI.Responses.ResponseStreamEvent>"
+    is_async: true
+    vis: private
+    lines:
+    - 367
+    - 484
+    detail:
+      calls:
+      - JSON.stringify
+      - eventQueue.shift
+      - new Error
+      - new Promise
+      - this.ensureResponsesWebsocket
+      - ws.addEventListener
+      - ws.removeEventListener
+      - ws.send
+  - name: makeCodexRequest
+    sig: 'makeCodexRequest(requestBody: any, model: { id: string; info: ModelInfo }, accessToken: string): ApiStream'
+    is_async: true
+    vis: private
+    lines:
+    - 486
+    - 545
+    detail:
+      calls:
+      - JSON.parse
+      - JSON.stringify
+      - fetch
+      - new Error
+      - openAiCodexOAuthManager.getAccountId
+      - os.arch
+      - os.platform
+      - os.release
+      - process.version.slice
+      - response.text
+      - this.handleStreamResponse
+  - name: handleStreamResponse
+    sig: 'handleStreamResponse(body: ReadableStream<Uint8Array>, model: { id: string; info: ModelInfo }): ApiStream'
+    is_async: true
+    vis: private
+    lines:
+    - 547
+    - 591
+    detail:
+      calls:
+      - JSON.parse
+      - body.getReader
+      - buffer.split
+      - decoder.decode
+      - line.slice
+      - line.slice(6).trim
+      - line.startsWith
+      - lines.pop
+      - new TextDecoder
+      - reader.read
+      - reader.releaseLock
+      - this.processEvent
+  - name: processEvent
+    sig: 'processEvent(event: any, model: { id: string; info: ModelInfo }): ApiStream'
+    is_async: true
+    vis: private
+    lines:
+    - 593
+    - 716
+    detail:
+      calls:
+      - Array.isArray
+      - this.normalizeUsage
+  - name: abort
+    sig: 'abort(): void'
+    lines:
+    - 718
+    - 721
+    detail:
+      calls:
+      - this.abortController?.abort
+      - this.closeResponsesWebsocket
+  - name: getModel
+    sig: 'getModel(): { id: OpenAiCodexModelId; info: ModelInfo }'
+    lines:
+    - 723
+    - 731
+    detail: {}
+  lines:
+  - 42
+  - 732
+exports:
+- name: OpenAiCodexHandlerOptions
+  kind: type
+- name: OpenAiCodexHandler
+  kind: type
+- name: CODEX_API_BASE_URL
+  kind: data
+- name: CODEX_RESPONSES_WEBSOCKET_URL
+  kind: data

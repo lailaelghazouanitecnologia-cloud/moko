@@ -1,0 +1,240 @@
+## Roska File Descriptor — task/ToolExecutor.ts
+file: task/ToolExecutor.ts
+lines: 640
+imports:
+- sym: '@core/api.ApiHandler'
+- sym: '@core/context/context-tracking/FileContextTracker.FileContextTracker'
+- sym: '@core/hooks/hook-model-context.getHookModelContext'
+- sym: '@core/hooks/hooks-utils.getHooksEnabledSafe'
+- sym: '@core/ignore/ClineIgnoreController.ClineIgnoreController'
+- sym: '@core/permissions.CommandPermissionController'
+- sym: '@integrations/editor/DiffViewProvider.DiffViewProvider'
+- sym: '@integrations/terminal.CommandExecutionOptions'
+  kind: typing
+- sym: '@services/browser/BrowserSession.BrowserSession'
+- sym: '@services/browser/UrlContentFetcher.UrlContentFetcher'
+- sym: '@services/mcp/McpHub.McpHub'
+- sym: '@shared/ExtensionMessage.ClineAsk'
+- sym: '@shared/ExtensionMessage.ClineSay'
+- sym: '@shared/messages/content.ClineContent'
+- sym: '@shared/tools.ClineDefaultTool'
+- sym: '@shared/tools.toolUseNames'
+- sym: '@shared/WebviewMessage.ClineAskResponse'
+- sym: '@/utils/model-utils.isParallelToolCallingEnabled'
+- sym: '@/utils/model-utils.modelDoesntSupportWebp'
+- sym: ../assistant-message.ToolUse
+- sym: ../context/context-management/ContextManager.ContextManager
+- sym: ../prompts/responses.formatResponse
+- sym: ../storage/StateManager.StateManager
+- sym: ../workspace.WorkspaceRootManager
+- sym: ..ToolResponse
+- sym: ./message-state.MessageStateHandler
+- sym: ./TaskState.TaskState
+- sym: ./tools/autoApprove.AutoApprove
+- sym: ./tools/ToolExecutorCoordinator.IPartialBlockHandler
+- sym: ./tools/ToolExecutorCoordinator.ToolExecutorCoordinator
+- sym: ./tools/ToolValidator.ToolValidator
+- sym: ./tools/types/TaskConfig.TaskConfig
+- sym: ./tools/types/TaskConfig.validateTaskConfig
+- sym: ./tools/types/UIHelpers.createUIHelpers
+- sym: ./tools/utils/ToolDisplayUtils.ToolDisplayUtils
+- sym: ./tools/utils/ToolResultUtils.ToolResultUtils
+types:
+- name: ToolExecutor
+  kind: struct
+  ctx: Auto-approval methods using the AutoApprove class
+  fields:
+  - name: autoApprover
+    type: AutoApprove
+  - name: coordinator
+    type: ToolExecutorCoordinator
+  - name: pushToolResult
+    type: any
+    default: "(content: ToolResponse, block: ToolUse) => {\n\t\t// Use the ToolResultUtils to pro..."
+  - name: PLAN_MODE_RESTRICTED_TOOLS
+    type: ClineDefaultTool[]
+    default: "[\n\t\tClineDefaultTool.FILE_NEW,\n\t\tClineDefaultTool.FILE_EDIT,\n\t\tClineDefaultTool...."
+  methods:
+  - name: shouldAutoApproveToolWithPath
+    sig: "shouldAutoApproveToolWithPath(\n\t\tblockname: ClineDefaultTool,\n\t\tautoApproveActionpath: string | undefined,\n\t): Promise<boolean>"
+    is_async: true
+    vis: private
+    lines:
+    - 51
+    - 56
+    detail:
+      calls:
+      - this.autoApprover.shouldAutoApproveToolWithPath
+  - name: constructor
+    sig: "constructor(\n\t\t// Core Services & Managers\n\t\tprivate taskState: TaskState,\n\t\tprivate messageStateHandler: MessageStateHandler,\n\t\tprivate api: ApiHandler,\n\t\tprivate urlContentFetcher: UrlContentFetcher,\n\t\tprivate browserSession: BrowserSession,\n\t\tprivate diffViewProvider: DiffViewProvider,\n\t\tprivate mcpHub: McpHub,\n\t\tprivate fileContextTracker: FileContextTracker,\n\t\tprivate clineIgnoreController: ClineIgnoreController,\n\t\tprivate commandPermissionController: CommandPermissionController,\n\t\tprivate contextManager: ContextManager,\n\t\tprivate stateManager: StateManager,\n\n\t\t// Configuration & Settings\n\n\t\tprivate cwd: string,\n\t\tprivate taskId: string,\n\t\tprivate ulid: string,\n\t\tprivate vscodeTerminalExecutionMode: \"vscodeTerminal\" | \"backgroundExec\",\n\n\t\t// Workspace Management\n\t\tprivate workspaceManager: WorkspaceRootManager | undefined,\n\t\tprivate isMultiRootEnabled: boolean,\n\n\t\t// Callbacks to the Task (Entity)\n\t\tprivate say: (\n\t\t\ttype: ClineSay,\n\t\t\ttext?: string,\n\t\t\timages?: string[],\n\t\t\tfiles?: string[],\n\t\t\tpartial?: boolean,\n\t\t) => Promise<number | undefined>,\n\t\tprivate ask: (\n\t\t\ttype: ClineAsk,\n\t\t\ttext?: string,\n\t\t\tpartial?: boolean,\n\t\t) => Promise<{\n\t\t\tresponse: ClineAskResponse\n\t\t\ttext?: string\n\t\t\timages?: string[]\n\t\t\tfiles?: string[]\n\t\t}>,\n\t\tprivate saveCheckpoint: (isAttemptCompletionMessage?: boolean, completionMessageTs?: number) => Promise<void>,\n\t\tprivate sayAndCreateMissingParamError: (toolName: ClineDefaultTool, paramName: string, relPath?: string) => Promise<any>,\n\t\tprivate removeLastPartialMessageIfExistsWithType: (type: \"ask\" | \"say\", askOrSay: ClineAsk | ClineSay) => Promise<void>,\n\t\tprivate executeCommandTool: (\n\t\t\tcommand: string,\n\t\t\ttimeoutSeconds: number | undefined,\n\t\t\toptions?: CommandExecutionOptions,\n\t\t) => Promise<[boolean, any]>,\n\t\tprivate cancelRunningCommandTool: () => Promise<boolean>,\n\t\tprivate doesLatestTaskCompletionHaveNewChanges: () => Promise<boolean>,\n\t\tprivate updateFCListFromToolResponse: (taskProgress: string | undefined) => Promise<void>,\n\t\tprivate switchToActMode: () => Promise<boolean>,\n\t\tprivate cancelTask: () => Promise<void>,\n\n\t\t// Atomic hook state helpers from Task\n\t\tprivate setActiveHookExecution: (hookExecution: NonNullable<typeof taskState.activeHookExecution>) => Promise<void>,\n\t\tprivate clearActiveHookExecution: () => Promise<void>,\n\t\tprivate getActiveHookExecution: () => Promise<typeof taskState.activeHookExecution>,\n\t\tprivate runUserPromptSubmitHook: (\n\t\t\tuserContent: ClineContent[],\n\t\t\tcontext: \"initial_task\" | \"resume\" | \"feedback\",\n\t\t) => Promise<{ cancel?: boolean; wasCancelled?: boolean; contextModification?: string; errorMessage?: string }>,\n\t)"
+    lines:
+    - 58
+    - 130
+    detail:
+      calls:
+      - new AutoApprove
+      - new ToolExecutorCoordinator
+      - this.registerToolHandlers
+  - name: asToolConfig
+    sig: 'asToolConfig(): TaskConfig'
+    vis: private
+    lines:
+    - 134
+    - 195
+    detail:
+      calls:
+      - this.applyLatestBrowserSettings.bind
+      - this.isParallelToolCallingEnabled
+      - this.shouldAutoApproveTool.bind
+      - this.shouldAutoApproveToolWithPath.bind
+      - this.stateManager.getGlobalSettingsKey
+      - validateTaskConfig
+  - name: executeTool
+    sig: 'executeTool(block: ToolUse): Promise<void>'
+    is_async: true
+    lines:
+    - 211
+    - 213
+    detail:
+      calls:
+      - this.execute
+  - name: applyLatestBrowserSettings
+    sig: applyLatestBrowserSettings()
+    is_async: true
+    lines:
+    - 218
+    - 224
+    detail:
+      calls:
+      - modelDoesntSupportWebp
+      - new BrowserSession
+      - this.api.getModel
+      - this.browserSession.dispose
+  - name: handleError
+    sig: 'handleError(action: string, error: Error, block: ToolUse): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 236
+    - 243
+    detail:
+      calls:
+      - formatResponse.toolError
+      - this.pushToolResult
+      - this.say
+  - name: isParallelToolCallingEnabled
+    sig: 'isParallelToolCallingEnabled(): boolean'
+    vis: private
+    lines:
+    - 278
+    - 285
+    detail:
+      calls:
+      - isParallelToolCallingEnabled
+      - this.api.getModel
+      - this.stateManager.getApiConfiguration
+      - this.stateManager.getGlobalSettingsKey
+  - name: execute
+    sig: 'execute(block: ToolUse): Promise<boolean>'
+    is_async: true
+    vis: private
+    lines:
+    - 311
+    - 376
+    detail:
+      calls:
+      - canonicalizeAttemptCompletionParams
+      - formatResponse.toolAlreadyUsed
+      - formatResponse.toolError
+      - this.asToolConfig
+      - this.browserSession.closeBrowser
+      - this.coordinator.has
+      - this.createToolRejectionMessage
+      - this.handleCompleteBlock
+      - this.handleError
+      - this.handlePartialBlock
+      - this.isParallelToolCallingEnabled
+      - this.isPlanModeToolRestricted
+      - this.pushToolResult
+      - this.removeLastPartialMessageIfExistsWithType
+      - this.say
+      - this.stateManager.getGlobalSettingsKey
+      - this.taskState.userMessageContent.push
+  - name: addHookContextToConversation
+    sig: 'addHookContextToConversation(contextModification: string | undefined, source: string): void'
+    vis: private
+    lines:
+    - 415
+    - 446
+    detail:
+      calls:
+      - '[typeMatch[2], ...remainingLines].join'
+      - contextModification.trim
+      - contextText.split
+      - lines.slice
+      - lines.slice(1).filter
+      - remainingLines.join
+      - this.taskState.userMessageContent.push
+      - typeMatchRegex.exec
+      - typeMatch[1].toLowerCase
+  - name: runPostToolUseHook
+    sig: "runPostToolUseHook(\n\t\tblock: ToolUse,\n\t\ttoolResult: any,\n\t\texecutionSuccess: boolean,\n\t\texecutionStartTime: number,\n\t\thooksEnabled: boolean,\n\t): Promise<boolean>"
+    is_async: true
+    vis: private
+    lines:
+    - 459
+    - 505
+    detail:
+      calls:
+      - Date.now
+      - JSON.stringify
+      - executeHook
+      - getHookModelContext
+      - import
+      - this.addHookContextToConversation
+      - this.say
+  - name: handlePartialBlock
+    sig: 'handlePartialBlock(block: ToolUse, config: TaskConfig): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 519
+    - 531
+    detail:
+      calls:
+      - createUIHelpers
+      - partialHandler.handlePartialBlock
+      - this.coordinator.getHandler
+  - name: handleCompleteBlock
+    sig: 'handleCompleteBlock(block: ToolUse, config: any): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 551
+    - 639
+    detail:
+      calls:
+      - Date.now
+      - config.callbacks.cancelTask
+      - formatResponse.toolError
+      - getHooksEnabledSafe
+      - this.coordinator.execute
+      - this.pushToolResult
+      - this.runPostToolUseHook
+      - this.stateManager.getGlobalSettingsKey
+      - this.updateFCListFromToolResponse
+  lines:
+  - 42
+  - 640
+functions:
+- name: canonicalizeAttemptCompletionParams
+  sig: 'canonicalizeAttemptCompletionParams(block: ToolUse): boolean'
+  lines:
+  - 33
+  - 40
+  detail: {}
+exports:
+- name: ToolExecutor
+  kind: type
+- name: canonicalizeAttemptCompletionParams
+  kind: func

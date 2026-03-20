@@ -1,0 +1,566 @@
+## Roska File Descriptor — controller/index.ts
+file: controller/index.ts
+lines: 1044
+imports:
+- sym: '@anthropic-ai/sdk.Anthropic'
+  kind: typing
+- sym: '@core/api.buildApiHandler'
+- sym: '@core/hooks/hooks-utils.getHooksEnabledSafe'
+- sym: '@core/task/TaskLockUtils.tryAcquireTaskLockWithRetry'
+- sym: '@core/workspace/detection.detectWorkspaceRoots'
+- sym: '@core/workspace/setup.setupWorkspaceManager'
+- sym: '@core/workspace/WorkspaceRootManager.WorkspaceRootManager'
+  kind: typing
+- sym: '@integrations/checkpoints/CheckpointMigration.cleanupLegacyCheckpoints'
+- sym: '@services/account/ClineAccountService.ClineAccountService'
+- sym: '@services/mcp/McpHub.McpHub'
+- sym: '@shared/api.ApiProvider'
+  kind: typing
+- sym: '@shared/api.ModelInfo'
+  kind: typing
+- sym: '@shared/ChatContent.ChatContent'
+  kind: typing
+- sym: '@shared/ExtensionMessage.ExtensionState'
+  kind: typing
+- sym: '@shared/ExtensionMessage.Platform'
+  kind: typing
+- sym: '@shared/HistoryItem.HistoryItem'
+  kind: typing
+- sym: '@shared/mcp.McpMarketplaceCatalog'
+  kind: typing
+- sym: '@shared/mcp.McpMarketplaceItem'
+  kind: typing
+- sym: '@shared/storage/state-keys.type Settings'
+- sym: '@shared/storage/types.Mode'
+  kind: typing
+- sym: '@shared/TelemetrySetting.TelemetrySetting'
+  kind: typing
+- sym: '@shared/UserInfo.UserInfo'
+  kind: typing
+- sym: '@utils/fs.fileExistsAtPath'
+- sym: axios.axios
+- sym: fs/promises.fs
+- sym: open.open
+- sym: p-wait-for.pWaitFor
+- sym: path.path
+- sym: '@/config.ClineEnv'
+- sym: '@/core/locks/types.FolderLockWithRetryResult'
+  kind: typing
+- sym: '@/hosts/host-provider.HostProvider'
+- sym: '@/registry.ExtensionRegistryInfo'
+- sym: '@/services/auth/AuthService.AuthService'
+- sym: '@/services/auth/oca/OcaAuthService.OcaAuthService'
+- sym: '@/services/auth/types.LogoutReason'
+- sym: '@/services/banner/BannerService.BannerService'
+- sym: '@/services/feature-flags.featureFlagsService'
+- sym: '@/services/logging/distinctId.getDistinctId'
+- sym: '@/services/telemetry.telemetryService'
+- sym: '@/shared/cline.ClineExtensionContext'
+- sym: '@/shared/net.getAxiosSettings'
+- sym: '@/shared/proto/host/window.ShowMessageType'
+- sym: '@/shared/services/Logger.Logger'
+- sym: '@/shared/services/Session.Session'
+- sym: '@/utils/announcements.getLatestAnnouncementId'
+- sym: '@/utils/path.getCwd'
+- sym: '@/utils/path.getDesktopDir'
+- sym: ../prompts/system-prompt.PromptRegistry
+- sym: ../storage/disk.ensureCacheDirectoryExists
+- sym: ../storage/disk.ensureMcpServersDirectoryExists
+- sym: ../storage/disk.ensureSettingsDirectoryExists
+- sym: ../storage/disk.GlobalFileNames
+- sym: ../storage/disk.writeMcpMarketplaceCatalogToCache
+- sym: ../storage/remote-config/fetch.fetchRemoteConfig
+- sym: ../storage/remote-config/utils.clearRemoteConfig
+- sym: ../storage/StateManager.type PersistenceErrorEvent
+- sym: ../storage/StateManager.StateManager
+- sym: ../task.Task
+- sym: ./mcp/subscribeToMcpMarketplaceCatalog.sendMcpMarketplaceCatalogEvent
+- sym: ./models/getClineOnboardingModels.getClineOnboardingModels
+- sym: ./models/refreshOpenRouterModels.appendClineStealthModels
+- sym: ./state/checkCliInstallation.checkCliInstallation
+- sym: ./state/subscribeToState.sendStateUpdate
+- sym: ./ui/subscribeToChatButtonClicked.sendChatButtonClickedEvent
+types:
+- name: Controller
+  kind: struct
+  ctx: 'NEW: Add workspace manager (optional initially)'
+  fields:
+  - name: task
+    type: Task
+  - name: mcpHub
+    type: McpHub
+  - name: accountService
+    type: ClineAccountService
+  - name: authService
+    type: AuthService
+  - name: ocaAuthService
+    type: OcaAuthService
+  - name: stateManager
+    type: StateManager
+  - name: workspaceManager
+    type: WorkspaceRootManager
+  - name: backgroundCommandRunning
+    type: any
+    default: 'false'
+  - name: backgroundCommandTaskId
+    type: string
+  - name: cancelInProgress
+    type: any
+    default: 'false'
+  - name: remoteConfigTimer
+    type: NodeJS.Timeout
+  methods:
+  - name: ensureWorkspaceManager
+    sig: 'ensureWorkspaceManager(): Promise<WorkspaceRootManager | undefined>'
+    is_async: true
+    lines:
+    - 90
+    - 102
+    detail:
+      calls:
+      - Logger.error
+      - setupWorkspaceManager
+  - name: getWorkspaceManager
+    sig: 'getWorkspaceManager(): WorkspaceRootManager | undefined'
+    lines:
+    - 105
+    - 107
+    detail: {}
+  - name: constructor
+    sig: 'constructor(readonly context: ClineExtensionContext)'
+    lines:
+    - 120
+    - 160
+    detail:
+      calls:
+      - AuthService.getInstance
+      - BannerService.initialize
+      - ClineAccountService.getInstance
+      - Logger.log
+      - OcaAuthService.initialize
+      - PromptRegistry.getInstance
+      - Session.reset
+      - StateManager.get
+      - StateManager.get().registerCallbacks
+      - checkCliInstallation
+      - cleanupLegacyCheckpoints
+      - cleanupLegacyCheckpoints().catch
+      - new McpHub
+      - this.authService.restoreRefreshTokenAndRetrieveAuthInfo
+      - this.authService.restoreRefreshTokenAndRetrieveAuthInfo().then
+  - name: dispose
+    sig: dispose()
+    is_async: true
+    lines:
+    - 167
+    - 178
+    detail:
+      calls:
+      - Logger.error
+      - clearInterval
+      - this.clearTask
+      - this.mcpHub.dispose
+  - name: handleSignOut
+    sig: handleSignOut()
+    is_async: true
+    lines:
+    - 181
+    - 207
+    detail:
+      calls:
+      - HostProvider.window.showMessage
+      - clearRemoteConfig
+      - this.postStateToWebview
+      - this.stateManager.getApiConfiguration
+      - this.stateManager.setApiConfiguration
+      - this.stateManager.setGlobalState
+  - name: handleOcaSignOut
+    sig: handleOcaSignOut()
+    is_async: true
+    lines:
+    - 210
+    - 224
+    detail:
+      calls:
+      - HostProvider.window.showMessage
+      - this.ocaAuthService.handleDeauth
+      - this.postStateToWebview
+  - name: setUserInfo
+    sig: 'setUserInfo(info?: UserInfo)'
+    is_async: true
+    lines:
+    - 226
+    - 228
+    detail:
+      calls:
+      - this.stateManager.setGlobalState
+  - name: initTask
+    sig: "initTask(\n\t\ttask?: string,\n\t\timages?: string[],\n\t\tfiles?: string[],\n\t\thistoryItem?: HistoryItem,\n\t\ttaskSettings?: Partial<Settings>,\n\t)"
+    is_async: true
+    lines:
+    - 230
+    - 336
+    detail:
+      calls:
+      - Date.now
+      - Date.now().toString
+      - Logger.debug
+      - fetchRemoteConfig
+      - getCwd
+      - getDesktopDir
+      - new Error
+      - new Task
+      - setupWorkspaceManager
+      - this.clearTask
+      - this.postStateToWebview
+      - this.stateManager.getGlobalSettingsKey
+      - this.stateManager.getGlobalStateKey
+      - this.stateManager.loadTaskSettings
+      - this.stateManager.setGlobalState
+      - this.stateManager.setTaskSettingsBatch
+      - this.task.resumeTaskFromHistory
+      - this.task.startTask
+      - this.workspaceManager?.getPrimaryRoot
+      - tryAcquireTaskLockWithRetry
+  - name: reinitExistingTaskFromId
+    sig: 'reinitExistingTaskFromId(taskId: string)'
+    is_async: true
+    lines:
+    - 338
+    - 343
+    detail:
+      calls:
+      - this.getTaskWithId
+      - this.initTask
+  - name: updateTelemetrySetting
+    sig: 'updateTelemetrySetting(telemetrySetting: TelemetrySetting)'
+    is_async: true
+    lines:
+    - 345
+    - 365
+    detail:
+      calls:
+      - telemetryService.captureUserOptIn
+      - telemetryService.captureUserOptOut
+      - telemetryService.updateTelemetryState
+      - this.postStateToWebview
+      - this.stateManager.getGlobalSettingsKey
+      - this.stateManager.setGlobalState
+  - name: toggleActModeForYoloMode
+    sig: 'toggleActModeForYoloMode(): Promise<boolean>'
+    is_async: true
+    lines:
+    - 367
+    - 386
+    detail:
+      calls:
+      - buildApiHandler
+      - this.postStateToWebview
+      - this.stateManager.getApiConfiguration
+      - this.stateManager.setGlobalState
+  - name: togglePlanActMode
+    sig: 'togglePlanActMode(modeToSwitchTo: Mode, chatContent?: ChatContent): Promise<boolean>'
+    is_async: true
+    lines:
+    - 388
+    - 423
+    detail:
+      calls:
+      - buildApiHandler
+      - telemetryService.captureModeSwitch
+      - this.cancelTask
+      - this.postStateToWebview
+      - this.stateManager.getApiConfiguration
+      - this.stateManager.setGlobalState
+      - this.task.handleWebviewAskResponse
+  - name: cancelTask
+    sig: cancelTask()
+    is_async: true
+    lines:
+    - 425
+    - 493
+    detail:
+      calls:
+      - Logger.error
+      - Logger.log
+      - pWaitFor
+      - "pWaitFor(\n\t\t\t\t() =>\n\t\t\t\t\tthis.task === undefined ||\n\t\t\t\t\tthis.task.taskState.isStreaming === false |..."
+      - this.clearTask
+      - this.getTaskWithId
+      - this.initTask
+      - this.postStateToWebview
+      - this.task.abortTask
+      - this.updateBackgroundCommandState
+  - name: updateBackgroundCommandState
+    sig: 'updateBackgroundCommandState(running: boolean, taskId?: string)'
+    lines:
+    - 495
+    - 503
+    detail:
+      calls:
+      - this.postStateToWebview
+  - name: cancelBackgroundCommand
+    sig: 'cancelBackgroundCommand(): Promise<void>'
+    is_async: true
+    lines:
+    - 505
+    - 510
+    detail:
+      calls:
+      - this.task?.cancelBackgroundCommand
+      - this.updateBackgroundCommandState
+  - name: handleAuthCallback
+    sig: 'handleAuthCallback(customToken: string, provider: string | null = null)'
+    is_async: true
+    lines:
+    - 512
+    - 563
+    detail:
+      calls:
+      - HostProvider.window.showMessage
+      - Logger.error
+      - buildApiHandler
+      - fetchRemoteConfig
+      - this.authService.handleAuthCallback
+      - this.postStateToWebview
+      - this.stateManager.getApiConfiguration
+      - this.stateManager.getGlobalSettingsKey
+      - this.stateManager.setApiConfiguration
+      - this.stateManager.setGlobalState
+  - name: handleOcaAuthCallback
+    sig: 'handleOcaAuthCallback(code: string, state: string)'
+    is_async: true
+    lines:
+    - 565
+    - 614
+    detail:
+      calls:
+      - HostProvider.window.showMessage
+      - Logger.error
+      - buildApiHandler
+      - this.ocaAuthService.handleAuthCallback
+      - this.postStateToWebview
+      - this.stateManager.getApiConfiguration
+      - this.stateManager.getGlobalSettingsKey
+      - this.stateManager.setApiConfiguration
+      - this.stateManager.setGlobalState
+  - name: handleMcpOAuthCallback
+    sig: 'handleMcpOAuthCallback(serverHash: string, code: string, state: string | null)'
+    is_async: true
+    lines:
+    - 616
+    - 631
+    detail:
+      calls:
+      - HostProvider.window.showMessage
+      - Logger.error
+      - this.mcpHub.completeOAuth
+      - this.postStateToWebview
+  - name: handleTaskCreation
+    sig: 'handleTaskCreation(prompt: string)'
+    is_async: true
+    lines:
+    - 633
+    - 636
+    detail:
+      calls:
+      - sendChatButtonClickedEvent
+      - this.initTask
+  - name: fetchMcpMarketplaceFromApi
+    sig: 'fetchMcpMarketplaceFromApi(): Promise<McpMarketplaceCatalog>'
+    is_async: true
+    vis: private
+    lines:
+    - 639
+    - 673
+    detail:
+      calls:
+      - (response.data || []).map
+      - ClineEnv.config
+      - allowedMCPServers.map
+      - axios.get
+      - getAxiosSettings
+      - items.filter
+      - new Error
+      - new Set
+      - this.stateManager.getRemoteConfigSettings
+      - writeMcpMarketplaceCatalogToCache
+  - name: refreshMcpMarketplace
+    sig: 'refreshMcpMarketplace(sendCatalogEvent: boolean): Promise<McpMarketplaceCatalog | undefined>'
+    is_async: true
+    lines:
+    - 675
+    - 686
+    detail:
+      calls:
+      - Logger.error
+      - sendMcpMarketplaceCatalogEvent
+      - this.fetchMcpMarketplaceFromApi
+  - name: handleOpenRouterCallback
+    sig: 'handleOpenRouterCallback(code: string)'
+    is_async: true
+    lines:
+    - 690
+    - 722
+    detail:
+      calls:
+      - Logger.error
+      - axios.post
+      - buildApiHandler
+      - getAxiosSettings
+      - new Error
+      - this.postStateToWebview
+      - this.stateManager.getApiConfiguration
+      - this.stateManager.getGlobalSettingsKey
+      - this.stateManager.setApiConfiguration
+  - name: handleRequestyCallback
+    sig: 'handleRequestyCallback(code: string)'
+    is_async: true
+    lines:
+    - 726
+    - 741
+    detail:
+      calls:
+      - buildApiHandler
+      - this.postStateToWebview
+      - this.stateManager.getApiConfiguration
+      - this.stateManager.getGlobalSettingsKey
+      - this.stateManager.setApiConfiguration
+  - name: readOpenRouterModels
+    sig: 'readOpenRouterModels(): Promise<Record<string, ModelInfo> | undefined>'
+    is_async: true
+    lines:
+    - 744
+    - 757
+    detail:
+      calls:
+      - JSON.parse
+      - Logger.error
+      - appendClineStealthModels
+      - ensureCacheDirectoryExists
+      - fileExistsAtPath
+      - fs.readFile
+      - path.join
+  - name: handleHicapCallback
+    sig: 'handleHicapCallback(code: string)'
+    is_async: true
+    lines:
+    - 760
+    - 781
+    detail:
+      calls:
+      - buildApiHandler
+      - this.postStateToWebview
+      - this.stateManager.getApiConfiguration
+      - this.stateManager.getGlobalSettingsKey
+      - this.stateManager.setApiConfiguration
+  - name: getTaskWithId
+    sig: "getTaskWithId(id: string): Promise<{\n\t\thistoryItem: HistoryItem\n\t\ttaskDirPath: string\n\t\tapiConversationHistoryFilePath: string\n\t\tuiMessagesFilePath: string\n\t\tcontextHistoryFilePath: string\n\t\ttaskMetadataFilePath: string\n\t\tapiConversationHistory: Anthropic.MessageParam[]\n\t}>"
+    is_async: true
+    lines:
+    - 785
+    - 820
+    detail:
+      calls:
+      - HostProvider.get
+      - JSON.parse
+      - fileExistsAtPath
+      - fs.readFile
+      - history.find
+      - new Error
+      - path.join
+      - this.deleteTaskFromState
+      - this.stateManager.getGlobalStateKey
+  - name: exportTaskWithId
+    sig: 'exportTaskWithId(id: string)'
+    is_async: true
+    lines:
+    - 822
+    - 826
+    detail:
+      calls:
+      - Logger.log
+      - open
+      - this.getTaskWithId
+  - name: deleteTaskFromState
+    sig: 'deleteTaskFromState(id: string)'
+    is_async: true
+    lines:
+    - 828
+    - 838
+    detail:
+      calls:
+      - taskHistory.filter
+      - this.postStateToWebview
+      - this.stateManager.getGlobalStateKey
+      - this.stateManager.setGlobalState
+  - name: postStateToWebview
+    sig: postStateToWebview()
+    is_async: true
+    lines:
+    - 840
+    - 843
+    detail:
+      calls:
+      - sendStateUpdate
+      - this.getStateToPostToWebview
+  - name: getStateToPostToWebview
+    sig: 'getStateToPostToWebview(): Promise<ExtensionState>'
+    is_async: true
+    lines:
+    - 845
+    - 1004
+    detail:
+      calls:
+      - "(taskHistory || [])\n\t\t\t.filter"
+      - "(taskHistory || [])\n\t\t\t.filter((item) => item.ts && item.task)\n\t\t\t.sort"
+      - "(taskHistory || [])\n\t\t\t.filter((item) => item.ts && item.task)\n\t\t\t.sort((a, b) => b.ts - a.ts)\n\t\t\t.s..."
+      - (taskHistory || []).find
+      - BannerService.get
+      - BannerService.get().getActiveBanners
+      - BannerService.get().getWelcomeBanners
+      - ClineEnv.config
+      - featureFlagsService.getWebtoolsEnabled
+      - featureFlagsService.getWorktreesEnabled
+      - getClineOnboardingModels
+      - getDistinctId
+      - getHooksEnabledSafe
+      - getLatestAnnouncementId
+      - import
+      - openAiCodexOAuthManager.isAuthenticated
+      - this.stateManager.getApiConfiguration
+      - this.stateManager.getGlobalSettingsKey
+      - this.stateManager.getGlobalStateKey
+      - this.stateManager.getRemoteConfigSettings
+      - this.stateManager.getWorkspaceStateKey
+      - this.task?.messageStateHandler.getClineMessages
+      - this.workspaceManager?.getPrimaryIndex
+      - this.workspaceManager?.getRoots
+  - name: clearTask
+    sig: clearTask()
+    is_async: true
+    lines:
+    - 1006
+    - 1013
+    detail:
+      calls:
+      - this.stateManager.clearTaskSettings
+      - this.task?.abortTask
+  - name: updateTaskHistory
+    sig: 'updateTaskHistory(item: HistoryItem): Promise<HistoryItem[]>'
+    is_async: true
+    lines:
+    - 1033
+    - 1043
+    detail:
+      calls:
+      - history.findIndex
+      - history.push
+      - this.stateManager.getGlobalStateKey
+      - this.stateManager.setGlobalState
+  lines:
+  - 69
+  - 1044
+exports:
+- name: Controller
+  kind: type

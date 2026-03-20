@@ -1,0 +1,247 @@
+## Roska File Descriptor — providers/openai-native.ts
+file: providers/openai-native.ts
+lines: 702
+imports:
+- sym: '@shared/api.ModelInfo'
+- sym: '@shared/api.OpenAiCompatibleModelInfo'
+- sym: '@shared/api.OpenAiNativeModelId'
+- sym: '@shared/api.openAiNativeDefaultModelId'
+- sym: '@shared/api.openAiNativeModels'
+- sym: '@shared/storage/types.normalizeOpenaiReasoningEffort'
+- sym: '@utils/cost.calculateApiCostOpenAI'
+- sym: openai.OpenAI
+- sym: openai/resources/chat/completions.ChatCompletionFunctionTool
+  kind: typing
+- sym: openai/resources/chat/completions.ChatCompletionReasoningEffort
+  kind: typing
+- sym: openai/resources/chat/completions.ChatCompletionTool
+  kind: typing
+- sym: undici.MessageEvent as UndiciMessageEvent
+- sym: undici.WebSocket as UndiciWebSocket
+- sym: '@/services/EnvUtils.buildExternalBasicHeaders'
+- sym: '@/services/feature-flags.featureFlagsService'
+- sym: '@/shared/messages/content.ClineStorageMessage'
+- sym: '@/shared/net.createOpenAIClient'
+- sym: '@/shared/proto/cline/models.ApiFormat'
+- sym: '@/shared/services/feature-flags/feature-flags.FeatureFlag'
+- sym: '@/shared/services/Logger.Logger'
+- sym: '@/utils/model-utils.isGPT5ModelFamily'
+- sym: ../.ApiHandler
+- sym: ../.CommonApiHandlerOptions
+- sym: ../retry.withRetry
+- sym: ../transform/openai-format.convertToOpenAiMessages
+- sym: ../transform/openai-response-format.convertToOpenAIResponsesInput
+- sym: ../transform/stream.ApiStream
+- sym: ../transform/tool-call-processor.getOpenAIToolParams
+- sym: ../transform/tool-call-processor.ToolCallProcessor
+types:
+- name: OpenAiNativeHandlerOptions
+  kind: trait
+  bases:
+  - CommonApiHandlerOptions
+  decorators:
+  - interface
+  fields:
+  - name: openAiNativeApiKey
+    type: string
+  - name: reasoningEffort
+    type: string
+  - name: thinkingBudgetTokens
+    type: number
+  - name: apiModelId
+    type: string
+  - name: openAiNativeUseResponsesWebsocket
+    type: boolean
+  lines:
+  - 32
+  - 38
+- name: OpenAiNativeHandler
+  kind: struct
+  bases:
+  - ApiHandler
+  fields:
+  - name: options
+    type: OpenAiNativeHandlerOptions
+  - name: client
+    type: OpenAI | undefined
+  - name: responsesWs
+    type: UndiciWebSocket | undefined
+  - name: responsesWsReadyPromise
+    type: Promise<UndiciWebSocket> | undefined
+  - name: websocketRequestInFlight
+    type: any
+    default: 'false'
+  - name: abortController
+    type: AbortController
+  methods:
+  - name: constructor
+    sig: 'constructor(options: OpenAiNativeHandlerOptions)'
+    lines:
+    - 48
+    - 50
+    detail: {}
+  - name: yieldUsage
+    sig: 'yieldUsage(info: ModelInfo, usage: OpenAI.Completions.CompletionUsage | undefined): ApiStream'
+    is_async: true
+    vis: private
+    lines:
+    - 68
+    - 83
+    detail:
+      calls:
+      - Math.max
+      - calculateApiCostOpenAI
+  - name: createMessage
+    sig: 'createMessage(systemPrompt: string, messages: ClineStorageMessage[], tools?: ChatCompletionTool[]): ApiStream'
+    is_async: true
+    lines:
+    - 86
+    - 97
+    detail:
+      calls:
+      - new Error
+      - this.createCompletionStream
+      - this.createResponseStream
+      - this.getModel
+  - name: createCompletionStream
+    sig: "createCompletionStream(\n\t\tsystemPrompt: string,\n\t\tmessages: ClineStorageMessage[],\n\t\ttools?: ChatCompletionTool[],\n\t): ApiStream"
+    is_async: true
+    vis: private
+    lines:
+    - 99
+    - 165
+    detail:
+      calls:
+      - Logger.error
+      - client.chat.completions.create
+      - convertToOpenAiMessages
+      - getOpenAIToolParams
+      - isGPT5ModelFamily
+      - new AbortController
+      - new ToolCallProcessor
+      - normalizeOpenaiReasoningEffort
+      - this.ensureClient
+      - this.getModel
+      - this.yieldUsage
+      - toolCallProcessor.processToolCallDeltas
+  - name: createResponseStream
+    sig: "createResponseStream(\n\t\tsystemPrompt: string,\n\t\tmessages: ClineStorageMessage[],\n\t\ttools: ChatCompletionTool[],\n\t): ApiStream"
+    is_async: true
+    vis: private
+    lines:
+    - 167
+    - 210
+    detail:
+      calls:
+      - Logger.error
+      - convertToOpenAIResponsesInput
+      - new AbortController
+      - this.buildResponseCreateParams
+      - this.closeResponsesWebsocket
+      - this.createResponseStreamHttp
+      - this.createResponseStreamWebsocket
+      - this.getModel
+      - this.mapResponseTools
+      - this.preconnectResponsesWebsocket
+      - this.useWebsocketMode
+  - name: createResponseStreamHttp
+    sig: "createResponseStreamHttp(\n\t\tmodelInfo: ModelInfo,\n\t\tparams: OpenAI.Responses.ResponseCreateParamsStreaming,\n\t): ApiStream"
+    is_async: true
+    vis: private
+    lines:
+    - 266
+    - 274
+    detail:
+      calls:
+      - JSON.stringify
+      - Logger.debug
+      - client.responses.create
+      - this.ensureClient
+      - this.processResponsesEvents
+  - name: createResponseStreamWebsocket
+    sig: "createResponseStreamWebsocket(\n\t\tmodelInfo: ModelInfo,\n\t\tprimaryParams: OpenAI.Responses.ResponseCreateParamsStreaming,\n\t\tfallbackParams: OpenAI.Responses.ResponseCreateParamsStreaming,\n\t): ApiStream"
+    is_async: true
+    vis: private
+    lines:
+    - 276
+    - 293
+    detail:
+      calls:
+      - JSON.stringify
+      - Logger.debug
+      - Logger.log
+      - this.closeResponsesWebsocket
+      - this.createResponseEventsViaWebsocket
+      - this.processResponsesEvents
+      - this.shouldRetryWebsocketWithFullContext
+  - name: ensureResponsesWebsocket
+    sig: 'ensureResponsesWebsocket(): Promise<UndiciWebSocket>'
+    is_async: true
+    vis: private
+    lines:
+    - 310
+    - 371
+    detail:
+      calls:
+      - buildExternalBasicHeaders
+      - new Error
+      - new Promise
+      - new UndiciWebSocket
+      - this.closeResponsesWebsocket
+  - name: createResponseEventsViaWebsocket
+    sig: "createResponseEventsViaWebsocket(\n\t\tparams: OpenAI.Responses.ResponseCreateParamsStreaming,\n\t): AsyncGenerator<OpenAI.Responses.ResponseStreamEvent>"
+    is_async: true
+    vis: private
+    lines:
+    - 383
+    - 498
+    detail:
+      calls:
+      - JSON.stringify
+      - eventQueue.shift
+      - new Error
+      - new Promise
+      - this.ensureResponsesWebsocket
+      - ws.addEventListener
+      - ws.removeEventListener
+      - ws.send
+  - name: processResponsesEvents
+    sig: "processResponsesEvents(\n\t\tstream: AsyncIterable<OpenAI.Responses.ResponseStreamEvent>,\n\t\tmodelInfo: ModelInfo,\n\t): ApiStream"
+    is_async: true
+    vis: private
+    lines:
+    - 500
+    - 682
+    detail:
+      calls:
+      - JSON.stringify
+      - Logger.debug
+      - Logger.log
+      - Math.max
+      - calculateApiCostOpenAI
+      - functionCallByItemId.get
+      - functionCallByItemId.set
+      - new Map
+  - name: abort
+    sig: 'abort(): void'
+    lines:
+    - 684
+    - 688
+    detail:
+      calls:
+      - this.abortController?.abort
+      - this.closeResponsesWebsocket
+  - name: getModel
+    sig: 'getModel(): { id: OpenAiNativeModelId; info: OpenAiCompatibleModelInfo }'
+    lines:
+    - 690
+    - 701
+    detail: {}
+  lines:
+  - 40
+  - 702
+exports:
+- name: OpenAiNativeHandlerOptions
+  kind: type
+- name: OpenAiNativeHandler
+  kind: type

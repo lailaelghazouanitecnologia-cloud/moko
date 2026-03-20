@@ -1,0 +1,421 @@
+## Roska File Descriptor — hooks/hook-factory.ts
+file: hooks/hook-factory.ts
+lines: 1014
+imports:
+- sym: fs/promises.fs
+- sym: path.path
+- sym: '@/shared/services/Logger.Logger'
+- sym: ../../../package.json.version as clineVersion
+- sym: ../../services/logging/distinctId.getDistinctId
+- sym: ../../services/telemetry.telemetryService
+- sym: ../../shared/proto/cline/hooks.HookInput
+- sym: ../../shared/proto/cline/hooks.HookModelContext
+- sym: ../../shared/proto/cline/hooks.HookOutput
+- sym: ../../shared/proto/cline/hooks.NotificationData
+- sym: ../../shared/proto/cline/hooks.PostToolUseData
+- sym: ../../shared/proto/cline/hooks.PreCompactData
+- sym: ../../shared/proto/cline/hooks.PreToolUseData
+- sym: ../../shared/proto/cline/hooks.TaskCancelData
+- sym: ../../shared/proto/cline/hooks.TaskCompleteData
+- sym: ../../shared/proto/cline/hooks.TaskResumeData
+- sym: ../../shared/proto/cline/hooks.TaskStartData
+- sym: ../../shared/proto/cline/hooks.UserPromptSubmitData
+- sym: ../storage/disk.getAllHooksDirs
+- sym: ../storage/StateManager.StateManager
+- sym: ./HookError.HookExecutionError
+- sym: ./HookProcess.HookProcess
+data:
+- name: HOOK_EXECUTION_TIMEOUT_MS
+  type: number
+  val: '30000'
+- name: MAX_CONTEXT_MODIFICATION_SIZE
+  type: number
+  val: '50000'
+- name: EXIT_CODE_SIGINT
+  type: number
+  val: '130'
+- name: exec
+  type: any
+  val: Symbol()
+types:
+- name: Hooks
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: PreToolUse
+    type: "{\n\t\tpreToolUse: PreToolUseData\n\t}"
+  - name: PostToolUse
+    type: "{\n\t\tpostToolUse: PostToolUseData\n\t}"
+  - name: UserPromptSubmit
+    type: "{\n\t\tuserPromptSubmit: UserPromptSubmitData\n\t}"
+  - name: TaskStart
+    type: "{\n\t\ttaskStart: TaskStartData\n\t}"
+  - name: TaskResume
+    type: "{\n\t\ttaskResume: TaskResumeData\n\t}"
+  - name: TaskCancel
+    type: "{\n\t\ttaskCancel: TaskCancelData\n\t}"
+  - name: TaskComplete
+    type: "{\n\t\ttaskComplete: TaskCompleteData\n\t}"
+  - name: Notification
+    type: "{\n\t\tnotification: NotificationData\n\t}"
+  - name: PreCompact
+    type: "{\n\t\tpreCompact: PreCompactData\n\t}"
+  lines:
+  - 102
+  - 130
+- name: HookModelInputContext
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: provider
+    type: string
+  - name: slug
+    type: string
+  lines:
+  - 132
+  - 135
+- name: HookName
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 138
+  - 138
+- name: NamedHookInput
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 145
+  - 148
+- name: HookRunner
+  kind: trait
+  ctx: Execute the hook with the given parameters. This method is stateless and can be called multiple times safely.
+  decorators:
+  - abstract
+  methods:
+  - name: constructor
+    sig: 'constructor(public readonly hookName: Name)'
+    lines:
+    - 166
+    - 166
+    detail: {}
+  - name: run
+    sig: 'run(params: NamedHookInput<Name>): Promise<HookOutput>'
+    is_async: true
+    lines:
+    - 174
+    - 177
+    detail:
+      calls:
+      - HookInput.create
+      - this.completeParams
+      - this[exec]
+  - name: completeParams
+    sig: 'completeParams(params: NamedHookInput<Name>): Promise<HookInput>'
+    is_async: true
+    vis: protected
+    lines:
+    - 198
+    - 218
+    detail:
+      calls:
+      - Date.now
+      - Date.now().toString
+      - StateManager.get
+      - "StateManager.get()\n\t\t\t\t.getGlobalStateKey"
+      - "StateManager.get()\n\t\t\t\t.getGlobalStateKey(\"workspaceRoots\")\n\t\t\t\t?.map"
+      - getDistinctId
+      - params.model?.provider?.trim
+      - params.model?.slug?.trim
+  lines:
+  - 165
+  - 219
+- name: NoOpRunner
+  kind: struct
+  ctx: Executes a no-op hook that always succeeds.
+  bases:
+  - HookRunner
+  methods:
+  - name: unknown
+    sig: 'unknown(_: HookInput): Promise<HookOutput>'
+    is_async: true
+    lines:
+    - 236
+    - 240
+    detail:
+      calls:
+      - HookOutput.create
+  lines:
+  - 230
+  - 241
+- name: HookStreamCallback
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 246
+  - 253
+- name: StdioHookRunner
+  kind: struct
+  bases:
+  - HookRunner
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\thookName: Name,\n\t\tpublic readonly scriptPath: string,\n\t\tprivate readonly source: \"global\" | \"workspace\",\n\t\tprivate readonly streamCallback?: HookStreamCallback,\n\t\tprivate readonly abortSignal?: AbortSignal,\n\t\tprivate readonly taskId?: string,\n\t\tprivate readonly toolName?: string,\n\t\tprivate readonly cwd?: string,\n\t)"
+    lines:
+    - 276
+    - 287
+    detail:
+      calls:
+      - super
+  - name: unknown
+    sig: 'unknown(input: HookInput): Promise<HookOutput>'
+    is_async: true
+    lines:
+    - 289
+    - 630
+    detail:
+      calls:
+      - HookExecutionError.cancellation
+      - HookExecutionError.execution
+      - HookExecutionError.isHookError
+      - HookExecutionError.timeout
+      - HookInput.toJSON
+      - HookOutput.create
+      - JSON.stringify
+      - Logger.warn
+      - error.message.includes
+      - hookProcess.getExitCode
+      - hookProcess.getStderr
+      - hookProcess.getStdout
+      - hookProcess.on
+      - hookProcess.run
+      - new HookProcess
+      - parseJsonOutput
+      - performance.now
+      - telemetryService.safeCapture
+  lines:
+  - 275
+  - 631
+- name: CombinedHookRunner
+  kind: struct
+  bases:
+  - HookRunner
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\thookName: Name,\n\t\tprivate readonly runners: readonly HookRunner<Name>[],\n\t)"
+    lines:
+    - 652
+    - 657
+    detail:
+      calls:
+      - super
+  - name: unknown
+    sig: 'unknown(input: HookInput): Promise<HookOutput>'
+    is_async: true
+    lines:
+    - 659
+    - 683
+    detail:
+      calls:
+      - HookOutput.create
+      - Promise.all
+      - "results\n\t\t\t.map"
+      - "results\n\t\t\t.map((result) => result.contextModification?.trim())\n\t\t\t.filter"
+      - "results\n\t\t\t.map((result) => result.contextModification?.trim())\n\t\t\t.filter((mod) => mod)\n\t\t\t.join"
+      - "results\n\t\t\t.map((result) => result.errorMessage?.trim())\n\t\t\t.filter"
+      - "results\n\t\t\t.map((result) => result.errorMessage?.trim())\n\t\t\t.filter((msg) => msg)\n\t\t\t.join"
+      - results.some
+      - this.runners.map
+  lines:
+  - 651
+  - 684
+- name: HookFactory
+  kind: struct
+  ctx: Get information about discovered hooks including their script paths
+  methods:
+  - name: getHookInfo
+    sig: "getHookInfo(\n\t\thookName: Name,\n\t): Promise<{\n\t\tscriptPaths: string[]\n\t}>"
+    is_async: true
+    lines:
+    - 726
+    - 734
+    detail:
+      calls:
+      - HookDiscoveryCache.getInstance
+      - HookDiscoveryCache.getInstance().get
+      - import
+  - name: hasHook
+    sig: 'hasHook(hookName: Name): Promise<boolean>'
+    is_async: true
+    lines:
+    - 740
+    - 743
+    detail:
+      calls:
+      - HookFactory.findHookScripts
+  - name: create
+    sig: 'create(hookName: Name, taskId?: string, toolName?: string): Promise<HookRunner<Name>>'
+    is_async: true
+    lines:
+    - 748
+    - 750
+    detail:
+      calls:
+      - this.createWithStreaming
+  - name: createWithStreaming
+    sig: "createWithStreaming(\n\t\thookName: Name,\n\t\tstreamCallback?: HookStreamCallback,\n\t\tabortSignal?: AbortSignal,\n\t\ttaskId?: string,\n\t\ttoolName?: string,\n\t): Promise<HookRunner<Name>>"
+    is_async: true
+    lines:
+    - 772
+    - 815
+    detail:
+      calls:
+      - HookDiscoveryCache.getInstance
+      - HookDiscoveryCache.getInstance().get
+      - StateManager.get
+      - getAllHooksDirs
+      - import
+      - new CombinedHookRunner
+      - new NoOpRunner
+      - scripts.map
+      - stateManager.getGlobalStateKey
+      - telemetryService.safeCapture
+      - this.categorizeHookScripts
+  - name: determineHookCwd
+    sig: "determineHookCwd(\n\t\tscriptPath: string,\n\t\thooksDirs: string[],\n\t\tworkspaceRoots: Array<{ path: string }> | undefined,\n\t\tprimaryCwd: string | undefined,\n\t): string | undefined"
+    vis: private
+    lines:
+    - 851
+    - 876
+    detail:
+      calls:
+      - HookFactory.isGlobalHooksDir
+      - hooksDirs.find
+      - workspaceRoots.find
+  - name: findHookScripts
+    sig: 'findHookScripts(hookName: HookName): Promise<string[]>'
+    is_async: true
+    vis: private
+    decorators:
+    - static
+    lines:
+    - 912
+    - 919
+    detail:
+      calls:
+      - (await Promise.all(hookScripts)).filter
+      - HookFactory.findHookInHooksDir
+      - Promise.all
+      - getAllHooksDirs
+      - hookScripts.push
+  - name: findHookInHooksDir
+    sig: 'findHookInHooksDir(hookName: HookName, hooksDir: string): Promise<string | undefined>'
+    is_async: true
+    decorators:
+    - static
+    lines:
+    - 929
+    - 933
+    detail:
+      calls:
+      - HookFactory.findUnixHook
+      - HookFactory.findWindowsHook
+  - name: findWindowsHook
+    sig: 'findWindowsHook(hookName: HookName, hooksDir: string): Promise<string | undefined>'
+    is_async: true
+    vis: private
+    decorators:
+    - static
+    lines:
+    - 948
+    - 957
+    detail:
+      calls:
+      - HookFactory.isHookFile
+      - path.join
+  - name: isHookFile
+    sig: 'isHookFile(candidate: string, hookName: HookName): Promise<boolean>'
+    is_async: true
+    vis: private
+    decorators:
+    - static
+    lines:
+    - 959
+    - 967
+    detail:
+      calls:
+      - HookFactory.handleHookDiscoveryError
+      - fs.stat
+      - stat.isFile
+  - name: findUnixHook
+    sig: 'findUnixHook(hookName: HookName, hooksDir: string): Promise<string | undefined>'
+    is_async: true
+    vis: private
+    decorators:
+    - static
+    lines:
+    - 982
+    - 993
+    detail:
+      calls:
+      - HookFactory.handleHookDiscoveryError
+      - Promise.all
+      - fs.access
+      - fs.stat
+      - path.join
+      - stat.isFile
+  lines:
+  - 720
+  - 1014
+functions:
+- name: validateHookOutput
+  sig: 'validateHookOutput(output: any): { valid: boolean; error?: string }'
+  lines:
+  - 39
+  - 100
+  detail:
+    calls:
+    - JSON.stringify
+- name: isExpectedHookError
+  sig: 'isExpectedHookError(error: unknown): boolean'
+  lines:
+  - 693
+  - 718
+  detail: {}
+exports:
+- name: Hooks
+  kind: type
+- name: HookModelInputContext
+  kind: type
+- name: HookName
+  kind: type
+- name: NamedHookInput
+  kind: type
+- name: HookRunner
+  kind: type
+- name: NoOpRunner
+  kind: type
+- name: HookStreamCallback
+  kind: type
+- name: StdioHookRunner
+  kind: type
+- name: CombinedHookRunner
+  kind: type
+- name: HookFactory
+  kind: type
+- name: validateHookOutput
+  kind: func
+- name: isExpectedHookError
+  kind: func
+- name: HOOK_EXECUTION_TIMEOUT_MS
+  kind: data
+- name: MAX_CONTEXT_MODIFICATION_SIZE
+  kind: data
+- name: EXIT_CODE_SIGINT
+  kind: data
+- name: exec
+  kind: data
