@@ -1,6 +1,8 @@
 //! YAML emitter — produces Roska-compatible YAML descriptors.
 //! Outputs workspace.yaml, module.yaml per module, and file.yaml per file.
+//! Also emits MicroGraph YAML when --graph is enabled.
 
+use crate::graph::WorkspaceGraph;
 use crate::model::*;
 use std::path::Path;
 
@@ -157,6 +159,37 @@ impl From<&Module> for ModuleYaml {
             submodules: m.submodules.iter().map(|s| s.name.clone()).collect(),
         }
     }
+}
+
+// ── MicroGraph YAML emission ───────────────────────────────────────
+
+pub fn emit_workspace_graph(wg: &WorkspaceGraph, out_dir: &Path) {
+    let graph_dir = out_dir.join("graphs");
+    std::fs::create_dir_all(&graph_dir).unwrap();
+
+    // Emit meta graph
+    let meta_yaml = serde_yaml::to_string(&wg.meta_graph).unwrap();
+    std::fs::write(
+        graph_dir.join("meta.yaml"),
+        format!("## Roska Meta Graph — {}\n{}", wg.name, meta_yaml),
+    )
+    .unwrap();
+
+    // Emit per-module graphs
+    for mg in &wg.module_graphs {
+        let mg_yaml = serde_yaml::to_string(mg).unwrap();
+        std::fs::write(
+            graph_dir.join(format!("{}.yaml", mg.id)),
+            format!("## Roska MicroGraph — {}\n{}", mg.id, mg_yaml),
+        )
+        .unwrap();
+    }
+
+    eprintln!(
+        "[lyzed-ts] Graphs: meta.yaml + {} module graphs → {:?}",
+        wg.module_graphs.len(),
+        graph_dir
+    );
 }
 
 // ── Dependency Graph ───────────────────────────────────────────────

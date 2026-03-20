@@ -1,5 +1,9 @@
+mod dot;
 mod emit;
+mod graph;
 mod model;
+mod olevel;
+mod opcodes;
 mod parse;
 
 use clap::Parser as ClapParser;
@@ -25,6 +29,22 @@ struct Cli {
     /// Maximum opcode depth (0=overview, 1=structure, 2=detail, 3=body)
     #[arg(short, long, default_value = "3")]
     depth: u8,
+
+    /// Output optimization level (0=raw, 1=structural, 2=semantic, 3=intent)
+    #[arg(long, default_value = "0")]
+    olevel: u8,
+
+    /// Emit DOT/Graphviz files for graph visualization
+    #[arg(long)]
+    dot: bool,
+
+    /// Emit MicroGraph YAML files
+    #[arg(long)]
+    graph: bool,
+
+    /// Enable opcode extraction (Depth 3 body-level opcodes)
+    #[arg(long)]
+    opcodes: bool,
 }
 
 fn main() {
@@ -63,10 +83,44 @@ fn real_main() {
     let mut parser = parse::create_parser();
 
     // Build module tree from directory structure
-    let workspace = build_workspace(&cli, &py_files, &mut parser);
+    let mut workspace = build_workspace(&cli, &py_files, &mut parser);
 
-    // Emit YAML
+    // Extract opcodes if requested (Depth 3)
+    if cli.opcodes {
+        eprintln!("[lyzed-ts] Extracting opcodes (iterative)...");
+        extract_all_opcodes(&mut workspace, &cli.input, &mut parser);
+    }
+
+    // Apply O-level filtering
+    let o = olevel::OLevel::from_u8(cli.olevel);
+    if o != olevel::OLevel::O0 {
+        eprintln!("[lyzed-ts] Applying O{} filter...", cli.olevel);
+        olevel::apply_olevel(&mut workspace, o);
+    }
+
+    // Emit YAML descriptors
     emit::emit_workspace(&workspace, &cli.output);
+
+    // Build and emit MicroGraphs
+    if cli.graph || cli.dot {
+        eprintln!("[lyzed-ts] Building workspace graph...");
+        let wg = graph::build_workspace_graph(&workspace);
+
+        if cli.graph {
+            emit::emit_workspace_graph(&wg, &cli.output);
+        }
+
+        if cli.dot {
+            dot::emit_dot(&wg, &cli.output);
+        }
+
+        eprintln!(
+            "[lyzed-ts] Graph: {} module graphs, {} meta-nodes, {} meta-edges",
+            wg.module_graphs.len(),
+            wg.meta_graph.stats.node_count,
+            wg.meta_graph.stats.edge_count,
+        );
+    }
 
     eprintln!(
         "[lyzed-ts] Done: {} modules, {} files, {} total lines → {:?}",
@@ -75,6 +129,105 @@ fn real_main() {
         workspace.total_lines,
         cli.output
     );
+}
+
+fn extract_all_opcodes(
+    workspace: &mut model::Workspace,
+    root: &Path,
+    parser: &mut tree_sitter::Parser,
+) {
+    for module in &mut workspace.modules {
+        extract_module_opcodes(module, root, parser);
+    }
+}
+
+fn extract_module_opcodes(
+    module: &mut model::Module,
+    root: &Path,
+    parser: &mut tree_sitter::Parser,
+) {
+    for file in &mut module.files {
+        let file_path = root.join(&file.file);
+        let source = match std::fs::read_to_string(&file_path) {
+            Ok(s) => s,
+            Err(_) => continue,
+        };
+
+        let tree = match parser.parse(&source, None) {
+            Some(t) => t,
+            None => continue,
+        };
+
+        let root_node = tree.root_node();
+
+        // Extract opcodes for top-level functions
+        for func in &mut file.functions {
+            if let Some((start, _end)) = func.lines {
+                if let Some(func_node) = find_function_at_line(&root_node, start) {
+                    let (ops, locals) = opcodes::extract_opcodes(&func_node, &source);
+                    if let Some(detail) = &mut func.detail {
+                        detail.body = if ops.is_empty() { None } else { Some(ops) };
+                        if detail.locals.is_empty() {
+                            detail.locals = locals;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Extract opcodes for methods in types
+        for t in &mut file.types {
+            for method in &mut t.methods {
+                if let Some((start, _end)) = method.lines {
+                    if let Some(func_node) = find_function_at_line(&root_node, start) {
+                        let (ops, locals) = opcodes::extract_opcodes(&func_node, &source);
+                        if let Some(detail) = &mut method.detail {
+                            detail.body = if ops.is_empty() { None } else { Some(ops) };
+                            if detail.locals.is_empty() {
+                                detail.locals = locals;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    for sub in &mut module.submodules {
+        extract_module_opcodes(sub, root, parser);
+    }
+}
+
+/// Find a function_definition node that starts at the given line (1-indexed).
+fn find_function_at_line<'a>(root: &'a tree_sitter::Node<'a>, line: usize) -> Option<tree_sitter::Node<'a>> {
+    let target_row = line.saturating_sub(1); // tree-sitter uses 0-indexed rows
+
+    let mut stack = vec![*root];
+    while let Some(node) = stack.pop() {
+        if (node.kind() == "function_definition" || node.kind() == "decorated_definition")
+            && node.start_position().row == target_row
+        {
+            // If decorated, return the inner function_definition
+            if node.kind() == "decorated_definition" {
+                let mut cursor = node.walk();
+                for child in node.children(&mut cursor) {
+                    if child.kind() == "function_definition" {
+                        return Some(child);
+                    }
+                }
+            }
+            return Some(node);
+        }
+
+        let mut cursor = node.walk();
+        for child in node.children(&mut cursor) {
+            if child.child_count() > 0 {
+                stack.push(child);
+            }
+        }
+    }
+
+    None
 }
 
 fn build_workspace(
