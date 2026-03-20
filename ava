@@ -294,6 +294,117 @@ def cmd_remove(args):
     print(f"[ava] Project '{name}' unregistered.")
 
 
+def cmd_synth(args):
+    """Run cross-project synthesis/comparison."""
+    reg = load_registry()
+    projects = reg.get("projects", {})
+
+    if not projects:
+        print("[ava] No projects registered.")
+        sys.exit(1)
+
+    # Determine which projects to compare
+    if args.all:
+        names = list(projects.keys())
+    elif args.projects:
+        names = args.projects
+        for n in names:
+            if n not in projects:
+                print(f"[ava] Project '{n}' not found.", file=sys.stderr)
+                sys.exit(1)
+    else:
+        # Default: all agent-related projects (exclude non-agent ones)
+        names = list(projects.keys())
+
+    if len(names) < 2:
+        print("[ava] Need at least 2 projects to compare.", file=sys.stderr)
+        sys.exit(1)
+
+    cmd = [
+        sys.executable, str(SRC_DIR / "synth.py"),
+        str(OUT_DIR),
+    ]
+
+    if args.all:
+        cmd.append("--all")
+    else:
+        cmd.extend(names)
+
+    if args.format:
+        cmd.extend(["--format", args.format])
+    if args.llm:
+        cmd.append("--llm")
+    if args.question:
+        cmd.extend(["--question", args.question])
+
+    # Save report
+    report_path = OUT_DIR / f"synthesis-{time.strftime('%Y%m%d-%H%M%S')}"
+    cmd.extend(["--save", str(report_path)])
+
+    r = run(cmd)
+    if r.returncode == 0:
+        ext = {"text": ".txt", "md": ".md", "json": ".json"}.get(args.format or "text", ".txt")
+        final_path = report_path.with_suffix(ext)
+        if final_path.exists():
+            print(f"\n[ava] Report saved: {final_path}")
+
+
+def cmd_fetch(args):
+    """Fetch and register one or more repos by URL."""
+    urls = args.urls
+    lang = args.lang
+    olevel = args.olevel
+
+    for url in urls:
+        # Derive name from URL
+        name = url.rstrip("/").split("/")[-1]
+        name = name.replace(".git", "").lower()
+
+        if args.name and len(urls) == 1:
+            name = args.name
+
+        print(f"\n[ava] Fetching: {name} ← {url}")
+
+        reg = load_registry()
+        if name in reg["projects"]:
+            print(f"[ava] '{name}' already registered, skipping. Use 'ava refresh {name}' to update.")
+            continue
+
+        # Clone
+        dest = REF_DIR / name
+        if dest.exists():
+            print(f"[ava] Using existing clone at {dest}")
+        else:
+            dest.mkdir(parents=True, exist_ok=True)
+            if not clone_repo(url, dest):
+                print(f"[ava] Clone failed for {url}", file=sys.stderr)
+                continue
+
+        # Generate descriptors
+        stats = generate_descriptors(name, str(dest), lang=lang, olevel=olevel)
+        if stats is None:
+            print(f"[ava] Descriptor generation failed for {name}", file=sys.stderr)
+            continue
+
+        # Register
+        reg = load_registry()  # reload in case of concurrent
+        reg["projects"][name] = {
+            "source": url,
+            "local_path": str(dest),
+            "lang": lang,
+            "olevel": olevel,
+            "stats": stats,
+            "added_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+        }
+        save_registry(reg)
+        print(f"[ava] Project '{name}' registered.")
+
+    # Show final list
+    print()
+    reg = load_registry()
+    print(f"[ava] {len(reg['projects'])} projects registered.")
+
+
 def cmd_info(args):
     """Show project details and analysis history."""
     reg = load_registry()
@@ -386,6 +497,21 @@ def main():
     p_info = sub.add_parser("info", help="Show project details")
     p_info.add_argument("name", help="Project name")
 
+    # synth
+    p_synth = sub.add_parser("synth", help="Cross-project synthesis/comparison")
+    p_synth.add_argument("projects", nargs="*", help="Projects to compare")
+    p_synth.add_argument("--all", action="store_true", help="Compare all projects")
+    p_synth.add_argument("--format", "-f", choices=["text", "md", "json"], default="text")
+    p_synth.add_argument("--llm", action="store_true", help="Use LLM for deep synthesis")
+    p_synth.add_argument("--question", "-q", help="Custom question for LLM")
+
+    # fetch
+    p_fetch = sub.add_parser("fetch", help="Fetch and register repos by URL")
+    p_fetch.add_argument("urls", nargs="+", help="Git URLs to fetch")
+    p_fetch.add_argument("--name", "-n", help="Custom name (only for single URL)")
+    p_fetch.add_argument("--lang", default="auto", help="Language: auto, python, ts")
+    p_fetch.add_argument("--olevel", type=int, default=2, help="O-level (0-3)")
+
     args = parser.parse_args()
 
     if not args.command:
@@ -399,6 +525,8 @@ def main():
         "refresh": cmd_refresh,
         "remove": cmd_remove,
         "info": cmd_info,
+        "synth": cmd_synth,
+        "fetch": cmd_fetch,
     }
     commands[args.command](args)
 
