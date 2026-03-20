@@ -415,6 +415,7 @@ fn build_module(
         files: file_descs,
         submodules,
         total_lines,
+        dominant_layer: None, // computed at emit time
     }
 }
 

@@ -52,6 +52,23 @@ class ModuleProfile:
     functions: int = 0
     imports: int = 0
     exports: int = 0
+    layer: str = "logic"
+
+
+@dataclass
+class LayerBreakdown:
+    logic_files: int = 0
+    logic_lines: int = 0
+    ui_files: int = 0
+    ui_lines: int = 0
+    test_files: int = 0
+    test_lines: int = 0
+    config_files: int = 0
+    config_lines: int = 0
+    docs_files: int = 0
+    docs_lines: int = 0
+    generated_files: int = 0
+    generated_lines: int = 0
 
 
 @dataclass
@@ -66,6 +83,7 @@ class ProjectProfile:
     patterns: list = field(default_factory=list)
     yaml_count: int = 0
     descriptor_size_kb: int = 0
+    layers: LayerBreakdown = field(default_factory=LayerBreakdown)
 
 
 # ── YAML parsing (lightweight, no pyyaml needed) ─────────────────
@@ -79,49 +97,101 @@ def parse_yaml_value(line: str) -> str:
 
 def parse_workspace(ws_path: Path) -> dict:
     """Parse workspace.yaml into a dict."""
-    result = {"name": "", "total_files": 0, "total_lines": 0, "modules": []}
+    result = {
+        "name": "", "total_files": 0, "total_lines": 0,
+        "modules": [], "layers": {},
+    }
     if not ws_path.exists():
         return result
 
     text = ws_path.read_text()
     current_module = None
+    current_layer = None
+    in_layers = False
+    in_modules = False
 
     for line in text.splitlines():
         stripped = line.strip()
         if not stripped or stripped.startswith("#"):
             continue
 
-        if stripped.startswith("name:") and current_module is None:
+        # Section headers at indent 0
+        if stripped.startswith("name:") and not in_modules:
             result["name"] = parse_yaml_value(stripped)
-        elif stripped.startswith("total_files:"):
-            result["total_files"] = int(parse_yaml_value(stripped))
-        elif stripped.startswith("total_lines:"):
-            if current_module is None:
+        elif stripped.startswith("total_files:") and not in_modules:
+            try:
+                result["total_files"] = int(parse_yaml_value(stripped))
+            except (ValueError, TypeError):
+                pass
+        elif stripped.startswith("total_lines:") and not in_modules and not in_layers:
+            try:
                 result["total_lines"] = int(parse_yaml_value(stripped))
-            else:
-                current_module["lines"] = int(parse_yaml_value(stripped))
-        elif stripped.startswith("- name:"):
-            current_module = {
-                "name": parse_yaml_value(stripped.replace("- ", "", 1)),
-                "files": 0, "lines": 0, "types": 0, "functions": 0,
-            }
-            result["modules"].append(current_module)
-        elif current_module:
-            if stripped.startswith("files:"):
-                current_module["files"] = int(parse_yaml_value(stripped))
-            elif stripped.startswith("lines:"):
-                current_module["lines"] = int(parse_yaml_value(stripped))
-            elif stripped.startswith("types:"):
-                current_module["types"] = int(parse_yaml_value(stripped))
-            elif stripped.startswith("functions:"):
-                current_module["functions"] = int(parse_yaml_value(stripped))
+            except (ValueError, TypeError):
+                pass
+        elif stripped == "layers:":
+            in_layers = True
+            in_modules = False
+            current_module = None
+        elif stripped == "modules:":
+            in_modules = True
+            in_layers = False
+            current_layer = None
+        elif stripped.startswith("path:"):
+            pass
+        # Parse layers section
+        elif in_layers and not in_modules:
+            indent = len(line) - len(line.lstrip())
+            if indent == 2 and stripped.endswith(":") and not stripped.startswith("-"):
+                current_layer = stripped[:-1]
+                result["layers"][current_layer] = {"files": 0, "lines": 0}
+            elif current_layer and stripped.startswith("files:"):
+                try:
+                    result["layers"][current_layer]["files"] = int(parse_yaml_value(stripped))
+                except (ValueError, TypeError):
+                    pass
+            elif current_layer and stripped.startswith("lines:"):
+                try:
+                    result["layers"][current_layer]["lines"] = int(parse_yaml_value(stripped))
+                except (ValueError, TypeError):
+                    pass
+        # Parse modules section
+        elif in_modules:
+            if stripped.startswith("- name:"):
+                current_module = {
+                    "name": parse_yaml_value(stripped.replace("- ", "", 1)),
+                    "files": 0, "lines": 0, "types": 0, "functions": 0, "layer": "logic",
+                }
+                result["modules"].append(current_module)
+            elif current_module:
+                if stripped.startswith("files:"):
+                    try:
+                        current_module["files"] = int(parse_yaml_value(stripped))
+                    except (ValueError, TypeError):
+                        pass
+                elif stripped.startswith("lines:"):
+                    try:
+                        current_module["lines"] = int(parse_yaml_value(stripped))
+                    except (ValueError, TypeError):
+                        pass
+                elif stripped.startswith("types:"):
+                    try:
+                        current_module["types"] = int(parse_yaml_value(stripped))
+                    except (ValueError, TypeError):
+                        pass
+                elif stripped.startswith("functions:"):
+                    try:
+                        current_module["functions"] = int(parse_yaml_value(stripped))
+                    except (ValueError, TypeError):
+                        pass
+                elif stripped.startswith("layer:"):
+                    current_module["layer"] = parse_yaml_value(stripped)
 
     return result
 
 
 def parse_file_descriptor(path: Path) -> dict:
     """Parse a file descriptor YAML for types, functions, imports."""
-    result = {"types": [], "functions": [], "imports": [], "file": "", "lines": 0}
+    result = {"types": [], "functions": [], "imports": [], "file": "", "lines": 0, "layer": "logic"}
     if not path.exists():
         return result
 
@@ -136,6 +206,8 @@ def parse_file_descriptor(path: Path) -> dict:
 
         if stripped.startswith("file:"):
             result["file"] = parse_yaml_value(stripped)
+        elif stripped.startswith("layer:") and current_item is None and current_section is None:
+            result["layer"] = parse_yaml_value(stripped)
         elif stripped.startswith("lines:") and current_item is None:
             val = parse_yaml_value(stripped)
             try:
@@ -224,7 +296,25 @@ def build_profile(name: str, out_dir: Path) -> ProjectProfile:
             lines=m.get("lines", 0),
             types=m.get("types", 0),
             functions=m.get("functions", 0),
+            layer=m.get("layer", "logic"),
         ))
+
+    # Build layer breakdown from workspace layers section
+    layer_data = ws.get("layers", {})
+    layers = LayerBreakdown(
+        logic_files=layer_data.get("logic", {}).get("files", 0),
+        logic_lines=layer_data.get("logic", {}).get("lines", 0),
+        ui_files=layer_data.get("ui", {}).get("files", 0),
+        ui_lines=layer_data.get("ui", {}).get("lines", 0),
+        test_files=layer_data.get("test", {}).get("files", 0),
+        test_lines=layer_data.get("test", {}).get("lines", 0),
+        config_files=layer_data.get("config", {}).get("files", 0),
+        config_lines=layer_data.get("config", {}).get("lines", 0),
+        docs_files=layer_data.get("docs", {}).get("files", 0),
+        docs_lines=layer_data.get("docs", {}).get("lines", 0),
+        generated_files=layer_data.get("generated", {}).get("files", 0),
+        generated_lines=layer_data.get("generated", {}).get("lines", 0),
+    )
 
     # Scan file descriptors for top types and functions
     all_types = []
@@ -281,6 +371,7 @@ def build_profile(name: str, out_dir: Path) -> ProjectProfile:
         patterns=patterns,
         yaml_count=yaml_count,
         descriptor_size_kb=total_size // 1024,
+        layers=layers,
     )
 
 
@@ -371,6 +462,33 @@ def generate_text_report(profiles: list[ProjectProfile]) -> str:
         lines.append(f"│ {i}. {p.name:<14} {p.total_lines:>10,} LOC  {bar}")
     lines.append("└" + "─" * 76 + "┘")
     lines.append("")
+
+    # ── Layer breakdown
+    has_layers = any(p.layers.logic_lines > 0 or p.layers.ui_lines > 0 for p in profiles)
+    if has_layers:
+        lines.append("┌─ LAYER BREAKDOWN (logic vs ui vs test vs config vs docs) ──────────────────┐")
+        lines.append(f"│ {'Project':<14} {'Logic':>10} {'UI':>10} {'Test':>10} {'Config':>8} {'Docs':>8} {'Logic%':>7} │")
+        lines.append("│" + "─" * 76 + "│")
+        for p in sorted(profiles, key=lambda x: -x.layers.logic_lines):
+            total = p.total_lines or 1
+            logic_pct = p.layers.logic_lines / total * 100
+            lines.append(
+                f"│ {p.name:<14} {p.layers.logic_lines:>10,} {p.layers.ui_lines:>10,} "
+                f"{p.layers.test_lines:>10,} {p.layers.config_lines:>8,} "
+                f"{p.layers.docs_lines:>8,} {logic_pct:>6.1f}% │"
+            )
+        lines.append("│" + "─" * 76 + "│")
+        # Logic-only ranking
+        lines.append("│")
+        lines.append("│ Logic-only ranking:")
+        for i, p in enumerate(sorted(profiles, key=lambda x: -x.layers.logic_lines), 1):
+            if p.layers.logic_lines > 0:
+                max_logic = max(pp.layers.logic_lines for pp in profiles)
+                bar_len = int(40 * p.layers.logic_lines / max_logic) if max_logic else 0
+                bar = "█" * bar_len
+                lines.append(f"│   {i}. {p.name:<14} {p.layers.logic_lines:>10,} LOC  {bar}")
+        lines.append("└" + "─" * 76 + "┘")
+        lines.append("")
 
     # ── Patterns detected
     lines.append("┌─ ARCHITECTURAL PATTERNS ──────────────────────────────────────────────────┐")
@@ -646,6 +764,8 @@ def main():
     parser.add_argument("--llm", action="store_true", help="Use LLM for deep synthesis")
     parser.add_argument("--question", "-q", help="Custom question for LLM synthesis")
     parser.add_argument("--save", "-s", help="Save report to file")
+    parser.add_argument("--layer", help="Only include files of this layer (logic, ui, test, config, docs)")
+    parser.add_argument("--exclude-layer", help="Exclude layers (comma-separated: ui,test,docs)")
 
     args = parser.parse_args()
     out_dir = Path(args.out_dir)

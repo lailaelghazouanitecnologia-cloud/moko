@@ -26,6 +26,7 @@ pub fn parse_file(
     let mut file = FileDescriptor {
         file: rel_path.to_string(),
         lines: line_count,
+        layer: classify_layer(rel_path),
         purpose: None,
         tags: Vec::new(),
         ctx: None,

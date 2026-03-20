@@ -65,6 +65,32 @@ fn emit_module(module: &Module, out_dir: &Path, pkg_name: &str) {
 
 // ── Workspace YAML shape ───────────────────────────────────────────
 #[derive(serde::Serialize)]
+struct LayerSummary {
+    files: usize,
+    lines: usize,
+}
+
+#[derive(serde::Serialize)]
+struct LayersSummary {
+    #[serde(skip_serializing_if = "is_zero_layer")]
+    logic: LayerSummary,
+    #[serde(skip_serializing_if = "is_zero_layer")]
+    ui: LayerSummary,
+    #[serde(skip_serializing_if = "is_zero_layer")]
+    test: LayerSummary,
+    #[serde(skip_serializing_if = "is_zero_layer")]
+    config: LayerSummary,
+    #[serde(skip_serializing_if = "is_zero_layer")]
+    docs: LayerSummary,
+    #[serde(skip_serializing_if = "is_zero_layer")]
+    generated: LayerSummary,
+}
+
+fn is_zero_layer(l: &LayerSummary) -> bool {
+    l.files == 0 && l.lines == 0
+}
+
+#[derive(serde::Serialize)]
 struct WorkspaceYaml {
     name: String,
     path: String,
@@ -74,6 +100,7 @@ struct WorkspaceYaml {
     tags: Vec<String>,
     total_files: usize,
     total_lines: usize,
+    layers: LayersSummary,
     modules: Vec<ModuleSummary>,
 }
 
@@ -84,10 +111,63 @@ struct ModuleSummary {
     lines: usize,
     types: usize,
     functions: usize,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    layer: Option<String>,
+}
+
+fn collect_layer_stats(modules: &[Module]) -> LayersSummary {
+    let mut stats: [usize; 12] = [0; 12]; // [files, lines] × 6 layers
+
+    fn walk(module: &Module, stats: &mut [usize; 12]) {
+        for f in &module.files {
+            let idx = match f.layer {
+                Layer::Logic => 0,
+                Layer::Ui => 2,
+                Layer::Test => 4,
+                Layer::Config => 6,
+                Layer::Docs => 8,
+                Layer::Generated => 10,
+            };
+            stats[idx] += 1;
+            stats[idx + 1] += f.lines;
+        }
+        for sub in &module.submodules {
+            walk(sub, stats);
+        }
+    }
+
+    for m in modules {
+        walk(m, &mut stats);
+    }
+
+    LayersSummary {
+        logic: LayerSummary { files: stats[0], lines: stats[1] },
+        ui: LayerSummary { files: stats[2], lines: stats[3] },
+        test: LayerSummary { files: stats[4], lines: stats[5] },
+        config: LayerSummary { files: stats[6], lines: stats[7] },
+        docs: LayerSummary { files: stats[8], lines: stats[9] },
+        generated: LayerSummary { files: stats[10], lines: stats[11] },
+    }
+}
+
+fn dominant_layer_for_module(module: &Module) -> Option<String> {
+    let mut counts: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+    fn walk_files(m: &Module, counts: &mut std::collections::HashMap<String, usize>) {
+        for f in &m.files {
+            *counts.entry(f.layer.to_string()).or_default() += f.lines;
+        }
+        for sub in &m.submodules {
+            walk_files(sub, counts);
+        }
+    }
+    walk_files(module, &mut counts);
+    counts.into_iter().max_by_key(|(_, v)| *v).map(|(k, _)| k)
 }
 
 impl From<&Workspace> for WorkspaceYaml {
     fn from(ws: &Workspace) -> Self {
+        let layers = collect_layer_stats(&ws.modules);
+
         WorkspaceYaml {
             name: ws.name.clone(),
             path: ws.path.clone(),
@@ -95,6 +175,7 @@ impl From<&Workspace> for WorkspaceYaml {
             tags: ws.tags.clone(),
             total_files: ws.total_files,
             total_lines: ws.total_lines,
+            layers,
             modules: ws
                 .modules
                 .iter()
@@ -104,6 +185,7 @@ impl From<&Workspace> for WorkspaceYaml {
                     lines: m.total_lines,
                     types: m.files.iter().map(|f| f.types.len()).sum(),
                     functions: m.files.iter().map(|f| f.functions.len()).sum(),
+                    layer: dominant_layer_for_module(m),
                 })
                 .collect(),
         }
@@ -128,6 +210,7 @@ struct ModuleYaml {
 struct FileSummary {
     file: String,
     lines: usize,
+    layer: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     purpose: Option<String>,
     types: usize,
@@ -149,6 +232,7 @@ impl From<&Module> for ModuleYaml {
                 .map(|f| FileSummary {
                     file: f.file.clone(),
                     lines: f.lines,
+                    layer: f.layer.to_string(),
                     purpose: f.purpose.clone(),
                     types: f.types.len(),
                     functions: f.functions.len(),

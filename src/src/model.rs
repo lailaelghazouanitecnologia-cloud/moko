@@ -4,6 +4,98 @@
 
 use serde::Serialize;
 
+// ── Layer classification ──────────────────────────────────────────
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum Layer {
+    Logic,
+    Ui,
+    Test,
+    Config,
+    Docs,
+    Generated,
+}
+
+impl Default for Layer {
+    fn default() -> Self {
+        Layer::Logic
+    }
+}
+
+impl std::fmt::Display for Layer {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match self {
+            Layer::Logic => write!(f, "logic"),
+            Layer::Ui => write!(f, "ui"),
+            Layer::Test => write!(f, "test"),
+            Layer::Config => write!(f, "config"),
+            Layer::Docs => write!(f, "docs"),
+            Layer::Generated => write!(f, "generated"),
+        }
+    }
+}
+
+/// Classify a file path into a layer based on path patterns.
+pub fn classify_layer(path: &str) -> Layer {
+    let p = path.to_lowercase();
+    let parts: Vec<&str> = p.split('/').collect();
+
+    // Test layer
+    if parts.iter().any(|s| {
+        *s == "test" || *s == "tests" || *s == "__tests__" || *s == "__test__"
+            || *s == "spec" || *s == "specs" || *s == "e2e"
+            || *s == "e2e-tests" || *s == "benchmark" || *s == "benchmarks"
+            || *s == "fixtures" || *s == "vscode-e2e"
+    }) || p.contains(".test.") || p.contains(".spec.") || p.contains("_test.py") || p.contains("test_")
+    {
+        return Layer::Test;
+    }
+
+    // UI layer
+    if parts.iter().any(|s| {
+        *s == "webview" || *s == "webview-ui" || *s == "components"
+            || *s == "pages" || *s == "views" || *s == "frontend"
+            || *s == "ui" || *s == "stories" || *s == "storybook"
+            || *s == "theme" || *s == "themes" || *s == "styles"
+            || *s == "css" || *s == "assets" || *s == "icons"
+            || *s == "i18n" || *s == "locales" || *s == "pierre"
+    }) || p.contains("webview") || p.ends_with(".css") || p.ends_with(".scss")
+    {
+        return Layer::Ui;
+    }
+
+    // Docs layer
+    if parts.iter().any(|s| {
+        *s == "docs" || *s == "doc" || *s == "examples" || *s == "example"
+            || *s == "tutorials" || *s == "guides"
+    }) {
+        return Layer::Docs;
+    }
+
+    // Generated layer
+    if parts.iter().any(|s| {
+        *s == "generated" || *s == "dist" || *s == "build"
+            || *s == "schema" || *s == "proto" || *s == "protos"
+    }) || p.contains("/generated/") || p.contains(".generated.")
+    {
+        return Layer::Generated;
+    }
+
+    // Config layer
+    if parts.iter().any(|s| {
+        *s == "scripts" || *s == "script" || *s == ".github"
+            || *s == "nix" || *s == "docker" || *s == ".opencode"
+            || *s == "ci" || *s == "deploy" || *s == "deployers"
+    }) || p.ends_with(".config.ts") || p.ends_with(".config.js")
+        || p.ends_with("tsconfig.json") || p.ends_with("setup.py")
+        || p.ends_with("setup.cfg")
+    {
+        return Layer::Config;
+    }
+
+    Layer::Logic
+}
+
 // ── Depth ──────────────────────────────────────────────────────────
 #[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
@@ -15,6 +107,12 @@ pub enum Depth {
 }
 
 // ── Hierarchy ──────────────────────────────────────────────────────
+#[derive(Debug, Clone, Serialize)]
+pub struct LayerStats {
+    pub files: usize,
+    pub lines: usize,
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct Workspace {
     pub name: String,
@@ -41,6 +139,8 @@ pub struct Module {
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub submodules: Vec<Module>,
     pub total_lines: usize,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub dominant_layer: Option<Layer>,
 }
 
 // ── File ───────────────────────────────────────────────────────────
@@ -48,6 +148,7 @@ pub struct Module {
 pub struct FileDescriptor {
     pub file: String,
     pub lines: usize,
+    pub layer: Layer,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub purpose: Option<String>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
