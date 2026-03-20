@@ -1,130 +1,200 @@
-# AI Repo Analyzer
+# Roska — Code Intelligence Compiler
 
-AI-powered GitHub repository analyzer built with the [Agno](https://github.com/agno-agi/agno) framework and Claude.
+Roska analiza repositorios de código fuente y genera descriptores YAML estructurados
+que un LLM puede consumir para entender la arquitectura, dependencias, seguridad y
+calidad de un codebase sin leer el código fuente directamente.
 
-## What it does
+## Objetivo
 
-This agent analyzes any public GitHub repository and generates a comprehensive report covering:
+Convertir cualquier repositorio en una representación compacta y semántica que permita
+a un LLM responder preguntas sobre el código con precisión, referenciando tipos,
+funciones y módulos reales.
 
-- **Overview & Metrics** — Stars, forks, license, topics
-- **Architecture & Structure** — Directory tree, module organization
-- **Tech Stack** — Languages, dependencies, frameworks
-- **Community Health** — Contributors, issues, releases
-- **Development Activity** — Commit frequency, recent changes
-- **Strengths & Improvements** — Data-backed assessment
+## Pipeline
 
-## Quick Start
+```
+Source Code (.py, .ts, .tsx)
+    │
+    ▼
+┌─────────────────────────────────┐
+│  lyzed-ts (Rust + tree-sitter)  │
+│  Parse AST → Roska Model        │
+│  Build MicroGraphs + Ports      │
+│  Apply O-Level compression      │
+│  Extract opcodes (16 types)     │
+└─────────────────────────────────┘
+    │
+    ▼
+YAML Descriptors (out/{project}/)
+    │
+    ▼
+┌─────────────────────────────────┐
+│  analyze.py (Groq / Kimi K2)   │
+│  Load descriptors with budget   │
+│  Send to LLM with preset mode   │
+│  Stream response + metrics      │
+└─────────────────────────────────┘
+    │
+    ▼
+Architecture / Security / Quality / Deps / Onboard report
+```
 
-### 1. Install dependencies
+## Estructura del proyecto
+
+```
+moko/
+├── doc/                     ← documentación
+│   └── README.md            ← este archivo
+├── references/              ← repos de prueba
+│   ├── agno/                ← Python (AI framework)
+│   └── cline-core/          ← TypeScript (VS Code extension)
+├── src/                     ← Roska engine (crate Rust)
+│   ├── Cargo.toml
+│   ├── analyze.py           ← LLM analyzer (Python)
+│   └── src/
+│       ├── main.rs          ← CLI + workspace builder
+│       ├── model.rs         ← data model (Workspace, Module, File, Type, Func)
+│       ├── parse.rs         ← Python parser (tree-sitter)
+│       ├── parse_ts.rs      ← TypeScript parser (tree-sitter)
+│       ├── graph.rs         ← MicroGraphs con Ports
+│       ├── opcodes.rs       ← 16 opcodes (Call, Store, BrTrue, Loop, Try...)
+│       ├── olevel.rs        ← O-levels O0→O3 (compresión semántica)
+│       ├── emit.rs          ← emisión YAML
+│       └── dot.rs           ← export Graphviz DOT
+└── out/                     ← resultados generados
+    ├── cline-core/          ← análisis de Cline
+    └── codex/               ← análisis de OpenAI Codex
+```
+
+## Uso para un LLM
+
+### Paso 1: Generar descriptores
 
 ```bash
-pip install -e .
+# Compilar el engine
+cargo build --release --manifest-path src/Cargo.toml
+
+# Analizar un repo TypeScript
+cargo run --release --manifest-path src/Cargo.toml -- \
+  -i /path/to/repo \
+  -o out/my-project \
+  -n my-project \
+  --graph --dot --olevel 2
+
+# Analizar un repo Python
+cargo run --release --manifest-path src/Cargo.toml -- \
+  -i /path/to/repo \
+  -o out/my-project \
+  -n my-project \
+  --graph --dot --olevel 2 --lang python
 ```
 
-### 2. Configure API keys
+### Paso 2: Analizar con LLM
 
 ```bash
-cp .env.example .env
-# Edit .env and add your ANTHROPIC_API_KEY
-# Optionally add GITHUB_TOKEN for higher rate limits
+export GROQ_API_KEY=gsk_...
+
+# Modos preset
+python src/analyze.py out/my-project --mode arch        # arquitectura
+python src/analyze.py out/my-project --mode deps        # dependencias
+python src/analyze.py out/my-project --mode security    # seguridad
+python src/analyze.py out/my-project --mode quality     # calidad
+python src/analyze.py out/my-project --mode onboard     # onboarding
+
+# Pregunta libre
+python src/analyze.py out/my-project "How does authentication work?"
+
+# Con métricas guardadas
+python src/analyze.py out/my-project --mode arch --save metrics.json
 ```
 
-### 3. Run the analyzer
+### Paso 3: Interpretar métricas
 
-**One-shot analysis:**
-
-```bash
-# Via CLI
-repo-analyzer agno-agi/agno
-
-# Via Python
-python demo.py
-```
-
-**Interactive mode:**
-
-```bash
-# Via CLI
-repo-analyzer agno-agi/agno --interactive
-
-# Via Python
-python demo_interactive.py
-```
-
-## Usage
-
-### CLI
-
-```bash
-# Analyze a repository
-repo-analyzer owner/repo
-
-# Use a specific model
-repo-analyzer owner/repo --model claude-sonnet-4-5
-
-# Interactive chat mode
-repo-analyzer --interactive
-
-# Interactive with initial repo
-repo-analyzer owner/repo -i
-```
-
-### Python API
-
-```python
-from repo_analyzer.agent import create_analyzer_agent, analyze_repo
-
-# One-shot analysis
-analyze_repo("agno-agi", "agno")
-
-# Interactive / custom usage
-agent = create_analyzer_agent()
-agent.print_response("Analyze agno-agi/agno and focus on the architecture", stream=True)
-```
-
-## Project Structure
+El analyzer reporta uso real de tokens:
 
 ```
-ai-repo-analyzer/
-├── repo_analyzer/
-│   ├── __init__.py
-│   ├── agent.py            # Agno agent definition
-│   ├── cli.py              # CLI entry point
-│   └── tools/
-│       ├── __init__.py
-│       └── github_tools.py # GitHub API tools (10 tools)
-├── demo.py                 # Quick demo script
-├── demo_interactive.py     # Interactive demo
-├── pyproject.toml          # Project config & dependencies
-├── .env.example            # Environment variable template
-└── README.md
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  METRICS
+────────────────────────────────────────────────────────────
+  Prompt tokens:     43,934       ← tokens de entrada (descriptores + pregunta)
+  Completion tokens: 1,396        ← tokens generados por el LLM
+  Total tokens:      45,330       ← coste total
+  Speed:             141.7 tok/s  ← velocidad de generación
+  Wall time:         9.85s        ← tiempo total
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ```
 
-## Available Tools
+## Opciones del CLI (lyzed-ts)
 
-The agent has 10 GitHub analysis tools:
+| Flag | Descripción | Default |
+|------|-------------|---------|
+| `-i` | Directorio raíz del repo | (requerido) |
+| `-o` | Directorio de salida YAML | (requerido) |
+| `-n` | Nombre del proyecto | `package` |
+| `--lang` | Forzar lenguaje: `python`, `ts`, `auto` | `auto` |
+| `--olevel` | Nivel de compresión: 0-3 | `0` |
+| `--graph` | Generar MicroGraphs YAML | off |
+| `--dot` | Generar archivos Graphviz DOT | off |
+| `--opcodes` | Extraer opcodes (solo Python) | off |
+| `--depth` | Profundidad de análisis: 0-3 | `3` |
+| `--budget` | Budget de tokens para analyze.py | `12000` |
 
-| Tool | Description |
-|------|-------------|
-| `get_repo_info` | Repository metadata (stars, forks, license, topics) |
-| `get_repo_structure` | Directory/file listing at any path |
-| `get_repo_languages` | Language breakdown with percentages |
-| `get_repo_contributors` | Top contributors with commit counts |
-| `get_recent_commits` | Latest commits with messages |
-| `get_open_issues` | Open issues with labels |
-| `get_releases` | Release history |
-| `get_file_content` | Read any file in the repo |
-| `search_code_in_repo` | Search for code patterns |
-| `get_repo_activity` | Commit frequency and participation stats |
+## O-Levels (Compresión semántica)
 
-## Requirements
+| Nivel | Nombre | Qué hace |
+|-------|--------|----------|
+| O0 | Raw | Todo tal cual, sin filtrar |
+| O1 | Structural | Suprime stdlib, dunders triviales, funciones <3 líneas |
+| O2 | Semantic | Surprise scoring: filtra funciones privadas con score <0.3 |
+| O3 | Intent | Solo firmas públicas, tipos públicos, imports cross-module |
 
-- Python 3.10+
-- Anthropic API key (for Claude)
-- GitHub token (optional, for higher API rate limits)
+**Recomendación para LLM:** Usar O2 para repos medianos (<50K LOC), O3 para repos grandes (>50K LOC).
 
-## Built With
+## MicroGraphs
 
-- [Agno](https://github.com/agno-agi/agno) — Agent framework
-- [Claude](https://www.anthropic.com/claude) — AI model
-- [GitHub REST API](https://docs.github.com/en/rest) — Repository data
+Grafos jerárquicos con puertos para conexiones cross-módulo:
+
+- **Layer 0 (Meta):** Un nodo por módulo, edges = dependencias entre módulos
+- **Layer 1 (Module):** Un nodo por tipo/función, edges = calls/imports/inherits
+- **Ports:** Conexiones explícitas entre grafos (módulo A → módulo B)
+
+Los grafos se emiten como YAML (`out/*/graphs/`) y DOT (`out/*/*.dot`).
+
+## Opcodes (16 tipos)
+
+```
+Call      — llamada a función
+Ret       — return
+Try       — try/except/finally
+BrTrue    — if/elif/else branch
+Loop      — for/while
+With      — context manager (with)
+Raise     — throw/raise
+New       — constructor call (PascalCase)
+Store     — assignment
+Load      — variable read
+FieldAccess — attribute access
+Yield     — generator yield
+Await     — async await
+Assert    — assertion
+Br        — unconditional branch
+Label     — label marker
+```
+
+## Benchmarks actuales
+
+| Repo | Lenguaje | Archivos | LOC | Módulos | Descriptores | Prompt tokens | Wall time |
+|------|----------|----------|-----|---------|-------------|---------------|-----------|
+| Cline | TypeScript | 567 | 96,617 | 16 | 697 YAML | 43,934 | 9.85s |
+| Codex | TypeScript* | 443 | 7,390 | 3 | 468 YAML | 23,264 | 8.70s |
+| Agno | Python | ~200 | ~30,000 | 15+ | ~400 YAML | ~25,000 | ~8s |
+
+*Codex es mayormente Rust — solo se analizó la parte TypeScript.
+
+## Limitaciones actuales
+
+1. **Solo Python y TypeScript** — no soporta Rust, Go, Java, etc.
+2. **Opcodes solo para Python** — TypeScript no tiene extracción de opcodes aún
+3. **Budget de tokens es estimación** — usa chars/4, no un tokenizer real
+4. **Sin ChangeSet propagation** — no detecta impacto de cambios entre módulos
+5. **Sin TUI Browser** — no hay interfaz interactiva para navegar grafos
