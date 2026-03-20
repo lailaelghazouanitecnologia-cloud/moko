@@ -17,7 +17,8 @@ Usage:
 
 import sys
 import os
-import glob
+import json
+import time
 import argparse
 from pathlib import Path
 
@@ -149,8 +150,8 @@ def load_descriptors(output_dir: str, max_tokens: int = 12000) -> str:
 
 # ── LLM call ──────────────────────────────────────────────────────
 
-def analyze(descriptors: str, question: str, model: str = MODEL) -> None:
-    """Send descriptors + question to Groq and stream the response."""
+def analyze(descriptors: str, question: str, model: str = MODEL) -> dict:
+    """Send descriptors + question to Groq and stream the response. Returns usage metrics."""
     client = Groq(api_key=GROQ_API_KEY)
 
     system_prompt = (
@@ -168,10 +169,19 @@ def analyze(descriptors: str, question: str, model: str = MODEL) -> None:
 
     user_message = f"## Roska Descriptors\n\n{descriptors}\n\n## Question\n\n{question}"
 
-    print(f"\n{'─' * 60}")
-    print(f"Model: {model}")
-    print(f"Descriptors: {len(descriptors)} chars (~{len(descriptors) // 4} tokens)")
-    print(f"{'─' * 60}\n")
+    desc_est_tokens = len(descriptors) // 4
+    sys_est_tokens = len(system_prompt) // 4
+    q_est_tokens = len(question) // 4
+
+    print(f"\n{'━' * 60}")
+    print(f"  Model:        {model}")
+    print(f"  Descriptors:  {len(descriptors):,} chars (~{desc_est_tokens:,} tokens)")
+    print(f"  System:       ~{sys_est_tokens:,} tokens")
+    print(f"  Question:     ~{q_est_tokens:,} tokens")
+    print(f"  Est. input:   ~{desc_est_tokens + sys_est_tokens + q_est_tokens:,} tokens")
+    print(f"{'━' * 60}\n")
+
+    t0 = time.time()
 
     completion = client.chat.completions.create(
         model=model,
@@ -186,12 +196,67 @@ def analyze(descriptors: str, question: str, model: str = MODEL) -> None:
         stop=None,
     )
 
+    output_text = []
+    usage = None
+
     for chunk in completion:
-        content = chunk.choices[0].delta.content
-        if content:
+        if hasattr(chunk, "usage") and chunk.usage:
+            usage = chunk.usage
+        if hasattr(chunk, "x_groq") and chunk.x_groq and hasattr(chunk.x_groq, "usage"):
+            usage = chunk.x_groq.usage
+        if chunk.choices and chunk.choices[0].delta.content:
+            content = chunk.choices[0].delta.content
+            output_text.append(content)
             print(content, end="", flush=True)
 
-    print("\n")
+    elapsed = time.time() - t0
+    output_str = "".join(output_text)
+    output_tokens_est = len(output_str) // 4
+
+    # Build metrics
+    metrics = {
+        "model": model,
+        "elapsed_s": round(elapsed, 2),
+        "descriptor_chars": len(descriptors),
+        "output_chars": len(output_str),
+    }
+
+    if usage:
+        metrics["prompt_tokens"] = usage.prompt_tokens
+        metrics["completion_tokens"] = usage.completion_tokens
+        metrics["total_tokens"] = usage.total_tokens
+        if hasattr(usage, "prompt_time"):
+            metrics["prompt_time_s"] = usage.prompt_time
+        if hasattr(usage, "completion_time"):
+            metrics["completion_time_s"] = usage.completion_time
+        if usage.completion_tokens and elapsed > 0:
+            metrics["tokens_per_sec"] = round(usage.completion_tokens / elapsed, 1)
+    else:
+        metrics["prompt_tokens_est"] = desc_est_tokens + sys_est_tokens + q_est_tokens
+        metrics["completion_tokens_est"] = output_tokens_est
+
+    # Print metrics summary
+    print(f"\n\n{'━' * 60}")
+    print(f"  METRICS")
+    print(f"{'─' * 60}")
+    if usage:
+        print(f"  Prompt tokens:     {usage.prompt_tokens:,}")
+        print(f"  Completion tokens: {usage.completion_tokens:,}")
+        print(f"  Total tokens:      {usage.total_tokens:,}")
+        if hasattr(usage, "prompt_time") and usage.prompt_time:
+            print(f"  Prompt time:       {usage.prompt_time:.2f}s")
+        if hasattr(usage, "completion_time") and usage.completion_time:
+            print(f"  Completion time:   {usage.completion_time:.2f}s")
+        if metrics.get("tokens_per_sec"):
+            print(f"  Speed:             {metrics['tokens_per_sec']} tok/s")
+    else:
+        print(f"  Prompt tokens:     ~{metrics.get('prompt_tokens_est', 0):,} (est)")
+        print(f"  Completion tokens: ~{output_tokens_est:,} (est)")
+    print(f"  Wall time:         {elapsed:.2f}s")
+    print(f"  Output:            {len(output_str):,} chars")
+    print(f"{'━' * 60}\n")
+
+    return metrics
 
 
 # ── Main ──────────────────────────────────────────────────────────
@@ -217,6 +282,10 @@ def main():
         default=MODEL,
         help=f"Groq model to use (default: {MODEL})"
     )
+    parser.add_argument(
+        "--save", "-s",
+        help="Save metrics JSON to file"
+    )
 
     args = parser.parse_args()
 
@@ -229,8 +298,6 @@ def main():
         parser.print_help()
         sys.exit(1)
 
-    model_to_use = args.model
-
     question = args.question or PRESETS[args.mode]
     descriptors = load_descriptors(args.output_dir, max_tokens=args.budget)
 
@@ -238,7 +305,14 @@ def main():
         print("Error: no YAML descriptors found in output directory", file=sys.stderr)
         sys.exit(1)
 
-    analyze(descriptors, question, model_to_use)
+    metrics = analyze(descriptors, question, args.model)
+    metrics["mode"] = args.mode or "custom"
+    metrics["budget"] = args.budget
+
+    if args.save:
+        with open(args.save, "w") as f:
+            json.dump(metrics, f, indent=2)
+        print(f"Metrics saved to {args.save}")
 
 
 if __name__ == "__main__":
