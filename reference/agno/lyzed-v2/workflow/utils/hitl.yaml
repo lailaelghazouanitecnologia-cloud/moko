@@ -1,0 +1,241 @@
+## Roska File Descriptor — utils/hitl.py
+file: utils/hitl.py
+lines: 321
+purpose: Helper classes and functions for workflow HITL (Human-in-the-Loop) execution. This module contains shared utilities used by the execute and continue_run methods (sync/async, streaming/non-streaming) to reduce code duplication.
+imports:
+- sym: dataclasses.dataclass
+- sym: typing.TYPE_CHECKING
+- sym: typing.Any
+- sym: typing.Dict
+- sym: typing.List
+- sym: typing.Optional
+- sym: typing.Union
+- sym: typing.cast
+- sym: agno.run.base.RunStatus
+- sym: agno.utils.log.log_debug
+- sym: agno.workflow.types.StepOutput
+types:
+- name: ContinueExecutionState
+  kind: struct
+  ctx: State container for continue execution methods. This class encapsulates the shared state used across all continue_execute variants (sync/async, streaming/non-streaming) to reduce code duplication.
+  fields:
+  - name: collected_step_outputs
+    type: Any
+    default: List[Union["StepOutput", List["StepOutput"]]]
+  - name: previous_step_outputs
+    type: Any
+    default: Dict[str, "StepOutput"]
+  - name: shared_images
+    type: Any
+    default: List["Image"]
+  - name: output_images
+    type: Any
+    default: List["Image"]
+  - name: shared_videos
+    type: Any
+    default: List["Video"]
+  - name: output_videos
+    type: Any
+    default: List["Video"]
+  - name: shared_audio
+    type: Any
+    default: List["Audio"]
+  - name: output_audio
+    type: Any
+    default: List["Audio"]
+  - name: shared_files
+    type: Any
+    default: List["File"]
+  - name: output_files
+    type: Any
+    default: List["File"]
+  methods:
+  - name: __init__
+    sig: |-
+      __init__(
+              self,
+              workflow_run_response: "WorkflowRunOutput",
+              execution_input: "WorkflowExecutionInput",
+          )
+    lines:
+    - 228
+    - 262
+    detail:
+      calls:
+      - (execution_input.audio or []).copy
+      - (execution_input.files or []).copy
+      - (execution_input.images or []).copy
+      - (execution_input.videos or []).copy
+      - isinstance
+      - list
+      - self.output_audio.extend
+      - self.output_files.extend
+      - self.output_images.extend
+      - self.output_videos.extend
+      - self.shared_audio.extend
+      - self.shared_files.extend
+      - self.shared_images.extend
+      - self.shared_videos.extend
+  - name: extend_media_from_step
+    sig: 'extend_media_from_step(self, step_output: "StepOutput") -> None'
+    lines:
+    - 264
+    - 273
+    detail:
+      calls:
+      - self.output_audio.extend
+      - self.output_files.extend
+      - self.output_images.extend
+      - self.output_videos.extend
+      - self.shared_audio.extend
+      - self.shared_files.extend
+      - self.shared_images.extend
+      - self.shared_videos.extend
+  - name: add_step_output
+    sig: 'add_step_output(self, step_name: str, step_output: "StepOutput") -> None'
+    lines:
+    - 275
+    - 279
+    detail:
+      calls:
+      - self.collected_step_outputs.append
+      - self.extend_media_from_step
+  lines:
+  - 221
+  - 279
+functions:
+- name: StepPauseResult
+  sig: ''
+  decorators:
+  - dataclass
+  lines:
+  - 21
+  - 31
+- name: step_pause_status
+  sig: |-
+    step_pause_status(
+        step: Any,
+        step_index: int,
+        step_input: "StepInput",
+        step_type: str,
+        for_route_selection: bool = False,
+    ) -> StepPauseResult
+  lines:
+  - 34
+  - 86
+  detail:
+    calls:
+    - StepPauseResult
+    - getattr
+    - log_debug
+    - step.create_step_requirement
+    - step_type.lower
+- name: create_step_paused_event
+  sig: |-
+    create_step_paused_event(
+        workflow_run_response: "WorkflowRunOutput",
+        step: Any,
+        step_name: str,
+        step_index: int,
+        pause_result: StepPauseResult,
+    ) -> Any
+  lines:
+  - 89
+  - 123
+  detail:
+    calls:
+    - StepPausedEvent
+    - getattr
+- name: create_router_paused_event
+  sig: |-
+    create_router_paused_event(
+        workflow_run_response: "WorkflowRunOutput",
+        step_name: str,
+        step_index: int,
+        pause_result: StepPauseResult,
+    ) -> Any
+  lines:
+  - 126
+  - 156
+  detail:
+    calls:
+    - RouterPausedEvent
+- name: apply_pause_state
+  sig: |-
+    apply_pause_state(
+        workflow_run_response: "WorkflowRunOutput",
+        step_index: int,
+        step_name: Optional[str],
+        collected_step_outputs: List[Union["StepOutput", List["StepOutput"]]],
+        pause_result: StepPauseResult,
+    ) -> None
+  lines:
+  - 159
+  - 181
+  detail: {}
+- name: save_paused_session
+  sig: |-
+    save_paused_session(
+        workflow: Any,
+        session: "WorkflowSession",
+        workflow_run_response: "WorkflowRunOutput",
+    ) -> None
+  lines:
+  - 184
+  - 198
+  detail:
+    calls:
+    - session.upsert_run
+    - workflow._update_session_metrics
+    - workflow.save_session
+- name: asave_paused_session
+  sig: |-
+    asave_paused_session(
+        workflow: Any,
+        session: "WorkflowSession",
+        workflow_run_response: "WorkflowRunOutput",
+    ) -> None
+  is_async: true
+  lines:
+  - 201
+  - 218
+  detail:
+    calls:
+    - session.upsert_run
+    - workflow._has_async_db
+    - workflow._update_session_metrics
+    - workflow.asave_session
+    - workflow.save_session
+- name: finalize_workflow_completion
+  sig: |-
+    finalize_workflow_completion(
+        workflow_run_response: "WorkflowRunOutput",
+        state: ContinueExecutionState,
+    ) -> None
+  lines:
+  - 282
+  - 321
+  detail:
+    calls:
+    - cast
+    - getattr
+    - workflow_run_response.metrics.stop_timer
+exports:
+- name: ContinueExecutionState
+  kind: type
+- name: StepPauseResult
+  kind: func
+- name: step_pause_status
+  kind: func
+- name: create_step_paused_event
+  kind: func
+- name: create_router_paused_event
+  kind: func
+- name: apply_pause_state
+  kind: func
+- name: save_paused_session
+  kind: func
+- name: asave_paused_session
+  kind: func
+- name: finalize_workflow_completion
+  kind: func

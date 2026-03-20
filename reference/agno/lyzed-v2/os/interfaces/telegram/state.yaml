@@ -1,0 +1,360 @@
+## Roska File Descriptor — telegram/state.py
+file: telegram/state.py
+lines: 320
+imports:
+- sym: asyncio
+- sym: time
+- sym: dataclasses.dataclass
+- sym: dataclasses.field
+- sym: typing.TYPE_CHECKING
+- sym: typing.Any
+- sym: typing.ClassVar
+- sym: typing.List
+- sym: typing.Literal
+- sym: typing.NamedTuple
+- sym: typing.Optional
+- sym: typing.Type
+- sym: typing.Union
+- sym: agno.db.base.AsyncBaseDb
+- sym: agno.db.base.BaseDb
+- sym: agno.db.base.SessionType
+- sym: agno.media.Audio
+- sym: agno.media.File
+- sym: agno.media.Image
+- sym: agno.media.Video
+- sym: agno.os.interfaces.telegram.formatting.escape_html
+- sym: agno.os.interfaces.telegram.formatting.markdown_to_telegram_html
+- sym: agno.os.interfaces.telegram.helpers.TG_MAX_MESSAGE_LENGTH
+- sym: agno.os.interfaces.telegram.helpers.send_message
+- sym: agno.session.agent.AgentSession
+- sym: agno.session.team.TeamSession
+- sym: agno.session.workflow.WorkflowSession
+- sym: agno.utils.log.log_info
+- sym: agno.utils.log.log_warning
+- sym: re as _re
+data:
+- name: _TAG_RE
+  type: Any
+  val: _re.compile(r"<[^>]+>")
+- name: TG_STREAM_EDIT_INTERVAL
+  type: float
+  val: '1.0'
+- name: EntityType
+  type: Any
+  val: Literal["agent", "team", "workflow"]
+- name: _SESSION_DISPATCH
+  type: dict
+  val: |-
+    {
+        "agent": (SessionType.AGENT, AgentSession, "agent_id"),
+        "team": (SessionType.TEAM, TeamSession, "team_id"),
+      ...
+types:
+- name: _SessionStoreConfig
+  kind: struct
+  vis: protected
+  bases:
+  - NamedTuple
+  fields:
+  - name: session_type
+    type: Any
+    default: SessionType
+  - name: session_cls
+    type: Any
+    default: Type[Any]
+  - name: id_field
+    type: Any
+    default: str
+  - name: db
+    type: Any
+    default: Any
+  - name: has_db
+    type: Any
+    default: bool
+  - name: is_async_db
+    type: Any
+    default: bool
+  lines:
+  - 42
+  - 48
+- name: StreamState
+  kind: struct
+  fields:
+  - name: bot
+    type: Any
+    default: bot
+  - name: chat_id
+    type: Any
+    default: chat_id
+  - name: reply_to
+    type: Any
+    default: reply_to
+  - name: message_thread_id
+    type: Any
+    default: message_thread_id
+  - name: entity_type
+    type: Any
+    default: EntityType
+  - name: error_message
+    type: Any
+    default: error_message
+  - name: sent_message_id
+    type: Any
+    default: Optional[int]
+  - name: accumulated_content
+    type: Any
+    default: str
+  - name: status_lines
+    type: Any
+    default: list[str]
+  - name: last_edit_time
+    type: Any
+    default: float
+  - name: final_run_output
+    type: Any
+    default: Optional[Union["RunOutput", "TeamRunOutput"]]
+  - name: workflow_final_content
+    type: Any
+    default: Optional[str]
+  - name: images
+    type: Any
+    default: list[Image]
+  - name: videos
+    type: Any
+    default: list[Video]
+  - name: audio
+    type: Any
+    default: list[Audio]
+  - name: files
+    type: Any
+    default: list[File]
+  methods:
+  - name: __init__
+    sig: |-
+      __init__(
+              self,
+              bot: "AsyncTeleBot",
+              chat_id: int,
+              reply_to: Optional[int],
+              message_thread_id: Optional[int],
+              entity_type: EntityType,
+              error_message: str,
+          )
+    lines:
+    - 144
+    - 172
+    detail: {}
+  - name: add_status
+    sig: 'add_status(self, line: str) -> None'
+    lines:
+    - 174
+    - 175
+    detail:
+      calls:
+      - self.status_lines.append
+  - name: replace_status
+    sig: 'replace_status(self, find: str, replace: str) -> bool'
+    lines:
+    - 177
+    - 182
+    detail:
+      calls:
+      - enumerate
+  - name: close_pending_statuses
+    sig: close_pending_statuses(self) -> None
+    lines:
+    - 184
+    - 187
+    detail:
+      calls:
+      - enumerate
+      - line.endswith
+      - line.removesuffix
+  - name: collect_media
+    sig: 'collect_media(self, chunk: Any) -> None'
+    lines:
+    - 189
+    - 203
+    detail:
+      calls:
+      - getattr
+      - self.audio.append
+      - self.files.append
+      - self.images.append
+      - self.videos.append
+  - name: build_display_html
+    sig: build_display_html(self) -> str
+    lines:
+    - 205
+    - 212
+    detail:
+      calls:
+      - '"\n".join'
+      - escape_html
+      - markdown_to_telegram_html
+      - parts.append
+  - name: _send_new
+    sig: '_send_new(self, html: str) -> Any'
+    is_async: true
+    vis: protected
+    lines:
+    - 214
+    - 221
+    detail:
+      calls:
+      - self.bot.send_message
+  - name: _edit
+    sig: '_edit(self, html: str) -> None'
+    is_async: true
+    vis: protected
+    lines:
+    - 223
+    - 228
+    detail:
+      calls:
+      - log_warning
+      - self.bot.edit_message_text
+      - str
+  - name: _send_chunks
+    sig: '_send_chunks(self, content: str) -> None'
+    is_async: true
+    vis: protected
+    lines:
+    - 230
+    - 237
+    detail:
+      calls:
+      - send_message
+  - name: _truncate_html
+    sig: '_truncate_html(html: str, max_len: int = TG_MAX_MESSAGE_LENGTH) -> str'
+    vis: protected
+    decorators:
+    - staticmethod
+    lines:
+    - 240
+    - 250
+    detail:
+      calls:
+      - _TAG_RE.finditer
+      - len
+      - m.end
+      - m.start
+  - name: send_or_edit
+    sig: 'send_or_edit(self, html: str) -> None'
+    is_async: true
+    lines:
+    - 252
+    - 261
+    detail:
+      calls:
+      - html.strip
+      - self._edit
+      - self._send_new
+      - self._truncate_html
+      - time.monotonic
+  - name: update_display
+    sig: update_display(self) -> None
+    is_async: true
+    lines:
+    - 263
+    - 267
+    detail:
+      calls:
+      - log_warning
+      - self.build_display_html
+      - self.send_or_edit
+  - name: finalize
+    sig: finalize(self) -> None
+    is_async: true
+    lines:
+    - 269
+    - 279
+    detail:
+      calls:
+      - log_warning
+      - self._finalize_inner
+      - self._finalize_plaintext
+      - self.build_display_html
+      - self.close_pending_statuses
+  - name: _finalize_inner
+    sig: '_finalize_inner(self, final_html: str) -> None'
+    is_async: true
+    vis: protected
+    lines:
+    - 281
+    - 298
+    detail:
+      calls:
+      - chr
+      - chr(10).join
+      - escape_html
+      - len
+      - self._edit
+      - self._send_chunks
+      - self._send_new
+      - self.bot.delete_message
+  - name: _finalize_plaintext
+    sig: _finalize_plaintext(self) -> None
+    is_async: true
+    vis: protected
+    lines:
+    - 300
+    - 320
+    detail:
+      calls:
+      - log_warning
+      - self.bot.delete_message
+      - send_message
+      - text.strip
+  lines:
+  - 143
+  - 320
+functions:
+- name: build_session_store_config
+  sig: 'build_session_store_config(entity: object, entity_type: str) -> _SessionStoreConfig'
+  lines:
+  - 51
+  - 61
+  detail:
+    calls:
+    - _SessionStoreConfig
+    - getattr
+    - isinstance
+- name: find_latest_session_id
+  sig: |-
+    find_latest_session_id(
+        cfg: _SessionStoreConfig, user_id: Optional[str], entity_id: Optional[str], session_scope: Optional[str] = None
+    ) -> Optional[str]
+  is_async: true
+  lines:
+  - 64
+  - 93
+  detail:
+    calls:
+    - asyncio.to_thread
+    - cfg.db.get_sessions
+    - dict
+    - getattr
+    - isinstance
+    - row.get
+    - sid.startswith
+- name: BotState
+  sig: ''
+  decorators:
+  - dataclass
+  lines:
+  - 96
+  - 140
+exports:
+- name: StreamState
+  kind: type
+- name: build_session_store_config
+  kind: func
+- name: find_latest_session_id
+  kind: func
+- name: BotState
+  kind: func
+- name: TG_STREAM_EDIT_INTERVAL
+  kind: data
+- name: EntityType
+  kind: data

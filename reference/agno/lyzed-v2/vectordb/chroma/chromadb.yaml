@@ -1,0 +1,730 @@
+## Roska File Descriptor — chroma/chromadb.py
+file: chroma/chromadb.py
+lines: 1414
+imports:
+- sym: asyncio
+- sym: json
+- sym: collections.defaultdict
+- sym: concurrent.futures.ThreadPoolExecutor
+- sym: hashlib.md5
+- sym: typing.Any
+- sym: typing.Dict
+- sym: typing.List
+- sym: typing.Mapping
+- sym: typing.Optional
+- sym: typing.Tuple
+- sym: typing.Union
+- sym: typing.cast
+- sym: agno.filters.FilterExpr
+- sym: agno.knowledge.document.Document
+- sym: agno.knowledge.embedder.Embedder
+- sym: agno.knowledge.reranker.base.Reranker
+- sym: agno.utils.log.log_debug
+- sym: agno.utils.log.log_error
+- sym: agno.utils.log.log_info
+- sym: agno.utils.log.log_warning
+- sym: agno.utils.log.logger
+- sym: agno.vectordb.base.VectorDb
+- sym: agno.vectordb.distance.Distance
+- sym: agno.vectordb.search.SearchType
+types:
+- name: ChromaDb
+  kind: struct
+  ctx: 'ChromaDb class for managing vector operations with ChromaDB. Args: collection: The name of the ChromaDB collection. If not provided, derived from ''name''. name: Name of the vector database. Also used as collection name if ''collection'' is not provided. description: Description of the vector database. id: Unique identifier for this vector database instance. embedder: The embedder to use when embedding the document contents. distance: The distance metric to use when searching for documents. path: The path to store the ChromaDB data (for persistent client). persistent_client: Whether to use a persistent client. search_type: The search type to use when searching for documents. - SearchType.vector: Pure vector similarity search (default) - SearchType.keyword: Keyword-based search using document content - SearchType.hybrid: Combines vector + FTS with Reciprocal Rank Fusion hybrid_rrf_k: RRF (Reciprocal Rank Fusion) constant for hybrid search. Controls ranking smoothness - higher values give more weight to lower-ranked results, lower values make top results more dominant. Default is 60 (per original RRF paper by Cormack et al.). reranker: The reranker to use when reranking documents. **kwargs: Additional arguments to pass to the ChromaDB client.'
+  bases:
+  - VectorDb
+  fields:
+  - name: collection_name
+    type: Any
+    default: str
+  - name: embedder
+    type: Any
+    default: Embedder
+  - name: distance
+    type: Any
+    default: Distance
+  - name: _client
+    type: Any
+    default: Optional[ClientAPI]
+  - name: _collection
+    type: Any
+    default: Optional[Collection]
+  - name: persistent_client
+    type: Any
+    default: bool
+  - name: path
+    type: Any
+    default: str
+  - name: search_type
+    type: Any
+    default: SearchType
+  - name: hybrid_rrf_k
+    type: Any
+    default: int
+  - name: reranker
+    type: Any
+    default: Optional[Reranker]
+  - name: kwargs
+    type: Any
+    default: kwargs
+  methods:
+  - name: __init__
+    sig: |-
+      __init__(
+              self,
+              collection: Optional[str] = None,
+              name: Optional[str] = None,
+              description: Optional[str] = None,
+              id: Optional[str] = None,
+              embedder: Optional[Embedder] = None,
+              distance: Distance = Distance.cosine,
+              path: str = "tmp/chromadb",
+              persistent_client: bool = False,
+              search_type: SearchType = SearchType.vector,
+              hybrid_rrf_k: int = 60,
+              reranker: Optional[Reranker] = None,
+              **kwargs,
+          )
+    lines:
+    - 80
+    - 143
+    detail:
+      calls:
+      - OpenAIEmbedder
+      - ValueError
+      - generate_id
+      - log_debug
+      - name.lower
+      - name.lower().replace
+      - super
+      - super().__init__
+  - name: _flatten_metadata
+    sig: '_flatten_metadata(self, metadata: Dict[str, Any]) -> Dict[str, Union[str, int, float, bool]]'
+    vis: protected
+    lines:
+    - 145
+    - 181
+    detail:
+      calls:
+      - _flatten_recursive
+  - name: client
+    sig: client(self) -> ClientAPI
+    decorators:
+    - property
+    lines:
+    - 184
+    - 197
+    detail:
+      calls:
+      - ChromaDbClient
+      - PersistentChromaDbClient
+      - log_debug
+  - name: create
+    sig: create(self) -> None
+    lines:
+    - 199
+    - 208
+    detail:
+      calls:
+      - log_debug
+      - self.client.create_collection
+      - self.client.get_collection
+      - self.exists
+  - name: async_create
+    sig: async_create(self) -> None
+    is_async: true
+    lines:
+    - 210
+    - 212
+    detail:
+      calls:
+      - asyncio.to_thread
+  - name: name_exists
+    sig: 'name_exists(self, name: str) -> bool'
+    lines:
+    - 214
+    - 230
+    detail:
+      calls:
+      - cast
+      - collection.get
+      - len
+      - logger.error
+      - logger.warning
+      - result.get
+      - self.client.get_collection
+  - name: async_name_exists
+    sig: 'async_name_exists(self, name: str) -> bool'
+    is_async: true
+    lines:
+    - 232
+    - 234
+    detail:
+      calls:
+      - asyncio.to_thread
+  - name: insert
+    sig: 'insert(self, content_hash: str, documents: List[Document], filters: Optional[Dict[str, Any]] = None) -> None'
+    lines:
+    - 236
+    - 295
+    detail:
+      calls:
+      - cleaned_content.encode
+      - docs.append
+      - docs_embeddings.append
+      - docs_metadata.append
+      - document.content.replace
+      - document.embed
+      - f"{base_id}_{content_hash}".encode
+      - f"{doc_id}_{id_counts[doc_id]}".encode
+      - ids.append
+      - len
+      - log_debug
+      - log_info
+      - logger.warning
+      - md5
+      - md5(cleaned_content.encode()).hexdigest
+      - md5(f"{base_id}_{content_hash}".encode()).hexdigest
+      - md5(f"{doc_id}_{id_counts[doc_id]}".encode()).hexdigest
+      - metadata.update
+      - self._collection.add
+      - self._flatten_metadata
+      - self.client.get_collection
+  - name: async_insert
+    sig: |-
+      async_insert(
+              self, content_hash: str, documents: List[Document], filters: Optional[Dict[str, Any]] = None
+          ) -> None
+    is_async: true
+    lines:
+    - 297
+    - 394
+    detail:
+      calls:
+      - any
+      - asyncio.gather
+      - cleaned_content.encode
+      - doc.async_embed
+      - docs.append
+      - docs_embeddings.append
+      - docs_metadata.append
+      - document.async_embed
+      - document.content.replace
+      - enumerate
+      - f"{base_id}_{content_hash}".encode
+      - f"{doc_id}_{id_counts[doc_id]}".encode
+      - hasattr
+      - ids.append
+      - len
+      - log_debug
+      - log_info
+      - logger.error
+      - logger.warning
+      - md5
+      - md5(cleaned_content.encode()).hexdigest
+      - md5(f"{base_id}_{content_hash}".encode()).hexdigest
+      - md5(f"{doc_id}_{id_counts[doc_id]}".encode()).hexdigest
+      - metadata.update
+      - self._collection.add
+      - self._flatten_metadata
+      - self.client.get_collection
+      - self.embedder.async_get_embeddings_batch_and_usage
+      - str
+      - str(e).lower
+  - name: upsert_available
+    sig: upsert_available(self) -> bool
+    lines:
+    - 396
+    - 398
+    detail: {}
+  - name: upsert
+    sig: 'upsert(self, content_hash: str, documents: List[Document], filters: Optional[Dict[str, Any]] = None) -> None'
+    lines:
+    - 400
+    - 413
+    detail:
+      calls:
+      - logger.error
+      - self._delete_by_content_hash
+      - self._upsert
+      - self.content_hash_exists
+  - name: _upsert
+    sig: '_upsert(self, content_hash: str, documents: List[Document], filters: Optional[Dict[str, Any]] = None) -> None'
+    vis: protected
+    lines:
+    - 415
+    - 474
+    detail:
+      calls:
+      - cleaned_content.encode
+      - docs.append
+      - docs_embeddings.append
+      - docs_metadata.append
+      - document.content.replace
+      - document.embed
+      - f"{base_id}_{content_hash}".encode
+      - f"{doc_id}_{id_counts[doc_id]}".encode
+      - ids.append
+      - len
+      - log_debug
+      - log_info
+      - logger.warning
+      - md5
+      - md5(cleaned_content.encode()).hexdigest
+      - md5(f"{base_id}_{content_hash}".encode()).hexdigest
+      - md5(f"{doc_id}_{id_counts[doc_id]}".encode()).hexdigest
+      - metadata.update
+      - self._collection.upsert
+      - self._flatten_metadata
+      - self.client.get_collection
+  - name: _async_upsert
+    sig: |-
+      _async_upsert(
+              self, content_hash: str, documents: List[Document], filters: Optional[Dict[str, Any]] = None
+          ) -> None
+    is_async: true
+    vis: protected
+    lines:
+    - 476
+    - 575
+    detail:
+      calls:
+      - any
+      - asyncio.gather
+      - cleaned_content.encode
+      - doc.async_embed
+      - docs.append
+      - docs_embeddings.append
+      - docs_metadata.append
+      - document.async_embed
+      - document.content.replace
+      - enumerate
+      - f"{base_id}_{content_hash}".encode
+      - f"{doc_id}_{id_counts[doc_id]}".encode
+      - hasattr
+      - ids.append
+      - len
+      - log_debug
+      - log_info
+      - logger.error
+      - logger.warning
+      - md5
+      - md5(cleaned_content.encode()).hexdigest
+      - md5(f"{base_id}_{content_hash}".encode()).hexdigest
+      - md5(f"{doc_id}_{id_counts[doc_id]}".encode()).hexdigest
+      - metadata.update
+      - self._collection.upsert
+      - self._flatten_metadata
+      - self.client.get_collection
+      - self.embedder.async_get_embeddings_batch_and_usage
+      - str
+      - str(e).lower
+  - name: async_upsert
+    sig: |-
+      async_upsert(
+              self, content_hash: str, documents: List[Document], filters: Optional[Dict[str, Any]] = None
+          ) -> None
+    is_async: true
+    lines:
+    - 577
+    - 587
+    detail:
+      calls:
+      - logger.error
+      - self._async_upsert
+      - self._delete_by_content_hash
+      - self.content_hash_exists
+  - name: search
+    sig: |-
+      search(
+              self, query: str, limit: int = 5, filters: Optional[Union[Dict[str, Any], List[FilterExpr]]] = None
+          ) -> List[Document]
+    lines:
+    - 589
+    - 631
+    detail:
+      calls:
+      - isinstance
+      - len
+      - log_info
+      - log_warning
+      - logger.error
+      - self._hybrid_search
+      - self._keyword_search
+      - self._vector_search
+      - self.client.get_collection
+      - self.reranker.rerank
+  - name: _vector_search
+    sig: '_vector_search(self, query: str, limit: int = 5, filters: Optional[Dict[str, Any]] = None) -> List[Document]'
+    vis: protected
+    lines:
+    - 633
+    - 662
+    detail:
+      calls:
+      - logger.error
+      - self._build_search_results
+      - self._collection.query
+      - self._convert_filters
+      - self.client.get_collection
+      - self.embedder.get_embedding
+  - name: _keyword_search
+    sig: '_keyword_search(self, query: str, limit: int = 5, filters: Optional[Dict[str, Any]] = None) -> List[Document]'
+    vis: protected
+    lines:
+    - 664
+    - 704
+    detail:
+      calls:
+      - cast
+      - logger.error
+      - query.split
+      - self._build_get_results
+      - self._collection.get
+      - self._convert_filters
+      - self.client.get_collection
+  - name: _hybrid_search
+    sig: '_hybrid_search(self, query: str, limit: int = 5, filters: Optional[Dict[str, Any]] = None) -> List[Document]'
+    vis: protected
+    lines:
+    - 706
+    - 889
+    detail:
+      calls:
+      - Document
+      - ThreadPoolExecutor
+      - callable
+      - cast
+      - cast(Any, embed_data).tolist
+      - dict
+      - doc_metadata.pop
+      - enumerate
+      - executor.submit
+      - float
+      - fts_future.result
+      - full_results.get
+      - getattr
+      - hasattr
+      - isinstance
+      - len
+      - list
+      - log_error
+      - logger.error
+      - min
+      - reciprocal_rank_fusion
+      - rrf_scores.get
+      - search_results.append
+      - self._collection.get
+      - self._convert_filters
+      - self.client.get_collection
+      - self.embedder.get_embedding
+      - str
+      - vector_future.result
+  - name: _build_search_results
+    sig: '_build_search_results(self, result: QueryResult) -> List[Document]'
+    vis: protected
+    lines:
+    - 891
+    - 984
+    detail:
+      calls:
+      - Document
+      - callable
+      - cast
+      - cast(Any, e).tolist
+      - dict
+      - doc_metadata.pop
+      - embeddings.append
+      - enumerate
+      - float
+      - getattr
+      - hasattr
+      - isinstance
+      - len
+      - list
+      - log_error
+      - result.get
+      - search_results.append
+      - str
+      - zip
+  - name: _build_get_results
+    sig: '_build_get_results(self, result: Dict[str, Any], query: str = "") -> List[Document]'
+    vis: protected
+    lines:
+    - 986
+    - 1071
+    detail:
+      calls:
+      - Document
+      - callable
+      - cast
+      - cast(Any, e).tolist
+      - dict
+      - doc_metadata.pop
+      - document.lower
+      - document.lower().split
+      - embeddings.append
+      - enumerate
+      - float
+      - getattr
+      - hasattr
+      - isinstance
+      - len
+      - list
+      - log_error
+      - max
+      - query.lower
+      - query.lower().split
+      - result.get
+      - search_results.append
+      - set
+      - str
+  - name: _convert_filters
+    sig: '_convert_filters(self, filters: Dict[str, Any]) -> Dict[str, Any]'
+    vis: protected
+    lines:
+    - 1073
+    - 1096
+    detail:
+      calls:
+      - any
+      - filters.items
+      - filters.keys
+      - isinstance
+      - key.startswith
+      - list
+  - name: async_search
+    sig: |-
+      async_search(
+              self, query: str, limit: int = 5, filters: Optional[Union[Dict[str, Any], List[FilterExpr]]] = None
+          ) -> List[Document]
+    is_async: true
+    lines:
+    - 1098
+    - 1102
+    detail:
+      calls:
+      - asyncio.to_thread
+  - name: drop
+    sig: drop(self) -> None
+    lines:
+    - 1104
+    - 1108
+    detail:
+      calls:
+      - log_debug
+      - self.client.delete_collection
+      - self.exists
+  - name: async_drop
+    sig: async_drop(self) -> None
+    is_async: true
+    lines:
+    - 1110
+    - 1112
+    detail:
+      calls:
+      - asyncio.to_thread
+  - name: exists
+    sig: exists(self) -> bool
+    lines:
+    - 1114
+    - 1121
+    detail:
+      calls:
+      - log_debug
+      - self.client.get_collection
+  - name: async_exists
+    sig: async_exists(self) -> bool
+    is_async: true
+    lines:
+    - 1123
+    - 1125
+    detail:
+      calls:
+      - asyncio.to_thread
+  - name: get_count
+    sig: get_count(self) -> int
+    lines:
+    - 1127
+    - 1135
+    detail:
+      calls:
+      - collection.count
+      - logger.error
+      - self.client.get_collection
+      - self.exists
+  - name: optimize
+    sig: optimize(self) -> None
+    lines:
+    - 1137
+    - 1138
+    detail: {}
+  - name: delete
+    sig: delete(self) -> bool
+    lines:
+    - 1140
+    - 1146
+    detail:
+      calls:
+      - logger.error
+      - self.client.delete_collection
+  - name: delete_by_id
+    sig: 'delete_by_id(self, id: str) -> bool'
+    lines:
+    - 1148
+    - 1168
+    detail:
+      calls:
+      - collection.delete
+      - log_info
+      - logger.error
+      - self.client.get_collection
+      - self.id_exists
+  - name: delete_by_name
+    sig: 'delete_by_name(self, name: str) -> bool'
+    lines:
+    - 1170
+    - 1193
+    detail:
+      calls:
+      - cast
+      - collection.delete
+      - collection.get
+      - len
+      - log_info
+      - logger.error
+      - result.get
+      - self.client.get_collection
+  - name: delete_by_metadata
+    sig: 'delete_by_metadata(self, metadata: Dict[str, Any]) -> bool'
+    lines:
+    - 1195
+    - 1223
+    detail:
+      calls:
+      - cast
+      - collection.delete
+      - collection.get
+      - len
+      - log_info
+      - logger.error
+      - metadata.items
+      - result.get
+      - self.client.get_collection
+  - name: delete_by_content_id
+    sig: 'delete_by_content_id(self, content_id: str) -> bool'
+    lines:
+    - 1225
+    - 1248
+    detail:
+      calls:
+      - cast
+      - collection.delete
+      - collection.get
+      - len
+      - log_info
+      - logger.error
+      - result.get
+      - self.client.get_collection
+  - name: _delete_by_content_hash
+    sig: '_delete_by_content_hash(self, content_hash: str) -> bool'
+    vis: protected
+    lines:
+    - 1250
+    - 1273
+    detail:
+      calls:
+      - cast
+      - collection.delete
+      - collection.get
+      - len
+      - log_info
+      - logger.error
+      - result.get
+      - self.client.get_collection
+  - name: id_exists
+    sig: 'id_exists(self, id: str) -> bool'
+    lines:
+    - 1275
+    - 1298
+    detail:
+      calls:
+      - collection.get
+      - len
+      - logger.error
+      - result.get
+      - self.client.get_collection
+  - name: content_hash_exists
+    sig: 'content_hash_exists(self, content_hash: str) -> bool'
+    lines:
+    - 1300
+    - 1342
+    detail:
+      calls:
+      - callable
+      - cast
+      - collection.get
+      - hasattr
+      - isinstance
+      - len
+      - logger.error
+      - logger.warning
+      - result.get
+      - self.client.get_collection
+      - str
+  - name: update_metadata
+    sig: 'update_metadata(self, content_id: str, metadata: Dict[str, Any]) -> None'
+    lines:
+    - 1344
+    - 1410
+    detail:
+      calls:
+      - callable
+      - cast
+      - collection.get
+      - collection.update
+      - dict
+      - enumerate
+      - hasattr
+      - len
+      - log_debug
+      - log_error
+      - log_warning
+      - logger.error
+      - m.items
+      - meta_dict.update
+      - result.get
+      - self._flatten_metadata
+      - self.client.get_collection
+      - str
+      - updated_metadatas.append
+  - name: get_supported_search_types
+    sig: get_supported_search_types(self) -> List[str]
+    lines:
+    - 1412
+    - 1414
+    detail: {}
+  lines:
+  - 55
+  - 1414
+functions:
+- name: reciprocal_rank_fusion
+  sig: |-
+    reciprocal_rank_fusion(
+        ranked_lists: List[List[Tuple[str, float]]],
+        k: int = 60,
+    ) -> List[Tuple[str, float]]
+  lines:
+  - 28
+  - 52
+  detail:
+    calls:
+    - defaultdict
+    - enumerate
+    - rrf_scores.items
+    - sorted
+exports:
+- name: ChromaDb
+  kind: type
+- name: reciprocal_rank_fusion
+  kind: func

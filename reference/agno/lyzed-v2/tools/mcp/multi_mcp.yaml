@@ -1,0 +1,395 @@
+## Roska File Descriptor — mcp/multi_mcp.py
+file: mcp/multi_mcp.py
+lines: 638
+imports:
+- sym: asyncio
+- sym: inspect
+- sym: time
+- sym: warnings
+- sym: weakref
+- sym: contextlib.AsyncExitStack
+- sym: dataclasses.asdict
+- sym: datetime.timedelta
+- sym: types.TracebackType
+- sym: typing.TYPE_CHECKING
+- sym: typing.Any
+- sym: typing.Callable
+- sym: typing.Dict
+- sym: typing.List
+- sym: typing.Literal
+- sym: typing.Optional
+- sym: typing.Tuple
+- sym: typing.Union
+- sym: agno.tools.Toolkit
+- sym: agno.tools.function.Function
+- sym: agno.tools.mcp.params.SSEClientParams
+- sym: agno.tools.mcp.params.StreamableHTTPClientParams
+- sym: agno.utils.log.log_debug
+- sym: agno.utils.log.log_error
+- sym: agno.utils.log.log_info
+- sym: agno.utils.log.log_warning
+- sym: agno.utils.mcp.get_entrypoint_for_tool
+- sym: agno.utils.mcp.prepare_command
+types:
+- name: MultiMCPTools
+  kind: struct
+  ctx: 'A toolkit for integrating multiple Model Context Protocol (MCP) servers with Agno agents. This allows agents to access tools, resources, and prompts exposed by MCP servers. Can be used in three ways: 1. Direct initialization with a ClientSession 2. As an async context manager with StdioServerParameters 3. As an async context manager with SSE or Streamable HTTP endpoints'
+  bases:
+  - Toolkit
+  fields:
+  - name: include_tools
+    type: Any
+    default: include_tools
+  - name: exclude_tools
+    type: Any
+    default: exclude_tools
+  - name: refresh_connection
+    type: Any
+    default: refresh_connection
+  - name: header_provider
+    type: Any
+    default: header_provider
+  - name: server_params_list
+    type: Any
+    default: List[Union[SSEClientParams, StdioServerParameters, StreamableHTTPClientParams]]
+  - name: timeout_seconds
+    type: Any
+    default: timeout_seconds
+  - name: commands
+    type: Any
+    default: Optional[List[str]]
+  - name: urls
+    type: Any
+    default: Optional[List[str]]
+  - name: _async_exit_stack
+    type: Any
+    default: AsyncExitStack()
+  - name: _client
+    type: Any
+    default: client
+  - name: _initialized
+    type: bool
+    default: 'False'
+  - name: _connection_task
+    type: None
+    default: None
+  - name: _successful_connections
+    type: int
+    default: '0'
+  - name: _sessions
+    type: Any
+    default: list[ClientSession]
+  - name: _session_to_server_idx
+    type: Any
+    default: Dict[int, int]
+  - name: _run_sessions
+    type: Any
+    default: Dict[Tuple[str, int], Tuple[ClientSession, float]]
+  - name: _run_session_contexts
+    type: Any
+    default: Dict[Tuple[str, int], Any]
+  - name: _session_ttl_seconds
+    type: Any
+    default: float
+  - name: _session_lock
+    type: Any
+    default: Optional[asyncio.Lock]
+  - name: allow_partial_failure
+    type: Any
+    default: allow_partial_failure
+  - name: _cleanup_finalizer
+    type: Any
+    default: weakref.finalize(self, cleanup)
+  methods:
+  - name: __init__
+    sig: |-
+      __init__(
+              self,
+              commands: Optional[List[str]] = None,
+              urls: Optional[List[str]] = None,
+              urls_transports: Optional[List[Literal["sse", "streamable-http"]]] = None,
+              *,
+              env: Optional[dict[str, str]] = None,
+              server_params_list: Optional[
+                  list[Union[SSEClientParams, StdioServerParameters, StreamableHTTPClientParams]]
+              ] = None,
+              timeout_seconds: int = 10,
+              client=None,
+              include_tools: Optional[list[str]] = None,
+              exclude_tools: Optional[list[str]] = None,
+              refresh_connection: bool = False,
+              allow_partial_failure: bool = False,
+              header_provider: Optional[Callable[..., dict[str, Any]]] = None,
+              **kwargs,
+          )
+    lines:
+    - 43
+    - 178
+    detail:
+      calls:
+      - AsyncExitStack
+      - SSEClientParams
+      - StdioServerParameters
+      - StreamableHTTPClientParams
+      - ValueError
+      - get_default_environment
+      - inspect.signature
+      - len
+      - log_info
+      - log_warning
+      - prepare_command
+      - self.server_params_list.append
+      - super
+      - super().__init__
+      - warnings.warn
+      - weakref.finalize
+      - zip
+  - name: initialized
+    sig: initialized(self) -> bool
+    decorators:
+    - property
+    lines:
+    - 181
+    - 182
+    detail: {}
+  - name: _session_creation_lock
+    sig: _session_creation_lock(self) -> asyncio.Lock
+    vis: protected
+    decorators:
+    - property
+    lines:
+    - 185
+    - 189
+    detail:
+      calls:
+      - asyncio.Lock
+  - name: is_alive
+    sig: is_alive(self) -> bool
+    is_async: true
+    lines:
+    - 191
+    - 197
+    detail:
+      calls:
+      - session.send_ping
+  - name: _call_header_provider
+    sig: |-
+      _call_header_provider(
+              self,
+              run_context: Optional["RunContext"] = None,
+              agent: Optional["Agent"] = None,
+              team: Optional["Team"] = None,
+          ) -> dict[str, Any]
+    vis: protected
+    lines:
+    - 199
+    - 257
+    detail:
+      calls:
+      - any
+      - getattr
+      - header_provider
+      - inspect.signature
+      - log_warning
+      - set
+      - sig.parameters.keys
+      - sig.parameters.values
+  - name: _cleanup_stale_sessions
+    sig: _cleanup_stale_sessions(self) -> None
+    is_async: true
+    vis: protected
+    lines:
+    - 259
+    - 273
+    detail:
+      calls:
+      - log_debug
+      - self._run_sessions.items
+      - self.cleanup_run_session
+      - time.time
+  - name: get_session_for_run
+    sig: |-
+      get_session_for_run(
+              self,
+              run_context: Optional["RunContext"] = None,
+              server_idx: int = 0,
+              agent: Optional["Agent"] = None,
+              team: Optional["Team"] = None,
+          ) -> ClientSession
+    is_async: true
+    lines:
+    - 275
+    - 395
+    detail:
+      calls:
+      - ClientSession
+      - ValueError
+      - asdict
+      - context.__aenter__
+      - context.__aexit__
+      - int
+      - isinstance
+      - len
+      - log_debug
+      - log_warning
+      - min
+      - params_dict.get
+      - params_timeout.total_seconds
+      - self._call_header_provider
+      - self.cleanup_run_session
+      - session.initialize
+      - session_context.__aenter__
+      - session_context.__aexit__
+      - sse_client
+      - streamablehttp_client
+      - time.time
+      - timedelta
+  - name: cleanup_run_session
+    sig: 'cleanup_run_session(self, run_id: str, server_idx: int) -> None'
+    is_async: true
+    lines:
+    - 397
+    - 423
+    detail:
+      calls:
+      - context.__aexit__
+      - self._run_session_contexts.pop
+      - self._run_sessions.pop
+      - session_context.__aexit__
+  - name: connect
+    sig: 'connect(self, force: bool = False)'
+    is_async: true
+    lines:
+    - 425
+    - 441
+    detail:
+      calls:
+      - log_error
+      - self._connect
+      - str
+  - name: create_and_connect
+    sig: |-
+      create_and_connect(
+              cls,
+              commands: Optional[List[str]] = None,
+              urls: Optional[List[str]] = None,
+              urls_transports: Optional[List[Literal["sse", "streamable-http"]]] = None,
+              *,
+              env: Optional[dict[str, str]] = None,
+              server_params_list: Optional[
+                  List[Union[SSEClientParams, StdioServerParameters, StreamableHTTPClientParams]]
+              ] = None,
+              timeout_seconds: int = 5,
+              client=None,
+              include_tools: Optional[list[str]] = None,
+              exclude_tools: Optional[list[str]] = None,
+              refresh_connection: bool = False,
+              **kwargs,
+          ) -> "MultiMCPTools"
+    is_async: true
+    decorators:
+    - classmethod
+    lines:
+    - 444
+    - 477
+    detail:
+      calls:
+      - cls
+      - instance._connect
+  - name: _connect
+    sig: _connect(self) -> None
+    is_async: true
+    vis: protected
+    lines:
+    - 479
+    - 533
+    detail:
+      calls:
+      - ClientSession
+      - ValueError
+      - asdict
+      - enumerate
+      - isinstance
+      - log_error
+      - self._async_exit_stack.enter_async_context
+      - self.build_tools
+      - self.initialize
+      - server_connection_errors.append
+      - sse_client
+      - stdio_client
+      - str
+      - streamablehttp_client
+      - timedelta
+  - name: close
+    sig: close(self) -> None
+    is_async: true
+    lines:
+    - 535
+    - 561
+    detail:
+      calls:
+      - list
+      - self._async_exit_stack.aclose
+      - self._run_sessions.keys
+      - self.cleanup_run_session
+      - warnings.catch_warnings
+      - warnings.filterwarnings
+  - name: __aenter__
+    sig: __aenter__(self) -> "MultiMCPTools"
+    is_async: true
+    lines:
+    - 563
+    - 569
+    detail:
+      calls:
+      - log_error
+      - self._connect
+      - str
+  - name: __aexit__
+    sig: |-
+      __aexit__(
+              self,
+              exc_type: Union[type[BaseException], None],
+              exc_val: Union[BaseException, None],
+              exc_tb: Union[TracebackType, None],
+          )
+    is_async: true
+    lines:
+    - 571
+    - 580
+    detail:
+      calls:
+      - self._async_exit_stack.aclose
+  - name: build_tools
+    sig: build_tools(self) -> None
+    is_async: true
+    lines:
+    - 582
+    - 621
+    detail:
+      calls:
+      - Function
+      - enumerate
+      - filtered_tools.append
+      - get_entrypoint_for_tool
+      - log_debug
+      - log_error
+      - session.list_tools
+  - name: initialize
+    sig: 'initialize(self, session: ClientSession, server_idx: int = 0) -> None'
+    is_async: true
+    lines:
+    - 623
+    - 638
+    detail:
+      calls:
+      - len
+      - log_error
+      - self._sessions.append
+      - session.initialize
+  lines:
+  - 32
+  - 638
+exports:
+- name: MultiMCPTools
+  kind: type

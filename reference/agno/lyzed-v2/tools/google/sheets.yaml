@@ -1,0 +1,226 @@
+## Roska File Descriptor — google/sheets.py
+file: google/sheets.py
+lines: 393
+purpose: 'Google Sheets Toolset for interacting with Sheets API Required Environment Variables: ----------------------------- - GOOGLE_CLIENT_ID: Google OAuth client ID - GOOGLE_CLIENT_SECRET: Google OAuth client secret - GOOGLE_PROJECT_ID: Google Cloud project ID - GOOGLE_REDIRECT_URI: Google OAuth redirect URI (default: http://localhost) How to Get These Credentials: --------------------------- 1. Go to Google Cloud Console (https://console.cloud.google.com) 2. Create a new project or select an existing one 3. Enable the Google Sheets API: - Go to "APIs & Services" > "Enable APIs and Services" - Search for "Google Sheets API" - Click "Enable" 4. Create OAuth 2.0 credentials: - Go to "APIs & Services" > "Credentials" - Click "Create Credentials" > "OAuth client ID" - Go through the OAuth consent screen setup - Give it a name and click "Create" - You''ll receive: * Client ID (GOOGLE_CLIENT_ID) * Client Secret (GOOGLE_CLIENT_SECRET) - The Project ID (GOOGLE_PROJECT_ID) is visible in the project dropdown at the top of the page 5. Set up environment variables: Create a .envrc file in your project root with: ``` export GOOGLE_CLIENT_ID=your_client_id_here export GOOGLE_CLIENT_SECRET=your_client_secret_here export GOOGLE_PROJECT_ID=your_project_id_here export GOOGLE_REDIRECT_URI=http://localhost  # Default value ``` Alternatively, follow the instructions in the Google Sheets API Quickstart guide: 1: Steps: https://developers.google.com/sheets/api/quickstart/python 2: Save the credentials.json file to the root of the project or update the path in the GoogleSheetsTools class Note: The first time you run the application, it will open a browser window for OAuth authentication. A token.json file will be created to store the authentication credentials for future use.'
+imports:
+- sym: json
+- sym: functools.wraps
+- sym: os.getenv
+- sym: pathlib.Path
+- sym: typing.Any
+- sym: typing.List
+- sym: typing.Optional
+- sym: typing.Union
+- sym: agno.tools.Toolkit
+types:
+- name: GoogleSheetsTools
+  kind: struct
+  bases:
+  - Toolkit
+  fields:
+  - name: DEFAULT_SCOPES
+    type: dict
+    default: |-
+      {
+              "read": "https://www.googleapis.com/auth/spreadsheets.readonly",
+              "write": "https://www.googleapis.com/auth/spreadsheets",
+          }
+  - name: service
+    type: Any
+    default: Optional[Resource]
+  - name: spreadsheet_id
+    type: Any
+    default: spreadsheet_id
+  - name: spreadsheet_range
+    type: Any
+    default: spreadsheet_range
+  - name: creds
+    type: Any
+    default: creds
+  - name: credentials_path
+    type: Any
+    default: creds_path
+  - name: token_path
+    type: Any
+    default: token_path
+  - name: oauth_port
+    type: Any
+    default: oauth_port
+  - name: service_account_path
+    type: Any
+    default: service_account_path
+  - name: scopes
+    type: list
+    default: '[]'
+  methods:
+  - name: __init__
+    sig: |-
+      __init__(
+              self,
+              scopes: Optional[List[str]] = None,
+              spreadsheet_id: Optional[str] = None,
+              spreadsheet_range: Optional[str] = None,
+              creds: Optional[Union[Credentials, ServiceAccountCredentials]] = None,
+              creds_path: Optional[str] = None,
+              token_path: Optional[str] = None,
+              service_account_path: Optional[str] = None,
+              oauth_port: int = 0,
+              read_sheet: bool = True,
+              create_sheet: bool = False,
+              update_sheet: bool = False,
+              create_duplicate_sheet: bool = False,
+              # Backward compat aliases (deprecated)
+              enable_read_sheet: Optional[bool] = None,
+              enable_create_sheet: Optional[bool] = None,
+              enable_update_sheet: Optional[bool] = None,
+              enable_create_duplicate_sheet: Optional[bool] = None,
+              all: bool = False,
+              **kwargs,
+          )
+    lines:
+    - 90
+    - 185
+    detail:
+      calls:
+      - ValueError
+      - dict.fromkeys
+      - list
+      - self.scopes.append
+      - super
+      - super().__init__
+      - tools.append
+  - name: _auth
+    sig: _auth(self) -> None
+    vis: protected
+    lines:
+    - 187
+    - 233
+    detail:
+      calls:
+      - Credentials.from_authorized_user_file
+      - InstalledAppFlow.from_client_config
+      - InstalledAppFlow.from_client_secrets_file
+      - Path
+      - Request
+      - ServiceAccountCredentials.from_service_account_file
+      - creds_file.exists
+      - flow.run_local_server
+      - getenv
+      - self.creds.refresh
+      - self.creds.to_json
+      - str
+      - token_file.exists
+      - token_file.write_text
+  - name: read_sheet
+    sig: 'read_sheet(self, spreadsheet_id: Optional[str] = None, spreadsheet_range: Optional[str] = None) -> str'
+    decorators:
+    - authenticate
+    lines:
+    - 236
+    - 262
+    detail:
+      calls:
+      - json.dumps
+      - result.get
+      - self.service.spreadsheets
+      - self.service.spreadsheets().values
+      - self.service.spreadsheets().values().get
+      - self.service.spreadsheets().values().get(spreadsheetId=sheet_id, range=sheet_range).execute
+  - name: create_sheet
+    sig: 'create_sheet(self, title: str) -> str'
+    decorators:
+    - authenticate
+    lines:
+    - 265
+    - 287
+    detail:
+      calls:
+      - self.service.spreadsheets
+      - self.service.spreadsheets().create
+      - self.service.spreadsheets().create(body=spreadsheet, fields="spreadsheetId").execute
+      - spreadsheet.get
+  - name: update_sheet
+    sig: |-
+      update_sheet(
+              self, data: List[List[Any]], spreadsheet_id: Optional[str] = None, range_name: Optional[str] = None
+          ) -> str
+    decorators:
+    - authenticate
+    lines:
+    - 290
+    - 324
+    detail:
+      calls:
+      - self.service.spreadsheets
+      - self.service.spreadsheets().values
+      - self.service.spreadsheets().values().update
+      - |-
+        self.service.spreadsheets().values().update(  # type: ignore
+                        spreadsheetId=spreadsheet_id,
+                        range=range_name,
+                        valueInputOption="RAW",
+                        body=body,
+                    ).execute
+  - name: create_duplicate_sheet
+    sig: |-
+      create_duplicate_sheet(
+              self, source_id: str, new_title: Optional[str] = None, copy_permissions: bool = True
+          ) -> str
+    decorators:
+    - authenticate
+    lines:
+    - 327
+    - 393
+    detail:
+      calls:
+      - build
+      - drive_service.files
+      - drive_service.files().copy
+      - drive_service.files().copy(fileId=source_id, body=body).execute
+      - drive_service.permissions
+      - |-
+        drive_service.permissions()
+                            .list
+      - |-
+        drive_service.permissions()
+                            .list(fileId=source_id, fields="permissions(emailAddress,role,type)")
+                            .execute
+      - |-
+        drive_service.permissions()
+                            .list(fileId=source_id, fields="permissions(emailAddress,role,type)")
+                            .execute()
+                            .get
+      - drive_service.permissions().create
+      - |-
+        drive_service.permissions().create(
+                                fileId=new_spreadsheet_id,
+                                body={
+                                    "role": permission.get("role"),
+                                    "type": permission.get("type"),
+                                    "emailAddress": permission.get("emailAddress"),
+                                },
+                            ).execute
+      - new_file.get
+      - permission.get
+      - self._auth
+      - self.scopes.append
+      - self.service.spreadsheets
+      - self.service.spreadsheets().get
+      - self.service.spreadsheets().get(spreadsheetId=source_id).execute
+  lines:
+  - 81
+  - 393
+functions:
+- name: authenticate
+  sig: authenticate(func)
+  lines:
+  - 67
+  - 78
+  detail:
+    calls:
+    - wraps
+exports:
+- name: GoogleSheetsTools
+  kind: type
+- name: authenticate
+  kind: func

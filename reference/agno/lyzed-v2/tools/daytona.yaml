@@ -1,0 +1,306 @@
+## Roska File Descriptor — tools/daytona.py
+file: tools/daytona.py
+lines: 475
+imports:
+- sym: json
+- sym: os.getenv
+- sym: pathlib.Path
+- sym: textwrap.dedent
+- sym: typing.Any
+- sym: typing.Dict
+- sym: typing.List
+- sym: typing.Optional
+- sym: typing.Union
+- sym: agno.agent.Agent
+- sym: agno.team.Team
+- sym: agno.tools.Toolkit
+- sym: agno.utils.code_execution.prepare_python_code
+- sym: agno.utils.log.log_debug
+- sym: agno.utils.log.log_error
+- sym: agno.utils.log.log_info
+- sym: agno.utils.log.log_warning
+data:
+- name: DEFAULT_INSTRUCTIONS
+  type: Any
+  val: |-
+    dedent(
+        """\
+        You have access to a persistent Daytona sandbox for code execution. The sandbox maintains state acr...
+types:
+- name: DaytonaTools
+  kind: struct
+  bases:
+  - Toolkit
+  fields:
+  - name: api_key
+    type: Any
+    default: api_key or getenv("DAYTONA_API_KEY")
+  - name: api_url
+    type: Any
+    default: api_url or getenv("DAYTONA_API_URL")
+  - name: sandbox_id
+    type: Any
+    default: sandbox_id
+  - name: sandbox_target
+    type: Any
+    default: sandbox_target
+  - name: organization_id
+    type: Any
+    default: organization_id
+  - name: sandbox_language
+    type: Any
+    default: sandbox_language or CodeLanguage.PYTHON
+  - name: sandbox_os
+    type: Any
+    default: sandbox_os
+  - name: auto_stop_interval
+    type: Any
+    default: auto_stop_interval
+  - name: sandbox_os_user
+    type: Any
+    default: sandbox_os_user
+  - name: sandbox_env_vars
+    type: Any
+    default: sandbox_env_vars
+  - name: sandbox_labels
+    type: Any
+    default: sandbox_labels or {}
+  - name: sandbox_public
+    type: Any
+    default: sandbox_public
+  - name: timeout
+    type: Any
+    default: timeout
+  - name: auto_create_sandbox
+    type: Any
+    default: auto_create_sandbox
+  - name: persistent
+    type: Any
+    default: persistent
+  - name: verify_ssl
+    type: Any
+    default: verify_ssl
+  - name: instructions
+    type: Any
+    default: instructions or DEFAULT_INSTRUCTIONS
+  - name: config
+    type: Any
+    default: |-
+      DaytonaConfig(
+                  api_key=self.api_key,
+                  api_url=self.api_url,
+                  target=self.sandbox_target,
+                  organization_id=self.organization_id,
+              )
+  - name: daytona
+    type: Any
+    default: Daytona(self.config)
+  methods:
+  - name: __init__
+    sig: |-
+      __init__(
+              self,
+              api_key: Optional[str] = None,
+              api_url: Optional[str] = None,
+              sandbox_id: Optional[str] = None,
+              sandbox_language: Optional[CodeLanguage] = None,
+              sandbox_target: Optional[str] = None,
+              sandbox_os: Optional[str] = None,
+              auto_stop_interval: Optional[int] = 60,  # Stop after 1 hour
+              sandbox_os_user: Optional[str] = None,
+              sandbox_env_vars: Optional[Dict[str, str]] = None,
+              sandbox_labels: Optional[Dict[str, str]] = None,
+              sandbox_public: Optional[bool] = None,
+              organization_id: Optional[str] = None,
+              timeout: int = 300,
+              auto_create_sandbox: bool = True,
+              verify_ssl: Optional[bool] = False,
+              persistent: bool = True,
+              instructions: Optional[str] = None,
+              add_instructions: bool = False,
+              **kwargs,
+          )
+    lines:
+    - 54
+    - 125
+    detail:
+      calls:
+      - Daytona
+      - DaytonaConfig
+      - ValueError
+      - getenv
+      - self._disable_ssl_verification
+      - super
+      - super().__init__
+  - name: _disable_ssl_verification
+    sig: _disable_ssl_verification(self) -> None
+    vis: protected
+    lines:
+    - 127
+    - 146
+    detail:
+      calls:
+      - log_debug
+      - log_warning
+      - setattr
+      - urllib3.disable_warnings
+  - name: _get_working_directory
+    sig: '_get_working_directory(self, agent: Union[Agent, Team]) -> str'
+    vis: protected
+    lines:
+    - 148
+    - 154
+    detail:
+      calls:
+      - agent.session_state.get
+      - hasattr
+  - name: _set_working_directory
+    sig: '_set_working_directory(self, agent: Union[Agent, Team], directory: str) -> None'
+    vis: protected
+    lines:
+    - 156
+    - 162
+    detail:
+      calls:
+      - hasattr
+      - log_info
+  - name: _get_or_create_sandbox
+    sig: '_get_or_create_sandbox(self, agent: Union[Agent, Team]) -> Sandbox'
+    vis: protected
+    lines:
+    - 164
+    - 212
+    detail:
+      calls:
+      - agent.session_state.get
+      - hasattr
+      - log_debug
+      - log_info
+      - log_warning
+      - self._create_new_sandbox
+      - self.daytona.get
+      - self.daytona.start
+  - name: _create_new_sandbox
+    sig: '_create_new_sandbox(self, agent: Optional[Union[Agent, Team]] = None) -> Sandbox'
+    vis: protected
+    lines:
+    - 214
+    - 244
+    detail:
+      calls:
+      - CreateSandboxFromSnapshotParams
+      - hasattr
+      - labels.setdefault
+      - log_error
+      - log_info
+      - self.daytona.create
+      - self.sandbox_labels.copy
+      - str
+  - name: run_code
+    sig: 'run_code(self, agent: Union[Agent, Team], code: str) -> str'
+    lines:
+    - 247
+    - 267
+    detail:
+      calls:
+      - current_sandbox.process.code_run
+      - json.dumps
+      - prepare_python_code
+      - self._get_or_create_sandbox
+      - str
+  - name: run_shell_command
+    sig: 'run_shell_command(self, agent: Union[Agent, Team], command: str) -> str'
+    lines:
+    - 269
+    - 314
+    detail:
+      calls:
+      - Path
+      - command.strip
+      - command.strip().startswith
+      - command.strip()[3:].strip
+      - current_sandbox.process.exec
+      - json.dumps
+      - new_path.is_absolute
+      - new_path.resolve
+      - result.result.strip
+      - self._get_or_create_sandbox
+      - self._get_working_directory
+      - self._set_working_directory
+      - str
+  - name: create_file
+    sig: 'create_file(self, agent: Union[Agent, Team], file_path: str, content: str) -> str'
+    lines:
+    - 316
+    - 357
+    detail:
+      calls:
+      - Path
+      - content.replace
+      - current_sandbox.process.exec
+      - json.dumps
+      - path.is_absolute
+      - self._get_or_create_sandbox
+      - self._get_working_directory
+      - str
+  - name: read_file
+    sig: 'read_file(self, agent: Union[Agent, Team], file_path: str) -> str'
+    lines:
+    - 359
+    - 388
+    detail:
+      calls:
+      - Path
+      - current_sandbox.process.exec
+      - json.dumps
+      - path.is_absolute
+      - self._get_or_create_sandbox
+      - self._get_working_directory
+      - str
+  - name: list_files
+    sig: 'list_files(self, agent: Union[Agent, Team], directory: Optional[str] = None) -> str'
+    lines:
+    - 390
+    - 421
+    detail:
+      calls:
+      - Path
+      - current_sandbox.process.exec
+      - dir_path.is_absolute
+      - json.dumps
+      - self._get_or_create_sandbox
+      - self._get_working_directory
+      - str
+  - name: delete_file
+    sig: 'delete_file(self, agent: Union[Agent, Team], file_path: str) -> str'
+    lines:
+    - 423
+    - 459
+    detail:
+      calls:
+      - Path
+      - current_sandbox.process.exec
+      - json.dumps
+      - path.is_absolute
+      - self._get_or_create_sandbox
+      - self._get_working_directory
+      - str
+  - name: change_directory
+    sig: 'change_directory(self, agent: Union[Agent, Team], directory: str) -> str'
+    lines:
+    - 461
+    - 475
+    detail:
+      calls:
+      - json.dumps
+      - self._set_working_directory
+      - self.run_shell_command
+      - str
+  lines:
+  - 53
+  - 475
+exports:
+- name: DaytonaTools
+  kind: type
+- name: DEFAULT_INSTRUCTIONS
+  kind: data

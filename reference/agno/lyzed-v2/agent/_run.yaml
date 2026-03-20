@@ -1,0 +1,1125 @@
+## Roska File Descriptor — agent/_run.py
+file: agent/_run.py
+lines: 4576
+purpose: Core run loop and execution helpers for Agent.
+imports:
+- sym: asyncio
+- sym: time
+- sym: warnings
+- sym: collections.deque
+- sym: typing.TYPE_CHECKING
+- sym: typing.Any
+- sym: typing.AsyncIterator
+- sym: typing.Dict
+- sym: typing.Iterator
+- sym: typing.List
+- sym: typing.Optional
+- sym: typing.Sequence
+- sym: typing.Type
+- sym: typing.Union
+- sym: typing.cast
+- sym: uuid.uuid4
+- sym: pydantic.BaseModel
+- sym: agno.agent._init._initialize_session_state
+- sym: agno.agent._run_options.resolve_run_options
+- sym: agno.agent._session.initialize_session
+- sym: agno.agent._session.update_session_metrics
+- sym: agno.exceptions.InputCheckError
+- sym: agno.exceptions.OutputCheckError
+- sym: agno.exceptions.RunCancelledException
+- sym: agno.filters.FilterExpr
+- sym: agno.media.Audio
+- sym: agno.media.File
+- sym: agno.media.Image
+- sym: agno.media.Video
+- sym: agno.models.base.Model
+- sym: agno.models.message.Message
+- sym: agno.models.metrics.RunMetrics
+- sym: agno.models.metrics.merge_background_metrics
+- sym: agno.models.response.ModelResponse
+- sym: agno.models.response.ToolExecution
+- sym: agno.run.RunContext
+- sym: agno.run.RunStatus
+- sym: agno.run.agent.RunInput
+- sym: agno.run.agent.RunOutput
+- sym: agno.run.agent.RunOutputEvent
+- sym: agno.run.approval.acreate_approval_from_pause
+- sym: agno.run.approval.create_approval_from_pause
+- sym: agno.run.cancel.acancel_run
+- sym: agno.run.cancel.acleanup_run
+- sym: agno.run.cancel.araise_if_cancelled
+- sym: agno.run.cancel.aregister_run
+- sym: agno.run.cancel.cleanup_run
+- sym: agno.run.cancel.raise_if_cancelled
+- sym: agno.run.cancel.register_run
+- sym: agno.run.cancel.cancel_run
+- sym: agno.run.messages.RunMessages
+- sym: agno.run.requirement.RunRequirement
+- sym: agno.session.AgentSession
+- sym: agno.tools.function.Function
+- sym: agno.utils.agent.await_for_open_threads
+- sym: agno.utils.agent.await_for_thread_tasks_stream
+- sym: agno.utils.agent.collect_background_metrics
+- sym: agno.utils.agent.scrub_history_messages_from_run_output
+- sym: agno.utils.agent.scrub_media_from_run_output
+- sym: agno.utils.agent.scrub_tool_results_from_run_output
+- sym: agno.utils.agent.store_media_util
+- sym: agno.utils.agent.validate_input
+- sym: agno.utils.agent.validate_media_object_id
+- sym: agno.utils.agent.wait_for_open_threads
+- sym: agno.utils.agent.wait_for_thread_tasks_stream
+- sym: agno.utils.events.add_error_event
+- sym: agno.utils.events.create_run_cancelled_event
+- sym: agno.utils.events.create_run_completed_event
+- sym: agno.utils.events.create_run_content_completed_event
+- sym: agno.utils.events.create_run_continued_event
+- sym: agno.utils.events.create_run_error_event
+- sym: agno.utils.events.create_run_paused_event
+- sym: agno.utils.events.create_run_started_event
+- sym: agno.utils.events.create_session_summary_completed_event
+- sym: agno.utils.events.create_session_summary_started_event
+- sym: agno.utils.events.handle_event
+- sym: agno.utils.hooks.normalize_post_hooks
+- sym: agno.utils.hooks.normalize_pre_hooks
+- sym: agno.utils.log.log_debug
+- sym: agno.utils.log.log_error
+- sym: agno.utils.log.log_info
+- sym: agno.utils.log.log_warning
+- sym: agno.utils.response.get_paused_content
+data:
+- name: _background_tasks
+  type: Any
+  val: set[asyncio.Task[None]]
+- name: cancel_run
+  type: Any
+  val: cancel_run_global
+- name: acancel_run
+  type: Any
+  val: acancel_run_global
+functions:
+- name: resolve_run_dependencies
+  sig: 'resolve_run_dependencies(agent: Agent, run_context: RunContext) -> None'
+  lines:
+  - 118
+  - 152
+  detail:
+    calls:
+    - callable
+    - iscoroutine
+    - iscoroutinefunction
+    - isinstance
+    - log_debug
+    - log_warning
+    - run_context.dependencies.items
+    - signature
+    - value
+- name: aresolve_run_dependencies
+  sig: 'aresolve_run_dependencies(agent: Agent, run_context: RunContext) -> None'
+  is_async: true
+  lines:
+  - 155
+  - 184
+  detail:
+    calls:
+    - callable
+    - iscoroutine
+    - isinstance
+    - log_debug
+    - log_warning
+    - run_context.dependencies.items
+    - signature
+    - value
+- name: handle_agent_run_paused
+  sig: |-
+    handle_agent_run_paused(
+        agent: Agent,
+        run_response: RunOutput,
+        session: AgentSession,
+        user_id: Optional[str] = None,
+        run_context: Optional[RunContext] = None,
+    ) -> RunOutput
+  lines:
+  - 192
+  - 213
+  detail:
+    calls:
+    - cleanup_and_store
+    - create_approval_from_pause
+    - get_paused_content
+    - log_debug
+- name: handle_agent_run_paused_stream
+  sig: |-
+    handle_agent_run_paused_stream(
+        agent: Agent,
+        run_response: RunOutput,
+        session: AgentSession,
+        user_id: Optional[str] = None,
+        run_context: Optional[RunContext] = None,
+        yield_run_output: bool = False,
+    ) -> Iterator[Union[RunOutputEvent, RunOutput]]
+  lines:
+  - 216
+  - 253
+  detail:
+    calls:
+    - cleanup_and_store
+    - create_approval_from_pause
+    - create_run_paused_event
+    - get_paused_content
+    - handle_event
+    - log_debug
+- name: ahandle_agent_run_paused
+  sig: |-
+    ahandle_agent_run_paused(
+        agent: Agent,
+        run_response: RunOutput,
+        session: AgentSession,
+        user_id: Optional[str] = None,
+        run_context: Optional[RunContext] = None,
+    ) -> RunOutput
+  is_async: true
+  lines:
+  - 256
+  - 278
+  detail:
+    calls:
+    - acleanup_and_store
+    - acreate_approval_from_pause
+    - get_paused_content
+    - log_debug
+- name: ahandle_agent_run_paused_stream
+  sig: |-
+    ahandle_agent_run_paused_stream(
+        agent: Agent,
+        run_response: RunOutput,
+        session: AgentSession,
+        user_id: Optional[str] = None,
+        run_context: Optional[RunContext] = None,
+        yield_run_output: bool = False,
+    ) -> AsyncIterator[Union[RunOutputEvent, RunOutput]]
+  is_async: true
+  lines:
+  - 281
+  - 320
+  detail:
+    calls:
+    - acleanup_and_store
+    - acreate_approval_from_pause
+    - create_run_paused_event
+    - get_paused_content
+    - handle_event
+    - log_debug
+- name: _run
+  sig: |-
+    _run(
+        agent: Agent,
+        run_response: RunOutput,
+        run_context: RunContext,
+        session_id: str,
+        user_id: Optional[str] = None,
+        add_history_to_context: Optional[bool] = None,
+        add_dependencies_to_context: Optional[bool] = None,
+        add_session_state_to_context: Optional[bool] = None,
+        response_format: Optional[Union[Dict, Type[BaseModel]]] = None,
+        debug_mode: Optional[bool] = None,
+        background_tasks: Optional[Any] = None,
+        pre_session: Optional[AgentSession] = None,
+        **kwargs: Any,
+    ) -> RunOutput
+  vis: protected
+  lines:
+  - 323
+  - 709
+  detail:
+    calls:
+    - _initialize_session_state
+    - _managers.start_cultural_knowledge_future
+    - _managers.start_learning_future
+    - _managers.start_memory_future
+    - agent.get_tools
+    - agent.model.response
+    - agent.session_summary_manager.create_session_summary
+    - agent_session.upsert_run
+    - any
+    - cast
+    - cleanup_and_store
+    - cleanup_run
+    - collect_background_metrics
+    - convert_response_to_structured_format
+    - deque
+    - determine_tools_for_model
+    - disconnect_connectable_tools
+    - execute_post_hooks
+    - execute_pre_hooks
+    - future.cancel
+    - future.done
+    - future.result
+    - generate_followups
+    - generate_response_with_output_model
+    - get_run_messages
+    - handle_agent_run_paused
+    - handle_reasoning
+    - len
+    - load_session_state
+    - log_agent_telemetry
+    - log_debug
+    - log_error
+    - log_info
+    - log_warning
+    - merge_background_metrics
+    - parse_response_with_parser_model
+    - raise_if_cancelled
+    - range
+    - read_or_create_session
+    - register_run
+    - resolve_run_dependencies
+    - store_media_util
+    - str
+    - time.sleep
+    - update_metadata
+    - update_run_response
+    - wait_for_open_threads
+- name: _run_stream
+  sig: |-
+    _run_stream(
+        agent: Agent,
+        run_response: RunOutput,
+        run_context: RunContext,
+        session_id: str,
+        user_id: Optional[str] = None,
+        add_history_to_context: Optional[bool] = None,
+        add_dependencies_to_context: Optional[bool] = None,
+        add_session_state_to_context: Optional[bool] = None,
+        response_format: Optional[Union[Dict, Type[BaseModel]]] = None,
+        stream_events: bool = False,
+        yield_run_output: Optional[bool] = None,
+        debug_mode: Optional[bool] = None,
+        background_tasks: Optional[Any] = None,
+        pre_session: Optional[AgentSession] = None,
+        **kwargs: Any,
+    ) -> Iterator[Union[RunOutputEvent, RunOutput]]
+  vis: protected
+  lines:
+  - 712
+  - 1215
+  detail:
+    calls:
+    - IntermediateRunContentEvent
+    - _initialize_session_state
+    - _managers.start_cultural_knowledge_future
+    - _managers.start_learning_future
+    - _managers.start_memory_future
+    - add_error_event
+    - agent.get_tools
+    - agent.get_user_memories
+    - agent.session_summary_manager.create_session_summary
+    - agent_session.upsert_run
+    - any
+    - cast
+    - cleanup_and_store
+    - cleanup_run
+    - collect_background_metrics
+    - create_run_cancelled_event
+    - create_run_completed_event
+    - create_run_content_completed_event
+    - create_run_error_event
+    - create_run_started_event
+    - create_session_summary_completed_event
+    - create_session_summary_started_event
+    - determine_tools_for_model
+    - disconnect_connectable_tools
+    - execute_post_hooks
+    - execute_pre_hooks
+    - future.cancel
+    - future.done
+    - future.result
+    - generate_followups_stream
+    - generate_response_with_output_model_stream
+    - get_run_messages
+    - handle_agent_run_paused_stream
+    - handle_event
+    - handle_model_response_stream
+    - handle_reasoning_stream
+    - isinstance
+    - len
+    - load_session_state
+    - log_agent_telemetry
+    - log_debug
+    - log_error
+    - log_info
+    - log_warning
+    - merge_background_metrics
+    - parse_response_with_parser_model_stream
+    - raise_if_cancelled
+    - range
+    - read_or_create_session
+    - register_run
+    - resolve_run_dependencies
+    - str
+    - time.sleep
+    - update_metadata
+    - wait_for_thread_tasks_stream
+- name: run_dispatch
+  sig: |-
+    run_dispatch(
+        agent: Agent,
+        input: Union[str, List, Dict, Message, BaseModel, List[Message]],
+        *,
+        stream: Optional[bool] = None,
+        stream_events: Optional[bool] = None,
+        user_id: Optional[str] = None,
+        session_id: Optional[str] = None,
+        session_state: Optional[Dict[str, Any]] = None,
+        run_context: Optional[RunContext] = None,
+        run_id: Optional[str] = None,
+        audio: Optional[Sequence[Audio]] = None,
+        images: Optional[Sequence[Image]] = None,
+        videos: Optional[Sequence[Video]] = None,
+        files: Optional[Sequence[File]] = None,
+        knowledge_filters: Optional[Union[Dict[str, Any], List[FilterExpr]]] = None,
+        add_history_to_context: Optional[bool] = None,
+        add_dependencies_to_context: Optional[bool] = None,
+        add_session_state_to_context: Optional[bool] = None,
+        dependencies: Optional[Dict[str, Any]] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+        output_schema: Optional[Union[Type[BaseModel], Dict[str, Any]]] = None,
+        yield_run_output: Optional[bool] = None,
+        debug_mode: Optional[bool] = None,
+        **kwargs: Any,
+    ) -> Union[RunOutput, Iterator[Union[RunOutputEvent, RunOutput]]]
+  lines:
+  - 1218
+  - 1395
+  detail:
+    calls:
+    - RunContext
+    - RunInput
+    - RunMetrics
+    - RunOutput
+    - RuntimeError
+    - _run
+    - _run_stream
+    - agent.initialize_agent
+    - cast
+    - get_response_format
+    - has_async_db
+    - initialize_session
+    - kwargs.pop
+    - log_warning
+    - normalize_post_hooks
+    - normalize_pre_hooks
+    - opts.apply_to_context
+    - read_or_create_session
+    - resolve_run_options
+    - run_response.metrics.start_timer
+    - str
+    - update_metadata
+    - uuid4
+    - validate_input
+    - validate_media_object_id
+- name: _arun
+  sig: |-
+    _arun(
+        agent: Agent,
+        run_response: RunOutput,
+        run_context: RunContext,
+        session_id: str,
+        user_id: Optional[str] = None,
+        add_history_to_context: Optional[bool] = None,
+        add_dependencies_to_context: Optional[bool] = None,
+        add_session_state_to_context: Optional[bool] = None,
+        response_format: Optional[Union[Dict, Type[BaseModel]]] = None,
+        debug_mode: Optional[bool] = None,
+        background_tasks: Optional[Any] = None,
+        pre_session: Optional[AgentSession] = None,
+        **kwargs: Any,
+    ) -> RunOutput
+  is_async: true
+  vis: protected
+  lines:
+  - 1398
+  - 1817
+  detail:
+    calls:
+    - _initialize_session_state
+    - _managers.astart_cultural_knowledge_task
+    - _managers.astart_learning_task
+    - _managers.astart_memory_task
+    - acleanup_and_store
+    - acleanup_run
+    - aexecute_post_hooks
+    - aexecute_pre_hooks
+    - agenerate_followups
+    - agenerate_response_with_output_model
+    - agent.aget_tools
+    - agent.model.aresponse
+    - agent.session_summary_manager.acreate_session_summary
+    - agent_session.upsert_run
+    - aget_run_messages
+    - ahandle_agent_run_paused
+    - ahandle_reasoning
+    - alog_agent_telemetry
+    - any
+    - aparse_response_with_parser_model
+    - araise_if_cancelled
+    - aread_or_create_session
+    - aregister_run
+    - aresolve_run_dependencies
+    - asyncio.sleep
+    - await_for_open_threads
+    - cast
+    - collect_background_metrics
+    - convert_response_to_structured_format
+    - cultural_knowledge_task.cancel
+    - cultural_knowledge_task.done
+    - determine_tools_for_model
+    - disconnect_connectable_tools
+    - disconnect_mcp_tools
+    - learning_task.cancel
+    - learning_task.done
+    - len
+    - load_session_state
+    - log_debug
+    - log_error
+    - log_info
+    - log_warning
+    - memory_task.cancel
+    - memory_task.done
+    - merge_background_metrics
+    - range
+    - store_media_util
+    - str
+    - update_metadata
+    - update_run_response
+- name: _arun_background
+  sig: |-
+    _arun_background(
+        agent: Agent,
+        run_response: RunOutput,
+        run_context: RunContext,
+        session_id: str,
+        user_id: Optional[str] = None,
+        add_history_to_context: Optional[bool] = None,
+        add_dependencies_to_context: Optional[bool] = None,
+        add_session_state_to_context: Optional[bool] = None,
+        response_format: Optional[Union[Dict, Type[BaseModel]]] = None,
+        debug_mode: Optional[bool] = None,
+        background_tasks: Optional[Any] = None,
+        **kwargs: Any,
+    ) -> RunOutput
+  is_async: true
+  vis: protected
+  lines:
+  - 1820
+  - 1898
+  detail:
+    calls:
+    - _background_task
+    - _background_tasks.add
+    - agent_session.upsert_run
+    - aread_or_create_session
+    - aregister_run
+    - asave_session
+    - asyncio.create_task
+    - log_info
+    - task.add_done_callback
+    - update_metadata
+- name: _arun_stream
+  sig: |-
+    _arun_stream(
+        agent: Agent,
+        run_response: RunOutput,
+        run_context: RunContext,
+        session_id: str,
+        user_id: Optional[str] = None,
+        add_history_to_context: Optional[bool] = None,
+        add_dependencies_to_context: Optional[bool] = None,
+        add_session_state_to_context: Optional[bool] = None,
+        response_format: Optional[Union[Dict, Type[BaseModel]]] = None,
+        stream_events: bool = False,
+        yield_run_output: Optional[bool] = None,
+        debug_mode: Optional[bool] = None,
+        background_tasks: Optional[Any] = None,
+        pre_session: Optional[AgentSession] = None,
+        **kwargs: Any,
+    ) -> AsyncIterator[Union[RunOutputEvent, RunOutput]]
+  is_async: true
+  vis: protected
+  lines:
+  - 1901
+  - 2448
+  detail:
+    calls:
+    - IntermediateRunContentEvent
+    - _initialize_session_state
+    - _managers.astart_cultural_knowledge_task
+    - _managers.astart_learning_task
+    - _managers.astart_memory_task
+    - acleanup_and_store
+    - acleanup_run
+    - add_error_event
+    - aexecute_post_hooks
+    - aexecute_pre_hooks
+    - agenerate_followups_stream
+    - agenerate_response_with_output_model_stream
+    - agent.aget_tools
+    - agent.aget_user_memories
+    - agent.session_summary_manager.acreate_session_summary
+    - agent_session.upsert_run
+    - aget_run_messages
+    - ahandle_agent_run_paused_stream
+    - ahandle_model_response_stream
+    - ahandle_reasoning_stream
+    - alog_agent_telemetry
+    - any
+    - aparse_response_with_parser_model_stream
+    - araise_if_cancelled
+    - aread_or_create_session
+    - aregister_run
+    - aresolve_run_dependencies
+    - asyncio.sleep
+    - await_for_thread_tasks_stream
+    - cast
+    - collect_background_metrics
+    - create_run_cancelled_event
+    - create_run_completed_event
+    - create_run_content_completed_event
+    - create_run_error_event
+    - create_run_started_event
+    - create_session_summary_completed_event
+    - create_session_summary_started_event
+    - cultural_knowledge_task.cancel
+    - cultural_knowledge_task.done
+    - determine_tools_for_model
+    - disconnect_connectable_tools
+    - disconnect_mcp_tools
+    - handle_event
+    - isinstance
+    - learning_task.cancel
+    - learning_task.done
+    - len
+    - load_session_state
+    - log_debug
+    - log_error
+    - log_info
+    - log_warning
+    - memory_task.cancel
+    - memory_task.done
+    - merge_background_metrics
+    - range
+    - str
+    - update_metadata
+- name: arun_dispatch
+  sig: |-
+    arun_dispatch(  # type: ignore
+        agent: Agent,
+        input: Union[str, List, Dict, Message, BaseModel, List[Message]],
+        *,
+        stream: Optional[bool] = None,
+        user_id: Optional[str] = None,
+        session_id: Optional[str] = None,
+        session_state: Optional[Dict[str, Any]] = None,
+        run_context: Optional[RunContext] = None,
+        run_id: Optional[str] = None,
+        audio: Optional[Sequence[Audio]] = None,
+        images: Optional[Sequence[Image]] = None,
+        videos: Optional[Sequence[Video]] = None,
+        files: Optional[Sequence[File]] = None,
+        stream_events: Optional[bool] = None,
+        knowledge_filters: Optional[Union[Dict[str, Any], List[FilterExpr]]] = None,
+        add_history_to_context: Optional[bool] = None,
+        add_dependencies_to_context: Optional[bool] = None,
+        add_session_state_to_context: Optional[bool] = None,
+        dependencies: Optional[Dict[str, Any]] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+        output_schema: Optional[Union[Type[BaseModel], Dict[str, Any]]] = None,
+        yield_run_output: Optional[bool] = None,
+        debug_mode: Optional[bool] = None,
+        background: bool = False,
+        **kwargs: Any,
+    ) -> Union[RunOutput, AsyncIterator[RunOutputEvent]]
+  lines:
+  - 2451
+  - 2657
+  detail:
+    calls:
+    - RunContext
+    - RunInput
+    - RunMetrics
+    - RunOutput
+    - ValueError
+    - _arun
+    - _arun_background
+    - _arun_stream
+    - agent.initialize_agent
+    - cast
+    - get_response_format
+    - has_async_db
+    - initialize_session
+    - kwargs.pop
+    - log_warning
+    - normalize_post_hooks
+    - normalize_pre_hooks
+    - opts.apply_to_context
+    - read_or_create_session
+    - resolve_run_options
+    - run_response.metrics.start_timer
+    - str
+    - update_metadata
+    - uuid4
+    - validate_input
+    - validate_media_object_id
+- name: continue_run_dispatch
+  sig: |-
+    continue_run_dispatch(
+        agent: Agent,
+        run_response: Optional[RunOutput] = None,
+        *,
+        run_id: Optional[str] = None,  # type: ignore
+        updated_tools: Optional[List[ToolExecution]] = None,
+        requirements: Optional[List[RunRequirement]] = None,
+        stream: Optional[bool] = None,
+        stream_events: Optional[bool] = False,
+        user_id: Optional[str] = None,
+        session_id: Optional[str] = None,
+        run_context: Optional[RunContext] = None,
+        knowledge_filters: Optional[Union[Dict[str, Any], List[FilterExpr]]] = None,
+        dependencies: Optional[Dict[str, Any]] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+        debug_mode: Optional[bool] = None,
+        yield_run_output: bool = False,
+        **kwargs,
+    ) -> Union[RunOutput, Iterator[Union[RunOutputEvent, RunOutput]]]
+  lines:
+  - 2660
+  - 2886
+  detail:
+    calls:
+    - Exception
+    - RunContext
+    - RuntimeError
+    - ValueError
+    - _continue_run
+    - _continue_run_stream
+    - agent.get_tools
+    - agent.initialize_agent
+    - cast
+    - check_and_apply_approval_resolution
+    - determine_tools_for_model
+    - get_continue_run_messages
+    - get_response_format
+    - has_async_db
+    - initialize_session
+    - kwargs.pop
+    - load_session_state
+    - log_debug
+    - next
+    - opts.apply_to_context
+    - read_or_create_session
+    - resolve_run_dependencies
+    - resolve_run_options
+    - set_default_model
+    - update_metadata
+    - updated_tools_map.get
+    - warnings.warn
+- name: _continue_run
+  sig: |-
+    _continue_run(
+        agent: Agent,
+        run_response: RunOutput,
+        run_messages: RunMessages,
+        run_context: RunContext,
+        session: AgentSession,
+        tools: List[Union[Function, dict]],
+        user_id: Optional[str] = None,
+        response_format: Optional[Union[Dict, Type[BaseModel]]] = None,
+        debug_mode: Optional[bool] = None,
+        background_tasks: Optional[Any] = None,
+        **kwargs,
+    ) -> RunOutput
+  vis: protected
+  lines:
+  - 2889
+  - 3096
+  detail:
+    calls:
+    - agent.model.response
+    - agent.session_summary_manager.create_session_summary
+    - any
+    - cast
+    - cleanup_and_store
+    - cleanup_run
+    - convert_response_to_structured_format
+    - deque
+    - disconnect_connectable_tools
+    - execute_post_hooks
+    - generate_followups
+    - generate_response_with_output_model
+    - handle_agent_run_paused
+    - handle_tool_call_updates
+    - log_agent_telemetry
+    - log_error
+    - log_info
+    - log_warning
+    - parse_response_with_parser_model
+    - raise_if_cancelled
+    - range
+    - register_run
+    - session.upsert_run
+    - store_media_util
+    - str
+    - time.sleep
+    - update_run_response
+- name: _continue_run_stream
+  sig: |-
+    _continue_run_stream(
+        agent: Agent,
+        run_response: RunOutput,
+        run_messages: RunMessages,
+        run_context: RunContext,
+        session: AgentSession,
+        tools: List[Union[Function, dict]],
+        user_id: Optional[str] = None,
+        response_format: Optional[Union[Dict, Type[BaseModel]]] = None,
+        stream_events: bool = False,
+        debug_mode: Optional[bool] = None,
+        yield_run_output: bool = False,
+        background_tasks: Optional[Any] = None,
+        **kwargs,
+    ) -> Iterator[Union[RunOutputEvent, RunOutput]]
+  vis: protected
+  lines:
+  - 3099
+  - 3384
+  detail:
+    calls:
+    - add_error_event
+    - agent.session_summary_manager.create_session_summary
+    - any
+    - cast
+    - cleanup_and_store
+    - cleanup_run
+    - create_run_cancelled_event
+    - create_run_completed_event
+    - create_run_content_completed_event
+    - create_run_continued_event
+    - create_run_error_event
+    - create_session_summary_completed_event
+    - create_session_summary_started_event
+    - disconnect_connectable_tools
+    - execute_post_hooks
+    - generate_followups_stream
+    - handle_agent_run_paused_stream
+    - handle_event
+    - handle_model_response_stream
+    - handle_tool_call_updates_stream
+    - log_agent_telemetry
+    - log_debug
+    - log_error
+    - log_info
+    - log_warning
+    - parse_response_with_parser_model_stream
+    - raise_if_cancelled
+    - range
+    - register_run
+    - resolve_run_dependencies
+    - session.upsert_run
+    - str
+    - time.sleep
+- name: acontinue_run_dispatch
+  sig: |-
+    acontinue_run_dispatch(  # type: ignore
+        agent: Agent,
+        run_response: Optional[RunOutput] = None,
+        *,
+        run_id: Optional[str] = None,  # type: ignore
+        updated_tools: Optional[List[ToolExecution]] = None,
+        requirements: Optional[List[RunRequirement]] = None,
+        stream: Optional[bool] = None,
+        stream_events: Optional[bool] = None,
+        user_id: Optional[str] = None,
+        session_id: Optional[str] = None,
+        run_context: Optional[RunContext] = None,
+        knowledge_filters: Optional[Union[Dict[str, Any], List[FilterExpr]]] = None,
+        dependencies: Optional[Dict[str, Any]] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+        debug_mode: Optional[bool] = None,
+        yield_run_output: bool = False,
+        **kwargs,
+    ) -> Union[RunOutput, AsyncIterator[Union[RunOutputEvent, RunOutput]]]
+  lines:
+  - 3387
+  - 3534
+  detail:
+    calls:
+    - RunContext
+    - ValueError
+    - _acontinue_run
+    - _acontinue_run_stream
+    - agent.initialize_agent
+    - cast
+    - get_response_format
+    - has_async_db
+    - initialize_session
+    - kwargs.pop
+    - load_session_state
+    - opts.apply_to_context
+    - read_or_create_session
+    - resolve_run_options
+    - update_metadata
+    - warnings.warn
+- name: _acontinue_run
+  sig: |-
+    _acontinue_run(
+        agent: Agent,
+        session_id: str,
+        run_context: RunContext,
+        run_response: Optional[RunOutput] = None,
+        updated_tools: Optional[List[ToolExecution]] = None,
+        requirements: Optional[List[RunRequirement]] = None,
+        run_id: Optional[str] = None,
+        user_id: Optional[str] = None,
+        response_format: Optional[Union[Dict, Type[BaseModel]]] = None,
+        debug_mode: Optional[bool] = None,
+        background_tasks: Optional[Any] = None,
+        **kwargs,
+    ) -> RunOutput
+  is_async: true
+  vis: protected
+  lines:
+  - 3537
+  - 3908
+  detail:
+    calls:
+    - RunOutput
+    - RuntimeError
+    - ValueError
+    - _initialize_session_state
+    - acheck_and_apply_approval_resolution
+    - acleanup_and_store
+    - acleanup_run
+    - add_error_event
+    - aexecute_post_hooks
+    - agenerate_followups
+    - agenerate_response_with_output_model
+    - agent.aget_tools
+    - agent.model.aresponse
+    - agent.session_summary_manager.acreate_session_summary
+    - agent_session.upsert_run
+    - ahandle_agent_run_paused
+    - ahandle_tool_call_updates
+    - alog_agent_telemetry
+    - any
+    - aparse_response_with_parser_model
+    - araise_if_cancelled
+    - aread_or_create_session
+    - aregister_run
+    - aresolve_run_dependencies
+    - asyncio.sleep
+    - cast
+    - convert_response_to_structured_format
+    - create_run_error_event
+    - determine_tools_for_model
+    - disconnect_connectable_tools
+    - disconnect_mcp_tools
+    - get_continue_run_messages
+    - load_session_state
+    - log_debug
+    - log_error
+    - log_info
+    - log_warning
+    - next
+    - range
+    - store_media_util
+    - str
+    - update_metadata
+    - update_run_response
+    - updated_tools_map.get
+- name: _acontinue_run_stream
+  sig: |-
+    _acontinue_run_stream(
+        agent: Agent,
+        session_id: str,
+        run_context: RunContext,
+        run_response: Optional[RunOutput] = None,
+        updated_tools: Optional[List[ToolExecution]] = None,
+        requirements: Optional[List[RunRequirement]] = None,
+        run_id: Optional[str] = None,
+        user_id: Optional[str] = None,
+        response_format: Optional[Union[Dict, Type[BaseModel]]] = None,
+        stream_events: bool = False,
+        yield_run_output: bool = False,
+        debug_mode: Optional[bool] = None,
+        background_tasks: Optional[Any] = None,
+        **kwargs,
+    ) -> AsyncIterator[Union[RunOutputEvent, RunOutput]]
+  is_async: true
+  vis: protected
+  lines:
+  - 3911
+  - 4394
+  detail:
+    calls:
+    - IntermediateRunContentEvent
+    - RunOutput
+    - RuntimeError
+    - ValueError
+    - _initialize_session_state
+    - acheck_and_apply_approval_resolution
+    - acleanup_and_store
+    - acleanup_run
+    - add_error_event
+    - aexecute_post_hooks
+    - agenerate_followups_stream
+    - agenerate_response_with_output_model_stream
+    - agent.aget_tools
+    - agent.session_summary_manager.acreate_session_summary
+    - agent_session.upsert_run
+    - ahandle_agent_run_paused_stream
+    - ahandle_model_response_stream
+    - ahandle_tool_call_updates_stream
+    - alog_agent_telemetry
+    - any
+    - aparse_response_with_parser_model_stream
+    - araise_if_cancelled
+    - aread_or_create_session
+    - aregister_run
+    - aresolve_run_dependencies
+    - asyncio.sleep
+    - cast
+    - create_run_cancelled_event
+    - create_run_completed_event
+    - create_run_content_completed_event
+    - create_run_continued_event
+    - create_run_error_event
+    - create_session_summary_completed_event
+    - create_session_summary_started_event
+    - determine_tools_for_model
+    - disconnect_connectable_tools
+    - disconnect_mcp_tools
+    - get_continue_run_messages
+    - handle_event
+    - isinstance
+    - load_session_state
+    - log_debug
+    - log_error
+    - log_info
+    - log_warning
+    - next
+    - range
+    - str
+    - update_metadata
+    - updated_tools_map.get
+- name: save_run_response_to_file
+  sig: |-
+    save_run_response_to_file(
+        agent: Agent,
+        run_response: RunOutput,
+        input: Optional[Union[str, List, Dict, Message]] = None,
+        session_id: Optional[str] = None,
+        user_id: Optional[str] = None,
+    ) -> None
+  lines:
+  - 4402
+  - 4441
+  detail:
+    calls:
+    - Path
+    - _sanitize
+    - agent.save_response_to_file.format
+    - fn_path.parent.exists
+    - fn_path.parent.mkdir
+    - fn_path.write_text
+    - isinstance
+    - json.dumps
+    - log_warning
+- name: scrub_run_output_for_storage
+  sig: 'scrub_run_output_for_storage(agent: Agent, run_response: RunOutput) -> None'
+  lines:
+  - 4444
+  - 4453
+  detail:
+    calls:
+    - scrub_history_messages_from_run_output
+    - scrub_media_from_run_output
+    - scrub_tool_results_from_run_output
+- name: cleanup_and_store
+  sig: |-
+    cleanup_and_store(
+        agent: Agent,
+        run_response: RunOutput,
+        session: AgentSession,
+        run_context: Optional[RunContext] = None,
+        user_id: Optional[str] = None,
+    ) -> None
+  lines:
+  - 4456
+  - 4511
+  detail:
+    calls:
+    - _session.save_session
+    - copy.copy
+    - run_response.input.input_content_string
+    - run_response.metrics.stop_timer
+    - save_run_response_to_file
+    - scrub_run_output_for_storage
+    - session.upsert_run
+    - update_approval_run_status
+    - update_session_metrics
+- name: acleanup_and_store
+  sig: |-
+    acleanup_and_store(
+        agent: Agent,
+        run_response: RunOutput,
+        session: AgentSession,
+        run_context: Optional[RunContext] = None,
+        user_id: Optional[str] = None,
+    ) -> None
+  is_async: true
+  lines:
+  - 4514
+  - 4568
+  detail:
+    calls:
+    - _session.asave_session
+    - aupdate_approval_run_status
+    - copy.copy
+    - run_response.input.input_content_string
+    - run_response.metrics.stop_timer
+    - save_run_response_to_file
+    - scrub_run_output_for_storage
+    - session.upsert_run
+    - update_session_metrics
+exports:
+- name: resolve_run_dependencies
+  kind: func
+- name: aresolve_run_dependencies
+  kind: func
+- name: handle_agent_run_paused
+  kind: func
+- name: handle_agent_run_paused_stream
+  kind: func
+- name: ahandle_agent_run_paused
+  kind: func
+- name: ahandle_agent_run_paused_stream
+  kind: func
+- name: run_dispatch
+  kind: func
+- name: arun_dispatch
+  kind: func
+- name: continue_run_dispatch
+  kind: func
+- name: acontinue_run_dispatch
+  kind: func
+- name: save_run_response_to_file
+  kind: func
+- name: scrub_run_output_for_storage
+  kind: func
+- name: cleanup_and_store
+  kind: func
+- name: acleanup_and_store
+  kind: func
+- name: cancel_run
+  kind: data
+- name: acancel_run
+  kind: data

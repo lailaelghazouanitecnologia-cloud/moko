@@ -1,0 +1,1119 @@
+## Roska File Descriptor — google/gmail.py
+file: google/gmail.py
+lines: 1832
+purpose: 'Gmail Toolkit for interacting with Gmail API Required Environment Variables: ----------------------------- - GOOGLE_CLIENT_ID: Google OAuth client ID - GOOGLE_CLIENT_SECRET: Google OAuth client secret - GOOGLE_PROJECT_ID: Google Cloud project ID - GOOGLE_REDIRECT_URI: Google OAuth redirect URI (default: http://localhost) How to Get These Credentials: --------------------------- 1. Go to Google Cloud Console (https://console.cloud.google.com) 2. Create a new project or select an existing one 3. Enable the Gmail API: - Go to "APIs & Services" > "Enable APIs and Services" - Search for "Gmail API" - Click "Enable" 4. Create OAuth 2.0 credentials: - Go to "APIs & Services" > "Credentials" - Click "Create Credentials" > "OAuth client ID" - Go through the OAuth consent screen setup - Give it a name and click "Create" - You''ll receive: * Client ID (GOOGLE_CLIENT_ID) * Client Secret (GOOGLE_CLIENT_SECRET) - The Project ID (GOOGLE_PROJECT_ID) is visible in the project dropdown at the top of the page 5. Add auth redirect URI: - Go to https://console.cloud.google.com/auth/clients and add the redirect URI as http://127.0.0.1/ 6. Set up environment variables: Create a .envrc file in your project root with: ``` export GOOGLE_CLIENT_ID=your_client_id_here export GOOGLE_CLIENT_SECRET=your_client_secret_here export GOOGLE_PROJECT_ID=your_project_id_here export GOOGLE_REDIRECT_URI=http://127.0.0.1/  # Default value ``` Note: The first time you run the application, it will open a browser window for OAuth authentication. A token.json file will be created to store the authentication credentials for future use. Service Account Authentication (Alternative): --------------------------------------------- For server/bot deployments where no browser is available, use a Google service account with domain-wide delegation instead of OAuth. 1. Create a service account in Google Cloud Console > "IAM & Admin" > "Service Accounts" 2. Download the JSON key file 3. In Google Workspace Admin Console, go to Security > API Controls > Domain-wide Delegation 4. Add the service account''s client_id with the Gmail scopes your agent needs 5. Set environment variables: ``` export GOOGLE_SERVICE_ACCOUNT_FILE=/path/to/service-account-key.json export GOOGLE_DELEGATED_USER=user@yourdomain.com ``` When service_account_path (or GOOGLE_SERVICE_ACCOUNT_FILE) is set, OAuth is skipped entirely. The delegated_user specifies which mailbox the service account will access.'
+imports:
+- sym: base64
+- sym: json
+- sym: mimetypes
+- sym: re
+- sym: tempfile
+- sym: textwrap
+- sym: datetime.timedelta
+- sym: functools.wraps
+- sym: os.getenv
+- sym: pathlib.Path
+- sym: typing.Any
+- sym: typing.Callable
+- sym: typing.Dict
+- sym: typing.List
+- sym: typing.Optional
+- sym: typing.Tuple
+- sym: typing.Union
+- sym: agno.tools.Toolkit
+- sym: agno.utils.log.log_debug
+- sym: agno.utils.log.log_error
+data:
+- name: GMAIL_QUERY_INSTRUCTIONS
+  type: Any
+  val: |-
+    textwrap.dedent("""\
+        You have access to Gmail tools for reading, composing, and organizing emails.
+
+        ## Gmail Que...
+types:
+- name: GmailTools
+  kind: struct
+  bases:
+  - Toolkit
+  fields:
+  - name: DEFAULT_SCOPES
+    type: list
+    default: |-
+      [
+              "https://www.googleapis.com/auth/gmail.readonly",
+              "https://www.googleapis.com/auth/gmail.modify",
+              "https://www.googleapis.com/auth/gmail.compose",
+          ]
+  - name: instructions
+    type: Any
+    default: GMAIL_QUERY_INSTRUCTIONS
+  - name: creds
+    type: Any
+    default: creds
+  - name: credentials_path
+    type: Any
+    default: credentials_path
+  - name: token_path
+    type: Any
+    default: token_path
+  - name: service_account_path
+    type: Any
+    default: service_account_path
+  - name: delegated_user
+    type: Any
+    default: delegated_user
+  - name: service
+    type: None
+    default: None
+  - name: scopes
+    type: Any
+    default: scopes or self.DEFAULT_SCOPES
+  - name: port
+    type: Any
+    default: port
+  - name: login_hint
+    type: Any
+    default: login_hint
+  - name: include_html
+    type: Any
+    default: include_html
+  - name: max_body_length
+    type: Any
+    default: max_body_length
+  - name: attachment_dir
+    type: Any
+    default: attachment_dir
+  - name: max_batch_size
+    type: Any
+    default: max(min(max_batch_size, 100), 1)
+  - name: _temp_dir
+    type: Any
+    default: Optional[tempfile.TemporaryDirectory]
+  - name: _label_cache
+    type: Any
+    default: Optional[Dict[str, str]]
+  methods:
+  - name: __init__
+    sig: |-
+      __init__(
+              self,
+              creds: Optional[Union[Credentials, ServiceAccountCredentials]] = None,
+              credentials_path: Optional[str] = None,
+              token_path: Optional[str] = None,
+              service_account_path: Optional[str] = None,
+              delegated_user: Optional[str] = None,
+              scopes: Optional[List[str]] = None,
+              port: Optional[int] = None,
+              login_hint: Optional[str] = None,
+              include_html: bool = False,
+              max_body_length: Optional[int] = None,
+              attachment_dir: Optional[str] = None,
+              # Reading
+              get_latest_emails: bool = True,
+              get_emails_from_user: bool = True,
+              get_unread_emails: bool = True,
+              get_starred_emails: bool = True,
+              get_emails_by_context: bool = True,
+              get_emails_by_date: bool = True,
+              get_emails_by_thread: bool = True,
+              search_emails: bool = True,
+              # Management
+              mark_email_as_read: bool = True,
+              mark_email_as_unread: bool = True,
+              star_email: bool = True,
+              unstar_email: bool = True,
+              archive_email: bool = False,
+              # Composing
+              create_draft_email: bool = True,
+              send_email: bool = True,
+              send_email_reply: bool = True,
+              # Labels
+              list_custom_labels: bool = True,
+              apply_label: bool = True,
+              remove_label: bool = True,
+              delete_custom_label: bool = True,
+              # Thread & message tools
+              get_message: bool = True,
+              get_thread: bool = True,
+              search_threads: bool = True,
+              modify_thread_labels: bool = False,
+              trash_thread: bool = False,
+              get_draft: bool = True,
+              list_drafts: bool = True,
+              send_draft: bool = False,
+              update_draft: bool = True,
+              list_labels: bool = False,
+              modify_message_labels: bool = False,
+              trash_message: bool = False,
+              download_attachment: bool = False,
+              max_batch_size: int = 10,
+              instructions: Optional[str] = None,
+              add_instructions: bool = True,
+              **kwargs,
+          )
+    lines:
+    - 145
+    - 371
+    detail:
+      calls:
+      - ValueError
+      - any
+      - max
+      - min
+      - super
+      - super().__init__
+      - tools.append
+  - name: _auth
+    sig: _auth(self) -> None
+    vis: protected
+    lines:
+    - 373
+    - 440
+    detail:
+      calls:
+      - Credentials.from_authorized_user_file
+      - InstalledAppFlow.from_client_config
+      - InstalledAppFlow.from_client_secrets_file
+      - Path
+      - Request
+      - ServiceAccountCredentials.from_service_account_file
+      - ValueError
+      - creds_file.exists
+      - flow.run_local_server
+      - getenv
+      - log_debug
+      - self.creds.refresh
+      - self.creds.to_json
+      - str
+      - token_file.exists
+      - token_file.write_text
+  - name: _format_emails
+    sig: '_format_emails(self, emails: List[dict]) -> str'
+    vis: protected
+    lines:
+    - 442
+    - 462
+    detail:
+      calls:
+      - '"\n\n".join'
+      - formatted_emails.append
+  - name: get_latest_emails
+    sig: 'get_latest_emails(self, count: int) -> str'
+    decorators:
+    - authenticate
+    lines:
+    - 465
+    - 482
+    detail:
+      calls:
+      - results.get
+      - self._format_emails
+      - self._get_message_details
+      - self.service.users
+      - self.service.users().messages
+      - self.service.users().messages().list
+      - self.service.users().messages().list(userId="me", maxResults=count).execute
+      - type
+  - name: get_emails_from_user
+    sig: 'get_emails_from_user(self, user: str, count: int) -> str'
+    decorators:
+    - authenticate
+    lines:
+    - 485
+    - 504
+    detail:
+      calls:
+      - results.get
+      - self._format_emails
+      - self._get_message_details
+      - self.service.users
+      - self.service.users().messages
+      - self.service.users().messages().list
+      - self.service.users().messages().list(userId="me", q=query, maxResults=count).execute
+      - type
+  - name: get_unread_emails
+    sig: 'get_unread_emails(self, count: int) -> str'
+    decorators:
+    - authenticate
+    lines:
+    - 507
+    - 524
+    detail:
+      calls:
+      - results.get
+      - self._format_emails
+      - self._get_message_details
+      - self.service.users
+      - self.service.users().messages
+      - self.service.users().messages().list
+      - self.service.users().messages().list(userId="me", q="is:unread", maxResults=count).execute
+      - type
+  - name: get_emails_by_thread
+    sig: 'get_emails_by_thread(self, thread_id: str) -> str'
+    decorators:
+    - authenticate
+    lines:
+    - 527
+    - 545
+    detail:
+      calls:
+      - self._format_emails
+      - self._get_message_details
+      - self.service.users
+      - self.service.users().threads
+      - self.service.users().threads().get
+      - self.service.users().threads().get(userId="me", id=thread_id).execute
+      - thread.get
+      - type
+  - name: get_starred_emails
+    sig: 'get_starred_emails(self, count: int) -> str'
+    decorators:
+    - authenticate
+    lines:
+    - 548
+    - 565
+    detail:
+      calls:
+      - results.get
+      - self._format_emails
+      - self._get_message_details
+      - self.service.users
+      - self.service.users().messages
+      - self.service.users().messages().list
+      - self.service.users().messages().list(userId="me", q="is:starred", maxResults=count).execute
+      - type
+  - name: get_emails_by_context
+    sig: 'get_emails_by_context(self, context: str, count: int) -> str'
+    decorators:
+    - authenticate
+    lines:
+    - 568
+    - 586
+    detail:
+      calls:
+      - results.get
+      - self._format_emails
+      - self._get_message_details
+      - self.service.users
+      - self.service.users().messages
+      - self.service.users().messages().list
+      - self.service.users().messages().list(userId="me", q=context, maxResults=count).execute
+      - type
+  - name: get_emails_by_date
+    sig: |-
+      get_emails_by_date(
+              self, start_date: str, range_in_days: Optional[int] = None, num_emails: Optional[int] = 10
+          ) -> str
+    decorators:
+    - authenticate
+    lines:
+    - 589
+    - 616
+    detail:
+      calls:
+      - datetime.strptime
+      - end_date.strftime
+      - results.get
+      - self._format_emails
+      - self._get_message_details
+      - self.service.users
+      - self.service.users().messages
+      - self.service.users().messages().list
+      - self.service.users().messages().list(userId="me", q=query, maxResults=num_emails).execute
+      - timedelta
+      - type
+  - name: create_draft_email
+    sig: |-
+      create_draft_email(
+              self,
+              to: str,
+              subject: str,
+              body: str,
+              cc: Optional[str] = None,
+              bcc: Optional[str] = None,
+              attachments: Optional[Union[str, List[str]]] = None,
+              thread_id: Optional[str] = None,
+              message_id: Optional[str] = None,
+          ) -> str
+    decorators:
+    - authenticate
+    lines:
+    - 619
+    - 681
+    detail:
+      calls:
+      - Path
+      - Path(file_path).exists
+      - bcc.split
+      - cc.split
+      - isinstance
+      - json.dumps
+      - self._create_message
+      - self._validate_email_params
+      - self.service.users
+      - self.service.users().drafts
+      - self.service.users().drafts().create
+      - self.service.users().drafts().create(userId="me", body=draft).execute
+      - subject.lower
+      - subject.lower().startswith
+      - to.split
+      - type
+  - name: send_email
+    sig: |-
+      send_email(
+              self,
+              to: str,
+              subject: str,
+              body: str,
+              cc: Optional[str] = None,
+              bcc: Optional[str] = None,
+              attachments: Optional[Union[str, List[str]]] = None,
+              thread_id: Optional[str] = None,
+              message_id: Optional[str] = None,
+          ) -> str
+    decorators:
+    - authenticate
+    lines:
+    - 684
+    - 745
+    detail:
+      calls:
+      - Path
+      - Path(file_path).exists
+      - bcc.split
+      - cc.split
+      - isinstance
+      - json.dumps
+      - self._create_message
+      - self._validate_email_params
+      - self.service.users
+      - self.service.users().messages
+      - self.service.users().messages().send
+      - self.service.users().messages().send(userId="me", body=message).execute
+      - subject.lower
+      - subject.lower().startswith
+      - to.split
+      - type
+  - name: send_email_reply
+    sig: |-
+      send_email_reply(
+              self,
+              thread_id: str,
+              message_id: str,
+              to: str,
+              subject: str,
+              body: str,
+              cc: Optional[str] = None,
+              attachments: Optional[Union[str, List[str]]] = None,
+          ) -> str
+    decorators:
+    - authenticate
+    lines:
+    - 748
+    - 805
+    detail:
+      calls:
+      - Path
+      - Path(file_path).exists
+      - cc.split
+      - isinstance
+      - json.dumps
+      - self._create_message
+      - self._validate_email_params
+      - self.service.users
+      - self.service.users().messages
+      - self.service.users().messages().send
+      - self.service.users().messages().send(userId="me", body=message).execute
+      - subject.lower
+      - subject.lower().startswith
+      - to.split
+      - type
+  - name: search_emails
+    sig: 'search_emails(self, query: str, count: int) -> str'
+    decorators:
+    - authenticate
+    lines:
+    - 808
+    - 827
+    detail:
+      calls:
+      - results.get
+      - self._format_emails
+      - self._get_message_details
+      - self.service.users
+      - self.service.users().messages
+      - self.service.users().messages().list
+      - self.service.users().messages().list(userId="me", q=query, maxResults=count).execute
+      - type
+  - name: mark_email_as_read
+    sig: 'mark_email_as_read(self, message_id: str) -> str'
+    decorators:
+    - authenticate
+    lines:
+    - 830
+    - 852
+    detail:
+      calls:
+      - self.service.users
+      - self.service.users().messages
+      - self.service.users().messages().modify
+      - self.service.users().messages().modify(userId="me", id=message_id, body=modify_request).execute
+      - type
+  - name: mark_email_as_unread
+    sig: 'mark_email_as_unread(self, message_id: str) -> str'
+    decorators:
+    - authenticate
+    lines:
+    - 855
+    - 877
+    detail:
+      calls:
+      - self.service.users
+      - self.service.users().messages
+      - self.service.users().messages().modify
+      - self.service.users().messages().modify(userId="me", id=message_id, body=modify_request).execute
+      - type
+  - name: star_email
+    sig: 'star_email(self, message_id: str) -> str'
+    decorators:
+    - authenticate
+    lines:
+    - 880
+    - 896
+    detail:
+      calls:
+      - self.service.users
+      - self.service.users().messages
+      - self.service.users().messages().modify
+      - self.service.users().messages().modify(userId="me", id=message_id, body=modify_request).execute
+      - type
+  - name: unstar_email
+    sig: 'unstar_email(self, message_id: str) -> str'
+    decorators:
+    - authenticate
+    lines:
+    - 899
+    - 915
+    detail:
+      calls:
+      - self.service.users
+      - self.service.users().messages
+      - self.service.users().messages().modify
+      - self.service.users().messages().modify(userId="me", id=message_id, body=modify_request).execute
+      - type
+  - name: archive_email
+    sig: 'archive_email(self, message_id: str) -> str'
+    decorators:
+    - authenticate
+    lines:
+    - 918
+    - 934
+    detail:
+      calls:
+      - self.service.users
+      - self.service.users().messages
+      - self.service.users().messages().modify
+      - self.service.users().messages().modify(userId="me", id=message_id, body=modify_request).execute
+      - type
+  - name: list_custom_labels
+    sig: list_custom_labels(self) -> str
+    decorators:
+    - authenticate
+    lines:
+    - 937
+    - 961
+    detail:
+      calls:
+      - '"\n".join'
+      - enumerate
+      - label.get
+      - len
+      - results.get
+      - self.service.users
+      - self.service.users().labels
+      - self.service.users().labels().list
+      - self.service.users().labels().list(userId="me").execute
+      - type
+  - name: apply_label
+    sig: 'apply_label(self, context: str, label_name: str, count: int = 10) -> str'
+    decorators:
+    - authenticate
+    lines:
+    - 964
+    - 1011
+    detail:
+      calls:
+      - label_name.lower
+      - len
+      - results.get
+      - self._label_cache.get
+      - self._resolve_label_ids
+      - self.service.users
+      - |-
+        self.service.users()  # type: ignore
+                            .labels
+      - |-
+        self.service.users()  # type: ignore
+                            .labels()
+                            .create
+      - |-
+        self.service.users()  # type: ignore
+                            .labels()
+                            .create(
+                                userId="me",
+                                body={"name": label_name, "labelListVisibility": "labelShow", "messageListVisibility": "show"},
+                            )
+                            .execute
+      - self.service.users().messages
+      - self.service.users().messages().list
+      - self.service.users().messages().list(userId="me", q=context, maxResults=count).execute
+      - self.service.users().messages().modify
+      - |-
+        self.service.users().messages().modify(  # type: ignore
+                            userId="me", id=msg["id"], body={"addLabelIds": [label_id]}
+                        ).execute
+      - type
+  - name: remove_label
+    sig: 'remove_label(self, context: str, label_name: str, count: int = 10) -> str'
+    decorators:
+    - authenticate
+    lines:
+    - 1014
+    - 1057
+    detail:
+      calls:
+      - label_name.lower
+      - results.get
+      - self._label_cache.get
+      - self._resolve_label_ids
+      - self.service.users
+      - |-
+        self.service.users()  # type: ignore
+                        .messages
+      - |-
+        self.service.users()  # type: ignore
+                        .messages()
+                        .list
+      - |-
+        self.service.users()  # type: ignore
+                        .messages()
+                        .list(userId="me", q=f"{context} label:{label_name}", maxResults=count)
+                        .execute
+      - self.service.users().messages
+      - self.service.users().messages().modify
+      - |-
+        self.service.users().messages().modify(  # type: ignore
+                            userId="me", id=msg["id"], body={"removeLabelIds": [label_id]}
+                        ).execute
+      - type
+  - name: delete_custom_label
+    sig: 'delete_custom_label(self, label_name: str, confirm: bool = False) -> str'
+    decorators:
+    - authenticate
+    lines:
+    - 1060
+    - 1099
+    detail:
+      calls:
+      - label["name"].lower
+      - label_name.lower
+      - self.service.users
+      - self.service.users().labels
+      - self.service.users().labels().delete
+      - self.service.users().labels().delete(userId="me", id=target_label["id"]).execute
+      - self.service.users().labels().list
+      - self.service.users().labels().list(userId="me").execute
+      - self.service.users().labels().list(userId="me").execute().get
+      - target_label.get
+      - type
+  - name: _validate_email_params
+    sig: '_validate_email_params(self, to: str, subject: str, body: str) -> None'
+    vis: protected
+    lines:
+    - 1101
+    - 1115
+    detail:
+      calls:
+      - ValueError
+      - email.strip
+      - subject.strip
+      - to.split
+      - validate_email
+  - name: _create_message
+    sig: |-
+      _create_message(
+              self,
+              to: List[str],
+              subject: str,
+              body: str,
+              cc: Optional[List[str]] = None,
+              bcc: Optional[List[str]] = None,
+              thread_id: Optional[str] = None,
+              message_id: Optional[str] = None,
+              attachments: Optional[List[str]] = None,
+          ) -> dict
+    vis: protected
+    lines:
+    - 1117
+    - 1184
+    detail:
+      calls:
+      - '", ".join'
+      - MIMEApplication
+      - MIMEMultipart
+      - MIMEText
+      - Path
+      - attachment.add_header
+      - base64.urlsafe_b64encode
+      - base64.urlsafe_b64encode(message.as_bytes()).decode
+      - body.replace
+      - body.replace("\\n", "\n").replace
+      - content_type.split
+      - file.read
+      - file_path_obj.exists
+      - message.as_bytes
+      - message.attach
+      - mimetypes.guess_type
+      - open
+  - name: _get_message_details
+    sig: '_get_message_details(self, messages: List[dict]) -> List[dict]'
+    vis: protected
+    lines:
+    - 1186
+    - 1224
+    detail:
+      calls:
+      - details.append
+      - msg_data.get
+      - next
+      - self._get_message_body
+      - self.service.users
+      - self.service.users().messages
+      - self.service.users().messages().get
+      - self.service.users().messages().get(userId="me", id=msg["id"], format="full").execute
+  - name: _get_message_body
+    sig: '_get_message_body(self, msg_data: dict) -> str'
+    vis: protected
+    lines:
+    - 1226
+    - 1245
+    detail:
+      calls:
+      - ''', ''.join'
+      - attachments.append
+      - base64.urlsafe_b64decode
+      - base64.urlsafe_b64decode(msg_data["payload"]["body"]["data"]).decode
+      - base64.urlsafe_b64decode(part["body"]["data"]).decode
+  - name: _decode_body_data
+    sig: '_decode_body_data(self, data: str) -> str'
+    vis: protected
+    lines:
+    - 1247
+    - 1256
+    detail:
+      calls:
+      - base64.urlsafe_b64decode
+      - raw_bytes.decode
+  - name: _resolve_label_ids
+    sig: '_resolve_label_ids(self, label_names: List[str]) -> List[str]'
+    vis: protected
+    lines:
+    - 1258
+    - 1263
+    detail:
+      calls:
+      - lbl["name"].lower
+      - name.lower
+      - self._label_cache.get
+      - self.service.users
+      - self.service.users().labels
+      - self.service.users().labels().list
+      - self.service.users().labels().list(userId="me").execute
+      - self.service.users().labels().list(userId="me").execute().get
+  - name: _batch_get
+    sig: |-
+      _batch_get(
+              self,
+              ids: List[str],
+              request_builder: Callable,
+          ) -> List[Dict]
+    vis: protected
+    lines:
+    - 1265
+    - 1295
+    detail:
+      calls:
+      - batch.add
+      - batch.execute
+      - len
+      - range
+      - request_builder
+      - service.new_batch_http_request
+  - name: _download_attachment_file
+    sig: '_download_attachment_file(self, message_id: str, attachment_id: str, filename: str) -> str'
+    vis: protected
+    lines:
+    - 1297
+    - 1316
+    detail:
+      calls:
+      - Path
+      - base64.urlsafe_b64decode
+      - dest_dir.mkdir
+      - file_path.write_bytes
+      - log_debug
+      - service.users
+      - service.users().messages
+      - service.users().messages().attachments
+      - service.users().messages().attachments().get
+      - service.users().messages().attachments().get(userId="me", messageId=message_id, id=attachment_id).execute
+      - str
+      - tempfile.TemporaryDirectory
+  - name: _format_message
+    sig: '_format_message(self, msg_data: Dict, include_body: bool = True) -> Dict[str, Any]'
+    vis: protected
+    lines:
+    - 1318
+    - 1340
+    detail:
+      calls:
+      - h["name"].lower
+      - headers.get
+      - msg_data.get
+      - msg_data.get("payload", {}).get
+      - self._extract_body
+  - name: _extract_body
+    sig: '_extract_body(self, payload: Dict) -> Tuple[str, List[Dict]]'
+    vis: protected
+    lines:
+    - 1342
+    - 1414
+    detail:
+      calls:
+      - '"\n".join'
+      - attachments.append
+      - attachments.extend
+      - body.splitlines
+      - html_parts.append
+      - len
+      - line.strip
+      - part.get
+      - part_body.get
+      - part_mime.startswith
+      - payload.get
+      - payload.get("body", {}).get
+      - plain_parts.append
+      - re.sub
+      - self._decode_body_data
+      - self._extract_body
+      - text.splitlines
+  - name: get_message
+    sig: 'get_message(self, message_id: str, download_attachments: bool = False) -> str'
+    decorators:
+    - authenticate
+    lines:
+    - 1419
+    - 1445
+    detail:
+      calls:
+      - att.get
+      - json.dumps
+      - log_error
+      - result.get
+      - self._download_attachment_file
+      - self._format_message
+      - service.users
+      - service.users().messages
+      - service.users().messages().get
+      - service.users().messages().get(userId="me", id=message_id, format="full").execute
+      - type
+  - name: get_thread
+    sig: 'get_thread(self, thread_id: str) -> str'
+    decorators:
+    - authenticate
+    lines:
+    - 1448
+    - 1473
+    detail:
+      calls:
+      - json.dumps
+      - len
+      - log_error
+      - self._format_message
+      - service.users
+      - service.users().threads
+      - service.users().threads().get
+      - service.users().threads().get(userId="me", id=thread_id).execute
+      - thread.get
+      - type
+  - name: search_threads
+    sig: 'search_threads(self, query: str, count: int = 10) -> str'
+    decorators:
+    - authenticate
+    lines:
+    - 1476
+    - 1502
+    detail:
+      calls:
+      - json.dumps
+      - len
+      - log_error
+      - min
+      - results.get
+      - service.users
+      - service.users().threads
+      - service.users().threads().list
+      - service.users().threads().list(userId="me", q=query, maxResults=max_results).execute
+      - type
+  - name: modify_thread_labels
+    sig: |-
+      modify_thread_labels(
+              self,
+              thread_id: str,
+              add_labels: Optional[str] = None,
+              remove_labels: Optional[str] = None,
+          ) -> str
+    decorators:
+    - authenticate
+    lines:
+    - 1505
+    - 1541
+    detail:
+      calls:
+      - add_labels.split
+      - json.dumps
+      - log_error
+      - n.strip
+      - remove_labels.split
+      - result.get
+      - self._resolve_label_ids
+      - service.users
+      - service.users().threads
+      - service.users().threads().modify
+      - service.users().threads().modify(userId="me", id=thread_id, body=body).execute
+      - type
+  - name: trash_thread
+    sig: 'trash_thread(self, thread_id: str) -> str'
+    decorators:
+    - authenticate
+    lines:
+    - 1544
+    - 1562
+    detail:
+      calls:
+      - json.dumps
+      - log_error
+      - service.users
+      - service.users().threads
+      - service.users().threads().trash
+      - service.users().threads().trash(userId="me", id=thread_id).execute
+      - type
+  - name: get_draft
+    sig: 'get_draft(self, draft_id: str) -> str'
+    decorators:
+    - authenticate
+    lines:
+    - 1565
+    - 1589
+    detail:
+      calls:
+      - draft.get
+      - json.dumps
+      - log_error
+      - self._format_message
+      - service.users
+      - service.users().drafts
+      - service.users().drafts().get
+      - service.users().drafts().get(userId="me", id=draft_id, format="full").execute
+      - type
+  - name: list_drafts
+    sig: 'list_drafts(self, count: int = 10) -> str'
+    decorators:
+    - authenticate
+    lines:
+    - 1592
+    - 1612
+    detail:
+      calls:
+      - json.dumps
+      - len
+      - log_error
+      - min
+      - results.get
+      - service.users
+      - service.users().drafts
+      - service.users().drafts().list
+      - service.users().drafts().list(userId="me", maxResults=max_results).execute
+      - type
+  - name: send_draft
+    sig: 'send_draft(self, draft_id: str) -> str'
+    decorators:
+    - authenticate
+    lines:
+    - 1615
+    - 1639
+    detail:
+      calls:
+      - json.dumps
+      - log_error
+      - result.get
+      - service.users
+      - service.users().drafts
+      - service.users().drafts().send
+      - 'service.users().drafts().send(userId="me", body={"id": draft_id}).execute'
+      - type
+  - name: update_draft
+    sig: |-
+      update_draft(
+              self,
+              draft_id: str,
+              to: str,
+              subject: str,
+              body: str,
+              cc: Optional[str] = None,
+              bcc: Optional[str] = None,
+              attachments: Optional[Union[str, List[str]]] = None,
+              thread_id: Optional[str] = None,
+              message_id: Optional[str] = None,
+          ) -> str
+    decorators:
+    - authenticate
+    lines:
+    - 1642
+    - 1706
+    detail:
+      calls:
+      - Path
+      - ValueError
+      - b.strip
+      - bcc.split
+      - c.strip
+      - cc.split
+      - isinstance
+      - json.dumps
+      - list
+      - log_error
+      - p.stat
+      - self._create_message
+      - self._validate_email_params
+      - service.users
+      - service.users().drafts
+      - service.users().drafts().update
+      - 'service.users().drafts().update(userId="me", id=draft_id, body={"message": mime}).execute'
+      - subject.lower
+      - subject.lower().startswith
+      - t.strip
+      - to.split
+      - type
+  - name: list_labels
+    sig: list_labels(self) -> str
+    decorators:
+    - authenticate
+    lines:
+    - 1709
+    - 1743
+    detail:
+      calls:
+      - detail.get
+      - formatted.append
+      - json.dumps
+      - len
+      - log_error
+      - results.get
+      - self._batch_get
+      - service.users
+      - service.users().labels
+      - service.users().labels().get
+      - service.users().labels().list
+      - service.users().labels().list(userId="me").execute
+      - type
+  - name: modify_message_labels
+    sig: |-
+      modify_message_labels(
+              self,
+              message_id: str,
+              add_labels: Optional[str] = None,
+              remove_labels: Optional[str] = None,
+          ) -> str
+    decorators:
+    - authenticate
+    lines:
+    - 1746
+    - 1783
+    detail:
+      calls:
+      - add_labels.split
+      - json.dumps
+      - log_error
+      - n.strip
+      - remove_labels.split
+      - result.get
+      - self._resolve_label_ids
+      - service.users
+      - service.users().messages
+      - service.users().messages().modify
+      - service.users().messages().modify(userId="me", id=message_id, body=body).execute
+      - type
+  - name: trash_message
+    sig: 'trash_message(self, message_id: str, undo: bool = False) -> str'
+    decorators:
+    - authenticate
+    lines:
+    - 1786
+    - 1810
+    detail:
+      calls:
+      - json.dumps
+      - log_error
+      - service.users
+      - service.users().messages
+      - service.users().messages().trash
+      - service.users().messages().trash(userId="me", id=message_id).execute
+      - service.users().messages().untrash
+      - service.users().messages().untrash(userId="me", id=message_id).execute
+      - type
+  - name: download_attachment
+    sig: 'download_attachment(self, message_id: str, attachment_id: str, filename: str) -> str'
+    decorators:
+    - authenticate
+    lines:
+    - 1813
+    - 1832
+    detail:
+      calls:
+      - json.dumps
+      - log_error
+      - self._download_attachment_file
+      - type
+  lines:
+  - 137
+  - 1832
+functions:
+- name: authenticate
+  sig: authenticate(func)
+  lines:
+  - 96
+  - 111
+  detail:
+    calls:
+    - wraps
+- name: validate_email
+  sig: 'validate_email(email: str) -> bool'
+  lines:
+  - 114
+  - 118
+  detail:
+    calls:
+    - bool
+    - email.strip
+    - re.match
+exports:
+- name: GmailTools
+  kind: type
+- name: authenticate
+  kind: func
+- name: validate_email
+  kind: func
+- name: GMAIL_QUERY_INSTRUCTIONS
+  kind: data
