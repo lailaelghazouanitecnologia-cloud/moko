@@ -1,0 +1,407 @@
+#!/usr/bin/env python3
+"""
+ava — CLI for the Roska Code Intelligence Compiler.
+
+Usage:
+    ava add <name> <source>          # register project (URL or local path)
+    ava list                         # list registered projects
+    ava analyze <name> [--mode M]    # analyze with LLM
+    ava refresh <name>               # regenerate descriptors
+    ava remove <name>                # unregister project
+    ava info <name>                  # show project details + metrics
+"""
+
+import sys
+import os
+import json
+import subprocess
+import shutil
+import argparse
+import time
+from pathlib import Path
+
+# ── Paths ─────────────────────────────────────────────────────────
+
+ROOT = Path(__file__).resolve().parent
+REGISTRY = ROOT / "projects.json"
+OUT_DIR = ROOT / "out"
+REF_DIR = ROOT / "references"
+SRC_DIR = ROOT / "src"
+CARGO_TOML = SRC_DIR / "Cargo.toml"
+ANALYZE_PY = SRC_DIR / "analyze.py"
+
+# ── Registry ──────────────────────────────────────────────────────
+
+def load_registry() -> dict:
+    if REGISTRY.exists():
+        return json.loads(REGISTRY.read_text())
+    return {"projects": {}}
+
+def save_registry(reg: dict):
+    REGISTRY.write_text(json.dumps(reg, indent=2) + "\n")
+
+# ── Helpers ───────────────────────────────────────────────────────
+
+def run(cmd: list[str], **kwargs) -> subprocess.CompletedProcess:
+    """Run command, print stderr live, return result."""
+    return subprocess.run(cmd, **kwargs)
+
+def ensure_binary():
+    """Build lyzed-ts if not already built."""
+    binary = SRC_DIR / "target" / "release" / "lyzed-ts"
+    if not binary.exists():
+        print("[ava] Building lyzed-ts...")
+        r = run(
+            ["cargo", "build", "--release", "--manifest-path", str(CARGO_TOML)],
+        )
+        if r.returncode != 0:
+            print("[ava] Error: cargo build failed", file=sys.stderr)
+            sys.exit(1)
+    return str(binary)
+
+def is_url(s: str) -> bool:
+    return s.startswith("http://") or s.startswith("https://") or s.startswith("git@")
+
+def clone_repo(url: str, dest: Path) -> bool:
+    """Clone a git repo. Returns True on success."""
+    print(f"[ava] Cloning {url}...")
+    r = run(["git", "clone", "--depth", "1", url, str(dest)])
+    return r.returncode == 0
+
+def generate_descriptors(name: str, source_path: str, lang: str = "auto", olevel: int = 2):
+    """Run lyzed-ts on source, output to out/<name>/."""
+    binary = ensure_binary()
+    out = OUT_DIR / name
+    if out.exists():
+        shutil.rmtree(out)
+    out.mkdir(parents=True)
+
+    cmd = [
+        binary,
+        "-i", source_path,
+        "-o", str(out),
+        "-n", name,
+        "--graph", "--dot",
+        "--olevel", str(olevel),
+        "--lang", lang,
+    ]
+
+    print(f"[ava] Generating descriptors for '{name}'...")
+    t0 = time.time()
+    r = run(cmd)
+    elapsed = time.time() - t0
+
+    if r.returncode != 0:
+        print(f"[ava] Error: lyzed-ts failed for '{name}'", file=sys.stderr)
+        return None
+
+    # Count output
+    yaml_count = len(list(out.rglob("*.yaml")))
+    dot_count = len(list(out.rglob("*.dot")))
+    total_size = sum(f.stat().st_size for f in out.rglob("*") if f.is_file())
+
+    stats = {
+        "yaml_files": yaml_count,
+        "dot_files": dot_count,
+        "total_size_bytes": total_size,
+        "generation_time_s": round(elapsed, 2),
+    }
+    print(
+        f"[ava] Generated: {yaml_count} YAML + {dot_count} DOT "
+        f"({total_size / 1024:.0f} KB) in {elapsed:.1f}s"
+    )
+    return stats
+
+# ── Commands ──────────────────────────────────────────────────────
+
+def cmd_add(args):
+    """Register a new project."""
+    reg = load_registry()
+    name = args.name
+
+    if name in reg["projects"]:
+        print(f"[ava] Project '{name}' already registered. Use 'ava refresh {name}' to update.")
+        sys.exit(1)
+
+    source = args.source
+    lang = args.lang
+    local_path = None
+
+    if is_url(source):
+        # Clone to references/
+        dest = REF_DIR / name
+        if dest.exists():
+            print(f"[ava] Using existing clone at {dest}")
+        else:
+            dest.mkdir(parents=True, exist_ok=True)
+            if not clone_repo(source, dest):
+                print(f"[ava] Error: clone failed", file=sys.stderr)
+                sys.exit(1)
+        local_path = str(dest)
+    else:
+        # Local path
+        p = Path(source).resolve()
+        if not p.is_dir():
+            print(f"[ava] Error: '{source}' is not a directory", file=sys.stderr)
+            sys.exit(1)
+        local_path = str(p)
+
+    # Generate descriptors
+    stats = generate_descriptors(name, local_path, lang=lang, olevel=args.olevel)
+    if stats is None:
+        sys.exit(1)
+
+    # Save to registry
+    reg["projects"][name] = {
+        "source": source,
+        "local_path": local_path,
+        "lang": lang,
+        "olevel": args.olevel,
+        "stats": stats,
+        "added_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+    }
+    save_registry(reg)
+    print(f"[ava] Project '{name}' registered.")
+
+
+def cmd_list(args):
+    """List all registered projects."""
+    reg = load_registry()
+    projects = reg.get("projects", {})
+
+    if not projects:
+        print("[ava] No projects registered. Use 'ava add <name> <source>' to add one.")
+        return
+
+    print(f"\n{'Name':<20} {'Source':<45} {'YAML':>6} {'Size':>8} {'O-Level':>7}")
+    print("─" * 90)
+    for name, info in sorted(projects.items()):
+        src = info["source"]
+        if len(src) > 43:
+            src = "..." + src[-40:]
+        stats = info.get("stats", {})
+        yaml_count = stats.get("yaml_files", "?")
+        size = stats.get("total_size_bytes", 0)
+        size_str = f"{size / 1024:.0f}KB" if size else "?"
+        olevel = info.get("olevel", "?")
+        print(f"{name:<20} {src:<45} {yaml_count:>6} {size_str:>8} {'O' + str(olevel):>7}")
+    print()
+
+
+def cmd_analyze(args):
+    """Run LLM analysis on a project."""
+    reg = load_registry()
+    name = args.name
+
+    if name not in reg["projects"]:
+        print(f"[ava] Project '{name}' not found. Use 'ava list' to see registered projects.")
+        sys.exit(1)
+
+    out_dir = OUT_DIR / name
+    if not out_dir.exists():
+        print(f"[ava] No descriptors found. Run 'ava refresh {name}' first.")
+        sys.exit(1)
+
+    # Check GROQ_API_KEY
+    if not os.environ.get("GROQ_API_KEY"):
+        print("[ava] Error: GROQ_API_KEY not set", file=sys.stderr)
+        print("  export GROQ_API_KEY=gsk_...", file=sys.stderr)
+        sys.exit(1)
+
+    cmd = [sys.executable, str(ANALYZE_PY), str(out_dir)]
+
+    if args.mode:
+        cmd += ["--mode", args.mode]
+    elif args.question:
+        cmd += [args.question]
+    else:
+        print("[ava] Error: provide --mode or a question", file=sys.stderr)
+        sys.exit(1)
+
+    if args.budget:
+        cmd += ["--budget", str(args.budget)]
+    if args.model:
+        cmd += ["--model", args.model]
+
+    # Save metrics
+    metrics_file = OUT_DIR / name / f"metrics-{args.mode or 'custom'}.json"
+    cmd += ["--save", str(metrics_file)]
+
+    r = run(cmd)
+
+    if r.returncode == 0 and metrics_file.exists():
+        metrics = json.loads(metrics_file.read_text())
+        # Update registry with latest metrics
+        if "analyses" not in reg["projects"][name]:
+            reg["projects"][name]["analyses"] = []
+        reg["projects"][name]["analyses"].append({
+            "mode": args.mode or "custom",
+            "total_tokens": metrics.get("total_tokens", 0),
+            "prompt_tokens": metrics.get("prompt_tokens", 0),
+            "completion_tokens": metrics.get("completion_tokens", 0),
+            "elapsed_s": metrics.get("elapsed_s", 0),
+            "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
+        })
+        save_registry(reg)
+
+
+def cmd_refresh(args):
+    """Regenerate descriptors for a project."""
+    reg = load_registry()
+    name = args.name
+
+    if name not in reg["projects"]:
+        print(f"[ava] Project '{name}' not found.")
+        sys.exit(1)
+
+    info = reg["projects"][name]
+    local_path = info["local_path"]
+
+    if not Path(local_path).is_dir():
+        print(f"[ava] Source path no longer exists: {local_path}", file=sys.stderr)
+        sys.exit(1)
+
+    lang = args.lang or info.get("lang", "auto")
+    olevel = args.olevel if args.olevel is not None else info.get("olevel", 2)
+
+    stats = generate_descriptors(name, local_path, lang=lang, olevel=olevel)
+    if stats:
+        info["stats"] = stats
+        info["olevel"] = olevel
+        info["lang"] = lang
+        info["refreshed_at"] = time.strftime("%Y-%m-%d %H:%M:%S")
+        save_registry(reg)
+        print(f"[ava] Project '{name}' refreshed.")
+
+
+def cmd_remove(args):
+    """Remove a project from the registry."""
+    reg = load_registry()
+    name = args.name
+
+    if name not in reg["projects"]:
+        print(f"[ava] Project '{name}' not found.")
+        sys.exit(1)
+
+    # Remove output
+    out = OUT_DIR / name
+    if out.exists():
+        shutil.rmtree(out)
+        print(f"[ava] Removed out/{name}/")
+
+    del reg["projects"][name]
+    save_registry(reg)
+    print(f"[ava] Project '{name}' unregistered.")
+
+
+def cmd_info(args):
+    """Show project details and analysis history."""
+    reg = load_registry()
+    name = args.name
+
+    if name not in reg["projects"]:
+        print(f"[ava] Project '{name}' not found.")
+        sys.exit(1)
+
+    info = reg["projects"][name]
+    stats = info.get("stats", {})
+
+    print(f"\n  Project:    {name}")
+    print(f"  Source:     {info['source']}")
+    print(f"  Local:      {info['local_path']}")
+    print(f"  Language:   {info.get('lang', 'auto')}")
+    print(f"  O-Level:    O{info.get('olevel', '?')}")
+    print(f"  Added:      {info.get('added_at', '?')}")
+    if info.get("refreshed_at"):
+        print(f"  Refreshed:  {info['refreshed_at']}")
+
+    print(f"\n  Descriptors:")
+    print(f"    YAML files:  {stats.get('yaml_files', '?')}")
+    print(f"    DOT files:   {stats.get('dot_files', '?')}")
+    size = stats.get("total_size_bytes", 0)
+    print(f"    Total size:  {size / 1024:.0f} KB ({size / 1024 / 1024:.1f} MB)")
+    print(f"    Gen time:    {stats.get('generation_time_s', '?')}s")
+
+    analyses = info.get("analyses", [])
+    if analyses:
+        print(f"\n  Analysis History ({len(analyses)} runs):")
+        print(f"    {'Mode':<12} {'Prompt':>8} {'Compl':>7} {'Total':>8} {'Time':>7} {'When'}")
+        print(f"    {'─' * 65}")
+        for a in analyses[-10:]:  # last 10
+            print(
+                f"    {a.get('mode', '?'):<12} "
+                f"{a.get('prompt_tokens', 0):>8,} "
+                f"{a.get('completion_tokens', 0):>7,} "
+                f"{a.get('total_tokens', 0):>8,} "
+                f"{a.get('elapsed_s', 0):>6.1f}s "
+                f"{a.get('timestamp', '?')}"
+            )
+
+        total_tokens = sum(a.get("total_tokens", 0) for a in analyses)
+        print(f"\n    Total tokens used: {total_tokens:,}")
+    else:
+        print(f"\n  No analyses yet. Run: ava analyze {name} --mode arch")
+
+    print()
+
+
+# ── Main ──────────────────────────────────────────────────────────
+
+def main():
+    parser = argparse.ArgumentParser(
+        prog="ava",
+        description="Roska Code Intelligence Compiler — CLI",
+    )
+    sub = parser.add_subparsers(dest="command")
+
+    # add
+    p_add = sub.add_parser("add", help="Register a new project")
+    p_add.add_argument("name", help="Project name (e.g., cline, kilocode)")
+    p_add.add_argument("source", help="Git URL or local path")
+    p_add.add_argument("--lang", default="auto", help="Language: auto, python, ts")
+    p_add.add_argument("--olevel", type=int, default=2, help="O-level (0-3, default: 2)")
+
+    # list
+    sub.add_parser("list", help="List registered projects")
+
+    # analyze
+    p_analyze = sub.add_parser("analyze", help="Analyze project with LLM")
+    p_analyze.add_argument("name", help="Project name")
+    p_analyze.add_argument("question", nargs="?", help="Free-form question")
+    p_analyze.add_argument("--mode", "-m", choices=["arch", "deps", "security", "quality", "onboard"])
+    p_analyze.add_argument("--budget", "-b", type=int, default=12000)
+    p_analyze.add_argument("--model", default=None)
+
+    # refresh
+    p_refresh = sub.add_parser("refresh", help="Regenerate descriptors")
+    p_refresh.add_argument("name", help="Project name")
+    p_refresh.add_argument("--lang", default=None)
+    p_refresh.add_argument("--olevel", type=int, default=None)
+
+    # remove
+    p_remove = sub.add_parser("remove", help="Unregister a project")
+    p_remove.add_argument("name", help="Project name")
+
+    # info
+    p_info = sub.add_parser("info", help="Show project details")
+    p_info.add_argument("name", help="Project name")
+
+    args = parser.parse_args()
+
+    if not args.command:
+        parser.print_help()
+        sys.exit(1)
+
+    commands = {
+        "add": cmd_add,
+        "list": cmd_list,
+        "analyze": cmd_analyze,
+        "refresh": cmd_refresh,
+        "remove": cmd_remove,
+        "info": cmd_info,
+    }
+    commands[args.command](args)
+
+
+if __name__ == "__main__":
+    main()
