@@ -751,6 +751,63 @@ def llm_synthesis(profiles: list[ProjectProfile], question: str = None) -> str:
     return "".join(output)
 
 
+# ── Layer filtering ───────────────────────────────────────────────
+
+def apply_layer_filter(profile: ProjectProfile, include: set = None, exclude: set = None) -> ProjectProfile:
+    """Filter a profile to only include/exclude specific layers.
+
+    Recalculates total_lines and total_files based on included layers.
+    """
+    lb = profile.layers
+
+    # Map layer names to (files, lines) from breakdown
+    layer_map = {
+        "logic": (lb.logic_files, lb.logic_lines),
+        "ui": (lb.ui_files, lb.ui_lines),
+        "test": (lb.test_files, lb.test_lines),
+        "config": (lb.config_files, lb.config_lines),
+        "docs": (lb.docs_files, lb.docs_lines),
+        "generated": (lb.generated_files, lb.generated_lines),
+    }
+
+    # Determine which layers to keep
+    kept_files = 0
+    kept_lines = 0
+    new_lb = LayerBreakdown()
+
+    for layer_name, (files, lines) in layer_map.items():
+        keep = True
+        if include and layer_name not in include:
+            keep = False
+        if layer_name in (exclude or set()):
+            keep = False
+
+        if keep:
+            kept_files += files
+            kept_lines += lines
+            setattr(new_lb, f"{layer_name}_files", files)
+            setattr(new_lb, f"{layer_name}_lines", lines)
+
+    # Filter modules by dominant layer
+    filtered_modules = []
+    for m in profile.modules:
+        layer = m.layer.lower() if m.layer else "logic"
+        keep = True
+        if include and layer not in include:
+            keep = False
+        if layer in (exclude or set()):
+            keep = False
+        if keep:
+            filtered_modules.append(m)
+
+    profile.total_files = kept_files
+    profile.total_lines = kept_lines
+    profile.layers = new_lb
+    profile.modules = filtered_modules
+
+    return profile
+
+
 # ── Main ──────────────────────────────────────────────────────────
 
 def main():
@@ -787,12 +844,30 @@ def main():
         print("Error: need at least 2 projects to compare", file=sys.stderr)
         sys.exit(1)
 
+    # Parse layer filters
+    include_layers = None
+    exclude_layers = set()
+    if args.layer:
+        include_layers = {args.layer.lower()}
+    if args.exclude_layer:
+        exclude_layers = {l.strip().lower() for l in args.exclude_layer.split(",")}
+
     # Build profiles
     print(f"[synth] Building profiles for {len(project_names)} projects...")
+    if include_layers:
+        print(f"[synth] Layer filter: only {include_layers}")
+    if exclude_layers:
+        print(f"[synth] Excluding layers: {exclude_layers}")
+
     profiles = []
     for name in project_names:
         print(f"  → {name}...", end=" ", flush=True)
         profile = build_profile(name, out_dir)
+
+        # Apply layer filtering to module profiles
+        if include_layers or exclude_layers:
+            profile = apply_layer_filter(profile, include_layers, exclude_layers)
+
         profiles.append(profile)
         print(f"{profile.total_files} files, {profile.total_lines:,} LOC")
 
