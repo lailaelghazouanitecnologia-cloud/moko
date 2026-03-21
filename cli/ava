@@ -17,6 +17,13 @@ Analysis:
     ava analyze <name> --mode quality    # code quality
     ava analyze <name> --mode onboard    # onboarding guide
 
+Feature Extraction:
+    ava features <name>                  # extract feature map
+    ava features <name> --module agent   # single module detail
+    ava features <name> --format md      # markdown output
+    ava vs <a> <b>                       # compare features between two projects
+    ava vs <a> <b> --format md           # markdown comparison
+
 Cross-Project Synthesis:
     ava synth --all                      # compare all projects
     ava synth p1 p2 p3 --format md       # compare specific projects (markdown)
@@ -46,6 +53,7 @@ CRATE_DIR = ROOT / "crates" / "rokotoco-core"
 CARGO_TOML = CRATE_DIR / "Cargo.toml"
 ANALYSIS_DIR = ROOT / "analysis"
 ANALYZE_PY = ANALYSIS_DIR / "analyze.py"
+FEATURES_PY = ANALYSIS_DIR / "features.py"
 
 # ── Registry ──────────────────────────────────────────────────────
 
@@ -477,6 +485,81 @@ def cmd_info(args):
     print()
 
 
+def cmd_features(args):
+    """Extract feature map from a project's descriptors."""
+    reg = load_registry()
+    name = args.name
+
+    if name not in reg["projects"]:
+        print(f"[ava] Project '{name}' not found.")
+        sys.exit(1)
+
+    # Find descriptor directory
+    desc_dir = OUT_DIR / name
+    if not desc_dir.exists():
+        # Check references/*/lyzed-v2 as fallback
+        ref_desc = REF_DIR / name / "lyzed-v2"
+        if ref_desc.exists():
+            desc_dir = ref_desc
+        else:
+            ref_desc = REF_DIR / name / "lyzed"
+            if ref_desc.exists():
+                desc_dir = ref_desc
+            else:
+                print(f"[ava] No descriptors found for '{name}'. Run 'ava refresh {name}' first.")
+                sys.exit(1)
+
+    cmd = [sys.executable, str(FEATURES_PY), str(desc_dir)]
+
+    if args.module:
+        cmd.extend(["--module", args.module])
+    if args.format:
+        cmd.extend(["--format", args.format])
+    if args.save:
+        cmd.extend(["--save", args.save])
+
+    run(cmd)
+
+
+def cmd_vs(args):
+    """Compare features between two projects."""
+    reg = load_registry()
+
+    for name in [args.project_a, args.project_b]:
+        if name not in reg["projects"]:
+            print(f"[ava] Project '{name}' not found.")
+            sys.exit(1)
+
+    def find_desc_dir(name):
+        d = OUT_DIR / name
+        if d.exists():
+            return d
+        for sub in ("lyzed-v2", "lyzed"):
+            ref = REF_DIR / name / sub
+            if ref.exists():
+                return ref
+        return None
+
+    dir_a = find_desc_dir(args.project_a)
+    dir_b = find_desc_dir(args.project_b)
+
+    if not dir_a:
+        print(f"[ava] No descriptors found for '{args.project_a}'.")
+        sys.exit(1)
+    if not dir_b:
+        print(f"[ava] No descriptors found for '{args.project_b}'.")
+        sys.exit(1)
+
+    cmd = [sys.executable, str(FEATURES_PY), str(dir_a), "--vs", str(dir_b)]
+
+    if args.format:
+        cmd.extend(["--format", args.format])
+    if args.save:
+        cmd.extend(["--save", args.save])
+
+    run(cmd)
+
+
 # ── Main ──────────────────────────────────────────────────────────
 
 def main():
@@ -528,6 +611,20 @@ def main():
     p_synth.add_argument("--layer", help="Only include this layer (logic, ui, test)")
     p_synth.add_argument("--exclude-layer", help="Exclude layers (comma-separated)")
 
+    # features
+    p_features = sub.add_parser("features", help="Extract feature map from project")
+    p_features.add_argument("name", help="Project name")
+    p_features.add_argument("--module", "-m", help="Show details for specific module")
+    p_features.add_argument("--format", "-f", choices=["text", "md", "json"], default="text")
+    p_features.add_argument("--save", "-s", help="Save output to file")
+
+    # vs
+    p_vs = sub.add_parser("vs", help="Compare features between two projects")
+    p_vs.add_argument("project_a", help="First project")
+    p_vs.add_argument("project_b", help="Second project")
+    p_vs.add_argument("--format", "-f", choices=["text", "md"], default="text")
+    p_vs.add_argument("--save", "-s", help="Save output to file")
+
     # fetch
     p_fetch = sub.add_parser("fetch", help="Fetch and register repos by URL")
     p_fetch.add_argument("urls", nargs="+", help="Git URLs to fetch")
@@ -549,6 +646,8 @@ def main():
         "remove": cmd_remove,
         "info": cmd_info,
         "synth": cmd_synth,
+        "features": cmd_features,
+        "vs": cmd_vs,
         "fetch": cmd_fetch,
     }
     commands[args.command](args)
