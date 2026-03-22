@@ -1,0 +1,226 @@
+## Roska File Descriptor — pregel/_executor.py
+file: pregel/_executor.py
+lines: 223
+imports:
+- sym: asyncio
+- sym: concurrent.futures
+- sym: contextvars.copy_context
+- sym: types.TracebackType
+- sym: langchain_core.runnables.RunnableConfig
+- sym: langchain_core.runnables.config.get_executor_for_config
+- sym: typing_extensions.ParamSpec
+- sym: langgraph._internal._future.CONTEXT_NOT_SUPPORTED
+- sym: langgraph._internal._future.run_coroutine_threadsafe
+- sym: langgraph.errors.GraphBubbleUp
+data:
+- name: P
+  type: Any
+  val: ParamSpec("P")
+- name: T
+  type: Any
+  val: TypeVar("T")
+types:
+- name: Submit
+  kind: struct
+  methods:
+  - name: __call__
+    sig: |-
+      __call__(  # type: ignore[valid-type]
+              self,
+              fn: Callable[P, T],
+              *args: P.args,
+              __name__: str | None = None,
+              __cancel_on_exit__: bool = False,
+              __reraise_on_exit__: bool = True,
+              __next_tick__: bool = False,
+              **kwargs: P.kwargs,
+          ) -> concurrent.futures.Future[T]
+    lines:
+    - 28
+    - 37
+    detail: {}
+  lines:
+  - 27
+  - 37
+- name: BackgroundExecutor
+  kind: struct
+  ctx: A context manager that runs sync tasks in the background. Uses a thread pool executor to delegate tasks to separate threads. On exit, - cancels any (not yet started) tasks with `__cancel_on_exit__=True` - waits for all tasks to finish - re-raises the first exception from tasks with `__reraise_on_exit__=True` (+2 dunder methods)
+  bases:
+  - AbstractContextManager
+  fields:
+  - name: stack
+    type: Any
+    default: ExitStack()
+  - name: executor
+    type: Any
+    default: self.stack.enter_context(get_executor_for_config(config))
+  - name: tasks
+    type: Any
+    default: dict[concurrent.futures.Future, tuple[bool, bool]]
+  methods:
+  - name: __init__
+    sig: '__init__(self, config: RunnableConfig) -> None'
+    lines:
+    - 48
+    - 52
+    detail:
+      calls:
+      - ExitStack
+      - get_executor_for_config
+      - self.stack.enter_context
+  - name: submit
+    sig: |-
+      submit(  # type: ignore[valid-type]
+              self,
+              fn: Callable[P, T],
+              *args: P.args,
+              __name__: str | None = None,  # currently not used in sync version
+              __cancel_on_exit__: bool = False,  # for sync, can cancel only if not started
+              __reraise_on_exit__: bool = True,
+              __next_tick__: bool = False,
+              **kwargs: P.kwargs,
+          ) -> concurrent.futures.Future[T]
+    lines:
+    - 54
+    - 75
+    detail:
+      calls:
+      - cast
+      - copy_context
+      - self.executor.submit
+      - task.add_done_callback
+  - name: done
+    sig: 'done(self, task: concurrent.futures.Future) -> None'
+    lines:
+    - 77
+    - 88
+    detail:
+      calls:
+      - self.tasks.pop
+      - task.result
+  lines:
+  - 40
+  - 119
+- name: AsyncBackgroundExecutor
+  kind: struct
+  ctx: A context manager that runs async tasks in the background. Uses the current event loop to delegate tasks to asyncio tasks. On exit, - cancels any tasks with `__cancel_on_exit__=True` - waits for all tasks to finish - re-raises the first exception from tasks with `__reraise_on_exit__=True` ignoring CancelledError
+  bases:
+  - AbstractAsyncContextManager
+  fields:
+  - name: tasks
+    type: Any
+    default: dict[asyncio.Future, tuple[bool, bool]]
+  - name: sentinel
+    type: Any
+    default: object()
+  - name: loop
+    type: Any
+    default: asyncio.get_running_loop()
+  - name: semaphore
+    type: Any
+    default: asyncio.Semaphore | None
+  methods:
+  - name: __init__
+    sig: '__init__(self, config: RunnableConfig) -> None'
+    lines:
+    - 131
+    - 140
+    detail:
+      calls:
+      - asyncio.Semaphore
+      - asyncio.get_running_loop
+      - config.get
+      - object
+  - name: submit
+    sig: |-
+      submit(  # type: ignore[valid-type]
+              self,
+              fn: Callable[P, Awaitable[T]],
+              *args: P.args,
+              __name__: str | None = None,
+              __cancel_on_exit__: bool = False,
+              __reraise_on_exit__: bool = True,
+              __next_tick__: bool = False,  # noop in async (always True)
+              **kwargs: P.kwargs,
+          ) -> asyncio.Future[T]
+    lines:
+    - 142
+    - 169
+    detail:
+      calls:
+      - cast
+      - copy_context
+      - fn
+      - gated
+      - run_coroutine_threadsafe
+      - task.add_done_callback
+  - name: done
+    sig: 'done(self, task: asyncio.Future) -> None'
+    lines:
+    - 171
+    - 181
+    detail:
+      calls:
+      - isinstance
+      - self.tasks.pop
+      - task.exception
+  - name: __aenter__
+    sig: __aenter__(self) -> Submit
+    is_async: true
+    lines:
+    - 183
+    - 184
+    detail: {}
+  - name: __aexit__
+    sig: |-
+      __aexit__(
+              self,
+              exc_type: type[BaseException] | None,
+              exc_value: BaseException | None,
+              traceback: TracebackType | None,
+          ) -> None
+    is_async: true
+    lines:
+    - 186
+    - 211
+    detail:
+      calls:
+      - asyncio.wait
+      - self.tasks.copy
+      - task.cancel
+      - task.exception
+      - tasks.items
+  lines:
+  - 122
+  - 211
+functions:
+- name: gated
+  sig: 'gated(semaphore: asyncio.Semaphore, coro: Coroutine[None, None, T]) -> T'
+  is_async: true
+  lines:
+  - 214
+  - 217
+- name: next_tick
+  sig: 'next_tick(fn: Callable[P, T], *args: P.args, **kwargs: P.kwargs) -> T'
+  lines:
+  - 220
+  - 223
+  detail:
+    calls:
+    - fn
+    - time.sleep
+exports:
+- name: Submit
+  kind: type
+- name: BackgroundExecutor
+  kind: type
+- name: AsyncBackgroundExecutor
+  kind: type
+- name: gated
+  kind: func
+- name: next_tick
+  kind: func
+- name: P
+  kind: data
+- name: T
+  kind: data

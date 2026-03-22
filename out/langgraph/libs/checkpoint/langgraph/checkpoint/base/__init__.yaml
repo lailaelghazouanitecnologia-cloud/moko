@@ -1,0 +1,524 @@
+## Roska File Descriptor — base/__init__.py
+file: base/__init__.py
+lines: 628
+imports:
+- sym: langchain_core.runnables.RunnableConfig
+- sym: langgraph.checkpoint.base.id.uuid6
+- sym: langgraph.checkpoint.serde.base.SerializerProtocol
+- sym: langgraph.checkpoint.serde.base.maybe_add_typed_methods
+- sym: langgraph.checkpoint.serde.encrypted.EncryptedSerializer
+- sym: langgraph.checkpoint.serde.jsonplus.JsonPlusSerializer
+- sym: langgraph.checkpoint.serde.types.ERROR
+- sym: langgraph.checkpoint.serde.types.INTERRUPT
+- sym: langgraph.checkpoint.serde.types.RESUME
+- sym: langgraph.checkpoint.serde.types.SCHEDULED
+- sym: langgraph.checkpoint.serde.types.ChannelProtocol
+data:
+- name: V
+  type: Any
+  val: TypeVar("V", int, float, str)
+- name: PendingWrite
+  type: Any
+  val: tuple[str, str, Any]
+- name: logger
+  type: Any
+  val: logging.getLogger(__name__)
+- name: ChannelVersions
+  type: Any
+  val: dict[str, str | int | float]
+- name: WRITES_IDX_MAP
+  type: dict
+  val: '{ERROR: -1, SCHEDULED: -2, INTERRUPT: -3, RESUME: -4}'
+- name: EXCLUDED_METADATA_KEYS
+  type: dict
+  val: |-
+    {
+        "thread_id",
+        "checkpoint_id",
+        "checkpoint_ns",
+        "checkpoint_map",
+        "langgraph_step",
+        "langgraph_...
+- name: LATEST_VERSION
+  type: int
+  val: '2'
+types:
+- name: CheckpointMetadata
+  kind: struct
+  ctx: Metadata associated with a checkpoint.
+  bases:
+  - TypedDict
+  - total=False
+  fields:
+  - name: source
+    type: Any
+    default: Literal["input", "loop", "update", "fork"]
+  - name: step
+    type: Any
+    default: int
+  - name: parents
+    type: Any
+    default: dict[str, str]
+  - name: run_id
+    type: Any
+    default: str
+  lines:
+  - 35
+  - 59
+- name: Checkpoint
+  kind: struct
+  ctx: State snapshot at a given point in time.
+  bases:
+  - TypedDict
+  fields:
+  - name: v
+    type: Any
+    default: int
+  - name: id
+    type: Any
+    default: str
+  - name: ts
+    type: Any
+    default: str
+  - name: channel_values
+    type: Any
+    default: dict[str, Any]
+  - name: channel_versions
+    type: Any
+    default: ChannelVersions
+  - name: versions_seen
+    type: Any
+    default: dict[str, ChannelVersions]
+  - name: updated_channels
+    type: Any
+    default: list[str] | None
+  lines:
+  - 65
+  - 96
+- name: CheckpointTuple
+  kind: struct
+  ctx: A tuple containing a checkpoint and its associated data.
+  bases:
+  - NamedTuple
+  fields:
+  - name: config
+    type: Any
+    default: RunnableConfig
+  - name: checkpoint
+    type: Any
+    default: Checkpoint
+  - name: metadata
+    type: Any
+    default: CheckpointMetadata
+  - name: parent_config
+    type: Any
+    default: RunnableConfig | None
+  - name: pending_writes
+    type: Any
+    default: list[PendingWrite] | None
+  lines:
+  - 112
+  - 119
+- name: BaseCheckpointSaver
+  kind: struct
+  ctx: 'Base class for creating a graph checkpointer. Checkpointers allow LangGraph agents to persist their state within and across multiple interactions. When a checkpointer is configured, you should pass a `thread_id` in the config when invoking the graph: ```python config = {"configurable": {"thread_id": "my-thread"}} graph.invoke(inputs, config) ``` The `thread_id` is the primary key used to store and retrieve checkpoints. Without it, the checkpointer cannot save state, resume from interrupts, or enable time-travel debugging. How you choose ``thread_id`` depends on your use case: - **Single-shot workflows**: Use a unique ID (e.g., uuid4) for each run when executions are independent. - **Conversational memory**: Reuse the same `thread_id` across invocations to accumulate state (e.g., chat history) within a conversation. Attributes: serde (SerializerProtocol): Serializer for encoding/decoding checkpoints. Note: When creating a custom checkpoint saver, consider implementing async versions to avoid blocking the main thread.'
+  fields:
+  - name: serde
+    type: Any
+    default: SerializerProtocol
+  methods:
+  - name: __init__
+    sig: |-
+      __init__(
+              self,
+              *,
+              serde: SerializerProtocol | None = None,
+          ) -> None
+    lines:
+    - 157
+    - 162
+    detail:
+      calls:
+      - maybe_add_typed_methods
+  - name: config_specs
+    sig: config_specs(self) -> list
+    decorators:
+    - property
+    lines:
+    - 165
+    - 171
+    detail: {}
+  - name: get
+    sig: 'get(self, config: RunnableConfig) -> Checkpoint | None'
+    lines:
+    - 173
+    - 183
+    detail:
+      calls:
+      - self.get_tuple
+  - name: get_tuple
+    sig: 'get_tuple(self, config: RunnableConfig) -> CheckpointTuple | None'
+    lines:
+    - 185
+    - 197
+    detail: {}
+  - name: list
+    sig: |-
+      list(
+              self,
+              config: RunnableConfig | None,
+              *,
+              filter: dict[str, Any] | None = None,
+              before: RunnableConfig | None = None,
+              limit: int | None = None,
+          ) -> Iterator[CheckpointTuple]
+    lines:
+    - 199
+    - 221
+    detail: {}
+  - name: put
+    sig: |-
+      put(
+              self,
+              config: RunnableConfig,
+              checkpoint: Checkpoint,
+              metadata: CheckpointMetadata,
+              new_versions: ChannelVersions,
+          ) -> RunnableConfig
+    lines:
+    - 223
+    - 244
+    detail: {}
+  - name: put_writes
+    sig: |-
+      put_writes(
+              self,
+              config: RunnableConfig,
+              writes: Sequence[tuple[str, Any]],
+              task_id: str,
+              task_path: str = "",
+          ) -> None
+    lines:
+    - 246
+    - 264
+    detail: {}
+  - name: delete_thread
+    sig: |-
+      delete_thread(
+              self,
+              thread_id: str,
+          ) -> None
+    lines:
+    - 266
+    - 275
+    detail: {}
+  - name: delete_for_runs
+    sig: |-
+      delete_for_runs(
+              self,
+              run_ids: Sequence[str],
+          ) -> None
+    lines:
+    - 277
+    - 286
+    detail: {}
+  - name: copy_thread
+    sig: |-
+      copy_thread(
+              self,
+              source_thread_id: str,
+              target_thread_id: str,
+          ) -> None
+    lines:
+    - 288
+    - 299
+    detail: {}
+  - name: prune
+    sig: |-
+      prune(
+              self,
+              thread_ids: Sequence[str],
+              *,
+              strategy: str = "keep_latest",
+          ) -> None
+    lines:
+    - 301
+    - 314
+    detail: {}
+  - name: aget
+    sig: 'aget(self, config: RunnableConfig) -> Checkpoint | None'
+    is_async: true
+    lines:
+    - 316
+    - 326
+    detail:
+      calls:
+      - self.aget_tuple
+  - name: aget_tuple
+    sig: 'aget_tuple(self, config: RunnableConfig) -> CheckpointTuple | None'
+    is_async: true
+    lines:
+    - 328
+    - 340
+    detail: {}
+  - name: alist
+    sig: |-
+      alist(
+              self,
+              config: RunnableConfig | None,
+              *,
+              filter: dict[str, Any] | None = None,
+              before: RunnableConfig | None = None,
+              limit: int | None = None,
+          ) -> AsyncIterator[CheckpointTuple]
+    is_async: true
+    lines:
+    - 342
+    - 365
+    detail: {}
+  - name: aput
+    sig: |-
+      aput(
+              self,
+              config: RunnableConfig,
+              checkpoint: Checkpoint,
+              metadata: CheckpointMetadata,
+              new_versions: ChannelVersions,
+          ) -> RunnableConfig
+    is_async: true
+    lines:
+    - 367
+    - 388
+    detail: {}
+  - name: aput_writes
+    sig: |-
+      aput_writes(
+              self,
+              config: RunnableConfig,
+              writes: Sequence[tuple[str, Any]],
+              task_id: str,
+              task_path: str = "",
+          ) -> None
+    is_async: true
+    lines:
+    - 390
+    - 408
+    detail: {}
+  - name: adelete_thread
+    sig: |-
+      adelete_thread(
+              self,
+              thread_id: str,
+          ) -> None
+    is_async: true
+    lines:
+    - 410
+    - 419
+    detail: {}
+  - name: adelete_for_runs
+    sig: |-
+      adelete_for_runs(
+              self,
+              run_ids: Sequence[str],
+          ) -> None
+    is_async: true
+    lines:
+    - 421
+    - 430
+    detail: {}
+  - name: acopy_thread
+    sig: |-
+      acopy_thread(
+              self,
+              source_thread_id: str,
+              target_thread_id: str,
+          ) -> None
+    is_async: true
+    lines:
+    - 432
+    - 443
+    detail: {}
+  - name: aprune
+    sig: |-
+      aprune(
+              self,
+              thread_ids: Sequence[str],
+              *,
+              strategy: str = "keep_latest",
+          ) -> None
+    is_async: true
+    lines:
+    - 445
+    - 458
+    detail: {}
+  - name: get_next_version
+    sig: 'get_next_version(self, current: V | None, channel: None) -> V'
+    lines:
+    - 460
+    - 479
+    detail:
+      calls:
+      - isinstance
+  - name: with_allowlist
+    sig: |-
+      with_allowlist(
+              self, extra_allowlist: Collection[tuple[str, ...]]
+          ) -> BaseCheckpointSaver[V]
+    lines:
+    - 481
+    - 490
+    detail:
+      calls:
+      - _with_msgpack_allowlist
+      - copy.copy
+      - maybe_add_typed_methods
+  lines:
+  - 122
+  - 490
+- name: EmptyChannelError
+  kind: struct
+  ctx: Raised when attempting to get the value of a channel that hasn't been updated for the first time yet.
+  bases:
+  - Exception
+  lines:
+  - 513
+  - 517
+functions:
+- name: copy_checkpoint
+  sig: 'copy_checkpoint(checkpoint: Checkpoint) -> Checkpoint'
+  lines:
+  - 99
+  - 109
+  detail:
+    calls:
+    - Checkpoint
+    - checkpoint.get
+    - checkpoint.get("pending_sends", []).copy
+    - checkpoint["channel_values"].copy
+    - checkpoint["channel_versions"].copy
+    - checkpoint["versions_seen"].items
+    - v.copy
+- name: _with_msgpack_allowlist
+  sig: |-
+    _with_msgpack_allowlist(
+        serde: SerializerProtocol, extra_allowlist: Collection[tuple[str, ...]]
+    ) -> SerializerProtocol
+  vis: protected
+  lines:
+  - 493
+  - 510
+  detail:
+    calls:
+    - EncryptedSerializer
+    - inner.with_msgpack_allowlist
+    - isinstance
+    - logger.warning
+    - serde.with_msgpack_allowlist
+    - type
+- name: get_checkpoint_id
+  sig: 'get_checkpoint_id(config: RunnableConfig) -> str | None'
+  lines:
+  - 520
+  - 522
+  detail:
+    calls:
+    - config["configurable"].get
+- name: get_checkpoint_metadata
+  sig: |-
+    get_checkpoint_metadata(
+        config: RunnableConfig, metadata: CheckpointMetadata
+    ) -> CheckpointMetadata
+  lines:
+  - 525
+  - 543
+  detail:
+    calls:
+    - config.get
+    - isinstance
+    - key.startswith
+    - metadata.items
+    - obj.items
+    - v.replace
+- name: get_serializable_checkpoint_metadata
+  sig: |-
+    get_serializable_checkpoint_metadata(
+        config: RunnableConfig, metadata: CheckpointMetadata
+    ) -> CheckpointMetadata
+  lines:
+  - 546
+  - 553
+  detail:
+    calls:
+    - checkpoint_metadata.pop
+    - get_checkpoint_metadata
+- name: empty_checkpoint
+  sig: empty_checkpoint() -> Checkpoint
+  lines:
+  - 582
+  - 594
+  detail:
+    calls:
+    - Checkpoint
+    - datetime.now
+    - datetime.now(timezone.utc).isoformat
+    - str
+    - uuid6
+- name: create_checkpoint
+  sig: |-
+    create_checkpoint(
+        checkpoint: Checkpoint,
+        channels: Mapping[str, ChannelProtocol] | None,
+        step: int,
+        *,
+        id: str | None = None,
+    ) -> Checkpoint
+  lines:
+  - 597
+  - 628
+  detail:
+    calls:
+    - Checkpoint
+    - channels.items
+    - checkpoint.get
+    - datetime.now
+    - datetime.now(timezone.utc).isoformat
+    - str
+    - uuid6
+    - v.checkpoint
+exports:
+- name: CheckpointMetadata
+  kind: type
+- name: Checkpoint
+  kind: type
+- name: CheckpointTuple
+  kind: type
+- name: BaseCheckpointSaver
+  kind: type
+- name: EmptyChannelError
+  kind: type
+- name: copy_checkpoint
+  kind: func
+- name: get_checkpoint_id
+  kind: func
+- name: get_checkpoint_metadata
+  kind: func
+- name: get_serializable_checkpoint_metadata
+  kind: func
+- name: empty_checkpoint
+  kind: func
+- name: create_checkpoint
+  kind: func
+- name: V
+  kind: data
+- name: PendingWrite
+  kind: data
+- name: logger
+  kind: data
+- name: ChannelVersions
+  kind: data
+- name: WRITES_IDX_MAP
+  kind: data
+- name: EXCLUDED_METADATA_KEYS
+  kind: data
+- name: LATEST_VERSION
+  kind: data

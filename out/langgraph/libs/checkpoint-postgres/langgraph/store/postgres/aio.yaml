@@ -1,0 +1,368 @@
+## Roska File Descriptor — postgres/aio.py
+file: postgres/aio.py
+lines: 592
+imports:
+- sym: asyncio
+- sym: types.TracebackType
+- sym: orjson
+- sym: langgraph.store.base.GetOp
+- sym: langgraph.store.base.ListNamespacesOp
+- sym: langgraph.store.base.Op
+- sym: langgraph.store.base.PutOp
+- sym: langgraph.store.base.Result
+- sym: langgraph.store.base.SearchOp
+- sym: langgraph.store.base.batch.AsyncBatchedBaseStore
+- sym: psycopg.AsyncConnection
+- sym: psycopg.AsyncCursor
+- sym: psycopg.AsyncPipeline
+- sym: psycopg.Capabilities
+- sym: psycopg.rows.DictRow
+- sym: psycopg.rows.dict_row
+- sym: psycopg_pool.AsyncConnectionPool
+- sym: langgraph.checkpoint.postgres._ainternal
+- sym: langgraph.store.postgres.base.PLACEHOLDER
+- sym: langgraph.store.postgres.base.BasePostgresStore
+- sym: langgraph.store.postgres.base.PoolConfig
+- sym: langgraph.store.postgres.base.PostgresIndexConfig
+- sym: langgraph.store.postgres.base.Row
+- sym: langgraph.store.postgres.base.TTLConfig
+- sym: langgraph.store.postgres.base._decode_ns_bytes
+- sym: langgraph.store.postgres.base._ensure_index_config
+- sym: langgraph.store.postgres.base._group_ops
+- sym: langgraph.store.postgres.base._row_to_item
+- sym: langgraph.store.postgres.base._row_to_search_item
+data:
+- name: logger
+  type: Any
+  val: logging.getLogger(__name__)
+types:
+- name: AsyncPostgresStore
+  kind: struct
+  ctx: 'Asynchronous Postgres-backed store with optional vector search using pgvector. !!! example "Examples" Basic setup and usage: ```python from langgraph.store.postgres import AsyncPostgresStore conn_string = "postgresql://user:pass@localhost:5432/dbname" async with AsyncPostgresStore.from_conn_string(conn_string) as store: await store.setup()  # Run migrations. Done once # Store and retrieve data await store.aput(("users", "123"), "prefs", {"theme": "dark"}) item = await store.aget(("users", "123"), "prefs") ``` Vector search using LangChain embeddings: ```python from langchain.embeddings import init_embeddings from langgraph.store.postgres import AsyncPostgresStore conn_string = "postgresql://user:pass@localhost:5432/dbname" async with AsyncPostgresStore.from_conn_string( conn_string, index={ "dims": 1536, "embed": init_embeddings("openai:text-embedding-3-small"), "fields": ["text"]  # specify which fields to embed. Default is the whole serialized value } ) as store: await store.setup()  # Run migrations. Done once # Store documents await store.aput(("docs",), "doc1", {"text": "Python tutorial"}) await store.aput(("docs",), "doc2", {"text": "TypeScript guide"}) await store.aput(("docs",), "doc3", {"text": "Other guide"}, index=False)  # don''t index # Search by similarity results = await store.asearch(("docs",), query="programming guides", limit=2) ``` Using connection pooling for better performance: ```python from langgraph.store.postgres import AsyncPostgresStore, PoolConfig conn_string = "postgresql://user:pass@localhost:5432/dbname" async with AsyncPostgresStore.from_conn_string( conn_string, pool_config=PoolConfig( min_size=5, max_size=20 ) ) as store: await store.setup()  # Run migrations. Done once # Use store with connection pooling... ``` Warning: Make sure to: 1. Call `setup()` before first use to create necessary tables and indexes 2. Have the pgvector extension available to use vector search 3. Use Python 3.10+ for async functionality Note: Semantic search is disabled by default. You can enable it by providing an `index` configuration when creating the store. Without this configuration, all `index` arguments passed to `put` or `aput` will have no effect. Note: If you provide a TTL configuration, you must explicitly call `start_ttl_sweeper()` to begin the background task that removes expired items. Call `stop_ttl_sweeper()` to properly clean up resources when you''re done with the store.'
+  bases:
+  - AsyncBatchedBaseStore
+  fields:
+  - name: supports_ttl
+    type: Any
+    default: bool
+  - name: _deserializer
+    type: Any
+    default: deserializer
+  - name: conn
+    type: Any
+    default: conn
+  - name: pipe
+    type: Any
+    default: pipe
+  - name: lock
+    type: Any
+    default: asyncio.Lock()
+  - name: loop
+    type: Any
+    default: asyncio.get_running_loop()
+  - name: supports_pipeline
+    type: Any
+    default: Capabilities().has_pipeline()
+  - name: index_config
+    type: Any
+    default: index
+  - name: embeddings, self.index_config
+    type: Any
+    default: _ensure_index_config(self.index_config)
+  - name: embeddings
+    type: None
+    default: None
+  - name: ttl_config
+    type: Any
+    default: ttl
+  - name: _ttl_sweeper_task
+    type: Any
+    default: asyncio.Task[None] | None
+  - name: _ttl_stop_event
+    type: Any
+    default: asyncio.Event()
+  methods:
+  - name: __init__
+    sig: |-
+      __init__(
+              self,
+              conn: _ainternal.Conn,
+              *,
+              pipe: AsyncPipeline | None = None,
+              deserializer: Callable[[bytes | orjson.Fragment], dict[str, Any]] | None = None,
+              index: PostgresIndexConfig | None = None,
+              ttl: TTLConfig | None = None,
+          ) -> None
+    lines:
+    - 133
+    - 161
+    detail:
+      calls:
+      - Capabilities
+      - Capabilities().has_pipeline
+      - ValueError
+      - _ensure_index_config
+      - asyncio.Event
+      - asyncio.Lock
+      - asyncio.get_running_loop
+      - isinstance
+      - super
+      - super().__init__
+  - name: abatch
+    sig: 'abatch(self, ops: Iterable[Op]) -> list[Result]'
+    is_async: true
+    lines:
+    - 163
+    - 173
+    detail:
+      calls:
+      - _group_ops
+      - self._execute_batch
+  - name: from_conn_string
+    sig: |-
+      from_conn_string(
+              cls,
+              conn_string: str,
+              *,
+              pipeline: bool = False,
+              pool_config: PoolConfig | None = None,
+              index: PostgresIndexConfig | None = None,
+              ttl: TTLConfig | None = None,
+          ) -> AsyncIterator[AsyncPostgresStore]
+    is_async: true
+    decorators:
+    - classmethod
+    - asynccontextmanager
+    lines:
+    - 177
+    - 225
+    detail:
+      calls:
+      - AsyncConnection.connect
+      - AsyncConnectionPool
+      - cast
+      - cls
+      - conn.pipeline
+      - pc.pop
+      - pool_config.copy
+  - name: setup
+    sig: setup(self) -> None
+    is_async: true
+    lines:
+    - 227
+    - 293
+    detail:
+      calls:
+      - ValueError
+      - _get_version
+      - callable
+      - cur.execute
+      - enumerate
+      - int
+      - migration.params.items
+      - self._cursor
+      - str
+      - v
+  - name: sweep_ttl
+    sig: sweep_ttl(self) -> int
+    is_async: true
+    lines:
+    - 295
+    - 309
+    detail:
+      calls:
+      - cur.execute
+      - self._cursor
+  - name: start_ttl_sweeper
+    sig: |-
+      start_ttl_sweeper(
+              self, sweep_interval_minutes: int | None = None
+          ) -> asyncio.Task[None]
+    is_async: true
+    lines:
+    - 311
+    - 355
+    detail:
+      calls:
+      - _sweep_loop
+      - asyncio.create_task
+      - asyncio.sleep
+      - float
+      - logger.info
+      - self._ttl_stop_event.clear
+      - self._ttl_sweeper_task.done
+      - self.ttl_config.get
+      - task.set_name
+  - name: stop_ttl_sweeper
+    sig: 'stop_ttl_sweeper(self, timeout: float | None = None) -> bool'
+    is_async: true
+    lines:
+    - 357
+    - 390
+    detail:
+      calls:
+      - asyncio.wait_for
+      - logger.info
+      - logger.warning
+      - self._ttl_stop_event.set
+      - self._ttl_sweeper_task.done
+  - name: __aenter__
+    sig: __aenter__(self) -> AsyncPostgresStore
+    is_async: true
+    lines:
+    - 392
+    - 393
+    detail: {}
+  - name: __aexit__
+    sig: |-
+      __aexit__(
+              self,
+              exc_type: type[BaseException] | None,
+              exc_val: BaseException | None,
+              exc_tb: TracebackType | None,
+          ) -> None
+    is_async: true
+    lines:
+    - 395
+    - 406
+    detail:
+      calls:
+      - hasattr
+      - self._ttl_stop_event.set
+  - name: _execute_batch
+    sig: |-
+      _execute_batch(
+              self,
+              grouped_ops: dict,
+              results: list[Result],
+              conn: AsyncConnection[DictRow] | None = None,
+          ) -> None
+    is_async: true
+    vis: protected
+    lines:
+    - 408
+    - 445
+    detail:
+      calls:
+      - cast
+      - self._batch_get_ops
+      - self._batch_list_namespaces_ops
+      - self._batch_put_ops
+      - self._batch_search_ops
+      - self._cursor
+  - name: _batch_get_ops
+    sig: |-
+      _batch_get_ops(
+              self,
+              get_ops: Sequence[tuple[int, GetOp]],
+              results: list[Result],
+              cur: AsyncCursor[DictRow],
+          ) -> None
+    is_async: true
+    vis: protected
+    lines:
+    - 447
+    - 464
+    detail:
+      calls:
+      - _row_to_item
+      - cast
+      - cur.execute
+      - cur.fetchall
+      - key_to_row.get
+      - self._get_batch_GET_ops_queries
+  - name: _batch_put_ops
+    sig: |-
+      _batch_put_ops(
+              self,
+              put_ops: Sequence[tuple[int, PutOp]],
+              cur: AsyncCursor[DictRow],
+          ) -> None
+    is_async: true
+    vis: protected
+    lines:
+    - 466
+    - 499
+    detail:
+      calls:
+      - ValueError
+      - cur.execute
+      - queries.append
+      - self._prepare_batch_PUT_queries
+      - self.embeddings.aembed_documents
+      - zip
+  - name: _batch_search_ops
+    sig: |-
+      _batch_search_ops(
+              self,
+              search_ops: Sequence[tuple[int, SearchOp]],
+              results: list[Result],
+              cur: AsyncCursor[DictRow],
+          ) -> None
+    is_async: true
+    vis: protected
+    lines:
+    - 501
+    - 528
+    detail:
+      calls:
+      - _decode_ns_bytes
+      - _row_to_search_item
+      - cast
+      - cur.execute
+      - cur.fetchall
+      - len
+      - range
+      - self._prepare_batch_search_queries
+      - self.embeddings.aembed_documents
+      - zip
+  - name: _batch_list_namespaces_ops
+    sig: |-
+      _batch_list_namespaces_ops(
+              self,
+              list_ops: Sequence[tuple[int, ListNamespacesOp]],
+              results: list[Result],
+              cur: AsyncCursor[DictRow],
+          ) -> None
+    is_async: true
+    vis: protected
+    lines:
+    - 530
+    - 541
+    detail:
+      calls:
+      - _decode_ns_bytes
+      - cast
+      - cur.execute
+      - cur.fetchall
+      - self._get_batch_list_namespaces_queries
+      - zip
+  - name: _cursor
+    sig: |-
+      _cursor(
+              self, *, pipeline: bool = False
+          ) -> AsyncIterator[AsyncCursor[DictRow]]
+    is_async: true
+    vis: protected
+    decorators:
+    - asynccontextmanager
+    lines:
+    - 544
+    - 592
+    detail:
+      calls:
+      - _ainternal.get_connection
+      - asyncio.Lock
+      - conn.cursor
+      - conn.pipeline
+      - conn.transaction
+      - isinstance
+      - self.pipe.sync
+  lines:
+  - 42
+  - 592
+exports:
+- name: AsyncPostgresStore
+  kind: type
+- name: logger
+  kind: data

@@ -1,0 +1,1176 @@
+## Roska File Descriptor — langgraph_cli/cli.py
+file: langgraph_cli/cli.py
+lines: 2002
+purpose: CLI entrypoint for LangGraph API server.
+imports:
+- sym: base64
+- sym: json as json_mod
+- sym: platform
+- sym: shutil
+- sym: tempfile
+- sym: click
+- sym: click.exceptions
+- sym: click.secho
+- sym: dotenv.dotenv_values
+- sym: langgraph_cli.config
+- sym: langgraph_cli.docker
+- sym: langgraph_cli.analytics.log_command
+- sym: langgraph_cli.config.Config
+- sym: langgraph_cli.constants.DEFAULT_CONFIG
+- sym: langgraph_cli.constants.DEFAULT_PORT
+- sym: langgraph_cli.docker.DockerCapabilities
+- sym: langgraph_cli.exec.Runner
+- sym: langgraph_cli.exec.subp_exec
+- sym: langgraph_cli.helpers.format_log_entry
+- sym: langgraph_cli.helpers.level_fg
+- sym: langgraph_cli.helpers.resolve_deployment_id
+- sym: langgraph_cli.host_backend.HostBackendClient
+- sym: langgraph_cli.host_backend.HostBackendError
+- sym: langgraph_cli.progress.Progress
+- sym: langgraph_cli.templates.TEMPLATE_HELP_STRING
+- sym: langgraph_cli.templates.create_new
+- sym: langgraph_cli.util.format_deployments_table
+- sym: langgraph_cli.util.format_revisions_table
+- sym: langgraph_cli.util.warn_non_wolfi_distro
+- sym: langgraph_cli.version.__version__
+data:
+- name: RESERVED_ENV_VARS
+  type: Any
+  val: |-
+    frozenset(
+        [
+            # LANGCHAIN_RESERVED_ENV_VARS from host-backend
+            "LANGCHAIN_TRACING_V2",
+            "LANGSM...
+- name: _API_KEY_ENV_NAMES
+  type: tuple
+  val: |-
+    (
+        "LANGGRAPH_HOST_API_KEY",
+        "LANGSMITH_API_KEY",
+        "LANGCHAIN_API_KEY",
+    )
+- name: _DEPLOYMENT_NAME_ENV
+  type: str
+  val: '"LANGSMITH_DEPLOYMENT_NAME"'
+- name: _TERMINAL_STATUSES
+  type: Any
+  val: |-
+    frozenset(
+        [
+            "DEPLOYED",
+            "CREATE_FAILED",
+            "BUILD_FAILED",
+            "DEPLOY_FAILED",
+            "...
+- name: OPT_DOCKER_COMPOSE
+  type: Any
+  val: |-
+    click.option(
+        "--docker-compose",
+        "-d",
+        help="Advanced: Path to docker-compose.yml file with additional serv...
+- name: OPT_CONFIG
+  type: Any
+  val: |-
+    click.option(
+        "--config",
+        "-c",
+        help="""Path to configuration file declaring dependencies, graphs and enviro...
+- name: OPT_PORT
+  type: Any
+  val: |-
+    click.option(
+        "--port",
+        "-p",
+        type=int,
+        default=DEFAULT_PORT,
+        show_default=True,
+        help="""
+        Po...
+- name: OPT_RECREATE
+  type: Any
+  val: |-
+    click.option(
+        "--recreate/--no-recreate",
+        default=False,
+        show_default=True,
+        help="Recreate containers ev...
+- name: OPT_PULL
+  type: Any
+  val: |-
+    click.option(
+        "--pull/--no-pull",
+        default=True,
+        show_default=True,
+        help="""
+        Pull latest images. Use ...
+- name: OPT_VERBOSE
+  type: Any
+  val: |-
+    click.option(
+        "--verbose",
+        is_flag=True,
+        default=False,
+        help="Show more output from the server logs",
+    )
+- name: OPT_WATCH
+  type: Any
+  val: click.option("--watch", is_flag=True, help="Restart on file changes")
+- name: OPT_DEBUGGER_PORT
+  type: Any
+  val: |-
+    click.option(
+        "--debugger-port",
+        type=int,
+        help="Pull the debugger image locally and serve the UI on specifi...
+- name: OPT_DEBUGGER_BASE_URL
+  type: Any
+  val: |-
+    click.option(
+        "--debugger-base-url",
+        type=str,
+        help="URL used by the debugger to access LangGraph API. Defau...
+- name: OPT_POSTGRES_URI
+  type: Any
+  val: |-
+    click.option(
+        "--postgres-uri",
+        help="Postgres URI to use for the database. Defaults to launching a local databa...
+- name: OPT_API_VERSION
+  type: Any
+  val: |-
+    click.option(
+        "--api-version",
+        type=str,
+        help="API server version to use for the base image. If unspecified,...
+- name: OPT_HOST_API_KEY
+  type: Any
+  val: |-
+    click.option(
+        "--api-key",
+        envvar="LANGGRAPH_HOST_API_KEY",
+        help=(
+            "API key. Can also be set via LAN...
+- name: OPT_HOST_DEPLOYMENT_NAME
+  type: Any
+  val: |-
+    click.option(
+        "--name",
+        envvar=_DEPLOYMENT_NAME_ENV,
+        help=(
+            "Deployment name. Can also be set via LA...
+- name: OPT_HOST_URL
+  type: Any
+  val: |-
+    click.option(
+        "--host-url",
+        envvar="LANGGRAPH_HOST_URL",
+        default="https://api.host.langchain.com",
+        hidde...
+- name: OPT_ENGINE_RUNTIME_MODE
+  type: Any
+  val: |-
+    click.option(
+        "--engine-runtime-mode",
+        type=click.Choice(["combined_queue_worker", "distributed"]),
+        default=...
+types:
+- name: NestedHelpGroup
+  kind: struct
+  ctx: Click group that shows one level of nested subcommands in top-level help.
+  bases:
+  - click.Group
+  methods:
+  - name: format_commands
+    sig: |-
+      format_commands(
+              self, ctx: click.Context, formatter: click.HelpFormatter
+          ) -> None
+    lines:
+    - 334
+    - 373
+    detail:
+      calls:
+      - collect_commands
+      - command.get_short_help_str
+      - formatter.section
+      - formatter.write_dl
+      - len
+      - max
+  lines:
+  - 331
+  - 373
+- name: DeployGroup
+  kind: struct
+  ctx: Group that treats leading '-' args as passthrough docker flags.
+  bases:
+  - NestedHelpGroup
+  methods:
+  - name: parse_args
+    sig: 'parse_args(self, ctx: click.Context, args: list[str]) -> list[str]'
+    lines:
+    - 379
+    - 405
+    detail:
+      calls:
+      - ctx.__dict__.get
+      - protected_args[0].startswith
+      - super
+      - super().parse_args
+  lines:
+  - 376
+  - 405
+functions:
+- name: _parse_env_from_config
+  sig: |-
+    _parse_env_from_config(
+        config_json: dict, config_path: pathlib.Path
+    ) -> dict[str, str]
+  vis: protected
+  lines:
+  - 97
+  - 115
+  detail:
+    calls:
+    - (config_path.parent / env_field).resolve
+    - click.secho
+    - config_json.get
+    - dotenv_values
+    - dotenv_values(env_path).items
+    - env_field.items
+    - env_path.exists
+    - isinstance
+    - pathlib.Path.cwd
+    - str
+- name: _secrets_from_env
+  sig: |-
+    _secrets_from_env(
+        env_vars: dict[str, str],
+    ) -> list[dict[str, str]]
+  vis: protected
+  lines:
+  - 118
+  - 130
+  detail:
+    calls:
+    - click.secho
+    - env_vars.items
+    - secrets.append
+- name: _docker_config_for_token
+  sig: '_docker_config_for_token(registry_host: str, token: str)'
+  vis: protected
+  decorators:
+  - contextmanager
+  lines:
+  - 145
+  - 157
+  detail:
+    calls:
+    - base64.b64encode
+    - base64.b64encode(f"oauth2accesstoken:{token}".encode()).decode
+    - f"oauth2accesstoken:{token}".encode
+    - json_mod.dump
+    - open
+    - os.path.join
+    - tempfile.TemporaryDirectory
+- name: cli
+  sig: cli()
+  decorators:
+  - click.group(cls=NestedHelpGroup)
+  - click.version_option(version=__version__, prog_name="LangGraph CLI")
+  lines:
+  - 410
+  - 411
+- name: up
+  sig: |-
+    up(
+        config: pathlib.Path,
+        docker_compose: pathlib.Path | None,
+        port: int,
+        recreate: bool,
+        pull: bool,
+        watch: bool,
+        wait: bool,
+        verbose: bool,
+        debugger_port: int | None,
+        debugger_base_url: str | None,
+        postgres_uri: str | None,
+        api_version: str | None,
+        engine_runtime_mode: str,
+        image: str | None,
+        base_image: str | None,
+    )
+  decorators:
+  - OPT_RECREATE
+  - OPT_PULL
+  - OPT_PORT
+  - OPT_DOCKER_COMPOSE
+  - OPT_CONFIG
+  - OPT_VERBOSE
+  - OPT_DEBUGGER_PORT
+  - OPT_DEBUGGER_BASE_URL
+  - OPT_WATCH
+  - OPT_POSTGRES_URI
+  - OPT_API_VERSION
+  - OPT_ENGINE_RUNTIME_MODE
+  - |-
+    click.option(
+        "--image",
+        type=str,
+        default=None,
+        help="Docker image to use for the langgraph-api service. If specified, skips building and uses this image directly."
+        " Useful if you want to test against an image already built using `langgraph build`.",
+    )
+  - |-
+    click.option(
+        "--base-image",
+        default=None,
+        help="Base image to use for the LangGraph API server. Pin to specific versions using version tags. Defaults to langchain/langgraph-api or langchain/langgraphjs-api."
+        "\n\n    \b\nExamples:\n    --base-image langchain/langgraph-server:0.2.18  # Pin to a specific patch version"
+        "\n    --base-image langchain/langgraph-server:0.2  # Pin to a minor version (Python)",
+    )
+  - |-
+    click.option(
+        "--wait",
+        is_flag=True,
+        help="Wait for services to start before returning. Implies --detach",
+    )
+  - cli.command(help="🚀 Launch LangGraph API server.")
+  - log_command
+  lines:
+  - 447
+  - 541
+  detail:
+    calls:
+    - Progress
+    - Runner
+    - args.append
+    - args.extend
+    - click.secho
+    - langgraph_cli.docker.check_capabilities
+    - prepare
+    - runner.run
+    - set
+    - subp_exec
+- name: _build
+  sig: |-
+    _build(
+        runner,
+        set: Callable[[str], None],
+        config: pathlib.Path,
+        config_json: dict,
+        base_image: str | None,
+        api_version: str | None,
+        pull: bool,
+        tag: str,
+        passthrough: Sequence[str] = (),
+        install_command: str | None = None,
+        build_command: str | None = None,
+        docker_command: Sequence[str] | None = None,
+        extra_flags: Sequence[str] = (),
+        verbose: bool = True,
+    )
+  vis: protected
+  lines:
+  - 544
+  - 616
+  detail:
+    calls:
+    - additional_contexts.items
+    - args.extend
+    - config_json.get
+    - copy.deepcopy
+    - langgraph_cli.config.config_to_docker
+    - langgraph_cli.config.docker_tag
+    - pathlib.Path.cwd
+    - runner.run
+    - set
+    - str
+    - subp_exec
+    - tuple
+- name: build
+  sig: |-
+    build(
+        config: pathlib.Path,
+        docker_build_args: Sequence[str],
+        base_image: str | None,
+        api_version: str | None,
+        engine_runtime_mode: str,
+        pull: bool,
+        tag: str,
+        install_command: str | None,
+        build_command: str | None,
+    )
+  decorators:
+  - OPT_CONFIG
+  - OPT_PULL
+  - |-
+    click.option(
+        "--tag",
+        "-t",
+        help="""Tag for the docker image.
+
+        \b
+        Example:
+            langgraph build -t my-image
+
+        \b
+        """,
+        required=True,
+    )
+  - |-
+    click.option(
+        "--base-image",
+        help="Base image to use for the LangGraph API server. Pin to specific versions using version tags. Defaults to langchain/langgraph-api or langchain/langgraphjs-api."
+        "\n\n    \b\nExamples:\n    --base-image langchain/langgraph-server:0.2.18  # Pin to a specific patch version"
+        "\n    --base-image langchain/langgraph-server:0.2  # Pin to a minor version (Python)",
+    )
+  - OPT_API_VERSION
+  - OPT_ENGINE_RUNTIME_MODE
+  - |-
+    click.option(
+        "--install-command",
+        help="Custom install command to run from the build context root. If not provided, auto-detects based on package manager files.",
+    )
+  - |-
+    click.option(
+        "--build-command",
+        help="Custom build command to run from the langgraph.json directory. If not provided, uses default build process.",
+    )
+  - click.argument("docker_build_args", nargs=-1, type=click.UNPROCESSED)
+  - |-
+    cli.command(
+        help="📦 Build LangGraph API server Docker image.",
+        context_settings=dict(
+            ignore_unknown_options=True,
+        ),
+    )
+  - log_command
+  lines:
+  - 658
+  - 703
+  detail:
+    calls:
+    - Progress
+    - Runner
+    - _build
+    - click.UsageError
+    - langgraph_cli.config.default_base_image
+    - langgraph_cli.config.has_disallowed_build_command_content
+    - langgraph_cli.config.validate_config_file
+    - shutil.which
+    - warn_non_wolfi_distro
+- name: deploy
+  sig: 'deploy(ctx: click.Context, **_: object)'
+  decorators:
+  - |-
+    cli.group(
+        cls=DeployGroup,
+        help=(
+            "[Beta] Build and deploy a LangGraph image to LangSmith Deployment.\n\n"
+            "This command is in beta and under active development. "
+            "Expect frequent updates and improvements.\n\n"
+            "Run from the root of your LangGraph project (where langgraph.json "
+            "is located). This command also accepts build flags (--base-image, "
+            "--config, --pull, etc.). See 'langgraph build --help' for details."
+        ),
+        context_settings=dict(ignore_unknown_options=True, allow_extra_args=True),
+        invoke_without_command=True,  # allow `deploy` click group to execute without command
+    )
+  - _deploy_base_options(include_docker_args=False, validate_config_path=False)
+  - click.pass_context
+  - log_command
+  lines:
+  - 801
+  - 809
+  detail:
+    calls:
+    - ctx.forward
+    - tuple
+- name: deploy_revisions
+  sig: deploy_revisions() -> None
+  decorators:
+  - |-
+    deploy.group(
+        "revisions", cls=NestedHelpGroup, help="[Beta] Manage deployment revisions."
+    )
+  lines:
+  - 815
+  - 816
+- name: _deploy
+  sig: |-
+    _deploy(
+        config: pathlib.Path,
+        pull: bool,
+        verbose: bool,
+        api_version: str | None,
+        host_url: str | None,
+        api_key: str | None,
+        deployment_id: str | None,
+        deployment_type: str,
+        name: str | None,
+        image_name: str | None,
+        tag: str,
+        base_image: str | None,
+        install_command: str | None,
+        build_command: str | None,
+        no_wait: bool,
+        docker_build_args: Sequence[str],
+    )
+  vis: protected
+  decorators:
+  - _deploy_base_options()
+  - click.command(context_settings=dict(ignore_unknown_options=True))
+  lines:
+  - 821
+  - 1155
+  detail:
+    calls:
+    - HostBackendError
+    - Progress
+    - Runner
+    - _build
+    - _call_host_backend_with_optional_tenant
+    - _create_host_backend_client
+    - _docker_config_for_token
+    - _normalize_image_name
+    - _normalize_image_tag
+    - _parse_env_from_config
+    - _secrets_from_env
+    - build_flags.append
+    - c.get_deployment
+    - c.list_deployments
+    - click.ClickException
+    - click.UsageError
+    - click.echo
+    - click.exceptions.Exit
+    - click.prompt
+    - click.secho
+    - client.create_deployment
+    - client.get_deployment
+    - client.get_revision
+    - client.list_revisions
+    - client.request_push_token
+    - client.update_deployment
+    - created.get
+    - dep.get
+    - dep_info.get
+    - deployment_token.endswith
+    - env_vars.get
+    - existing.get
+    - int
+    - isinstance
+    - langgraph_cli.config.validate_config_file
+    - log_step
+    - normalized_registry.split
+    - pathlib.Path.cwd
+    - platform.machine
+    - push_data.get
+    - range
+    - registry_url.rstrip
+    - rev.get
+    - revisions_resp.get
+    - runner.run
+    - sc.get
+    - set_progress
+    - shutil.which
+    - str
+    - subp_exec
+    - time.sleep
+    - time.time
+    - updated.get
+    - warn_non_wolfi_distro
+- name: _create_host_backend_client
+  sig: |-
+    _create_host_backend_client(
+        host_url: str | None,
+        api_key: str | None,
+        env_vars: dict[str, str] | None = None,
+    ) -> HostBackendClient
+  vis: protected
+  lines:
+  - 1158
+  - 1182
+  detail:
+    calls:
+    - HostBackendClient
+    - _parse_env_from_config
+    - click.prompt
+    - click.secho
+    - env_vars.get
+    - os.environ.get
+    - pathlib.Path.cwd
+- name: _call_host_backend_with_optional_tenant
+  sig: |-
+    _call_host_backend_with_optional_tenant(
+        client: HostBackendClient,
+        operation: Callable[[HostBackendClient], object],
+    ) -> object
+  vis: protected
+  lines:
+  - 1185
+  - 1231
+  detail:
+    calls:
+    - (parsed.hostname or "").startswith
+    - HostBackendError
+    - click.prompt
+    - click.secho
+    - err.message.lower
+    - operation
+    - urlparse
+- name: deploy_list
+  sig: 'deploy_list(api_key: str | None, host_url: str | None, name_contains: str) -> None'
+  decorators:
+  - OPT_HOST_API_KEY
+  - OPT_HOST_URL
+  - |-
+    click.option(
+        "--name-contains",
+        default="",
+        help="Only show deployments whose names contain this value.",
+    )
+  - deploy.command("list", help="[Beta] List LangSmith Deployments.")
+  lines:
+  - 1242
+  - 1253
+  detail:
+    calls:
+    - _call_host_backend_with_optional_tenant
+    - _create_host_backend_client
+    - c.list_deployments
+    - click.echo
+    - format_deployments_table
+    - isinstance
+    - response.get
+- name: deploy_revisions_list
+  sig: |-
+    deploy_revisions_list(
+        api_key: str | None, host_url: str | None, limit: int, deployment_id: str
+    ) -> None
+  decorators:
+  - OPT_HOST_API_KEY
+  - OPT_HOST_URL
+  - |-
+    click.option(
+        "--limit",
+        type=int,
+        default=10,
+        show_default=True,
+        help="Maximum number of revisions to return.",
+    )
+  - click.argument("deployment_id")
+  - |-
+    deploy_revisions.command(
+        "list",
+        help=(
+            "[Beta] List revisions for a LangSmith Deployment.\n\n"
+            "Use the `deploy list` command to list deployment IDs."
+        ),
+    )
+  lines:
+  - 1273
+  - 1286
+  detail:
+    calls:
+    - _call_host_backend_with_optional_tenant
+    - _create_host_backend_client
+    - c.list_revisions
+    - click.echo
+    - format_revisions_table
+    - isinstance
+    - response.get
+- name: deploy_delete
+  sig: |-
+    deploy_delete(
+        api_key: str | None, host_url: str | None, force: bool, deployment_id: str
+    ) -> None
+  decorators:
+  - OPT_HOST_API_KEY
+  - OPT_HOST_URL
+  - |-
+    click.option(
+        "--force",
+        is_flag=True,
+        default=False,
+        help="Delete without prompting for confirmation.",
+    )
+  - click.argument("deployment_id")
+  - |-
+    deploy.command(
+        "delete",
+        help=(
+            "[Beta] Delete a LangSmith Deployment.\n\n"
+            "Use the `deploy list` command to list deployment IDs."
+        ),
+    )
+  lines:
+  - 1305
+  - 1324
+  detail:
+    calls:
+    - _call_host_backend_with_optional_tenant
+    - _create_host_backend_client
+    - c.delete_deployment
+    - click.Abort
+    - click.prompt
+    - click.secho
+    - click.style
+    - response.strip
+    - response.strip().lower
+- name: _normalize_image_name
+  sig: '_normalize_image_name(value: str | None) -> str'
+  vis: protected
+  lines:
+  - 1327
+  - 1336
+  detail:
+    calls:
+    - re.sub
+    - re.sub(r"[^a-z0-9._-]+", "-", value.lower()).strip
+    - value.lower
+- name: deploy_logs
+  sig: |-
+    deploy_logs(
+        api_key: str | None,
+        name: str | None,
+        deployment_id: str | None,
+        log_type: str,
+        revision_id: str | None,
+        level: str | None,
+        limit: int,
+        query: str | None,
+        start_time: str | None,
+        end_time: str | None,
+        follow: bool,
+        host_url: str,
+    )
+  decorators:
+  - OPT_HOST_API_KEY
+  - OPT_HOST_DEPLOYMENT_NAME
+  - |-
+    click.option(
+        "--deployment-id",
+        help="Deployment ID. If omitted, --name is used to find the deployment.",
+    )
+  - |-
+    click.option(
+        "--type",
+        "log_type",
+        type=click.Choice(["deploy", "build"]),
+        default="deploy",
+        show_default=True,
+        help=(
+            "Log stream to fetch: 'deploy' shows agent server runtime logs; "
+            "'build' shows build logs (for deployments built remotely)."
+        ),
+    )
+  - |-
+    click.option(
+        "--revision-id",
+        help="Specific revision ID. For build logs, defaults to latest revision.",
+    )
+  - |-
+    click.option(
+        "--level",
+        type=click.Choice(
+            ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"], case_sensitive=False
+        ),
+        help="Filter by log level.",
+    )
+  - |-
+    click.option(
+        "--limit",
+        type=int,
+        default=100,
+        show_default=True,
+        help="Max log entries to fetch.",
+    )
+  - |-
+    click.option(
+        "--query",
+        "-q",
+        help="Search string filter.",
+    )
+  - |-
+    click.option(
+        "--start-time",
+        help="ISO8601 start time (e.g. 2026-03-08T00:00:00Z).",
+    )
+  - |-
+    click.option(
+        "--end-time",
+        help="ISO8601 end time. (e.g. 2026-03-08T00:00:00Z)",
+    )
+  - |-
+    click.option(
+        "--follow",
+        "-f",
+        is_flag=True,
+        default=False,
+        help="Continuously poll for new logs.",
+    )
+  - OPT_HOST_URL
+  - |-
+    deploy.command(
+        "logs",
+        help=(
+            "[Beta] Fetch LangSmith Deployment logs. Use 'deploy' for agent runtime "
+            "logs, or 'build' for remote build logs."
+        ),
+    )
+  - log_command
+  lines:
+  - 1417
+  - 1524
+  detail:
+    calls:
+    - _call_host_backend_with_optional_tenant
+    - _create_host_backend_client
+    - _fetch_and_print
+    - _fetch_and_print_new
+    - _parse_env_from_config
+    - _update_start_time
+    - click.ClickException
+    - click.echo
+    - click.secho
+    - client.list_revisions
+    - e.get
+    - entries[0].get
+    - env_vars.get
+    - isinstance
+    - level.upper
+    - new_entries[-1].get
+    - pathlib.Path.cwd
+    - resolve_deployment_id
+    - revisions_resp.get
+    - str
+    - time.sleep
+- name: dockerfile
+  sig: |-
+    dockerfile(
+        save_path: str,
+        config: pathlib.Path,
+        add_docker_compose: bool,
+        base_image: str | None = None,
+        api_version: str | None = None,
+        engine_runtime_mode: str = "combined_queue_worker",
+    ) -> None
+  decorators:
+  - OPT_CONFIG
+  - click.argument("save_path", type=click.Path(resolve_path=True))
+  - |-
+    cli.command(
+        help="🐳 Generate a Dockerfile for the LangGraph API server, with Docker Compose options."
+    )
+  - |-
+    click.option(
+        # Add a flag for adding a docker-compose.yml file as part of the output
+        "--add-docker-compose",
+        help=(
+            "Add additional files for running the LangGraph API server with "
+            "docker-compose. These files include a docker-compose.yml, .env file, "
+            "and a .dockerignore file."
+        ),
+        is_flag=True,
+    )
+  - |-
+    click.option(
+        "--base-image",
+        help="Base image to use for the LangGraph API server. Pin to specific versions using version tags. Defaults to langchain/langgraph-api or langchain/langgraphjs-api."
+        "\n\n    \b\nExamples:\n    --base-image langchain/langgraph-server:0.2.18  # Pin to a specific patch version"
+        "\n    --base-image langchain/langgraph-server:0.2  # Pin to a minor version (Python)",
+    )
+  - OPT_API_VERSION
+  - OPT_ENGINE_RUNTIME_MODE
+  - log_command
+  lines:
+  - 1606
+  - 1709
+  detail:
+    calls:
+    - '",".join'
+    - (save_path.parent / ".env").exists
+    - Runner
+    - _get_docker_ignore_content
+    - additional_contexts.items
+    - f.write
+    - f.writelines
+    - langgraph_cli.config.config_to_docker
+    - langgraph_cli.config.default_base_image
+    - langgraph_cli.config.validate_config_file
+    - langgraph_cli.docker.check_capabilities
+    - langgraph_cli.docker.compose_as_dict
+    - langgraph_cli.docker.dict_to_yaml
+    - open
+    - pathlib.Path
+    - pathlib.Path(save_path).absolute
+    - secho
+    - str
+    - warn_non_wolfi_distro
+- name: dev
+  sig: |-
+    dev(
+        host: str,
+        port: int,
+        no_reload: bool,
+        config: str,
+        n_jobs_per_worker: int | None,
+        no_browser: bool,
+        debug_port: int | None,
+        wait_for_client: bool,
+        studio_url: str | None,
+        allow_blocking: bool,
+        tunnel: bool,
+        server_log_level: str,
+    )
+  decorators:
+  - |-
+    click.option(
+        "--host",
+        default="127.0.0.1",
+        help="Network interface to bind the development server to. Default 127.0.0.1 is recommended for security. Only use 0.0.0.0 in trusted networks",
+    )
+  - |-
+    click.option(
+        "--port",
+        default=2024,
+        type=int,
+        help="Port number to bind the development server to. Example: langgraph dev --port 8000",
+    )
+  - |-
+    click.option(
+        "--no-reload",
+        is_flag=True,
+        help="Disable automatic reloading when code changes are detected",
+    )
+  - |-
+    click.option(
+        "--config",
+        type=click.Path(exists=True),
+        default="langgraph.json",
+        help="Path to configuration file declaring dependencies, graphs and environment variables",
+    )
+  - |-
+    click.option(
+        "--n-jobs-per-worker",
+        default=None,
+        type=int,
+        help="Maximum number of concurrent jobs each worker process can handle. Default: 10",
+    )
+  - |-
+    click.option(
+        "--no-browser",
+        is_flag=True,
+        help="Skip automatically opening the browser when the server starts",
+    )
+  - |-
+    click.option(
+        "--debug-port",
+        default=None,
+        type=int,
+        help="Enable remote debugging by listening on specified port. Requires debugpy to be installed",
+    )
+  - |-
+    click.option(
+        "--wait-for-client",
+        is_flag=True,
+        help="Wait for a debugger client to connect to the debug port before starting the server",
+        default=False,
+    )
+  - |-
+    click.option(
+        "--studio-url",
+        type=str,
+        default=None,
+        help="URL of the LangGraph Studio instance to connect to. Defaults to https://smith.langchain.com",
+    )
+  - |-
+    click.option(
+        "--allow-blocking",
+        is_flag=True,
+        help="Don't raise errors for synchronous I/O blocking operations in your code.",
+        default=False,
+    )
+  - |-
+    click.option(
+        "--tunnel",
+        is_flag=True,
+        help="Expose the local server via a public tunnel (in this case, Cloudflare) "
+        "for remote frontend access. This avoids issues with browsers "
+        "or networks blocking localhost connections.",
+        default=False,
+    )
+  - |-
+    click.option(
+        "--server-log-level",
+        type=str,
+        default="WARNING",
+        help="Set the log level for the API server.",
+    )
+  - |-
+    cli.command(
+        "dev",
+        help="🏃‍♀️‍➡️ Run LangGraph API server in development mode with hot reloading and debugging support",
+    )
+  - log_command
+  lines:
+  - 1788
+  - 1873
+  detail:
+    calls:
+    - click.UsageError
+    - config_json.get
+    - dep_path.exists
+    - dep_path.is_dir
+    - langgraph_cli.config.validate_config_file
+    - os.getcwd
+    - pathlib.Path
+    - run_server
+    - str
+    - sys.path.append
+    - util.find_spec
+- name: new
+  sig: 'new(path: str | None, template: str | None) -> None'
+  decorators:
+  - click.argument("path", required=False)
+  - |-
+    click.option(
+        "--template",
+        type=str,
+        help=TEMPLATE_HELP_STRING,
+    )
+  - cli.command("new", help="🌱 Create a new LangGraph project from a template.")
+  - log_command
+  lines:
+  - 1884
+  - 1886
+- name: prepare_args_and_stdin
+  sig: |-
+    prepare_args_and_stdin(
+        *,
+        capabilities: DockerCapabilities,
+        config_path: pathlib.Path,
+        config: Config,
+        docker_compose: pathlib.Path | None,
+        port: int,
+        watch: bool,
+        debugger_port: int | None = None,
+        debugger_base_url: str | None = None,
+        postgres_uri: str | None = None,
+        api_version: str | None = None,
+        engine_runtime_mode: str = "combined_queue_worker",
+        # Like "my-tag" (if you already built it locally)
+        image: str | None = None,
+        # Like "langchain/langgraphjs-api" or "langchain/langgraph-api
+        base_image: str | None = None,
+    ) -> tuple[list[str], str]
+  lines:
+  - 1889
+  - 1938
+  detail:
+    calls:
+    - args.extend
+    - config_path.exists
+    - langgraph_cli.config.config_to_compose
+    - langgraph_cli.config.default_base_image
+    - langgraph_cli.docker.compose
+    - str
+- name: prepare
+  sig: |-
+    prepare(
+        runner,
+        *,
+        capabilities: DockerCapabilities,
+        config_path: pathlib.Path,
+        docker_compose: pathlib.Path | None,
+        port: int,
+        pull: bool,
+        watch: bool,
+        verbose: bool,
+        debugger_port: int | None = None,
+        debugger_base_url: str | None = None,
+        postgres_uri: str | None = None,
+        api_version: str | None = None,
+        engine_runtime_mode: str = "combined_queue_worker",
+        image: str | None = None,
+        base_image: str | None = None,
+    ) -> tuple[list[str], str]
+  lines:
+  - 1941
+  - 2002
+  detail:
+    calls:
+    - langgraph_cli.config.default_base_image
+    - langgraph_cli.config.docker_tag
+    - langgraph_cli.config.validate_config_file
+    - prepare_args_and_stdin
+    - runner.run
+    - subp_exec
+    - warn_non_wolfi_distro
+exports:
+- name: NestedHelpGroup
+  kind: type
+- name: DeployGroup
+  kind: type
+- name: cli
+  kind: func
+- name: up
+  kind: func
+- name: build
+  kind: func
+- name: deploy
+  kind: func
+- name: deploy_revisions
+  kind: func
+- name: deploy_list
+  kind: func
+- name: deploy_revisions_list
+  kind: func
+- name: deploy_delete
+  kind: func
+- name: deploy_logs
+  kind: func
+- name: dockerfile
+  kind: func
+- name: dev
+  kind: func
+- name: new
+  kind: func
+- name: prepare_args_and_stdin
+  kind: func
+- name: prepare
+  kind: func
+- name: RESERVED_ENV_VARS
+  kind: data
+- name: OPT_DOCKER_COMPOSE
+  kind: data
+- name: OPT_CONFIG
+  kind: data
+- name: OPT_PORT
+  kind: data
+- name: OPT_RECREATE
+  kind: data
+- name: OPT_PULL
+  kind: data
+- name: OPT_VERBOSE
+  kind: data
+- name: OPT_WATCH
+  kind: data
+- name: OPT_DEBUGGER_PORT
+  kind: data
+- name: OPT_DEBUGGER_BASE_URL
+  kind: data
+- name: OPT_POSTGRES_URI
+  kind: data
+- name: OPT_API_VERSION
+  kind: data
+- name: OPT_HOST_API_KEY
+  kind: data
+- name: OPT_HOST_DEPLOYMENT_NAME
+  kind: data
+- name: OPT_HOST_URL
+  kind: data
+- name: OPT_ENGINE_RUNTIME_MODE
+  kind: data

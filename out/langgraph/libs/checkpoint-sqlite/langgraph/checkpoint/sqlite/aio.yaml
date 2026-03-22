@@ -1,0 +1,314 @@
+## Roska File Descriptor — sqlite/aio.py
+file: sqlite/aio.py
+lines: 631
+imports:
+- sym: asyncio
+- sym: random
+- sym: threading
+- sym: aiosqlite
+- sym: langchain_core.runnables.RunnableConfig
+- sym: langgraph.checkpoint.base.WRITES_IDX_MAP
+- sym: langgraph.checkpoint.base.BaseCheckpointSaver
+- sym: langgraph.checkpoint.base.ChannelVersions
+- sym: langgraph.checkpoint.base.Checkpoint
+- sym: langgraph.checkpoint.base.CheckpointMetadata
+- sym: langgraph.checkpoint.base.CheckpointTuple
+- sym: langgraph.checkpoint.base.SerializerProtocol
+- sym: langgraph.checkpoint.base.get_checkpoint_id
+- sym: langgraph.checkpoint.base.get_checkpoint_metadata
+- sym: langgraph.checkpoint.serde.jsonplus.JsonPlusSerializer
+- sym: langgraph.checkpoint.sqlite.utils.search_where
+data:
+- name: T
+  type: Any
+  val: TypeVar("T", bound=Callable)
+- name: _CONN_STARTED_CHECK
+  type: Any
+  val: _build_conn_started_check()
+types:
+- name: AsyncSqliteSaver
+  kind: struct
+  ctx: 'An asynchronous checkpoint saver that stores checkpoints in a SQLite database. This class provides an asynchronous interface for saving and retrieving checkpoints using a SQLite database. It''s designed for use in asynchronous environments and offers better performance for I/O-bound operations compared to synchronous alternatives. Attributes: conn (aiosqlite.Connection): The asynchronous SQLite database connection. serde (SerializerProtocol): The serializer used for encoding/decoding checkpoints. Tip: Requires the [aiosqlite](https://pypi.org/project/aiosqlite/) package. Install it with `pip install aiosqlite`. Warning: While this class supports asynchronous checkpointing, it is not recommended for production workloads due to limitations in SQLite''s write performance. For production use, consider a more robust database like PostgreSQL. Tip: Remember to **close the database connection** after executing your code, otherwise, you may see the graph "hang" after execution (since the program will not exit until the connection is closed). The easiest way is to use the `async with` statement as shown in the examples. ```python async with AsyncSqliteSaver.from_conn_string("checkpoints.sqlite") as saver: # Your code here graph = builder.compile(checkpointer=saver) config = {"configurable": {"thread_id": "thread-1"}} async for event in graph.astream_events(..., config, version="v1"): print(event) ``` Examples: Usage within StateGraph: ```pycon >>> import asyncio >>> >>> from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver >>> from langgraph.graph import StateGraph >>> >>> async def main(): >>>     builder = StateGraph(int) >>>     builder.add_node("add_one", lambda x: x + 1) >>>     builder.set_entry_point("add_one") >>>     builder.set_finish_point("add_one") >>>     async with AsyncSqliteSaver.from_conn_string("checkpoints.db") as memory: >>>         graph = builder.compile(checkpointer=memory) >>>         coro = graph.ainvoke(1, {"configurable": {"thread_id": "thread-1"}}) >>>         print(await asyncio.gather(coro)) >>> >>> asyncio.run(main()) Output: [2] ``` Raw usage: ```pycon >>> import asyncio >>> import aiosqlite >>> from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver >>> >>> async def main(): >>>     async with aiosqlite.connect("checkpoints.db") as conn: ...         saver = AsyncSqliteSaver(conn) ...         config = {"configurable": {"thread_id": "1", "checkpoint_ns": ""}} ...         checkpoint = {"ts": "2023-05-03T10:00:00Z", "data": {"key": "value"}, "id": "0c62ca34-ac19-445d-bbb0-5b4984975b2a"} ...         saved_config = await saver.aput(config, checkpoint, {}, {}) ...         print(saved_config) >>> asyncio.run(main()) {''configurable'': {''thread_id'': ''1'', ''checkpoint_ns'': '''', ''checkpoint_id'': ''0c62ca34-ac19-445d-bbb0-5b4984975b2a''}} ```'
+  fields:
+  - name: lock
+    type: Any
+    default: asyncio.Lock
+  - name: is_setup
+    type: Any
+    default: bool
+  - name: jsonplus_serde
+    type: Any
+    default: JsonPlusSerializer()
+  - name: conn
+    type: Any
+    default: conn
+  - name: loop
+    type: Any
+    default: asyncio.get_running_loop()
+  methods:
+  - name: __init__
+    sig: |-
+      __init__(
+              self,
+              conn: aiosqlite.Connection,
+              *,
+              serde: SerializerProtocol | None = None,
+          )
+    lines:
+    - 111
+    - 122
+    detail:
+      calls:
+      - JsonPlusSerializer
+      - asyncio.Lock
+      - asyncio.get_running_loop
+      - super
+      - super().__init__
+  - name: from_conn_string
+    sig: |-
+      from_conn_string(
+              cls, conn_string: str
+          ) -> AsyncIterator[AsyncSqliteSaver]
+    is_async: true
+    decorators:
+    - classmethod
+    - asynccontextmanager
+    lines:
+    - 126
+    - 138
+    detail:
+      calls:
+      - aiosqlite.connect
+      - cls
+  - name: get_tuple
+    sig: 'get_tuple(self, config: RunnableConfig) -> CheckpointTuple | None'
+    lines:
+    - 140
+    - 168
+    detail:
+      calls:
+      - asyncio.InvalidStateError
+      - asyncio.get_running_loop
+      - asyncio.run_coroutine_threadsafe
+      - |-
+        asyncio.run_coroutine_threadsafe(
+                    self.aget_tuple(config), self.loop
+                ).result
+      - self.aget_tuple
+  - name: list
+    sig: |-
+      list(
+              self,
+              config: RunnableConfig | None,
+              *,
+              filter: dict[str, Any] | None = None,
+              before: RunnableConfig | None = None,
+              limit: int | None = None,
+          ) -> Iterator[CheckpointTuple]
+    lines:
+    - 170
+    - 212
+    detail:
+      calls:
+      - anext
+      - asyncio.InvalidStateError
+      - asyncio.get_running_loop
+      - asyncio.run_coroutine_threadsafe
+      - |-
+        asyncio.run_coroutine_threadsafe(
+                            anext(aiter_),  # type: ignore[arg-type]  # noqa: F821
+                            self.loop,
+                        ).result
+      - self.alist
+  - name: put
+    sig: |-
+      put(
+              self,
+              config: RunnableConfig,
+              checkpoint: Checkpoint,
+              metadata: CheckpointMetadata,
+              new_versions: ChannelVersions,
+          ) -> RunnableConfig
+    lines:
+    - 214
+    - 237
+    detail:
+      calls:
+      - asyncio.run_coroutine_threadsafe
+      - |-
+        asyncio.run_coroutine_threadsafe(
+                    self.aput(config, checkpoint, metadata, new_versions), self.loop
+                ).result
+      - self.aput
+  - name: put_writes
+    sig: |-
+      put_writes(
+              self,
+              config: RunnableConfig,
+              writes: Sequence[tuple[str, Any]],
+              task_id: str,
+              task_path: str = "",
+          ) -> None
+    lines:
+    - 239
+    - 248
+    detail:
+      calls:
+      - asyncio.run_coroutine_threadsafe
+      - |-
+        asyncio.run_coroutine_threadsafe(
+                    self.aput_writes(config, writes, task_id, task_path), self.loop
+                ).result
+      - self.aput_writes
+  - name: delete_thread
+    sig: 'delete_thread(self, thread_id: str) -> None'
+    lines:
+    - 250
+    - 273
+    detail:
+      calls:
+      - asyncio.InvalidStateError
+      - asyncio.get_running_loop
+      - asyncio.run_coroutine_threadsafe
+      - |-
+        asyncio.run_coroutine_threadsafe(
+                    self.adelete_thread(thread_id), self.loop
+                ).result
+      - self.adelete_thread
+  - name: setup
+    sig: setup(self) -> None
+    is_async: true
+    lines:
+    - 275
+    - 314
+    detail:
+      calls:
+      - _ensure_connected
+      - self.conn.commit
+      - self.conn.executescript
+  - name: aget_tuple
+    sig: 'aget_tuple(self, config: RunnableConfig) -> CheckpointTuple | None'
+    is_async: true
+    lines:
+    - 316
+    - 398
+    detail:
+      calls:
+      - CheckpointTuple
+      - cast
+      - config["configurable"].get
+      - cur.execute
+      - cur.fetchone
+      - get_checkpoint_id
+      - json.loads
+      - self.conn.cursor
+      - self.serde.loads_typed
+      - self.setup
+      - str
+  - name: alist
+    sig: |-
+      alist(
+              self,
+              config: RunnableConfig | None,
+              *,
+              filter: dict[str, Any] | None = None,
+              before: RunnableConfig | None = None,
+              limit: int | None = None,
+          ) -> AsyncIterator[CheckpointTuple]
+    is_async: true
+    lines:
+    - 400
+    - 477
+    detail:
+      calls:
+      - CheckpointTuple
+      - cast
+      - json.loads
+      - search_where
+      - self.conn.cursor
+      - self.conn.execute
+      - self.serde.loads_typed
+      - self.setup
+      - wcur.execute
+  - name: aput
+    sig: |-
+      aput(
+              self,
+              config: RunnableConfig,
+              checkpoint: Checkpoint,
+              metadata: CheckpointMetadata,
+              new_versions: ChannelVersions,
+          ) -> RunnableConfig
+    is_async: true
+    lines:
+    - 479
+    - 529
+    detail:
+      calls:
+      - config["configurable"].get
+      - get_checkpoint_metadata
+      - json.dumps
+      - |-
+        json.dumps(
+                    get_checkpoint_metadata(config, metadata), ensure_ascii=False
+                ).encode
+      - self.conn.commit
+      - self.conn.execute
+      - self.serde.dumps_typed
+      - self.setup
+      - str
+  - name: aput_writes
+    sig: |-
+      aput_writes(
+              self,
+              config: RunnableConfig,
+              writes: Sequence[tuple[str, Any]],
+              task_id: str,
+              task_path: str = "",
+          ) -> None
+    is_async: true
+    lines:
+    - 531
+    - 570
+    detail:
+      calls:
+      - WRITES_IDX_MAP.get
+      - all
+      - cur.executemany
+      - enumerate
+      - self.conn.commit
+      - self.conn.cursor
+      - self.serde.dumps_typed
+      - self.setup
+      - str
+  - name: adelete_thread
+    sig: 'adelete_thread(self, thread_id: str) -> None'
+    is_async: true
+    lines:
+    - 572
+    - 590
+    detail:
+      calls:
+      - cur.execute
+      - self.conn.commit
+      - self.conn.cursor
+      - str
+  - name: get_next_version
+    sig: 'get_next_version(self, current: str | None, channel: None) -> str'
+    lines:
+    - 592
+    - 611
+    detail:
+      calls:
+      - current.split
+      - int
+      - isinstance
+      - random.random
+  lines:
+  - 31
+  - 611
+exports:
+- name: AsyncSqliteSaver
+  kind: type
+- name: T
+  kind: data

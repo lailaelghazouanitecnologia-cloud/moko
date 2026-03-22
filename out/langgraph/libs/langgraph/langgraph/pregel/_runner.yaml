@@ -1,0 +1,454 @@
+## Roska File Descriptor — pregel/_runner.py
+file: pregel/_runner.py
+lines: 768
+imports:
+- sym: asyncio
+- sym: concurrent.futures
+- sym: inspect
+- sym: threading
+- sym: weakref
+- sym: langchain_core.callbacks.Callbacks
+- sym: langgraph._internal._constants.CONF
+- sym: langgraph._internal._constants.CONFIG_KEY_CALL
+- sym: langgraph._internal._constants.CONFIG_KEY_SCRATCHPAD
+- sym: langgraph._internal._constants.ERROR
+- sym: langgraph._internal._constants.INTERRUPT
+- sym: langgraph._internal._constants.NO_WRITES
+- sym: langgraph._internal._constants.RESUME
+- sym: langgraph._internal._constants.RETURN
+- sym: langgraph._internal._future.chain_future
+- sym: langgraph._internal._future.run_coroutine_threadsafe
+- sym: langgraph._internal._scratchpad.PregelScratchpad
+- sym: langgraph._internal._typing.MISSING
+- sym: langgraph.constants.TAG_HIDDEN
+- sym: langgraph.errors.GraphBubbleUp
+- sym: langgraph.errors.GraphInterrupt
+- sym: langgraph.pregel._algo.Call
+- sym: langgraph.pregel._executor.Submit
+- sym: langgraph.pregel._retry.arun_with_retry
+- sym: langgraph.pregel._retry.run_with_retry
+- sym: langgraph.types.CachePolicy
+- sym: langgraph.types.PregelExecutableTask
+- sym: langgraph.types.RetryPolicy
+data:
+- name: F
+  type: Any
+  val: TypeVar("F", concurrent.futures.Future, asyncio.Future)
+- name: E
+  type: Any
+  val: TypeVar("E", threading.Event, asyncio.Event)
+- name: EXCLUDED_FRAME_FNAMES
+  type: tuple
+  val: |-
+    (
+        "langgraph/pregel/retry.py",
+        "langgraph/pregel/runner.py",
+        "langgraph/pregel/executor.py",
+        "langgraph/...
+- name: SKIP_RERAISE_SET
+  type: Any
+  val: weakref.WeakSet[concurrent.futures.Future | asyncio.Future]
+types:
+- name: FuturesDict
+  kind: struct
+  fields:
+  - name: event
+    type: Any
+    default: E
+  - name: callback
+    type: Any
+    default: weakref.ref[Callable[[PregelExecutableTask, BaseException | None], None]]
+  - name: counter
+    type: Any
+    default: int
+  - name: done
+    type: Any
+    default: set[F]
+  - name: lock
+    type: Any
+    default: threading.Lock
+  methods:
+  - name: __init__
+    sig: |-
+      __init__(
+              self,
+              event: E,
+              callback: weakref.ref[
+                  Callable[[PregelExecutableTask, BaseException | None], None]
+              ],
+              future_type: type[F],
+              # used for generic typing, newer py supports FutureDict[...](...)
+          ) -> None
+    lines:
+    - 78
+    - 92
+    detail:
+      calls:
+      - set
+      - super
+      - super().__init__
+      - threading.Lock
+  - name: __setitem__
+    sig: |-
+      __setitem__(
+              self,
+              key: F,
+              value: PregelExecutableTask | None,
+          ) -> None
+    lines:
+    - 94
+    - 104
+    detail:
+      calls:
+      - key.add_done_callback
+      - partial
+      - self.event.clear
+      - super
+      - super().__setitem__
+  - name: on_done
+    sig: |-
+      on_done(
+              self,
+              task: PregelExecutableTask,
+              fut: F,
+          ) -> None
+    lines:
+    - 106
+    - 119
+    detail:
+      calls:
+      - _exception
+      - _should_stop_others
+      - cb
+      - self.callback
+      - self.done.add
+      - self.event.set
+  lines:
+  - 71
+  - 119
+- name: PregelRunner
+  kind: struct
+  ctx: Responsible for executing a set of Pregel tasks concurrently, committing their writes, yielding control to caller when there is output to emit, and interrupting other tasks if appropriate.
+  fields:
+  - name: submit
+    type: Any
+    default: submit
+  - name: put_writes
+    type: Any
+    default: put_writes
+  - name: use_astream
+    type: Any
+    default: use_astream
+  - name: node_finished
+    type: Any
+    default: node_finished
+  methods:
+  - name: __init__
+    sig: __init__(self, ...10 params)
+    lines:
+    - 127
+    - 138
+  - name: tick
+    sig: |-
+      tick(
+              self,
+              tasks: Iterable[PregelExecutableTask],
+              *,
+              reraise: bool = True,
+              timeout: float | None = None,
+              retry_policy: Sequence[RetryPolicy] | None = None,
+              get_waiter: Callable[[], concurrent.futures.Future[None]] | None = None,
+              schedule_task: Callable[
+                  [PregelExecutableTask, int, Call | None],
+                  PregelExecutableTask | None,
+              ],
+          ) -> Iterator[None]
+    lines:
+    - 140
+    - 270
+    detail:
+      calls:
+      - FuturesDict
+      - _panic_or_proceed
+      - _should_stop_others
+      - any
+      - concurrent.futures.Future
+      - concurrent.futures.wait
+      - fut.set_exception
+      - futures.done.add
+      - futures.done.union
+      - futures.event.wait
+      - futures.items
+      - futures.pop
+      - get_waiter
+      - len
+      - max
+      - partial
+      - run_with_retry
+      - self.commit
+      - self.submit
+      - self.submit()
+      - tb.tb_frame.f_code.co_filename.endswith
+      - threading.Event
+      - time.monotonic
+      - tuple
+      - weakref.WeakMethod
+      - weakref.ref
+  - name: atick
+    sig: |-
+      atick(
+              self,
+              tasks: Iterable[PregelExecutableTask],
+              *,
+              reraise: bool = True,
+              timeout: float | None = None,
+              retry_policy: Sequence[RetryPolicy] | None = None,
+              get_waiter: Callable[[], asyncio.Future[None]] | None = None,
+              schedule_task: Callable[
+                  [PregelExecutableTask, int, Call | None],
+                  Awaitable[PregelExecutableTask | None],
+              ],
+          ) -> AsyncIterator[None]
+    is_async: true
+    lines:
+    - 272
+    - 423
+    detail:
+      calls:
+      - FuturesDict
+      - _panic_or_proceed
+      - _should_stop_others
+      - any
+      - arun_with_retry
+      - asyncio.Event
+      - asyncio.get_event_loop
+      - asyncio.new_event_loop
+      - asyncio.set_event_loop
+      - asyncio.wait
+      - asyncio.wait_for
+      - cast
+      - fut.cancel
+      - fut.set_exception
+      - futures.done.add
+      - futures.done.union
+      - futures.event.wait
+      - futures.items
+      - futures.pop
+      - get_waiter
+      - len
+      - loop.create_future
+      - loop.time
+      - max
+      - partial
+      - self.commit
+      - self.submit
+      - self.submit()
+      - tb.tb_frame.f_code.co_filename.endswith
+      - tuple
+      - weakref.WeakMethod
+      - weakref.ref
+  - name: commit
+    sig: |-
+      commit(
+              self,
+              task: PregelExecutableTask,
+              exception: BaseException | None,
+          ) -> None
+    lines:
+    - 425
+    - 459
+    detail:
+      calls:
+      - isinstance
+      - self.node_finished
+      - self.put_writes
+      - self.put_writes()
+      - task.config.get
+      - task.writes.append
+      - writes.extend
+  lines:
+  - 122
+  - 459
+functions:
+- name: _exception
+  sig: |-
+    _exception(
+        fut: concurrent.futures.Future[Any] | asyncio.Future[Any],
+    ) -> BaseException | None
+  vis: protected
+  lines:
+  - 477
+  - 487
+  detail:
+    calls:
+    - asyncio.CancelledError
+    - concurrent.futures.CancelledError
+    - fut.cancelled
+    - fut.exception
+    - isinstance
+- name: _panic_or_proceed
+  sig: |-
+    _panic_or_proceed(
+        futs: set[concurrent.futures.Future] | set[asyncio.Future],
+        *,
+        timeout_exc_cls: type[Exception] = TimeoutError,
+        panic: bool = True,
+    ) -> None
+  vis: protected
+  lines:
+  - 490
+  - 530
+  detail:
+    calls:
+    - GraphInterrupt
+    - _exception
+    - done.add
+    - done.pop
+    - fut.cancelled
+    - fut.done
+    - inflight.add
+    - inflight.pop
+    - inflight.pop().cancel
+    - interrupts.append
+    - isinstance
+    - set
+    - timeout_exc_cls
+    - tuple
+- name: _call
+  sig: |-
+    _call(
+        task: weakref.ref[PregelExecutableTask],
+        func: Callable[[Any], Awaitable[Any] | Any],
+        input: Any,
+        *,
+        retry_policy: Sequence[RetryPolicy] | None = None,
+        cache_policy: CachePolicy | None = None,
+        callbacks: Callbacks = None,
+        futures: weakref.ref[FuturesDict],
+        schedule_task: Callable[
+            [PregelExecutableTask, int, Call | None], PregelExecutableTask | None
+        ],
+        submit: weakref.ref[Submit],
+    ) -> concurrent.futures.Future[Any]
+  vis: protected
+  lines:
+  - 533
+  - 617
+  detail:
+    calls:
+    - Call
+    - Exception
+    - RuntimeError
+    - SKIP_RERAISE_SET.add
+    - cast
+    - chain_future
+    - concurrent.futures.Future
+    - fut.set_exception
+    - fut.set_result
+    - futures
+    - futures().items
+    - inspect.iscoroutinefunction
+    - isinstance
+    - list
+    - next
+    - partial
+    - schedule_task
+    - scratchpad.call_counter
+    - submit
+    - submit()
+    - task
+    - weakref.ref
+- name: _acall
+  sig: |-
+    _acall(
+        task: weakref.ref[PregelExecutableTask],
+        func: Callable[[Any], Awaitable[Any] | Any],
+        input: Any,
+        *,
+        retry_policy: Sequence[RetryPolicy] | None = None,
+        cache_policy: CachePolicy | None = None,
+        callbacks: Callbacks = None,
+        # injected dependencies
+        futures: weakref.ref[FuturesDict],
+        schedule_task: Callable[
+            [PregelExecutableTask, int, Call | None],
+            Awaitable[PregelExecutableTask | None],
+        ],
+        submit: weakref.ref[Submit],
+        loop: asyncio.AbstractEventLoop,
+        stream: bool = False,
+    ) -> asyncio.Future[Any] | concurrent.futures.Future[Any]
+  vis: protected
+  lines:
+  - 620
+  - 670
+  detail:
+    calls:
+    - _acall_impl
+    - asyncio.Future
+    - asyncio.current_task
+    - concurrent.futures.Future
+    - run_coroutine_threadsafe
+- name: _acall_impl
+  sig: |-
+    _acall_impl(
+        destination: asyncio.Future[Any] | concurrent.futures.Future[Any],
+        task: weakref.ref[PregelExecutableTask],
+        func: Callable[[Any], Awaitable[Any] | Any],
+        input: Any,
+        *,
+        retry_policy: Sequence[RetryPolicy] | None = None,
+        cache_policy: CachePolicy | None = None,
+        callbacks: Callbacks = None,
+        # injected dependencies
+        futures: weakref.ref[FuturesDict[asyncio.Future, asyncio.Event]],
+        schedule_task: Callable[
+            [PregelExecutableTask, int, Call | None],
+            Awaitable[PregelExecutableTask | None],
+        ],
+        submit: weakref.ref[Submit],
+        loop: asyncio.AbstractEventLoop,
+        stream: bool = False,
+    ) -> None
+  is_async: true
+  vis: protected
+  lines:
+  - 673
+  - 768
+  detail:
+    calls:
+    - Call
+    - Exception
+    - RuntimeError
+    - SKIP_RERAISE_SET.add
+    - asyncio.Future
+    - cast
+    - chain_future
+    - destination.set_exception
+    - fut.set_exception
+    - fut.set_result
+    - futures
+    - futures().items
+    - isinstance
+    - list
+    - next
+    - partial
+    - schedule_task
+    - scratchpad.call_counter
+    - submit
+    - submit()
+    - task
+    - weakref.ref
+exports:
+- name: FuturesDict
+  kind: type
+- name: PregelRunner
+  kind: type
+- name: F
+  kind: data
+- name: E
+  kind: data
+- name: EXCLUDED_FRAME_FNAMES
+  kind: data
+- name: SKIP_RERAISE_SET
+  kind: data

@@ -1,0 +1,272 @@
+## Roska File Descriptor — serde/jsonplus.py
+file: serde/jsonplus.py
+lines: 827
+imports:
+- sym: decimal
+- sym: importlib
+- sym: pickle
+- sym: inspect.isclass
+- sym: ipaddress.IPv4Address
+- sym: ipaddress.IPv4Interface
+- sym: ipaddress.IPv4Network
+- sym: ipaddress.IPv6Address
+- sym: ipaddress.IPv6Interface
+- sym: ipaddress.IPv6Network
+- sym: zoneinfo.ZoneInfo
+- sym: ormsgpack
+- sym: langchain_core.load.load.Reviver
+- sym: langgraph.checkpoint.serde._msgpack
+- sym: langgraph.checkpoint.serde.base.SerializerProtocol
+- sym: langgraph.checkpoint.serde.event_hooks.emit_serde_event
+- sym: langgraph.checkpoint.serde.types.SendProtocol
+- sym: langgraph.store.base.Item
+data:
+- name: LC_REVIVER
+  type: Any
+  val: Reviver()
+- name: EMPTY_BYTES
+  type: Any
+  val: b""
+- name: logger
+  type: Any
+  val: logging.getLogger(__name__)
+- name: EXT_CONSTRUCTOR_SINGLE_ARG
+  type: int
+  val: '0'
+- name: EXT_CONSTRUCTOR_POS_ARGS
+  type: int
+  val: '1'
+- name: EXT_CONSTRUCTOR_KW_ARGS
+  type: int
+  val: '2'
+- name: EXT_METHOD_SINGLE_ARG
+  type: int
+  val: '3'
+- name: EXT_PYDANTIC_V1
+  type: int
+  val: '4'
+- name: EXT_PYDANTIC_V2
+  type: int
+  val: '5'
+- name: EXT_NUMPY_ARRAY
+  type: int
+  val: '6'
+- name: _msgpack_ext_hook
+  type: Any
+  val: _create_msgpack_ext_hook(allowed_modules=None)
+- name: _option
+  type: tuple
+  val: |-
+    (
+        ormsgpack.OPT_NON_STR_KEYS
+        | ormsgpack.OPT_PASSTHROUGH_DATACLASS
+        | ormsgpack.OPT_PASSTHROUGH_DATETIME
+        ...
+types:
+- name: JsonPlusSerializer
+  kind: struct
+  ctx: 'Serializer that uses ormsgpack, with optional fallbacks. !!! warning Security note: This serializer is intended for use within the `BaseCheckpointSaver` class and called within the Pregel loop. It should not be used on untrusted python objects. If an attacker can write directly to your checkpoint database, they may be able to trigger code execution when data is deserialized.'
+  bases:
+  - SerializerProtocol
+  fields:
+  - name: pickle_fallback
+    type: Any
+    default: pickle_fallback
+  - name: _allowed_json_modules
+    type: Any
+    default: set[tuple[str, ...]] | Literal[True] | None
+  - name: _allowed_msgpack_modules
+    type: Any
+    default: _normalize_allowlist(allowed_msgpack_modules)
+  - name: _custom_unpack_ext_hook
+    type: Any
+    default: __unpack_ext_hook__ is not None
+  - name: _unpack_ext_hook
+    type: tuple
+    default: |-
+      (
+                  __unpack_ext_hook__
+                  if __unpack_ext_hook__ is not None
+                  else _create_msgpack_ext_hook(self._allowed_msgpack_modules)
+              )
+  methods:
+  - name: __init__
+    sig: |-
+      __init__(
+              self,
+              *,
+              pickle_fallback: bool = False,
+              allowed_json_modules: Iterable[tuple[str, ...]] | Literal[True] | None = None,
+              allowed_msgpack_modules: (
+                  AllowedMsgpackModules | Literal[True] | None
+              ) = _lg_msgpack._SENTINEL,
+              __unpack_ext_hook__: Callable[[int, bytes], Any] | None = None,
+          ) -> None
+    lines:
+    - 61
+    - 87
+    detail:
+      calls:
+      - _create_msgpack_ext_hook
+      - _normalize_allowlist
+  - name: with_msgpack_allowlist
+    sig: |-
+      with_msgpack_allowlist(
+              self, extra_allowlist: Iterable[tuple[str, ...] | type]
+          ) -> JsonPlusSerializer
+    lines:
+    - 89
+    - 119
+    detail:
+      calls:
+      - _create_msgpack_ext_hook
+      - _normalize_allowlist
+      - _normalize_module_keys
+      - copy.copy
+      - isinstance
+      - set
+      - tuple
+  - name: _revive_lc2
+    sig: '_revive_lc2(self, value: dict[str, Any]) -> Any'
+    vis: protected
+    lines:
+    - 159
+    - 190
+    detail:
+      calls:
+      - '".".join'
+      - getattr
+      - importlib.import_module
+      - isclass
+      - isinstance
+      - issubclass
+      - method
+      - self._check_allowed_json_modules
+      - value.get
+  - name: _check_allowed_json_modules
+    sig: '_check_allowed_json_modules(self, value: dict[str, Any]) -> None'
+    vis: protected
+    lines:
+    - 192
+    - 226
+    detail:
+      calls:
+      - '",".join'
+      - '".".join'
+      - InvalidModuleError
+      - isinstance
+      - tuple
+      - value.get
+  - name: dumps_typed
+    sig: 'dumps_typed(self, obj: Any) -> tuple[str, bytes]'
+    lines:
+    - 228
+    - 241
+    detail:
+      calls:
+      - _msgpack_enc
+      - isinstance
+      - pickle.dumps
+  - name: loads_typed
+    sig: 'loads_typed(self, data: tuple[str, bytes]) -> Any'
+    lines:
+    - 243
+    - 260
+    detail:
+      calls:
+      - NotImplementedError
+      - bytearray
+      - json.loads
+      - ormsgpack.unpackb
+      - pickle.loads
+  lines:
+  - 50
+  - 260
+- name: InvalidModuleError
+  kind: struct
+  ctx: Exception raised when a module is not in the allowlist.
+  bases:
+  - Exception
+  fields:
+  - name: message
+    type: Any
+    default: message
+  methods:
+  - name: __init__
+    sig: __init__(self, ...1 params)
+    lines:
+    - 789
+    - 790
+  lines:
+  - 786
+  - 790
+functions:
+- name: _msgpack_default
+  sig: '_msgpack_default(obj: Any) -> str | ormsgpack.Ext'
+  vis: protected
+  lines:
+  - 274
+  - 498
+  detail:
+    calls:
+    - TypeError
+    - _msgpack_enc
+    - callable
+    - dataclasses.fields
+    - dataclasses.is_dataclass
+    - getattr
+    - hasattr
+    - isinstance
+    - memoryview
+    - mv.release
+    - obj.__getinitargs__
+    - obj._asdict
+    - obj.dict
+    - obj.get_secret_value
+    - obj.isoformat
+    - obj.model_dump
+    - obj.tobytes
+    - ormsgpack.Ext
+    - repr
+    - str
+    - sys.modules.get
+    - tuple
+- name: _msgpack_ext_hook_to_json
+  sig: '_msgpack_ext_hook_to_json(code: int, data: bytes) -> Any'
+  vis: protected
+  lines:
+  - 693
+  - 783
+  detail:
+    calls:
+    - Send
+    - _np.dtype
+    - _np.frombuffer
+    - arr.reshape
+    - arr.reshape(shape, order=order).tolist
+    - ormsgpack.unpackb
+exports:
+- name: JsonPlusSerializer
+  kind: type
+- name: InvalidModuleError
+  kind: type
+- name: LC_REVIVER
+  kind: data
+- name: EMPTY_BYTES
+  kind: data
+- name: logger
+  kind: data
+- name: EXT_CONSTRUCTOR_SINGLE_ARG
+  kind: data
+- name: EXT_CONSTRUCTOR_POS_ARGS
+  kind: data
+- name: EXT_CONSTRUCTOR_KW_ARGS
+  kind: data
+- name: EXT_METHOD_SINGLE_ARG
+  kind: data
+- name: EXT_PYDANTIC_V1
+  kind: data
+- name: EXT_PYDANTIC_V2
+  kind: data
+- name: EXT_NUMPY_ARRAY
+  kind: data

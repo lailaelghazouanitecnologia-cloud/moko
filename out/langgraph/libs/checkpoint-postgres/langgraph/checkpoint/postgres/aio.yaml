@@ -1,0 +1,350 @@
+## Roska File Descriptor — postgres/aio.py
+file: postgres/aio.py
+lines: 582
+imports:
+- sym: asyncio
+- sym: langchain_core.runnables.RunnableConfig
+- sym: langgraph.checkpoint.base.WRITES_IDX_MAP
+- sym: langgraph.checkpoint.base.ChannelVersions
+- sym: langgraph.checkpoint.base.Checkpoint
+- sym: langgraph.checkpoint.base.CheckpointMetadata
+- sym: langgraph.checkpoint.base.CheckpointTuple
+- sym: langgraph.checkpoint.base.get_checkpoint_id
+- sym: langgraph.checkpoint.base.get_serializable_checkpoint_metadata
+- sym: langgraph.checkpoint.serde.base.SerializerProtocol
+- sym: psycopg.AsyncConnection
+- sym: psycopg.AsyncCursor
+- sym: psycopg.AsyncPipeline
+- sym: psycopg.Capabilities
+- sym: psycopg.rows.DictRow
+- sym: psycopg.rows.dict_row
+- sym: psycopg.types.json.Jsonb
+- sym: psycopg_pool.AsyncConnectionPool
+- sym: langgraph.checkpoint.postgres._ainternal
+- sym: langgraph.checkpoint.postgres.base.BasePostgresSaver
+- sym: langgraph.checkpoint.postgres.shallow.AsyncShallowPostgresSaver
+data:
+- name: Conn
+  type: Any
+  val: _ainternal.Conn
+- name: __all__
+  type: list
+  val: '["AsyncPostgresSaver", "AsyncShallowPostgresSaver", "Conn"]'
+types:
+- name: AsyncPostgresSaver
+  kind: struct
+  ctx: Asynchronous checkpointer that stores checkpoints in a Postgres database.
+  bases:
+  - BasePostgresSaver
+  fields:
+  - name: lock
+    type: Any
+    default: asyncio.Lock
+  - name: conn
+    type: Any
+    default: conn
+  - name: pipe
+    type: Any
+    default: pipe
+  - name: loop
+    type: Any
+    default: asyncio.get_running_loop()
+  - name: supports_pipeline
+    type: Any
+    default: Capabilities().has_pipeline()
+  methods:
+  - name: __init__
+    sig: |-
+      __init__(
+              self,
+              conn: _ainternal.Conn,
+              pipe: AsyncPipeline | None = None,
+              serde: SerializerProtocol | None = None,
+          ) -> None
+    lines:
+    - 37
+    - 53
+    detail:
+      calls:
+      - Capabilities
+      - Capabilities().has_pipeline
+      - ValueError
+      - asyncio.Lock
+      - asyncio.get_running_loop
+      - isinstance
+      - super
+      - super().__init__
+  - name: from_conn_string
+    sig: |-
+      from_conn_string(
+              cls,
+              conn_string: str,
+              *,
+              pipeline: bool = False,
+              serde: SerializerProtocol | None = None,
+          ) -> AsyncIterator[AsyncPostgresSaver]
+    is_async: true
+    decorators:
+    - classmethod
+    - asynccontextmanager
+    lines:
+    - 57
+    - 80
+    detail:
+      calls:
+      - AsyncConnection.connect
+      - cls
+      - conn.pipeline
+  - name: setup
+    sig: setup(self) -> None
+    is_async: true
+    lines:
+    - 82
+    - 109
+    detail:
+      calls:
+      - cur.execute
+      - len
+      - range
+      - results.fetchone
+      - self._cursor
+      - self.pipe.sync
+      - zip
+  - name: alist
+    sig: |-
+      alist(
+              self,
+              config: RunnableConfig | None,
+              *,
+              filter: dict[str, Any] | None = None,
+              before: RunnableConfig | None = None,
+              limit: int | None = None,
+          ) -> AsyncIterator[CheckpointTuple]
+    is_async: true
+    lines:
+    - 111
+    - 171
+    detail:
+      calls:
+      - cur.execute
+      - cur.fetchall
+      - defaultdict
+      - grouped_by_parent[value["parent_checkpoint_id"]].append
+      - int
+      - list
+      - params.append
+      - self._cursor
+      - self._load_checkpoint_tuple
+      - self._migrate_pending_sends
+      - self._search_where
+  - name: aget_tuple
+    sig: 'aget_tuple(self, config: RunnableConfig) -> CheckpointTuple | None'
+    is_async: true
+    lines:
+    - 173
+    - 222
+    detail:
+      calls:
+      - config["configurable"].get
+      - cur.execute
+      - cur.fetchone
+      - get_checkpoint_id
+      - self._cursor
+      - self._load_checkpoint_tuple
+      - self._migrate_pending_sends
+  - name: aput
+    sig: |-
+      aput(
+              self,
+              config: RunnableConfig,
+              checkpoint: Checkpoint,
+              metadata: CheckpointMetadata,
+              new_versions: ChannelVersions,
+          ) -> RunnableConfig
+    is_async: true
+    lines:
+    - 224
+    - 294
+    detail:
+      calls:
+      - Jsonb
+      - asyncio.to_thread
+      - checkpoint.copy
+      - checkpoint["channel_values"].items
+      - config["configurable"].copy
+      - configurable.pop
+      - copy["channel_values"].copy
+      - copy["channel_values"].pop
+      - cur.execute
+      - cur.executemany
+      - get_serializable_checkpoint_metadata
+      - isinstance
+      - new_versions.items
+      - self._cursor
+  - name: aput_writes
+    sig: |-
+      aput_writes(
+              self,
+              config: RunnableConfig,
+              writes: Sequence[tuple[str, Any]],
+              task_id: str,
+              task_path: str = "",
+          ) -> None
+    is_async: true
+    lines:
+    - 296
+    - 327
+    detail:
+      calls:
+      - all
+      - asyncio.to_thread
+      - cur.executemany
+      - self._cursor
+  - name: adelete_thread
+    sig: 'adelete_thread(self, thread_id: str) -> None'
+    is_async: true
+    lines:
+    - 329
+    - 350
+    detail:
+      calls:
+      - cur.execute
+      - self._cursor
+      - str
+  - name: _cursor
+    sig: |-
+      _cursor(
+              self, *, pipeline: bool = False
+          ) -> AsyncIterator[AsyncCursor[DictRow]]
+    is_async: true
+    vis: protected
+    decorators:
+    - asynccontextmanager
+    lines:
+    - 353
+    - 392
+    detail:
+      calls:
+      - _ainternal.get_connection
+      - conn.cursor
+      - conn.pipeline
+      - conn.transaction
+      - self.pipe.sync
+  - name: _load_checkpoint_tuple
+    sig: '_load_checkpoint_tuple(self, value: DictRow) -> CheckpointTuple'
+    is_async: true
+    vis: protected
+    lines:
+    - 394
+    - 434
+    detail:
+      calls:
+      - CheckpointTuple
+      - asyncio.to_thread
+      - self._load_blobs
+      - value["checkpoint"].get
+  - name: list
+    sig: |-
+      list(
+              self,
+              config: RunnableConfig | None,
+              *,
+              filter: dict[str, Any] | None = None,
+              before: RunnableConfig | None = None,
+              limit: int | None = None,
+          ) -> Iterator[CheckpointTuple]
+    lines:
+    - 436
+    - 478
+    detail:
+      calls:
+      - anext
+      - asyncio.InvalidStateError
+      - asyncio.get_running_loop
+      - asyncio.run_coroutine_threadsafe
+      - |-
+        asyncio.run_coroutine_threadsafe(
+                            anext(aiter_),  # type: ignore[arg-type]  # noqa: F821
+                            self.loop,
+                        ).result
+      - self.alist
+  - name: get_tuple
+    sig: 'get_tuple(self, config: RunnableConfig) -> CheckpointTuple | None'
+    lines:
+    - 480
+    - 508
+    detail:
+      calls:
+      - asyncio.InvalidStateError
+      - asyncio.get_running_loop
+      - asyncio.run_coroutine_threadsafe
+      - |-
+        asyncio.run_coroutine_threadsafe(
+                    self.aget_tuple(config), self.loop
+                ).result
+      - self.aget_tuple
+  - name: put
+    sig: |-
+      put(
+              self,
+              config: RunnableConfig,
+              checkpoint: Checkpoint,
+              metadata: CheckpointMetadata,
+              new_versions: ChannelVersions,
+          ) -> RunnableConfig
+    lines:
+    - 510
+    - 533
+    detail:
+      calls:
+      - asyncio.run_coroutine_threadsafe
+      - |-
+        asyncio.run_coroutine_threadsafe(
+                    self.aput(config, checkpoint, metadata, new_versions), self.loop
+                ).result
+      - self.aput
+  - name: put_writes
+    sig: |-
+      put_writes(
+              self,
+              config: RunnableConfig,
+              writes: Sequence[tuple[str, Any]],
+              task_id: str,
+              task_path: str = "",
+          ) -> None
+    lines:
+    - 535
+    - 554
+    detail:
+      calls:
+      - asyncio.run_coroutine_threadsafe
+      - |-
+        asyncio.run_coroutine_threadsafe(
+                    self.aput_writes(config, writes, task_id, task_path), self.loop
+                ).result
+      - self.aput_writes
+  - name: delete_thread
+    sig: 'delete_thread(self, thread_id: str) -> None'
+    lines:
+    - 556
+    - 579
+    detail:
+      calls:
+      - asyncio.InvalidStateError
+      - asyncio.get_running_loop
+      - asyncio.run_coroutine_threadsafe
+      - |-
+        asyncio.run_coroutine_threadsafe(
+                    self.adelete_thread(thread_id), self.loop
+                ).result
+      - self.adelete_thread
+  lines:
+  - 32
+  - 579
+exports:
+- name: AsyncPostgresSaver
+  kind: type
+- name: AsyncShallowPostgresSaver
+  kind: type
+- name: Conn
+  kind: type

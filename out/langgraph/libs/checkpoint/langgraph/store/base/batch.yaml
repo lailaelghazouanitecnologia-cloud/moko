@@ -1,0 +1,372 @@
+## Roska File Descriptor — base/batch.py
+file: base/batch.py
+lines: 371
+purpose: Utilities for batching operations in a background task.
+imports:
+- sym: asyncio
+- sym: weakref
+- sym: langgraph.store.base.NOT_PROVIDED
+- sym: langgraph.store.base.BaseStore
+- sym: langgraph.store.base.GetOp
+- sym: langgraph.store.base.Item
+- sym: langgraph.store.base.ListNamespacesOp
+- sym: langgraph.store.base.MatchCondition
+- sym: langgraph.store.base.NamespacePath
+- sym: langgraph.store.base.NotProvided
+- sym: langgraph.store.base.Op
+- sym: langgraph.store.base.PutOp
+- sym: langgraph.store.base.Result
+- sym: langgraph.store.base.SearchItem
+- sym: langgraph.store.base.SearchOp
+- sym: langgraph.store.base._ensure_refresh
+- sym: langgraph.store.base._ensure_ttl
+- sym: langgraph.store.base._validate_namespace
+data:
+- name: F
+  type: Any
+  val: TypeVar("F", bound=Callable)
+types:
+- name: AsyncBatchedBaseStore
+  kind: struct
+  ctx: Efficiently batch operations in a background task. (+1 dunder methods)
+  bases:
+  - BaseStore
+  fields:
+  - name: _loop
+    type: Any
+    default: asyncio.get_running_loop()
+  - name: _aqueue
+    type: Any
+    default: asyncio.Queue[tuple[asyncio.Future, Op]]
+  - name: _task
+    type: Any
+    default: asyncio.Task | None
+  methods:
+  - name: __init__
+    sig: __init__(self) -> None
+    lines:
+    - 63
+    - 68
+    detail:
+      calls:
+      - asyncio.Queue
+      - asyncio.get_running_loop
+      - self._ensure_task
+      - super
+      - super().__init__
+  - name: aget
+    sig: |-
+      aget(
+              self,
+              namespace: tuple[str, ...],
+              key: str,
+              *,
+              refresh_ttl: bool | None = None,
+          ) -> Item | None
+    is_async: true
+    lines:
+    - 82
+    - 101
+    detail:
+      calls:
+      - GetOp
+      - _ensure_refresh
+      - self._aqueue.put_nowait
+      - self._ensure_task
+      - self._loop.create_future
+  - name: asearch
+    sig: |-
+      asearch(
+              self,
+              namespace_prefix: tuple[str, ...],
+              /,
+              *,
+              query: str | None = None,
+              filter: dict[str, Any] | None = None,
+              limit: int = 10,
+              offset: int = 0,
+              refresh_ttl: bool | None = None,
+          ) -> list[SearchItem]
+    is_async: true
+    lines:
+    - 103
+    - 129
+    detail:
+      calls:
+      - SearchOp
+      - _ensure_refresh
+      - self._aqueue.put_nowait
+      - self._ensure_task
+      - self._loop.create_future
+  - name: aput
+    sig: |-
+      aput(
+              self,
+              namespace: tuple[str, ...],
+              key: str,
+              value: dict[str, Any],
+              index: Literal[False] | list[str] | None = None,
+              *,
+              ttl: float | None | NotProvided = NOT_PROVIDED,
+          ) -> None
+    is_async: true
+    lines:
+    - 131
+    - 151
+    detail:
+      calls:
+      - PutOp
+      - _ensure_ttl
+      - _validate_namespace
+      - self._aqueue.put_nowait
+      - self._ensure_task
+      - self._loop.create_future
+  - name: adelete
+    sig: |-
+      adelete(
+              self,
+              namespace: tuple[str, ...],
+              key: str,
+          ) -> None
+    is_async: true
+    lines:
+    - 153
+    - 161
+    detail:
+      calls:
+      - PutOp
+      - self._aqueue.put_nowait
+      - self._ensure_task
+      - self._loop.create_future
+  - name: alist_namespaces
+    sig: |-
+      alist_namespaces(
+              self,
+              *,
+              prefix: NamespacePath | None = None,
+              suffix: NamespacePath | None = None,
+              max_depth: int | None = None,
+              limit: int = 100,
+              offset: int = 0,
+          ) -> list[tuple[str, ...]]
+    is_async: true
+    lines:
+    - 163
+    - 187
+    detail:
+      calls:
+      - ListNamespacesOp
+      - MatchCondition
+      - match_conditions.append
+      - self._aqueue.put_nowait
+      - self._ensure_task
+      - self._loop.create_future
+      - tuple
+  - name: batch
+    sig: 'batch(self, ops: Iterable[Op]) -> list[Result]'
+    decorators:
+    - _check_loop
+    lines:
+    - 190
+    - 191
+    detail:
+      calls:
+      - asyncio.run_coroutine_threadsafe
+      - asyncio.run_coroutine_threadsafe(self.abatch(ops), self._loop).result
+      - self.abatch
+  - name: get
+    sig: |-
+      get(
+              self,
+              namespace: tuple[str, ...],
+              key: str,
+              *,
+              refresh_ttl: bool | None = None,
+          ) -> Item | None
+    decorators:
+    - _check_loop
+    lines:
+    - 194
+    - 203
+    detail:
+      calls:
+      - asyncio.run_coroutine_threadsafe
+      - |-
+        asyncio.run_coroutine_threadsafe(
+                    self.aget(namespace, key=key, refresh_ttl=refresh_ttl), self._loop
+                ).result
+      - self.aget
+  - name: search
+    sig: |-
+      search(
+              self,
+              namespace_prefix: tuple[str, ...],
+              /,
+              *,
+              query: str | None = None,
+              filter: dict[str, Any] | None = None,
+              limit: int = 10,
+              offset: int = 0,
+              refresh_ttl: bool | None = None,
+          ) -> list[SearchItem]
+    decorators:
+    - _check_loop
+    lines:
+    - 206
+    - 227
+    detail:
+      calls:
+      - asyncio.run_coroutine_threadsafe
+      - |-
+        asyncio.run_coroutine_threadsafe(
+                    self.asearch(
+                        namespace_prefix,
+                        query=query,
+                        filter=filter,
+                        limit=limit,
+                        offset=offset,
+                        refresh_ttl=refresh_ttl,
+                    ),
+                    self._loop,
+                ).result
+      - self.asearch
+  - name: put
+    sig: |-
+      put(
+              self,
+              namespace: tuple[str, ...],
+              key: str,
+              value: dict[str, Any],
+              index: Literal[False] | list[str] | None = None,
+              *,
+              ttl: float | None | NotProvided = NOT_PROVIDED,
+          ) -> None
+    decorators:
+    - _check_loop
+    lines:
+    - 230
+    - 249
+    detail:
+      calls:
+      - _ensure_ttl
+      - _validate_namespace
+      - asyncio.run_coroutine_threadsafe
+      - |-
+        asyncio.run_coroutine_threadsafe(
+                    self.aput(
+                        namespace,
+                        key=key,
+                        value=value,
+                        index=index,
+                        ttl=_ensure_ttl(self.ttl_config, ttl),
+                    ),
+                    self._loop,
+                ).result
+      - self.aput
+  - name: delete
+    sig: |-
+      delete(
+              self,
+              namespace: tuple[str, ...],
+              key: str,
+          ) -> None
+    decorators:
+    - _check_loop
+    lines:
+    - 252
+    - 259
+    detail:
+      calls:
+      - asyncio.run_coroutine_threadsafe
+      - |-
+        asyncio.run_coroutine_threadsafe(
+                    self.adelete(namespace, key=key), self._loop
+                ).result
+      - self.adelete
+  - name: list_namespaces
+    sig: |-
+      list_namespaces(
+              self,
+              *,
+              prefix: NamespacePath | None = None,
+              suffix: NamespacePath | None = None,
+              max_depth: int | None = None,
+              limit: int = 100,
+              offset: int = 0,
+          ) -> list[tuple[str, ...]]
+    decorators:
+    - _check_loop
+    lines:
+    - 262
+    - 280
+    detail:
+      calls:
+      - asyncio.run_coroutine_threadsafe
+      - |-
+        asyncio.run_coroutine_threadsafe(
+                    self.alist_namespaces(
+                        prefix=prefix,
+                        suffix=suffix,
+                        max_depth=max_depth,
+                        limit=limit,
+                        offset=offset,
+                    ),
+                    self._loop,
+                ).result
+      - self.alist_namespaces
+  lines:
+  - 58
+  - 280
+functions:
+- name: _check_loop
+  sig: '_check_loop(func: F) -> F'
+  vis: protected
+  lines:
+  - 33
+  - 55
+  detail:
+    calls:
+    - functools.wraps
+- name: _dedupe_ops
+  sig: '_dedupe_ops(values: list[Op]) -> tuple[list[int] | None, list[Op]]'
+  vis: protected
+  lines:
+  - 283
+  - 323
+  detail:
+    calls:
+    - dedupped.append
+    - dedupped.index
+    - isinstance
+    - len
+    - list
+    - listen.append
+- name: _run
+  sig: |-
+    _run(
+        aqueue: asyncio.Queue[tuple[asyncio.Future, Op]],
+        store: weakref.ReferenceType[BaseStore],
+    ) -> None
+  is_async: true
+  vis: protected
+  lines:
+  - 326
+  - 371
+  detail:
+    calls:
+    - _dedupe_ops
+    - aqueue.get
+    - aqueue.get_nowait
+    - fut.done
+    - fut.set_exception
+    - fut.set_result
+    - item[0].done
+    - items.append
+    - s.abatch
+    - store
+    - zip
+exports:
+- name: AsyncBatchedBaseStore
+  kind: type
+- name: F
+  kind: data

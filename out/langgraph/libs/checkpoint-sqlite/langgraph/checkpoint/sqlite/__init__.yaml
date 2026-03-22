@@ -1,0 +1,253 @@
+## Roska File Descriptor — sqlite/__init__.py
+file: sqlite/__init__.py
+lines: 556
+imports:
+- sym: random
+- sym: sqlite3
+- sym: threading
+- sym: langchain_core.runnables.RunnableConfig
+- sym: langgraph.checkpoint.base.WRITES_IDX_MAP
+- sym: langgraph.checkpoint.base.BaseCheckpointSaver
+- sym: langgraph.checkpoint.base.ChannelVersions
+- sym: langgraph.checkpoint.base.Checkpoint
+- sym: langgraph.checkpoint.base.CheckpointMetadata
+- sym: langgraph.checkpoint.base.CheckpointTuple
+- sym: langgraph.checkpoint.base.SerializerProtocol
+- sym: langgraph.checkpoint.base.get_checkpoint_id
+- sym: langgraph.checkpoint.base.get_checkpoint_metadata
+- sym: langgraph.checkpoint.serde.jsonplus.JsonPlusSerializer
+- sym: langgraph.checkpoint.sqlite.utils.search_where
+data:
+- name: _AIO_ERROR_MSG
+  type: tuple
+  val: |-
+    (
+        "The SqliteSaver does not support async methods. "
+        "Consider using AsyncSqliteSaver instead.\n"
+        "from lang...
+types:
+- name: SqliteSaver
+  kind: struct
+  ctx: 'A checkpoint saver that stores checkpoints in a SQLite database. Note: This class is meant for lightweight, synchronous use cases (demos and small projects) and does not scale to multiple threads. For a similar sqlite saver with `async` support, consider using [AsyncSqliteSaver][langgraph.checkpoint.sqlite.aio.AsyncSqliteSaver]. Args: conn (sqlite3.Connection): The SQLite database connection. serde (Optional[SerializerProtocol]): The serializer to use for serializing and deserializing checkpoints. Defaults to JsonPlusSerializerCompat. Examples: >>> import sqlite3 >>> from langgraph.checkpoint.sqlite import SqliteSaver >>> from langgraph.graph import StateGraph >>> >>> builder = StateGraph(int) >>> builder.add_node("add_one", lambda x: x + 1) >>> builder.set_entry_point("add_one") >>> builder.set_finish_point("add_one") >>> # Create a new SqliteSaver instance >>> # Note: check_same_thread=False is OK as the implementation uses a lock >>> # to ensure thread safety. >>> conn = sqlite3.connect("checkpoints.sqlite", check_same_thread=False) >>> memory = SqliteSaver(conn) >>> graph = builder.compile(checkpointer=memory) >>> config = {"configurable": {"thread_id": "1"}} >>> graph.get_state(config) >>> result = graph.invoke(3, config) >>> graph.get_state(config) StateSnapshot(values=4, next=(), config={''configurable'': {''thread_id'': ''1'', ''checkpoint_ns'': '''', ''checkpoint_id'': ''0c62ca34-ac19-445d-bbb0-5b4984975b2a''}}, parent_config=None)'
+  fields:
+  - name: conn
+    type: Any
+    default: sqlite3.Connection
+  - name: is_setup
+    type: Any
+    default: bool
+  - name: jsonplus_serde
+    type: Any
+    default: JsonPlusSerializer()
+  - name: lock
+    type: Any
+    default: threading.Lock()
+  methods:
+  - name: __init__
+    sig: |-
+      __init__(
+              self,
+              conn: sqlite3.Connection,
+              *,
+              serde: SerializerProtocol | None = None,
+          ) -> None
+    lines:
+    - 78
+    - 88
+    detail:
+      calls:
+      - JsonPlusSerializer
+      - super
+      - super().__init__
+      - threading.Lock
+  - name: from_conn_string
+    sig: 'from_conn_string(cls, conn_string: str) -> Iterator[SqliteSaver]'
+    decorators:
+    - classmethod
+    - contextmanager
+    lines:
+    - 92
+    - 120
+    detail:
+      calls:
+      - closing
+      - cls
+      - sqlite3.connect
+  - name: setup
+    sig: setup(self) -> None
+    lines:
+    - 122
+    - 159
+    detail:
+      calls:
+      - self.conn.executescript
+  - name: cursor
+    sig: 'cursor(self, transaction: bool = True) -> Iterator[sqlite3.Cursor]'
+    decorators:
+    - contextmanager
+    lines:
+    - 162
+    - 182
+    detail:
+      calls:
+      - cur.close
+      - self.conn.commit
+      - self.conn.cursor
+      - self.setup
+  - name: get_tuple
+    sig: 'get_tuple(self, config: RunnableConfig) -> CheckpointTuple | None'
+    lines:
+    - 184
+    - 286
+    detail:
+      calls:
+      - CheckpointTuple
+      - cast
+      - config["configurable"].get
+      - cur.execute
+      - cur.fetchone
+      - get_checkpoint_id
+      - json.loads
+      - self.cursor
+      - self.serde.loads_typed
+      - str
+  - name: list
+    sig: |-
+      list(
+              self,
+              config: RunnableConfig | None,
+              *,
+              filter: dict[str, Any] | None = None,
+              before: RunnableConfig | None = None,
+              limit: int | None = None,
+          ) -> Iterator[CheckpointTuple]
+    lines:
+    - 288
+    - 378
+    detail:
+      calls:
+      - CheckpointTuple
+      - cast
+      - closing
+      - cur.execute
+      - json.loads
+      - search_where
+      - self.conn.cursor
+      - self.cursor
+      - self.serde.loads_typed
+      - wcur.execute
+  - name: put
+    sig: |-
+      put(
+              self,
+              config: RunnableConfig,
+              checkpoint: Checkpoint,
+              metadata: CheckpointMetadata,
+              new_versions: ChannelVersions,
+          ) -> RunnableConfig
+    lines:
+    - 380
+    - 436
+    detail:
+      calls:
+      - config["configurable"].get
+      - cur.execute
+      - get_checkpoint_metadata
+      - json.dumps
+      - |-
+        json.dumps(
+                    get_checkpoint_metadata(config, metadata), ensure_ascii=False
+                ).encode
+      - self.cursor
+      - self.serde.dumps_typed
+      - str
+  - name: put_writes
+    sig: |-
+      put_writes(
+              self,
+              config: RunnableConfig,
+              writes: Sequence[tuple[str, Any]],
+              task_id: str,
+              task_path: str = "",
+          ) -> None
+    lines:
+    - 438
+    - 475
+    detail:
+      calls:
+      - WRITES_IDX_MAP.get
+      - all
+      - cur.executemany
+      - enumerate
+      - self.cursor
+      - self.serde.dumps_typed
+      - str
+  - name: delete_thread
+    sig: 'delete_thread(self, thread_id: str) -> None'
+    lines:
+    - 477
+    - 494
+    detail:
+      calls:
+      - cur.execute
+      - self.cursor
+      - str
+  - name: aget_tuple
+    sig: 'aget_tuple(self, config: RunnableConfig) -> CheckpointTuple | None'
+    is_async: true
+    lines:
+    - 496
+    - 503
+    detail:
+      calls:
+      - NotImplementedError
+  - name: alist
+    sig: |-
+      alist(
+              self,
+              config: RunnableConfig | None,
+              *,
+              filter: dict[str, Any] | None = None,
+              before: RunnableConfig | None = None,
+              limit: int | None = None,
+          ) -> AsyncIterator[CheckpointTuple]
+    is_async: true
+    lines:
+    - 505
+    - 520
+    detail:
+      calls:
+      - NotImplementedError
+  - name: aput
+    sig: |-
+      aput(
+              self,
+              config: RunnableConfig,
+              checkpoint: Checkpoint,
+              metadata: CheckpointMetadata,
+              new_versions: ChannelVersions,
+          ) -> RunnableConfig
+    is_async: true
+    lines:
+    - 522
+    - 535
+    detail:
+      calls:
+      - NotImplementedError
+  - name: get_next_version
+    sig: 'get_next_version(self, current: str | None, channel: None) -> str'
+    lines:
+    - 537
+    - 556
+    detail:
+      calls:
+      - current.split
+      - int
+      - isinstance
+      - random.random
+  lines:
+  - 38
+  - 556
+exports:
+- name: SqliteSaver
+  kind: type

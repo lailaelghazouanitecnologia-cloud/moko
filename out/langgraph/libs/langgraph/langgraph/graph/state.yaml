@@ -1,0 +1,649 @@
+## Roska File Descriptor — graph/state.py
+file: graph/state.py
+lines: 1752
+imports:
+- sym: inspect
+- sym: inspect.isclass
+- sym: inspect.isfunction
+- sym: inspect.ismethod
+- sym: inspect.signature
+- sym: types.FunctionType
+- sym: types.NoneType
+- sym: langchain_core.runnables.Runnable
+- sym: langchain_core.runnables.RunnableConfig
+- sym: langgraph.cache.base.BaseCache
+- sym: langgraph.checkpoint.base.Checkpoint
+- sym: langgraph.store.base.BaseStore
+- sym: pydantic.BaseModel
+- sym: pydantic.TypeAdapter
+- sym: typing_extensions.NotRequired
+- sym: typing_extensions.Required
+- sym: typing_extensions.Self
+- sym: typing_extensions.Unpack
+- sym: typing_extensions.is_typeddict
+- sym: langgraph._internal._serde
+- sym: langgraph._internal._constants.INTERRUPT
+- sym: langgraph._internal._constants.NS_END
+- sym: langgraph._internal._constants.NS_SEP
+- sym: langgraph._internal._constants.TASKS
+- sym: langgraph._internal._fields.get_cached_annotated_keys
+- sym: langgraph._internal._fields.get_field_default
+- sym: langgraph._internal._fields.get_update_as_tuples
+- sym: langgraph._internal._pydantic.create_model
+- sym: langgraph._internal._runnable.coerce_to_runnable
+- sym: langgraph._internal._typing.EMPTY_SEQ
+- sym: langgraph._internal._typing.MISSING
+- sym: langgraph._internal._typing.DeprecatedKwargs
+- sym: langgraph.channels.base.BaseChannel
+- sym: langgraph.channels.binop.BinaryOperatorAggregate
+- sym: langgraph.channels.ephemeral_value.EphemeralValue
+- sym: langgraph.channels.last_value.LastValue
+- sym: langgraph.channels.last_value.LastValueAfterFinish
+- sym: langgraph.channels.named_barrier_value.NamedBarrierValue
+- sym: langgraph.channels.named_barrier_value.NamedBarrierValueAfterFinish
+- sym: langgraph.constants.END
+- sym: langgraph.constants.START
+- sym: langgraph.constants.TAG_HIDDEN
+- sym: langgraph.errors.ErrorCode
+- sym: langgraph.errors.InvalidUpdateError
+- sym: langgraph.errors.ParentCommand
+- sym: langgraph.errors.create_error_message
+- sym: langgraph.graph._branch.BranchSpec
+- sym: langgraph.graph._node.StateNode
+- sym: langgraph.graph._node.StateNodeSpec
+- sym: langgraph.managed.base.ManagedValueSpec
+- sym: langgraph.managed.base.is_managed_value
+- sym: langgraph.pregel.Pregel
+- sym: langgraph.pregel._read.ChannelRead
+- sym: langgraph.pregel._read.PregelNode
+- sym: langgraph.pregel._write.ChannelWrite
+- sym: langgraph.pregel._write.ChannelWriteEntry
+- sym: langgraph.pregel._write.ChannelWriteTupleEntry
+- sym: langgraph.types.All
+- sym: langgraph.types.CachePolicy
+- sym: langgraph.types.Checkpointer
+- sym: langgraph.types.Command
+- sym: langgraph.types.RetryPolicy
+- sym: langgraph.types.Send
+- sym: langgraph.types.ensure_valid_checkpointer
+- sym: langgraph.typing.ContextT
+- sym: langgraph.typing.InputT
+- sym: langgraph.typing.NodeInputT
+- sym: langgraph.typing.OutputT
+- sym: langgraph.typing.StateT
+- sym: langgraph.warnings.LangGraphDeprecatedSinceV05
+- sym: langgraph.warnings.LangGraphDeprecatedSinceV10
+data:
+- name: __all__
+  type: tuple
+  val: ("StateGraph", "CompiledStateGraph")
+- name: logger
+  type: Any
+  val: logging.getLogger(__name__)
+- name: _CHANNEL_BRANCH_TO
+  type: str
+  val: '"branch:to:{}"'
+- name: _S
+  type: Any
+  val: TypeVar("_S")
+types:
+- name: StateGraph
+  kind: struct
+  ctx: 'A graph whose nodes communicate by reading and writing to a shared state. The signature of each node is `State -> Partial<State>`. Each state key can optionally be annotated with a reducer function that will be used to aggregate the values of that key received from multiple nodes. The signature of a reducer function is `(Value, Value) -> Value`. !!! warning `StateGraph` is a builder class and cannot be used directly for execution. You must first call `.compile()` to create an executable graph that supports methods like `invoke()`, `stream()`, `astream()`, and `ainvoke()`. See the `CompiledStateGraph` documentation for more details. Args: state_schema: The schema class that defines the state. context_schema: The schema class that defines the runtime context. Use this to expose immutable context data to your nodes, like `user_id`, `db_conn`, etc. input_schema: The schema class that defines the input to the graph. output_schema: The schema class that defines the output from the graph. !!! warning "`config_schema` Deprecated" The `config_schema` parameter is deprecated in v0.6.0 and support will be removed in v2.0.0. Please use `context_schema` instead to specify the schema for run-scoped context. Example: ```python from langchain_core.runnables import RunnableConfig from typing_extensions import Annotated, TypedDict from langgraph.checkpoint.memory import InMemorySaver from langgraph.graph import StateGraph from langgraph.runtime import Runtime def reducer(a: list, b: int | None) -> list: if b is not None: return a + [b] return a class State(TypedDict): x: Annotated[list, reducer] class Context(TypedDict): r: float graph = StateGraph(state_schema=State, context_schema=Context) def node(state: State, runtime: Runtime[Context]) -> dict: r = runtime.context.get("r", 1.0) x = state["x"][-1] next_value = x * r * (1 - x) return {"x": next_value} graph.add_node("A", node) graph.set_entry_point("A") graph.set_finish_point("A") compiled = graph.compile() step1 = compiled.invoke({"x": 0.5}, context={"r": 3.0}) # {''x'': [0.5, 0.75]} ```'
+  fields:
+  - name: edges
+    type: Any
+    default: set[tuple[str, str]]
+  - name: nodes
+    type: Any
+    default: dict[str, StateNodeSpec[Any, ContextT]]
+  - name: branches
+    type: Any
+    default: defaultdict[str, dict[str, BranchSpec]]
+  - name: channels
+    type: Any
+    default: dict[str, BaseChannel]
+  - name: managed
+    type: Any
+    default: dict[str, ManagedValueSpec]
+  - name: schemas
+    type: Any
+    default: dict[type[Any], dict[str, BaseChannel | ManagedValueSpec]]
+  - name: waiting_edges
+    type: Any
+    default: set[tuple[tuple[str, ...], str]]
+  - name: compiled
+    type: Any
+    default: bool
+  - name: state_schema
+    type: Any
+    default: type[StateT]
+  - name: context_schema
+    type: Any
+    default: type[ContextT] | None
+  - name: input_schema
+    type: Any
+    default: type[InputT]
+  - name: output_schema
+    type: Any
+    default: type[OutputT]
+  methods:
+  - name: __init__
+    sig: |-
+      __init__(
+              self,
+              state_schema: type[StateT],
+              context_schema: type[ContextT] | None = None,
+              *,
+              input_schema: type[InputT] | None = None,
+              output_schema: type[OutputT] | None = None,
+              **kwargs: Unpack[DeprecatedKwargs],
+          ) -> None
+    lines:
+    - 200
+    - 252
+    detail:
+      calls:
+      - cast
+      - defaultdict
+      - kwargs.get
+      - self._add_schema
+      - set
+      - warnings.warn
+  - name: _add_schema
+    sig: '_add_schema(self, schema: type[Any], /, allow_managed: bool = True) -> None'
+    vis: protected
+    lines:
+    - 260
+    - 290
+    detail:
+      calls:
+      - '", ".join'
+      - ValueError
+      - _get_channels
+      - _warn_invalid_state_schema
+      - channels.items
+      - getattr
+      - isinstance
+      - managed.items
+  - name: add_node
+    sig: |-
+      add_node(
+              self,
+              node: StateNode[NodeInputT, ContextT],
+              *,
+              defer: bool = False,
+              metadata: dict[str, Any] | None = None,
+              input_schema: None = None,
+              retry_policy: RetryPolicy | Sequence[RetryPolicy] | None = None,
+              cache_policy: CachePolicy | None = None,
+              destinations: dict[str, str] | tuple[str, ...] | None = None,
+              **kwargs: Unpack[DeprecatedKwargs],
+          ) -> Self
+    decorators:
+    - overload
+    lines:
+    - 293
+    - 357
+    detail: {}
+  - name: add_node
+    sig: |-
+      add_node(
+              self,
+              node: StateNode[NodeInputT, ContextT],
+              *,
+              defer: bool = False,
+              metadata: dict[str, Any] | None = None,
+              input_schema: type[NodeInputT],
+              retry_policy: RetryPolicy | Sequence[RetryPolicy] | None = None,
+              cache_policy: CachePolicy | None = None,
+              destinations: dict[str, str] | tuple[str, ...] | None = None,
+              **kwargs: Unpack[DeprecatedKwargs],
+          ) -> Self
+    decorators:
+    - overload
+    lines:
+    - 360
+    - 428
+    detail: {}
+  - name: add_node
+    sig: |-
+      add_node(
+              self,
+              node: str,
+              action: StateNode[NodeInputT, ContextT],
+              *,
+              defer: bool = False,
+              metadata: dict[str, Any] | None = None,
+              input_schema: None = None,
+              retry_policy: RetryPolicy | Sequence[RetryPolicy] | None = None,
+              cache_policy: CachePolicy | None = None,
+              destinations: dict[str, str] | tuple[str, ...] | None = None,
+              **kwargs: Unpack[DeprecatedKwargs],
+          ) -> Self
+    decorators:
+    - overload
+    lines:
+    - 431
+    - 495
+    detail: {}
+  - name: add_node
+    sig: |-
+      add_node(
+              self,
+              node: str | StateNode[NodeInputT, ContextT],
+              action: StateNode[NodeInputT, ContextT] | None = None,
+              *,
+              defer: bool = False,
+              metadata: dict[str, Any] | None = None,
+              input_schema: type[NodeInputT],
+              retry_policy: RetryPolicy | Sequence[RetryPolicy] | None = None,
+              cache_policy: CachePolicy | None = None,
+              destinations: dict[str, str] | tuple[str, ...] | None = None,
+              **kwargs: Unpack[DeprecatedKwargs],
+          ) -> Self
+    decorators:
+    - overload
+    lines:
+    - 498
+    - 570
+    detail: {}
+  - name: add_node
+    sig: |-
+      add_node(
+              self,
+              node: str | StateNode[NodeInputT, ContextT],
+              action: StateNode[NodeInputT, ContextT] | None = None,
+              *,
+              defer: bool = False,
+              metadata: dict[str, Any] | None = None,
+              input_schema: type[NodeInputT] | None = None,
+              retry_policy: RetryPolicy | Sequence[RetryPolicy] | None = None,
+              cache_policy: CachePolicy | None = None,
+              destinations: dict[str, str] | tuple[str, ...] | None = None,
+              **kwargs: Unpack[DeprecatedKwargs],
+          ) -> Self
+    lines:
+    - 572
+    - 786
+    detail:
+      calls:
+      - StateNodeSpec
+      - StateNodeSpec[NodeInputT, ContextT]
+      - StateNodeSpec[StateT, ContextT]
+      - ValueError
+      - action.get_name
+      - cast
+      - coerce_to_runnable
+      - get_args
+      - get_origin
+      - get_type_hints
+      - getattr
+      - hints.get
+      - inspect.signature
+      - |-
+        inspect.signature(
+                                        cast(FunctionType, action)
+                                    ).parameters.keys
+      - isfunction
+      - isinstance
+      - ismethod
+      - iter
+      - kwargs.get
+      - logger.warning
+      - next
+      - self._add_schema
+      - warnings.warn
+  - name: add_edge
+    sig: 'add_edge(self, start_key: str | list[str], end_key: str) -> Self'
+    lines:
+    - 788
+    - 840
+    detail:
+      calls:
+      - ValueError
+      - hasattr
+      - isinstance
+      - logger.warning
+      - self.edges.add
+      - self.waiting_edges.add
+      - set
+      - tuple
+  - name: add_conditional_edges
+    sig: |-
+      add_conditional_edges(
+              self,
+              source: str,
+              path: Callable[..., Hashable | Sequence[Hashable]]
+              | Callable[..., Awaitable[Hashable | Sequence[Hashable]]]
+              | Runnable[Any, Hashable | Sequence[Hashable]],
+              path_map: dict[Hashable, str] | list[str] | None = None,
+          ) -> Self
+    lines:
+    - 842
+    - 890
+    detail:
+      calls:
+      - BranchSpec.from_path
+      - ValueError
+      - coerce_to_runnable
+      - logger.warning
+      - self._add_schema
+  - name: add_sequence
+    sig: |-
+      add_sequence(
+              self,
+              nodes: Sequence[
+                  StateNode[NodeInputT, ContextT]
+                  | tuple[str, StateNode[NodeInputT, ContextT]]
+              ],
+          ) -> Self
+    lines:
+    - 892
+    - 937
+    detail:
+      calls:
+      - ValueError
+      - _get_node_name
+      - isinstance
+      - len
+      - self.add_edge
+      - self.add_node
+  - name: set_entry_point
+    sig: 'set_entry_point(self, key: str) -> Self'
+    lines:
+    - 939
+    - 950
+    detail:
+      calls:
+      - self.add_edge
+  - name: set_conditional_entry_point
+    sig: |-
+      set_conditional_entry_point(
+              self,
+              path: Callable[..., Hashable | Sequence[Hashable]]
+              | Callable[..., Awaitable[Hashable | Sequence[Hashable]]]
+              | Runnable[Any, Hashable | Sequence[Hashable]],
+              path_map: dict[Hashable, str] | list[str] | None = None,
+          ) -> Self
+    lines:
+    - 952
+    - 974
+    detail:
+      calls:
+      - self.add_conditional_edges
+  - name: set_finish_point
+    sig: 'set_finish_point(self, key: str) -> Self'
+    lines:
+    - 976
+    - 987
+    detail:
+      calls:
+      - self.add_edge
+  - name: validate
+    sig: 'validate(self, interrupt: Sequence[str] | None = None) -> Self'
+    lines:
+    - 989
+    - 1036
+    detail:
+      calls:
+      - ValueError
+      - all_sources.add
+      - all_targets.add
+      - all_targets.update
+      - branch.ends.values
+      - branches.items
+      - self.branches.items
+      - self.nodes.items
+  - name: compile
+    sig: |-
+      compile(
+              self,
+              checkpointer: Checkpointer = None,
+              *,
+              cache: BaseCache | None = None,
+              store: BaseStore | None = None,
+              interrupt_before: All | list[str] | None = None,
+              interrupt_after: All | list[str] | None = None,
+              debug: bool = False,
+              name: str | None = None,
+          ) -> CompiledStateGraph[StateT, ContextT, InputT, OutputT]
+    lines:
+    - 1038
+    - 1193
+    detail:
+      calls:
+      - CompiledStateGraph[StateT, ContextT, InputT, OutputT]
+      - EphemeralValue
+      - _pick_mapper
+      - _serde.apply_checkpointer_allowlist
+      - _serde.build_serde_allowlist
+      - branches.items
+      - branches.values
+      - compiled.attach_branch
+      - compiled.attach_edge
+      - compiled.attach_node
+      - compiled.validate
+      - ensure_valid_checkpointer
+      - is_managed_value
+      - isinstance
+      - len
+      - list
+      - schema_types.append
+      - self.branches.items
+      - self.branches.values
+      - self.channels.items
+      - self.nodes.items
+      - self.nodes.values
+      - self.schemas[self.output_schema].items
+      - self.validate
+  lines:
+  - 115
+  - 1193
+- name: CompiledStateGraph
+  kind: struct
+  fields:
+  - name: builder
+    type: Any
+    default: StateGraph[StateT, ContextT, InputT, OutputT]
+  - name: schema_to_mapper
+    type: Any
+    default: dict[type[Any], Callable[[Any], Any] | None]
+  - name: _output_mapper
+    type: Any
+    default: Callable[[Any], Any] | None
+  - name: _state_mapper
+    type: Any
+    default: Callable[[Any], Any] | None
+  methods:
+  - name: __init__
+    sig: __init__(self, ...10 params)
+    lines:
+    - 1205
+    - 1214
+  - name: get_input_jsonschema
+    sig: |-
+      get_input_jsonschema(
+              self, config: RunnableConfig | None = None
+          ) -> dict[str, Any]
+    lines:
+    - 1216
+    - 1224
+    detail:
+      calls:
+      - _get_json_schema
+      - self.get_name
+  - name: get_output_jsonschema
+    sig: |-
+      get_output_jsonschema(
+              self, config: RunnableConfig | None = None
+          ) -> dict[str, Any]
+    lines:
+    - 1226
+    - 1234
+    detail:
+      calls:
+      - _get_json_schema
+      - self.get_name
+  - name: attach_node
+    sig: 'attach_node(self, key: str, node: StateNodeSpec[Any, ContextT] | None) -> None'
+    lines:
+    - 1236
+    - 1337
+    detail:
+      calls:
+      - ChannelWrite
+      - ChannelWriteTupleEntry
+      - EphemeralValue
+      - LastValueAfterFinish
+      - PregelNode
+      - _CHANNEL_BRANCH_TO.format
+      - _control_static
+      - _pick_mapper
+      - is_managed_value
+      - len
+      - list
+      - self.builder.managed.items
+      - self.builder.schemas[self.builder.input_schema].items
+  - name: attach_edge
+    sig: 'attach_edge(self, starts: str | Sequence[str], end: str) -> None'
+    lines:
+    - 1339
+    - 1363
+    detail:
+      calls:
+      - '''+''.join'
+      - ChannelWrite
+      - ChannelWriteEntry
+      - NamedBarrierValue
+      - NamedBarrierValueAfterFinish
+      - _CHANNEL_BRANCH_TO.format
+      - isinstance
+      - self.nodes[end].triggers.append
+      - self.nodes[start].writers.append
+      - self.nodes[starts].writers.append
+      - set
+  - name: attach_branch
+    sig: |-
+      attach_branch(
+              self, start: str, name: str, branch: BranchSpec, *, with_reader: bool = True
+          ) -> None
+    lines:
+    - 1365
+    - 1412
+    detail:
+      calls:
+      - _pick_mapper
+      - branch.run
+      - list
+      - partial
+      - self.nodes[start].writers.append
+  - name: _migrate_checkpoint
+    sig: '_migrate_checkpoint(self, checkpoint: Checkpoint) -> None'
+    vis: protected
+    lines:
+    - 1414
+    - 1517
+    detail:
+      calls:
+      - defaultdict
+      - k.count
+      - k.split
+      - k.startswith
+      - list
+      - max
+      - seen.get
+      - seen[INTERRUPT].pop
+      - set
+      - set(self.nodes).isdisjoint
+      - source_to_target[start].append
+      - ss.pop
+      - super
+      - super()._migrate_checkpoint
+      - values.pop
+      - versions.pop
+  lines:
+  - 1196
+  - 1517
+functions:
+- name: _control_branch
+  sig: '_control_branch(value: Any) -> Sequence[tuple[str, Any]]'
+  vis: protected
+  lines:
+  - 1537
+  - 1563
+  detail:
+    calls:
+    - ParentCommand
+    - _CHANNEL_BRANCH_TO.format
+    - commands.append
+    - isinstance
+    - rtn.append
+- name: _get_root
+  sig: '_get_root(input: Any) -> Sequence[tuple[str, Any]] | None'
+  vis: protected
+  lines:
+  - 1580
+  - 1600
+  detail:
+    calls:
+    - any
+    - i._update_as_tuples
+    - input._update_as_tuples
+    - isinstance
+    - updates.append
+    - updates.extend
+- name: _get_json_schema
+  sig: |-
+    _get_json_schema(
+        typ: type,
+        schemas: dict,
+        channels: dict,
+        name: str,
+    ) -> dict[str, Any]
+  vis: protected
+  lines:
+  - 1718
+  - 1752
+  detail:
+    calls:
+    - TypeAdapter
+    - TypeAdapter(typ).json_schema
+    - create_model
+    - |-
+      create_model(
+                      name,
+                      field_definitions={
+                          k: (
+                              channels[k].UpdateType,
+                              (
+                                  get_field_default(
+                                      k,
+                                      channels[k].UpdateType,
+                                      typ,
+                                  )
+                              ),
+                          )
+                          for k in schemas[typ]
+                          if k in channels and isinstance(channels[k], BaseChannel)
+                      },
+                  ).model_json_schema
+    - |-
+      create_model(
+                      name,
+                      root=(channels[keys[0]].UpdateType, None),
+                  ).model_json_schema
+    - get_field_default
+    - is_typeddict
+    - isclass
+    - isinstance
+    - issubclass
+    - len
+    - list
+    - schemas[typ].keys
+    - typ.model_json_schema
+exports:
+- name: StateGraph
+  kind: type
+- name: CompiledStateGraph
+  kind: type

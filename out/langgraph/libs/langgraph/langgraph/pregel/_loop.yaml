@@ -1,0 +1,814 @@
+## Roska File Descriptor — pregel/_loop.py
+file: pregel/_loop.py
+lines: 1423
+imports:
+- sym: asyncio
+- sym: binascii
+- sym: concurrent.futures
+- sym: inspect.signature
+- sym: types.TracebackType
+- sym: langchain_core.callbacks.AsyncParentRunManager
+- sym: langchain_core.callbacks.ParentRunManager
+- sym: langchain_core.runnables.RunnableConfig
+- sym: langgraph.cache.base.BaseCache
+- sym: langgraph.checkpoint.base.WRITES_IDX_MAP
+- sym: langgraph.checkpoint.base.BaseCheckpointSaver
+- sym: langgraph.checkpoint.base.ChannelVersions
+- sym: langgraph.checkpoint.base.Checkpoint
+- sym: langgraph.checkpoint.base.CheckpointMetadata
+- sym: langgraph.checkpoint.base.CheckpointTuple
+- sym: langgraph.checkpoint.base.PendingWrite
+- sym: langgraph.store.base.BaseStore
+- sym: typing_extensions.ParamSpec
+- sym: typing_extensions.Self
+- sym: langgraph._internal._config.patch_configurable
+- sym: langgraph._internal._constants.CONF
+- sym: langgraph._internal._constants.CONFIG_KEY_CHECKPOINT_ID
+- sym: langgraph._internal._constants.CONFIG_KEY_CHECKPOINT_MAP
+- sym: langgraph._internal._constants.CONFIG_KEY_CHECKPOINT_NS
+- sym: langgraph._internal._constants.CONFIG_KEY_REPLAY_STATE
+- sym: langgraph._internal._constants.CONFIG_KEY_RESUME_MAP
+- sym: langgraph._internal._constants.CONFIG_KEY_RESUMING
+- sym: langgraph._internal._constants.CONFIG_KEY_SCRATCHPAD
+- sym: langgraph._internal._constants.CONFIG_KEY_STREAM
+- sym: langgraph._internal._constants.CONFIG_KEY_TASK_ID
+- sym: langgraph._internal._constants.CONFIG_KEY_THREAD_ID
+- sym: langgraph._internal._constants.ERROR
+- sym: langgraph._internal._constants.INPUT
+- sym: langgraph._internal._constants.INTERRUPT
+- sym: langgraph._internal._constants.NS_END
+- sym: langgraph._internal._constants.NS_SEP
+- sym: langgraph._internal._constants.NULL_TASK_ID
+- sym: langgraph._internal._constants.PUSH
+- sym: langgraph._internal._constants.RESUME
+- sym: langgraph._internal._constants.TASKS
+- sym: langgraph._internal._replay.ReplayState
+- sym: langgraph._internal._scratchpad.PregelScratchpad
+- sym: langgraph._internal._typing.EMPTY_SEQ
+- sym: langgraph._internal._typing.MISSING
+- sym: langgraph.channels.base.BaseChannel
+- sym: langgraph.channels.untracked_value.UntrackedValue
+- sym: langgraph.constants.TAG_HIDDEN
+- sym: langgraph.errors.EmptyInputError
+- sym: langgraph.errors.GraphInterrupt
+- sym: langgraph.managed.base.ManagedValueMapping
+- sym: langgraph.managed.base.ManagedValueSpec
+- sym: langgraph.pregel._algo.Call
+- sym: langgraph.pregel._algo.GetNextVersion
+- sym: langgraph.pregel._algo.PregelTaskWrites
+- sym: langgraph.pregel._algo.apply_writes
+- sym: langgraph.pregel._algo.checkpoint_null_version
+- sym: langgraph.pregel._algo.increment
+- sym: langgraph.pregel._algo.prepare_next_tasks
+- sym: langgraph.pregel._algo.prepare_single_task
+- sym: langgraph.pregel._algo.sanitize_untracked_values_in_send
+- sym: langgraph.pregel._algo.should_interrupt
+- sym: langgraph.pregel._algo.task_path_str
+- sym: langgraph.pregel._checkpoint.channels_from_checkpoint
+- sym: langgraph.pregel._checkpoint.copy_checkpoint
+- sym: langgraph.pregel._checkpoint.create_checkpoint
+- sym: langgraph.pregel._checkpoint.empty_checkpoint
+- sym: langgraph.pregel._executor.AsyncBackgroundExecutor
+- sym: langgraph.pregel._executor.BackgroundExecutor
+- sym: langgraph.pregel._executor.Submit
+- sym: langgraph.pregel._io.map_command
+- sym: langgraph.pregel._io.map_input
+- sym: langgraph.pregel._io.map_output_updates
+- sym: langgraph.pregel._io.map_output_values
+- sym: langgraph.pregel._io.read_channels
+- sym: langgraph.pregel._read.PregelNode
+- sym: langgraph.pregel._utils.get_new_channel_versions
+- sym: langgraph.pregel._utils.is_xxh3_128_hexdigest
+- sym: langgraph.pregel.debug.map_debug_checkpoint
+- sym: langgraph.pregel.debug.map_debug_task_results
+- sym: langgraph.pregel.debug.map_debug_tasks
+- sym: langgraph.pregel.protocol.StreamChunk
+- sym: langgraph.pregel.protocol.StreamProtocol
+- sym: langgraph.types.All
+- sym: langgraph.types.CachePolicy
+- sym: langgraph.types.Command
+- sym: langgraph.types.Durability
+- sym: langgraph.types.PregelExecutableTask
+- sym: langgraph.types.RetryPolicy
+- sym: langgraph.types.Send
+- sym: langgraph.types.StreamMode
+data:
+- name: V
+  type: Any
+  val: TypeVar("V")
+- name: P
+  type: Any
+  val: ParamSpec("P")
+- name: WritesT
+  type: Any
+  val: Sequence[tuple[str, Any]]
+types:
+- name: PregelLoop
+  kind: struct
+  fields:
+  - name: config
+    type: Any
+    default: RunnableConfig
+  - name: store
+    type: Any
+    default: BaseStore | None
+  - name: stream
+    type: Any
+    default: StreamProtocol | None
+  - name: step
+    type: Any
+    default: int
+  - name: stop
+    type: Any
+    default: int
+  - name: input
+    type: Any
+    default: Any | None
+  - name: cache
+    type: Any
+    default: BaseCache[WritesT] | None
+  - name: checkpointer
+    type: Any
+    default: BaseCheckpointSaver | None
+  - name: nodes
+    type: Any
+    default: Mapping[str, PregelNode]
+  - name: specs
+    type: Any
+    default: Mapping[str, BaseChannel | ManagedValueSpec]
+  - name: input_keys
+    type: Any
+    default: str | Sequence[str]
+  - name: output_keys
+    type: Any
+    default: str | Sequence[str]
+  - name: stream_keys
+    type: Any
+    default: str | Sequence[str]
+  - name: is_replaying
+    type: Any
+    default: bool
+  - name: is_nested
+    type: Any
+    default: bool
+  - name: manager
+    type: Any
+    default: None | AsyncParentRunManager | ParentRunManager
+  - name: interrupt_after
+    type: Any
+    default: All | Sequence[str]
+  - name: interrupt_before
+    type: Any
+    default: All | Sequence[str]
+  - name: durability
+    type: Any
+    default: Durability
+  - name: retry_policy
+    type: Any
+    default: Sequence[RetryPolicy]
+  - name: cache_policy
+    type: Any
+    default: CachePolicy | None
+  - name: checkpointer_get_next_version
+    type: Any
+    default: GetNextVersion
+  - name: checkpointer_put_writes
+    type: Any
+    default: Callable[[RunnableConfig, WritesT, str], Any] | None
+  - name: checkpointer_put_writes_accepts_task_path
+    type: Any
+    default: bool
+  - name: _checkpointer_put_after_previous
+    type: tuple
+    default: |-
+      (
+              Callable[
+                  [
+                      concurrent.futures.Future | None,
+                      RunnableConfig,
+                      Checkpoint,
+                      str,
+                      ChannelVersions,
+                  ],
+                  Any,
+              ]
+              | None
+          )
+  - name: _migrate_checkpoint
+    type: Any
+    default: Callable[[Checkpoint], None] | None
+  - name: submit
+    type: Any
+    default: Submit
+  - name: channels
+    type: Any
+    default: Mapping[str, BaseChannel]
+  - name: managed
+    type: Any
+    default: ManagedValueMapping
+  - name: checkpoint
+    type: Any
+    default: Checkpoint
+  - name: checkpoint_id_saved
+    type: Any
+    default: str
+  - name: checkpoint_ns
+    type: Any
+    default: tuple[str, ...]
+  - name: checkpoint_config
+    type: Any
+    default: RunnableConfig
+  - name: checkpoint_metadata
+    type: Any
+    default: CheckpointMetadata
+  - name: checkpoint_pending_writes
+    type: Any
+    default: list[PendingWrite]
+  - name: checkpoint_previous_versions
+    type: Any
+    default: dict[str, str | float | int]
+  - name: prev_checkpoint_config
+    type: Any
+    default: RunnableConfig | None
+  - name: status
+    type: Any
+    default: |-
+      Literal[
+              "input",
+              "pending",
+              "done",
+              "interrupt_before",
+              "interrupt_after",
+              "out_of_steps",
+          ]
+  - name: tasks
+    type: Any
+    default: dict[str, PregelExecutableTask]
+  - name: output
+    type: Any
+    default: None | dict[str, Any] | Any
+  - name: updated_channels
+    type: Any
+    default: set[str] | None
+  - name: trigger_to_nodes
+    type: Any
+    default: trigger_to_nodes
+  methods:
+  - name: __init__
+    sig: |-
+      __init__(
+              self,
+              input: Any | None,
+              *,
+              stream: StreamProtocol | None,
+              config: RunnableConfig,
+              store: BaseStore | None,
+              cache: BaseCache | None,
+              checkpointer: BaseCheckpointSaver | None,
+              nodes: Mapping[str, PregelNode],
+              specs: Mapping[str, BaseChannel | ManagedValueSpec],
+              input_keys: str | Sequence[str],
+              output_keys: str | Sequence[str],
+              stream_keys: str | Sequence[str],
+              trigger_to_nodes: Mapping[str, Sequence[str]],
+              durability: Durability,
+              interrupt_after: All | Sequence[str] = EMPTY_SEQ,
+              interrupt_before: All | Sequence[str] = EMPTY_SEQ,
+              manager: None | AsyncParentRunManager | ParentRunManager = None,
+              migrate_checkpoint: Callable[[Checkpoint], None] | None = None,
+              retry_policy: Sequence[RetryPolicy] = (),
+              cache_policy: CachePolicy | None = None,
+          ) -> None
+    lines:
+    - 209
+    - 304
+    detail:
+      calls:
+      - DuplexStream
+      - NS_SEP.join
+      - cast
+      - cast(str, self.config[CONF][CONFIG_KEY_CHECKPOINT_NS]).split
+      - config[CONF].get
+      - isinstance
+      - patch_configurable
+      - scratchpad.subgraph_counter
+      - self.checkpoint_config[CONF].get
+      - self.config.get
+      - self.config[CONF].get
+      - str
+      - tuple
+  - name: put_writes
+    sig: 'put_writes(self, task_id: str, writes: WritesT) -> None'
+    lines:
+    - 306
+    - 380
+    detail:
+      calls:
+      - all
+      - any
+      - hasattr
+      - isinstance
+      - list
+      - patch_configurable
+      - sanitize_untracked_values_in_send
+      - self.channels.values
+      - self.checkpoint_pending_writes.extend
+      - self.config[CONF].get
+      - self.output_writes
+      - self.specs.get
+      - self.submit
+      - self.tasks.get
+      - task_path_str
+      - '{w[0]: w for w in writes}.values'
+  - name: _put_pending_writes
+    sig: _put_pending_writes(self) -> None
+    vis: protected
+    lines:
+    - 382
+    - 420
+    detail:
+      calls:
+      - by_task.items
+      - by_task[task_id].append
+      - defaultdict
+      - hasattr
+      - patch_configurable
+      - self.config[CONF].get
+      - self.submit
+      - self.tasks.get
+      - task_path_str
+  - name: accept_push
+    sig: |-
+      accept_push(
+              self, task: PregelExecutableTask, write_idx: int, call: Call | None = None
+          ) -> PregelExecutableTask | None
+    lines:
+    - 422
+    - 459
+    detail:
+      calls:
+      - binascii.unhexlify
+      - cast
+      - checkpoint_null_version
+      - prepare_single_task
+      - self._emit
+      - self._match_writes
+      - self.checkpoint["id"].replace
+  - name: tick
+    sig: tick(self) -> bool
+    lines:
+    - 461
+    - 538
+    detail:
+      calls:
+      - GraphInterrupt
+      - prepare_next_tasks
+      - self._emit
+      - self._match_writes
+      - self.output_writes
+      - self.tasks.values
+      - should_interrupt
+  - name: after_tick
+    sig: after_tick(self) -> None
+    lines:
+    - 540
+    - 573
+    detail:
+      calls:
+      - GraphInterrupt
+      - apply_writes
+      - isinstance
+      - self._emit
+      - self._put_checkpoint
+      - self.checkpoint_pending_writes.clear
+      - self.config[CONF].pop
+      - self.tasks.values
+      - self.updated_channels.isdisjoint
+      - should_interrupt
+  - name: match_cached_writes
+    sig: match_cached_writes(self) -> Sequence[PregelExecutableTask]
+    lines:
+    - 575
+    - 576
+    detail: {}
+  - name: amatch_cached_writes
+    sig: amatch_cached_writes(self) -> Sequence[PregelExecutableTask]
+    is_async: true
+    lines:
+    - 578
+    - 579
+    detail: {}
+  - name: _pending_interrupts
+    sig: _pending_interrupts(self) -> set[str]
+    vis: protected
+    lines:
+    - 590
+    - 618
+    detail:
+      calls:
+      - pending_interrupts.values
+      - pending_resumes.add
+      - set
+  - name: _first
+    sig: |-
+      _first(
+              self, *, input_keys: str | Sequence[str], updated_channels: set[str] | None
+          ) -> set[str] | None
+    vis: protected
+    lines:
+    - 620
+    - 788
+    detail:
+      calls:
+      - EmptyInputError
+      - PregelTaskWrites
+      - ReplayState
+      - RuntimeError
+      - all
+      - apply_writes
+      - bool
+      - cast
+      - configurable.get
+      - defaultdict
+      - deque
+      - discard_tasks.values
+      - is_xxh3_128_hexdigest
+      - isinstance
+      - len
+      - map_command
+      - map_input
+      - patch_configurable
+      - prepare_next_tasks
+      - self._emit
+      - self._pending_interrupts
+      - self._put_checkpoint
+      - self.checkpoint["versions_seen"].setdefault
+      - self.checkpoint_metadata.get
+      - self.config.get
+      - self.config.get("metadata", {}).get
+      - self.prev_checkpoint_config[CONF].get
+      - self.put_writes
+      - updated_channels.update
+      - writes.items
+      - writes[tid].append
+  - name: _suppress_interrupt
+    sig: |-
+      _suppress_interrupt(
+              self,
+              exc_type: type[BaseException] | None,
+              exc_value: BaseException | None,
+              traceback: TracebackType | None,
+          ) -> bool | None
+    vis: protected
+    lines:
+    - 870
+    - 929
+    detail:
+      calls:
+      - all
+      - any
+      - apply_writes
+      - cast
+      - hasattr
+      - isinstance
+      - iter
+      - read_channels
+      - self._emit
+      - self._put_checkpoint
+      - self._put_pending_writes
+      - self.tasks.values
+      - updated_channels.isdisjoint
+  - name: _emit
+    sig: |-
+      _emit(
+              self,
+              mode: StreamMode,
+              values: Callable[P, Iterator[Any]],
+              *args: P.args,
+              **kwargs: P.kwargs,
+          ) -> None
+    vis: protected
+    lines:
+    - 931
+    - 965
+    detail:
+      calls:
+      - datetime.now
+      - datetime.now(timezone.utc).isoformat
+      - self.stream
+      - values
+  - name: output_writes
+    sig: |-
+      output_writes(
+              self, task_id: str, writes: WritesT, *, cached: bool = False
+          ) -> None
+    lines:
+    - 967
+    - 1017
+    detail:
+      calls:
+      - isinstance
+      - iter
+      - read_channels
+      - self._emit
+      - self.tasks.get
+      - task.config.get
+      - tuple
+  lines:
+  - 142
+  - 1017
+- name: SyncPregelLoop
+  kind: struct
+  ctx: +2 dunder methods
+  bases:
+  - PregelLoop
+  - AbstractContextManager
+  fields:
+  - name: stack
+    type: Any
+    default: ExitStack()
+  - name: checkpointer_get_next_version
+    type: Any
+    default: checkpointer.get_next_version
+  - name: checkpointer_put_writes
+    type: Any
+    default: checkpointer.put_writes
+  - name: checkpointer_put_writes_accepts_task_path
+    type: tuple
+    default: |-
+      (
+                      signature(checkpointer.put_writes).parameters.get("task_path")
+                      is not None
+                  )
+  - name: _checkpointer_put_after_previous
+    type: None
+    default: None
+  methods:
+  - name: __init__
+    sig: |-
+      __init__(
+              self,
+              input: Any | None,
+              *,
+              stream: StreamProtocol | None,
+              config: RunnableConfig,
+              store: BaseStore | None,
+              cache: BaseCache | None,
+              checkpointer: BaseCheckpointSaver | None,
+              nodes: Mapping[str, PregelNode],
+              specs: Mapping[str, BaseChannel | ManagedValueSpec],
+              trigger_to_nodes: Mapping[str, Sequence[str]],
+              durability: Durability,
+              manager: None | AsyncParentRunManager | ParentRunManager = None,
+              interrupt_after: All | Sequence[str] = EMPTY_SEQ,
+              interrupt_before: All | Sequence[str] = EMPTY_SEQ,
+              input_keys: str | Sequence[str] = EMPTY_SEQ,
+              output_keys: str | Sequence[str] = EMPTY_SEQ,
+              stream_keys: str | Sequence[str] = EMPTY_SEQ,
+              migrate_checkpoint: Callable[[Checkpoint], None] | None = None,
+              retry_policy: Sequence[RetryPolicy] = (),
+              cache_policy: CachePolicy | None = None,
+          ) -> None
+    lines:
+    - 1021
+    - 1077
+    detail:
+      calls:
+      - ExitStack
+      - signature
+      - signature(checkpointer.put_writes).parameters.get
+      - super
+      - super().__init__
+  - name: match_cached_writes
+    sig: match_cached_writes(self) -> Sequence[PregelExecutableTask]
+    lines:
+    - 1095
+    - 1108
+    detail:
+      calls:
+      - matched.append
+      - self.cache.get
+      - self.cache.get(tuple(cached)).items
+      - self.tasks.values
+      - task.writes.extend
+      - tuple
+  - name: accept_push
+    sig: |-
+      accept_push(
+              self, task: PregelExecutableTask, write_idx: int, call: Call | None = None
+          ) -> PregelExecutableTask | None
+    lines:
+    - 1110
+    - 1116
+    detail:
+      calls:
+      - self.match_cached_writes
+      - self.output_writes
+      - super
+      - super().accept_push
+  - name: put_writes
+    sig: 'put_writes(self, task_id: str, writes: WritesT) -> None'
+    lines:
+    - 1118
+    - 1134
+    detail:
+      calls:
+      - hasattr
+      - self.submit
+      - self.tasks.get
+      - super
+      - super().put_writes
+  lines:
+  - 1020
+  - 1213
+- name: AsyncPregelLoop
+  kind: struct
+  bases:
+  - PregelLoop
+  - AbstractAsyncContextManager
+  fields:
+  - name: stack
+    type: Any
+    default: AsyncExitStack()
+  - name: checkpointer_get_next_version
+    type: Any
+    default: checkpointer.get_next_version
+  - name: checkpointer_put_writes
+    type: Any
+    default: checkpointer.aput_writes
+  - name: checkpointer_put_writes_accepts_task_path
+    type: tuple
+    default: |-
+      (
+                      signature(checkpointer.aput_writes).parameters.get("task_path")
+                      is not None
+                  )
+  - name: _checkpointer_put_after_previous
+    type: None
+    default: None
+  methods:
+  - name: __init__
+    sig: |-
+      __init__(
+              self,
+              input: Any | None,
+              *,
+              stream: StreamProtocol | None,
+              config: RunnableConfig,
+              store: BaseStore | None,
+              cache: BaseCache | None,
+              checkpointer: BaseCheckpointSaver | None,
+              nodes: Mapping[str, PregelNode],
+              specs: Mapping[str, BaseChannel | ManagedValueSpec],
+              trigger_to_nodes: Mapping[str, Sequence[str]],
+              durability: Durability,
+              interrupt_after: All | Sequence[str] = EMPTY_SEQ,
+              interrupt_before: All | Sequence[str] = EMPTY_SEQ,
+              manager: None | AsyncParentRunManager | ParentRunManager = None,
+              input_keys: str | Sequence[str] = EMPTY_SEQ,
+              output_keys: str | Sequence[str] = EMPTY_SEQ,
+              stream_keys: str | Sequence[str] = EMPTY_SEQ,
+              migrate_checkpoint: Callable[[Checkpoint], None] | None = None,
+              retry_policy: Sequence[RetryPolicy] = (),
+              cache_policy: CachePolicy | None = None,
+          ) -> None
+    lines:
+    - 1217
+    - 1273
+    detail:
+      calls:
+      - AsyncExitStack
+      - signature
+      - signature(checkpointer.aput_writes).parameters.get
+      - super
+      - super().__init__
+  - name: _checkpointer_put_after_previous
+    sig: |-
+      _checkpointer_put_after_previous(
+              self,
+              prev: asyncio.Task | None,
+              config: RunnableConfig,
+              checkpoint: Checkpoint,
+              metadata: CheckpointMetadata,
+              new_versions: ChannelVersions,
+          ) -> RunnableConfig
+    is_async: true
+    vis: protected
+    lines:
+    - 1275
+    - 1289
+    detail:
+      calls:
+      - cast
+      - cast(BaseCheckpointSaver, self.checkpointer).aput
+  - name: amatch_cached_writes
+    sig: amatch_cached_writes(self) -> Sequence[PregelExecutableTask]
+    is_async: true
+    lines:
+    - 1291
+    - 1304
+    detail:
+      calls:
+      - (await self.cache.aget(tuple(cached))).items
+      - matched.append
+      - self.cache.aget
+      - self.tasks.values
+      - task.writes.extend
+      - tuple
+  - name: aaccept_push
+    sig: |-
+      aaccept_push(
+              self, task: PregelExecutableTask, write_idx: int, call: Call | None = None
+          ) -> PregelExecutableTask | None
+    is_async: true
+    lines:
+    - 1306
+    - 1312
+    detail:
+      calls:
+      - self.amatch_cached_writes
+      - self.output_writes
+      - super
+      - super().accept_push
+  - name: put_writes
+    sig: 'put_writes(self, task_id: str, writes: WritesT) -> None'
+    lines:
+    - 1314
+    - 1333
+    detail:
+      calls:
+      - hasattr
+      - self.submit
+      - self.tasks.get
+      - super
+      - super().put_writes
+  - name: __aenter__
+    sig: __aenter__(self) -> Self
+    is_async: true
+    lines:
+    - 1337
+    - 1405
+    detail:
+      calls:
+      - AsyncBackgroundExecutor
+      - CheckpointTuple
+      - channels_from_checkpoint
+      - empty_checkpoint
+      - replay_state.aget_checkpoint
+      - saved.config.get
+      - self._first
+      - self._migrate_checkpoint
+      - self.checkpoint.get
+      - self.checkpoint["channel_versions"].copy
+      - self.checkpoint_config.get
+      - self.checkpoint_config[CONF].get
+      - self.checkpointer.aget_tuple
+      - self.config[CONF].get
+      - self.config[CONF].pop
+      - self.stack.enter_async_context
+      - self.stack.push
+      - set
+      - str
+  - name: __aexit__
+    sig: |-
+      __aexit__(
+              self,
+              exc_type: type[BaseException] | None,
+              exc_value: BaseException | None,
+              traceback: TracebackType | None,
+          ) -> bool | None
+    is_async: true
+    lines:
+    - 1407
+    - 1423
+    detail:
+      calls:
+      - asyncio.create_task
+      - self.stack.__aexit__
+  lines:
+  - 1216
+  - 1423
+functions:
+- name: DuplexStream
+  sig: 'DuplexStream(*streams: StreamProtocol) -> StreamProtocol'
+  lines:
+  - 133
+  - 139
+  detail:
+    calls:
+    - StreamProtocol
+exports:
+- name: PregelLoop
+  kind: type
+- name: SyncPregelLoop
+  kind: type
+- name: AsyncPregelLoop
+  kind: type
+- name: DuplexStream
+  kind: func
+- name: V
+  kind: data
+- name: P
+  kind: data
+- name: WritesT
+  kind: data
