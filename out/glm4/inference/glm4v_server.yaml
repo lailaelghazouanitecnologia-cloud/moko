@@ -1,0 +1,438 @@
+## Roska File Descriptor — inference/glm4v_server.py
+file: inference/glm4v_server.py
+lines: 388
+layer: logic
+imports:
+- sym: base64
+- sym: gc
+- sym: threading
+- sym: requests
+- sym: torch
+- sym: uvicorn
+- sym: fastapi.FastAPI
+- sym: fastapi.HTTPException
+- sym: fastapi.middleware.cors.CORSMiddleware
+- sym: peft.PeftModelForCausalLM
+- sym: PIL.Image
+- sym: pydantic.BaseModel
+- sym: pydantic.Field
+- sym: sse_starlette.sse.EventSourceResponse
+- sym: transformers.AutoModel
+- sym: transformers.AutoTokenizer
+- sym: transformers.TextIteratorStreamer
+data:
+- name: TORCH_TYPE
+  type: tuple
+  val: |-
+    (
+        torch.bfloat16 if torch.cuda.is_available() and torch.cuda.get_device_capability()[0] >= 8 else torch.float16
+    )
+- name: app
+  type: Any
+  val: FastAPI(lifespan=lifespan)
+- name: ContentItem
+  type: Any
+  val: Union[TextContent, ImageUrlContent]
+types:
+- name: ModelCard
+  kind: model
+  ctx: A Pydantic model representing a model card, which provides metadata about a machine learning model. It includes fields like model ID, owner, and creation time.
+  bases:
+  - BaseModel
+  fields:
+  - name: id
+    type: Any
+    default: str
+  - name: object
+    type: Any
+    default: str
+  - name: created
+    type: Any
+    default: int
+  - name: owned_by
+    type: Any
+    default: str
+  - name: root
+    type: Any
+    default: Optional[str]
+  - name: parent
+    type: Any
+    default: Optional[str]
+  - name: permission
+    type: Any
+    default: Optional[list]
+  lines:
+  - 51
+  - 63
+- name: ModelList
+  kind: model
+  bases:
+  - BaseModel
+  fields:
+  - name: object
+    type: Any
+    default: str
+  - name: data
+    type: Any
+    default: List[ModelCard]
+  lines:
+  - 66
+  - 68
+- name: ImageUrl
+  kind: model
+  bases:
+  - BaseModel
+  fields:
+  - name: url
+    type: Any
+    default: str
+  lines:
+  - 71
+  - 72
+- name: TextContent
+  kind: model
+  bases:
+  - BaseModel
+  fields:
+  - name: type
+    type: Any
+    default: Literal["text"]
+  - name: text
+    type: Any
+    default: str
+  lines:
+  - 75
+  - 77
+- name: ImageUrlContent
+  kind: model
+  bases:
+  - BaseModel
+  fields:
+  - name: type
+    type: Any
+    default: Literal["image_url"]
+  - name: image_url
+    type: Any
+    default: ImageUrl
+  lines:
+  - 80
+  - 82
+- name: ChatMessageInput
+  kind: model
+  bases:
+  - BaseModel
+  fields:
+  - name: role
+    type: Any
+    default: Literal["user", "assistant", "system"]
+  - name: content
+    type: Any
+    default: Union[str, List[ContentItem]]
+  - name: name
+    type: Any
+    default: Optional[str]
+  lines:
+  - 88
+  - 91
+- name: ChatMessageResponse
+  kind: model
+  bases:
+  - BaseModel
+  fields:
+  - name: role
+    type: Any
+    default: Literal["assistant"]
+  - name: content
+    type: Any
+    default: str
+  - name: name
+    type: Any
+    default: Optional[str]
+  lines:
+  - 94
+  - 97
+- name: DeltaMessage
+  kind: model
+  bases:
+  - BaseModel
+  fields:
+  - name: role
+    type: Any
+    default: Optional[Literal["user", "assistant", "system"]]
+  - name: content
+    type: Any
+    default: Optional[str]
+  lines:
+  - 100
+  - 102
+- name: ChatCompletionRequest
+  kind: model
+  bases:
+  - BaseModel
+  fields:
+  - name: model
+    type: Any
+    default: str
+  - name: messages
+    type: Any
+    default: List[ChatMessageInput]
+  - name: temperature
+    type: Any
+    default: Optional[float]
+  - name: top_p
+    type: Any
+    default: Optional[float]
+  - name: max_tokens
+    type: Any
+    default: Optional[int]
+  - name: stream
+    type: Any
+    default: Optional[bool]
+  - name: repetition_penalty
+    type: Any
+    default: Optional[float]
+  lines:
+  - 105
+  - 113
+- name: ChatCompletionResponseChoice
+  kind: model
+  bases:
+  - BaseModel
+  fields:
+  - name: index
+    type: Any
+    default: int
+  - name: message
+    type: Any
+    default: ChatMessageResponse
+  lines:
+  - 116
+  - 118
+- name: ChatCompletionResponseStreamChoice
+  kind: model
+  bases:
+  - BaseModel
+  fields:
+  - name: index
+    type: Any
+    default: int
+  - name: delta
+    type: Any
+    default: DeltaMessage
+  lines:
+  - 121
+  - 123
+- name: UsageInfo
+  kind: model
+  bases:
+  - BaseModel
+  fields:
+  - name: prompt_tokens
+    type: Any
+    default: int
+  - name: total_tokens
+    type: Any
+    default: int
+  - name: completion_tokens
+    type: Any
+    default: Optional[int]
+  lines:
+  - 126
+  - 129
+- name: ChatCompletionResponse
+  kind: model
+  bases:
+  - BaseModel
+  fields:
+  - name: model
+    type: Any
+    default: str
+  - name: object
+    type: Any
+    default: Literal["chat.completion", "chat.completion.chunk"]
+  - name: choices
+    type: Any
+    default: List[Union[ChatCompletionResponseChoice, ChatCompletionResponseStreamChoice]]
+  - name: created
+    type: Any
+    default: Optional[int]
+  - name: usage
+    type: Any
+    default: Optional[UsageInfo]
+  lines:
+  - 132
+  - 137
+functions:
+- name: lifespan
+  sig: 'lifespan(app: FastAPI)'
+  is_async: true
+  decorators:
+  - asynccontextmanager
+  lines:
+  - 29
+  - 37
+  detail:
+    calls:
+    - torch.cuda.empty_cache
+    - torch.cuda.ipc_collect
+    - torch.cuda.is_available
+- name: list_models
+  sig: list_models()
+  is_async: true
+  decorators:
+  - app.get("/v1/models", response_model=ModelList)
+  lines:
+  - 141
+  - 147
+  detail:
+    calls:
+    - ModelCard
+    - ModelList
+- name: create_chat_completion
+  sig: 'create_chat_completion(request: ChatCompletionRequest)'
+  is_async: true
+  decorators:
+  - app.post("/v1/chat/completions", response_model=ChatCompletionResponse)
+  lines:
+  - 151
+  - 185
+  detail:
+    calls:
+    - ChatCompletionResponse
+    - ChatCompletionResponseChoice
+    - ChatMessageResponse
+    - EventSourceResponse
+    - HTTPException
+    - UsageInfo
+    - UsageInfo.model_validate
+    - dict
+    - generate_glm4v
+    - getattr
+    - len
+    - predict
+    - setattr
+    - task_usage.model_dump
+    - task_usage.model_dump().items
+- name: predict
+  sig: 'predict(model_id: str, params: dict)'
+  lines:
+  - 188
+  - 207
+  detail:
+    calls:
+    - '"{}".format'
+    - ChatCompletionResponse
+    - ChatCompletionResponseStreamChoice
+    - DeltaMessage
+    - chunk.model_dump_json
+    - generate_stream_glm4v
+    - len
+- name: generate_glm4v
+  sig: 'generate_glm4v(model: AutoModel, tokenizer: AutoTokenizer, params: dict)'
+  lines:
+  - 210
+  - 220
+  detail:
+    calls:
+    - generate_stream_glm4v
+- name: process_history_and_images
+  sig: |-
+    process_history_and_images(
+        messages: List[ChatMessageInput],
+    ) -> Tuple[Optional[str], Optional[List[Tuple[str, str]]], Optional[List[Image.Image]]]
+  lines:
+  - 223
+  - 279
+  detail:
+    calls:
+    - '" ".join'
+    - BytesIO
+    - Image.open
+    - Image.open(BytesIO(image_data)).convert
+    - Image.open(BytesIO(response.content)).convert
+    - base64.b64decode
+    - enumerate
+    - formatted_history.append
+    - image_list.append
+    - image_url.split
+    - image_url.startswith
+    - isinstance
+    - len
+    - requests.get
+- name: generate_stream_glm4v
+  sig: 'generate_stream_glm4v(model: AutoModel, tokenizer: AutoTokenizer, params: dict)'
+  decorators:
+  - torch.inference_mode()
+  lines:
+  - 283
+  - 357
+  detail:
+    calls:
+    - TextIteratorStreamer
+    - enumerate
+    - float
+    - generation_thread.join
+    - generation_thread.start
+    - inputs.append
+    - inputs[-1].update
+    - int
+    - len
+    - model.parameters
+    - next
+    - params.get
+    - print
+    - process_history_and_images
+    - threading.Thread
+    - tokenizer.apply_chat_template
+    - |-
+      tokenizer.apply_chat_template(
+              inputs, add_generation_prompt=True, tokenize=True, return_tensors="pt", return_dict=True
+          ).to
+    - tokenizer.encode
+exports:
+- name: ModelCard
+  kind: type
+- name: ModelList
+  kind: type
+- name: ImageUrl
+  kind: type
+- name: TextContent
+  kind: type
+- name: ImageUrlContent
+  kind: type
+- name: ChatMessageInput
+  kind: type
+- name: ChatMessageResponse
+  kind: type
+- name: DeltaMessage
+  kind: type
+- name: ChatCompletionRequest
+  kind: type
+- name: ChatCompletionResponseChoice
+  kind: type
+- name: ChatCompletionResponseStreamChoice
+  kind: type
+- name: UsageInfo
+  kind: type
+- name: ChatCompletionResponse
+  kind: type
+- name: lifespan
+  kind: func
+- name: list_models
+  kind: func
+- name: create_chat_completion
+  kind: func
+- name: predict
+  kind: func
+- name: generate_glm4v
+  kind: func
+- name: process_history_and_images
+  kind: func
+- name: generate_stream_glm4v
+  kind: func
+- name: TORCH_TYPE
+  kind: data
+- name: app
+  kind: data
+- name: ContentItem
+  kind: data

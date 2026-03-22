@@ -1,0 +1,326 @@
+## Roska File Descriptor — finetune/finetune_vision.py
+file: finetune/finetune_vision.py
+lines: 558
+layer: logic
+imports:
+- sym: dataclasses as dc
+- sym: jieba
+- sym: numpy as np
+- sym: ruamel.yaml as yaml
+- sym: torch
+- sym: typer
+- sym: datasets.Dataset
+- sym: datasets.DatasetDict
+- sym: datasets.NamedSplit
+- sym: datasets.Split
+- sym: datasets.load_dataset
+- sym: nltk.translate.bleu_score.SmoothingFunction
+- sym: nltk.translate.bleu_score.sentence_bleu
+- sym: peft.PeftConfig
+- sym: peft.get_peft_config
+- sym: peft.get_peft_model
+- sym: PIL.Image
+- sym: rouge_chinese.Rouge
+- sym: torch.nn
+- sym: transformers.AutoModelForCausalLM
+- sym: transformers.AutoTokenizer
+- sym: transformers.EvalPrediction
+- sym: transformers.GenerationConfig
+- sym: transformers.PreTrainedTokenizer
+- sym: transformers.Seq2SeqTrainingArguments
+- sym: transformers.DataCollatorForSeq2Seq
+- sym: transformers.Seq2SeqTrainer
+data:
+- name: app
+  type: Any
+  val: typer.Typer(pretty_exceptions_show_locals=False)
+- name: img
+  type: Any
+  val: Image.new("L", (224, 224), 0).convert("RGB")
+types:
+- name: DataCollatorForSeq2Seq
+  kind: struct
+  bases:
+  - _DataCollatorForSeq2Seq
+  methods:
+  - name: __call__
+    sig: __call__(self, features, return_tensors=None)
+    lines:
+    - 41
+    - 57
+    detail:
+      calls:
+      - features[0].keys
+      - isinstance
+      - len
+      - max
+      - np.concatenate
+      - np.concatenate([feature["output_ids"], remainder]).astype
+      - super
+      - super().__call__
+  lines:
+  - 40
+  - 57
+- name: Seq2SeqTrainer
+  kind: struct
+  bases:
+  - _Seq2SeqTrainer
+  methods:
+  - name: prediction_step
+    sig: |-
+      prediction_step(
+              self,
+              model: nn.Module,
+              inputs: dict,
+              prediction_loss_only: bool,
+              ignore_keys=None,
+              **gen_kwargs,
+          ) -> tuple[Optional[float], Optional[torch.Tensor], Optional[torch.Tensor]]
+    lines:
+    - 61
+    - 90
+    detail:
+      calls:
+      - inputs.pop
+      - inputs["input_ids"].size
+      - super
+      - super().prediction_step
+      - torch.cuda.empty_cache
+      - torch.no_grad
+  lines:
+  - 60
+  - 90
+- name: DataManager
+  kind: struct
+  bases:
+  - object
+  fields:
+  - name: _num_proc
+    type: Any
+    default: data_config.num_proc
+  - name: _dataset_dct
+    type: Any
+    default: |-
+      _load_datasets(
+                  data_dir,
+                  data_config.data_format,
+                  data_config.data_files,
+                  self._num_proc,
+              )
+  methods:
+  - name: __init__
+    sig: '__init__(self, data_dir: str, data_config: DataConfig)'
+    lines:
+    - 192
+    - 200
+    detail:
+      calls:
+      - _load_datasets
+  - name: get_dataset
+    sig: |-
+      get_dataset(
+              self,
+              split: NamedSplit,
+              process_fn: Callable[[dict[str, Any]], dict[str, Any]],
+              batched: bool = True,
+              remove_orig_columns: bool = True,
+          ) -> Optional[Dataset]
+    lines:
+    - 205
+    - 228
+    detail:
+      calls:
+      - orig_dataset.map
+      - self._get_dataset
+  lines:
+  - 191
+  - 228
+functions:
+- name: DataConfig
+  sig: ''
+  decorators:
+  - dc.dataclass
+  lines:
+  - 93
+  - 113
+- name: FinetuningConfig
+  sig: ''
+  decorators:
+  - dc.dataclass
+  lines:
+  - 116
+  - 170
+- name: process_batch
+  sig: |-
+    process_batch(
+        batch: Mapping[str, Sequence],
+        tokenizer: PreTrainedTokenizer,
+        max_input_length: int,
+        max_output_length: int,
+        combine: bool,
+    ) -> dict[str, list]
+  lines:
+  - 231
+  - 314
+  detail:
+    calls:
+    - Image.open
+    - Image.open(conv[0]["image"]).convert
+    - attention_mask.append
+    - batched_attention_mask.append
+    - batched_images.append
+    - batched_input_ids.append
+    - batched_labels.append
+    - batched_position_ids.append
+    - conv[0].get
+    - images.append
+    - input_ids.append
+    - labels.append
+    - len
+    - list
+    - loss_masks.append
+    - message.get
+    - position_ids.append
+    - range
+    - tokenizer.apply_chat_template
+    - torch.cuda.empty_cache
+    - zip
+- name: process_batch_eval
+  sig: |-
+    process_batch_eval(
+        batch: Mapping[str, Sequence],
+        tokenizer: PreTrainedTokenizer,
+        max_input_length: int,
+        max_output_length: int,
+        combine: bool,
+    ) -> dict[str, list]
+  lines:
+  - 317
+  - 385
+  detail:
+    calls:
+    - Image.open
+    - Image.open(conv[0]["image"]).convert
+    - batched_attention_mask.append
+    - batched_images.append
+    - batched_input_ids.append
+    - batched_output_ids.append
+    - batched_position_ids.append
+    - conv[0].get
+    - dialogue_parts.append
+    - enumerate
+    - len
+    - list
+    - output_segment.append
+    - range
+    - tokenizer.apply_chat_template
+    - torch.cuda.empty_cache
+    - user_idx.append
+- name: load_tokenizer_and_model
+  sig: |-
+    load_tokenizer_and_model(
+        model_dir: str,
+        peft_config: Optional[PeftConfig] = None,
+    )
+  lines:
+  - 388
+  - 409
+  detail:
+    calls:
+    - AutoModelForCausalLM.from_pretrained
+    - AutoTokenizer.from_pretrained
+    - get_peft_model
+    - model.print_trainable_parameters
+- name: compute_metrics
+  sig: 'compute_metrics(eval_preds: EvalPrediction, tokenizer)'
+  lines:
+  - 412
+  - 433
+  detail:
+    calls:
+    - '" ".join'
+    - Rouge
+    - SmoothingFunction
+    - jieba.cut
+    - list
+    - metrics_dct.items
+    - metrics_dct["bleu-4"].append
+    - metrics_dct[k].append
+    - np.mean
+    - rouge.get_scores
+    - round
+    - scores[0].items
+    - sentence_bleu
+    - tokenizer.decode
+    - tokenizer.decode(label_ids).strip
+    - tokenizer.decode(pred_ids).strip
+    - zip
+- name: main
+  sig: |-
+    main(
+        data_dir: Annotated[str, typer.Argument(help="")],
+        model_dir: Annotated[
+            str,
+            typer.Argument(
+                help="A string that specifies the model id of a pretrained model configuration hosted on huggingface.co, or a path to a directory containing a model configuration file."
+            ),
+        ],
+        config_file: Annotated[str, typer.Argument(help="")],
+        auto_resume_from_checkpoint: str = typer.Argument(
+            default="",
+            help="If entered as yes, automatically use the latest save checkpoint. If it is a numerical example 12 15, use the corresponding save checkpoint. If the input is no, restart training",
+        ),
+    )
+  decorators:
+  - app.command()
+  lines:
+  - 437
+  - 554
+  detail:
+    calls:
+    - DataCollatorForSeq2Seq
+    - DataManager
+    - FinetuningConfig.from_file
+    - Seq2SeqTrainer
+    - auto_resume_from_checkpoint.isdigit
+    - auto_resume_from_checkpoint.upper
+    - checkpoint_str.find
+    - checkpoint_str.replace
+    - data_manager.get_dataset
+    - functools.partial
+    - int
+    - load_tokenizer_and_model
+    - model.enable_input_require_grads
+    - model.gradient_checkpointing_enable
+    - model.transformer.vision.parameters
+    - os.listdir
+    - os.path.join
+    - print
+    - str
+    - trainer.predict
+    - trainer.train
+exports:
+- name: DataCollatorForSeq2Seq
+  kind: type
+- name: Seq2SeqTrainer
+  kind: type
+- name: DataManager
+  kind: type
+- name: DataConfig
+  kind: func
+- name: FinetuningConfig
+  kind: func
+- name: process_batch
+  kind: func
+- name: process_batch_eval
+  kind: func
+- name: load_tokenizer_and_model
+  kind: func
+- name: compute_metrics
+  kind: func
+- name: main
+  kind: func
+- name: app
+  kind: data
+- name: img
+  kind: data
