@@ -1,0 +1,816 @@
+## Roska File Descriptor — src/runner.ts
+file: src/runner.ts
+lines: 1504
+layer: logic
+imports:
+- sym: node:fs.mkdirSync
+- sym: node:fs.writeFileSync
+- sym: node:fs.rmSync
+- sym: node:fs.readdirSync
+- sym: node:fs.existsSync
+- sym: node:fs.copyFileSync
+- sym: node:path.join
+- sym: node:path.basename
+- sym: node:path.dirname
+- sym: node:os.homedir
+- sym: node:child_process.execSync
+- sym: yaml.parse
+- sym: yaml.stringify
+- sym: node:fs.readFileSync
+- sym: node:crypto.createHash
+- sym: ./types.js.Scenario
+  kind: typing
+- sym: ./types.js.TestResult
+  kind: typing
+- sym: ./types.js.TestRun
+  kind: typing
+- sym: ./types.js.Turn
+  kind: typing
+- sym: ./validator.js.validateAll
+data:
+- name: CACHE_DIR
+  type: any
+  val: join(import.meta.dirname, "../.cache")
+- name: CACHE_INDEX_PATH
+  type: any
+  val: join(CACHE_DIR, "index.json")
+- name: CACHE_LOGS_DIR
+  type: any
+  val: join(CACHE_DIR, "logs")
+- name: CACHE_VERSION
+  type: number
+  val: '1'
+- name: PLATFORM_EXTENSIONS
+  type: any
+  val: "new Set([\n  \"todo\", \"skills\", \"code_execution\", \"extensionmanager\", \n  \"chatrecall\", \"apps\", \"imagegenerator\"\n])"
+- name: GOOSE_ROOT
+  type: any
+  val: join(import.meta.dirname, "../.goose-root")
+- name: GOOSE_CONFIG_DIR
+  type: any
+  val: join(GOOSE_ROOT, "config")
+- name: OPENCODE_ROOT
+  type: any
+  val: join(import.meta.dirname, "../.opencode-root")
+- name: PI_CONFIG_DIR
+  type: any
+  val: join(import.meta.dirname, "../.pi-root")
+- name: PI_USER_CONFIG
+  type: any
+  val: join(homedir(), ".pi", "agent")
+types:
+- name: RunnerType
+  kind: enum
+  decorators:
+  - type
+  variants:
+  - name: '"pi"'
+  lines:
+  - 16
+  - 16
+- name: ModelConfig
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: provider
+    type: string
+  - name: model
+    type: string
+  lines:
+  - 18
+  - 22
+- name: RunnerConfig
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: type
+    type: RunnerType
+  - name: bin
+    type: string
+  - name: extensions
+    type: string[]
+  - name: stdio
+    type: string[]
+  lines:
+  - 24
+  - 30
+- name: MatrixEntry
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: scenario
+    type: string
+  - name: models
+    type: string[]
+  - name: runners
+    type: string[]
+  lines:
+  - 32
+  - 36
+- name: SuiteConfig
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: models
+    type: ModelConfig[]
+  - name: runners
+    type: RunnerConfig[]
+  - name: matrix
+    type: MatrixEntry[]
+  lines:
+  - 38
+  - 42
+- name: TestPair
+  kind: trait
+  ctx: 'A test pair: scenario × model × runner'
+  decorators:
+  - interface
+  fields:
+  - name: scenario
+    type: Scenario
+  - name: model
+    type: ModelConfig
+  - name: runner
+    type: RunnerConfig
+  lines:
+  - 45
+  - 49
+- name: TestResultWithLog
+  kind: trait
+  bases:
+  - TestResult
+  decorators:
+  - interface
+  fields:
+  - name: logFile
+    type: string
+  - name: toolCalls
+    type: number
+  - name: turns
+    type: number
+  - name: cached
+    type: boolean
+  lines:
+  - 51
+  - 57
+- name: CacheInputs
+  kind: trait
+  ctx: =============================================================================
+  decorators:
+  - interface
+  fields:
+  - name: scenarioHash
+    type: string
+  - name: modelKey
+    type: string
+  - name: runnerHash
+    type: string
+  - name: binaryHash
+    type: string
+  - name: mcpHarnessHash
+    type: string
+  lines:
+  - 63
+  - 69
+- name: CacheEntry
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: timestamp
+    type: string
+  - name: inputs
+    type: CacheInputs
+  - name: result
+    type: |-
+      {
+          status: "passed" | "failed";
+          validations: Array<{ rule: any; passed: boolean; message?: string }>;
+          duration: number;
+          toolCalls: number;
+          turns: number;
+          errors?: string[];
+        }
+  - name: logFile
+    type: string
+  lines:
+  - 71
+  - 83
+- name: CacheIndex
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: version
+    type: number
+  - name: entries
+    type: Record<string, CacheEntry>
+  lines:
+  - 85
+  - 88
+- name: AgentResult
+  kind: trait
+  ctx: =============================================================================
+  decorators:
+  - interface
+  fields:
+  - name: output
+    type: string
+  - name: sessionId
+    type: string
+  lines:
+  - 659
+  - 662
+- name: ReportOptions
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: isRunning
+    type: boolean
+  - name: allPairs
+    type: TestPair[]
+  lines:
+  - 970
+  - 973
+functions:
+- name: sha256
+  sig: 'sha256(data: string | Buffer): string'
+  lines:
+  - 99
+  - 101
+  detail:
+    calls:
+    - createHash
+    - createHash("sha256").update
+    - createHash("sha256").update(data).digest
+    - createHash("sha256").update(data).digest("hex").slice
+- name: loadCache
+  sig: 'loadCache(): CacheIndex'
+  lines:
+  - 103
+  - 116
+  detail:
+    calls:
+    - JSON.parse
+    - console.log
+    - existsSync
+    - readFileSync
+- name: saveCache
+  sig: 'saveCache(cache: CacheIndex): void'
+  lines:
+  - 118
+  - 121
+  detail:
+    calls:
+    - JSON.stringify
+    - mkdirSync
+    - writeFileSync
+- name: getBinaryHash
+  sig: 'getBinaryHash(binName: string): string'
+  lines:
+  - 123
+  - 137
+  detail:
+    calls:
+    - execSync
+    - 'execSync(`${binName} --version 2>/dev/null || echo "unknown"`, { encoding: "utf-8" }).trim'
+    - 'execSync(`which ${binName}`, { encoding: "utf-8" }).trim'
+    - readFileSync
+    - sha256
+- name: getMcpHarnessHash
+  sig: 'getMcpHarnessHash(): string'
+  lines:
+  - 139
+  - 149
+  detail:
+    calls:
+    - existsSync
+    - join
+    - readFileSync
+    - sha256
+- name: computeCacheKey
+  sig: 'computeCacheKey(pair: TestPair, binaryHashes: Map<string, string>, mcpHarnessHash: string): { key: string; inputs: CacheInputs }'
+  lines:
+  - 151
+  - 189
+  detail:
+    calls:
+    - JSON.stringify
+    - binaryHashes.get
+    - sha256
+    - stringify
+- name: getCachedResult
+  sig: |-
+    getCachedResult(
+      cache: CacheIndex,
+      cacheKey: string,
+      pair: TestPair,
+      logsDir: string
+    ): TestResultWithLog | null
+  lines:
+  - 191
+  - 241
+  detail:
+    calls:
+    - '`${pair.scenario.name}_${pair.model.name}_${pair.runner.name}`.replace'
+    - console.log
+    - copyFileSync
+    - existsSync
+    - join
+    - mkdirSync
+    - new Date
+    - new Date(entry.timestamp).getTime
+- name: storeCacheResult
+  sig: |-
+    storeCacheResult(
+      cache: CacheIndex,
+      cacheKey: string,
+      inputs: CacheInputs,
+      result: TestResultWithLog
+    ): void
+  lines:
+  - 243
+  - 278
+  detail:
+    calls:
+    - console.log
+    - copyFileSync
+    - join
+    - mkdirSync
+    - new Date
+    - new Date().toISOString
+    - result.run.endTime.getTime
+    - result.run.startTime.getTime
+    - saveCache
+- name: clearCache
+  sig: 'clearCache(): void'
+  lines:
+  - 280
+  - 287
+  detail:
+    calls:
+    - console.log
+    - existsSync
+    - rmSync
+- name: generateGooseConfig
+  sig: 'generateGooseConfig(model: ModelConfig, runner: RunnerConfig): object'
+  lines:
+  - 302
+  - 348
+  detail:
+    calls:
+    - PLATFORM_EXTENSIONS.has
+    - basename
+    - basename(args[args.length - 1] || cmd).replace
+    - extCmd.split
+    - parts.slice
+- name: runGooseAgent
+  sig: |-
+    runGooseAgent(
+      model: ModelConfig,
+      runner: RunnerConfig,
+      prompt: string,
+      workdir: string,
+      sessionName?: string,  // If provided, use/continue this session
+      resume: boolean = false  // If true, resume existing session (for turn 2+)
+    ): Promise<string>
+  is_async: true
+  lines:
+  - 350
+  - 393
+  detail:
+    calls:
+    - console.log
+    - execSync
+    - generateGooseConfig
+    - join
+    - mkdirSync
+    - stringify
+    - writeFileSync
+- name: generateOpenCodeConfig
+  sig: 'generateOpenCodeConfig(model: ModelConfig, runner: RunnerConfig, workdir: string): object'
+  lines:
+  - 402
+  - 450
+  detail:
+    calls:
+    - basename
+    - basename(args[args.length - 1] || cmd).replace
+    - extCmd.split
+    - join
+    - parts.slice
+- name: runOpenCodeAgent
+  sig: |-
+    runOpenCodeAgent(
+      model: ModelConfig,
+      runner: RunnerConfig,
+      prompt: string,
+      workdir: string,
+      resume: boolean = false
+    ): Promise<string>
+  is_async: true
+  lines:
+  - 452
+  - 488
+  detail:
+    calls:
+    - JSON.stringify
+    - console.log
+    - execSync
+    - generateOpenCodeConfig
+    - join
+    - mkdirSync
+    - writeFileSync
+- name: generatePiModelsConfig
+  sig: 'generatePiModelsConfig(model: ModelConfig): object'
+  lines:
+  - 508
+  - 538
+  detail: {}
+- name: runPiAgent
+  sig: |-
+    runPiAgent(
+      model: ModelConfig,
+      runner: RunnerConfig,
+      prompt: string,
+      workdir: string,
+      sessionName?: string,  // If provided, use/continue this session (for multi-turn)
+      resume: boolean = false  // If true, continue existing session (for turn 2+)
+    ): Promise<string>
+  is_async: true
+  lines:
+  - 540
+  - 653
+  detail:
+    calls:
+    - JSON.stringify
+    - console.log
+    - copyFileSync
+    - execSync
+    - existsSync
+    - generatePiModelsConfig
+    - join
+    - mkdirSync
+    - runner.stdio.forEach
+    - writeFileSync
+- name: runAgent
+  sig: |-
+    runAgent(
+      model: ModelConfig,
+      runner: RunnerConfig,
+      prompt: string,
+      workdir: string,
+      sessionId?: string,  // For multi-turn (goose, pi)
+      resume: boolean = false  // For multi-turn: true on turn 2+
+    ): Promise<AgentResult>
+  is_async: true
+  lines:
+  - 664
+  - 682
+  detail:
+    calls:
+    - runGooseAgent
+    - runOpenCodeAgent
+    - runPiAgent
+- name: loadScenario
+  sig: 'loadScenario(path: string): Scenario'
+  lines:
+  - 688
+  - 691
+- name: loadAllScenarios
+  sig: 'loadAllScenarios(dir: string): Scenario[]'
+  lines:
+  - 693
+  - 696
+  detail:
+    calls:
+    - files.map
+    - readdirSync
+    - readdirSync(dir).filter
+- name: loadConfig
+  sig: 'loadConfig(configPath: string): SuiteConfig'
+  lines:
+  - 698
+  - 721
+  detail:
+    calls:
+    - join
+    - parse
+    - readFileSync
+    - runner.stdio.map
+- name: setupWorkdir
+  sig: 'setupWorkdir(scenario: Scenario, workdir: string): void'
+  lines:
+  - 723
+  - 734
+  detail:
+    calls:
+    - Object.entries
+    - join
+    - mkdirSync
+    - rmSync
+    - writeFileSync
+- name: parseLogMetrics
+  sig: 'parseLogMetrics(logContent: string, workdir?: string): { toolCalls: number; turns: number }'
+  lines:
+  - 740
+  - 766
+  detail:
+    calls:
+    - Math.ceil
+    - join
+    - logContent.match
+    - readFileSync
+    - toolCallsLog.trim
+    - toolCallsLog.trim().split
+    - toolCallsLog.trim().split("\n").filter
+- name: buildTestPairs
+  sig: 'buildTestPairs(config: SuiteConfig, scenarios: Scenario[]): TestPair[]'
+  lines:
+  - 772
+  - 831
+  detail:
+    calls:
+    - '[...modelsByName.keys()].join'
+    - '[...runnersByName.keys()].join'
+    - '[...scenariosByName.keys()].join'
+    - config.models.map
+    - config.runners.map
+    - entry.models.map
+    - entry.models.map((n) => modelsByName.get(n)).filter
+    - entry.runners.map
+    - entry.runners.map((n) => runnersByName.get(n)).filter
+    - modelsByName.has
+    - modelsByName.keys
+    - new Error
+    - new Map
+    - pairs.push
+    - runnersByName.has
+    - runnersByName.keys
+    - scenarios.map
+    - scenariosByName.get
+    - scenariosByName.keys
+- name: scoreResult
+  sig: 'scoreResult(result: TestResultWithLog): number'
+  lines:
+  - 833
+  - 840
+  detail:
+    calls:
+    - result.validations.filter
+- name: runScenario
+  sig: |-
+    runScenario(
+      pair: TestPair,
+      baseWorkdir: string,
+      logsDir: string,
+      attempt: number = 1
+    ): Promise<TestResultWithLog>
+  is_async: true
+  lines:
+  - 842
+  - 956
+  detail:
+    calls:
+    - '''=''.repeat'
+    - Date.now
+    - String
+    - '`${scenario.name}_${model.name}_${runner.name}`.replace'
+    - allValidations.every
+    - allValidations.push
+    - console.log
+    - join
+    - mkdirSync
+    - new Date
+    - parseLogMetrics
+    - runAgent
+    - setupWorkdir
+    - turnValidations.every
+    - validateAll
+    - writeFileSync
+- name: pairKey
+  sig: 'pairKey(pair: TestPair): string'
+  lines:
+  - 962
+  - 964
+- name: resultKey
+  sig: 'resultKey(result: TestResultWithLog): string'
+  lines:
+  - 966
+  - 968
+- name: generateHtmlReport
+  sig: |-
+    generateHtmlReport(
+      results: TestResultWithLog[],
+      outputPath: string,
+      options: ReportOptions = {}
+    ): void
+  lines:
+  - 975
+  - 1328
+  detail:
+    calls:
+    - JSON.stringify
+    - Math.max
+    - '[...modelGroups.entries()].map'
+    - |-
+      [...modelGroups.entries()].map(([mk, keys]) => {
+              return keys.map((key, idx) => {
+                c...
+    - allPairs.map
+    - basename
+    - console.log
+    - join
+    - modelGroups.entries
+    - modelGroups.get
+    - modelGroups.get(mk)!.push
+    - modelGroups.has
+    - modelGroups.set
+    - modelKey
+    - new Date
+    - new Date().toISOString
+    - new Map
+    - new Set
+    - pairKey
+    - readFileSync
+    - readFileSync(gymPath).toString
+    - results.filter
+    - results.map
+    - rowsByKey.get
+    - rowsByKey.set
+    - runnerNames.map
+    - runnerNames.map(n => `<code>${n}</code>`).join
+    - scenarios.map
+    - scenarios.map((s) => `<th>${s}</th>`).join
+    - validCells.add
+    - writeFileSync
+- name: printResults
+  sig: 'printResults(results: TestResultWithLog[]): void'
+  lines:
+  - 1330
+  - 1351
+  detail:
+    calls:
+    - '"=".repeat'
+    - console.log
+    - result.run.status.toUpperCase
+    - results.filter
+- name: main
+  sig: main()
+  is_async: true
+  lines:
+  - 1357
+  - 1502
+  detail:
+    calls:
+    - Object.keys
+    - binaryHashes.has
+    - binaryHashes.set
+    - buildTestPairs
+    - clearCache
+    - computeCacheKey
+    - config.models.filter
+    - config.models.map
+    - config.models.map((m) => m.name).join
+    - config.runners.filter
+    - config.runners.map
+    - config.runners.map((r) => r.name).join
+    - console.log
+    - execSync
+    - generateHtmlReport
+    - getBinaryHash
+    - getCachedResult
+    - getMcpHarnessHash
+    - join
+    - loadAllScenarios
+    - loadCache
+    - loadConfig
+    - modelFilter.split
+    - new Map
+    - new Set
+    - pairs.filter
+    - pairs.map
+    - pairs.sort
+    - parseInt
+    - printResults
+    - process.argv.find
+    - process.argv.find((a) => a.startsWith("--model="))?.split
+    - process.argv.find((a) => a.startsWith("--run-count="))?.split
+    - process.argv.find((a) => a.startsWith("--runner="))?.split
+    - process.argv.find((a) => a.startsWith("--scenario="))?.split
+    - process.argv.includes
+    - results.push
+    - runScenario
+    - runnerFilter.split
+    - scenarioFilter.split
+    - scenarios.filter
+    - scoreResult
+    - storeCacheResult
+exports:
+- name: RunnerType
+  kind: type
+- name: ModelConfig
+  kind: type
+- name: RunnerConfig
+  kind: type
+- name: MatrixEntry
+  kind: type
+- name: SuiteConfig
+  kind: type
+- name: TestPair
+  kind: type
+- name: TestResultWithLog
+  kind: type
+- name: CacheInputs
+  kind: type
+- name: CacheEntry
+  kind: type
+- name: CacheIndex
+  kind: type
+- name: AgentResult
+  kind: type
+- name: ReportOptions
+  kind: type
+- name: sha256
+  kind: func
+- name: loadCache
+  kind: func
+- name: saveCache
+  kind: func
+- name: getBinaryHash
+  kind: func
+- name: getMcpHarnessHash
+  kind: func
+- name: computeCacheKey
+  kind: func
+- name: getCachedResult
+  kind: func
+- name: storeCacheResult
+  kind: func
+- name: clearCache
+  kind: func
+- name: generateGooseConfig
+  kind: func
+- name: runGooseAgent
+  kind: func
+- name: generateOpenCodeConfig
+  kind: func
+- name: runOpenCodeAgent
+  kind: func
+- name: generatePiModelsConfig
+  kind: func
+- name: runPiAgent
+  kind: func
+- name: runAgent
+  kind: func
+- name: loadScenario
+  kind: func
+- name: loadAllScenarios
+  kind: func
+- name: loadConfig
+  kind: func
+- name: setupWorkdir
+  kind: func
+- name: parseLogMetrics
+  kind: func
+- name: buildTestPairs
+  kind: func
+- name: scoreResult
+  kind: func
+- name: runScenario
+  kind: func
+- name: pairKey
+  kind: func
+- name: resultKey
+  kind: func
+- name: generateHtmlReport
+  kind: func
+- name: printResults
+  kind: func
+- name: main
+  kind: func
+- name: CACHE_DIR
+  kind: data
+- name: CACHE_INDEX_PATH
+  kind: data
+- name: CACHE_LOGS_DIR
+  kind: data
+- name: CACHE_VERSION
+  kind: data
+- name: PLATFORM_EXTENSIONS
+  kind: data
+- name: GOOSE_ROOT
+  kind: data
+- name: GOOSE_CONFIG_DIR
+  kind: data
+- name: OPENCODE_ROOT
+  kind: data
+- name: PI_CONFIG_DIR
+  kind: data
+- name: PI_USER_CONFIG
+  kind: data

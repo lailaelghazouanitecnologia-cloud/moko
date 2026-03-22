@@ -1,0 +1,491 @@
+## Roska File Descriptor — src/tui.tsx
+file: src/tui.tsx
+lines: 1192
+layer: logic
+imports:
+- sym: react.useState
+- sym: react.useEffect
+- sym: react.useCallback
+- sym: react.useRef
+- sym: ink.Box
+- sym: ink.Text
+- sym: ink.render
+- sym: ink.useApp
+- sym: ink.useInput
+- sym: ink.useStdout
+- sym: ink.measureElement
+- sym: ink.DOMElement
+  kind: typing
+- sym: ink-text-input.TextInput
+- sym: meow.meow
+- sym: node:child_process.spawn
+- sym: node:stream.Readable
+- sym: node:stream.Writable
+- sym: node:fs.readFileSync
+- sym: node:path.dirname
+- sym: node:path.join
+- sym: node:url.fileURLToPath
+- sym: '@agentclientprotocol/sdk.SessionNotification'
+  kind: typing
+- sym: '@agentclientprotocol/sdk.RequestPermissionRequest'
+  kind: typing
+- sym: '@agentclientprotocol/sdk.RequestPermissionResponse'
+  kind: typing
+- sym: '@agentclientprotocol/sdk.ToolCallContent'
+  kind: typing
+- sym: '@agentclientprotocol/sdk.ToolCallStatus'
+  kind: typing
+- sym: '@agentclientprotocol/sdk.ToolKind'
+  kind: typing
+- sym: '@agentclientprotocol/sdk.Stream'
+  kind: typing
+- sym: '@agentclientprotocol/sdk.ndJsonStream'
+- sym: '@block/goose-acp.GooseClient'
+- sym: ./markdown.js.renderMarkdown
+- sym: ./toolcall.js.buildToolCallCardLines
+- sym: ./toolcall.js.ToolCallCompact
+- sym: ./toolcall.js.findFeaturedToolCallId
+- sym: ./toolcall.js.ToolCallInfo
+  kind: typing
+- sym: ./colors.js.CRANBERRY
+- sym: ./colors.js.TEAL
+- sym: ./colors.js.GOLD
+- sym: ./colors.js.TEXT_PRIMARY
+- sym: ./colors.js.TEXT_SECONDARY
+- sym: ./colors.js.TEXT_DIM
+- sym: ./colors.js.RULE_COLOR
+data:
+- name: GOOSE_FRAMES
+  type: array
+  val: |-
+    [
+      [
+        "    ,_",
+        "   (o >",
+        "   //\\",
+        "   \\\\ \\",
+        "    \\\\_/",
+        "     |  |",
+        "     ^ ^",
+     ...
+- name: GREETING_MESSAGES
+  type: array
+  val: |-
+    [
+      "What would you like to work on?",
+      "Ready to build something amazing?",
+      "What would you like to explore?",
+      "Wh...
+- name: INITIAL_GREETING
+  type: any
+  val: GREETING_MESSAGES[Math.floor(Math.random() * GREETING_MESSAGES.length)]!
+- name: SPINNER_FRAMES
+  type: array
+  val: '["◐", "◓", "◑", "◒"]'
+- name: PERMISSION_LABELS
+  type: Record<string, string>
+  val: |-
+    {
+      allow_once: "Allow once",
+      allow_always: "Always allow",
+      reject_once: "Reject once",
+      reject_always: "Always rej...
+- name: PERMISSION_KEYS
+  type: Record<string, string>
+  val: |-
+    {
+      allow_once: "y",
+      allow_always: "a",
+      reject_once: "n",
+      reject_always: "N",
+    }
+- name: INDENT
+  type: number
+  val: '3'
+- name: CONTENT_INDENT
+  type: number
+  val: '5'
+- name: statusColor
+  type: any
+  val: 'status === "ready" ? TEAL : isErrorStatus(status) ? CRANBERRY : TEXT_DIM'
+- name: toolCallIds
+  type: any
+  val: turn.toolCallOrder
+- name: toolCalls
+  type: any
+  val: turn.toolCalls
+- name: featuredId
+  type: any
+  val: findFeaturedToolCallId(toolCallIds, toolCalls)
+- name: lines
+  type: React.ReactNode[]
+  val: '[]'
+- name: frame
+  type: any
+  val: GOOSE_FRAMES[animFrame % GOOSE_FRAMES.length]!
+- name: statusColor
+  type: any
+  val: 'status === "ready" ? TEAL : isErrorStatus(status) ? CRANBERRY : TEXT_DIM'
+- name: inputWidth
+  type: any
+  val: Math.min(56, width - 8)
+- name: '{ exit }'
+  type: any
+  val: useApp()
+- name: '{ stdout }'
+  type: any
+  val: useStdout()
+- name: termWidth
+  type: any
+  val: stdout?.columns ?? 80
+- name: termHeight
+  type: any
+  val: stdout?.rows ?? 24
+- name: '[turns, setTurns]'
+  type: any
+  val: useState<Turn[]>([])
+- name: '[input, setInput]'
+  type: any
+  val: useState("")
+- name: '[loading, setLoading]'
+  type: any
+  val: useState(true)
+- name: '[status, setStatus]'
+  type: any
+  val: useState("connecting…")
+- name: '[spinIdx, setSpinIdx]'
+  type: any
+  val: useState(0)
+- name: '[gooseFrame, setGooseFrame]'
+  type: any
+  val: useState(0)
+- name: '[bannerVisible, setBannerVisible]'
+  type: any
+  val: useState(true)
+- name: '[pendingPermission, setPendingPermission]'
+  type: any
+  val: useState<PendingPermission | null>(null)
+- name: '[permissionIdx, setPermissionIdx]'
+  type: any
+  val: useState(0)
+- name: '[queuedMessages, setQueuedMessages]'
+  type: any
+  val: useState<string[]>([])
+- name: '[viewTurnIdx, setViewTurnIdx]'
+  type: any
+  val: useState(-1)
+- name: '[expandedToolCall, setExpandedToolCall]'
+  type: any
+  val: useState<string | null>(null)
+- name: '[scrollOffset, setScrollOffset]'
+  type: any
+  val: useState(0)
+- name: clientRef
+  type: any
+  val: useRef<GooseClient | null>(null)
+- name: sessionIdRef
+  type: any
+  val: useRef<string | null>(null)
+- name: streamBuf
+  type: any
+  val: useRef("")
+- name: sentInitialPrompt
+  type: any
+  val: useRef(false)
+- name: queueRef
+  type: any
+  val: useRef<string[]>([])
+- name: isProcessingRef
+  type: any
+  val: useRef(false)
+- name: appendAgent
+  type: any
+  val: |-
+    useCallback((text: string) => {
+        setTurns((prev) => {
+          if (prev.length === 0) return prev;
+          const last = { ...
+- name: handleToolCall
+  type: any
+  val: |-
+    useCallback(
+        (tc: {
+          toolCallId: string;
+          title: string;
+          status?: ToolCallStatus;
+          kind?: ToolK...
+- name: handleToolCallUpdate
+  type: any
+  val: |-
+    useCallback(
+        (update: {
+          toolCallId: string;
+          title?: string | null;
+          status?: ToolCallStatus | null;...
+- name: addUserTurn
+  type: any
+  val: |-
+    useCallback((text: string) => {
+        setTurns((prev) => [
+          ...prev,
+          {
+            userText: text,
+            toolCall...
+- name: resolvePermission
+  type: any
+  val: |-
+    useCallback(
+        (option: { optionId: string } | "cancelled") => {
+          if (!pendingPermission) return;
+          const { r...
+- name: executePrompt
+  type: any
+  val: |-
+    useCallback(
+        async (text: string) => {
+          const client = clientRef.current;
+          const sid = sessionIdRef.curren...
+- name: processQueue
+  type: any
+  val: |-
+    useCallback(async () => {
+        if (isProcessingRef.current) return;
+        isProcessingRef.current = true;
+
+        while (queue...
+- name: sendPrompt
+  type: any
+  val: |-
+    useCallback(
+        async (text: string) => {
+          await executePrompt(text);
+          if (queueRef.current.length > 0) proce...
+- name: handleSubmit
+  type: any
+  val: |-
+    useCallback(
+        (value: string) => {
+          const trimmed = value.trim();
+          if (!trimmed) return;
+          setInput("")...
+- name: GUTTER
+  type: number
+  val: '2'
+- name: innerWidth
+  type: any
+  val: Math.max(termWidth - GUTTER * 2, 20)
+- name: effectiveTurnIdx
+  type: any
+  val: 'viewTurnIdx === -1 ? turns.length - 1 : viewTurnIdx'
+- name: currentTurn
+  type: any
+  val: turns[effectiveTurnIdx]
+- name: isViewingHistory
+  type: any
+  val: viewTurnIdx !== -1 && viewTurnIdx < turns.length - 1
+- name: isLatest
+  type: any
+  val: '!isViewingHistory'
+- name: emptyTurn
+  type: Turn
+  val: |-
+    {
+        userText: "",
+        toolCalls: new Map(),
+        toolCallOrder: [],
+        agentText: "",
+      }
+- name: bodyLines
+  type: any
+  val: |-
+    buildTurnBodyLines({
+        turn: currentTurn ?? emptyTurn,
+        width: innerWidth,
+        loading: isLatest && loading,
+        st...
+- name: allBodyLines
+  type: any
+  val: |-
+    isLatest
+        ? [
+            ...bodyLines,
+            ...queuedMessages.map((text, i) => (
+              <QueuedMessage key={`q-${i...
+types:
+- name: PendingPermission
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: options
+    type: 'Array<{ optionId: string; name: string; kind: string }>'
+  - name: resolve
+    type: '(response: RequestPermissionResponse) => void'
+  lines:
+  - 28
+  - 32
+- name: Turn
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: userText
+    type: string
+  - name: toolCalls
+    type: Map<string, ToolCallInfo>
+  - name: toolCallOrder
+    type: string[]
+  - name: agentText
+    type: string
+  lines:
+  - 34
+  - 39
+functions:
+- name: isErrorStatus
+  sig: 'isErrorStatus(status: string): boolean'
+  lines:
+  - 41
+  - 43
+  detail:
+    calls:
+    - status.startsWith
+- name: Rule
+  sig: 'Rule({ width }: { width: number })'
+  lines:
+  - 127
+  - 128
+  detail:
+    calls:
+    - Math.max
+    - '{RULE_COLOR}>{"─".repeat'
+- name: Spinner
+  sig: 'Spinner({ idx }: { idx: number })'
+  lines:
+  - 131
+  - 137
+  detail: {}
+exports:
+- name: PendingPermission
+  kind: type
+- name: Turn
+  kind: type
+- name: isErrorStatus
+  kind: func
+- name: Rule
+  kind: func
+- name: Spinner
+  kind: func
+- name: GOOSE_FRAMES
+  kind: data
+- name: GREETING_MESSAGES
+  kind: data
+- name: INITIAL_GREETING
+  kind: data
+- name: SPINNER_FRAMES
+  kind: data
+- name: PERMISSION_LABELS
+  kind: data
+- name: PERMISSION_KEYS
+  kind: data
+- name: INDENT
+  kind: data
+- name: CONTENT_INDENT
+  kind: data
+- name: statusColor
+  kind: data
+- name: toolCallIds
+  kind: data
+- name: toolCalls
+  kind: data
+- name: featuredId
+  kind: data
+- name: lines
+  kind: data
+- name: frame
+  kind: data
+- name: statusColor
+  kind: data
+- name: inputWidth
+  kind: data
+- name: '{ exit }'
+  kind: data
+- name: '{ stdout }'
+  kind: data
+- name: termWidth
+  kind: data
+- name: termHeight
+  kind: data
+- name: '[turns, setTurns]'
+  kind: data
+- name: '[input, setInput]'
+  kind: data
+- name: '[loading, setLoading]'
+  kind: data
+- name: '[status, setStatus]'
+  kind: data
+- name: '[spinIdx, setSpinIdx]'
+  kind: data
+- name: '[gooseFrame, setGooseFrame]'
+  kind: data
+- name: '[bannerVisible, setBannerVisible]'
+  kind: data
+- name: '[pendingPermission, setPendingPermission]'
+  kind: data
+- name: '[permissionIdx, setPermissionIdx]'
+  kind: data
+- name: '[queuedMessages, setQueuedMessages]'
+  kind: data
+- name: '[viewTurnIdx, setViewTurnIdx]'
+  kind: data
+- name: '[expandedToolCall, setExpandedToolCall]'
+  kind: data
+- name: '[scrollOffset, setScrollOffset]'
+  kind: data
+- name: clientRef
+  kind: data
+- name: sessionIdRef
+  kind: data
+- name: streamBuf
+  kind: data
+- name: sentInitialPrompt
+  kind: data
+- name: queueRef
+  kind: data
+- name: isProcessingRef
+  kind: data
+- name: appendAgent
+  kind: data
+- name: handleToolCall
+  kind: data
+- name: handleToolCallUpdate
+  kind: data
+- name: addUserTurn
+  kind: data
+- name: resolvePermission
+  kind: data
+- name: executePrompt
+  kind: data
+- name: processQueue
+  kind: data
+- name: sendPrompt
+  kind: data
+- name: handleSubmit
+  kind: data
+- name: GUTTER
+  kind: data
+- name: innerWidth
+  kind: data
+- name: effectiveTurnIdx
+  kind: data
+- name: currentTurn
+  kind: data
+- name: isViewingHistory
+  kind: data
+- name: isLatest
+  kind: data
+- name: emptyTurn
+  kind: data
+- name: bodyLines
+  kind: data
+- name: allBodyLines
+  kind: data

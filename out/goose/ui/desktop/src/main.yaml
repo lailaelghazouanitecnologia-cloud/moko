@@ -1,0 +1,732 @@
+## Roska File Descriptor — src/main.ts
+file: src/main.ts
+lines: 2502
+layer: logic
+imports:
+- sym: electron.OpenDialogOptions
+  kind: typing
+- sym: electron.OpenDialogReturnValue
+  kind: typing
+- sym: electron.app
+- sym: electron.App
+- sym: electron.BrowserWindow
+- sym: electron.dialog
+- sym: electron.globalShortcut
+- sym: electron.ipcMain
+- sym: electron.Menu
+- sym: electron.MenuItem
+- sym: electron.net
+- sym: electron.Notification
+- sym: electron.powerSaveBlocker
+- sym: electron.screen
+- sym: electron.session
+- sym: electron.shell
+- sym: electron.Tray
+- sym: node:url.pathToFileURL
+- sym: node:url.format as formatUrl
+- sym: node:url.URLSearchParams
+- sym: node:buffer.Buffer
+- sym: node:fs/promises.fs
+- sym: node:fs.fsSync
+- sym: electron-squirrel-startup.started
+- sym: node:path.path
+- sym: node:os.os
+- sym: child_process.spawn
+- sym: ./goosed.checkServerStatus
+- sym: ./goosed.startGoosed
+- sym: ./api/client.createClient
+- sym: ./api/client.createConfig
+- sym: ./utils/pathUtils.expandTilde
+- sym: ./utils/logger.log
+- sym: ./utils/winShims.ensureWinShims
+- sym: ./utils/recentDirs.addRecentDir
+- sym: ./utils/recentDirs.loadRecentDirs
+- sym: ./utils/conversionUtils.formatAppName
+- sym: ./utils/conversionUtils.errorMessage
+- sym: ./utils/conversionUtils.formatErrorForLogging
+- sym: ./utils/settings.Settings
+  kind: typing
+- sym: ./utils/settings.SettingKey
+  kind: typing
+- sym: ./utils/settings.defaultSettings
+- sym: ./utils/settings.getKeyboardShortcuts
+- sym: crypto.crypto
+- sym: yaml.yaml
+- sym: electron-window-state.windowStateKeeper
+- sym: ./utils/autoUpdater.getUpdateAvailable
+- sym: ./utils/autoUpdater.registerUpdateIpcHandlers
+- sym: ./utils/autoUpdater.setTrayRef
+- sym: ./utils/autoUpdater.setupAutoUpdater
+- sym: ./utils/autoUpdater.updateTrayMenu
+- sym: ./updates.UPDATES_ENABLED
+- sym: ./api/client.Client
+- sym: ./api.GooseApp
+- sym: electron-devtools-installer.REACT_DEVELOPER_TOOLS
+- sym: ./utils/urlSecurity.BLOCKED_PROTOCOLS
+- sym: ./utils/urlSecurity.WEB_PROTOCOLS
+- sym: ./utils/csp.buildCSP
+data:
+- name: SETTINGS_FILE
+  type: any
+  val: path.join(app.getPath('userData'), 'settings.json')
+- name: pinnedCertFingerprint
+  type: string | null
+  val: 'null'
+- name: gotTheLock
+  type: boolean
+  val: 'true'
+- name: firstOpenWindow
+  type: BrowserWindow
+- name: pendingDeepLink
+  type: string | null
+  val: 'null'
+- name: openUrlHandledLaunch
+  type: boolean
+  val: 'false'
+- name: windowDeeplinkURL
+  type: string | null
+  val: 'null'
+- name: '{ defaultProvider, defaultModel, predefinedModels, baseUrlShare, version }'
+  type: any
+  val: getBundledConfig()
+- name: GENERATED_SECRET
+  type: any
+  val: crypto.randomBytes(32).toString('hex')
+- name: appConfig
+  type: object
+  val: |-
+    {
+      GOOSE_DEFAULT_PROVIDER: defaultProvider,
+      GOOSE_DEFAULT_MODEL: defaultModel,
+      GOOSE_PREDEFINED_MODELS: predefinedM...
+- name: windowMap
+  type: any
+  val: new Map<number, BrowserWindow>()
+- name: goosedClients
+  type: any
+  val: new Map<number, Client>()
+- name: appWindows
+  type: any
+  val: new Map<string, BrowserWindow>()
+- name: windowPowerSaveBlockers
+  type: any
+  val: new Map<number, number>()
+- name: pendingInitialMessages
+  type: any
+  val: new Map<number, string>()
+- name: activeLauncherWindow
+  type: BrowserWindow | null
+  val: 'null'
+- name: tray
+  type: Tray | null
+  val: 'null'
+- name: validSettingKeys
+  type: Set<string>
+  val: |-
+    new Set([
+      'showMenuBarIcon',
+      'showDockIcon',
+      'enableWakelock',
+      'spellcheckEnabled',
+      'externalGoosed',
+      'globa...
+types:
+- name: BundledConfig
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: defaultProvider
+    type: string
+  - name: defaultModel
+    type: string
+  - name: predefinedModels
+    type: string
+  - name: baseUrlShare
+    type: string
+  - name: version
+    type: string
+  lines:
+  - 481
+  - 487
+- name: CreateChatOptions
+  kind: trait
+  ctx: windowId -> initialMessage
+  decorators:
+  - interface
+  fields:
+  - name: initialMessage
+    type: string
+  - name: dir
+    type: string
+  - name: resumeSessionId
+    type: string
+  - name: viewType
+    type: string
+  - name: recipeDeeplink
+    type: string
+  - name: recipeId
+    type: string
+  - name: scheduledJobId
+    type: string
+  - name: recipeParameters
+    type: Record<string, string>
+  lines:
+  - 550
+  - 559
+- name: RecipeDeeplinkData
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: config
+    type: string
+  - name: parameters
+    type: Record<string, string>
+  lines:
+  - 1173
+  - 1176
+functions:
+- name: shouldSetupUpdater
+  sig: 'shouldSetupUpdater(): boolean'
+  lines:
+  - 56
+  - 59
+- name: getSettings
+  sig: 'getSettings(): Settings'
+  lines:
+  - 64
+  - 92
+  detail:
+    calls:
+    - JSON.parse
+    - console.error
+    - fsSync.existsSync
+    - fsSync.readFileSync
+- name: updateSettings
+  sig: 'updateSettings(modifier: (settings: Settings) => void): void'
+  lines:
+  - 94
+  - 98
+  detail:
+    calls:
+    - JSON.stringify
+    - fsSync.writeFileSync
+    - getSettings
+    - modifier
+- name: configureProxy
+  sig: configureProxy()
+  is_async: true
+  lines:
+  - 100
+  - 115
+  detail:
+    calls:
+    - console.log
+    - session.defaultSession.setProxy
+- name: isLocalhost
+  sig: 'isLocalhost(hostname: string): boolean'
+  lines:
+  - 126
+  - 128
+- name: normalizeFingerprint
+  sig: 'normalizeFingerprint(fp: string): string'
+  lines:
+  - 130
+  - 140
+  detail:
+    calls:
+    - Array.from
+    - |-
+      Array.from(buf)
+            .map
+    - |-
+      Array.from(buf)
+            .map((b) => b.toString(16).padStart(2, '0'))
+            .join
+    - |-
+      Array.from(buf)
+            .map((b) => b.toString(16).padStart(2, '0'))
+            .join(':')
+            .toUpperCa...
+    - Buffer.from
+    - fp.slice
+    - fp.startsWith
+    - fp.toUpperCase
+- name: handleProtocolUrl
+  sig: 'handleProtocolUrl(url: string)'
+  is_async: true
+  lines:
+  - 269
+  - 310
+  detail:
+    calls:
+    - BrowserWindow.getAllWindows
+    - createChat
+    - firstOpenWindow.focus
+    - firstOpenWindow.isMinimized
+    - firstOpenWindow.restore
+    - loadRecentDirs
+    - new URL
+    - processProtocolUrl
+    - webContents.isLoadingMainFrame
+    - webContents.once
+- name: processProtocolUrl
+  sig: 'processProtocolUrl(parsedUrl: URL, window: BrowserWindow)'
+  is_async: true
+  lines:
+  - 312
+  - 333
+  detail:
+    calls:
+    - createChat
+    - loadRecentDirs
+    - parseRecipeDeeplink
+    - parsedUrl.searchParams.get
+    - parsedUrl.toString
+    - window.webContents.send
+- name: handleFileOpen
+  sig: 'handleFileOpen(filePath: string)'
+  is_async: true
+  lines:
+  - 419
+  - 454
+  detail:
+    calls:
+    - addRecentDir
+    - console.error
+    - createChat
+    - fsSync.lstatSync
+    - new Notification
+    - |-
+      new Notification({
+            title: 'Goose',
+            body: `Could not open directory: ${path.basename(file...
+    - newWindow.focus
+    - newWindow.moveTop
+    - newWindow.show
+    - path.basename
+    - path.dirname
+    - stats.isFile
+- name: getAppUrl
+  sig: 'getAppUrl(): URL'
+  lines:
+  - 459
+  - 463
+  detail:
+    calls:
+    - new URL
+    - path.join
+    - pathToFileURL
+- name: parseArgs
+  sig: parseArgs()
+  lines:
+  - 466
+  - 479
+  detail:
+    calls:
+    - process.argv.slice
+- name: getBundledConfig
+  sig: 'getBundledConfig(): BundledConfig'
+  lines:
+  - 489
+  - 500
+  detail: {}
+- name: resolveGoosePathRoot
+  sig: 'resolveGoosePathRoot(): string | undefined'
+  lines:
+  - 505
+  - 511
+  detail:
+    calls:
+    - expandTilde
+    - process.env.GOOSE_PATH_ROOT?.trim
+- name: getServerSecret
+  sig: 'getServerSecret(settings: Settings): string'
+  lines:
+  - 515
+  - 529
+  detail:
+    calls:
+    - new Error
+- name: createChat
+  sig: 'createChat(app: App, options: CreateChatOptions = {})'
+  is_async: true
+  lines:
+  - 561
+  - 915
+  detail:
+    calls:
+    - BLOCKED_PROTOCOLS.includes
+    - JSON.stringify
+    - app.on
+    - app.quit
+    - checkServerStatus
+    - createChat
+    - createClient
+    - createConfig
+    - dialog.showMessageBoxSync
+    - errorLog.join
+    - event.preventDefault
+    - formatUrl
+    - getAppUrl
+    - getServerSecret
+    - getSettings
+    - goosedClients.set
+    - installExtension
+    - |-
+      installExtension(REACT_DEVELOPER_TOOLS, {
+            loadExtensionOptions: { allowFileAccess: true },
+         ...
+    - log.info
+    - mainWindow.destroy
+    - mainWindow.loadURL
+    - mainWindow.on
+    - mainWindow.webContents.on
+    - mainWindow.webContents.send
+    - mainWindow.webContents.session.setSpellCheckerLanguages
+    - mainWindow.webContents.setWindowOpenHandler
+    - mainWindowState.manage
+    - new BrowserWindow
+    - new URL
+    - new URLSearchParams
+    - os.homedir
+    - path.join
+    - pendingInitialMessages.set
+    - searchParams.set
+    - searchParams.toString
+    - shell.openExternal
+    - startGoosed
+    - stopErrorLogCollection
+    - updateSettings
+    - windowMap.set
+    - windowStateKeeper
+- name: createLauncher
+  sig: createLauncher()
+  lines:
+  - 919
+  - 984
+  detail:
+    calls:
+    - JSON.stringify
+    - Math.round
+    - activeLauncherWindow.focus
+    - activeLauncherWindow.isDestroyed
+    - formatUrl
+    - getAppUrl
+    - launcherWindow.getBounds
+    - launcherWindow.loadURL
+    - launcherWindow.on
+    - launcherWindow.setPosition
+    - launcherWindow.webContents.on
+    - new BrowserWindow
+    - path.join
+    - screen.getPrimaryDisplay
+- name: destroyTray
+  sig: destroyTray()
+  lines:
+  - 989
+  - 994
+  detail:
+    calls:
+    - tray.destroy
+- name: disableTray
+  sig: disableTray()
+  lines:
+  - 996
+  - 1000
+  detail:
+    calls:
+    - updateSettings
+- name: createTray
+  sig: createTray()
+  lines:
+  - 1002
+  - 1034
+  detail:
+    calls:
+    - console.error
+    - console.warn
+    - destroyTray
+    - disableTray
+    - getUpdateAvailable
+    - new Tray
+    - path.join
+    - possiblePaths.find
+    - process.cwd
+    - setTrayRef
+    - tray.on
+    - updateTrayMenu
+- name: showWindow
+  sig: showWindow()
+  is_async: true
+  lines:
+  - 1036
+  - 1069
+  detail:
+    calls:
+    - BrowserWindow.getAllWindows
+    - createChat
+    - loadRecentDirs
+    - log.info
+    - windows.forEach
+- name: buildRecentFilesMenu
+  sig: buildRecentFilesMenu()
+  lines:
+  - 1071
+  - 1079
+  detail:
+    calls:
+    - loadRecentDirs
+    - recentDirs.map
+- name: openDirectoryDialog
+  sig: 'openDirectoryDialog(): Promise<OpenDialogReturnValue>'
+  is_async: true
+  lines:
+  - 1081
+  - 1171
+  detail:
+    calls:
+    - BrowserWindow.getFocusedWindow
+    - addRecentDir
+    - console.warn
+    - createChat
+    - currentWindow.webContents.executeJavaScript
+    - dialog.showOpenDialog
+    - fsSync.lstatSync
+    - os.homedir
+    - parseRecipeDeeplink
+    - path.dirname
+    - stats.isDirectory
+    - stats.isFile
+    - stats.isSymbolicLink
+- name: parseRecipeDeeplink
+  sig: 'parseRecipeDeeplink(url: string): RecipeDeeplinkData | undefined'
+  lines:
+  - 1178
+  - 1224
+  detail:
+    calls:
+    - Object.keys
+    - console.error
+    - decodeURIComponent
+    - errorMessage
+    - new URL
+    - parsedUrl.searchParams.get
+    - search.match
+    - search.matchAll
+    - url.includes
+- name: handleFatalError
+  sig: 'handleFatalError(error: Error)'
+  lines:
+  - 1227
+  - 1232
+  detail:
+    calls:
+    - BrowserWindow.getAllWindows
+    - windows.forEach
+- name: createNewWindow
+  sig: 'createNewWindow(app: App, dir?: string | null)'
+  is_async: true
+  lines:
+  - 1718
+  - 1722
+  detail:
+    calls:
+    - createChat
+    - loadRecentDirs
+- name: focusWindow
+  sig: focusWindow()
+  lines:
+  - 1724
+  - 1734
+  detail:
+    calls:
+    - BrowserWindow.getAllWindows
+    - createNewWindow
+    - windows.forEach
+    - windows[windows.length - 1].webContents.send
+- name: registerGlobalShortcuts
+  sig: registerGlobalShortcuts()
+  lines:
+  - 1736
+  - 1761
+  detail:
+    calls:
+    - console.error
+    - getKeyboardShortcuts
+    - getSettings
+    - globalShortcut.register
+    - globalShortcut.unregisterAll
+- name: appMain
+  sig: appMain()
+  is_async: true
+  lines:
+  - 1763
+  - 2437
+  detail:
+    calls:
+    - BrowserWindow.getFocusedWindow
+    - Menu.buildFromTemplate
+    - Menu.getApplicationMenu
+    - Menu.setApplicationMenu
+    - aboutGooseMenuItem.submenu.append
+    - app.dock?.hide
+    - app.dock?.setMenu
+    - app.getVersion
+    - app.on
+    - appMenu.submenu.insert
+    - buildRecentFilesMenu
+    - configureProxy
+    - console.log
+    - createLauncher
+    - createNewWindow
+    - createTray
+    - editMenu.submenu.insert
+    - editMenu.submenu.items.findIndex
+    - ensureWinShims
+    - fileMenu.submenu.append
+    - fileMenu.submenu.insert
+    - focusWindow
+    - focusedWindow.setAlwaysOnTop
+    - focusedWindow.webContents.send
+    - getKeyboardShortcuts
+    - getSettings
+    - helpMenu.submenu.append
+    - ipcMain.emit
+    - ipcMain.handle
+    - ipcMain.on
+    - log.info
+    - menu.items.find
+    - menu.items.findIndex
+    - menu.items.push
+    - menu.items.splice
+    - menu?.items.find
+    - new MenuItem
+    - parseArgs
+    - registerGlobalShortcuts
+    - registerUpdateIpcHandlers
+    - session.defaultSession.setPermissionRequestHandler
+    - session.defaultSession.webRequest.onBeforeSendHeaders
+    - session.defaultSession.webRequest.onHeadersReceived
+    - setTimeout
+    - updateSettings
+    - viewMenu.submenu.append
+    - windowMenu.submenu.append
+- name: getAllowList
+  sig: 'getAllowList(): Promise<string[]>'
+  is_async: true
+  lines:
+  - 2448
+  - 2476
+  detail:
+    calls:
+    - Array.isArray
+    - console.error
+    - console.log
+    - fetch
+    - new Error
+    - parsedYaml.extensions.map
+    - response.text
+    - yaml.parse
+exports:
+- name: BundledConfig
+  kind: type
+- name: CreateChatOptions
+  kind: type
+- name: RecipeDeeplinkData
+  kind: type
+- name: shouldSetupUpdater
+  kind: func
+- name: getSettings
+  kind: func
+- name: updateSettings
+  kind: func
+- name: configureProxy
+  kind: func
+- name: isLocalhost
+  kind: func
+- name: normalizeFingerprint
+  kind: func
+- name: handleProtocolUrl
+  kind: func
+- name: processProtocolUrl
+  kind: func
+- name: handleFileOpen
+  kind: func
+- name: getAppUrl
+  kind: func
+- name: parseArgs
+  kind: func
+- name: getBundledConfig
+  kind: func
+- name: resolveGoosePathRoot
+  kind: func
+- name: getServerSecret
+  kind: func
+- name: createChat
+  kind: func
+- name: createLauncher
+  kind: func
+- name: destroyTray
+  kind: func
+- name: disableTray
+  kind: func
+- name: createTray
+  kind: func
+- name: showWindow
+  kind: func
+- name: buildRecentFilesMenu
+  kind: func
+- name: openDirectoryDialog
+  kind: func
+- name: parseRecipeDeeplink
+  kind: func
+- name: handleFatalError
+  kind: func
+- name: createNewWindow
+  kind: func
+- name: focusWindow
+  kind: func
+- name: registerGlobalShortcuts
+  kind: func
+- name: appMain
+  kind: func
+- name: getAllowList
+  kind: func
+- name: SETTINGS_FILE
+  kind: data
+- name: pinnedCertFingerprint
+  kind: data
+- name: gotTheLock
+  kind: data
+- name: firstOpenWindow
+  kind: data
+- name: pendingDeepLink
+  kind: data
+- name: openUrlHandledLaunch
+  kind: data
+- name: windowDeeplinkURL
+  kind: data
+- name: '{ defaultProvider, defaultModel, predefinedModels, baseUrlShare, version }'
+  kind: data
+- name: GENERATED_SECRET
+  kind: data
+- name: appConfig
+  kind: data
+- name: windowMap
+  kind: data
+- name: goosedClients
+  kind: data
+- name: appWindows
+  kind: data
+- name: windowPowerSaveBlockers
+  kind: data
+- name: pendingInitialMessages
+  kind: data
+- name: activeLauncherWindow
+  kind: data
+- name: tray
+  kind: data
+- name: validSettingKeys
+  kind: data
