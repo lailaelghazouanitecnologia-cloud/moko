@@ -1,0 +1,203 @@
+## Roska File Descriptor — exporters/cloud.ts
+file: exporters/cloud.ts
+lines: 297
+imports:
+- sym: '@mastra/core/error.ErrorCategory'
+- sym: '@mastra/core/error.ErrorDomain'
+- sym: '@mastra/core/error.MastraError'
+- sym: '@mastra/core/logger.LogLevel'
+- sym: '@mastra/core/observability.TracingEventType'
+- sym: '@mastra/core/observability.TracingEvent'
+  kind: typing
+- sym: '@mastra/core/observability.AnyExportedSpan'
+  kind: typing
+- sym: '@mastra/core/utils.fetchWithRetry'
+- sym: ./base.BaseExporter
+- sym: ./base.BaseExporterConfig
+  kind: typing
+types:
+- name: CloudExporterConfig
+  kind: trait
+  bases:
+  - BaseExporterConfig
+  decorators:
+  - interface
+  fields:
+  - name: maxBatchSize
+    type: number
+  - name: maxBatchWaitMs
+    type: number
+  - name: maxRetries
+    type: number
+  - name: accessToken
+    type: string
+  - name: endpoint
+    type: string
+  lines:
+  - 9
+  - 17
+- name: MastraCloudBuffer
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: spans
+    type: MastraCloudSpanRecord[]
+  - name: firstEventTime
+    type: Date
+  - name: totalSize
+    type: number
+  lines:
+  - 19
+  - 23
+- name: MastraCloudSpanRecord
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: traceId
+    type: string
+  - name: spanId
+    type: string
+  - name: parentSpanId
+    type: string | null
+  - name: spanType
+    type: string
+  - name: attributes
+    type: Record<string, any> | null
+  - name: metadata
+    type: Record<string, any> | null
+  - name: requestContext
+    type: Record<string, any> | null
+  - name: startedAt
+    type: Date
+  - name: endedAt
+    type: Date | null
+  - name: input
+    type: any
+  - name: output
+    type: any
+  - name: error
+    type: any
+  - name: isEvent
+    type: boolean
+  - name: createdAt
+    type: Date
+  - name: updatedAt
+    type: Date | null
+  lines:
+  - 25
+  - 42
+- name: ResolvedCloudConfig
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 45
+  - 48
+- name: CloudExporter
+  kind: struct
+  ctx: Uploads spans to cloud API using fetchWithRetry for all retry logic
+  bases:
+  - BaseExporter
+  fields:
+  - name: name
+    type: any
+    default: '''mastra-cloud-observability-exporter'''
+  - name: cloudConfig
+    type: ResolvedCloudConfig
+  - name: buffer
+    type: MastraCloudBuffer
+  - name: flushTimer
+    type: NodeJS.Timeout | null
+    default: 'null'
+  methods:
+  - name: constructor
+    sig: 'constructor(config: CloudExporterConfig = {})'
+    lines:
+    - 57
+    - 82
+    detail:
+      calls:
+      - super
+      - this.setDisabled
+  - name: _exportTracingEvent
+    sig: '_exportTracingEvent(event: TracingEvent): Promise<void>'
+    is_async: true
+    vis: protected
+    lines:
+    - 84
+    - 101
+    detail:
+      calls:
+      - this.addToBuffer
+      - this.flush
+      - this.flush().catch
+      - this.scheduleFlush
+      - this.shouldFlush
+  - name: flushBuffer
+    sig: 'flushBuffer(): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 174
+    - 218
+    detail:
+      calls:
+      - Date.now
+      - clearTimeout
+      - new MastraError
+      - this.batchUpload
+      - this.logger.debug
+      - this.logger.error
+      - this.logger.trackException
+      - this.resetBuffer
+  - name: batchUpload
+    sig: 'batchUpload(spans: MastraCloudSpanRecord[]): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 223
+    - 236
+    detail:
+      calls:
+      - JSON.stringify
+      - fetchWithRetry
+  - name: flush
+    sig: 'flush(): Promise<void>'
+    is_async: true
+    lines:
+    - 249
+    - 261
+    detail:
+      calls:
+      - this.flushBuffer
+      - this.logger.debug
+  - name: shutdown
+    sig: 'shutdown(): Promise<void>'
+    is_async: true
+    lines:
+    - 263
+    - 296
+    detail:
+      calls:
+      - clearTimeout
+      - new MastraError
+      - this.flush
+      - this.logger.error
+      - this.logger.info
+      - this.logger.trackException
+  lines:
+  - 50
+  - 297
+exports:
+- name: CloudExporterConfig
+  kind: type
+- name: MastraCloudBuffer
+  kind: type
+- name: MastraCloudSpanRecord
+  kind: type
+- name: ResolvedCloudConfig
+  kind: type
+- name: CloudExporter
+  kind: type

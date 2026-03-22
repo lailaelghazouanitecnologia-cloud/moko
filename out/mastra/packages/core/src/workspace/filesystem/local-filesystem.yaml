@@ -1,0 +1,494 @@
+## Roska File Descriptor — filesystem/local-filesystem.ts
+file: filesystem/local-filesystem.ts
+lines: 766
+purpose: Local Filesystem Provider A filesystem implementation backed by a folder on the local disk. This is the default filesystem for development and local agents.
+imports:
+- sym: node:fs.constants as fsConstants
+- sym: node:fs/promises.fs
+- sym: node:path.nodePath
+- sym: ../../request-context.RequestContext
+  kind: typing
+- sym: ../errors.FileNotFoundError
+- sym: ../errors.DirectoryNotFoundError
+- sym: ../errors.FileExistsError
+- sym: ../errors.IsDirectoryError
+- sym: ../errors.NotDirectoryError
+- sym: ../errors.DirectoryNotEmptyError
+- sym: ../errors.PermissionError
+- sym: ../errors.StaleFileError
+- sym: ../errors.WorkspaceReadOnlyError
+- sym: ../lifecycle.ProviderStatus
+  kind: typing
+- sym: ../types.InstructionsOption
+  kind: typing
+- sym: ../utils.resolveInstructions
+- sym: ./filesystem.FilesystemInfo
+  kind: typing
+- sym: ./filesystem.FileContent
+  kind: typing
+- sym: ./filesystem.FileStat
+  kind: typing
+- sym: ./filesystem.FileEntry
+  kind: typing
+- sym: ./filesystem.ReadOptions
+  kind: typing
+- sym: ./filesystem.WriteOptions
+  kind: typing
+- sym: ./filesystem.ListOptions
+  kind: typing
+- sym: ./filesystem.RemoveOptions
+  kind: typing
+- sym: ./filesystem.CopyOptions
+  kind: typing
+- sym: ./fs-utils.expandTilde
+- sym: ./fs-utils.fsExists
+- sym: ./fs-utils.fsStat
+- sym: ./fs-utils.isEnoentError
+- sym: ./fs-utils.isEexistError
+- sym: ./fs-utils.resolveToBasePath
+- sym: ./mastra-filesystem.MastraFilesystem
+- sym: ./mastra-filesystem.MastraFilesystemOptions
+  kind: typing
+- sym: ./mount.FilesystemMountConfig
+  kind: typing
+types:
+- name: LocalFilesystemOptions
+  kind: trait
+  bases:
+  - MastraFilesystemOptions
+  decorators:
+  - interface
+  fields:
+  - name: id
+    type: string
+  - name: basePath
+    type: string
+  - name: contained
+    type: boolean
+  - name: readOnly
+    type: boolean
+  - name: allowedPaths
+    type: string[]
+  - name: instructions
+    type: InstructionsOption
+  lines:
+  - 45
+  - 98
+- name: LocalMountConfig
+  kind: trait
+  bases:
+  - FilesystemMountConfig
+  decorators:
+  - interface
+  fields:
+  - name: type
+    type: '''local'''
+  - name: basePath
+    type: string
+  lines:
+  - 111
+  - 114
+- name: LocalFilesystem
+  kind: struct
+  ctx: The absolute base path on disk where files are stored. Useful for understanding how workspace paths map to disk paths.
+  bases:
+  - MastraFilesystem
+  fields:
+  - name: id
+    type: string
+  - name: name
+    type: any
+    default: '''LocalFilesystem'''
+  - name: provider
+    type: any
+    default: '''local'''
+  - name: readOnly
+    type: boolean
+  - name: status
+    type: ProviderStatus
+    default: '''pending'''
+  - name: _basePath
+    type: string
+  - name: _contained
+    type: boolean
+  - name: _allowedPaths
+    type: string[]
+  - name: _instructionsOverride
+    type: InstructionsOption
+  methods:
+  - name: basePath
+    sig: 'basePath(): string'
+    lines:
+    - 151
+    - 153
+    detail: {}
+  - name: contained
+    sig: 'contained(): boolean'
+    lines:
+    - 166
+    - 168
+    detail: {}
+  - name: allowedPaths
+    sig: 'allowedPaths(): readonly string[]'
+    lines:
+    - 174
+    - 176
+    detail: {}
+  - name: setAllowedPaths
+    sig: 'setAllowedPaths(pathsOrUpdater: string[] | ((current: readonly string[]) => string[])): void'
+    lines:
+    - 191
+    - 194
+    detail:
+      calls:
+      - newPaths.map
+      - pathsOrUpdater
+  - name: constructor
+    sig: 'constructor(options: LocalFilesystemOptions)'
+    lines:
+    - 196
+    - 204
+    detail:
+      calls:
+      - (options.allowedPaths ?? []).map
+      - expandTilde
+      - nodePath.resolve
+      - super
+      - this.generateId
+  - name: getMountConfig
+    sig: 'getMountConfig(): LocalMountConfig'
+    lines:
+    - 210
+    - 212
+    detail: {}
+  - name: generateId
+    sig: 'generateId(): string'
+    vis: private
+    lines:
+    - 214
+    - 216
+    detail:
+      calls:
+      - Date.now
+      - Date.now().toString
+      - Math.random
+      - Math.random().toString
+      - Math.random().toString(36).slice
+  - name: resolveAbsolutePath
+    sig: 'resolveAbsolutePath(inputPath: string): string | undefined'
+    lines:
+    - 252
+    - 259
+    detail:
+      calls:
+      - this.resolvePath
+  - name: assertPathContained
+    sig: 'assertPathContained(absolutePath: string): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 275
+    - 307
+    detail:
+      calls:
+      - fs.realpath
+      - isEnoentError
+      - new PermissionError
+      - rootReals.push
+      - rootReals.some
+  - name: readFile
+    sig: 'readFile(inputPath: string, options?: ReadOptions): Promise<string | Buffer>'
+    is_async: true
+    lines:
+    - 309
+    - 332
+    detail:
+      calls:
+      - fs.readFile
+      - fs.stat
+      - isEnoentError
+      - new FileNotFoundError
+      - new IsDirectoryError
+      - stats.isDirectory
+      - this.assertPathContained
+      - this.ensureReady
+      - this.logger.debug
+      - this.resolvePath
+  - name: writeFile
+    sig: 'writeFile(inputPath: string, content: FileContent, options?: WriteOptions): Promise<void>'
+    is_async: true
+    lines:
+    - 334
+    - 391
+    detail:
+      calls:
+      - Buffer.isBuffer
+      - currentStat.mtime.getTime
+      - fs.mkdir
+      - fs.stat
+      - fs.writeFile
+      - isEexistError
+      - isEnoentError
+      - new DirectoryNotFoundError
+      - new FileExistsError
+      - new NotDirectoryError
+      - new StaleFileError
+      - nodePath.dirname
+      - options.expectedMtime.getTime
+      - stat.isDirectory
+      - this.assertPathContained
+      - this.assertWritable
+      - this.ensureReady
+      - this.logger.debug
+      - this.resolvePath
+      - this.toBuffer
+  - name: appendFile
+    sig: 'appendFile(inputPath: string, content: FileContent): Promise<void>'
+    is_async: true
+    lines:
+    - 393
+    - 403
+    detail:
+      calls:
+      - Buffer.isBuffer
+      - fs.appendFile
+      - fs.mkdir
+      - nodePath.dirname
+      - this.assertPathContained
+      - this.assertWritable
+      - this.ensureReady
+      - this.logger.debug
+      - this.resolvePath
+      - this.toBuffer
+  - name: deleteFile
+    sig: 'deleteFile(inputPath: string, options?: RemoveOptions): Promise<void>'
+    is_async: true
+    lines:
+    - 405
+    - 428
+    detail:
+      calls:
+      - fs.stat
+      - fs.unlink
+      - isEnoentError
+      - new FileNotFoundError
+      - new IsDirectoryError
+      - stats.isDirectory
+      - this.assertPathContained
+      - this.assertWritable
+      - this.ensureReady
+      - this.logger.debug
+      - this.resolvePath
+  - name: copyFile
+    sig: 'copyFile(src: string, dest: string, options?: CopyOptions): Promise<void>'
+    is_async: true
+    lines:
+    - 430
+    - 466
+    detail:
+      calls:
+      - fs.copyFile
+      - fs.mkdir
+      - fs.stat
+      - isEexistError
+      - isEnoentError
+      - new FileExistsError
+      - new FileNotFoundError
+      - new IsDirectoryError
+      - nodePath.dirname
+      - stats.isDirectory
+      - this.assertPathContained
+      - this.assertWritable
+      - this.copyDirectory
+      - this.ensureReady
+      - this.logger.debug
+      - this.resolvePath
+  - name: copyDirectory
+    sig: 'copyDirectory(src: string, dest: string, options?: CopyOptions): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 468
+    - 497
+    detail:
+      calls:
+      - entry.isDirectory
+      - fs.copyFile
+      - fs.mkdir
+      - fs.readdir
+      - isEexistError
+      - nodePath.join
+      - this.assertPathContained
+      - this.copyDirectory
+      - this.ensureReady
+  - name: moveFile
+    sig: 'moveFile(src: string, dest: string, options?: CopyOptions): Promise<void>'
+    is_async: true
+    lines:
+    - 499
+    - 537
+    detail:
+      calls:
+      - fs.mkdir
+      - fs.rename
+      - fs.rm
+      - isEnoentError
+      - new FileNotFoundError
+      - nodePath.dirname
+      - this.assertPathContained
+      - this.assertWritable
+      - this.copyFile
+      - this.ensureReady
+      - this.logger.debug
+      - this.resolvePath
+  - name: mkdir
+    sig: 'mkdir(inputPath: string, options?: { recursive?: boolean }): Promise<void>'
+    is_async: true
+    lines:
+    - 539
+    - 562
+    detail:
+      calls:
+      - fs.mkdir
+      - fs.stat
+      - isEexistError
+      - isEnoentError
+      - new DirectoryNotFoundError
+      - new FileExistsError
+      - nodePath.dirname
+      - stats.isDirectory
+      - this.assertPathContained
+      - this.assertWritable
+      - this.ensureReady
+      - this.logger.debug
+      - this.resolvePath
+  - name: rmdir
+    sig: 'rmdir(inputPath: string, options?: RemoveOptions): Promise<void>'
+    is_async: true
+    lines:
+    - 564
+    - 598
+    detail:
+      calls:
+      - fs.readdir
+      - fs.rm
+      - fs.rmdir
+      - fs.stat
+      - isEnoentError
+      - new DirectoryNotEmptyError
+      - new DirectoryNotFoundError
+      - new NotDirectoryError
+      - stats.isDirectory
+      - this.assertPathContained
+      - this.assertWritable
+      - this.ensureReady
+      - this.logger.debug
+      - this.resolvePath
+  - name: readdir
+    sig: 'readdir(inputPath: string, options?: ListOptions): Promise<FileEntry[]>'
+    is_async: true
+    lines:
+    - 600
+    - 690
+    detail:
+      calls:
+      - Array.isArray
+      - entry.isDirectory
+      - entry.isFile
+      - entry.isSymbolicLink
+      - extensions.some
+      - fs.readdir
+      - fs.readlink
+      - fs.stat
+      - isEnoentError
+      - new DirectoryNotFoundError
+      - new NotDirectoryError
+      - nodePath.extname
+      - nodePath.join
+      - result.push
+      - stats.isDirectory
+      - subEntries.map
+      - targetStat.isDirectory
+      - this.assertPathContained
+      - this.ensureReady
+      - this.logger.debug
+      - this.readdir
+      - this.resolvePath
+      - this.toRelativePath
+  - name: exists
+    sig: 'exists(inputPath: string): Promise<boolean>'
+    is_async: true
+    lines:
+    - 692
+    - 697
+    detail:
+      calls:
+      - fsExists
+      - this.assertPathContained
+      - this.ensureReady
+      - this.resolvePath
+  - name: stat
+    sig: 'stat(inputPath: string): Promise<FileStat>'
+    is_async: true
+    lines:
+    - 699
+    - 708
+    detail:
+      calls:
+      - fsStat
+      - this.assertPathContained
+      - this.ensureReady
+      - this.resolvePath
+      - this.toRelativePath
+  - name: init
+    sig: 'init(): Promise<void>'
+    is_async: true
+    lines:
+    - 714
+    - 718
+    detail:
+      calls:
+      - fs.mkdir
+      - this.logger.debug
+  - name: destroy
+    sig: 'destroy(): Promise<void>'
+    is_async: true
+    lines:
+    - 725
+    - 727
+    detail: {}
+  - name: getInfo
+    sig: 'getInfo(): FilesystemInfo<{ basePath: string; contained: boolean; allowedPaths?: string[] }>'
+    lines:
+    - 729
+    - 743
+    detail: {}
+  - name: getInstructions
+    sig: 'getInstructions(opts?: { requestContext?: RequestContext<any> }): string'
+    lines:
+    - 745
+    - 747
+    detail:
+      calls:
+      - resolveInstructions
+  - name: _getDefaultInstructions
+    sig: '_getDefaultInstructions(): string'
+    vis: private
+    lines:
+    - 749
+    - 765
+    detail:
+      calls:
+      - parts.join
+      - parts.push
+      - this._allowedPaths.join
+  lines:
+  - 134
+  - 766
+exports:
+- name: LocalFilesystemOptions
+  kind: type
+- name: LocalMountConfig
+  kind: type
+- name: LocalFilesystem
+  kind: type

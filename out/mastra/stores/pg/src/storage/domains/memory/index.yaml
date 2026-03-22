@@ -1,0 +1,903 @@
+## Roska File Descriptor — memory/index.ts
+file: memory/index.ts
+lines: 2763
+imports:
+- sym: node:crypto.randomUUID
+- sym: node:module.createRequire
+- sym: '@mastra/core/agent.MessageList'
+- sym: '@mastra/core/agent.MastraMessageContentV2'
+  kind: typing
+- sym: '@mastra/core/error.ErrorCategory'
+- sym: '@mastra/core/error.ErrorDomain'
+- sym: '@mastra/core/error.MastraError'
+- sym: '@mastra/core/memory.MastraMessageV1'
+  kind: typing
+- sym: '@mastra/core/memory.MastraDBMessage'
+  kind: typing
+- sym: '@mastra/core/memory.StorageThreadType'
+  kind: typing
+- sym: '@mastra/core/storage.MemoryStorage'
+- sym: '@mastra/core/storage.normalizePerPage'
+- sym: '@mastra/core/storage.calculatePagination'
+- sym: '@mastra/core/storage.TABLE_MESSAGES'
+- sym: '@mastra/core/storage.TABLE_RESOURCES'
+- sym: '@mastra/core/storage.TABLE_THREADS'
+- sym: '@mastra/core/storage.TABLE_SCHEMAS'
+- sym: '@mastra/core/storage.createStorageErrorId'
+- sym: '@mastra/core/storage.StorageResourceType'
+  kind: typing
+- sym: '@mastra/core/storage.StorageListMessagesInput'
+  kind: typing
+- sym: '@mastra/core/storage.StorageListMessagesByResourceIdInput'
+  kind: typing
+- sym: '@mastra/core/storage.StorageListMessagesOutput'
+  kind: typing
+- sym: '@mastra/core/storage.StorageListThreadsInput'
+  kind: typing
+- sym: '@mastra/core/storage.StorageListThreadsOutput'
+  kind: typing
+- sym: '@mastra/core/storage.CreateIndexOptions'
+  kind: typing
+- sym: '@mastra/core/storage.StorageCloneThreadInput'
+  kind: typing
+- sym: '@mastra/core/storage.StorageCloneThreadOutput'
+  kind: typing
+- sym: '@mastra/core/storage.ThreadCloneMetadata'
+  kind: typing
+- sym: '@mastra/core/storage.ObservationalMemoryRecord'
+  kind: typing
+- sym: '@mastra/core/storage.BufferedObservationChunk'
+  kind: typing
+- sym: '@mastra/core/storage.CreateObservationalMemoryInput'
+  kind: typing
+- sym: '@mastra/core/storage.UpdateActiveObservationsInput'
+  kind: typing
+- sym: '@mastra/core/storage.UpdateBufferedObservationsInput'
+  kind: typing
+- sym: '@mastra/core/storage.SwapBufferedToActiveInput'
+  kind: typing
+- sym: '@mastra/core/storage.SwapBufferedToActiveResult'
+  kind: typing
+- sym: '@mastra/core/storage.UpdateBufferedReflectionInput'
+  kind: typing
+- sym: '@mastra/core/storage.SwapBufferedReflectionToActiveInput'
+  kind: typing
+- sym: '@mastra/core/storage.CreateReflectionGenerationInput'
+  kind: typing
+- sym: '@mastra/core/utils.parseSqlIdentifier'
+- sym: ../../db.PgDB
+- sym: ../../db.resolvePgConfig
+- sym: ../../db.generateTableSQL
+- sym: ../../db.generateIndexSQL
+- sym: ../../db.getSchemaName as dbGetSchemaName
+- sym: ../../db.getTableName as dbGetTableName
+- sym: ../../db.PgDomainConfig
+  kind: typing
+data:
+- name: OM_TABLE
+  type: string
+  val: '''mastra_observational_memory'' as const'
+- name: _omTableSchema
+  type: Record<string, Record<string, any>> | undefined
+types:
+- name: MessageRowFromDB
+  kind: typealias
+  decorators:
+  - type
+  fields:
+  - name: id
+    type: string
+  - name: content
+    type: string | any
+  - name: role
+    type: string
+  - name: type
+    type: string
+  - name: createdAt
+    type: Date | string
+  - name: createdAtZ
+    type: Date | string
+  - name: threadId
+    type: string
+  - name: resourceId
+    type: string
+  lines:
+  - 72
+  - 81
+- name: MemoryPG
+  kind: struct
+  ctx: Tables managed by this domain
+  bases:
+  - MemoryStorage
+  fields:
+  - name: supportsObservationalMemory
+    type: any
+    default: 'true'
+  - name: MANAGED_TABLES
+    type: any
+    default: '[TABLE_THREADS, TABLE_MESSAGES, TABLE_RESOURCES, OM_TABLE] as const'
+  methods:
+  - name: constructor
+    sig: 'constructor(config: PgDomainConfig)'
+    lines:
+    - 113
+    - 121
+    detail:
+      calls:
+      - indexes?.filter
+      - new PgDB
+      - resolvePgConfig
+      - super
+  - name: init
+    sig: 'init(): Promise<void>'
+    is_async: true
+    lines:
+    - 123
+    - 179
+    detail:
+      calls:
+      - getSchemaName
+      - getTableName
+      - import
+      - this.#db.alterTable
+      - this.#db.client.none
+      - this.#db.createTable
+      - this.createCustomIndexes
+      - this.createDefaultIndexes
+  - name: getDefaultIndexDefs
+    sig: 'getDefaultIndexDefs(schemaPrefix: string): CreateIndexOptions[]'
+    decorators:
+    - static
+    lines:
+    - 185
+    - 198
+    detail: {}
+  - name: getExportDDL
+    sig: 'getExportDDL(schemaName?: string): string[]'
+    decorators:
+    - static
+    lines:
+    - 204
+    - 247
+    detail:
+      calls:
+      - MemoryPG.getDefaultIndexDefs
+      - dbGetSchemaName
+      - dbGetTableName
+      - generateIndexSQL
+      - generateTableSQL
+      - parseSqlIdentifier
+      - statements.push
+  - name: getDefaultIndexDefinitions
+    sig: 'getDefaultIndexDefinitions(): CreateIndexOptions[]'
+    lines:
+    - 252
+    - 255
+    detail:
+      calls:
+      - MemoryPG.getDefaultIndexDefs
+  - name: createDefaultIndexes
+    sig: 'createDefaultIndexes(): Promise<void>'
+    is_async: true
+    lines:
+    - 260
+    - 273
+    detail:
+      calls:
+      - this.#db.createIndex
+      - this.getDefaultIndexDefinitions
+      - this.logger?.warn
+  - name: createCustomIndexes
+    sig: 'createCustomIndexes(): Promise<void>'
+    is_async: true
+    lines:
+    - 278
+    - 291
+    detail:
+      calls:
+      - this.#db.createIndex
+      - this.logger?.warn
+  - name: dangerouslyClearAll
+    sig: 'dangerouslyClearAll(): Promise<void>'
+    is_async: true
+    lines:
+    - 293
+    - 297
+    detail:
+      calls:
+      - this.#db.clearTable
+  - name: getThreadById
+    sig: 'getThreadById({ threadId }: { threadId: string }): Promise<StorageThreadType | null>'
+    is_async: true
+    lines:
+    - 314
+    - 348
+    detail:
+      calls:
+      - JSON.parse
+      - await this.#db.client.oneOrNone
+      - createStorageErrorId
+      - getSchemaName
+      - getTableName
+      - new MastraError
+  - name: listThreads
+    sig: 'listThreads(args: StorageListThreadsInput): Promise<StorageListThreadsOutput>'
+    is_async: true
+    lines:
+    - 350
+    - 477
+    detail:
+      calls:
+      - (rows || []).map
+      - JSON.stringify
+      - Object.entries
+      - Object.keys
+      - Object.keys(filter.metadata).join
+      - await this.#db.client.manyOrNone
+      - calculatePagination
+      - createStorageErrorId
+      - getSchemaName
+      - getTableName
+      - mastraError.toString
+      - new MastraError
+      - normalizePerPage
+      - parseInt
+      - queryParams.push
+      - this.#db.client.one
+      - this.logger?.error
+      - this.logger?.trackException
+      - this.parseOrderBy
+      - this.validateMetadataKeys
+      - this.validatePaginationInput
+      - whereClauses.join
+      - whereClauses.push
+  - name: saveThread
+    sig: 'saveThread({ thread }: { thread: StorageThreadType }): Promise<StorageThreadType>'
+    is_async: true
+    lines:
+    - 479
+    - 527
+    detail:
+      calls:
+      - JSON.stringify
+      - createStorageErrorId
+      - getSchemaName
+      - getTableName
+      - new MastraError
+      - this.#db.client.none
+  - name: updateThread
+    sig: |-
+      updateThread({
+          id,
+          title,
+          metadata,
+        }: {
+          id: string;
+          title: string;
+          metadata: Record<string, unknown>;
+        }): Promise<StorageThreadType>
+    is_async: true
+    lines:
+    - 529
+    - 595
+    detail:
+      calls:
+      - JSON.parse
+      - await this.#db.client.one
+      - createStorageErrorId
+      - getSchemaName
+      - getTableName
+      - new Date
+      - new Date().toISOString
+      - new MastraError
+      - this.getThreadById
+  - name: deleteThread
+    sig: 'deleteThread({ threadId }: { threadId: string }): Promise<void>'
+    is_async: true
+    lines:
+    - 597
+    - 635
+    detail:
+      calls:
+      - createStorageErrorId
+      - getSchemaName
+      - getTableName
+      - new MastraError
+      - this.#db.client.tx
+  - name: _getIncludedMessages
+    sig: '_getIncludedMessages({ include }: { include: StorageListMessagesInput[''include''] })'
+    is_async: true
+    vis: private
+    lines:
+    - 673
+    - 766
+    detail:
+      calls:
+      - await this.#db.client.manyOrNone
+      - getSchemaName
+      - getTableName
+      - include.map
+      - include.map(inc => inc.id).filter
+      - includedRows.filter
+      - new Map
+      - new Set
+      - params.push
+      - targetIds.map
+      - targetIds.map((_, i) => '$' + (i + 1)).join
+      - targetMap.get
+      - targetRows.map
+      - this.#db.client.manyOrNone
+      - unionQueries.join
+      - unionQueries.push
+      - unionQueries[0]!.slice
+  - name: listMessagesById
+    sig: 'listMessagesById({ messageIds }: { messageIds: string[] }): Promise<{ messages: MastraDBMessage[] }>'
+    is_async: true
+    lines:
+    - 787
+    - 821
+    detail:
+      calls:
+      - JSON.stringify
+      - createStorageErrorId
+      - getSchemaName
+      - getTableName
+      - inPlaceholders
+      - list.get.all.db
+      - mastraError.toString
+      - new MastraError
+      - new MessageList
+      - new MessageList().add
+      - resultRows.map
+      - this.#db.client.manyOrNone
+      - this.logger?.error
+      - this.logger?.trackException
+  - name: listMessages
+    sig: 'listMessages(args: StorageListMessagesInput): Promise<StorageListMessagesOutput>'
+    is_async: true
+    lines:
+    - 823
+    - 985
+    detail:
+      calls:
+      - '(Array.isArray(threadId) ? threadId : [threadId]).filter'
+      - Array.isArray
+      - String
+      - calculatePagination
+      - conditions.join
+      - conditions.push
+      - createStorageErrorId
+      - finalMessages.filter
+      - finalMessages.filter(m => m.threadId && threadIdSet.has(m.threadId)).map
+      - getSchemaName
+      - getTableName
+      - inPlaceholders
+      - includeMessages.map
+      - list.get.all.db
+      - mastraError.toString
+      - messageIds.add
+      - messageIds.has
+      - messages.map
+      - messages.push
+      - new Error
+      - new MastraError
+      - new MessageList
+      - new MessageList().add
+      - new Set
+      - normalizePerPage
+      - parseInt
+      - queryParams.push
+      - this.#db.client.manyOrNone
+      - this.#db.client.one
+      - this._getIncludedMessages
+      - this._sortMessages
+      - this.logger?.error
+      - this.logger?.trackException
+      - this.parseOrderBy
+      - threadId.join
+      - threadIds.some
+  - name: listMessagesByResourceId
+    sig: |-
+      listMessagesByResourceId(
+          args: StorageListMessagesByResourceIdInput,
+        ): Promise<StorageListMessagesOutput>
+    is_async: true
+    lines:
+    - 987
+    - 1156
+    detail:
+      calls:
+      - calculatePagination
+      - conditions.join
+      - conditions.push
+      - createStorageErrorId
+      - getSchemaName
+      - getTableName
+      - includeMessages.map
+      - list.get.all.db
+      - mastraError.toString
+      - messageIds.add
+      - messageIds.has
+      - messages.map
+      - messages.push
+      - new Error
+      - new MastraError
+      - new MessageList
+      - new MessageList().add
+      - new Set
+      - normalizePerPage
+      - parseInt
+      - queryParams.push
+      - resourceId.trim
+      - this.#db.client.manyOrNone
+      - this.#db.client.one
+      - this._getIncludedMessages
+      - this._sortMessages
+      - this.logger?.error
+      - this.logger?.trackException
+      - this.parseOrderBy
+  - name: saveMessages
+    sig: 'saveMessages({ messages }: { messages: MastraDBMessage[] }): Promise<{ messages: MastraDBMessage[] }>'
+    is_async: true
+    lines:
+    - 1158
+    - 1260
+    detail:
+      calls:
+      - createStorageErrorId
+      - getSchemaName
+      - getTableName
+      - list.get.all.db
+      - messages.map
+      - new MastraError
+      - new MessageList
+      - new MessageList().add
+      - this.#db.client.tx
+      - this.getThreadById
+  - name: updateMessages
+    sig: |-
+      updateMessages({
+          messages,
+        }: {
+          messages: (Partial<Omit<MastraDBMessage, 'createdAt'>> & {
+            id: string;
+            content?: {
+              metadata?: MastraMessageContentV2['metadata'];
+              content?: MastraMessageContentV2['content'];
+            };
+          })[];
+        }): Promise<MastraDBMessage[]>
+    is_async: true
+    lines:
+    - 1262
+    - 1385
+    detail:
+      calls:
+      - (updatedMessages || []).map
+      - await this.#db.client.manyOrNone
+      - existingMessagesDb.map
+      - getSchemaName
+      - getTableName
+      - inPlaceholders
+      - messages.map
+      - new Set
+      - this.#db.client.manyOrNone
+      - this.#db.client.tx
+  - name: deleteMessages
+    sig: 'deleteMessages(messageIds: string[]): Promise<void>'
+    is_async: true
+    lines:
+    - 1387
+    - 1425
+    detail:
+      calls:
+      - createStorageErrorId
+      - getSchemaName
+      - getTableName
+      - messageIds.join
+      - new MastraError
+      - this.#db.client.tx
+  - name: getResourceById
+    sig: 'getResourceById({ resourceId }: { resourceId: string }): Promise<StorageResourceType | null>'
+    is_async: true
+    lines:
+    - 1427
+    - 1445
+    detail:
+      calls:
+      - JSON.parse
+      - await this.#db.client.oneOrNone
+      - getSchemaName
+      - getTableName
+  - name: saveResource
+    sig: 'saveResource({ resource }: { resource: StorageResourceType }): Promise<StorageResourceType>'
+    is_async: true
+    lines:
+    - 1447
+    - 1457
+    detail:
+      calls:
+      - JSON.stringify
+      - this.#db.insert
+  - name: updateResource
+    sig: |-
+      updateResource({
+          resourceId,
+          workingMemory,
+          metadata,
+        }: {
+          resourceId: string;
+          workingMemory?: string;
+          metadata?: Record<string, unknown>;
+        }): Promise<StorageResourceType>
+    is_async: true
+    lines:
+    - 1459
+    - 1520
+    detail:
+      calls:
+      - JSON.stringify
+      - getSchemaName
+      - getTableName
+      - new Date
+      - this.#db.client.none
+      - this.getResourceById
+      - this.saveResource
+      - updatedResource.updatedAt.toISOString
+      - updates.join
+      - updates.push
+      - values.push
+  - name: cloneThread
+    sig: 'cloneThread(args: StorageCloneThreadInput): Promise<StorageCloneThreadOutput>'
+    is_async: true
+    lines:
+    - 1522
+    - 1702
+    detail:
+      calls:
+      - createStorageErrorId
+      - crypto.randomUUID
+      - getSchemaName
+      - getTableName
+      - new MastraError
+      - this.#db.client.tx
+      - this.getThreadById
+  - name: parseOMRow
+    sig: 'parseOMRow(row: any): ObservationalMemoryRecord'
+    vis: private
+    lines:
+    - 1712
+    - 1764
+    detail:
+      calls:
+      - Boolean
+      - JSON.parse
+      - Number
+      - String
+      - new Date
+      - parseInt
+  - name: getObservationalMemory
+    sig: 'getObservationalMemory(threadId: string | null, resourceId: string): Promise<ObservationalMemoryRecord | null>'
+    is_async: true
+    lines:
+    - 1766
+    - 1790
+    detail:
+      calls:
+      - createStorageErrorId
+      - getSchemaName
+      - getTableName
+      - new MastraError
+      - this.#db.client.oneOrNone
+      - this.getOMKey
+      - this.parseOMRow
+  - name: getObservationalMemoryHistory
+    sig: |-
+      getObservationalMemoryHistory(
+          threadId: string | null,
+          resourceId: string,
+          limit: number = 10,
+        ): Promise<ObservationalMemoryRecord[]>
+    is_async: true
+    lines:
+    - 1792
+    - 1820
+    detail:
+      calls:
+      - createStorageErrorId
+      - getSchemaName
+      - getTableName
+      - new MastraError
+      - result.map
+      - this.#db.client.manyOrNone
+      - this.getOMKey
+  - name: initializeObservationalMemory
+    sig: 'initializeObservationalMemory(input: CreateObservationalMemoryInput): Promise<ObservationalMemoryRecord>'
+    is_async: true
+    lines:
+    - 1822
+    - 1910
+    detail:
+      calls:
+      - JSON.stringify
+      - createStorageErrorId
+      - crypto.randomUUID
+      - getSchemaName
+      - getTableName
+      - new Date
+      - new MastraError
+      - now.toISOString
+      - this.#db.client.none
+      - this.getOMKey
+  - name: insertObservationalMemoryRecord
+    sig: 'insertObservationalMemoryRecord(record: ObservationalMemoryRecord): Promise<void>'
+    is_async: true
+    lines:
+    - 1912
+    - 1983
+    detail:
+      calls:
+      - JSON.stringify
+      - createStorageErrorId
+      - getSchemaName
+      - getTableName
+      - new MastraError
+      - record.createdAt.toISOString
+      - record.lastBufferedAtTime.toISOString
+      - record.lastObservedAt.toISOString
+      - record.updatedAt.toISOString
+      - this.#db.client.none
+      - this.getOMKey
+  - name: updateActiveObservations
+    sig: 'updateActiveObservations(input: UpdateActiveObservationsInput): Promise<void>'
+    is_async: true
+    lines:
+    - 1985
+    - 2044
+    detail:
+      calls:
+      - JSON.stringify
+      - Math.round
+      - createStorageErrorId
+      - getSchemaName
+      - getTableName
+      - input.lastObservedAt.toISOString
+      - new Date
+      - new MastraError
+      - now.toISOString
+      - this.#db.client.query
+  - name: createReflectionGeneration
+    sig: 'createReflectionGeneration(input: CreateReflectionGenerationInput): Promise<ObservationalMemoryRecord>'
+    is_async: true
+    lines:
+    - 2046
+    - 2137
+    detail:
+      calls:
+      - JSON.stringify
+      - Math.round
+      - createStorageErrorId
+      - crypto.randomUUID
+      - getSchemaName
+      - getTableName
+      - new Date
+      - new MastraError
+      - now.toISOString
+      - record.lastObservedAt?.toISOString
+      - this.#db.client.none
+      - this.getOMKey
+  - name: setReflectingFlag
+    sig: 'setReflectingFlag(id: string, isReflecting: boolean): Promise<void>'
+    is_async: true
+    lines:
+    - 2139
+    - 2174
+    detail:
+      calls:
+      - createStorageErrorId
+      - getSchemaName
+      - getTableName
+      - new Date
+      - new Date().toISOString
+      - new MastraError
+      - this.#db.client.query
+  - name: setObservingFlag
+    sig: 'setObservingFlag(id: string, isObserving: boolean): Promise<void>'
+    is_async: true
+    lines:
+    - 2176
+    - 2211
+    detail:
+      calls:
+      - createStorageErrorId
+      - getSchemaName
+      - getTableName
+      - new Date
+      - new Date().toISOString
+      - new MastraError
+      - this.#db.client.query
+  - name: setBufferingObservationFlag
+    sig: 'setBufferingObservationFlag(id: string, isBuffering: boolean, lastBufferedAtTokens?: number): Promise<void>'
+    is_async: true
+    lines:
+    - 2213
+    - 2257
+    detail:
+      calls:
+      - Math.round
+      - createStorageErrorId
+      - getSchemaName
+      - getTableName
+      - new Date
+      - new Date().toISOString
+      - new MastraError
+      - this.#db.client.query
+  - name: setBufferingReflectionFlag
+    sig: 'setBufferingReflectionFlag(id: string, isBuffering: boolean): Promise<void>'
+    is_async: true
+    lines:
+    - 2259
+    - 2294
+    detail:
+      calls:
+      - createStorageErrorId
+      - getSchemaName
+      - getTableName
+      - new Date
+      - new Date().toISOString
+      - new MastraError
+      - this.#db.client.query
+  - name: clearObservationalMemory
+    sig: 'clearObservationalMemory(threadId: string | null, resourceId: string): Promise<void>'
+    is_async: true
+    lines:
+    - 2296
+    - 2315
+    detail:
+      calls:
+      - createStorageErrorId
+      - getSchemaName
+      - getTableName
+      - new MastraError
+      - this.#db.client.none
+      - this.getOMKey
+  - name: setPendingMessageTokens
+    sig: 'setPendingMessageTokens(id: string, tokenCount: number): Promise<void>'
+    is_async: true
+    lines:
+    - 2317
+    - 2356
+    detail:
+      calls:
+      - Math.round
+      - createStorageErrorId
+      - getSchemaName
+      - getTableName
+      - new Date
+      - new Date().toISOString
+      - new MastraError
+      - this.#db.client.query
+  - name: updateBufferedObservations
+    sig: 'updateBufferedObservations(input: UpdateBufferedObservationsInput): Promise<void>'
+    is_async: true
+    lines:
+    - 2362
+    - 2419
+    detail:
+      calls:
+      - JSON.stringify
+      - Math.round
+      - createStorageErrorId
+      - getSchemaName
+      - getTableName
+      - input.lastBufferedAtTime.toISOString
+      - new Date
+      - new Date().toISOString
+      - new MastraError
+      - randomUUID
+      - this.#db.client.query
+  - name: swapBufferedToActive
+    sig: 'swapBufferedToActive(input: SwapBufferedToActiveInput): Promise<SwapBufferedToActiveResult>'
+    is_async: true
+    lines:
+    - 2421
+    - 2618
+    detail:
+      calls:
+      - Array.isArray
+      - JSON.parse
+      - JSON.stringify
+      - Math.max
+      - Math.min
+      - Math.round
+      - activatedChunks.flatMap
+      - activatedChunks.map
+      - activatedChunks.map(c => c.cycleId).filter
+      - activatedChunks.map(c => c.observations).join
+      - activatedChunks.reduce
+      - chunks.slice
+      - createStorageErrorId
+      - getSchemaName
+      - getTableName
+      - lastObservedAt.toISOString
+      - new Date
+      - new Date().toISOString
+      - new MastraError
+      - this.#db.client.oneOrNone
+      - this.#db.client.query
+  - name: updateBufferedReflection
+    sig: 'updateBufferedReflection(input: UpdateBufferedReflectionInput): Promise<void>'
+    is_async: true
+    lines:
+    - 2620
+    - 2676
+    detail:
+      calls:
+      - Math.round
+      - createStorageErrorId
+      - getSchemaName
+      - getTableName
+      - new Date
+      - new Date().toISOString
+      - new MastraError
+      - this.#db.client.query
+  - name: swapBufferedReflectionToActive
+    sig: 'swapBufferedReflectionToActive(input: SwapBufferedReflectionToActiveInput): Promise<ObservationalMemoryRecord>'
+    is_async: true
+    lines:
+    - 2678
+    - 2762
+    detail:
+      calls:
+      - Number
+      - allLines.slice
+      - createStorageErrorId
+      - currentObservations.split
+      - getSchemaName
+      - getTableName
+      - new Date
+      - new Date().toISOString
+      - new MastraError
+      - this.#db.client.oneOrNone
+      - this.#db.client.query
+      - this.createReflectionGeneration
+      - unreflectedLines.join
+      - unreflectedLines.join('\n').trim
+  lines:
+  - 102
+  - 2763
+functions:
+- name: getSchemaName
+  sig: 'getSchemaName(schema?: string)'
+  lines:
+  - 83
+  - 85
+- name: getTableName
+  sig: 'getTableName({ indexName, schemaName }: { indexName: string; schemaName?: string })'
+  lines:
+  - 87
+  - 90
+- name: inPlaceholders
+  sig: 'inPlaceholders(count: number, startIndex = 1): string'
+  lines:
+  - 98
+  - 100
+  detail:
+    calls:
+    - Array.from
+    - 'Array.from({ length: count }, (_, i) => `$${i + startIndex}`).join'
+exports:
+- name: MessageRowFromDB
+  kind: type
+- name: MemoryPG
+  kind: type
+- name: getSchemaName
+  kind: func
+- name: getTableName
+  kind: func
+- name: inPlaceholders
+  kind: func
+- name: OM_TABLE
+  kind: data
+- name: _omTableSchema
+  kind: data

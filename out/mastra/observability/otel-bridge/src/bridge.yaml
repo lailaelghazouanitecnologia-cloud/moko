@@ -1,0 +1,186 @@
+## Roska File Descriptor — src/bridge.ts
+file: src/bridge.ts
+lines: 302
+purpose: 'OpenTelemetry Bridge for Mastra Observability This bridge enables bidirectional integration with OpenTelemetry infrastructure: 1. Reads OTEL trace context from active spans (via AsyncLocalStorage) 2. Creates real OTEL spans when Mastra spans are created 3. Maintains span context for proper parent-child relationships 4. Allows OTEL-instrumented code (DB, HTTP clients) in tools/workflows to have correct parents This creates complete distributed traces where Mastra spans are properly nested within OTEL spans from auto-instrumentation, and any OTEL-instrumented operations within Mastra spans maintain the correct hierarchy.'
+imports:
+- sym: '@mastra/core/observability.ObservabilityBridge'
+  kind: typing
+- sym: '@mastra/core/observability.TracingEvent'
+  kind: typing
+- sym: '@mastra/core/observability.CreateSpanOptions'
+  kind: typing
+- sym: '@mastra/core/observability.SpanType'
+  kind: typing
+- sym: '@mastra/core/observability.SpanIds'
+  kind: typing
+- sym: '@mastra/core/observability.InitExporterOptions'
+  kind: typing
+- sym: '@mastra/core/observability.TracingEventType'
+- sym: '@mastra/observability.BaseExporter'
+- sym: '@mastra/observability.getExternalParentId'
+- sym: '@mastra/otel-exporter.SpanConverter'
+- sym: '@mastra/otel-exporter.getSpanKind'
+- sym: '@opentelemetry/api.trace as otelTrace'
+- sym: '@opentelemetry/api.context as otelContext'
+- sym: '@opentelemetry/api.Span as OtelSpan'
+  kind: typing
+- sym: '@opentelemetry/api.Context as OtelContext'
+  kind: typing
+types:
+- name: OtelBridgeConfig
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 33
+  - 35
+- name: OtelBridge
+  kind: struct
+  ctx: 'Handle Mastra tracing events Ships OTEL spans when Mastra spans end. This maintains proper span hierarchy and allows OTEL-instrumented code within Mastra spans to have correct parent-child relationships. Note: OTEL spans are created when registerSpan is called when the span is first created.'
+  bases:
+  - BaseExporter
+  - ObservabilityBridge
+  fields:
+  - name: name
+    type: any
+    default: '''otel'''
+  - name: otelTracer
+    type: any
+    default: otelTrace.getTracer('@mastra/otel-bridge', '1.0.0')
+  - name: otelSpanMap
+    type: any
+    default: 'new Map<string, { otelSpan: OtelSpan; otelContext: OtelContext }>()'
+  - name: spanConverter
+    type: SpanConverter
+  methods:
+  - name: constructor
+    sig: 'constructor(config: OtelBridgeConfig = {})'
+    lines:
+    - 67
+    - 69
+    detail:
+      calls:
+      - super
+  - name: _exportTracingEvent
+    sig: '_exportTracingEvent(event: TracingEvent): Promise<void>'
+    is_async: true
+    vis: protected
+    lines:
+    - 79
+    - 83
+    detail:
+      calls:
+      - this.handleSpanEnded
+  - name: init
+    sig: 'init(options: InitExporterOptions)'
+    lines:
+    - 88
+    - 94
+    detail:
+      calls:
+      - new SpanConverter
+  - name: createSpan
+    sig: 'createSpan(options: CreateSpanOptions<SpanType>): SpanIds | undefined'
+    lines:
+    - 103
+    - 152
+    detail:
+      calls:
+      - getExternalParentId
+      - getSpanKind
+      - otelContext.active
+      - otelSpan.spanContext
+      - otelTrace.getSpan
+      - otelTrace.setSpan
+      - parentSpan?.spanContext
+      - this.logger.debug
+      - this.logger.error
+      - this.otelSpanMap.get
+      - this.otelSpanMap.set
+      - this.otelTracer.startSpan
+  - name: handleSpanEnded
+    sig: 'handleSpanEnded(event: TracingEvent): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 160
+    - 214
+    detail:
+      calls:
+      - Object.entries
+      - new Error
+      - otelSpan.end
+      - otelSpan.recordException
+      - otelSpan.setAttribute
+      - otelSpan.setStatus
+      - otelSpan.spanContext
+      - otelSpan.updateName
+      - this.logger.debug
+      - this.logger.error
+      - this.logger.warn
+      - this.otelSpanMap.delete
+      - this.otelSpanMap.get
+      - this.spanConverter!.convertSpan
+  - name: executeWithSpanContext
+    sig: 'executeWithSpanContext(spanId: string, fn: () => T): T'
+    vis: private
+    lines:
+    - 226
+    - 240
+    detail:
+      calls:
+      - entry?.otelSpan.spanContext
+      - fn
+      - otelContext.with
+      - this.logger.debug
+      - this.otelSpanMap.get
+  - name: executeInContext
+    sig: 'executeInContext(spanId: string, fn: () => Promise<T>): Promise<T>'
+    lines:
+    - 249
+    - 251
+    detail:
+      calls:
+      - this.executeWithSpanContext
+  - name: executeInContextSync
+    sig: 'executeInContextSync(spanId: string, fn: () => T): T'
+    lines:
+    - 260
+    - 262
+    detail:
+      calls:
+      - this.executeWithSpanContext
+  - name: flush
+    sig: 'flush(): Promise<void>'
+    is_async: true
+    lines:
+    - 272
+    - 285
+    detail:
+      calls:
+      - otelTrace.getTracerProvider
+      - provider.forceFlush
+      - this.logger.debug
+      - this.logger.error
+  - name: shutdown
+    sig: 'shutdown(): Promise<void>'
+    is_async: true
+    lines:
+    - 290
+    - 301
+    detail:
+      calls:
+      - otelSpan.end
+      - this.flush
+      - this.logger.info
+      - this.logger.warn
+      - this.otelSpanMap.clear
+      - this.otelSpanMap.entries
+  lines:
+  - 61
+  - 302
+exports:
+- name: OtelBridgeConfig
+  kind: type
+- name: OtelBridge
+  kind: type

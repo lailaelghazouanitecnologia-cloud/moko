@@ -1,0 +1,679 @@
+## Roska File Descriptor — src/index.ts
+file: src/index.ts
+lines: 2162
+imports:
+- sym: node:crypto.randomUUID
+- sym: '@mastra/core/agent.ToolsInput'
+  kind: typing
+- sym: '@mastra/core/voice.MastraVoice'
+- sym: '@mastra/core/voice.VoiceEventType'
+  kind: typing
+- sym: '@mastra/core/voice.VoiceConfig'
+  kind: typing
+- sym: ws.WebSocket as WSType
+  kind: typing
+- sym: ws.WebSocket
+- sym: ./managers.AudioStreamManager
+- sym: ./managers.ConnectionManager
+- sym: ./managers.ContextManager
+- sym: ./managers.AuthManager
+- sym: ./managers.EventManager
+- sym: ./types.GeminiLiveErrorCode
+- sym: ./types.GeminiLiveVoiceConfig
+  kind: typing
+- sym: ./types.GeminiLiveVoiceOptions
+  kind: typing
+- sym: ./types.GeminiLiveEventMap
+  kind: typing
+- sym: ./types.GeminiVoiceModel
+  kind: typing
+- sym: ./types.GeminiVoiceName
+  kind: typing
+- sym: ./types.GeminiToolConfig
+  kind: typing
+- sym: ./types.AudioConfig
+  kind: typing
+- sym: ./types.GeminiLiveServerMessage
+  kind: typing
+- sym: ./types.GeminiSessionConfig
+  kind: typing
+- sym: ./types.UpdateMessage
+  kind: typing
+- sym: ./utils/errors.GeminiLiveError
+data:
+- name: DEFAULT_MODEL
+  type: GeminiVoiceModel
+  val: '''gemini-2.0-flash-exp'''
+- name: DEFAULT_VOICE
+  type: GeminiVoiceName
+  val: '''Puck'''
+types:
+- name: GeminiEventName
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 24
+  - 24
+- name: GeminiLiveVoice
+  kind: struct
+  ctx: Managers
+  bases:
+  - MastraVoice
+  fields:
+  - name: ws
+    type: WSType
+  - name: eventManager
+    type: EventManager
+  - name: state
+    type: '''disconnected'' | ''connected'''
+    default: '''disconnected'''
+  - name: sessionHandle
+    type: string
+  - name: debug
+    type: boolean
+  - name: audioConfig
+    type: AudioConfig
+  - name: queue
+    type: unknown[]
+    default: '[]'
+  - name: connectionManager
+    type: ConnectionManager
+  - name: contextManager
+    type: ContextManager
+  - name: authManager
+    type: AuthManager
+  - name: audioStreamManager
+    type: AudioStreamManager
+  - name: sessionId
+    type: string
+  - name: sessionStartTime
+    type: number
+  - name: isResuming
+    type: any
+    default: 'false'
+  - name: sessionDurationTimeout
+    type: NodeJS.Timeout
+  - name: tools
+    type: ToolsInput
+  - name: requestContext
+    type: any
+  - name: options
+    type: GeminiLiveVoiceConfig
+  methods:
+  - name: normalizeConfig
+    sig: |-
+      normalizeConfig(
+          config: VoiceConfig<GeminiLiveVoiceConfig> | GeminiLiveVoiceConfig,
+        ): VoiceConfig<GeminiLiveVoiceConfig>
+    vis: private
+    decorators:
+    - static
+    lines:
+    - 130
+    - 152
+    detail: {}
+  - name: constructor
+    sig: 'constructor(config: VoiceConfig<GeminiLiveVoiceConfig> | GeminiLiveVoiceConfig = {})'
+    lines:
+    - 159
+    - 215
+    detail:
+      calls:
+      - AudioStreamManager.getDefaultAudioConfig
+      - GeminiLiveVoice.normalizeConfig
+      - new AudioStreamManager
+      - new AuthManager
+      - new ConnectionManager
+      - new ContextManager
+      - new EventManager
+      - new GeminiLiveError
+      - super
+      - this.audioStreamManager.setSender
+  - name: on
+    sig: |-
+      on(
+          event: E,
+          callback: (data: E extends keyof GeminiLiveEventMap ? GeminiLiveEventMap[E] : unknown) => void,
+        ): void
+    lines:
+    - 245
+    - 256
+    detail:
+      calls:
+      - this.eventManager.on
+      - this.log
+  - name: off
+    sig: |-
+      off(
+          event: E,
+          callback: (data: E extends keyof GeminiLiveEventMap ? GeminiLiveEventMap[E] : unknown) => void,
+        ): void
+    lines:
+    - 263
+    - 273
+    detail:
+      calls:
+      - this.eventManager.off
+      - this.log
+  - name: once
+    sig: |-
+      once(
+          event: E,
+          callback: (data: E extends keyof GeminiLiveEventMap ? GeminiLiveEventMap[E] : unknown) => void,
+        ): void
+    lines:
+    - 280
+    - 291
+    detail:
+      calls:
+      - this.eventManager.once
+      - this.log
+  - name: emit
+    sig: 'emit(event: K, data: GeminiLiveEventMap[K]): boolean'
+    vis: private
+    lines:
+    - 297
+    - 331
+    detail:
+      calls:
+      - String
+      - this.eventManager.emit
+      - this.eventManager.getEventEmitter
+      - this.eventManager.getEventEmitter().emit
+      - this.eventManager.getListenerCount
+      - this.log
+  - name: cleanupEventListeners
+    sig: 'cleanupEventListeners(): void'
+    vis: private
+    lines:
+    - 337
+    - 355
+    detail:
+      calls:
+      - events.map
+      - 'events.map(event => `${String(event)}: ${this.eventManager.getListenerCount(String(event))}`).join'
+      - this.eventManager.cleanup
+      - this.eventManager.getEventEmitter
+      - this.eventManager.getEventEmitter().eventNames
+      - this.log
+  - name: getEventListenerInfo
+    sig: 'getEventListenerInfo(): Record<string, number>'
+    lines:
+    - 361
+    - 368
+    detail:
+      calls:
+      - this.eventManager.getEventListenerInfo
+      - this.log
+  - name: createAndEmitError
+    sig: 'createAndEmitError(code: GeminiLiveErrorCode, message: string, details?: unknown): GeminiLiveError'
+    vis: private
+    lines:
+    - 374
+    - 379
+    detail:
+      calls:
+      - error.toEventData
+      - new GeminiLiveError
+      - this.emit
+      - this.log
+  - name: validateWebSocketState
+    sig: 'validateWebSocketState(): void'
+    vis: private
+    lines:
+    - 399
+    - 407
+    detail:
+      calls:
+      - this.connectionManager.getWebSocket
+      - this.connectionManager.isConnected
+      - this.createAndEmitError
+  - name: connect
+    sig: 'connect({ requestContext }: { requestContext?: any } = {}): Promise<void>'
+    is_async: true
+    lines:
+    - 412
+    - 498
+    detail:
+      calls:
+      - Date.now
+      - Object.keys
+      - new WebSocket
+      - randomUUID
+      - this.authManager.getAccessToken
+      - this.authManager.initialize
+      - this.connectionManager.setWebSocket
+      - this.connectionManager.waitForOpen
+      - this.emit
+      - this.getVertexLocation
+      - this.log
+      - this.sendInitialConfig
+      - this.sendSessionResumption
+      - this.setupEventListeners
+      - this.startSessionDurationMonitor
+      - this.waitForSessionCreated
+  - name: disconnect
+    sig: 'disconnect(): Promise<void>'
+    is_async: true
+    lines:
+    - 503
+    - 550
+    detail:
+      calls:
+      - Date.now
+      - clearTimeout
+      - this.audioStreamManager.cleanupSpeakerStreams
+      - this.authManager.clearCache
+      - this.cleanupEventListeners
+      - this.connectionManager.close
+      - this.emit
+      - this.log
+  - name: speak
+    sig: 'speak(input: string | NodeJS.ReadableStream, options?: GeminiLiveVoiceOptions): Promise<void>'
+    is_async: true
+    lines:
+    - 555
+    - 624
+    detail:
+      calls:
+      - Buffer.concat
+      - Buffer.concat(chunks).toString
+      - Buffer.from
+      - Buffer.isBuffer
+      - String
+      - chunks.push
+      - input.trim
+      - this.addToContext
+      - this.createAndEmitError
+      - this.log
+      - this.sendEvent
+      - this.validateConnectionState
+  - name: send
+    sig: 'send(audioData: NodeJS.ReadableStream | Int16Array): Promise<void>'
+    is_async: true
+    lines:
+    - 629
+    - 660
+    detail:
+      calls:
+      - stream.on
+      - this.audioStreamManager.createAudioMessage
+      - this.audioStreamManager.int16ArrayToBase64
+      - this.audioStreamManager.validateAndConvertAudioInput
+      - this.sendEvent
+      - this.validateConnectionState
+  - name: listen
+    sig: 'listen(audioStream: NodeJS.ReadableStream, _options?: GeminiLiveVoiceOptions): Promise<string>'
+    is_async: true
+    lines:
+    - 665
+    - 748
+    detail:
+      calls:
+      - this.audioStreamManager.handleAudioTranscription
+      - this.off
+      - this.on
+      - this.validateConnectionState
+  - name: getSpeakers
+    sig: 'getSpeakers(): Promise<Array<{ voiceId: string; description?: string }>>'
+    is_async: true
+    lines:
+    - 753
+    - 761
+    detail: {}
+  - name: resumeSession
+    sig: 'resumeSession(handle: string, context?: Array<{ role: string; content: string }>): Promise<void>'
+    is_async: true
+    lines:
+    - 766
+    - 792
+    detail:
+      calls:
+      - new Error
+      - this.connect
+      - this.contextManager.addEntry
+      - this.contextManager.clearContext
+      - this.log
+  - name: updateSessionConfig
+    sig: 'updateSessionConfig(config: Partial<GeminiLiveVoiceConfig>): Promise<void>'
+    is_async: true
+    lines:
+    - 819
+    - 1022
+    detail:
+      calls:
+      - new Promise
+      - this.validateConnectionState
+      - this.validateWebSocketState
+  - name: getConnectionState
+    sig: 'getConnectionState(): ''disconnected'' | ''connected'''
+    lines:
+    - 1027
+    - 1029
+    detail: {}
+  - name: isConnected
+    sig: 'isConnected(): boolean'
+    lines:
+    - 1034
+    - 1036
+    detail: {}
+  - name: getCurrentSpeakerStream
+    sig: 'getCurrentSpeakerStream(): NodeJS.ReadableStream | null'
+    lines:
+    - 1042
+    - 1044
+    detail:
+      calls:
+      - this.audioStreamManager.getCurrentSpeakerStream
+  - name: getSessionHandle
+    sig: 'getSessionHandle(): string | undefined'
+    lines:
+    - 1049
+    - 1052
+    detail: {}
+  - name: getSessionInfo
+    sig: |-
+      getSessionInfo(): {
+          id?: string;
+          handle?: string;
+          startTime?: Date;
+          duration?: number;
+          state: string;
+          config?: GeminiSessionConfig;
+          contextSize: number;
+        }
+    lines:
+    - 1057
+    - 1075
+    detail:
+      calls:
+      - Date.now
+      - new Date
+      - this.contextManager.getContextSize
+  - name: getContextHistory
+    sig: 'getContextHistory(): Array<{ role: string; content: string; timestamp: number }>'
+    lines:
+    - 1080
+    - 1082
+    detail:
+      calls:
+      - this.contextManager.getContextHistory
+  - name: addToContext
+    sig: 'addToContext(role: ''user'' | ''assistant'', content: string): void'
+    lines:
+    - 1087
+    - 1089
+    detail:
+      calls:
+      - this.contextManager.addEntry
+  - name: clearContext
+    sig: 'clearContext(): void'
+    lines:
+    - 1094
+    - 1097
+    detail:
+      calls:
+      - this.contextManager.clearContext
+      - this.log
+  - name: setAutoReconnect
+    sig: 'setAutoReconnect(enabled: boolean): void'
+    lines:
+    - 1102
+    - 1108
+    detail:
+      calls:
+      - this.log
+  - name: sendSessionResumption
+    sig: 'sendSessionResumption(): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 1114
+    - 1140
+    detail:
+      calls:
+      - new Error
+      - this.contextManager.getContextArray
+      - this.log
+      - this.sendEvent
+  - name: startSessionDurationMonitor
+    sig: 'startSessionDurationMonitor(): void'
+    vis: private
+    lines:
+    - 1146
+    - 1181
+    detail:
+      calls:
+      - clearTimeout
+      - setTimeout
+      - this.log
+      - this.parseDuration
+  - name: setupEventListeners
+    sig: 'setupEventListeners(): void'
+    vis: private
+    lines:
+    - 1219
+    - 1262
+    detail:
+      calls:
+      - new Error
+      - this.ws.on
+  - name: handleGeminiMessage
+    sig: 'handleGeminiMessage(data: GeminiLiveServerMessage): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 1268
+    - 1340
+    detail:
+      calls:
+      - Array.isArray
+      - JSON.stringify
+      - messageData.contents.flatMap
+      - this.handleError
+      - this.handleServerContent
+      - this.handleSessionEnd
+      - this.handleSetupComplete
+      - this.handleToolCall
+      - this.handleUsageUpdate
+      - this.log
+      - this.setCurrentResponseId
+  - name: handleSetupComplete
+    sig: 'handleSetupComplete(data: GeminiLiveServerMessage): void'
+    vis: private
+    lines:
+    - 1346
+    - 1368
+    detail:
+      calls:
+      - JSON.stringify
+      - this.connectionManager.send
+      - this.eventManager.getEventEmitter
+      - this.eventManager.getEventEmitter().emit
+      - this.log
+      - this.queue.splice
+      - this.queue.unshift
+  - name: handleSessionUpdated
+    sig: 'handleSessionUpdated(data: GeminiLiveServerMessage): void'
+    vis: private
+    lines:
+    - 1374
+    - 1384
+    detail:
+      calls:
+      - this.emit
+      - this.eventManager.getEventEmitter
+      - this.eventManager.getEventEmitter().emit
+      - this.log
+  - name: handleServerContent
+    sig: 'handleServerContent(data: GeminiLiveServerMessage[''serverContent'']): void'
+    vis: private
+    lines:
+    - 1390
+    - 1522
+    detail:
+      calls:
+      - Buffer.from
+      - Date.now
+      - assistantResponse.trim
+      - part.inlineData?.mimeType?.includes
+      - randomUUID
+      - speakerStream.on
+      - speakerStream.write
+      - this.addToContext
+      - this.audioStreamManager.base64ToInt16Array
+      - this.audioStreamManager.cleanupSpeakerStreams
+      - this.audioStreamManager.cleanupStaleStreams
+      - this.audioStreamManager.createSpeakerStream
+      - this.audioStreamManager.enforceStreamLimits
+      - this.audioStreamManager.getActiveStreamCount
+      - this.audioStreamManager.getSpeakerStream
+      - this.emit
+      - this.getCurrentResponseId
+      - this.handleToolCall
+      - this.log
+  - name: handleToolCall
+    sig: 'handleToolCall(data: GeminiLiveServerMessage): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 1528
+    - 1554
+    detail:
+      calls:
+      - Array.isArray
+      - randomUUID
+      - this.processSingleToolCall
+  - name: processSingleToolCall
+    sig: 'processSingleToolCall(toolName: string, toolArgs: Record<string, any>, toolId: string): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 1560
+    - 1636
+    detail:
+      calls:
+      - Object.keys
+      - this.createAndEmitError
+      - this.emit
+      - this.log
+      - this.sendEvent
+      - tool.execute
+  - name: sendInitialConfig
+    sig: 'sendInitialConfig(): void'
+    vis: private
+    lines:
+    - 1731
+    - 1860
+    detail:
+      calls:
+      - Object.entries
+      - Object.keys
+      - allTools.push
+      - new Error
+      - this.connectionManager.isConnected
+      - this.convertZodSchemaToJsonSchema
+      - this.log
+      - this.resolveModelIdentifier
+      - this.sendEvent
+  - name: getAccessToken
+    sig: 'getAccessToken(): Promise<string>'
+    is_async: true
+    vis: private
+    lines:
+    - 1924
+    - 1929
+    detail:
+      calls:
+      - new Error
+      - this.authManager.getAccessToken
+  - name: sendEvent
+    sig: 'sendEvent(type: string, data: any): void'
+    vis: private
+    lines:
+    - 1953
+    - 1985
+    detail:
+      calls:
+      - JSON.stringify
+      - this.connectionManager.isConnected
+      - this.connectionManager.send
+      - this.log
+      - this.queue.push
+  - name: addTools
+    sig: 'addTools(tools: ToolsInput): void'
+    lines:
+    - 2016
+    - 2019
+    detail:
+      calls:
+      - Object.keys
+      - this.log
+  - name: listTools
+    sig: 'listTools(): ToolsInput | undefined'
+    lines:
+    - 2025
+    - 2027
+    detail: {}
+  - name: convertZodSchemaToJsonSchema
+    sig: 'convertZodSchemaToJsonSchema(schema: any): unknown'
+    vis: private
+    lines:
+    - 2039
+    - 2070
+    detail:
+      calls:
+      - schema.toJSON
+      - this.convertZodDefToJsonSchema
+      - this.log
+  - name: convertZodDefToJsonSchema
+    sig: 'convertZodDefToJsonSchema(def: any): unknown'
+    vis: private
+    lines:
+    - 2076
+    - 2133
+    detail:
+      calls:
+      - Object.entries
+      - def.shape
+      - required.push
+      - this.convertZodDefToJsonSchema
+  - name: close
+    sig: 'close(): void'
+    lines:
+    - 2138
+    - 2140
+    detail:
+      calls:
+      - this.disconnect
+  - name: answer
+    sig: 'answer(_options?: Record<string, unknown>): Promise<void>'
+    is_async: true
+    lines:
+    - 2145
+    - 2150
+    detail:
+      calls:
+      - this.sendEvent
+      - this.validateConnectionState
+  - name: addInstructions
+    sig: 'addInstructions(instructions?: string): void'
+    lines:
+    - 2156
+    - 2161
+    detail:
+      calls:
+      - this.log
+  lines:
+  - 89
+  - 2162
+exports:
+- name: GeminiEventName
+  kind: type
+- name: GeminiLiveVoice
+  kind: type
+- name: DEFAULT_MODEL
+  kind: data
+- name: DEFAULT_VOICE
+  kind: data

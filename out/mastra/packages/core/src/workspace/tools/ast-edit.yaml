@@ -1,0 +1,289 @@
+## Roska File Descriptor — tools/ast-edit.ts
+file: tools/ast-edit.ts
+lines: 533
+purpose: AST Edit Tool Provides AST-aware code transformations for workspace files. Uses @ast-grep/napi for syntax-aware pattern matching and transforms. Requires @ast-grep/napi as an optional peer dependency.
+imports:
+- sym: node:module.createRequire
+- sym: zod/v4.z
+- sym: ../../tools.createTool
+- sym: ../constants.WORKSPACE_TOOLS
+- sym: ../errors.FileNotFoundError
+- sym: ../errors.WorkspaceReadOnlyError
+- sym: ./helpers.emitWorkspaceMetadata
+- sym: ./helpers.getEditDiagnosticsText
+- sym: ./helpers.requireFilesystem
+data:
+- name: astGrepModule
+  type: AstGrepModule | null | undefined
+- name: loadingPromise
+  type: Promise<AstGrepModule | null> | undefined
+- name: astEditTool
+  type: any
+  val: |-
+    createTool({
+      id: WORKSPACE_TOOLS.FILESYSTEM.AST_EDIT,
+      description: `Edit code using AST-based analysis for intellige...
+types:
+- name: Replacement
+  kind: trait
+  ctx: =============================================================================
+  decorators:
+  - interface
+  fields:
+  - name: start
+    type: number
+  - name: end
+    type: number
+  - name: text
+    type: string
+  lines:
+  - 23
+  - 27
+- name: TransformResult
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: content
+    type: string
+  - name: count
+    type: number
+  - name: error
+    type: string
+  lines:
+  - 29
+  - 33
+- name: ImportSpec
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: module
+    type: string
+  - name: names
+    type: string[]
+  - name: isDefault
+    type: boolean
+  lines:
+  - 35
+  - 39
+- name: SgNode
+  kind: trait
+  ctx: Minimal interface for an ast-grep SgNode. Avoids importing @ast-grep/napi types directly since it's an optional dep.
+  decorators:
+  - interface
+  fields:
+  - name: text
+    type: 'method: text(): string'
+  - name: range
+    type: 'method: range(): { start: { index: number }; end: { index: number } }'
+  - name: findAll
+    type: 'method: findAll(config: { rule: Record<string, unknown> }): SgNode[]'
+  - name: getMatch
+    type: 'method: getMatch(name: string): SgNode | null'
+  lines:
+  - 45
+  - 50
+- name: LangValue
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 53
+  - 53
+- name: AstGrepModule
+  kind: trait
+  ctx: The subset of @ast-grep/napi we use after dynamic import.
+  decorators:
+  - interface
+  fields:
+  - name: parse
+    type: 'method: parse(lang: LangValue, content: string): { root(): SgNode }'
+  - name: Lang
+    type: Record<string, LangValue>
+  lines:
+  - 56
+  - 59
+functions:
+- name: loadAstGrep
+  sig: 'loadAstGrep(): Promise<AstGrepModule | null>'
+  is_async: true
+  lines:
+  - 74
+  - 93
+  detail:
+    calls:
+    - |-
+      (async () => {
+            try {
+              // Dynamic import with string concatenation to prevent bundlers f...
+- name: isAstGrepAvailable
+  sig: 'isAstGrepAvailable(): boolean'
+  lines:
+  - 99
+  - 111
+  detail:
+    calls:
+    - createRequire
+    - req.resolve
+- name: getLanguageFromPath
+  sig: 'getLanguageFromPath(filePath: string, Lang: Record<string, LangValue>): LangValue | null'
+  lines:
+  - 124
+  - 141
+  detail:
+    calls:
+    - filePath.split
+    - filePath.split('.').pop
+    - filePath.split('.').pop()?.toLowerCase
+- name: escapeRegex
+  sig: 'escapeRegex(str: string): string'
+  lines:
+  - 148
+  - 150
+  detail:
+    calls:
+    - str.replace
+- name: renameIdentifiers
+  sig: 'renameIdentifiers(content: string, root: SgNode, oldName: string, newName: string): TransformResult'
+  lines:
+  - 156
+  - 185
+  detail:
+    calls:
+    - escapeRegex
+    - id.range
+    - modifiedContent.slice
+    - new Set
+    - replacements.push
+    - replacements.sort
+    - root.findAll
+    - seen.add
+    - seen.has
+- name: buildImportStatement
+  sig: 'buildImportStatement(defaultName: string | null, namedImports: string[], moduleStr: string): string'
+  lines:
+  - 194
+  - 202
+  detail:
+    calls:
+    - namedImports.join
+- name: mergeIntoExistingImport
+  sig: |-
+    mergeIntoExistingImport(
+      content: string,
+      existingImport: SgNode,
+      names: string[],
+      isDefault?: boolean,
+    ): string | null
+  lines:
+  - 208
+  - 266
+  detail:
+    calls:
+    - |-
+      (namedMatch[1] ?? '')
+              .split
+    - |-
+      (namedMatch[1] ?? '')
+              .split(',')
+              .map
+    - |-
+      (namedMatch[1] ?? '')
+              .split(',')
+              .map((s: string) => s.trim())
+              .filter
+    - /^import\s+\*\s+as\s+/.test
+    - buildImportStatement
+    - content.slice
+    - existingImport.range
+    - existingImport.text
+    - names.slice
+    - newNamed.includes
+    - newNamed.push
+    - text.match
+- name: addImport
+  sig: 'addImport(content: string, root: SgNode, importSpec: ImportSpec): string'
+  lines:
+  - 273
+  - 308
+  detail:
+    calls:
+    - buildImportStatement
+    - content.slice
+    - imports.at
+    - imports.find
+    - lastImport.range
+    - mergeIntoExistingImport
+    - names.slice
+    - root.findAll
+- name: removeImport
+  sig: 'removeImport(content: string, root: SgNode, targetName: string): string'
+  lines:
+  - 314
+  - 330
+  detail:
+    calls:
+    - content.slice
+    - imp.range
+    - imp.text
+    - root.findAll
+    - text.includes
+- name: patternReplace
+  sig: 'patternReplace(content: string, root: SgNode, pattern: string, replacement: string): TransformResult'
+  lines:
+  - 337
+  - 378
+  detail:
+    calls:
+    - '[...pattern.matchAll(/\$(\w+)/g)].map'
+    - '[...pattern.matchAll(/\$(\w+)/g)].map(m => m[1]).filter'
+    - match.getMatch
+    - match.range
+    - matchedNode.text
+    - modifiedContent.slice
+    - new RegExp
+    - pattern.matchAll
+    - replacementText.replace
+    - replacements.push
+    - replacements.sort
+    - root.findAll
+exports:
+- name: Replacement
+  kind: type
+- name: TransformResult
+  kind: type
+- name: ImportSpec
+  kind: type
+- name: SgNode
+  kind: type
+- name: LangValue
+  kind: type
+- name: AstGrepModule
+  kind: type
+- name: loadAstGrep
+  kind: func
+- name: isAstGrepAvailable
+  kind: func
+- name: getLanguageFromPath
+  kind: func
+- name: escapeRegex
+  kind: func
+- name: renameIdentifiers
+  kind: func
+- name: buildImportStatement
+  kind: func
+- name: mergeIntoExistingImport
+  kind: func
+- name: addImport
+  kind: func
+- name: removeImport
+  kind: func
+- name: patternReplace
+  kind: func
+- name: astGrepModule
+  kind: data
+- name: loadingPromise
+  kind: data
+- name: astEditTool
+  kind: data

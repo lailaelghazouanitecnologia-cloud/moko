@@ -1,0 +1,307 @@
+## Roska File Descriptor — tools/validation.ts
+file: tools/validation.ts
+lines: 618
+imports:
+- sym: ../request-context.RequestContext
+  kind: typing
+- sym: ../schema.toStandardSchema
+- sym: ../schema.standardSchemaToJSONSchema
+- sym: ../schema.PublicSchema
+  kind: typing
+- sym: ../schema.StandardSchemaWithJSON
+  kind: typing
+- sym: ../schema.StandardSchemaIssue
+  kind: typing
+- sym: ../utils/zod-utils.getZodTypeName
+- sym: ../utils/zod-utils.isZodArray
+- sym: ../utils/zod-utils.isZodObject
+- sym: ../utils/zod-utils.unwrapZodType
+data:
+- name: SENSITIVE_KEYS
+  type: array
+  val: '[''password'', ''secret'', ''token'', ''apiKey'', ''api_key'', ''auth'', ''credential'']'
+types:
+- name: FormattedValidationErrors
+  kind: typealias
+  decorators:
+  - type
+  fields:
+  - name: errors
+    type: string[]
+  - name: fields
+    type: 'T extends object ? { [K in keyof T]?: FormattedValidationErrors<T[K]> } : unknown'
+  lines:
+  - 42
+  - 45
+- name: ValidationError
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: error
+    type: 'true'
+  - name: message
+    type: string
+  - name: validationErrors
+    type: FormattedValidationErrors<T>
+  lines:
+  - 47
+  - 51
+functions:
+- name: safeValidate
+  sig: |-
+    safeValidate(
+      schema: StandardSchemaWithJSON<T>,
+      data: unknown,
+    ): { value: T } | { issues: readonly StandardSchemaIssue[] }
+  lines:
+  - 14
+  - 36
+  detail:
+    calls:
+    - err.message.includes
+    - new Error
+    - schema['~standard'].validate
+- name: getPathKey
+  sig: 'getPathKey(segment: PropertyKey | { key: PropertyKey }): string'
+  lines:
+  - 55
+  - 60
+  detail:
+    calls:
+    - String
+- name: createEmptyErrors
+  sig: 'createEmptyErrors(): { errors: string[]; fields: Record<string, unknown> }'
+  lines:
+  - 65
+  - 67
+- name: buildFormattedErrors
+  sig: 'buildFormattedErrors(issues: readonly StandardSchemaIssue[]): FormattedValidationErrors<T>'
+  lines:
+  - 75
+  - 105
+  detail:
+    calls:
+    - '(current.fields[key] as { errors: string[]; fields: Record<string, unknown> }).errors.push'
+    - createEmptyErrors
+    - getPathKey
+    - result.errors.push
+- name: truncateForLogging
+  sig: 'truncateForLogging(data: unknown, maxLength: number = 200): string'
+  lines:
+  - 113
+  - 123
+  detail:
+    calls:
+    - JSON.stringify
+    - stringified.slice
+- name: validateToolSuspendData
+  sig: |-
+    validateToolSuspendData(
+      schema: StandardSchemaWithJSON<T> | undefined,
+      suspendData: unknown,
+      toolId?: string,
+    ): { data: T; error?: undefined } | { data?: undefined; error: ValidationError<T> }
+  lines:
+  - 133
+  - 160
+  detail:
+    calls:
+    - buildFormattedErrors
+    - safeValidate
+    - truncateForLogging
+    - validation.issues.map
+    - 'validation.issues.map(e => `- ${e.path?.join(''.'') || ''root''}: ${e.message}`).join'
+- name: normalizeNullishInput
+  sig: 'normalizeNullishInput(schema: StandardSchemaWithJSON<any>, input: unknown): unknown'
+  lines:
+  - 171
+  - 190
+  detail:
+    calls:
+    - standardSchemaToJSONSchema
+- name: isPlainObject
+  sig: 'isPlainObject(value: unknown)'
+  lines:
+  - 199
+  - 205
+  detail:
+    calls:
+    - Object.getPrototypeOf
+- name: convertUndefinedToNull
+  sig: 'convertUndefinedToNull(input: unknown): unknown'
+  lines:
+  - 220
+  - 245
+  detail:
+    calls:
+    - Array.isArray
+    - Object.entries
+    - convertUndefinedToNull
+    - input.map
+    - isPlainObject
+- name: stripNullishValues
+  sig: 'stripNullishValues(input: unknown): unknown'
+  lines:
+  - 257
+  - 288
+  detail:
+    calls:
+    - Array.isArray
+    - Object.entries
+    - input.map
+    - isPlainObject
+    - stripNullishValues
+- name: stripNullishValuesAtPaths
+  sig: 'stripNullishValuesAtPaths(input: unknown, paths: Set<string>, currentPath = ''''): unknown'
+  lines:
+  - 294
+  - 323
+  detail:
+    calls:
+    - Array.isArray
+    - Object.entries
+    - input.map
+    - isPlainObject
+    - paths.has
+    - stripNullishValuesAtPaths
+- name: coerceStringifiedJsonValues
+  sig: 'coerceStringifiedJsonValues(schema: StandardSchemaWithJSON<unknown>, input: unknown): unknown'
+  lines:
+  - 342
+  - 401
+  detail:
+    calls:
+    - Array.isArray
+    - JSON.parse
+    - Object.entries
+    - getZodTypeName
+    - isPlainObject
+    - isZodArray
+    - isZodObject
+    - trimmed.startsWith
+    - unwrapZodType
+    - value.trim
+- name: validateToolInput
+  sig: |-
+    validateToolInput(
+      schema: StandardSchemaWithJSON<T> | undefined,
+      input: unknown,
+      toolId?: string,
+    ): { data: T; error?: undefined } | { data?: undefined; error: ValidationError<T> }
+  lines:
+  - 411
+  - 497
+  detail:
+    calls:
+    - buildFormattedErrors
+    - coerceStringifiedJsonValues
+    - convertUndefinedToNull
+    - new Set
+    - normalizeNullishInput
+    - safeValidate
+    - stripNullishValues
+    - stripNullishValuesAtPaths
+    - truncateForLogging
+    - |-
+      validation.issues
+            .filter
+    - |-
+      validation.issues
+            .filter(issue => issue.message?.includes('null'))
+            .map
+    - |-
+      validation.issues
+            .filter(issue => issue.message?.includes('null'))
+            .map(issue => issue....
+    - validation.issues.map
+    - 'validation.issues.map(e => `- ${e.path?.join(''.'') || ''root''}: ${e.message}`).join'
+- name: validateToolOutput
+  sig: |-
+    validateToolOutput(
+      schema: StandardSchemaWithJSON<T> | undefined,
+      output: unknown,
+      toolId?: string,
+      suspendCalled?: boolean,
+    ): { data: T; error?: undefined } | { data?: undefined; error: ValidationError<T> }
+  lines:
+  - 507
+  - 535
+  detail:
+    calls:
+    - buildFormattedErrors
+    - safeValidate
+    - truncateForLogging
+    - validation.issues.map
+    - 'validation.issues.map(e => `- ${e.path?.join(''.'') || ''root''}: ${e.message}`).join'
+- name: redactSensitiveKeys
+  sig: 'redactSensitiveKeys(obj: unknown): unknown'
+  lines:
+  - 547
+  - 567
+  detail:
+    calls:
+    - Array.isArray
+    - Object.entries
+    - SENSITIVE_KEYS.some
+    - obj.map
+    - redactSensitiveKeys
+- name: validateRequestContext
+  sig: |-
+    validateRequestContext(
+      schema: PublicSchema<T> | undefined,
+      requestContext: RequestContext | undefined,
+      identifier?: string,
+    ): { data: T | Record<string, any>; error?: ValidationError<T> }
+  lines:
+  - 578
+  - 618
+  detail:
+    calls:
+    - buildFormattedErrors
+    - new Error
+    - redactSensitiveKeys
+    - standardSchema['~standard'].validate
+    - toStandardSchema
+    - truncateForLogging
+    - validation.issues.map
+    - 'validation.issues.map(e => `- ${e.path?.join(''.'') || ''root''}: ${e.message}`).join'
+exports:
+- name: FormattedValidationErrors
+  kind: type
+- name: ValidationError
+  kind: type
+- name: safeValidate
+  kind: func
+- name: getPathKey
+  kind: func
+- name: createEmptyErrors
+  kind: func
+- name: buildFormattedErrors
+  kind: func
+- name: truncateForLogging
+  kind: func
+- name: validateToolSuspendData
+  kind: func
+- name: normalizeNullishInput
+  kind: func
+- name: isPlainObject
+  kind: func
+- name: convertUndefinedToNull
+  kind: func
+- name: stripNullishValues
+  kind: func
+- name: stripNullishValuesAtPaths
+  kind: func
+- name: coerceStringifiedJsonValues
+  kind: func
+- name: validateToolInput
+  kind: func
+- name: validateToolOutput
+  kind: func
+- name: redactSensitiveKeys
+  kind: func
+- name: validateRequestContext
+  kind: func
+- name: SENSITIVE_KEYS
+  kind: data

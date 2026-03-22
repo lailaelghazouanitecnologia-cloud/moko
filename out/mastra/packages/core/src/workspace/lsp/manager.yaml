@@ -1,0 +1,223 @@
+## Roska File Descriptor — lsp/manager.ts
+file: lsp/manager.ts
+lines: 335
+purpose: LSP Manager Per-workspace manager that owns LSP server clients. NOT a singleton — each Workspace instance creates its own LSPManager. Resolves the project root per-file by walking up from the file's directory using language-specific markers defined on each server (e.g. tsconfig.json for TypeScript, go.mod for Go). Falls back to the default root when walkup finds nothing.
+imports:
+- sym: node:path.path
+- sym: ../sandbox/process-manager.SandboxProcessManager
+  kind: typing
+- sym: ./client.LSPClient
+- sym: ./language.getLanguageId
+- sym: ./servers.buildServerDefs
+- sym: ./servers.getServersForFile
+- sym: ./servers.walkUp
+- sym: ./servers.walkUpAsync
+- sym: ./types.DiagnosticSeverity
+  kind: typing
+- sym: ./types.LSPConfig
+  kind: typing
+- sym: ./types.LSPDiagnostic
+  kind: typing
+- sym: ./types.LSPServerDef
+  kind: typing
+types:
+- name: LSPManager
+  kind: struct
+  ctx: Default project root (fallback when per-file walkup finds nothing).
+  fields:
+  - name: clients
+    type: Map<string, LSPClient>
+    default: new Map()
+  - name: initPromises
+    type: Map<string, Promise<void>>
+    default: new Map()
+  - name: fileLocks
+    type: Map<string, Promise<void>>
+    default: new Map()
+  - name: processManager
+    type: SandboxProcessManager
+  - name: _root
+    type: string
+  - name: config
+    type: LSPConfig
+  - name: serverDefs
+    type: Record<string, LSPServerDef>
+  - name: filesystem
+    type: |-
+      {
+          exists(path: string): Promise<boolean>;
+        }
+  methods:
+  - name: constructor
+    sig: |-
+      constructor(
+          processManager: SandboxProcessManager,
+          root: string,
+          config: LSPConfig = {},
+          filesystem?: {
+            exists(path: string): Promise<boolean>;
+          },
+        )
+    lines:
+    - 49
+    - 62
+    detail:
+      calls:
+      - buildServerDefs
+  - name: root
+    sig: 'root(): string'
+    lines:
+    - 65
+    - 67
+    detail: {}
+  - name: resolveRoot
+    sig: 'resolveRoot(filePath: string, markers: string[]): Promise<string>'
+    is_async: true
+    vis: private
+    lines:
+    - 74
+    - 80
+    detail:
+      calls:
+      - path.dirname
+      - walkUp
+      - walkUpAsync
+  - name: acquireFileLock
+    sig: 'acquireFileLock(filePath: string): Promise<() => void>'
+    is_async: true
+    vis: private
+    lines:
+    - 87
+    - 103
+    detail:
+      calls:
+      - new Promise
+      - this.fileLocks.get
+      - this.fileLocks.has
+      - this.fileLocks.set
+  - name: initClient
+    sig: 'initClient(serverDef: LSPServerDef, projectRoot: string, key: string): Promise<LSPClient | null>'
+    is_async: true
+    vis: private
+    lines:
+    - 109
+    - 154
+    detail:
+      calls:
+      - |-
+        (async () => {
+              const client = new LSPClient(serverDef, projectRoot, this.processManager);
+            ...
+      - Promise.race
+      - console.warn
+      - initPromise.catch
+      - new Promise
+      - serverDef.command
+      - this.clients.delete
+      - this.clients.get
+      - this.initPromises.delete
+      - this.initPromises.get
+      - this.initPromises.has
+      - this.initPromises.set
+  - name: getClient
+    sig: 'getClient(filePath: string): Promise<LSPClient | null>'
+    is_async: true
+    lines:
+    - 161
+    - 194
+    detail:
+      calls:
+      - existing.shutdown
+      - existing.shutdown().catch
+      - getServersForFile
+      - serverDef.command
+      - servers.find
+      - this.clients.delete
+      - this.clients.get
+      - this.clients.has
+      - this.initClient
+      - this.resolveRoot
+  - name: getDiagnostics
+    sig: 'getDiagnostics(filePath: string, content: string): Promise<LSPDiagnostic[] | null>'
+    is_async: true
+    lines:
+    - 202
+    - 235
+    detail:
+      calls:
+      - client.notifyChange
+      - client.notifyClose
+      - client.notifyOpen
+      - client.waitForDiagnostics
+      - getLanguageId
+      - rawDiagnostics.map
+      - release
+      - this.acquireFileLock
+      - this.getClient
+  - name: getDiagnosticsMulti
+    sig: 'getDiagnosticsMulti(filePath: string, content: string): Promise<LSPDiagnostic[]>'
+    is_async: true
+    lines:
+    - 242
+    - 295
+    detail:
+      calls:
+      - Promise.allSettled
+      - allDiagnostics.filter
+      - allDiagnostics.push
+      - getLanguageId
+      - getServersForFile
+      - new Set
+      - release
+      - servers.map
+      - this.acquireFileLock
+  - name: collectDiagnostics
+    sig: |-
+      collectDiagnostics(
+          client: LSPClient,
+          filePath: string,
+          content: string,
+          languageId: string,
+        ): Promise<LSPDiagnostic[]>
+    is_async: true
+    vis: private
+    lines:
+    - 300
+    - 324
+    detail:
+      calls:
+      - client.notifyChange
+      - client.notifyClose
+      - client.notifyOpen
+      - client.waitForDiagnostics
+      - rawDiagnostics.map
+  - name: shutdownAll
+    sig: 'shutdownAll(): Promise<void>'
+    is_async: true
+    lines:
+    - 329
+    - 334
+    detail:
+      calls:
+      - Array.from
+      - Array.from(this.clients.values()).map
+      - Promise.allSettled
+      - this.clients.clear
+      - this.clients.values
+      - this.fileLocks.clear
+      - this.initPromises.clear
+  lines:
+  - 37
+  - 335
+functions:
+- name: mapSeverity
+  sig: 'mapSeverity(severity: number | undefined): DiagnosticSeverity'
+  lines:
+  - 22
+  - 35
+  detail: {}
+exports:
+- name: LSPManager
+  kind: type
+- name: mapSeverity
+  kind: func

@@ -1,0 +1,179 @@
+## Roska File Descriptor — bus/observability-bus.ts
+file: bus/observability-bus.ts
+lines: 251
+purpose: ObservabilityBus - Unified event bus for all observability signals. Routes events to registered exporters and an optional bridge based on event type. Each handler declares which signals it supports by implementing the corresponding method (onTracingEvent, onLogEvent, onMetricEvent, onScoreEvent, onFeedbackEvent). Handler presence = signal support. If a handler does not implement a method, events of that type are silently skipped for that handler.
+imports:
+- sym: '@mastra/core/observability.ObservabilityExporter'
+  kind: typing
+- sym: '@mastra/core/observability.ObservabilityBridge'
+  kind: typing
+- sym: '@mastra/core/observability.TracingEvent'
+  kind: typing
+- sym: '@mastra/core/observability.ObservabilityEvent'
+  kind: typing
+- sym: '@mastra/core/observability.ExportedMetric'
+  kind: typing
+- sym: '@mastra/core/observability.MetricEvent'
+  kind: typing
+- sym: '@mastra/core/observability.TracingEventType'
+- sym: ../metrics/auto-extract.AutoExtractedMetrics
+- sym: ../metrics/cardinality.CardinalityFilter
+- sym: ./base.BaseObservabilityEventBus
+- sym: ./route-event.routeToHandler
+data:
+- name: MAX_FLUSH_ITERATIONS
+  type: number
+  val: '3'
+types:
+- name: ObservabilityBusConfig
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: cardinalityFilter
+    type: CardinalityFilter
+  - name: autoExtractMetrics
+    type: boolean
+  lines:
+  - 41
+  - 46
+- name: ObservabilityBus
+  kind: struct
+  ctx: In-flight handler promises from routeToHandler. Self-cleaning via .finally().
+  bases:
+  - BaseObservabilityEventBus
+  fields:
+  - name: exporters
+    type: ObservabilityExporter[]
+    default: '[]'
+  - name: bridge
+    type: ObservabilityBridge
+  - name: autoExtractor
+    type: AutoExtractedMetrics
+  - name: cardinalityFilter
+    type: CardinalityFilter
+  - name: pendingHandlers
+    type: Set<Promise<void>>
+    default: new Set()
+  methods:
+  - name: constructor
+    sig: 'constructor(config?: ObservabilityBusConfig)'
+    lines:
+    - 62
+    - 68
+    detail:
+      calls:
+      - new AutoExtractedMetrics
+      - new CardinalityFilter
+      - super
+  - name: emitMetric
+    sig: 'emitMetric(name: string, value: number, labels: Record<string, string>): void'
+    lines:
+    - 75
+    - 88
+    detail:
+      calls:
+      - Number.isFinite
+      - new Date
+      - this.cardinalityFilter.filterLabels
+      - this.emit
+  - name: registerExporter
+    sig: 'registerExporter(exporter: ObservabilityExporter): void'
+    lines:
+    - 96
+    - 101
+    detail:
+      calls:
+      - this.exporters.includes
+      - this.exporters.push
+  - name: unregisterExporter
+    sig: 'unregisterExporter(exporter: ObservabilityExporter): boolean'
+    lines:
+    - 109
+    - 116
+    detail:
+      calls:
+      - this.exporters.indexOf
+      - this.exporters.splice
+  - name: getExporters
+    sig: 'getExporters(): readonly ObservabilityExporter[]'
+    lines:
+    - 121
+    - 123
+    detail: {}
+  - name: registerBridge
+    sig: 'registerBridge(bridge: ObservabilityBridge): void'
+    lines:
+    - 132
+    - 137
+    detail:
+      calls:
+      - this.logger.warn
+  - name: unregisterBridge
+    sig: 'unregisterBridge(): boolean'
+    lines:
+    - 144
+    - 150
+    detail: {}
+  - name: getBridge
+    sig: 'getBridge(): ObservabilityBridge | undefined'
+    lines:
+    - 155
+    - 157
+    detail: {}
+  - name: emit
+    sig: 'emit(event: ObservabilityEvent): void'
+    lines:
+    - 166
+    - 189
+    detail:
+      calls:
+      - isTracingEvent
+      - routeToHandler
+      - super.emit
+      - this.autoExtractor.processTracingEvent
+      - this.logger.error
+      - this.trackPromise
+  - name: flush
+    sig: 'flush(): Promise<void>'
+    is_async: true
+    lines:
+    - 215
+    - 244
+    detail:
+      calls:
+      - Promise.allSettled
+      - bufferFlushPromises.push
+      - super.flush
+      - this.bridge.flush
+      - this.exporters.map
+      - this.logger.error
+  - name: shutdown
+    sig: 'shutdown(): Promise<void>'
+    is_async: true
+    lines:
+    - 247
+    - 250
+    detail:
+      calls:
+      - super.shutdown
+      - this.flush
+  lines:
+  - 53
+  - 251
+functions:
+- name: isTracingEvent
+  sig: 'isTracingEvent(event: ObservabilityEvent)'
+  lines:
+  - 32
+  - 38
+  detail: {}
+exports:
+- name: ObservabilityBusConfig
+  kind: type
+- name: ObservabilityBus
+  kind: type
+- name: isTracingEvent
+  kind: func
+- name: MAX_FLUSH_ITERATIONS
+  kind: data

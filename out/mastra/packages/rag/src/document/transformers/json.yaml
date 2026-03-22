@@ -1,0 +1,275 @@
+## Roska File Descriptor — transformers/json.ts
+file: transformers/json.ts
+lines: 536
+imports:
+- sym: ../schema.Document
+- sym: ../types.JsonChunkOptions
+  kind: typing
+types:
+- name: RecursiveJsonTransformer
+  kind: struct
+  ctx: Transform JSON data while handling circular references
+  fields:
+  - name: maxSize
+    type: number
+  - name: minSize
+    type: number
+  - name: ensureAscii
+    type: boolean
+  - name: convertLists
+    type: boolean
+  methods:
+  - name: constructor
+    sig: 'constructor({ maxSize = 2000, minSize, ensureAscii = false, convertLists = true }: JsonChunkOptions)'
+    lines:
+    - 10
+    - 15
+    detail:
+      calls:
+      - Math.max
+  - name: jsonSize
+    sig: 'jsonSize(data: Record<string, any>): number'
+    vis: private
+    decorators:
+    - static
+    lines:
+    - 17
+    - 51
+    detail:
+      calls:
+      - JSON.stringify
+      - getStringifiableData
+      - new WeakSet
+  - name: transform
+    sig: 'transform(data: Record<string, any>): Record<string, any>'
+    lines:
+    - 56
+    - 89
+    detail:
+      calls:
+      - RecursiveJsonTransformer.jsonSize
+      - createSafeCopy
+      - new WeakSet
+  - name: listToDictPreprocessing
+    sig: 'listToDictPreprocessing(data: any): any'
+    vis: private
+    lines:
+    - 106
+    - 114
+    detail:
+      calls:
+      - Array.isArray
+      - Object.entries
+      - Object.entries(data).map
+      - Object.fromEntries
+      - data.map
+  - name: handlePrimitiveValue
+    sig: |-
+      handlePrimitiveValue(
+          value: any,
+          key: string,
+          currentChunk: Record<string, any>,
+          chunks: Record<string, any>[],
+          fullPath: string[],
+        ): { currentChunk: Record<string, any>; chunks: Record<string, any>[] }
+    vis: private
+    lines:
+    - 120
+    - 160
+    detail:
+      calls:
+      - RecursiveJsonTransformer.jsonSize
+      - |-
+        stringChunks
+                .map
+      - |-
+        stringChunks
+                .map(chunk => {
+                  return this.createChunk(chunk, fullPath);
+                })
+        ...
+      - this.createChunk
+      - this.splitLongString
+  - name: handleArray
+    sig: |-
+      handleArray(
+          value: any[],
+          key: string,
+          currentPath: string[],
+          depth: number,
+          maxDepth: number,
+        ): Record<string, any>[]
+    vis: private
+    lines:
+    - 186
+    - 246
+    detail:
+      calls:
+      - String
+      - chunks.push
+      - saveCurrentGroup
+      - this.createChunk
+      - this.handleNestedObject
+      - this.isWithinSizeLimit
+  - name: handleNestedObject
+    sig: |-
+      handleNestedObject(
+          value: Record<string, any>,
+          fullPath: string[],
+          depth: number,
+          maxDepth: number,
+        ): Record<string, any>[]
+    vis: private
+    lines:
+    - 252
+    - 317
+    detail:
+      calls:
+      - Array.isArray
+      - Object.entries
+      - chunks.push
+      - console.warn
+      - saveCurrentChunk
+      - this.createChunk
+      - this.handleArray
+      - this.handleNestedObject
+      - this.isWithinSizeLimit
+  - name: splitLongString
+    sig: 'splitLongString(value: string): string[]'
+    vis: private
+    lines:
+    - 323
+    - 344
+    detail:
+      calls:
+      - Math.floor
+      - chunks.push
+      - remaining.slice
+      - remaining.slice(0, chunkSize).lastIndexOf
+  - name: jsonSplit
+    sig: |-
+      jsonSplit({
+          data,
+          currentPath = [],
+          chunks = [{}],
+          depth = 0,
+          maxDepth = 100,
+        }: {
+          data: Record<string, any>;
+          currentPath?: string[];
+          chunks?: Record<string, any>[];
+          depth?: number;
+          maxDepth?: number;
+        }): Record<string, any>[]
+    vis: private
+    lines:
+    - 350
+    - 403
+    detail:
+      calls:
+      - Array.isArray
+      - Object.entries
+      - Object.keys
+      - RecursiveJsonTransformer.setNestedDict
+      - accumulatedChunks.filter
+      - console.warn
+      - this.handleArray
+      - this.handleNestedObject
+      - this.handlePrimitiveValue
+  - name: splitJson
+    sig: |-
+      splitJson({
+          jsonData,
+          convertLists = false,
+        }: {
+          jsonData: Record<string, any>;
+          convertLists?: boolean;
+        }): Record<string, any>[]
+    lines:
+    - 408
+    - 424
+    detail:
+      calls:
+      - Object.keys
+      - chunks.pop
+      - this.jsonSplit
+      - this.listToDictPreprocessing
+  - name: escapeNonAscii
+    sig: 'escapeNonAscii(obj: any): any'
+    vis: private
+    lines:
+    - 430
+    - 446
+    detail:
+      calls:
+      - Array.isArray
+      - Object.entries
+      - Object.entries(obj).map
+      - Object.fromEntries
+      - obj.map
+      - obj.replace
+  - name: splitText
+    sig: |-
+      splitText({
+          jsonData,
+          convertLists = false,
+          ensureAscii = true,
+        }: {
+          jsonData: Record<string, any>;
+          convertLists?: boolean;
+          ensureAscii?: boolean;
+        }): string[]
+    lines:
+    - 450
+    - 476
+    detail:
+      calls:
+      - chunks.map
+      - escapedChunks.map
+      - this.splitJson
+  - name: createDocuments
+    sig: |-
+      createDocuments({
+          texts,
+          convertLists = false,
+          ensureAscii = true,
+          metadatas,
+        }: {
+          texts: string[];
+          convertLists?: boolean;
+          ensureAscii?: boolean;
+          metadatas?: Record<string, any>[];
+        }): Document[]
+    lines:
+    - 481
+    - 509
+    detail:
+      calls:
+      - Array
+      - Array(texts.length).fill
+      - texts.forEach
+  - name: transformDocuments
+    sig: |-
+      transformDocuments({
+          ensureAscii,
+          documents,
+          convertLists,
+        }: {
+          ensureAscii?: boolean;
+          convertLists?: boolean;
+          documents: Document[];
+        }): Document[]
+    lines:
+    - 511
+    - 535
+    detail:
+      calls:
+      - metadatas.push
+      - texts.push
+      - this.createDocuments
+  lines:
+  - 4
+  - 536
+exports:
+- name: RecursiveJsonTransformer
+  kind: type

@@ -1,0 +1,168 @@
+## Roska File Descriptor — processors/structured-output.ts
+file: processors/structured-output.ts
+lines: 285
+imports:
+- sym: node:stream/web.TransformStreamDefaultController
+  kind: typing
+- sym: ../../agent.Agent
+- sym: ../../agent/types.StructuredOutputOptions
+  kind: typing
+- sym: ../../error.ErrorCategory
+- sym: ../../error.ErrorDomain
+- sym: ../../error.MastraError
+- sym: ../../llm/model/provider-options.ProviderOptions
+  kind: typing
+- sym: ../../logger.IMastraLogger
+  kind: typing
+- sym: ../../observability.ObservabilityContext
+  kind: typing
+- sym: ../../observability.resolveObservabilityContext
+- sym: ../../schema.StandardSchemaWithJSON
+  kind: typing
+- sym: ../../stream.ChunkFrom
+- sym: ../../stream.ChunkType
+  kind: typing
+- sym: ../../stream/types.ToolCallChunk
+  kind: typing
+- sym: ../../stream/types.ToolResultChunk
+  kind: typing
+- sym: ../index.Processor
+  kind: typing
+data:
+- name: STRUCTURED_OUTPUT_PROCESSOR_NAME
+  type: string
+  val: '''structured-output'''
+types:
+- name: StructuredOutputProcessor
+  kind: struct
+  ctx: Build a structured markdown prompt from stream parts Collects chunks by type and formats them in a consistent structure
+  bases:
+  - Processor<'structured-output'>
+  fields:
+  - name: id
+    type: any
+    default: STRUCTURED_OUTPUT_PROCESSOR_NAME
+  - name: name
+    type: any
+    default: '''Structured Output'''
+  - name: schema
+    type: StandardSchemaWithJSON<OUTPUT>
+  - name: structuringAgent
+    type: Agent<any, any, undefined>
+  - name: errorStrategy
+    type: '''strict'' | ''warn'' | ''fallback'''
+  - name: fallbackValue
+    type: OUTPUT
+  - name: isStructuringAgentStreamStarted
+    type: any
+    default: 'false'
+  - name: jsonPromptInjection
+    type: boolean
+  - name: providerOptions
+    type: ProviderOptions
+  - name: logger
+    type: IMastraLogger
+  methods:
+  - name: constructor
+    sig: 'constructor(options: StructuredOutputOptions<OUTPUT>)'
+    lines:
+    - 44
+    - 75
+    detail:
+      calls:
+      - new Agent
+      - new MastraError
+      - this.generateInstructions
+  - name: processOutputStream
+    sig: |-
+      processOutputStream(
+          args: {
+            part: ChunkType;
+            streamParts: ChunkType[];
+            state: Record<string, unknown> & {
+              controller?: TransformStreamDefaultController<ChunkType<OUTPUT>>;
+            };
+            abort: (reason?: string, options?: unknown) => never;
+            retryCount: number;
+          } & Partial<ObservabilityContext>,
+        ): Promise<ChunkType | null | undefined>
+    is_async: true
+    lines:
+    - 77
+    - 104
+    detail:
+      calls:
+      - resolveObservabilityContext
+      - this.processAndEmitStructuredOutput
+  - name: processAndEmitStructuredOutput
+    sig: |-
+      processAndEmitStructuredOutput(
+          streamParts: ChunkType[],
+          controller: TransformStreamDefaultController<ChunkType<OUTPUT>>,
+          abort: (reason?: string) => never,
+          observabilityContext?: ObservabilityContext,
+        ): Promise<void>
+    is_async: true
+    vis: private
+    lines:
+    - 106
+    - 181
+    detail:
+      calls:
+      - chunk.type.startsWith
+      - controller.enqueue
+      - excludedChunkTypes.includes
+      - this.buildStructuringPrompt
+      - this.handleError
+      - this.structuringAgent.stream
+  - name: buildStructuringPrompt
+    sig: 'buildStructuringPrompt(streamParts: ChunkType[]): string'
+    vis: private
+    lines:
+    - 187
+    - 246
+    detail:
+      calls:
+      - reasoningChunks.join
+      - reasoningChunks.push
+      - sections.join
+      - sections.push
+      - textChunks.join
+      - textChunks.push
+      - |-
+        toolCalls
+                .map
+      - |-
+        toolCalls
+                .map(tc => {
+                  const args = typeof tc.payload.args === 'object' ? JSON.str...
+      - toolCalls.push
+      - |-
+        toolResults
+                .map
+      - |-
+        toolResults
+                .map(tr => {
+                  const result = tr.payload.result;
+                  if (result ==...
+      - toolResults.push
+  - name: handleError
+    sig: 'handleError(context: string, error: string, abort: (reason?: string) => never): void'
+    vis: private
+    lines:
+    - 269
+    - 284
+    detail:
+      calls:
+      - abort
+      - this.logger?.error
+      - this.logger?.info
+      - this.logger?.warn
+  lines:
+  - 31
+  - 285
+exports:
+- name: StructuredOutputProcessor
+  kind: type
+- name: STRUCTURED_OUTPUT_PROCESSOR_NAME
+  kind: data

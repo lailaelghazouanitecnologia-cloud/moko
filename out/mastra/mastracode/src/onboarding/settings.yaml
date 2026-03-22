@@ -1,0 +1,481 @@
+## Roska File Descriptor — onboarding/settings.ts
+file: onboarding/settings.ts
+lines: 559
+purpose: Persistent global settings stored in the app data directory as settings.json. This file persists onboarding state AND user preferences (model choices, yolo, etc.) so they carry across threads and restarts.
+imports:
+- sym: node:fs.existsSync
+- sym: node:fs.mkdirSync
+- sym: node:fs.readFileSync
+- sym: node:fs.writeFileSync
+- sym: node:path.dirname
+- sym: node:path.join
+- sym: '@mastra/core/workspace.LSPConfig'
+  kind: typing
+- sym: ../utils/project.js.getAppDataDir
+data:
+- name: STORAGE_DEFAULTS
+  type: StorageSettings
+  val: |-
+    {
+      backend: 'libsql',
+      libsql: {},
+      pg: {},
+    }
+- name: DEFAULTS
+  type: GlobalSettings
+  val: |-
+    {
+      onboarding: {
+        completedAt: null,
+        skippedAt: null,
+        version: 0,
+        modePackId: null,
+        omPackId: null,
+    ...
+- name: THINKING_LEVEL_VALUES
+  type: ThinkingLevelSetting[]
+  val: '[''off'', ''low'', ''medium'', ''high'', ''xhigh'']'
+- name: LEGACY_VARIED_MODELS
+  type: Record<string, string>
+  val: |-
+    {
+      plan: 'openai/gpt-5.3-codex',
+      build: 'anthropic/claude-sonnet-4-5',
+      fast: 'anthropic/claude-haiku-4-5',
+    }
+- name: THREAD_ACTIVE_MODEL_PACK_ID_KEY
+  type: string
+  val: '''activeModelPackId'''
+types:
+- name: CustomPack
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: models
+    type: Record<string, string>
+  - name: createdAt
+    type: string
+  lines:
+  - 13
+  - 17
+- name: CustomProviderSetting
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: url
+    type: string
+  - name: apiKey
+    type: string
+  - name: models
+    type: string[]
+  lines:
+  - 20
+  - 25
+- name: StorageBackend
+  kind: enum
+  decorators:
+  - type
+  variants:
+  - name: '''libsql'''
+  - name: '''pg'''
+  lines:
+  - 28
+  - 28
+- name: LibSQLStorageSettings
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: url
+    type: string
+  - name: authToken
+    type: string
+  lines:
+  - 31
+  - 34
+- name: PgStorageSettings
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: connectionString
+    type: string
+  - name: host
+    type: string
+  - name: port
+    type: number
+  - name: database
+    type: string
+  - name: user
+    type: string
+  - name: password
+    type: string
+  - name: disableInit
+    type: boolean
+  - name: skipDefaultIndexes
+    type: boolean
+  lines:
+  - 37
+  - 47
+- name: StorageSettings
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: backend
+    type: StorageBackend
+  - name: libsql
+    type: LibSQLStorageSettings
+  - name: pg
+    type: PgStorageSettings
+  lines:
+  - 50
+  - 57
+- name: ThinkingLevelSetting
+  kind: enum
+  decorators:
+  - type
+  variants:
+  - name: '''xhigh'''
+  lines:
+  - 60
+  - 60
+- name: GlobalSettings
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: onboarding
+    type: |-
+      {
+          completedAt: string | null;
+          skippedAt: string | null;
+          version: number;
+          modePackId: string | null;
+          omPackId: string | null;
+          /** ISO timestamp when the user acknowledged the Claude Max OAuth ToS warning. */
+          claudeMaxOAuthWarningAcknowledgedAt: string | null;
+        }
+  - name: models
+    type: |-
+      {
+          /**
+           * Active model pack ID. Built-in packs use their id directly ("anthropic",
+           * "openai"). Custom packs use "custom:<name>".
+           * When set, models are resolved from the pack at startup so pack updates
+           * (e.g. new model versions) apply automatically.
+           * Cleared when the user manually overrides via /models (falls back to modeDefaults).
+           */
+          activeModelPackId: string | null;
+          /** Explicit per-mode overrides — used when no activeModelPackId is set. */
+          modeDefaults: Record<string, string>;
+          /**
+           * Active OM pack ID (e.g. "gemini", "anthropic", "custom").
+           * When set, the OM model is resolved from the pack at startup so pack
+           * updates (e.g. new model versions) apply automatically.
+           * Cleared when the user manually overrides via /om (falls back to omModelOverride).
+           */
+          activeOmPackId: string | null;
+          /** Explicit OM model override — used for custom OM pack or /om manual changes. */
+          omModelOverride: string | null;
+          /** Per-agent-type subagent model overrides (e.g. { explore: "openai/gpt-5.1-codex-mini" }) */
+          subagentModels: Record<string, string>;
+        }
+  - name: preferences
+    type: |-
+      {
+          yolo: boolean | null;
+          theme: 'auto' | 'dark' | 'light';
+          /** Default reasoning effort level used for all threads/models unless overridden in-session. */
+          thinkingLevel: ThinkingLevelSetting;
+          /** When true, components like subagent output collapse to compact summaries on completion. */
+          quietMode: boolean;
+        }
+  - name: storage
+    type: StorageSettings
+  - name: customModelPacks
+    type: CustomPack[]
+  - name: customProviders
+    type: CustomProviderSetting[]
+  - name: modelUseCounts
+    type: Record<string, number>
+  - name: updateDismissedVersion
+    type: string | null
+  - name: lsp
+    type: LSPConfig
+  lines:
+  - 62
+  - 118
+- name: ThreadSettings
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: activeModelPackId
+    type: string | null
+  - name: modeModelIds
+    type: Record<string, string>
+  lines:
+  - 422
+  - 425
+functions:
+- name: parseThinkingLevel
+  sig: 'parseThinkingLevel(value: unknown): ThinkingLevelSetting'
+  lines:
+  - 158
+  - 162
+  detail:
+    calls:
+    - THINKING_LEVEL_VALUES.includes
+- name: parsePreferences
+  sig: 'parsePreferences(rawPreferences: unknown): GlobalSettings[''preferences'']'
+  lines:
+  - 164
+  - 172
+  detail:
+    calls:
+    - parseThinkingLevel
+- name: getSettingsPath
+  sig: 'getSettingsPath(): string'
+  lines:
+  - 174
+  - 176
+- name: getCustomProviderId
+  sig: 'getCustomProviderId(name: string): string'
+  lines:
+  - 178
+  - 185
+  detail:
+    calls:
+    - |-
+      name
+          .trim
+    - |-
+      name
+          .trim()
+          .toLowerCase
+    - |-
+      name
+          .trim()
+          .toLowerCase()
+          .replace
+    - |-
+      name
+          .trim()
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, '-')
+          .replace
+- name: toCustomProviderModelId
+  sig: 'toCustomProviderModelId(providerName: string, modelName: string): string'
+  lines:
+  - 187
+  - 195
+  detail:
+    calls:
+    - getCustomProviderId
+    - modelName.trim
+    - trimmedModelName.startsWith
+- name: parseCustomProviders
+  sig: 'parseCustomProviders(rawProviders: unknown): CustomProviderSetting[]'
+  lines:
+  - 197
+  - 239
+  detail:
+    calls:
+    - Array.isArray
+    - |-
+      [
+                ...new Set(
+                  candidate.models
+                    .filter((model): model is string ...
+    - candidate.apiKey.trim
+    - |-
+      candidate.models
+                    .filter
+    - |-
+      candidate.models
+                    .filter((model): model is string => typeof model === 'string')
+            ...
+    - candidate.name.trim
+    - candidate.url.trim
+    - getCustomProviderId
+    - new Set
+    - parsedProviders.push
+- name: migrateFromAuth
+  sig: 'migrateFromAuth(settingsPath: string): boolean'
+  lines:
+  - 247
+  - 327
+  detail:
+    calls:
+    - Array.isArray
+    - JSON.parse
+    - JSON.stringify
+    - Object.keys
+    - Object.keys(authData).filter
+    - existsSync
+    - getAppDataDir
+    - join
+    - key.match
+    - parseCustomProviders
+    - parsePreferences
+    - readFileSync
+    - saveSettings
+    - structuredClone
+    - writeFileSync
+- name: migrateLegacyVariedPack
+  sig: 'migrateLegacyVariedPack(settings: GlobalSettings): boolean'
+  lines:
+  - 335
+  - 370
+  detail:
+    calls:
+    - Object.entries
+    - Object.entries(LEGACY_VARIED_MODELS).every
+    - Object.keys
+    - new Date
+    - new Date().toISOString
+    - settings.customModelPacks.findIndex
+    - settings.customModelPacks.push
+- name: loadSettings
+  sig: 'loadSettings(filePath: string = getSettingsPath()): GlobalSettings'
+  lines:
+  - 372
+  - 418
+  detail:
+    calls:
+    - Array.isArray
+    - JSON.parse
+    - existsSync
+    - migrateFromAuth
+    - migrateLegacyVariedPack
+    - parseCustomProviders
+    - parsePreferences
+    - readFileSync
+    - saveSettings
+    - structuredClone
+- name: parseThreadSettings
+  sig: 'parseThreadSettings(metadata: Record<string, unknown> | undefined): ThreadSettings'
+  lines:
+  - 427
+  - 443
+  detail:
+    calls:
+    - Object.entries
+    - key.match
+- name: resolveThreadActiveModelPackId
+  sig: |-
+    resolveThreadActiveModelPackId(
+      settings: GlobalSettings,
+      builtinPacks: Array<{ id: string; models: Record<string, string> }>,
+      metadata: Record<string, unknown> | undefined,
+    ): string | null
+  lines:
+  - 453
+  - 491
+  detail:
+    calls:
+    - Object.entries
+    - Object.keys
+    - isKnownPack
+    - packEntries.every
+    - parseThreadSettings
+    - settings.customModelPacks.map
+- name: resolveModelDefaults
+  sig: |-
+    resolveModelDefaults(
+      settings: GlobalSettings,
+      builtinPacks: Array<{ id: string; models: Record<string, string> }>,
+    ): Record<string, string>
+  lines:
+  - 503
+  - 525
+  detail:
+    calls:
+    - activeModelPackId.slice
+    - activeModelPackId.startsWith
+    - builtinPacks.find
+    - settings.customModelPacks.find
+- name: resolveOmModel
+  sig: |-
+    resolveOmModel(
+      settings: GlobalSettings,
+      builtinOmPacks: Array<{ id: string; modelId: string }>,
+    ): string | null
+  lines:
+  - 537
+  - 551
+  detail:
+    calls:
+    - builtinOmPacks.find
+- name: saveSettings
+  sig: 'saveSettings(settings: GlobalSettings, filePath: string = getSettingsPath()): void'
+  lines:
+  - 553
+  - 559
+  detail:
+    calls:
+    - JSON.stringify
+    - dirname
+    - existsSync
+    - mkdirSync
+    - writeFileSync
+exports:
+- name: CustomPack
+  kind: type
+- name: CustomProviderSetting
+  kind: type
+- name: StorageBackend
+  kind: type
+- name: LibSQLStorageSettings
+  kind: type
+- name: PgStorageSettings
+  kind: type
+- name: StorageSettings
+  kind: type
+- name: ThinkingLevelSetting
+  kind: type
+- name: GlobalSettings
+  kind: type
+- name: ThreadSettings
+  kind: type
+- name: parseThinkingLevel
+  kind: func
+- name: parsePreferences
+  kind: func
+- name: getSettingsPath
+  kind: func
+- name: getCustomProviderId
+  kind: func
+- name: toCustomProviderModelId
+  kind: func
+- name: parseCustomProviders
+  kind: func
+- name: migrateFromAuth
+  kind: func
+- name: migrateLegacyVariedPack
+  kind: func
+- name: loadSettings
+  kind: func
+- name: parseThreadSettings
+  kind: func
+- name: resolveThreadActiveModelPackId
+  kind: func
+- name: resolveModelDefaults
+  kind: func
+- name: resolveOmModel
+  kind: func
+- name: saveSettings
+  kind: func
+- name: STORAGE_DEFAULTS
+  kind: data
+- name: DEFAULTS
+  kind: data
+- name: THINKING_LEVEL_VALUES
+  kind: data
+- name: LEGACY_VARIED_MODELS
+  kind: data
+- name: THREAD_ACTIVE_MODEL_PACK_ID_KEY
+  kind: data

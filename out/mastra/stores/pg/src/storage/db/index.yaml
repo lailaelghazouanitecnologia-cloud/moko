@@ -1,0 +1,765 @@
+## Roska File Descriptor — db/index.ts
+file: db/index.ts
+lines: 1653
+imports:
+- sym: node:tls.ConnectionOptions
+  kind: typing
+- sym: '@mastra/core/base.MastraBase'
+- sym: '@mastra/core/error.ErrorCategory'
+- sym: '@mastra/core/error.ErrorDomain'
+- sym: '@mastra/core/error.MastraError'
+- sym: '@mastra/core/storage.createStorageErrorId'
+- sym: '@mastra/core/storage.TABLE_WORKFLOW_SNAPSHOT'
+- sym: '@mastra/core/storage.TABLE_SPANS'
+- sym: '@mastra/core/storage.TABLE_SCHEMAS'
+- sym: '@mastra/core/storage.getSqlType'
+- sym: '@mastra/core/storage.getDefaultValue'
+- sym: '@mastra/core/storage.StorageColumn'
+  kind: typing
+- sym: '@mastra/core/storage.TABLE_NAMES'
+  kind: typing
+- sym: '@mastra/core/storage.CreateIndexOptions'
+  kind: typing
+- sym: '@mastra/core/storage.IndexInfo'
+  kind: typing
+- sym: '@mastra/core/storage.StorageIndexStats'
+  kind: typing
+- sym: '@mastra/core/utils.parseSqlIdentifier'
+- sym: pg.Pool
+- sym: ../client.DbClient
+  kind: typing
+- sym: ../client.PoolAdapter
+- sym: ./constraint-utils.buildConstraintName
+data:
+- name: schemaSetupRegistry
+  type: any
+  val: 'new Map<string, { promise: Promise<void> | null; complete: boolean }>()'
+types:
+- name: PgDomainConfig
+  kind: enum
+  decorators:
+  - type
+  variants:
+  - name: PgDomainRestConfig
+  lines:
+  - 34
+  - 34
+- name: PgDomainClientConfig
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: client
+    type: DbClient
+  - name: skipDefaultIndexes
+    type: boolean
+  - name: indexes
+    type: CreateIndexOptions[]
+  lines:
+  - 39
+  - 48
+- name: PgDomainPoolConfig
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: pool
+    type: Pool
+  - name: skipDefaultIndexes
+    type: boolean
+  - name: indexes
+    type: CreateIndexOptions[]
+  lines:
+  - 53
+  - 62
+- name: PgDomainRestConfig
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 67
+  - 87
+- name: PgDBInternalConfig
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: client
+    type: DbClient
+  - name: skipDefaultIndexes
+    type: boolean
+  lines:
+  - 358
+  - 362
+- name: PgDB
+  kind: struct
+  ctx: 'Cache of actual table columns: tableName -> Set<columnName>'
+  bases:
+  - MastraBase
+  fields:
+  - name: client
+    type: DbClient
+  - name: skipDefaultIndexes
+    type: boolean
+  - name: tableColumnsCache
+    type: any
+    default: new Map<string, Set<string>>()
+  methods:
+  - name: constructor
+    sig: 'constructor(config: PgDBInternalConfig)'
+    lines:
+    - 377
+    - 386
+    detail:
+      calls:
+      - super
+  - name: getTableColumns
+    sig: 'getTableColumns(tableName: TABLE_NAMES): Promise<Set<string>>'
+    is_async: true
+    vis: private
+    lines:
+    - 392
+    - 407
+    detail:
+      calls:
+      - await this.client.manyOrNone
+      - new Set
+      - rows.map
+      - this.tableColumnsCache.get
+      - this.tableColumnsCache.set
+  - name: filterRecordToKnownColumns
+    sig: |-
+      filterRecordToKnownColumns(
+          tableName: TABLE_NAMES,
+          record: Record<string, any>,
+        ): Promise<Record<string, any>>
+    is_async: true
+    vis: private
+    lines:
+    - 414
+    - 428
+    detail:
+      calls:
+      - Object.entries
+      - knownColumns.has
+      - this.getTableColumns
+  - name: hasColumn
+    sig: 'hasColumn(table: string, column: string): Promise<boolean>'
+    is_async: true
+    lines:
+    - 430
+    - 439
+    detail:
+      calls:
+      - column.toLowerCase
+      - this.client.oneOrNone
+  - name: prepareValue
+    sig: 'prepareValue(value: any, columnName: string, tableName: TABLE_NAMES): any'
+    vis: private
+    lines:
+    - 474
+    - 495
+    detail:
+      calls:
+      - JSON.stringify
+      - value.toISOString
+  - name: setupSchema
+    sig: setupSchema()
+    is_async: true
+    vis: private
+    lines:
+    - 497
+    - 556
+    detail:
+      calls:
+      - |-
+        (async () => {
+                try {
+                  const schemaExists = await this.client.oneOrNone(
+                   ...
+      - getSchemaName
+      - schemaSetupRegistry.get
+      - schemaSetupRegistry.set
+  - name: insert
+    sig: 'insert({ tableName, record }: { tableName: TABLE_NAMES; record: Record<string, any> }): Promise<void>'
+    is_async: true
+    lines:
+    - 569
+    - 620
+    detail:
+      calls:
+      - Object.keys
+      - Object.keys(filteredRecord).map
+      - columns.filter
+      - columns.map
+      - columns.map(c => `"${c}"`).join
+      - createStorageErrorId
+      - getSchemaName
+      - getTableName
+      - new MastraError
+      - this.addTimestampZColumns
+      - this.client.none
+      - this.filterRecordToKnownColumns
+      - this.prepareValuesForInsert
+      - updateColumns.map
+      - updateColumns.map(c => `"${c}" = EXCLUDED."${c}"`).join
+      - values.map
+      - values.map((_, i) => `$${i + 1}`).join
+  - name: clearTable
+    sig: 'clearTable({ tableName }: { tableName: TABLE_NAMES }): Promise<void>'
+    is_async: true
+    lines:
+    - 622
+    - 652
+    detail:
+      calls:
+      - await this.client.oneOrNone
+      - createStorageErrorId
+      - getSchemaName
+      - getTableName
+      - new MastraError
+      - this.client.none
+  - name: createTable
+    sig: |-
+      createTable({
+          tableName,
+          schema,
+          compositePrimaryKey,
+        }: {
+          tableName: TABLE_NAMES;
+          schema: Record<string, StorageColumn>;
+          compositePrimaryKey?: string[];
+        }): Promise<void>
+    is_async: true
+    lines:
+    - 654
+    - 749
+    detail:
+      calls:
+      - Object.entries
+      - |-
+        Object.entries(schema)
+                .filter
+      - |-
+        Object.entries(schema)
+                .filter(([_, def]) => def.type === 'timestamp')
+                .map
+      - createStorageErrorId
+      - generateTableSQL
+      - new MastraError
+      - this.addSpansPrimaryKey
+      - this.alterTable
+      - this.checkForDuplicateSpans
+      - this.client.none
+      - this.migrateSpansTable
+      - this.setupSchema
+      - this.setupTimestampTriggers
+      - this.spansPrimaryKeyExists
+      - this.tableColumnsCache.delete
+  - name: setupTimestampTriggers
+    sig: 'setupTimestampTriggers(tableName: TABLE_NAMES): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 751
+    - 761
+    detail:
+      calls:
+      - generateTimestampTriggerSQL
+      - getSchemaName
+      - getTableName
+      - this.client.none
+      - this.logger?.debug
+      - this.logger?.warn
+  - name: migrateSpansTable
+    sig: 'migrateSpansTable(): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 767
+    - 818
+    detail:
+      calls:
+      - Object.entries
+      - '`ALTER TABLE ${fullTableName} ADD COLUMN IF NOT EXISTS "${parsedColumnName}" ${sqlType} ${nullable} ...'
+      - '`ALTER TABLE ${fullTableName} ADD COLUMN IF NOT EXISTS "${parsedColumnName}Z" TIMESTAMPTZ DEFAULT NO...'
+      - '`ALTER TABLE ${fullTableName} ADD COLUMN IF NOT EXISTS "${parsedTzColumnName}" TIMESTAMPTZ DEFAULT N...'
+      - getSchemaName
+      - getTableName
+      - mapToSqlType
+      - parseSqlIdentifier
+      - this.client.none
+      - this.getDefaultValue
+      - this.hasColumn
+      - this.logger?.debug
+      - this.logger?.info
+      - this.logger?.warn
+  - name: deduplicateSpans
+    sig: 'deduplicateSpans(): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 827
+    - 905
+    detail:
+      calls:
+      - await this.client.oneOrNone
+      - createStorageErrorId
+      - getSchemaName
+      - getTableName
+      - new MastraError
+      - this.client.query
+      - this.logger?.debug
+      - this.logger?.info
+  - name: checkForDuplicateSpans
+    sig: |-
+      checkForDuplicateSpans(): Promise<{
+          hasDuplicates: boolean;
+          duplicateCount: number;
+          tableName: string;
+        }>
+    is_async: true
+    vis: private
+    lines:
+    - 911
+    - 941
+    detail:
+      calls:
+      - await this.client.oneOrNone
+      - getSchemaName
+      - getTableName
+      - parseInt
+      - this.logger?.debug
+  - name: spansPrimaryKeyExists
+    sig: 'spansPrimaryKeyExists(): Promise<boolean>'
+    is_async: true
+    vis: private
+    lines:
+    - 947
+    - 961
+    detail:
+      calls:
+      - await this.client.oneOrNone
+      - buildConstraintName
+      - parseSqlIdentifier
+  - name: addSpansPrimaryKey
+    sig: 'addSpansPrimaryKey(): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 967
+    - 1014
+    detail:
+      calls:
+      - await this.client.oneOrNone
+      - buildConstraintName
+      - createStorageErrorId
+      - getSchemaName
+      - getTableName
+      - new MastraError
+      - parseSqlIdentifier
+      - this.client.none
+      - this.logger?.debug
+      - this.logger?.info
+  - name: migrateSpans
+    sig: |-
+      migrateSpans(): Promise<{
+          success: boolean;
+          alreadyMigrated: boolean;
+          duplicatesRemoved: number;
+          message: string;
+        }>
+    is_async: true
+    lines:
+    - 1022
+    - 1066
+    detail:
+      calls:
+      - getSchemaName
+      - getTableName
+      - this.addSpansPrimaryKey
+      - this.checkForDuplicateSpans
+      - this.deduplicateSpans
+      - this.logger?.info
+      - this.spansPrimaryKeyExists
+  - name: checkSpansMigrationStatus
+    sig: |-
+      checkSpansMigrationStatus(): Promise<{
+          needsMigration: boolean;
+          hasDuplicates: boolean;
+          duplicateCount: number;
+          constraintExists: boolean;
+          tableName: string;
+        }>
+    is_async: true
+    lines:
+    - 1072
+    - 1100
+    detail:
+      calls:
+      - getSchemaName
+      - getTableName
+      - this.checkForDuplicateSpans
+      - this.spansPrimaryKeyExists
+  - name: alterTable
+    sig: |-
+      alterTable({
+          tableName,
+          schema,
+          ifNotExists,
+        }: {
+          tableName: TABLE_NAMES;
+          schema: Record<string, StorageColumn>;
+          ifNotExists: string[];
+        }): Promise<void>
+    is_async: true
+    lines:
+    - 1108
+    - 1158
+    detail:
+      calls:
+      - '`ALTER TABLE ${fullTableName} ADD COLUMN IF NOT EXISTS "${parsedColumnName}" ${sqlType} ${nullable} ...'
+      - '`ALTER TABLE ${fullTableName} ADD COLUMN IF NOT EXISTS "${parsedColumnName}Z" TIMESTAMPTZ DEFAULT NO...'
+      - createStorageErrorId
+      - getSchemaName
+      - getTableName
+      - mapToSqlType
+      - new MastraError
+      - parseSqlIdentifier
+      - this.client.none
+      - this.getDefaultValue
+      - this.logger?.debug
+      - this.tableColumnsCache.delete
+  - name: load
+    sig: 'load({ tableName, keys }: { tableName: TABLE_NAMES; keys: Record<string, string> }): Promise<R | null>'
+    is_async: true
+    lines:
+    - 1160
+    - 1197
+    detail:
+      calls:
+      - JSON.parse
+      - Object.entries
+      - Object.entries(keys).map
+      - await this.client.oneOrNone
+      - createStorageErrorId
+      - getSchemaName
+      - getTableName
+      - keyEntries.map
+      - keyEntries.map(([key], index) => `"${key}" = $${index + 1}`).join
+      - new MastraError
+  - name: batchInsert
+    sig: 'batchInsert({ tableName, records }: { tableName: TABLE_NAMES; records: Record<string, any>[] }): Promise<void>'
+    is_async: true
+    lines:
+    - 1199
+    - 1221
+    detail:
+      calls:
+      - createStorageErrorId
+      - new MastraError
+      - this.client.query
+      - this.insert
+  - name: dropTable
+    sig: 'dropTable({ tableName }: { tableName: TABLE_NAMES }): Promise<void>'
+    is_async: true
+    lines:
+    - 1223
+    - 1244
+    detail:
+      calls:
+      - createStorageErrorId
+      - getSchemaName
+      - getTableName
+      - new MastraError
+      - this.client.none
+      - this.tableColumnsCache.delete
+  - name: createIndex
+    sig: 'createIndex(options: CreateIndexOptions): Promise<void>'
+    is_async: true
+    lines:
+    - 1246
+    - 1331
+    detail:
+      calls:
+      - Object.entries
+      - |-
+        Object.entries(storage)
+                  .map
+      - |-
+        Object.entries(storage)
+                  .map(([key, value]) => `${key} = ${value}`)
+                  .join
+      - Object.keys
+      - |-
+        columns
+                .map
+      - |-
+        columns
+                .map(col => {
+                  if (col.includes(' DESC') || col.includes(' ASC')) {
+               ...
+      - createStorageErrorId
+      - error.message.includes
+      - getSchemaName
+      - getTableName
+      - new MastraError
+      - parseSqlIdentifier
+      - this.client.none
+      - this.client.oneOrNone
+      - this.createIndex
+  - name: dropIndex
+    sig: 'dropIndex(indexName: string): Promise<void>'
+    is_async: true
+    lines:
+    - 1333
+    - 1363
+    detail:
+      calls:
+      - createStorageErrorId
+      - getSchemaName
+      - new MastraError
+      - parseSqlIdentifier
+      - this.client.none
+      - this.client.oneOrNone
+  - name: listIndexes
+    sig: 'listIndexes(tableName?: string): Promise<IndexInfo[]>'
+    is_async: true
+    lines:
+    - 1365
+    - 1444
+    detail:
+      calls:
+      - createStorageErrorId
+      - new MastraError
+      - results.map
+      - this.client.manyOrNone
+  - name: describeIndex
+    sig: 'describeIndex(indexName: string): Promise<StorageIndexStats>'
+    is_async: true
+    lines:
+    - 1446
+    - 1512
+    detail:
+      calls:
+      - Array.isArray
+      - String
+      - arrayContent.split
+      - createStorageErrorId
+      - new Error
+      - new MastraError
+      - parseInt
+      - result.columns.endsWith
+      - result.columns.slice
+      - result.columns.startsWith
+      - this.client.oneOrNone
+  - name: update
+    sig: |-
+      update({
+          tableName,
+          keys,
+          data,
+        }: {
+          tableName: TABLE_NAMES;
+          keys: Record<string, any>;
+          data: Record<string, any>;
+        }): Promise<void>
+    is_async: true
+    lines:
+    - 1514
+    - 1569
+    detail:
+      calls:
+      - Object.entries
+      - Object.entries(filteredData).forEach
+      - Object.entries(keys).forEach
+      - Object.keys
+      - createStorageErrorId
+      - getSchemaName
+      - getTableName
+      - new MastraError
+      - setColumns.join
+      - this.client.none
+      - this.filterRecordToKnownColumns
+      - whereConditions.join
+  - name: batchUpdate
+    sig: |-
+      batchUpdate({
+          tableName,
+          updates,
+        }: {
+          tableName: TABLE_NAMES;
+          updates: Array<{
+            keys: Record<string, any>;
+            data: Record<string, any>;
+          }>;
+        }): Promise<void>
+    is_async: true
+    lines:
+    - 1571
+    - 1602
+    detail:
+      calls:
+      - createStorageErrorId
+      - new MastraError
+      - this.client.query
+      - this.update
+  - name: batchDelete
+    sig: 'batchDelete({ tableName, keys }: { tableName: TABLE_NAMES; keys: Record<string, any>[] }): Promise<void>'
+    is_async: true
+    lines:
+    - 1604
+    - 1645
+    detail:
+      calls:
+      - createStorageErrorId
+      - getSchemaName
+      - getTableName
+      - new MastraError
+      - this.client.tx
+  - name: deleteData
+    sig: 'deleteData({ tableName }: { tableName: TABLE_NAMES }): Promise<void>'
+    is_async: true
+    lines:
+    - 1650
+    - 1652
+    detail:
+      calls:
+      - this.clearTable
+  lines:
+  - 369
+  - 1653
+functions:
+- name: resolvePgConfig
+  sig: |-
+    resolvePgConfig(config: PgDomainConfig): {
+      client: DbClient;
+      schemaName?: string;
+      skipDefaultIndexes?: boolean;
+      indexes?: CreateIndexOptions[];
+    }
+  lines:
+  - 93
+  - 143
+  detail:
+    calls:
+    - new Pool
+    - new PoolAdapter
+- name: getSchemaName
+  sig: 'getSchemaName(schema?: string)'
+  lines:
+  - 145
+  - 147
+- name: getTableName
+  sig: 'getTableName({ indexName, schemaName }: { indexName: string; schemaName?: string })'
+  lines:
+  - 149
+  - 154
+  detail:
+    calls:
+    - parseSqlIdentifier
+- name: mapToSqlType
+  sig: 'mapToSqlType(type: StorageColumn[''type'']): string'
+  lines:
+  - 156
+  - 165
+  detail:
+    calls:
+    - getSqlType
+- name: generateTableSQL
+  sig: |-
+    generateTableSQL({
+      tableName,
+      schema,
+      schemaName,
+      compositePrimaryKey,
+      includeAllConstraints = false,
+    }: {
+      tableName: TABLE_NAMES;
+      schema: Record<string, StorageColumn>;
+      schemaName?: string;
+      compositePrimaryKey?: string[];
+      /** When true, includes all constraints in the SQL (for exports). When false, some constraints are added at runtime after data migration. */
+      includeAllConstraints?: boolean;
+    }): string
+  lines:
+  - 167
+  - 285
+  detail:
+    calls:
+    - Object.entries
+    - |-
+      Object.entries(schema)
+          .filter
+    - |-
+      Object.entries(schema)
+          .filter(([_, def]) => def.type === 'timestamp')
+          .map
+    - Object.entries(schema).map
+    - '[...columns, ...timeZColumns, ...tableConstraints].join'
+    - buildConstraintName
+    - compositePrimaryKey.map
+    - compositePrimaryKey.map(c => `"${parseSqlIdentifier(c, 'column name')}"`).join
+    - getSchemaName
+    - getTableName
+    - new Error
+    - new Set
+    - parseSqlIdentifier
+    - tableConstraints.push
+- name: generateIndexSQL
+  sig: 'generateIndexSQL(options: CreateIndexOptions, schemaName?: string): string'
+  lines:
+  - 291
+  - 317
+  detail:
+    calls:
+    - |-
+      columns
+          .map
+    - |-
+      columns
+          .map(col => {
+            if (col.includes(' DESC') || col.includes(' ASC')) {
+              const [...
+    - getSchemaName
+    - getTableName
+    - parseSqlIdentifier
+- name: generateTimestampTriggerSQL
+  sig: 'generateTimestampTriggerSQL(tableName: string, schemaName?: string): string'
+  lines:
+  - 323
+  - 353
+  detail:
+    calls:
+    - getSchemaName
+    - getTableName
+    - parseSqlIdentifier
+exports:
+- name: PgDomainConfig
+  kind: type
+- name: PgDomainClientConfig
+  kind: type
+- name: PgDomainPoolConfig
+  kind: type
+- name: PgDomainRestConfig
+  kind: type
+- name: PgDBInternalConfig
+  kind: type
+- name: PgDB
+  kind: type
+- name: resolvePgConfig
+  kind: func
+- name: getSchemaName
+  kind: func
+- name: getTableName
+  kind: func
+- name: mapToSqlType
+  kind: func
+- name: generateTableSQL
+  kind: func
+- name: generateIndexSQL
+  kind: func
+- name: generateTimestampTriggerSQL
+  kind: func
+- name: schemaSetupRegistry
+  kind: data

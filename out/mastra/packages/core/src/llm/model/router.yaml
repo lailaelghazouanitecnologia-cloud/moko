@@ -1,0 +1,349 @@
+## Roska File Descriptor — model/router.ts
+file: model/router.ts
+lines: 462
+imports:
+- sym: node:crypto.createHash
+- sym: '@ai-sdk/openai-compatible-v5.createOpenAICompatible'
+- sym: '@ai-sdk/openai-v5.createOpenAI'
+- sym: '@ai-sdk/provider-v5.LanguageModelV2'
+  kind: typing
+- sym: '@ai-sdk/provider-v5.LanguageModelV2CallOptions'
+  kind: typing
+- sym: '@ai-sdk/provider-v5.LanguageModelV2StreamPart'
+  kind: typing
+- sym: '@ai-sdk/provider-v6.LanguageModelV3'
+  kind: typing
+- sym: ../../stream/types.StreamTransport
+  kind: typing
+- sym: ./aisdk/v5/model.AISDKV5LanguageModel
+- sym: ./aisdk/v6/model.AISDKV6LanguageModel
+- sym: ./gateway-resolver.js.parseModelRouterId
+- sym: ./gateways/base.js.GatewayLanguageModel
+  kind: typing
+- sym: ./gateways/base.js.MastraModelGateway
+  kind: typing
+- sym: ./gateways/index.js.findGatewayForModel
+- sym: ./gateways/models-dev.js.ModelsDevGateway
+- sym: ./gateways/netlify.js.NetlifyGateway
+- sym: ./openai-websocket-fetch.js.createOpenAIWebSocketFetch
+- sym: ./openai-websocket-fetch.js.OpenAIWebSocketFetch
+  kind: typing
+- sym: ./provider-options.js.OpenAITransport
+  kind: typing
+- sym: ./provider-options.js.OpenAIWebSocketOptions
+  kind: typing
+- sym: ./provider-options.js.ProviderOptions
+  kind: typing
+- sym: ./provider-registry.js.ModelRouterModelId
+  kind: typing
+- sym: ./provider-registry.js.PROVIDER_REGISTRY
+- sym: ./shared.types.MastraLanguageModelV2
+  kind: typing
+- sym: ./shared.types.OpenAICompatibleConfig
+  kind: typing
+data:
+- name: OPENAI_WS_ALLOWLIST
+  type: any
+  val: new Set(['openai'])
+- name: OPENAI_API_HOST
+  type: string
+  val: '''api.openai.com'''
+- name: defaultGateways
+  type: array
+  val: '[new NetlifyGateway(), new ModelsDevGateway(getStaticProvidersByGateway(`models.dev`))]'
+- name: gateways
+  type: any
+  val: defaultGateways
+types:
+- name: StreamResult
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 66
+  - 66
+- name: ModelRouterLanguageModel
+  kind: model
+  ctx: Supported URL patterns by media type for the provider. This is a lazy promise that resolves the underlying model's supportedUrls. Models like Mistral define which URL patterns they support (e.g., application/pdf for https URLs).
+  bases:
+  - MastraLanguageModelV2
+  fields:
+  - name: specificationVersion
+    type: any
+    default: '''v2'' as const'
+  - name: defaultObjectGenerationMode
+    type: any
+    default: '''json'' as const'
+  - name: supportsStructuredOutputs
+    type: any
+    default: 'true'
+  - name: supportsImageUrls
+    type: any
+    default: 'true'
+  - name: supportedUrls
+    type: PromiseLike<Record<string, RegExp[]>>
+  - name: modelId
+    type: string
+  - name: provider
+    type: string
+  - name: config
+    type: 'OpenAICompatibleConfig & { routerId: string }'
+  - name: gateway
+    type: MastraModelGateway
+  - name: _supportedUrlsPromise
+    type: Promise<Record<string, RegExp[]>> | null
+    default: 'null'
+  - name: modelInstances
+    type: any
+    default: new Map<string, GatewayLanguageModel>()
+  - name: webSocketFetches
+    type: any
+    default: new Map<string, OpenAIWebSocketFetch>()
+  methods:
+  - name: constructor
+    sig: 'constructor(config: ModelRouterModelId | OpenAICompatibleConfig, customGateways?: MastraModelGateway[])'
+    lines:
+    - 102
+    - 170
+    detail:
+      calls:
+      - findGatewayForModel
+      - parseModelRouterId
+      - self._resolveSupportedUrls
+      - self._resolveSupportedUrls().then
+  - name: _resolveSupportedUrls
+    sig: '_resolveSupportedUrls(): Promise<Record<string, RegExp[]>>'
+    is_async: true
+    vis: private
+    lines:
+    - 177
+    - 184
+    detail:
+      calls:
+      - this._fetchSupportedUrls
+  - name: _fetchSupportedUrls
+    sig: '_fetchSupportedUrls(): Promise<Record<string, RegExp[]>>'
+    is_async: true
+    vis: private
+    lines:
+    - 190
+    - 229
+    detail:
+      calls:
+      - parseModelRouterId
+      - this.gateway.getApiKey
+      - this.resolveLanguageModel
+  - name: _getStreamTransport
+    sig: '_getStreamTransport(): StreamTransport | undefined'
+    lines:
+    - 232
+    - 234
+    detail: {}
+  - name: setStreamTransport
+    sig: |-
+      setStreamTransport({
+          resolvedTransport,
+          key,
+          openaiWebSocket,
+        }: {
+          resolvedTransport: OpenAITransport;
+          key: string;
+          openaiWebSocket?: OpenAIWebSocketOptions;
+        })
+    vis: private
+    lines:
+    - 236
+    - 261
+    detail:
+      calls:
+      - ModelRouterLanguageModel.webSocketFetches.get
+  - name: doGenerate
+    sig: 'doGenerate(options: LanguageModelV2CallOptions): Promise<StreamResult>'
+    is_async: true
+    lines:
+    - 263
+    - 303
+    detail:
+      calls:
+      - aiSDKV5Model.doGenerate
+      - aiSDKV6Model.doGenerate
+      - controller.close
+      - controller.enqueue
+      - isLanguageModelV3
+      - new AISDKV5LanguageModel
+      - new AISDKV6LanguageModel
+      - new ReadableStream
+      - parseModelRouterId
+      - this.gateway.getApiKey
+      - this.resolveLanguageModel
+  - name: doStream
+    sig: 'doStream(options: LanguageModelV2CallOptions): Promise<StreamResult>'
+    is_async: true
+    lines:
+    - 305
+    - 357
+    detail:
+      calls:
+      - OPENAI_WS_ALLOWLIST.has
+      - aiSDKV5Model.doStream
+      - aiSDKV6Model.doStream
+      - controller.close
+      - controller.enqueue
+      - getOpenAITransport
+      - isLanguageModelV3
+      - new AISDKV5LanguageModel
+      - new AISDKV6LanguageModel
+      - new ReadableStream
+      - parseModelRouterId
+      - this.gateway.getApiKey
+      - this.resolveLanguageModel
+  - name: resolveLanguageModel
+    sig: |-
+      resolveLanguageModel({
+          modelId,
+          providerId,
+          apiKey,
+          headers,
+          transport,
+          openaiWebSocket,
+        }: {
+          modelId: string;
+          providerId: string;
+          apiKey: string;
+          headers?: Record<string, string>;
+          transport?: OpenAITransport;
+          openaiWebSocket?: OpenAIWebSocketOptions;
+        }): Promise<GatewayLanguageModel>
+    is_async: true
+    vis: private
+    lines:
+    - 359
+    - 432
+    detail:
+      calls:
+      - ModelRouterLanguageModel.modelInstances.get
+      - ModelRouterLanguageModel.modelInstances.has
+      - ModelRouterLanguageModel.modelInstances.set
+      - ModelRouterLanguageModel.webSocketFetches.set
+      - createHash
+      - |-
+        createHash('sha256')
+              .update
+      - |-
+        createHash('sha256')
+              .update(
+                this.gateway.id +
+                  modelId +
+                  provider...
+      - createOpenAICompatible
+      - |-
+        createOpenAICompatible({
+                name: providerId,
+                apiKey,
+                baseURL: this.config.url,...
+      - isOpenAIBaseUrl
+      - stableHeaderKey
+      - this.gateway.buildUrl
+      - this.gateway.resolveLanguageModel
+      - this.resolveOpenAIWebSocketModel
+      - this.setStreamTransport
+  - name: resolveOpenAIWebSocketModel
+    sig: |-
+      resolveOpenAIWebSocketModel({
+          modelId,
+          apiKey,
+          baseURL,
+          headers,
+          openaiWebSocket,
+        }: {
+          modelId: string;
+          apiKey: string;
+          baseURL?: string;
+          headers?: Record<string, string>;
+          openaiWebSocket?: OpenAIWebSocketOptions;
+        }): { modelInstance: GatewayLanguageModel; wsFetch: OpenAIWebSocketFetch }
+    vis: private
+    lines:
+    - 434
+    - 459
+    detail:
+      calls:
+      - createOpenAI
+      - |-
+        createOpenAI({
+              apiKey,
+              baseURL,
+              headers,
+              fetch: wsFetch,
+            }).responses
+      - createOpenAIWebSocketFetch
+  lines:
+  - 79
+  - 462
+functions:
+- name: isLanguageModelV3
+  sig: 'isLanguageModelV3(model: GatewayLanguageModel)'
+  lines:
+  - 25
+  - 27
+- name: getOpenAITransport
+  sig: |-
+    getOpenAITransport(providerOptions?: ProviderOptions): {
+      transport: OpenAITransport;
+      websocket?: OpenAIWebSocketOptions;
+    }
+  lines:
+  - 32
+  - 47
+  detail: {}
+- name: isOpenAIBaseUrl
+  sig: 'isOpenAIBaseUrl(baseURL?: string): boolean'
+  lines:
+  - 49
+  - 57
+  detail:
+    calls:
+    - new URL
+- name: stableHeaderKey
+  sig: 'stableHeaderKey(headers?: Record<string, string>): string'
+  lines:
+  - 59
+  - 64
+  detail:
+    calls:
+    - JSON.stringify
+    - Object.entries
+    - entries.sort
+- name: getStaticProvidersByGateway
+  sig: 'getStaticProvidersByGateway(name: string)'
+  lines:
+  - 68
+  - 70
+  detail:
+    calls:
+    - Object.entries
+    - Object.entries(PROVIDER_REGISTRY).filter
+    - Object.fromEntries
+exports:
+- name: StreamResult
+  kind: type
+- name: ModelRouterLanguageModel
+  kind: type
+- name: isLanguageModelV3
+  kind: func
+- name: getOpenAITransport
+  kind: func
+- name: isOpenAIBaseUrl
+  kind: func
+- name: stableHeaderKey
+  kind: func
+- name: getStaticProvidersByGateway
+  kind: func
+- name: OPENAI_WS_ALLOWLIST
+  kind: data
+- name: OPENAI_API_HOST
+  kind: data
+- name: defaultGateways
+  kind: data
+- name: gateways
+  kind: data

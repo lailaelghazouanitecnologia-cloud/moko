@@ -1,0 +1,2025 @@
+## Roska File Descriptor — observational-memory/observational-memory.ts
+file: observational-memory/observational-memory.ts
+lines: 6316
+imports:
+- sym: node:fs.appendFileSync
+- sym: node:path.join
+- sym: '@mastra/core/agent.Agent'
+- sym: '@mastra/core/agent.AgentConfig'
+  kind: typing
+- sym: '@mastra/core/agent.MastraDBMessage'
+  kind: typing
+- sym: '@mastra/core/agent.MessageList'
+  kind: typing
+- sym: '@mastra/core/features.coreFeatures'
+- sym: '@mastra/core/llm.MastraModelConfig'
+  kind: typing
+- sym: '@mastra/core/llm.resolveModelConfig'
+- sym: '@mastra/core/mastra.Mastra'
+  kind: typing
+- sym: '@mastra/core/memory.getThreadOMMetadata'
+- sym: '@mastra/core/memory.parseMemoryRequestContext'
+- sym: '@mastra/core/memory.setThreadOMMetadata'
+- sym: '@mastra/core/processors.Processor'
+  kind: typing
+- sym: '@mastra/core/processors.ProcessInputArgs'
+  kind: typing
+- sym: '@mastra/core/processors.ProcessInputStepArgs'
+  kind: typing
+- sym: '@mastra/core/processors.ProcessOutputResultArgs'
+  kind: typing
+- sym: '@mastra/core/processors.ProcessorStreamWriter'
+  kind: typing
+- sym: '@mastra/core/processors.MessageHistory'
+- sym: '@mastra/core/request-context.RequestContext'
+  kind: typing
+- sym: '@mastra/core/storage.MemoryStorage'
+  kind: typing
+- sym: '@mastra/core/storage.ObservationalMemoryRecord'
+  kind: typing
+- sym: '@mastra/core/storage.BufferedObservationChunk'
+  kind: typing
+- sym: xxhash-wasm.xxhash
+- sym: ./date-utils.addRelativeTimeToObservations
+- sym: ./markers.createActivationMarker
+- sym: ./markers.createBufferingEndMarker
+- sym: ./markers.createBufferingFailedMarker
+- sym: ./markers.createBufferingStartMarker
+- sym: ./markers.createObservationEndMarker
+- sym: ./markers.createObservationFailedMarker
+- sym: ./markers.createObservationStartMarker
+- sym: ./markers.createThreadUpdateMarker
+- sym: ./observation-groups.renderObservationGroupsForReflection
+- sym: ./observation-groups.wrapInObservationGroup
+- sym: ./observer-agent.buildObserverSystemPrompt
+- sym: ./observer-agent.buildObserverTaskPrompt
+- sym: ./observer-agent.buildObserverHistoryMessage
+- sym: ./observer-agent.buildMultiThreadObserverTaskPrompt
+- sym: ./observer-agent.buildMultiThreadObserverHistoryMessage
+- sym: ./observer-agent.parseObserverOutput
+- sym: ./observer-agent.parseMultiThreadObserverOutput
+- sym: ./observer-agent.optimizeObservationsForContext
+- sym: ./observer-agent.formatMessagesForObserver
+- sym: ./operation-registry.registerOp
+- sym: ./operation-registry.unregisterOp
+- sym: ./operation-registry.isOpActiveInProcess
+- sym: ./reflector-agent.buildReflectorSystemPrompt
+- sym: ./reflector-agent.buildReflectorPrompt
+- sym: ./reflector-agent.parseReflectorOutput
+- sym: ./reflector-agent.validateCompression
+- sym: ./repro-capture.isOmReproCaptureEnabled
+- sym: ./repro-capture.safeCaptureJson
+- sym: ./repro-capture.writeProcessInputStepReproCapture
+- sym: ./thresholds.calculateDynamicThreshold
+- sym: ./thresholds.calculateProjectedMessageRemoval
+- sym: ./thresholds.getMaxThreshold
+- sym: ./thresholds.resolveActivationRatio
+- sym: ./thresholds.resolveBlockAfter
+- sym: ./thresholds.resolveBufferTokens
+- sym: ./thresholds.resolveRetentionFloor
+- sym: ./token-counter.TokenCounter
+- sym: ./token-counter.TokenCounterModelContext
+  kind: typing
+- sym: ./types.ObservationConfig
+  kind: typing
+- sym: ./types.ReflectionConfig
+  kind: typing
+- sym: ./types.ThresholdRange
+  kind: typing
+- sym: ./types.ModelSettings
+  kind: typing
+- sym: ./types.ProviderOptions
+  kind: typing
+- sym: ./types.DataOmStatusPart
+  kind: typing
+- sym: ./types.ObservationMarkerConfig
+  kind: typing
+data:
+- name: OM_DEBUG_LOG
+  type: any
+  val: 'process.env.OM_DEBUG ? join(process.cwd(), ''om-debug.log'') : null'
+- name: OBSERVATIONAL_MEMORY_DEFAULTS
+  type: object
+  val: |-
+    {
+      retrieval: false,
+      observation: {
+        model: 'google/gemini-2.5-flash',
+        messageTokens: 30_000,
+        modelSetting...
+- name: OBSERVATION_CONTINUATION_HINT
+  type: string
+  val: '`This message is not from the user, the conversation history grew too long and wouldn''t fit in context! Thankfully the e...'
+- name: OBSERVATION_CONTEXT_PROMPT
+  type: string
+  val: '`The following observations block contains your memory of past conversations with this user.`'
+- name: OBSERVATION_CONTEXT_INSTRUCTIONS
+  type: string
+  val: '`IMPORTANT: When responding, reference specific details from these observations. Do not give generic advice - personaliz...'
+- name: OBSERVATION_RETRIEVAL_INSTRUCTIONS
+  type: string
+  val: |-
+    `## Recall — looking up source messages
+
+    Your memory is comprised of observations which are sometimes wrapped in <obse...
+types:
+- name: ObservationDebugEvent
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: type
+    type: |-
+      | 'observation_triggered'
+          | 'observation_complete'
+          | 'reflection_triggered'
+          | 'reflection_complete'
+          | 'tokens_accumulated'
+          | 'step_progress'
+  - name: timestamp
+    type: Date
+  - name: threadId
+    type: string
+  - name: resourceId
+    type: string
+  - name: messages
+    type: 'Array<{ role: string; content: string }>'
+  - name: pendingTokens
+    type: number
+  - name: sessionTokens
+    type: number
+  - name: totalPendingTokens
+    type: number
+  - name: threshold
+    type: number
+  - name: inputTokens
+    type: number
+  - name: activeObservationsLength
+    type: number
+  - name: outputTokens
+    type: number
+  - name: observations
+    type: string
+  - name: previousObservations
+    type: string
+  - name: rawObserverOutput
+    type: string
+  - name: usage
+    type: |-
+      {
+          inputTokens?: number;
+          outputTokens?: number;
+          totalTokens?: number;
+        }
+  - name: stepNumber
+    type: number
+  - name: finishReason
+    type: string
+  - name: thresholdPercent
+    type: number
+  - name: willSave
+    type: boolean
+  - name: willObserve
+    type: boolean
+  lines:
+  - 147
+  - 189
+- name: ObservationalMemoryConfig
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: storage
+    type: MemoryStorage
+  - name: retrieval
+    type: boolean
+  - name: model
+    type: AgentConfig['model']
+  - name: observation
+    type: ObservationConfig
+  - name: reflection
+    type: ReflectionConfig
+  - name: scope
+    type: '''resource'' | ''thread'''
+  - name: onDebugEvent
+    type: '(event: ObservationDebugEvent) => void'
+  - name: obscureThreadIds
+    type: boolean
+  - name: shareTokenBudget
+    type: boolean
+  lines:
+  - 194
+  - 258
+- name: ResolvedObservationConfig
+  kind: trait
+  ctx: Internal resolved config with all defaults applied. Thresholds are stored as ThresholdRange internally for dynamic calculation, even when user provides a simple number (converted based on shareTokenBudget).
+  decorators:
+  - interface
+  fields:
+  - name: model
+    type: AgentConfig['model']
+  - name: messageTokens
+    type: number | ThresholdRange
+  - name: shareTokenBudget
+    type: boolean
+  - name: modelSettings
+    type: ModelSettings
+  - name: providerOptions
+    type: ProviderOptions
+  - name: maxTokensPerBatch
+    type: number
+  - name: bufferTokens
+    type: number
+  - name: bufferActivation
+    type: number
+  - name: blockAfter
+    type: number
+  - name: previousObserverTokens
+    type: number | false
+  - name: instruction
+    type: string
+  - name: threadTitle
+    type: boolean
+  lines:
+  - 265
+  - 287
+- name: ResolvedReflectionConfig
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: model
+    type: AgentConfig['model']
+  - name: observationTokens
+    type: number | ThresholdRange
+  - name: shareTokenBudget
+    type: boolean
+  - name: modelSettings
+    type: ModelSettings
+  - name: providerOptions
+    type: ProviderOptions
+  - name: bufferActivation
+    type: number
+  - name: blockAfter
+    type: number
+  - name: instruction
+    type: string
+  lines:
+  - 289
+  - 304
+- name: ObserveHooks
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: onObservationStart
+    type: () => void
+  - name: onObservationEnd
+    type: () => void
+  - name: onReflectionStart
+    type: () => void
+  - name: onReflectionEnd
+    type: () => void
+  lines:
+  - 462
+  - 467
+- name: ObservationalMemory
+  kind: struct
+  ctx: Internal Observer agent - created lazily
+  bases:
+  - Processor<'observational-memory'>
+  fields:
+  - name: id
+    type: any
+    default: '''observational-memory'' as const'
+  - name: name
+    type: any
+    default: '''Observational Memory'''
+  - name: storage
+    type: MemoryStorage
+  - name: tokenCounter
+    type: TokenCounter
+  - name: scope
+    type: '''resource'' | ''thread'''
+  - name: retrieval
+    type: boolean
+    default: 'false'
+  - name: observationConfig
+    type: ResolvedObservationConfig
+  - name: reflectionConfig
+    type: ResolvedReflectionConfig
+  - name: onDebugEvent
+    type: '(event: ObservationDebugEvent) => void'
+  - name: observerAgent
+    type: Agent
+  - name: reflectorAgent
+    type: Agent
+  - name: shouldObscureThreadIds
+    type: any
+    default: 'false'
+  - name: hasher
+    type: any
+    default: xxhash()
+  - name: threadIdCache
+    type: any
+    default: new Map<string, string>()
+  - name: observedMessageIds
+    type: any
+    default: new Set<string>()
+  - name: messageHistory
+    type: MessageHistory
+  - name: locks
+    type: any
+    default: new Map<string, Promise<void>>()
+  - name: asyncBufferingOps
+    type: any
+    default: new Map<string, Promise<void>>()
+  - name: lastBufferedBoundary
+    type: any
+    default: new Map<string, number>()
+  - name: lastBufferedAtTime
+    type: any
+    default: new Map<string, Date>()
+  - name: reflectionBufferCycleIds
+    type: any
+    default: new Map<string, string>()
+  - name: sealedMessageIds
+    type: any
+    default: new Map<string, Set<string>>()
+  methods:
+  - name: cleanupStaticMaps
+    sig: 'cleanupStaticMaps(threadId: string, resourceId?: string | null, activatedMessageIds?: string[]): void'
+    vis: private
+    lines:
+    - 591
+    - 617
+    detail:
+      calls:
+      - ObservationalMemory.asyncBufferingOps.delete
+      - ObservationalMemory.lastBufferedAtTime.delete
+      - ObservationalMemory.lastBufferedBoundary.delete
+      - ObservationalMemory.reflectionBufferCycleIds.delete
+      - ObservationalMemory.sealedMessageIds.delete
+      - ObservationalMemory.sealedMessageIds.get
+      - sealedSet.delete
+      - this.getLockKey
+      - this.getObservationBufferKey
+      - this.getReflectionBufferKey
+  - name: awaitBuffering
+    sig: |-
+      awaitBuffering(
+          threadId: string | null | undefined,
+          resourceId: string | null | undefined,
+          scope: 'thread' | 'resource',
+          timeoutMs = 30000,
+        ): Promise<void>
+    is_async: true
+    decorators:
+    - static
+    lines:
+    - 623
+    - 651
+    detail:
+      calls:
+      - ObservationalMemory.asyncBufferingOps.get
+      - Promise.all
+      - Promise.race
+      - new Promise
+      - promises.push
+  - name: refreshBufferedChunkMessageTokens
+    sig: |-
+      refreshBufferedChunkMessageTokens(
+          chunks: BufferedObservationChunk[],
+          messageList: MessageList,
+        ): BufferedObservationChunk[]
+    vis: private
+    lines:
+    - 683
+    - 714
+    detail:
+      calls:
+      - allMessages.filter
+      - allMessages.filter(m => m?.id).map
+      - chunks.map
+      - messageList.get.all.db
+      - new Map
+  - name: shouldTriggerAsyncObservation
+    sig: |-
+      shouldTriggerAsyncObservation(
+          currentTokens: number,
+          lockKey: string,
+          record: ObservationalMemoryRecord,
+          messageTokensThreshold?: number,
+        ): boolean
+    vis: private
+    lines:
+    - 724
+    - 769
+    detail:
+      calls:
+      - Math.floor
+      - Math.max
+      - ObservationalMemory.lastBufferedBoundary.get
+      - isOpActiveInProcess
+      - omDebug
+      - this.getObservationBufferKey
+      - this.isAsyncBufferingInProgress
+      - this.isAsyncObservationEnabled
+      - this.storage.setBufferingObservationFlag
+      - this.storage.setBufferingObservationFlag(record.id, false).catch
+  - name: shouldTriggerAsyncReflection
+    sig: |-
+      shouldTriggerAsyncReflection(
+          currentObservationTokens: number,
+          lockKey: string,
+          record: ObservationalMemoryRecord,
+        ): boolean
+    vis: private
+    lines:
+    - 776
+    - 809
+    detail:
+      calls:
+      - ObservationalMemory.lastBufferedBoundary.has
+      - getMaxThreshold
+      - isOpActiveInProcess
+      - omDebug
+      - this.getReflectionBufferKey
+      - this.isAsyncBufferingInProgress
+      - this.isAsyncReflectionEnabled
+      - this.storage.setBufferingReflectionFlag
+      - this.storage.setBufferingReflectionFlag(record.id, false).catch
+  - name: withLock
+    sig: 'withLock(key: string, fn: () => Promise<T>): Promise<T>'
+    is_async: true
+    vis: private
+    lines:
+    - 822
+    - 846
+    detail:
+      calls:
+      - fn
+      - new Promise
+      - releaseLock!
+      - this.locks.delete
+      - this.locks.get
+      - this.locks.set
+  - name: constructor
+    sig: 'constructor(config: ObservationalMemoryConfig)'
+    lines:
+    - 858
+    - 1048
+    detail:
+      calls:
+      - JSON.stringify
+      - coreFeatures.has
+      - isDefaultModelSelection
+      - new Error
+      - new MessageHistory
+      - new TokenCounter
+      - omDebug
+      - resolveBlockAfter
+      - resolveBufferTokens
+      - resolveModel
+      - this.isAsyncObservationEnabled
+      - this.isAsyncReflectionEnabled
+      - this.validateBufferConfig
+  - name: config
+    sig: |-
+      config(): {
+          scope: 'resource' | 'thread';
+          retrieval: boolean;
+          observation: {
+            messageTokens: number | ThresholdRange;
+            previousObserverTokens: number | false | undefined;
+          };
+          reflection: {
+            observationTokens: number | ThresholdRange;
+          };
+        }
+    lines:
+    - 1054
+    - 1076
+    detail: {}
+  - name: waitForBuffering
+    sig: |-
+      waitForBuffering(
+          threadId: string | null | undefined,
+          resourceId: string | null | undefined,
+          timeoutMs = 30000,
+        ): Promise<void>
+    is_async: true
+    lines:
+    - 1082
+    - 1088
+    detail:
+      calls:
+      - ObservationalMemory.awaitBuffering
+  - name: resolveModelContext
+    sig: |-
+      resolveModelContext(
+          modelConfig: AgentConfig['model'],
+          requestContext?: RequestContext,
+        ): Promise<TokenCounterModelContext | undefined>
+    is_async: true
+    vis: private
+    lines:
+    - 1115
+    - 1129
+    detail:
+      calls:
+      - resolveModelConfig
+      - this.getModelToResolve
+  - name: getResolvedConfig
+    sig: |-
+      getResolvedConfig(requestContext?: RequestContext): Promise<{
+          scope: 'resource' | 'thread';
+          observation: {
+            messageTokens: number | ThresholdRange;
+            model: string;
+            previousObserverTokens: number | false | undefined;
+          };
+          reflection: {
+            observationTokens: number | ThresholdRange;
+            model: string;
+          };
+        }>
+    is_async: true
+    lines:
+    - 1155
+    - 1194
+    detail:
+      calls:
+      - Promise.all
+      - safeResolveModel
+  - name: validateBufferConfig
+    sig: 'validateBufferConfig(): void'
+    vis: private
+    lines:
+    - 1209
+    - 1307
+    detail:
+      calls:
+      - Number.isFinite
+      - getMaxThreshold
+      - new Error
+  - name: getOrCreateRecord
+    sig: 'getOrCreateRecord(threadId: string, resourceId?: string): Promise<ObservationalMemoryRecord>'
+    is_async: true
+    lines:
+    - 1388
+    - 1411
+    detail:
+      calls:
+      - Intl.DateTimeFormat
+      - Intl.DateTimeFormat().resolvedOptions
+      - this.getStorageIds
+      - this.storage.getObservationalMemory
+      - this.storage.initializeObservationalMemory
+  - name: persistMarkerToMessage
+    sig: |-
+      persistMarkerToMessage(
+          marker: { type: string; data: unknown },
+          messageList: MessageList | undefined,
+          threadId: string,
+          resourceId?: string,
+        ): Promise<void>
+    is_async: true
+    vis: private
+    lines:
+    - 1451
+    - 1488
+    detail:
+      calls:
+      - Array.isArray
+      - messageList.get.all.db
+      - msg.content.parts.push
+      - msg.content.parts.some
+      - omDebug
+      - this.messageHistory.persistMessages
+  - name: persistMarkerToStorage
+    sig: |-
+      persistMarkerToStorage(
+          marker: { type: string; data: unknown },
+          threadId: string,
+          resourceId?: string,
+        ): Promise<void>
+    is_async: true
+    vis: private
+    lines:
+    - 1495
+    - 1529
+    detail:
+      calls:
+      - Array.isArray
+      - msg.content.parts.push
+      - msg.content.parts.some
+      - omDebug
+      - this.messageHistory.persistMessages
+      - this.storage.listMessages
+  - name: hasInProgressObservation
+    sig: 'hasInProgressObservation(message: MastraDBMessage): boolean'
+    vis: private
+    lines:
+    - 1556
+    - 1578
+    detail:
+      calls:
+      - Array.isArray
+  - name: sealMessagesForBuffering
+    sig: 'sealMessagesForBuffering(messages: MastraDBMessage[]): void'
+    vis: private
+    lines:
+    - 1596
+    - 1624
+    detail:
+      calls:
+      - Date.now
+  - name: getUnobservedParts
+    sig: 'getUnobservedParts(message: MastraDBMessage): MastraDBMessage[''content''][''parts'']'
+    vis: private
+    lines:
+    - 1647
+    - 1667
+    detail:
+      calls:
+      - Array.isArray
+      - parts.filter
+      - parts.slice
+      - parts.slice(endMarkerIndex + 1).filter
+      - this.findLastCompletedObservationBoundary
+  - name: getUnobservedMessages
+    sig: |-
+      getUnobservedMessages(
+          allMessages: MastraDBMessage[],
+          record: ObservationalMemoryRecord,
+          opts?: { excludeBuffered?: boolean },
+        ): MastraDBMessage[]
+    vis: private
+    lines:
+    - 1703
+    - 1773
+    detail:
+      calls:
+      - Array.isArray
+      - new Date
+      - new Set
+      - observedMessageIds.add
+      - observedMessageIds?.has
+      - result.push
+      - this.createUnobservedMessage
+      - this.findLastCompletedObservationBoundary
+      - this.getBufferedChunks
+      - this.hasInProgressObservation
+  - name: prepareObserverContext
+    sig: |-
+      prepareObserverContext(
+          existingObservations: string | undefined,
+          record?: ObservationalMemoryRecord | null,
+        ): { context: string | undefined; wasTruncated: boolean }
+    vis: private
+    lines:
+    - 1801
+    - 1848
+    detail:
+      calls:
+      - allLines.slice
+      - observations.split
+      - this.tokenCounter.countObservations
+      - this.truncateObservationsToTokenBudget
+      - unreflectedLines.join
+      - unreflectedLines.join('\n').trim
+  - name: truncateObservationsToTokenBudget
+    sig: 'truncateObservationsToTokenBudget(observations: string, budget: number): string'
+    vis: private
+    lines:
+    - 1859
+    - 1984
+    detail:
+      calls:
+      - Math.min
+      - buildCandidateString
+      - estimateKeptContentCost
+      - getSelectedImportant
+      - headImportantIndexes.push
+      - lines[i]!.includes
+      - lines[i]!.includes('🔴') || lines[i]!.includes
+      - new Array
+      - observations.split
+      - this.tokenCounter.countObservations
+      - this.tokenCounter.countString
+  - name: callObserver
+    sig: |-
+      callObserver(
+          existingObservations: string | undefined,
+          messagesToObserve: MastraDBMessage[],
+          abortSignal?: AbortSignal,
+          options?: {
+            skipContinuationHints?: boolean;
+            requestContext?: RequestContext;
+            priorCurrentTask?: string;
+            priorSuggestedResponse?: string;
+            priorThreadTitle?: string;
+            wasTruncated?: boolean;
+          },
+        ): Promise<{
+          observations: string;
+          currentTask?: string;
+          suggestedContinuation?: string;
+          threadTitle?: string;
+          usage?: { inputTokens?: number; outputTokens?: number; totalTokens?: number };
+        }>
+    is_async: true
+    vis: private
+    lines:
+    - 1989
+    - 2071
+    detail:
+      calls:
+      - buildObserverHistoryMessage
+      - buildObserverTaskPrompt
+      - doGenerate
+      - new Error
+      - omDebug
+      - parseObserverOutput
+      - this.getObserverAgent
+  - name: callMultiThreadObserver
+    sig: |-
+      callMultiThreadObserver(
+          existingObservations: string | undefined,
+          messagesByThread: Map<string, MastraDBMessage[]>,
+          threadOrder: string[],
+          priorMetadataByThread?: Map<string, { currentTask?: string; suggestedResponse?: string; threadTitle?: string }>,
+          abortSignal?: AbortSignal,
+          requestContext?: RequestContext,
+          wasTruncated?: boolean,
+        ): Promise<{
+          results: Map<
+            string,
+            {
+              observations: string;
+              currentTask?: string;
+              suggestedContinuation?: string;
+              threadTitle?: string;
+            }
+          >;
+          usage?: { inputTokens?: number; outputTokens?: number; totalTokens?: number };
+        }>
+    is_async: true
+    vis: private
+    lines:
+    - 2079
+    - 2209
+    detail:
+      calls:
+      - allMessages.push
+      - buildMultiThreadObserverHistoryMessage
+      - buildMultiThreadObserverTaskPrompt
+      - buildObserverSystemPrompt
+      - doGenerate
+      - messagesByThread.values
+      - new Agent
+      - new Error
+      - new Map
+      - omDebug
+      - parseMultiThreadObserverOutput
+      - results.has
+      - results.set
+      - this.observedMessageIds.add
+  - name: callReflector
+    sig: |-
+      callReflector(
+          observations: string,
+          manualPrompt?: string,
+          streamContext?: {
+            writer?: ProcessorStreamWriter;
+            cycleId: string;
+            startedAt: string;
+            recordId: string;
+            threadId: string;
+          },
+          observationTokensThreshold?: number,
+          abortSignal?: AbortSignal,
+          skipContinuationHints?: boolean,
+          compressionStartLevel?: 0 | 1 | 2 | 3,
+          requestContext?: RequestContext,
+        ): Promise<{
+          observations: string;
+          suggestedContinuation?: string;
+          usage?: { inputTokens?: number; outputTokens?: number; totalTokens?: number };
+        }>
+    is_async: true
+    vis: private
+    lines:
+    - 2215
+    - 2379
+    detail:
+      calls:
+      - Math.min
+      - buildReflectorPrompt
+      - createObservationFailedMarker
+      - createObservationStartMarker
+      - crypto.randomUUID
+      - getMaxThreshold
+      - omDebug
+      - parseReflectorOutput
+      - result.text?.slice
+      - streamContext.writer.custom
+      - streamContext.writer.custom(failedMarker).catch
+      - streamContext.writer.custom(startMarker).catch
+      - this.getObservationMarkerConfig
+      - this.getReflectorAgent
+      - this.tokenCounter.countObservations
+      - this.withAbortCheck
+      - validateCompression
+  - name: formatObservationsForContext
+    sig: |-
+      formatObservationsForContext(
+          observations: string,
+          currentTask?: string,
+          suggestedResponse?: string,
+          unobservedContextBlocks?: string,
+          currentDate?: Date,
+          retrieval = false,
+        ): string[]
+    vis: private
+    lines:
+    - 2394
+    - 2438
+    detail:
+      calls:
+      - addRelativeTimeToObservations
+      - messages.push
+      - optimizeObservationsForContext
+      - renderObservationGroupsForReflection
+      - this.splitObservationContextChunks
+  - name: splitObservationContextChunks
+    sig: 'splitObservationContextChunks(observations: string): string[]'
+    vis: private
+    lines:
+    - 2440
+    - 2450
+    detail:
+      calls:
+      - observations.trim
+      - |-
+        trimmed
+              .split
+      - |-
+        trimmed
+              .split(/\n{2,}--- message boundary \(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z\) ...
+  - name: createMessageBoundary
+    sig: 'createMessageBoundary(date: Date): string'
+    decorators:
+    - static
+    lines:
+    - 2457
+    - 2459
+    detail:
+      calls:
+      - date.toISOString
+  - name: getThreadContext
+    sig: |-
+      getThreadContext(
+          requestContext: ProcessInputArgs['requestContext'],
+          messageList: MessageList,
+        ): { threadId: string; resourceId?: string } | null
+    vis: private
+    lines:
+    - 2464
+    - 2500
+    detail:
+      calls:
+      - messageList.serialize
+      - new Error
+      - requestContext?.get
+  - name: loadHistoricalMessagesIfNeeded
+    sig: |-
+      loadHistoricalMessagesIfNeeded(
+          messageList: MessageList,
+          state: Record<string, unknown>,
+          threadId: string,
+          resourceId: string | undefined,
+          lastObservedAt: Date | undefined,
+        ): Promise<void>
+    is_async: true
+    vis: private
+    lines:
+    - 2512
+    - 2553
+    detail:
+      calls:
+      - messageList.add
+      - this.findLastCompletedObservationBoundary
+      - this.hasUnobservedParts
+      - this.loadUnobservedMessages
+  - name: calculateObservationThresholds
+    sig: |-
+      calculateObservationThresholds(
+          _allMessages: MastraDBMessage[],
+          unobservedMessages: MastraDBMessage[],
+          _pendingTokens: number,
+          otherThreadTokens: number,
+          currentObservationTokens: number,
+          _record?: ObservationalMemoryRecord,
+        ): Promise<{
+          totalPendingTokens: number;
+          threshold: number;
+          effectiveObservationTokensThreshold: number;
+          isSharedBudget: boolean;
+        }>
+    is_async: true
+    vis: private
+    lines:
+    - 2558
+    - 2596
+    detail:
+      calls:
+      - Math.max
+      - calculateDynamicThreshold
+      - getMaxThreshold
+      - this.tokenCounter.countMessagesAsync
+  - name: emitStepProgress
+    sig: |-
+      emitStepProgress(
+          writer: ProcessInputStepArgs['writer'],
+          threadId: string,
+          resourceId: string | undefined,
+          stepNumber: number,
+          record: ObservationalMemoryRecord,
+          thresholds: {
+            totalPendingTokens: number;
+            threshold: number;
+            effectiveObservationTokensThreshold: number;
+          },
+          currentObservationTokens: number,
+        ): Promise<void>
+    is_async: true
+    vis: private
+    lines:
+    - 2601
+    - 2708
+    detail:
+      calls:
+      - Math.min
+      - Math.round
+      - bufferedChunks.reduce
+      - calculateProjectedMessageRemoval
+      - getMaxThreshold
+      - new Date
+      - omDebug
+      - this.emitDebugEvent
+      - this.getBufferedChunks
+      - writer.custom
+      - writer.custom(statusPart).catch
+  - name: handleThresholdReached
+    sig: |-
+      handleThresholdReached(
+          messageList: MessageList,
+          record: ObservationalMemoryRecord,
+          threadId: string,
+          resourceId: string | undefined,
+          threshold: number,
+          lockKey: string,
+          writer: ProcessInputStepArgs['writer'],
+          abortSignal: ProcessInputStepArgs['abortSignal'],
+          abort: ProcessInputStepArgs['abort'],
+          requestContext?: RequestContext,
+        ): Promise<{
+          observationSucceeded: boolean;
+          updatedRecord: ObservationalMemoryRecord;
+          activatedMessageIds?: string[];
+        }>
+    is_async: true
+    vis: private
+    lines:
+    - 2715
+    - 2902
+    detail:
+      calls:
+      - this.withLock
+  - name: cleanupAfterObservation
+    sig: |-
+      cleanupAfterObservation(
+          messageList: MessageList,
+          sealedIds: Set<string>,
+          threadId: string,
+          resourceId: string | undefined,
+          state: Record<string, unknown>,
+          observedMessageIds?: string[],
+          minRemaining?: number,
+        ): Promise<void>
+    is_async: true
+    vis: private
+    lines:
+    - 2908
+    - 3058
+    detail:
+      calls:
+      - '[...idsToRemove].map'
+      - '[...idsToRemove].map(id => id.slice(0, 8)).join'
+      - '[...observedSet].map'
+      - '[...observedSet].map(id => id.slice(0, 8)).join'
+      - allMsgs.filter
+      - allMsgs.map
+      - allMsgs.map(m => m.id?.slice(0, 8)).join
+      - idsToRemove.add
+      - idsToRemove.delete
+      - idsToRemove.push
+      - messageList.clear.input.db
+      - messageList.clear.response.db
+      - messageList.get.all.db
+      - messageList.get.input.db
+      - messageList.get.response.db
+      - messageList.removeByIds
+      - messagesToSave.push
+      - new Set
+      - new TokenCounter
+      - observedSet.has
+      - omDebug
+      - removalOrder.pop
+      - removalOrder.push
+      - retentionCounter.countMessages
+      - this.findLastCompletedObservationBoundary
+      - this.getUnobservedParts
+      - this.saveMessagesWithSealedIdTracking
+  - name: handlePerStepSave
+    sig: |-
+      handlePerStepSave(
+          messageList: MessageList,
+          sealedIds: Set<string>,
+          threadId: string,
+          resourceId: string | undefined,
+          state: Record<string, unknown>,
+        ): Promise<void>
+    is_async: true
+    vis: private
+    lines:
+    - 3064
+    - 3087
+    detail:
+      calls:
+      - messageList.add
+      - messageList.clear.input.db
+      - messageList.clear.response.db
+      - messagesToSave.map
+      - messagesToSave.map(m => m.id?.slice(0, 8)).join
+      - omDebug
+      - this.saveMessagesWithSealedIdTracking
+  - name: injectObservationsIntoContext
+    sig: |-
+      injectObservationsIntoContext(
+          messageList: MessageList,
+          record: ObservationalMemoryRecord,
+          threadId: string,
+          resourceId: string | undefined,
+          unobservedContextBlocks: string | undefined,
+          requestContext: ProcessInputStepArgs['requestContext'],
+        ): Promise<void>
+    is_async: true
+    vis: private
+    lines:
+    - 3092
+    - 3148
+    detail:
+      calls:
+      - getThreadOMMetadata
+      - messageList.add
+      - messageList.addSystem
+      - messageList.clearSystemMessages
+      - new Date
+      - requestContext?.get
+      - this.formatObservationsForContext
+      - this.storage.getThreadById
+  - name: filterAlreadyObservedMessages
+    sig: |-
+      filterAlreadyObservedMessages(
+          messageList: MessageList,
+          record?: ObservationalMemoryRecord,
+          options?: { useMarkerBoundaryPruning?: boolean },
+        ): Promise<void>
+    is_async: true
+    vis: private
+    lines:
+    - 3158
+    - 3252
+    detail:
+      calls:
+      - Array.isArray
+      - allMessages.filter
+      - getThreadOMMetadata
+      - messageList.get.all.db
+      - messageList.removeByIds
+      - messagesToRemove.push
+      - new Date
+      - new Set
+      - observedIds.has
+      - this.findLastCompletedObservationBoundary
+      - this.getLastObservedMessageCursor
+      - this.getUnobservedParts
+      - this.isMessageAtOrBeforeCursor
+      - this.storage.getThreadById
+  - name: processInputStep
+    sig: 'processInputStep(args: ProcessInputStepArgs): Promise<MessageList | MastraDBMessage[]>'
+    is_async: true
+    lines:
+    - 3265
+    - 3769
+    detail:
+      calls:
+      - messageList?.serialize
+      - omDebug
+      - parseMemoryRequestContext
+      - requestContext?.get
+      - this.getRuntimeModelContext
+      - this.getThreadContext
+      - this.runWithTokenCounterModelContext
+  - name: processOutputResult
+    sig: 'processOutputResult(args: ProcessOutputResultArgs): Promise<MessageList | MastraDBMessage[]>'
+    is_async: true
+    lines:
+    - 3778
+    - 3828
+    detail:
+      calls:
+      - this.getThreadContext
+      - this.runWithTokenCounterModelContext
+  - name: saveMessagesWithSealedIdTracking
+    sig: |-
+      saveMessagesWithSealedIdTracking(
+          messagesToSave: MastraDBMessage[],
+          sealedIds: Set<string>,
+          threadId: string,
+          resourceId: string | undefined,
+          state: Record<string, unknown>,
+        ): Promise<void>
+    is_async: true
+    vis: private
+    lines:
+    - 3836
+    - 3875
+    detail:
+      calls:
+      - filteredMessages.push
+      - sealedIds.add
+      - sealedIds.has
+      - this.findLastCompletedObservationBoundary
+      - this.messageHistory.persistMessages
+  - name: loadUnobservedMessages
+    sig: |-
+      loadUnobservedMessages(
+          threadId: string,
+          resourceId: string | undefined,
+          lastObservedAt?: Date,
+        ): Promise<MastraDBMessage[]>
+    is_async: true
+    vis: private
+    lines:
+    - 3884
+    - 3926
+    detail:
+      calls:
+      - lastObservedAt.getTime
+      - new Date
+      - this.storage.listMessages
+      - this.storage.listMessagesByResourceId
+  - name: loadOtherThreadsContext
+    sig: 'loadOtherThreadsContext(resourceId: string, currentThreadId: string): Promise<string | undefined>'
+    is_async: true
+    vis: private
+    lines:
+    - 3933
+    - 3965
+    detail:
+      calls:
+      - getThreadOMMetadata
+      - messagesByThread.set
+      - new Date
+      - new Date(threadLastObservedAt).getTime
+      - new Map
+      - result.messages.filter
+      - this.formatUnobservedContextBlocks
+      - this.storage.listMessages
+      - this.storage.listThreads
+  - name: formatUnobservedContextBlocks
+    sig: |-
+      formatUnobservedContextBlocks(
+          messagesByThread: Map<string, MastraDBMessage[]>,
+          currentThreadId: string,
+        ): Promise<string>
+    is_async: true
+    vis: private
+    lines:
+    - 3972
+    - 3998
+    detail:
+      calls:
+      - blocks.join
+      - blocks.push
+      - formatMessagesForObserver
+      - this.representThreadIDInContext
+  - name: representThreadIDInContext
+    sig: 'representThreadIDInContext(threadId: string): Promise<string>'
+    is_async: true
+    vis: private
+    lines:
+    - 4000
+    - 4014
+    detail:
+      calls:
+      - hasher.h32ToString
+      - this.threadIdCache.get
+      - this.threadIdCache.set
+  - name: getLastObservedMessageCursor
+    sig: 'getLastObservedMessageCursor(messages: MastraDBMessage[]): { createdAt: string; id: string } | undefined'
+    vis: private
+    lines:
+    - 4049
+    - 4058
+    detail:
+      calls:
+      - new Date
+      - new Date(latest.createdAt!).getTime
+      - new Date(latest.createdAt!).toISOString
+      - new Date(msg.createdAt).getTime
+  - name: wrapWithThreadTag
+    sig: 'wrapWithThreadTag(threadId: string, observations: string, messageRange?: string): Promise<string>'
+    is_async: true
+    vis: private
+    lines:
+    - 4075
+    - 4082
+    detail:
+      calls:
+      - this.representThreadIDInContext
+      - this.stripThreadTags
+      - wrapInObservationGroup
+  - name: replaceOrAppendThreadSection
+    sig: |-
+      replaceOrAppendThreadSection(
+          existingObservations: string,
+          _threadId: string,
+          newThreadSection: string,
+          lastObservedAt: Date,
+        ): string
+    vis: private
+    lines:
+    - 4090
+    - 4156
+    detail:
+      calls:
+      - ObservationalMemory.createMessageBoundary
+      - existingObservations.indexOf
+      - existingObservations.slice
+      - existingSection.slice
+      - existingSection.slice(0, existingSection.length - threadClose.length).trimEnd
+      - newThreadSection.indexOf
+      - newThreadSection.lastIndexOf
+      - newThreadSection.match
+      - newThreadSection.slice
+      - newThreadSection.slice(dateLineEnd + 1, newCloseIdx).trim
+      - section.includes
+  - name: sortThreadsByOldestMessage
+    sig: 'sortThreadsByOldestMessage(messagesByThread: Map<string, MastraDBMessage[]>): string[]'
+    vis: private
+    lines:
+    - 4163
+    - 4175
+    detail:
+      calls:
+      - Array.from
+      - |-
+        Array.from(messagesByThread.entries())
+              .map
+      - |-
+        Array.from(messagesByThread.entries())
+              .map(([threadId, messages]) => {
+                // Find oldest...
+      - messagesByThread.entries
+      - threadOrder.map
+  - name: doSynchronousObservation
+    sig: |-
+      doSynchronousObservation(opts: {
+          record: ObservationalMemoryRecord;
+          threadId: string;
+          unobservedMessages: MastraDBMessage[];
+          writer?: ProcessorStreamWriter;
+          abortSignal?: AbortSignal;
+          reflectionHooks?: Pick<ObserveHooks, 'onReflectionStart' | 'onReflectionEnd'>;
+          requestContext?: RequestContext;
+        }): Promise<void>
+    is_async: true
+    vis: private
+    lines:
+    - 4180
+    - 4467
+    detail:
+      calls:
+      - Array.isArray
+      - ObservationalMemory.createMessageBoundary
+      - String
+      - buildMessageRange
+      - createObservationEndMarker
+      - createObservationFailedMarker
+      - createObservationStartMarker
+      - createThreadUpdateMarker
+      - crypto.randomUUID
+      - getThreadOMMetadata
+      - messagesToObserve.map
+      - new Date
+      - new Date().toISOString
+      - new Set
+      - newTitle.trim
+      - omDebug
+      - omError
+      - registerOp
+      - setThreadOMMetadata
+      - this.callObserver
+      - this.emitDebugEvent
+      - this.getLastObservedMessageCursor
+      - this.getMaxMessageTimestamp
+      - this.getObservationMarkerConfig
+      - this.maybeReflect
+      - this.prepareObserverContext
+      - this.replaceOrAppendThreadSection
+      - this.sealMessagesForBuffering
+      - this.storage.getObservationalMemory
+      - this.storage.getThreadById
+      - this.storage.setObservingFlag
+      - this.storage.updateActiveObservations
+      - this.storage.updateThread
+      - this.tokenCounter.countMessagesAsync
+      - this.tokenCounter.countObservations
+      - this.wrapWithThreadTag
+      - unobservedMessages.map
+      - unregisterOp
+      - wrapInObservationGroup
+      - writer.custom
+      - writer.custom(endMarker).catch
+      - writer.custom(failedMarker).catch
+      - writer.custom(startMarker).catch
+      - writer.custom(threadUpdateMarker).catch
+  - name: startAsyncBufferedObservation
+    sig: |-
+      startAsyncBufferedObservation(
+          record: ObservationalMemoryRecord,
+          threadId: string,
+          unobservedMessages: MastraDBMessage[],
+          lockKey: string,
+          writer?: ProcessorStreamWriter,
+          contextWindowTokens?: number,
+          requestContext?: RequestContext,
+        ): Promise<void>
+    is_async: true
+    vis: private
+    lines:
+    - 4483
+    - 4527
+    detail:
+      calls:
+      - ObservationalMemory.asyncBufferingOps.set
+      - ObservationalMemory.lastBufferedBoundary.set
+      - registerOp
+      - this.getObservationBufferKey
+      - this.runAsyncBufferedObservation
+      - |-
+        this.runAsyncBufferedObservation(
+              record,
+              threadId,
+              unobservedMessages,
+              buff...
+      - this.storage.setBufferingObservationFlag
+      - this.storage.setBufferingObservationFlag(record.id, true, currentTokens).catch
+      - this.tokenCounter.countMessagesAsync
+  - name: runAsyncBufferedObservation
+    sig: |-
+      runAsyncBufferedObservation(
+          record: ObservationalMemoryRecord,
+          threadId: string,
+          unobservedMessages: MastraDBMessage[],
+          bufferKey: string,
+          writer?: ProcessorStreamWriter,
+          requestContext?: RequestContext,
+        ): Promise<void>
+    is_async: true
+    vis: private
+    lines:
+    - 4533
+    - 4683
+    detail:
+      calls:
+      - Date.now
+      - Math.random
+      - Math.random().toString
+      - Math.random().toString(36).slice
+      - ObservationalMemory.asyncBufferingOps.get
+      - ObservationalMemory.lastBufferedAtTime.get
+      - ObservationalMemory.lastBufferedAtTime.set
+      - ObservationalMemory.sealedMessageIds.get
+      - ObservationalMemory.sealedMessageIds.set
+      - String
+      - bufferCursor?.toISOString
+      - candidateMessages.filter
+      - createBufferingFailedMarker
+      - createBufferingStartMarker
+      - maxTs.getTime
+      - messagesToBuffer.map
+      - messagesToBuffer.map(m => `${m.id?.slice(0, 8)}@${m.createdAt ? new Date(m.createdAt).toISOString() ...
+      - new Date
+      - new Date().toISOString
+      - new Set
+      - omDebug
+      - omError
+      - staticSealedIds.add
+      - this.doAsyncBufferedObservation
+      - this.getMaxMessageTimestamp
+      - this.getObservationMarkerConfig
+      - this.getUnobservedMessages
+      - this.messageHistory.persistMessages
+      - this.persistMarkerToStorage
+      - this.sealMessagesForBuffering
+      - this.storage.getObservationalMemory
+      - this.tokenCounter.countMessagesAsync
+      - writer.custom
+      - writer.custom(failedMarker).catch
+      - writer.custom(startMarker).catch
+  - name: doAsyncBufferedObservation
+    sig: |-
+      doAsyncBufferedObservation(
+          record: ObservationalMemoryRecord,
+          threadId: string,
+          messagesToBuffer: MastraDBMessage[],
+          cycleId: string,
+          startedAt: string,
+          writer?: ProcessorStreamWriter,
+          requestContext?: RequestContext,
+        ): Promise<void>
+    is_async: true
+    vis: private
+    lines:
+    - 4692
+    - 4814
+    detail:
+      calls:
+      - bufferedChunks.map
+      - bufferedChunks.map(c => c.observations).join
+      - buildMessageRange
+      - createBufferingEndMarker
+      - createThreadUpdateMarker
+      - getThreadOMMetadata
+      - maxMessageTimestamp.getTime
+      - messagesToBuffer.map
+      - new Date
+      - omDebug
+      - this.callObserver
+      - this.combineObservationsForBuffering
+      - this.getBufferedChunks
+      - this.getMaxMessageTimestamp
+      - this.persistMarkerToStorage
+      - this.prepareObserverContext
+      - this.storage.getObservationalMemory
+      - this.storage.getThreadById
+      - this.storage.updateBufferedObservations
+      - this.storage.updateThread
+      - this.tokenCounter.countMessagesAsync
+      - this.tokenCounter.countObservations
+      - this.wrapWithThreadTag
+      - updatedChunks.reduce
+      - wrapInObservationGroup
+      - writer.custom
+      - writer.custom(endMarker).catch
+      - writer.custom(marker).catch
+  - name: tryActivateBufferedObservations
+    sig: |-
+      tryActivateBufferedObservations(
+          record: ObservationalMemoryRecord,
+          lockKey: string,
+          currentPendingTokens: number,
+          writer?: ProcessInputStepArgs['writer'],
+          messageList?: MessageList,
+        ): Promise<{
+          success: boolean;
+          updatedRecord?: ObservationalMemoryRecord;
+          messageTokensActivated?: number;
+          activatedMessageIds?: string[];
+          suggestedContinuation?: string;
+          currentTask?: string;
+        }>
+    is_async: true
+    vis: private
+    lines:
+    - 4844
+    - 5004
+    detail:
+      calls:
+      - Math.max
+      - ObservationalMemory.asyncBufferingOps.get
+      - Promise.race
+      - activationResult.activatedCycleIds.join
+      - activationResult.perChunk?.map
+      - calculateProjectedMessageRemoval
+      - createActivationMarker
+      - freshChunks.reduce
+      - getMaxThreshold
+      - messageList.get.all.db
+      - new Map
+      - new Promise
+      - omDebug
+      - perChunkMap.get
+      - resolveActivationRatio
+      - resolveRetentionFloor
+      - this.getBufferedChunks
+      - this.getObservationBufferKey
+      - this.getObservationMarkerConfig
+      - this.persistMarkerToMessage
+      - this.refreshBufferedChunkMessageTokens
+      - this.storage.getObservationalMemory
+      - this.storage.setBufferingObservationFlag
+      - this.storage.swapBufferedToActive
+      - this.tokenCounter.countMessagesAsync
+      - unregisterOp
+      - writer.custom
+      - writer.custom(activationMarker).catch
+  - name: startAsyncBufferedReflection
+    sig: |-
+      startAsyncBufferedReflection(
+          record: ObservationalMemoryRecord,
+          observationTokens: number,
+          lockKey: string,
+          writer?: ProcessorStreamWriter,
+          requestContext?: RequestContext,
+        ): void
+    vis: private
+    lines:
+    - 5015
+    - 5069
+    detail:
+      calls:
+      - ObservationalMemory.asyncBufferingOps.set
+      - ObservationalMemory.lastBufferedBoundary.set
+      - registerOp
+      - this.doAsyncBufferedReflection
+      - |-
+        this.doAsyncBufferedReflection(record, bufferKey, writer, requestContext)
+              .catch
+      - |-
+        this.doAsyncBufferedReflection(record, bufferKey, writer, requestContext)
+              .catch(async error =...
+      - this.getReflectionBufferKey
+      - this.isAsyncBufferingInProgress
+      - this.storage.setBufferingReflectionFlag
+      - this.storage.setBufferingReflectionFlag(record.id, true).catch
+  - name: doAsyncBufferedReflection
+    sig: |-
+      doAsyncBufferedReflection(
+          record: ObservationalMemoryRecord,
+          _bufferKey: string,
+          writer?: ProcessorStreamWriter,
+          requestContext?: RequestContext,
+        ): Promise<void>
+    is_async: true
+    vis: private
+    lines:
+    - 5075
+    - 5184
+    detail:
+      calls:
+      - Date.now
+      - Math.floor
+      - Math.min
+      - Math.random
+      - Math.random().toString
+      - Math.random().toString(36).slice
+      - Math.round
+      - ObservationalMemory.reflectionBufferCycleIds.set
+      - allLines.slice
+      - allLines.slice(0, linesToReflect).join
+      - avgTokensPerLine.toFixed
+      - createBufferingEndMarker
+      - createBufferingStartMarker
+      - fullObservations.split
+      - getMaxThreshold
+      - new Date
+      - new Date().toISOString
+      - omDebug
+      - this.callReflector
+      - this.getObservationMarkerConfig
+      - this.persistMarkerToStorage
+      - this.storage.getObservationalMemory
+      - this.storage.updateBufferedReflection
+      - this.tokenCounter.countObservations
+      - writer.custom
+      - writer.custom(endMarker).catch
+      - writer.custom(startMarker).catch
+  - name: tryActivateBufferedReflection
+    sig: |-
+      tryActivateBufferedReflection(
+          record: ObservationalMemoryRecord,
+          lockKey: string,
+          writer?: ProcessorStreamWriter,
+          messageList?: MessageList,
+        ): Promise<boolean>
+    is_async: true
+    vis: private
+    lines:
+    - 5193
+    - 5296
+    detail:
+      calls:
+      - Date.now
+      - Math.random
+      - Math.random().toString
+      - Math.random().toString(36).slice
+      - ObservationalMemory.asyncBufferingOps.get
+      - ObservationalMemory.lastBufferedBoundary.delete
+      - ObservationalMemory.reflectionBufferCycleIds.delete
+      - ObservationalMemory.reflectionBufferCycleIds.get
+      - Promise.race
+      - allLines.slice
+      - createActivationMarker
+      - currentObservations.split
+      - new Promise
+      - omDebug
+      - this.getObservationMarkerConfig
+      - this.getReflectionBufferKey
+      - this.persistMarkerToMessage
+      - this.storage.getObservationalMemory
+      - this.storage.swapBufferedReflectionToActive
+      - this.tokenCounter.countObservations
+      - unreflectedLines.join
+      - unreflectedLines.join('\n').trim
+      - writer.custom
+      - writer.custom(activationMarker).catch
+  - name: doResourceScopedObservation
+    sig: |-
+      doResourceScopedObservation(opts: {
+          record: ObservationalMemoryRecord;
+          currentThreadId: string;
+          resourceId: string;
+          currentThreadMessages: MastraDBMessage[];
+          writer?: ProcessorStreamWriter;
+          abortSignal?: AbortSignal;
+          reflectionHooks?: Pick<ObserveHooks, 'onReflectionStart' | 'onReflectionEnd'>;
+          requestContext?: RequestContext;
+        }): Promise<void>
+    is_async: true
+    vis: private
+    lines:
+    - 5309
+    - 5859
+    detail:
+      calls:
+      - Array.from
+      - Array.from(messagesByThread.keys()).sort
+      - |-
+        Array.from(threadsWithMessages.values())
+                  .flat
+      - |-
+        Array.from(threadsWithMessages.values())
+                  .flat()
+                  .map
+      - Promise.all
+      - String
+      - batches.map
+      - batches.push
+      - buildMessageRange
+      - createObservationEndMarker
+      - createObservationFailedMarker
+      - createObservationStartMarker
+      - crypto.randomUUID
+      - currentBatch.threadIds.push
+      - currentBatch.threadMap.set
+      - getMaxThreshold
+      - getThreadOMMetadata
+      - messageMap.set
+      - messageMap.values
+      - messagesByThread.delete
+      - messagesByThread.get
+      - messagesByThread.keys
+      - messagesByThread.set
+      - messagesByThread.values
+      - msgs.filter
+      - multiThreadResults.get
+      - multiThreadResults.set
+      - new Date
+      - new Date().toISOString
+      - new Date(threadLastObservedAt).getTime
+      - new Map
+      - new Set
+      - |-
+        observationResults
+                .filter
+      - |-
+        observationResults
+                .filter((r): r is NonNullable<typeof r> => r !== null)
+                .flatMap
+      - observationResults.indexOf
+      - observationResults.push
+      - observedMessages.map
+      - omError
+      - registerOp
+      - result.threadTitle.trim
+      - setThreadOMMetadata
+      - this.emitDebugEvent
+      - this.getLastObservedMessageCursor
+      - this.getMaxMessageTimestamp
+      - this.getObservationMarkerConfig
+      - this.maybeReflect
+      - this.prepareObserverContext
+      - this.replaceOrAppendThreadSection
+      - this.sortThreadsByOldestMessage
+      - this.storage.getObservationalMemory
+      - this.storage.getThreadById
+      - this.storage.listMessages
+      - this.storage.listThreads
+      - this.storage.setObservingFlag
+      - this.storage.updateActiveObservations
+      - this.storage.updateThread
+      - this.tokenCounter.countMessagesAsync
+      - this.tokenCounter.countObservations
+      - this.wrapWithThreadTag
+      - threadLastObservedAt.toISOString
+      - threadMessages.map
+      - threadMetadataMap.get
+      - threadMetadataMap.set
+      - threadOrder.filter
+      - threadOrder.join
+      - threadTokenCounts.get
+      - threadTokenCounts.set
+      - threadTokensToObserve.get
+      - threadTokensToObserve.set
+      - threadsToObserve.map
+      - threadsToObserve.push
+      - threadsWithMessages.get
+      - threadsWithMessages.keys
+      - threadsWithMessages.set
+      - threadsWithMessages.values
+      - unregisterOp
+      - writer.custom
+      - writer.custom(endMarker).catch
+      - writer.custom(failedMarker).catch
+      - writer.custom(startMarker).catch
+  - name: maybeAsyncReflect
+    sig: |-
+      maybeAsyncReflect(
+          record: ObservationalMemoryRecord,
+          observationTokens: number,
+          writer?: ProcessorStreamWriter,
+          messageList?: MessageList,
+          requestContext?: RequestContext,
+        ): Promise<void>
+    is_async: true
+    vis: private
+    lines:
+    - 5866
+    - 5912
+    detail:
+      calls:
+      - getMaxThreshold
+      - isOpActiveInProcess
+      - omDebug
+      - this.getLockKey
+      - this.isAsyncReflectionEnabled
+      - this.shouldTriggerAsyncReflection
+      - this.startAsyncBufferedReflection
+      - this.storage.setReflectingFlag
+      - this.tryActivateBufferedReflection
+  - name: maybeReflect
+    sig: |-
+      maybeReflect(opts: {
+          record: ObservationalMemoryRecord;
+          observationTokens: number;
+          threadId?: string;
+          writer?: ProcessorStreamWriter;
+          abortSignal?: AbortSignal;
+          messageList?: MessageList;
+          reflectionHooks?: Pick<ObserveHooks, 'onReflectionStart' | 'onReflectionEnd'>;
+          requestContext?: RequestContext;
+        }): Promise<void>
+    is_async: true
+    vis: private
+    lines:
+    - 5920
+    - 6109
+    detail:
+      calls:
+      - String
+      - createObservationEndMarker
+      - createObservationFailedMarker
+      - createObservationStartMarker
+      - crypto.randomUUID
+      - getMaxThreshold
+      - isOpActiveInProcess
+      - new Date
+      - new Date().toISOString
+      - omDebug
+      - omError
+      - reflectionHooks?.onReflectionEnd
+      - reflectionHooks?.onReflectionStart
+      - registerOp
+      - this.callReflector
+      - this.emitDebugEvent
+      - this.getLockKey
+      - this.getObservationMarkerConfig
+      - this.isAsyncReflectionEnabled
+      - this.shouldReflect
+      - this.shouldTriggerAsyncReflection
+      - this.startAsyncBufferedReflection
+      - this.storage.createReflectionGeneration
+      - this.storage.setReflectingFlag
+      - this.tokenCounter.countObservations
+      - this.tryActivateBufferedReflection
+      - unregisterOp
+      - writer.custom
+      - writer.custom(endMarker).catch
+      - writer.custom(failedMarker).catch
+      - writer.custom(startMarker).catch
+  - name: observe
+    sig: |-
+      observe(opts: {
+          threadId: string;
+          resourceId?: string;
+          messages?: MastraDBMessage[];
+          hooks?: ObserveHooks;
+          requestContext?: RequestContext;
+        }): Promise<void>
+    is_async: true
+    lines:
+    - 6118
+    - 6198
+    detail:
+      calls:
+      - this.getLockKey
+      - this.withLock
+  - name: reflect
+    sig: |-
+      reflect(
+          threadId: string,
+          resourceId?: string,
+          prompt?: string,
+          requestContext?: RequestContext,
+        ): Promise<void>
+    is_async: true
+    lines:
+    - 6211
+    - 6252
+    detail:
+      calls:
+      - getMaxThreshold
+      - registerOp
+      - this.callReflector
+      - this.getOrCreateRecord
+      - this.storage.createReflectionGeneration
+      - this.storage.setReflectingFlag
+      - this.tokenCounter.countObservations
+      - unregisterOp
+  - name: getObservations
+    sig: 'getObservations(threadId: string, resourceId?: string): Promise<string | undefined>'
+    is_async: true
+    lines:
+    - 6257
+    - 6261
+    detail:
+      calls:
+      - this.getStorageIds
+      - this.storage.getObservationalMemory
+  - name: getRecord
+    sig: 'getRecord(threadId: string, resourceId?: string): Promise<ObservationalMemoryRecord | null>'
+    is_async: true
+    lines:
+    - 6266
+    - 6269
+    detail:
+      calls:
+      - this.getStorageIds
+      - this.storage.getObservationalMemory
+  - name: getHistory
+    sig: 'getHistory(threadId: string, resourceId?: string, limit?: number): Promise<ObservationalMemoryRecord[]>'
+    is_async: true
+    lines:
+    - 6274
+    - 6277
+    detail:
+      calls:
+      - this.getStorageIds
+      - this.storage.getObservationalMemoryHistory
+  - name: clear
+    sig: 'clear(threadId: string, resourceId?: string): Promise<void>'
+    is_async: true
+    lines:
+    - 6282
+    - 6287
+    detail:
+      calls:
+      - this.cleanupStaticMaps
+      - this.getStorageIds
+      - this.storage.clearObservationalMemory
+  - name: getStorage
+    sig: 'getStorage(): MemoryStorage'
+    lines:
+    - 6292
+    - 6294
+    detail: {}
+  - name: getTokenCounter
+    sig: 'getTokenCounter(): TokenCounter'
+    lines:
+    - 6299
+    - 6301
+    detail: {}
+  - name: getObservationConfig
+    sig: 'getObservationConfig(): ResolvedObservationConfig'
+    lines:
+    - 6306
+    - 6308
+    detail: {}
+  - name: getReflectionConfig
+    sig: 'getReflectionConfig(): ResolvedReflectionConfig'
+    lines:
+    - 6313
+    - 6315
+    detail: {}
+  lines:
+  - 469
+  - 6316
+functions:
+- name: omDebug
+  sig: 'omDebug(msg: string)'
+  lines:
+  - 24
+  - 31
+  detail:
+    calls:
+    - appendFileSync
+    - new Date
+    - new Date().toLocaleString
+- name: getLatestStepParts
+  sig: 'getLatestStepParts(parts: MastraDBMessage[''content''][''parts'']): MastraDBMessage[''content''][''parts'']'
+  lines:
+  - 36
+  - 43
+  detail:
+    calls:
+    - parts.slice
+- name: omError
+  sig: 'omError(msg: string, err?: unknown)'
+  lines:
+  - 45
+  - 49
+  detail:
+    calls:
+    - String
+    - omDebug
+- name: messageHasVisibleContent
+  sig: 'messageHasVisibleContent(msg: MastraDBMessage): boolean'
+  lines:
+  - 121
+  - 131
+  detail:
+    calls:
+    - Array.isArray
+    - content.parts.some
+- name: buildMessageRange
+  sig: 'buildMessageRange(messages: MastraDBMessage[]): string'
+  lines:
+  - 137
+  - 141
+  detail:
+    calls:
+    - '[...messages].reverse'
+    - '[...messages].reverse().find'
+    - messages.find
+exports:
+- name: ObservationDebugEvent
+  kind: type
+- name: ObservationalMemoryConfig
+  kind: type
+- name: ResolvedObservationConfig
+  kind: type
+- name: ResolvedReflectionConfig
+  kind: type
+- name: ObserveHooks
+  kind: type
+- name: ObservationalMemory
+  kind: type
+- name: omDebug
+  kind: func
+- name: getLatestStepParts
+  kind: func
+- name: omError
+  kind: func
+- name: messageHasVisibleContent
+  kind: func
+- name: buildMessageRange
+  kind: func
+- name: OM_DEBUG_LOG
+  kind: data
+- name: OBSERVATIONAL_MEMORY_DEFAULTS
+  kind: data
+- name: OBSERVATION_CONTINUATION_HINT
+  kind: data
+- name: OBSERVATION_CONTEXT_PROMPT
+  kind: data
+- name: OBSERVATION_CONTEXT_INSTRUCTIONS
+  kind: data
+- name: OBSERVATION_RETRIEVAL_INSTRUCTIONS
+  kind: data

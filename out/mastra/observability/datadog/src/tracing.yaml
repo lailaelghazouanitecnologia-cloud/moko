@@ -1,0 +1,329 @@
+## Roska File Descriptor — src/tracing.ts
+file: src/tracing.ts
+lines: 683
+purpose: 'Datadog LLM Observability Exporter for Mastra Exports Mastra observability data to Datadog''s LLM Observability product. Uses a completion-only pattern where spans are emitted on span_ended events. Key features: - Maps Mastra span types to Datadog span kinds - Normalizes AI SDK v4/v5 token usage formats - Formats LLM inputs/outputs as message arrays - Flattens metadata into searchable tags - Supports both agent and agentless modes'
+imports:
+- sym: '@mastra/core/observability.TracingEvent'
+  kind: typing
+- sym: '@mastra/core/observability.AnyExportedSpan'
+  kind: typing
+- sym: '@mastra/core/observability.ModelGenerationAttributes'
+  kind: typing
+- sym: '@mastra/core/observability.ModelStepAttributes'
+  kind: typing
+- sym: '@mastra/core/observability.SpanType'
+- sym: '@mastra/core/utils.omitKeys'
+- sym: '@mastra/observability.BaseExporter'
+- sym: '@mastra/observability.BaseExporterConfig'
+  kind: typing
+- sym: dd-trace.tracer
+- sym: ./metrics.formatUsageMetrics
+- sym: ./utils.ensureTracer
+- sym: ./utils.kindFor
+- sym: ./utils.toDate
+- sym: ./utils.formatInput
+- sym: ./utils.formatOutput
+- sym: ./utils.DatadogSpanKind
+  kind: typing
+data:
+- name: MAX_TRACE_LIFETIME_MS
+  type: any
+  val: 30 * 60 * 1000
+- name: REGULAR_CLEANUP_INTERVAL_MS
+  type: any
+  val: 1 * 60 * 1000
+types:
+- name: LLMObsSpanOptions
+  kind: trait
+  ctx: 'LLMObs span options passed to dd-trace''s llmobs.trace(). Note: endTime is not included because dd-trace does not honor it in trace options. Instead, we call ddSpan.finish(endTimeMs) explicitly inside the trace callback.'
+  decorators:
+  - interface
+  fields:
+  - name: kind
+    type: DatadogSpanKind
+  - name: sessionId
+    type: string
+  - name: userId
+    type: string
+  - name: mlApp
+    type: string
+  - name: modelProvider
+    type: string
+  - name: startTime
+    type: Date
+  lines:
+  - 35
+  - 44
+- name: TraceContext
+  kind: trait
+  ctx: Minimal per-trace context for user/session tagging.
+  decorators:
+  - interface
+  fields:
+  - name: userId
+    type: string
+  - name: sessionId
+    type: string
+  lines:
+  - 49
+  - 52
+- name: TraceState
+  kind: typealias
+  decorators:
+  - type
+  fields:
+  - name: buffer
+    type: Map<string, AnyExportedSpan>
+  - name: contexts
+    type: 'Map<string, { ddSpan: any; exported?: { traceId: string; spanId: string } }>'
+  - name: rootEnded
+    type: boolean
+  - name: treeEmitted
+    type: boolean
+  - name: createdAt
+    type: number
+  - name: cleanupTimer
+    type: ReturnType<typeof setTimeout>
+  - name: maxLifetimeTimer
+    type: ReturnType<typeof setTimeout>
+  lines:
+  - 54
+  - 62
+- name: SpanNode
+  kind: trait
+  ctx: Tree node representing a span and its children for recursive emission.
+  decorators:
+  - interface
+  fields:
+  - name: span
+    type: AnyExportedSpan
+  - name: children
+    type: SpanNode[]
+  lines:
+  - 67
+  - 70
+- name: DatadogExporterConfig
+  kind: trait
+  bases:
+  - BaseExporterConfig
+  decorators:
+  - interface
+  fields:
+  - name: apiKey
+    type: string
+  - name: mlApp
+    type: string
+  - name: site
+    type: string
+  - name: service
+    type: string
+  - name: env
+    type: string
+  - name: agentless
+    type: boolean
+  - name: integrationsEnabled
+    type: boolean
+  lines:
+  - 87
+  - 131
+- name: DatadogExporter
+  kind: struct
+  ctx: Main entry point for tracing events from Mastra.
+  bases:
+  - BaseExporter
+  fields:
+  - name: name
+    type: any
+    default: '''datadog'''
+  - name: config
+    type: Required<Pick<DatadogExporterConfig, 'mlApp' | 'site'>> & DatadogExporterConfig
+  - name: traceContext
+    type: any
+    default: new Map<string, TraceContext>()
+  - name: traceState
+    type: any
+    default: new Map<string, TraceState>()
+  methods:
+  - name: constructor
+    sig: 'constructor(config: DatadogExporterConfig = {})'
+    lines:
+    - 146
+    - 189
+    detail:
+      calls:
+      - ensureTracer
+      - process.env.DD_LLMOBS_AGENTLESS_ENABLED?.toLowerCase
+      - super
+      - this.logger.info
+      - this.setDisabled
+  - name: _exportTracingEvent
+    sig: '_exportTracingEvent(event: TracingEvent): Promise<void>'
+    is_async: true
+    vis: protected
+    lines:
+    - 194
+    - 231
+    detail:
+      calls:
+      - this.captureTraceContext
+      - this.enqueueSpan
+      - this.logger.error
+  - name: enqueueSpan
+    sig: 'enqueueSpan(span: AnyExportedSpan): void'
+    vis: private
+    lines:
+    - 248
+    - 256
+    detail:
+      calls:
+      - state.buffer.set
+      - this.getOrCreateTraceState
+      - this.tryEmitReadySpans
+  - name: buildAnnotations
+    sig: 'buildAnnotations(span: AnyExportedSpan): Record<string, any>'
+    vis: private
+    lines:
+    - 262
+    - 333
+    detail:
+      calls:
+      - Object.keys
+      - formatInput
+      - formatOutput
+      - formatUsageMetrics
+      - omitKeys
+      - tag.indexOf
+      - tag.substring
+  - name: flush
+    sig: 'flush(): Promise<void>'
+    is_async: true
+    lines:
+    - 340
+    - 359
+    detail:
+      calls:
+      - (tracer as any).flush
+      - this.logger.debug
+      - this.logger.error
+      - tracer.llmobs.flush
+  - name: shutdown
+    sig: 'shutdown(): Promise<void>'
+    is_async: true
+    lines:
+    - 364
+    - 399
+    detail:
+      calls:
+      - Array.from
+      - clearTimeout
+      - state.buffer.keys
+      - super.shutdown
+      - this.flush
+      - this.logger.error
+      - this.logger.warn
+      - this.traceContext.clear
+      - this.traceState.clear
+      - tracer.llmobs.disable
+  - name: getOrCreateTraceState
+    sig: 'getOrCreateTraceState(traceId: string): TraceState'
+    vis: private
+    lines:
+    - 404
+    - 450
+    detail:
+      calls:
+      - (maxLifetimeTimer as any).unref
+      - Date.now
+      - clearTimeout
+      - new Map
+      - setTimeout
+      - this.traceState.get
+      - this.traceState.set
+  - name: tryEmitReadySpans
+    sig: 'tryEmitReadySpans(traceId: string): void'
+    vis: private
+    lines:
+    - 462
+    - 523
+    detail:
+      calls:
+      - (timer as any).unref
+      - setTimeout
+      - state.buffer.clear
+      - state.buffer.delete
+      - state.contexts.get
+      - this.buildSpanTree
+      - this.emitSingleSpan
+      - this.emitSpanTree
+      - this.traceState.get
+  - name: buildSpanTree
+    sig: 'buildSpanTree(buffer: Map<string, AnyExportedSpan>): SpanNode | undefined'
+    vis: private
+    lines:
+    - 529
+    - 570
+    detail:
+      calls:
+      - buffer.values
+      - new Map
+      - node.children.sort
+      - nodes.get
+      - nodes.set
+      - nodes.values
+      - parentNode.children.push
+      - this.logger.warn
+  - name: buildSpanOptions
+    sig: 'buildSpanOptions(span: AnyExportedSpan): { traceOptions: LLMObsSpanOptions; endTimeMs: number }'
+    vis: private
+    lines:
+    - 576
+    - 604
+    detail:
+      calls:
+      - endTime.getTime
+      - kindFor
+      - new Date
+      - this.traceContext.get
+      - toDate
+  - name: emitSpanTree
+    sig: 'emitSpanTree(node: SpanNode, state: TraceState): void'
+    vis: private
+    lines:
+    - 611
+    - 647
+    detail:
+      calls:
+      - this.buildSpanOptions
+      - tracer.llmobs.trace
+  - name: emitSingleSpan
+    sig: 'emitSingleSpan(span: AnyExportedSpan, state: TraceState, parent?: any)'
+    vis: private
+    lines:
+    - 653
+    - 682
+    detail:
+      calls:
+      - runTrace
+      - this.buildSpanOptions
+      - tracer.scope
+      - tracer.scope().activate
+  lines:
+  - 139
+  - 683
+exports:
+- name: LLMObsSpanOptions
+  kind: type
+- name: TraceContext
+  kind: type
+- name: TraceState
+  kind: type
+- name: SpanNode
+  kind: type
+- name: DatadogExporterConfig
+  kind: type
+- name: DatadogExporter
+  kind: type
+- name: MAX_TRACE_LIFETIME_MS
+  kind: data
+- name: REGULAR_CLEANUP_INTERVAL_MS
+  kind: data

@@ -1,0 +1,133 @@
+## Roska File Descriptor — sandbox/process-manager.ts
+file: sandbox/process-manager.ts
+lines: 172
+purpose: E2B Process Manager Implements SandboxProcessManager for E2B cloud sandboxes. Wraps the E2B SDK's commands API (background mode, sendStdin, kill, list).
+imports:
+- sym: '@mastra/core/workspace.ProcessHandle'
+- sym: '@mastra/core/workspace.SandboxProcessManager'
+- sym: '@mastra/core/workspace.CommandResult'
+  kind: typing
+- sym: '@mastra/core/workspace.ProcessInfo'
+  kind: typing
+- sym: '@mastra/core/workspace.SpawnProcessOptions'
+  kind: typing
+- sym: e2b.CommandHandle as E2BCommandHandle
+  kind: typing
+- sym: e2b.Sandbox
+  kind: typing
+- sym: ./index.E2BSandbox
+  kind: typing
+types:
+- name: E2BProcessHandle
+  kind: struct
+  ctx: Delegates to E2B's handle so exitCode reflects server-side state without needing wait().
+  bases:
+  - ProcessHandle
+  fields:
+  - name: pid
+    type: string
+  - name: _e2bHandle
+    type: E2BCommandHandle
+  - name: _sandbox
+    type: Sandbox
+  - name: _startTime
+    type: number
+  methods:
+  - name: constructor
+    sig: 'constructor(e2bHandle: E2BCommandHandle, sandbox: Sandbox, startTime: number, options?: SpawnProcessOptions)'
+    lines:
+    - 31
+    - 37
+    detail:
+      calls:
+      - String
+      - super
+  - name: exitCode
+    sig: 'exitCode(): number | undefined'
+    lines:
+    - 40
+    - 42
+    detail: {}
+  - name: wait
+    sig: 'wait(): Promise<CommandResult>'
+    is_async: true
+    lines:
+    - 44
+    - 75
+    detail:
+      calls:
+      - Date.now
+      - String
+      - this._e2bHandle.wait
+      - this.emitStderr
+      - this.emitStdout
+  - name: kill
+    sig: 'kill(): Promise<boolean>'
+    is_async: true
+    lines:
+    - 77
+    - 80
+    detail:
+      calls:
+      - this._e2bHandle.kill
+  - name: sendStdin
+    sig: 'sendStdin(data: string): Promise<void>'
+    is_async: true
+    lines:
+    - 82
+    - 87
+    detail:
+      calls:
+      - new Error
+      - this._sandbox.commands.sendStdin
+  lines:
+  - 24
+  - 88
+- name: E2BProcessManager
+  kind: struct
+  ctx: List processes by querying E2B's commands API. E2B manages all state server-side — no local tracking needed.
+  bases:
+  - SandboxProcessManager
+  methods:
+  - name: spawn
+    sig: 'spawn(command: string, options: SpawnProcessOptions = {}): Promise<ProcessHandle>'
+    is_async: true
+    lines:
+    - 99
+    - 128
+    detail:
+      calls:
+      - this.sandbox.retryOnDead
+  - name: list
+    sig: 'list(): Promise<ProcessInfo[]>'
+    is_async: true
+    lines:
+    - 134
+    - 142
+    detail:
+      calls:
+      - e2b.commands.list
+      - procs.map
+  - name: get
+    sig: 'get(pid: string): Promise<ProcessHandle | undefined>'
+    is_async: true
+    lines:
+    - 149
+    - 171
+    detail:
+      calls:
+      - /^\d+$/.test
+      - Date.now
+      - Number
+      - e2b.commands.connect
+      - new E2BProcessHandle
+      - this._tracked.get
+      - this._tracked.set
+  lines:
+  - 98
+  - 172
+exports:
+- name: E2BProcessHandle
+  kind: type
+- name: E2BProcessManager
+  kind: type

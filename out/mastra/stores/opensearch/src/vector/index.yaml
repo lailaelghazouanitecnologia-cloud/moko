@@ -1,0 +1,290 @@
+## Roska File Descriptor — vector/index.ts
+file: vector/index.ts
+lines: 680
+imports:
+- sym: '@mastra/core/error.MastraError'
+- sym: '@mastra/core/error.ErrorDomain'
+- sym: '@mastra/core/error.ErrorCategory'
+- sym: '@mastra/core/storage.createVectorErrorId'
+- sym: '@mastra/core/vector.CreateIndexParams'
+  kind: typing
+- sym: '@mastra/core/vector.DeleteIndexParams'
+  kind: typing
+- sym: '@mastra/core/vector.DeleteVectorParams'
+  kind: typing
+- sym: '@mastra/core/vector.DescribeIndexParams'
+  kind: typing
+- sym: '@mastra/core/vector.IndexStats'
+  kind: typing
+- sym: '@mastra/core/vector.QueryResult'
+  kind: typing
+- sym: '@mastra/core/vector.QueryVectorParams'
+  kind: typing
+- sym: '@mastra/core/vector.UpdateVectorParams'
+  kind: typing
+- sym: '@mastra/core/vector.UpsertVectorParams'
+  kind: typing
+- sym: '@mastra/core/vector.DeleteVectorsParams'
+  kind: typing
+- sym: '@mastra/core/vector.MastraVector'
+- sym: '@mastra/core/vector.validateUpsert'
+- sym: '@mastra/core/vector.validateTopK'
+- sym: '@opensearch-project/opensearch.Client as OpenSearchClient'
+- sym: '@opensearch-project/opensearch.ClientOptions'
+  kind: typing
+- sym: ./filter.OpenSearchFilterTranslator
+- sym: ./filter.OpenSearchVectorFilter
+  kind: typing
+data:
+- name: METRIC_MAPPING
+  type: object
+  val: |-
+    {
+      cosine: 'cosinesimil',
+      euclidean: 'l2',
+      dotproduct: 'innerproduct',
+    } as const
+- name: REVERSE_METRIC_MAPPING
+  type: object
+  val: |-
+    {
+      cosinesimil: 'cosine',
+      l2: 'euclidean',
+      innerproduct: 'dotproduct',
+    } as const
+types:
+- name: OpenSearchVectorConfig
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 44
+  - 44
+- name: OpenSearchVectorParams
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 58
+  - 58
+- name: OpenSearchVector
+  kind: struct
+  ctx: Creates a new OpenSearchVector client.
+  bases:
+  - MastraVector
+  fields:
+  - name: client
+    type: OpenSearchClient
+  methods:
+  - name: constructor
+    sig: 'constructor({ id, ...clientOptions }: OpenSearchVectorConfig)'
+    lines:
+    - 69
+    - 72
+    detail:
+      calls:
+      - new OpenSearchClient
+      - super
+  - name: createIndex
+    sig: 'createIndex({ indexName, dimension, metric = ''cosine'' }: CreateIndexParams): Promise<void>'
+    is_async: true
+    lines:
+    - 82
+    - 133
+    detail:
+      calls:
+      - Number.isInteger
+      - createVectorErrorId
+      - error?.toString
+      - message.toLowerCase
+      - message.toLowerCase().includes
+      - new MastraError
+      - this.client.indices.create
+      - this.validateExistingIndex
+  - name: listIndexes
+    sig: 'listIndexes(): Promise<string[]>'
+    is_async: true
+    lines:
+    - 140
+    - 158
+    detail:
+      calls:
+      - createVectorErrorId
+      - new MastraError
+      - |-
+        response.body
+                .map
+      - |-
+        response.body
+                .map((record: { index?: string }) => record.index)
+                .filter
+      - this.client.cat.indices
+  - name: describeIndex
+    sig: 'describeIndex({ indexName }: DescribeIndexParams): Promise<IndexStats>'
+    is_async: true
+    lines:
+    - 166
+    - 179
+    detail:
+      calls:
+      - Number
+      - this.client.count
+      - this.client.indices.get
+  - name: deleteIndex
+    sig: 'deleteIndex({ indexName }: DeleteIndexParams): Promise<void>'
+    is_async: true
+    lines:
+    - 187
+    - 203
+    detail:
+      calls:
+      - createVectorErrorId
+      - mastraError.toString
+      - new MastraError
+      - this.client.indices.delete
+      - this.logger?.error
+      - this.logger?.trackException
+  - name: upsert
+    sig: 'upsert({ indexName, vectors, metadata = [], ids }: UpsertVectorParams): Promise<string[]>'
+    is_async: true
+    lines:
+    - 214
+    - 262
+    detail:
+      calls:
+      - createVectorErrorId
+      - new MastraError
+      - operations.push
+      - this.client.bulk
+      - this.describeIndex
+      - this.validateVectorDimensions
+      - validateUpsert
+      - vectors.map
+  - name: query
+    sig: |-
+      query({
+          indexName,
+          queryVector,
+          filter,
+          topK = 10,
+          includeVector = false,
+        }: OpenSearchVectorParams): Promise<QueryResult[]>
+    is_async: true
+    lines:
+    - 274
+    - 332
+    detail:
+      calls:
+      - createVectorErrorId
+      - new MastraError
+      - response.body.hits.hits.map
+      - this.client.search
+      - this.transformFilter
+      - validateTopK
+  - name: updateVector
+    sig: 'updateVector(params: UpdateVectorParams<OpenSearchVectorFilter>): Promise<void>'
+    is_async: true
+    lines:
+    - 368
+    - 419
+    detail:
+      calls:
+      - Object.keys
+      - createVectorErrorId
+      - new MastraError
+      - this.updateVectorById
+      - this.updateVectorsByFilter
+  - name: updateVectorById
+    sig: |-
+      updateVectorById(
+          indexName: string,
+          id: string,
+          update: { vector?: number[]; metadata?: Record<string, any> },
+        ): Promise<void>
+    is_async: true
+    vis: private
+    lines:
+    - 424
+    - 507
+    detail:
+      calls:
+      - createVectorErrorId
+      - new Error
+      - new MastraError
+      - |-
+        this.client
+                .get
+      - |-
+        this.client
+                .get({
+                  index: indexName,
+                  id: id,
+                })
+                .catch
+      - this.client.index
+      - this.describeIndex
+      - this.validateVectorDimensions
+  - name: updateVectorsByFilter
+    sig: |-
+      updateVectorsByFilter(
+          indexName: string,
+          filter: OpenSearchVectorFilter,
+          update: { vector?: number[]; metadata?: Record<string, any> },
+        ): Promise<void>
+    is_async: true
+    vis: private
+    lines:
+    - 512
+    - 562
+    detail:
+      calls:
+      - JSON.stringify
+      - createVectorErrorId
+      - new MastraError
+      - new OpenSearchFilterTranslator
+      - scriptSource.join
+      - scriptSource.push
+      - this.client.updateByQuery
+      - translator.translate
+  - name: deleteVector
+    sig: 'deleteVector({ indexName, id }: DeleteVectorParams): Promise<void>'
+    is_async: true
+    lines:
+    - 571
+    - 596
+    detail:
+      calls:
+      - createVectorErrorId
+      - new MastraError
+      - this.client.delete
+  - name: deleteVectors
+    sig: 'deleteVectors({ indexName, filter, ids }: DeleteVectorsParams<OpenSearchVectorFilter>): Promise<void>'
+    is_async: true
+    lines:
+    - 598
+    - 679
+    detail:
+      calls:
+      - JSON.stringify
+      - Object.keys
+      - createVectorErrorId
+      - ids.flatMap
+      - new MastraError
+      - new OpenSearchFilterTranslator
+      - this.client.bulk
+      - this.client.deleteByQuery
+      - translator.translate
+  lines:
+  - 60
+  - 680
+exports:
+- name: OpenSearchVectorConfig
+  kind: type
+- name: OpenSearchVectorParams
+  kind: type
+- name: OpenSearchVector
+  kind: type
+- name: METRIC_MAPPING
+  kind: data
+- name: REVERSE_METRIC_MAPPING
+  kind: data

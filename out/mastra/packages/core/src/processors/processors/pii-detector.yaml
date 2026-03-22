@@ -1,0 +1,453 @@
+## Roska File Descriptor — processors/pii-detector.ts
+file: processors/pii-detector.ts
+lines: 743
+imports:
+- sym: node:crypto.crypto
+- sym: '@ai-sdk/provider-v5.SharedV2ProviderOptions'
+  kind: typing
+- sym: zod/v4.z
+- sym: ../../agent.Agent
+- sym: ../../agent.isSupportedLanguageModel
+- sym: ../../agent/message-list.MastraDBMessage
+  kind: typing
+- sym: ../../agent/trip-wire.TripWire
+- sym: ../../llm/model/provider-options.ProviderOptions
+  kind: typing
+- sym: ../../llm/model/shared.types.MastraModelConfig
+  kind: typing
+- sym: ../../observability.ObservabilityContext
+  kind: typing
+- sym: ../../observability.resolveObservabilityContext
+- sym: ../../schema.PublicSchema
+  kind: typing
+- sym: ../../schema.toStandardSchema
+- sym: ../../schema.standardSchemaToJSONSchema
+- sym: ../../stream.ChunkType
+  kind: typing
+- sym: ../index.Processor
+  kind: typing
+types:
+- name: PIICategories
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: email
+    type: boolean
+  - name: phone
+    type: boolean
+  - name: '''credit-card'''
+    type: boolean
+  - name: ssn
+    type: boolean
+  - name: '''api-key'''
+    type: boolean
+  - name: '''ip-address'''
+    type: boolean
+  - name: name
+    type: boolean
+  - name: address
+    type: boolean
+  - name: '''date-of-birth'''
+    type: boolean
+  - name: url
+    type: boolean
+  - name: uuid
+    type: boolean
+  - name: '''crypto-wallet'''
+    type: boolean
+  - name: iban
+    type: boolean
+  lines:
+  - 19
+  - 34
+- name: PIICategoryScore
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: type
+    type: string
+  - name: score
+    type: number
+  lines:
+  - 39
+  - 42
+- name: PIICategoryScores
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 44
+  - 44
+- name: PIIDetection
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: type
+    type: string
+  - name: value
+    type: string
+  - name: confidence
+    type: number
+  - name: start
+    type: number
+  - name: end
+    type: number
+  - name: redacted_value
+    type: string | null
+  lines:
+  - 49
+  - 56
+- name: PIIDetectionResult
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: categories
+    type: PIICategoryScores | null
+  - name: detections
+    type: PIIDetection[] | null
+  - name: redacted_content
+    type: string | null
+  lines:
+  - 61
+  - 65
+- name: PIIDetectorOptions
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: model
+    type: MastraModelConfig
+  - name: detectionTypes
+    type: string[]
+  - name: threshold
+    type: number
+  - name: strategy
+    type: '''block'' | ''warn'' | ''filter'' | ''redact'''
+  - name: redactionMethod
+    type: '''mask'' | ''hash'' | ''remove'' | ''placeholder'''
+  - name: instructions
+    type: string
+  - name: includeDetections
+    type: boolean
+  - name: preserveFormat
+    type: boolean
+  - name: structuredOutputOptions
+    type: |-
+      {
+          /**
+           * Whether to use system prompt injection instead of native response format to coerce the LLM to respond with json text if the LLM does not natively support structured outputs.
+           */
+          jsonPromptInjection?: boolean;
+        }
+  - name: providerOptions
+    type: ProviderOptions
+  lines:
+  - 70
+  - 147
+- name: PIIDetector
+  kind: struct
+  ctx: Default PII types based on common privacy regulations and comprehensive PII detection
+  bases:
+  - Processor<'pii-detector'>
+  fields:
+  - name: id
+    type: any
+    default: '''pii-detector'''
+  - name: name
+    type: any
+    default: '''PII Detector'''
+  - name: detectionAgent
+    type: Agent
+  - name: detectionTypes
+    type: string[]
+  - name: threshold
+    type: number
+  - name: strategy
+    type: '''block'' | ''warn'' | ''filter'' | ''redact'''
+  - name: redactionMethod
+    type: '''mask'' | ''hash'' | ''remove'' | ''placeholder'''
+  - name: includeDetections
+    type: boolean
+  - name: preserveFormat
+    type: boolean
+  - name: structuredOutputOptions
+    type: PIIDetectorOptions['structuredOutputOptions']
+  - name: providerOptions
+    type: ProviderOptions
+  - name: DEFAULT_DETECTION_TYPES
+    type: any
+    default: |-
+      [
+          'email', // Email addresses
+          'phone', // Phone numbers
+          'credit-card...
+  methods:
+  - name: constructor
+    sig: 'constructor(options: PIIDetectorOptions)'
+    lines:
+    - 187
+    - 204
+    detail:
+      calls:
+      - new Agent
+      - this.createDefaultInstructions
+  - name: processInput
+    sig: |-
+      processInput(
+          args: {
+            messages: MastraDBMessage[];
+            abort: (reason?: string) => never;
+          } & Partial<ObservabilityContext>,
+        ): Promise<MastraDBMessage[]>
+    is_async: true
+    lines:
+    - 206
+    - 259
+    detail:
+      calls:
+      - new Error
+      - processedMessages.push
+      - resolveObservabilityContext
+      - textContent.trim
+      - this.detectPII
+      - this.extractTextContent
+      - this.handleDetectedPII
+      - this.isPIIFlagged
+  - name: detectPII
+    sig: 'detectPII(content: string, observabilityContext?: ObservabilityContext): Promise<PIIDetectionResult>'
+    is_async: true
+    vis: private
+    lines:
+    - 264
+    - 364
+    detail:
+      calls:
+      - baseDetectionSchema.extend
+      - baseSchema.extend
+      - console.warn
+      - isSupportedLanguageModel
+      - new Error
+      - result.detections.map
+      - standardSchemaToJSONSchema
+      - this.applyRedactionMethod
+      - this.createDetectionPrompt
+      - this.detectionAgent.generate
+      - this.detectionAgent.generateLegacy
+      - this.detectionAgent.getModel
+      - toStandardSchema
+      - |-
+        z
+                        .enum
+      - |-
+        z
+                        .enum(this.detectionTypes as [string, ...string[]])
+                        .describe
+      - |-
+        z
+                        .number
+      - |-
+        z
+                        .number()
+                        .min
+      - |-
+        z
+                        .number()
+                        .min(0)
+                        .max
+      - |-
+        z
+                        .number()
+                        .min(0)
+                        .max(1)
+                        .describ...
+      - |-
+        z
+                        .string
+      - |-
+        z
+                        .string()
+                        .describe
+      - |-
+        z
+                        .string()
+                        .describe('The content with all PII redacted according t...
+      - |-
+        z
+                  .array
+      - |-
+        z
+                  .array(
+                    z.object({
+                      type: z
+                        .enum(this.detectio...
+      - z.array
+      - z.array(detectionSchema).describe
+      - z.array(detectionSchema).describe('Array of specific PII detections with locations').nullable
+      - z.number
+      - z.number().describe
+      - z.number().min
+      - z.number().min(0).max
+      - z.number().min(0).max(1).describe
+      - z.object
+      - z.string
+      - z.string().describe
+      - z.string().describe('Redacted version of the value').nullable
+  - name: handleDetectedPII
+    sig: |-
+      handleDetectedPII(
+          message: MastraDBMessage,
+          result: PIIDetectionResult,
+          strategy: 'block' | 'warn' | 'filter' | 'redact',
+          abort: (reason?: string) => never,
+        ): MastraDBMessage | null
+    vis: private
+    lines:
+    - 387
+    - 423
+    detail:
+      calls:
+      - (result.categories || []).filter
+      - (result.categories || []).filter(cat => cat.score >= this.threshold).map
+      - abort
+      - console.info
+      - console.warn
+      - detectedTypes.join
+      - this.createRedactedMessage
+  - name: applyRedactionMethod
+    sig: 'applyRedactionMethod(content: string, detections: PIIDetection[]): string'
+    vis: private
+    lines:
+    - 442
+    - 454
+    detail:
+      calls:
+      - '[...detections].sort'
+      - redacted.slice
+      - this.redactValue
+  - name: redactValue
+    sig: 'redactValue(value: string, type: string): string'
+    vis: private
+    lines:
+    - 459
+    - 472
+    detail:
+      calls:
+      - this.hashValue
+      - this.maskValue
+      - type.toUpperCase
+  - name: maskValue
+    sig: 'maskValue(value: string, type: string): string'
+    vis: private
+    lines:
+    - 477
+    - 544
+    detail:
+      calls:
+      - '''*''.repeat'
+      - Math.min
+      - domain?.split
+      - domainParts.slice
+      - domainParts.slice(1).join
+      - value.replace
+      - value.slice
+      - value.split
+  - name: hashValue
+    sig: 'hashValue(value: string): string'
+    vis: private
+    lines:
+    - 549
+    - 551
+    detail:
+      calls:
+      - crypto.createHash
+      - crypto.createHash('sha256').update
+      - crypto.createHash('sha256').update(value).digest
+      - crypto.createHash('sha256').update(value).digest('hex').slice
+  - name: processOutputStream
+    sig: |-
+      processOutputStream(
+          args: {
+            part: ChunkType;
+            streamParts: ChunkType[];
+            state: Record<string, any>;
+            abort: (reason?: string) => never;
+          } & Partial<ObservabilityContext>,
+        ): Promise<ChunkType | null>
+    is_async: true
+    lines:
+    - 589
+    - 659
+    detail:
+      calls:
+      - abort
+      - console.info
+      - console.warn
+      - resolveObservabilityContext
+      - textContent.trim
+      - this.detectPII
+      - this.getDetectedTypes
+      - this.getDetectedTypes(detectionResult).join
+      - this.isPIIFlagged
+  - name: processOutputResult
+    sig: |-
+      processOutputResult({
+          messages,
+          abort,
+          ...rest
+        }: {
+          messages: MastraDBMessage[];
+          abort: (reason?: string) => never;
+        } & Partial<ObservabilityContext>): Promise<MastraDBMessage[]>
+    is_async: true
+    lines:
+    - 664
+    - 717
+    detail:
+      calls:
+      - new Error
+      - processedMessages.push
+      - resolveObservabilityContext
+      - textContent.trim
+      - this.detectPII
+      - this.extractTextContent
+      - this.handleDetectedPII
+      - this.isPIIFlagged
+  - name: getDetectedTypes
+    sig: 'getDetectedTypes(result: PIIDetectionResult): string[]'
+    vis: private
+    lines:
+    - 722
+    - 734
+    detail:
+      calls:
+      - Object.entries
+      - |-
+        Object.entries(result.categories)
+                .filter
+      - |-
+        Object.entries(result.categories)
+                .filter(([_, score]) => typeof score === 'number' && score...
+      - new Set
+      - result.detections.map
+  lines:
+  - 156
+  - 743
+exports:
+- name: PIICategories
+  kind: type
+- name: PIICategoryScore
+  kind: type
+- name: PIICategoryScores
+  kind: type
+- name: PIIDetection
+  kind: type
+- name: PIIDetectionResult
+  kind: type
+- name: PIIDetectorOptions
+  kind: type
+- name: PIIDetector
+  kind: type

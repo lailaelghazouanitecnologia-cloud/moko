@@ -1,0 +1,202 @@
+## Roska File Descriptor — sandbox/process-manager.ts
+file: sandbox/process-manager.ts
+lines: 276
+purpose: 'Daytona Process Manager Implements SandboxProcessManager for Daytona cloud sandboxes. Wraps the Daytona SDK''s session API (createSession, executeSessionCommand, getSessionCommandLogs, deleteSession) for background process management. Each spawn() creates a dedicated session with a single command. The user command is wrapped in a subshell `(command)` so that: - `exit N` exits the subshell, not the session shell - Heredocs are contained within the subshell - The session command finishes cleanly'
+imports:
+- sym: '@daytonaio/sdk.Sandbox'
+  kind: typing
+- sym: '@mastra/core/workspace.ProcessHandle'
+- sym: '@mastra/core/workspace.SandboxProcessManager'
+- sym: '@mastra/core/workspace.CommandResult'
+  kind: typing
+- sym: '@mastra/core/workspace.ProcessInfo'
+  kind: typing
+- sym: '@mastra/core/workspace.SpawnProcessOptions'
+  kind: typing
+- sym: ../utils/shell-quote.shellQuote
+- sym: ./index.DaytonaSandbox
+  kind: typing
+types:
+- name: DaytonaProcessHandle
+  kind: struct
+  ctx: ''
+  bases:
+  - ProcessHandle
+  fields:
+  - name: pid
+    type: string
+  - name: _cmdId
+    type: string
+  - name: _sandbox
+    type: Sandbox
+  - name: _startTime
+    type: number
+  - name: _timeout
+    type: number
+  - name: _exitCode
+    type: number | undefined
+  - name: _waitPromise
+    type: Promise<CommandResult> | null
+    default: 'null'
+  - name: _streamingPromise
+    type: Promise<void> | null
+    default: 'null'
+  - name: _killed
+    type: any
+    default: 'false'
+  methods:
+  - name: constructor
+    sig: 'constructor(sessionId: string, cmdId: string, sandbox: Sandbox, startTime: number, options?: SpawnProcessOptions)'
+    lines:
+    - 42
+    - 49
+    detail:
+      calls:
+      - super
+  - name: exitCode
+    sig: 'exitCode(): number | undefined'
+    lines:
+    - 51
+    - 53
+    detail: {}
+  - name: streamingPromise
+    sig: 'streamingPromise(p: Promise<void>)'
+    lines:
+    - 56
+    - 61
+    detail:
+      calls:
+      - p.then
+      - p.then(() => this._resolveExitCode()).catch
+  - name: _resolveExitCode
+    sig: '_resolveExitCode(): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 64
+    - 74
+    detail:
+      calls:
+      - this._sandbox.process.getSessionCommand
+  - name: wait
+    sig: 'wait(): Promise<CommandResult>'
+    is_async: true
+    lines:
+    - 76
+    - 82
+    detail:
+      calls:
+      - this._doWait
+  - name: _doWait
+    sig: '_doWait(): Promise<CommandResult>'
+    is_async: true
+    vis: private
+    lines:
+    - 84
+    - 139
+    detail:
+      calls:
+      - Date.now
+      - Promise.race
+      - Promise.resolve
+      - clearTimeout
+      - error.message.includes
+      - new Promise
+      - streamDone.catch
+      - this._resolveExitCode
+      - this.kill
+  - name: kill
+    sig: 'kill(): Promise<boolean>'
+    is_async: true
+    lines:
+    - 141
+    - 151
+    detail:
+      calls:
+      - this._sandbox.process.deleteSession
+  - name: sendStdin
+    sig: 'sendStdin(data: string): Promise<void>'
+    is_async: true
+    lines:
+    - 153
+    - 158
+    detail:
+      calls:
+      - new Error
+      - this._sandbox.process.sendSessionCommandInput
+  lines:
+  - 29
+  - 159
+- name: DaytonaProcessManagerOptions
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: env
+    type: Record<string, string | undefined>
+  - name: defaultTimeout
+    type: number
+  lines:
+  - 165
+  - 169
+- name: DaytonaProcessManager
+  kind: struct
+  bases:
+  - SandboxProcessManager
+  fields:
+  - name: _spawnCounter
+    type: any
+    default: '0'
+  - name: _defaultTimeout
+    type: number
+  methods:
+  - name: constructor
+    sig: 'constructor(opts: DaytonaProcessManagerOptions = {})'
+    lines:
+    - 179
+    - 182
+    detail:
+      calls:
+      - super
+  - name: spawn
+    sig: 'spawn(command: string, options: SpawnProcessOptions = {}): Promise<ProcessHandle>'
+    is_async: true
+    lines:
+    - 184
+    - 231
+    detail:
+      calls:
+      - this.sandbox.retryOnDead
+  - name: list
+    sig: 'list(): Promise<ProcessInfo[]>'
+    is_async: true
+    lines:
+    - 233
+    - 244
+    detail:
+      calls:
+      - result.push
+  lines:
+  - 175
+  - 245
+functions:
+- name: buildSpawnCommand
+  sig: 'buildSpawnCommand(command: string, cwd: string | undefined, envs: Record<string, string>): string'
+  lines:
+  - 261
+  - 276
+  detail:
+    calls:
+    - Object.entries
+    - parts.join
+    - parts.push
+    - shellQuote
+exports:
+- name: DaytonaProcessHandle
+  kind: type
+- name: DaytonaProcessManagerOptions
+  kind: type
+- name: DaytonaProcessManager
+  kind: type
+- name: buildSpawnCommand
+  kind: func

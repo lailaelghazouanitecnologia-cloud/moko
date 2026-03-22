@@ -1,0 +1,610 @@
+## Roska File Descriptor — src/llm-recorder.ts
+file: src/llm-recorder.ts
+lines: 1166
+purpose: eslint-disable no-console
+imports:
+- sym: node:crypto.crypto
+- sym: node:fs.fs
+- sym: node:path.path
+- sym: diff.diffJson
+- sym: msw.http
+- sym: msw.HttpResponse
+- sym: msw.bypass
+- sym: msw/node.SetupServerApi
+  kind: typing
+- sym: msw/node.setupServer
+- sym: string-similarity.stringSimilarity
+- sym: vitest.beforeAll
+- sym: vitest.afterAll
+- sym: vitest.beforeEach
+- sym: vitest.afterEach
+data:
+- name: DEFAULT_RECORDINGS_DIR
+  type: any
+  val: path.join(process.cwd(), '__recordings__')
+- name: LLM_API_HOSTS
+  type: array
+  val: |-
+    [
+      'https://api.openai.com',
+      'https://api.anthropic.com',
+      'https://generativelanguage.googleapis.com',
+      'https://o...
+- name: SKIP_HEADERS
+  type: array
+  val: '[''authorization'', ''x-api-key'', ''api-key'', ''content-encoding'', ''transfer-encoding'', ''set-cookie'']'
+- name: activeRecorder
+  type: LLMRecorderInstance | null
+  val: 'null'
+- name: SIMILARITY_THRESHOLD
+  type: number
+  val: '0.6'
+types:
+- name: LLMTestMode
+  kind: enum
+  decorators:
+  - type
+  variants:
+  - name: '''record'''
+  lines:
+  - 81
+  - 81
+- name: LLMBinaryArtifact
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: path
+    type: string
+  - name: contentType
+    type: string
+  - name: size
+    type: number
+  lines:
+  - 129
+  - 136
+- name: LLMRecording
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: hash
+    type: string
+  - name: request
+    type: |-
+      {
+          url: string;
+          method: string;
+          body: unknown;
+          timestamp: number;
+          /** Optional binary request payload stored as a sidecar artifact */
+          binaryArtifact?: LLMBinaryArtifact;
+        }
+  - name: response
+    type: |-
+      {
+          status: number;
+          statusText: string;
+          headers: Record<string, string>;
+          /** For non-streaming responses - parsed JSON or text */
+          body?: unknown;
+          /** Optional binary response payload stored as a sidecar artifact */
+          binaryArtifact?: LLMBinaryArtifact;
+          /** For streaming responses - individual chunks */
+          chunks?: string[];
+          /** Timing between chunks in ms */
+          chunkTimings?: number[];
+          /** Whether this was a streaming response */
+          isStreaming: boolean;
+        }
+  lines:
+  - 138
+  - 166
+- name: RecordingMeta
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: testFile
+    type: string
+  - name: provider
+    type: string
+  - name: model
+    type: string
+  - name: createdAt
+    type: string
+  - name: updatedAt
+    type: string
+  lines:
+  - 173
+  - 188
+- name: RecordingFile
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: meta
+    type: RecordingMeta
+  - name: recordings
+    type: LLMRecording[]
+  lines:
+  - 195
+  - 198
+- name: LLMRecorderOptions
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: recordingsDir
+    type: string
+  - name: forceRecord
+    type: boolean
+  - name: replayWithTiming
+    type: boolean
+  - name: maxChunkDelay
+    type: number
+  - name: transformRequest
+    type: '(req: { url: string; body: unknown }) => { url: string; body: unknown }'
+  - name: hosts
+    type: string[]
+  - name: debug
+    type: boolean
+  - name: mode
+    type: LLMTestMode
+  - name: metaContext
+    type: |-
+      {
+          /** Absolute path of the test file */
+          testFile?: string;
+          /** Provider ID (e.g. "openai") */
+          provider?: string;
+          /** Model ID (e.g. "gpt-4o") */
+          model?: string;
+        }
+  lines:
+  - 231
+  - 298
+- name: LLMRecorderInstance
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: server
+    type: SetupServerApi | null
+  - name: start
+    type: 'method: start(): void'
+  - name: stop
+    type: 'method: stop(): void'
+  - name: save
+    type: 'method: save(): Promise<void>'
+  - name: mode
+    type: LLMTestMode
+  - name: isRecording
+    type: boolean
+  - name: isLive
+    type: boolean
+  - name: recordingCount
+    type: number
+  lines:
+  - 300
+  - 317
+- name: ParsedRequestBody
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: value
+    type: unknown
+  - name: binary
+    type: |-
+      {
+          bytes: Uint8Array;
+          contentType: string;
+        }
+  lines:
+  - 373
+  - 379
+functions:
+- name: isUpdateMode
+  sig: 'isUpdateMode(): boolean'
+  lines:
+  - 90
+  - 93
+  detail:
+    calls:
+    - process.argv.includes
+- name: getLLMTestMode
+  sig: 'getLLMTestMode(): LLMTestMode'
+  lines:
+  - 106
+  - 124
+  detail:
+    calls:
+    - isUpdateMode
+    - process.env.LLM_TEST_MODE?.toLowerCase
+- name: isRecordingFile
+  sig: 'isRecordingFile(raw: unknown)'
+  lines:
+  - 203
+  - 207
+  detail:
+    calls:
+    - Array.isArray
+- name: loadRecordingFile
+  sig: 'loadRecordingFile(filePath: string, name: string): RecordingFile'
+  lines:
+  - 209
+  - 229
+  detail:
+    calls:
+    - Array.isArray
+    - JSON.parse
+    - fs.readFileSync
+    - isRecordingFile
+    - new Date
+    - new Date().toISOString
+    - new Error
+- name: getActiveRecorder
+  sig: 'getActiveRecorder(): LLMRecorderInstance | null'
+  lines:
+  - 347
+  - 349
+- name: relativizeTestFile
+  sig: 'relativizeTestFile(filepath: string): string'
+  lines:
+  - 355
+  - 358
+  detail:
+    calls:
+    - path.basename
+    - path.relative
+    - process.cwd
+    - rel.startsWith
+- name: stableSortKeys
+  sig: 'stableSortKeys(value: unknown): unknown'
+  lines:
+  - 363
+  - 371
+  detail:
+    calls:
+    - Array.isArray
+    - Object.keys
+    - Object.keys(value as Record<string, unknown>).sort
+    - stableSortKeys
+    - value.map
+- name: parseRequestBody
+  sig: 'parseRequestBody(request: Request): Promise<ParsedRequestBody>'
+  is_async: true
+  lines:
+  - 384
+  - 418
+  detail:
+    calls:
+    - cloned.arrayBuffer
+    - cloned.arrayBuffer().catch
+    - cloned.json
+    - cloned.json().catch
+    - cloned.text
+    - cloned.text().catch
+    - contentType.includes
+    - contentType.startsWith
+    - crypto.createHash
+    - crypto.createHash('md5').update
+    - crypto.createHash('md5').update(bytes).digest
+    - crypto.createHash('md5').update(bytes).digest('hex').slice
+    - new Uint8Array
+    - request.clone
+    - request.headers.get
+    - request.headers.get('content-type')?.toLowerCase
+- name: serializeRequestContent
+  sig: 'serializeRequestContent(url: string, body: unknown): string'
+  lines:
+  - 423
+  - 426
+  detail:
+    calls:
+    - JSON.stringify
+    - String
+    - stableSortKeys
+- name: hashRequest
+  sig: 'hashRequest(url: string, body: unknown): string'
+  lines:
+  - 431
+  - 433
+  detail:
+    calls:
+    - crypto.createHash
+    - crypto.createHash('md5').update
+    - crypto.createHash('md5').update(serializeRequestContent(url, body)).digest
+    - crypto.createHash('md5').update(serializeRequestContent(url, body)).digest('hex').slice
+    - serializeRequestContent
+- name: isStreamingResponse
+  sig: 'isStreamingResponse(headers: Headers): boolean'
+  lines:
+  - 438
+  - 441
+  detail:
+    calls:
+    - contentType.includes
+    - headers.get
+- name: filterHeaders
+  sig: 'filterHeaders(headers: Headers): Record<string, string>'
+  lines:
+  - 446
+  - 454
+  detail:
+    calls:
+    - headers.forEach
+- name: writeBinaryArtifact
+  sig: |-
+    writeBinaryArtifact(params: {
+      recordingsDir: string;
+      hash: string;
+      kind: 'request' | 'response';
+      contentType: string;
+      bytes: Uint8Array;
+    }): LLMBinaryArtifact
+  lines:
+  - 456
+  - 484
+  detail:
+    calls:
+    - Buffer.from
+    - crypto.createHash
+    - crypto.createHash('md5').update
+    - crypto.createHash('md5').update(params.bytes).digest
+    - crypto.createHash('md5').update(params.bytes).digest('hex').slice
+    - fs.mkdirSync
+    - fs.writeFileSync
+    - params.contentType.includes
+    - path.join
+- name: readBinaryArtifact
+  sig: 'readBinaryArtifact(recordingsDir: string, artifact: LLMBinaryArtifact): Uint8Array'
+  lines:
+  - 486
+  - 493
+  detail:
+    calls:
+    - absolutePath.startsWith
+    - fs.readFileSync
+    - new Error
+    - new Uint8Array
+    - path.resolve
+- name: captureStreamingResponse
+  sig: |-
+    captureStreamingResponse(
+      response: Response,
+    ): Promise<{ chunks: string[]; timings: number[]; headers: Record<string, string> }>
+  is_async: true
+  lines:
+  - 498
+  - 529
+  detail:
+    calls:
+    - Date.now
+    - chunks.push
+    - decoder.decode
+    - filterHeaders
+    - new TextDecoder
+    - reader.read
+    - reader.releaseLock
+    - response.body?.getReader
+    - timings.push
+- name: createStreamingResponse
+  sig: |-
+    createStreamingResponse(
+      recording: LLMRecording,
+      options: { replayWithTiming?: boolean; maxChunkDelay?: number },
+    ): Response
+  lines:
+  - 534
+  - 568
+  detail:
+    calls:
+    - Math.min
+    - controller.close
+    - controller.enqueue
+    - new Promise
+    - new ReadableStream
+    - new Response
+    - new TextEncoder
+    - new TextEncoder().encode
+- name: findRecording
+  sig: 'findRecording(recordings: LLMRecording[], hash: string, url: string, body: unknown): LLMRecording | undefined'
+  lines:
+  - 580
+  - 623
+  detail:
+    calls:
+    - recordings.find
+    - serializeRequestContent
+    - stringSimilarity.compareTwoStrings
+- name: setupLLMRecording
+  sig: 'setupLLMRecording(options: LLMRecorderOptions): LLMRecorderInstance'
+  lines:
+  - 628
+  - 1007
+  detail:
+    calls:
+    - JSON.stringify
+    - console.log
+    - console.warn
+    - fs.existsSync
+    - fs.mkdirSync
+    - fs.unlinkSync
+    - fs.writeFileSync
+    - getLLMTestMode
+    - interceptHosts.flatMap
+    - loadRecordingFile
+    - mode.toUpperCase
+    - new Date
+    - new Date().toISOString
+    - new Error
+    - new Set
+    - path.dirname
+    - path.join
+    - recordings.filter
+    - relativizeTestFile
+    - server.close
+    - server.listen
+    - setupServer
+- name: useLLMRecording
+  sig: 'useLLMRecording(name: string, options: Omit<LLMRecorderOptions, ''name''> = {})'
+  lines:
+  - 1024
+  - 1037
+  detail:
+    calls:
+    - afterAll
+    - beforeAll
+    - setupLLMRecording
+- name: useLiveMode
+  sig: useLiveMode()
+  lines:
+  - 1067
+  - 1082
+  detail:
+    calls:
+    - afterEach
+    - beforeEach
+- name: withLLMRecording
+  sig: |-
+    withLLMRecording(
+      name: string,
+      fn: () => T | Promise<T>,
+      options: Omit<LLMRecorderOptions, 'name'> = {},
+    ): Promise<T>
+  is_async: true
+  lines:
+  - 1096
+  - 1126
+  detail:
+    calls:
+    - fn
+    - parentRecorder.server.close
+    - parentRecorder.server.listen
+    - recorder.save
+    - recorder.start
+    - recorder.stop
+    - setupLLMRecording
+- name: hasLLMRecording
+  sig: 'hasLLMRecording(name: string, recordingsDir?: string): boolean'
+  lines:
+  - 1131
+  - 1134
+  detail:
+    calls:
+    - fs.existsSync
+    - path.join
+- name: deleteLLMRecording
+  sig: 'deleteLLMRecording(name: string, recordingsDir?: string): void'
+  lines:
+  - 1139
+  - 1145
+  detail:
+    calls:
+    - fs.existsSync
+    - fs.unlinkSync
+    - path.join
+- name: listLLMRecordings
+  sig: 'listLLMRecordings(recordingsDir?: string): string[]'
+  lines:
+  - 1150
+  - 1159
+  detail:
+    calls:
+    - |-
+      fs
+          .readdirSync
+    - |-
+      fs
+          .readdirSync(dir)
+          .filter
+    - |-
+      fs
+          .readdirSync(dir)
+          .filter(f => f.endsWith('.json'))
+          .map
+    - fs.existsSync
+- name: getLLMRecordingsDir
+  sig: 'getLLMRecordingsDir(): string'
+  lines:
+  - 1164
+  - 1166
+exports:
+- name: LLMTestMode
+  kind: type
+- name: LLMBinaryArtifact
+  kind: type
+- name: LLMRecording
+  kind: type
+- name: RecordingMeta
+  kind: type
+- name: RecordingFile
+  kind: type
+- name: LLMRecorderOptions
+  kind: type
+- name: LLMRecorderInstance
+  kind: type
+- name: ParsedRequestBody
+  kind: type
+- name: isUpdateMode
+  kind: func
+- name: getLLMTestMode
+  kind: func
+- name: isRecordingFile
+  kind: func
+- name: loadRecordingFile
+  kind: func
+- name: getActiveRecorder
+  kind: func
+- name: relativizeTestFile
+  kind: func
+- name: stableSortKeys
+  kind: func
+- name: parseRequestBody
+  kind: func
+- name: serializeRequestContent
+  kind: func
+- name: hashRequest
+  kind: func
+- name: isStreamingResponse
+  kind: func
+- name: filterHeaders
+  kind: func
+- name: writeBinaryArtifact
+  kind: func
+- name: readBinaryArtifact
+  kind: func
+- name: captureStreamingResponse
+  kind: func
+- name: createStreamingResponse
+  kind: func
+- name: findRecording
+  kind: func
+- name: setupLLMRecording
+  kind: func
+- name: useLLMRecording
+  kind: func
+- name: useLiveMode
+  kind: func
+- name: withLLMRecording
+  kind: func
+- name: hasLLMRecording
+  kind: func
+- name: deleteLLMRecording
+  kind: func
+- name: listLLMRecordings
+  kind: func
+- name: getLLMRecordingsDir
+  kind: func
+- name: DEFAULT_RECORDINGS_DIR
+  kind: data
+- name: LLM_API_HOSTS
+  kind: data
+- name: SKIP_HEADERS
+  kind: data
+- name: activeRecorder
+  kind: data
+- name: SIMILARITY_THRESHOLD
+  kind: data

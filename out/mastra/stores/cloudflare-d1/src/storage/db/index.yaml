@@ -1,0 +1,456 @@
+## Roska File Descriptor — db/index.ts
+file: db/index.ts
+lines: 619
+imports:
+- sym: '@cloudflare/workers-types.D1Database'
+  kind: typing
+- sym: '@mastra/core/base.MastraBase'
+- sym: '@mastra/core/error.MastraError'
+- sym: '@mastra/core/error.ErrorDomain'
+- sym: '@mastra/core/error.ErrorCategory'
+- sym: '@mastra/core/storage.createStorageErrorId'
+- sym: '@mastra/core/storage.getDefaultValue'
+- sym: '@mastra/core/storage.getSqlType'
+- sym: '@mastra/core/storage.TABLE_WORKFLOW_SNAPSHOT'
+- sym: '@mastra/core/storage.TABLE_NAMES'
+  kind: typing
+- sym: '@mastra/core/storage.StorageColumn'
+  kind: typing
+- sym: cloudflare.Cloudflare
+- sym: ../domains/utils.deserializeValue
+- sym: ../sql-builder.createSqlBuilder
+- sym: ../sql-builder.SqlParam
+  kind: typing
+- sym: ../sql-builder.SqlQueryOptions
+  kind: typing
+types:
+- name: D1QueryResult
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 11
+  - 11
+- name: D1Client
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: query
+    type: 'method: query(args: { sql: string; params: string[] }): Promise<{ result: D1QueryResult }>'
+  lines:
+  - 13
+  - 15
+- name: D1DBConfig
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: client
+    type: D1Client
+  - name: binding
+    type: D1Database
+  - name: tablePrefix
+    type: string
+  lines:
+  - 17
+  - 21
+- name: D1DomainConfig
+  kind: enum
+  decorators:
+  - type
+  variants:
+  - name: D1DomainRestConfig
+  lines:
+  - 29
+  - 29
+- name: D1DomainClientConfig
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: client
+    type: D1Client
+  - name: tablePrefix
+    type: string
+  lines:
+  - 34
+  - 37
+- name: D1DomainBindingConfig
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: binding
+    type: D1Database
+  - name: tablePrefix
+    type: string
+  lines:
+  - 42
+  - 45
+- name: D1DomainRestConfig
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: accountId
+    type: string
+  - name: apiToken
+    type: string
+  - name: databaseId
+    type: string
+  - name: tablePrefix
+    type: string
+  lines:
+  - 50
+  - 55
+- name: D1DB
+  kind: struct
+  ctx: 'Cache of actual table columns: tableName -> Promise<Set<columnName>> (stores in-flight promise to coalesce concurrent calls)'
+  bases:
+  - MastraBase
+  fields:
+  - name: client
+    type: D1Client
+  - name: binding
+    type: D1Database
+  - name: tablePrefix
+    type: string
+  - name: tableColumnsCache
+    type: any
+    default: new Map<string, Promise<Set<string>>>()
+  methods:
+  - name: constructor
+    sig: 'constructor(config: D1DBConfig)'
+    lines:
+    - 102
+    - 110
+    detail:
+      calls:
+      - super
+  - name: hasColumn
+    sig: 'hasColumn(table: string, column: string): Promise<boolean>'
+    is_async: true
+    lines:
+    - 112
+    - 120
+    detail:
+      calls:
+      - Array.isArray
+      - result.some
+      - table.startsWith
+      - this.executeQuery
+  - name: getTableName
+    sig: 'getTableName(tableName: TABLE_NAMES): string'
+    lines:
+    - 122
+    - 124
+    detail: {}
+  - name: executeWorkersBindingQuery
+    sig: |-
+      executeWorkersBindingQuery({
+          sql,
+          params = [],
+          first = false,
+        }: SqlQueryOptions): Promise<Record<string, any>[] | Record<string, any> | null>
+    is_async: true
+    vis: private
+    lines:
+    - 130
+    - 176
+    detail:
+      calls:
+      - createStorageErrorId
+      - new Error
+      - new MastraError
+      - statement.all
+      - statement.bind
+      - statement.bind(...formattedParams).all
+      - statement.bind(...formattedParams).first
+      - statement.first
+      - this.binding.prepare
+      - this.formatSqlParams
+  - name: executeRestQuery
+    sig: |-
+      executeRestQuery({
+          sql,
+          params = [],
+          first = false,
+        }: SqlQueryOptions): Promise<Record<string, any>[] | Record<string, any> | null>
+    is_async: true
+    vis: private
+    lines:
+    - 178
+    - 212
+    detail:
+      calls:
+      - createStorageErrorId
+      - new Error
+      - new MastraError
+      - result.flatMap
+      - this.client.query
+      - this.formatSqlParams
+  - name: executeQuery
+    sig: 'executeQuery(options: SqlQueryOptions): Promise<Record<string, any>[] | Record<string, any> | null>'
+    is_async: true
+    lines:
+    - 214
+    - 222
+    detail:
+      calls:
+      - new Error
+      - this.executeRestQuery
+      - this.executeWorkersBindingQuery
+  - name: getKnownColumnNames
+    sig: 'getKnownColumnNames(tableName: string): Promise<Set<string>>'
+    is_async: true
+    vis: private
+    lines:
+    - 228
+    - 244
+    detail:
+      calls:
+      - this.getTableColumns
+      - this.getTableColumns(tableName).then
+      - this.tableColumnsCache.get
+      - this.tableColumnsCache.set
+  - name: filterRecordToKnownColumns
+    sig: |-
+      filterRecordToKnownColumns(
+          tableName: string,
+          record: Record<string, any>,
+        ): Promise<Record<string, any>>
+    is_async: true
+    vis: private
+    lines:
+    - 250
+    - 264
+    detail:
+      calls:
+      - Object.entries
+      - knownColumns.has
+      - this.getKnownColumnNames
+  - name: getTableColumns
+    sig: 'getTableColumns(tableName: string): Promise<{ name: string; type: string }[]>'
+    is_async: true
+    vis: private
+    lines:
+    - 266
+    - 283
+    detail:
+      calls:
+      - Array.isArray
+      - result.map
+      - this.executeQuery
+      - this.logger.warn
+  - name: createTable
+    sig: |-
+      createTable({
+          tableName,
+          schema,
+        }: {
+          tableName: TABLE_NAMES;
+          schema: Record<string, StorageColumn>;
+        }): Promise<void>
+    is_async: true
+    lines:
+    - 315
+    - 355
+    detail:
+      calls:
+      - Object.entries
+      - Object.entries(schema).map
+      - createSqlBuilder
+      - createSqlBuilder().createTable
+      - createStorageErrorId
+      - new MastraError
+      - query.build
+      - tableConstraints.push
+      - this.executeQuery
+      - this.getTableName
+      - this.logger.debug
+      - this.tableColumnsCache.delete
+  - name: clearTable
+    sig: 'clearTable({ tableName }: { tableName: TABLE_NAMES }): Promise<void>'
+    is_async: true
+    lines:
+    - 357
+    - 375
+    detail:
+      calls:
+      - createSqlBuilder
+      - createSqlBuilder().delete
+      - createStorageErrorId
+      - new MastraError
+      - query.build
+      - this.executeQuery
+      - this.getTableName
+      - this.logger.debug
+  - name: dropTable
+    sig: 'dropTable({ tableName }: { tableName: TABLE_NAMES }): Promise<void>'
+    is_async: true
+    lines:
+    - 377
+    - 396
+    detail:
+      calls:
+      - createStorageErrorId
+      - new MastraError
+      - this.executeQuery
+      - this.getTableName
+      - this.logger.debug
+      - this.tableColumnsCache.delete
+  - name: alterTable
+    sig: |-
+      alterTable(args: {
+          tableName: TABLE_NAMES;
+          schema: Record<string, StorageColumn>;
+          ifNotExists: string[];
+        }): Promise<void>
+    is_async: true
+    lines:
+    - 398
+    - 432
+    detail:
+      calls:
+      - Object.entries
+      - args.ifNotExists.includes
+      - createStorageErrorId
+      - existingColumnNames.has
+      - existingColumns.map
+      - new MastraError
+      - new Set
+      - this.executeQuery
+      - this.getDefaultValue
+      - this.getSqlType
+      - this.getTableColumns
+      - this.getTableName
+      - this.logger.debug
+      - this.tableColumnsCache.delete
+  - name: insert
+    sig: 'insert({ tableName, record }: { tableName: TABLE_NAMES; record: Record<string, any> }): Promise<void>'
+    is_async: true
+    lines:
+    - 434
+    - 459
+    detail:
+      calls:
+      - Object.keys
+      - Object.values
+      - createSqlBuilder
+      - createSqlBuilder().insert
+      - createStorageErrorId
+      - new MastraError
+      - query.build
+      - this.executeQuery
+      - this.filterRecordToKnownColumns
+      - this.getTableName
+      - this.processRecord
+  - name: batchInsert
+    sig: 'batchInsert({ tableName, records }: { tableName: TABLE_NAMES; records: Record<string, any>[] }): Promise<void>'
+    is_async: true
+    lines:
+    - 461
+    - 493
+    detail:
+      calls:
+      - Object.keys
+      - Object.values
+      - Promise.all
+      - createSqlBuilder
+      - createSqlBuilder().insert
+      - createStorageErrorId
+      - new MastraError
+      - processedRecords.map
+      - query.build
+      - records.map
+      - this.executeQuery
+      - this.getTableName
+  - name: load
+    sig: 'load({ tableName, keys }: { tableName: TABLE_NAMES; keys: Record<string, string> }): Promise<R | null>'
+    is_async: true
+    lines:
+    - 495
+    - 540
+    detail:
+      calls:
+      - Object.entries
+      - createSqlBuilder
+      - createSqlBuilder().select
+      - createSqlBuilder().select('*').from
+      - createStorageErrorId
+      - deserializeValue
+      - new MastraError
+      - query.andWhere
+      - query.build
+      - query.limit
+      - query.orderBy
+      - query.where
+      - this.executeQuery
+      - this.getTableName
+  - name: processRecord
+    sig: 'processRecord(record: Record<string, any>): Promise<Record<string, any>>'
+    is_async: true
+    lines:
+    - 542
+    - 548
+    detail:
+      calls:
+      - Object.entries
+      - this.serializeValue
+  - name: batchUpsert
+    sig: 'batchUpsert({ tableName, records }: { tableName: TABLE_NAMES; records: Record<string, any>[] }): Promise<void>'
+    is_async: true
+    lines:
+    - 555
+    - 618
+    detail:
+      calls:
+      - Math.ceil
+      - Math.floor
+      - Object.keys
+      - Promise.all
+      - String
+      - columns.map
+      - columns.reduce
+      - createSqlBuilder
+      - createSqlBuilder().insert
+      - createStorageErrorId
+      - new MastraError
+      - query.build
+      - records.slice
+      - recordsToInsert.map
+      - this.executeQuery
+      - this.getTableName
+      - this.logger.debug
+  lines:
+  - 94
+  - 619
+functions:
+- name: resolveD1Config
+  sig: 'resolveD1Config(config: D1DomainConfig): D1DBConfig'
+  lines:
+  - 61
+  - 92
+  detail:
+    calls:
+    - new Cloudflare
+exports:
+- name: D1QueryResult
+  kind: type
+- name: D1Client
+  kind: type
+- name: D1DBConfig
+  kind: type
+- name: D1DomainConfig
+  kind: type
+- name: D1DomainClientConfig
+  kind: type
+- name: D1DomainBindingConfig
+  kind: type
+- name: D1DomainRestConfig
+  kind: type
+- name: D1DB
+  kind: type
+- name: resolveD1Config
+  kind: func

@@ -1,0 +1,352 @@
+## Roska File Descriptor — search/search-engine.ts
+file: search/search-engine.ts
+lines: 582
+purpose: SearchEngine - Unified search engine supporting BM25, vector, and hybrid search. Provides search capabilities for Workspace, enabling keyword-based (BM25), semantic (vector), and combined hybrid search across indexed content.
+imports:
+- sym: ../../vector.MastraVector
+  kind: typing
+- sym: ../../vector.VectorFilter
+  kind: typing
+- sym: ../line-utils.LineRange
+  kind: typing
+- sym: ./bm25.BM25Index
+- sym: ./bm25.tokenize
+- sym: ./bm25.findLineRange
+- sym: ./bm25.BM25Config
+  kind: typing
+- sym: ./bm25.TokenizeOptions
+  kind: typing
+types:
+- name: SearchMode
+  kind: enum
+  decorators:
+  - type
+  variants:
+  - name: '''hybrid'''
+  lines:
+  - 17
+  - 17
+- name: Embedder
+  kind: trait
+  decorators:
+  - interface
+  lines:
+  - 26
+  - 28
+- name: VectorConfig
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: vectorStore
+    type: MastraVector
+  - name: embedder
+    type: Embedder
+  lines:
+  - 33
+  - 40
+- name: BM25SearchConfig
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: bm25
+    type: BM25Config
+  - name: tokenize
+    type: TokenizeOptions
+  lines:
+  - 45
+  - 50
+- name: IndexDocument
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: id
+    type: string
+  - name: content
+    type: string
+  - name: metadata
+    type: Record<string, unknown>
+  - name: startLineOffset
+    type: number
+  lines:
+  - 55
+  - 68
+- name: SearchResult
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: id
+    type: string
+  - name: content
+    type: string
+  - name: score
+    type: number
+  - name: lineRange
+    type: LineRange
+  - name: metadata
+    type: Record<string, unknown>
+  - name: scoreDetails
+    type: |-
+      {
+          vector?: number;
+          bm25?: number;
+        }
+  lines:
+  - 73
+  - 89
+- name: SearchOptions
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: topK
+    type: number
+  - name: minScore
+    type: number
+  - name: mode
+    type: SearchMode
+  - name: vectorWeight
+    type: number
+  - name: filter
+    type: Record<string, unknown>
+  lines:
+  - 94
+  - 105
+- name: SearchEngineConfig
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: bm25
+    type: BM25SearchConfig
+  - name: vector
+    type: VectorConfig
+  - name: lazyVectorIndex
+    type: boolean
+  lines:
+  - 110
+  - 117
+- name: SearchEngine
+  kind: struct
+  ctx: BM25 index for keyword search
+  methods:
+  - name: constructor
+    sig: 'constructor(config: SearchEngineConfig = {})'
+    lines:
+    - 161
+    - 174
+    detail:
+      calls:
+      - new BM25Index
+  - name: index
+    sig: 'index(doc: IndexDocument): Promise<void>'
+    is_async: true
+    lines:
+    - 183
+    - 209
+    detail:
+      calls:
+      - this.#bm25Index.add
+      - this.#indexVector
+      - this.#pendingVectorDocs.push
+  - name: indexMany
+    sig: 'indexMany(docs: IndexDocument[]): Promise<void>'
+    is_async: true
+    lines:
+    - 214
+    - 218
+    detail:
+      calls:
+      - this.index
+  - name: remove
+    sig: 'remove(id: string): Promise<void>'
+    is_async: true
+    lines:
+    - 223
+    - 245
+    detail:
+      calls:
+      - this.#bm25Index.remove
+      - this.#pendingVectorDocs.filter
+      - this.#vectorConfig.vectorStore.deleteVector
+  - name: clear
+    sig: 'clear(): void'
+    lines:
+    - 250
+    - 257
+    detail:
+      calls:
+      - this.#bm25Index.clear
+  - name: search
+    sig: 'search(query: string, options: SearchOptions = {}): Promise<SearchResult[]>'
+    is_async: true
+    lines:
+    - 262
+    - 277
+    detail:
+      calls:
+      - this.#determineSearchMode
+      - this.#searchBM25
+      - this.#searchHybrid
+      - this.#searchVector
+  - name: canBM25
+    sig: 'canBM25(): boolean'
+    lines:
+    - 282
+    - 284
+    detail: {}
+  - name: canVector
+    sig: 'canVector(): boolean'
+    lines:
+    - 289
+    - 291
+    detail: {}
+  - name: canHybrid
+    sig: 'canHybrid(): boolean'
+    lines:
+    - 296
+    - 298
+    detail: {}
+  - name: bm25Index
+    sig: 'bm25Index(): BM25Index | undefined'
+    lines:
+    - 303
+    - 305
+    detail: {}
+  - name: unknown
+    sig: 'unknown(requestedMode?: SearchMode): SearchMode'
+    lines:
+    - 314
+    - 340
+    detail:
+      calls:
+      - new Error
+  - name: unknown
+    sig: 'unknown(doc: IndexDocument): Promise<void>'
+    is_async: true
+    lines:
+    - 345
+    - 364
+    detail:
+      calls:
+      - embedder
+      - vectorStore.upsert
+  - name: unknown
+    sig: 'unknown(): Promise<void>'
+    is_async: true
+    lines:
+    - 369
+    - 380
+    detail:
+      calls:
+      - this.#indexVector
+  - name: unknown
+    sig: 'unknown(query: string, topK: number, minScore?: number): SearchResult[]'
+    lines:
+    - 385
+    - 407
+    detail:
+      calls:
+      - new Error
+      - results.map
+      - this.#bm25Index.search
+      - tokenize
+  - name: unknown
+    sig: |-
+      unknown(
+          query: string,
+          topK: number,
+          minScore?: number,
+          filter?: Record<string, unknown>,
+        ): Promise<SearchResult[]>
+    is_async: true
+    lines:
+    - 412
+    - 464
+    detail:
+      calls:
+      - Object.keys
+      - embedder
+      - findLineRange
+      - new Error
+      - results.push
+      - this.#adjustLineRange
+      - this.#ensureVectorIndex
+      - tokenize
+      - vectorStore.query
+  - name: unknown
+    sig: |-
+      unknown(
+          query: string,
+          topK: number,
+          minScore?: number,
+          vectorWeight: number = 0.5,
+          filter?: Record<string, unknown>,
+        ): Promise<SearchResult[]>
+    is_async: true
+    lines:
+    - 469
+    - 538
+    detail:
+      calls:
+      - Array.from
+      - Math.min
+      - Promise.all
+      - Promise.resolve
+      - bm25Map.get
+      - bm25Map.keys
+      - bm25Map.set
+      - combinedResults.set
+      - combinedResults.values
+      - new Map
+      - new Set
+      - results.filter
+      - results.slice
+      - results.sort
+      - this.#normalizeBM25Scores
+      - this.#searchBM25
+      - this.#searchVector
+      - vectorMap.get
+      - vectorMap.keys
+      - vectorMap.set
+  - name: unknown
+    sig: 'unknown(results: SearchResult[]): SearchResult[]'
+    lines:
+    - 543
+    - 559
+    detail:
+      calls:
+      - Math.max
+      - Math.min
+      - results.map
+  - name: unknown
+    sig: 'unknown(lineRange: LineRange | undefined, metadata?: Record<string, unknown>): LineRange | undefined'
+    lines:
+    - 566
+    - 581
+    detail: {}
+  lines:
+  - 142
+  - 582
+exports:
+- name: SearchMode
+  kind: type
+- name: Embedder
+  kind: type
+- name: VectorConfig
+  kind: type
+- name: BM25SearchConfig
+  kind: type
+- name: IndexDocument
+  kind: type
+- name: SearchResult
+  kind: type
+- name: SearchOptions
+  kind: type
+- name: SearchEngineConfig
+  kind: type
+- name: SearchEngine
+  kind: type

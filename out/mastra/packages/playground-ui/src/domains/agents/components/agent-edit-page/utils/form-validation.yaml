@@ -1,0 +1,295 @@
+## Roska File Descriptor — utils/form-validation.ts
+file: utils/form-validation.ts
+lines: 253
+imports:
+- sym: zod.z
+- sym: '@lukeed/uuid.v4 as uuid'
+- sym: '@/lib/json-schema.JsonSchema'
+  kind: typing
+- sym: '@mastra/core/storage.RuleGroup'
+  kind: typing
+- sym: '@mastra/core/storage.RuleGroupDepth1'
+  kind: typing
+- sym: '@mastra/core/storage.RuleGroupDepth2'
+  kind: typing
+data:
+- name: ruleSchema
+  type: any
+  val: |-
+    z.object({
+      field: z.string(),
+      operator: z.enum([
+        'equals',
+        'not_equals',
+        'contains',
+        'not_contains',...
+- name: ruleGroupDepth2Schema
+  type: z.ZodType<RuleGroupDepth2>
+  val: |-
+    z.object({
+      operator: z.enum(['AND', 'OR']),
+      conditions: z.array(ruleSchema),
+    })
+- name: ruleGroupDepth1Schema
+  type: z.ZodType<RuleGroupDepth1>
+  val: |-
+    z.object({
+      operator: z.enum(['AND', 'OR']),
+      conditions: z.array(z.union([ruleSchema, ruleGroupDepth2Schema])),
+    })
+- name: ruleGroupSchema
+  type: z.ZodType<RuleGroup>
+  val: |-
+    z.object({
+      operator: z.enum(['AND', 'OR']),
+      conditions: z.array(z.union([ruleSchema, ruleGroupDepth1Schema])),
+    })
+- name: inlineInstructionBlockSchema
+  type: any
+  val: |-
+    z.object({
+      id: z.string(),
+      type: z.literal('prompt_block'),
+      content: z.string(),
+      rules: ruleGroupSchema.optional...
+- name: refInstructionBlockSchema
+  type: any
+  val: |-
+    z.object({
+      id: z.string(),
+      type: z.literal('prompt_block_ref'),
+      promptBlockId: z.string().min(1),
+    })
+- name: instructionBlockSchema
+  type: any
+  val: z.discriminatedUnion('type', [inlineInstructionBlockSchema, refInstructionBlockSchema])
+- name: scoringSamplingConfigSchema
+  type: any
+  val: |-
+    z.object({
+      type: z.enum(['ratio']),
+      rate: z.number().optional(),
+    })
+- name: entityConfigSchema
+  type: any
+  val: |-
+    z.object({
+      description: z.string().max(500).optional(),
+      rules: ruleGroupSchema.optional(),
+    })
+- name: skillConfigSchema
+  type: any
+  val: |-
+    z.object({
+      description: z.string().optional(),
+      instructions: z.string().optional(),
+      pin: z.string().optional(),
+      ...
+- name: scorerConfigSchema
+  type: any
+  val: |-
+    z.object({
+      description: z.string().max(500).optional(),
+      sampling: scoringSamplingConfigSchema.optional(),
+      rules: r...
+- name: memoryConfigSchema
+  type: any
+  val: |-
+    z
+      .object({
+        enabled: z.boolean().optional(),
+        lastMessages: z.union([z.number().min(1), z.literal(false)]).opti...
+- name: inMemoryFileNodeSchema
+  type: z.ZodType<InMemoryFileNode>
+  val: |-
+    z.lazy(() =>
+      z.object({
+        id: z.string(),
+        name: z.string(),
+        type: z.enum(['file', 'folder']),
+        content: z...
+- name: skillFormValueSchema
+  type: any
+  val: |-
+    z.object({
+      localId: z.string(),
+      name: z.string().min(1, 'Skill name is required'),
+      description: z.string(),
+      work...
+- name: agentFormSchema
+  type: any
+  val: |-
+    z.object({
+      name: z.string().min(1, 'Name is required').max(100, 'Name must be 100 characters or less'),
+      description:...
+types:
+- name: InMemoryFileNode
+  kind: typealias
+  decorators:
+  - type
+  fields:
+  - name: id
+    type: string
+  - name: type
+    type: '''file'' | ''folder'''
+  - name: content
+    type: string
+  - name: children
+    type: InMemoryFileNode[]
+  lines:
+  - 6
+  - 12
+- name: SkillFormValue
+  kind: typealias
+  decorators:
+  - type
+  fields:
+  - name: localId
+    type: string
+  - name: description
+    type: string
+  - name: workspaceId
+    type: string
+  - name: files
+    type: InMemoryFileNode[]
+  lines:
+  - 14
+  - 20
+- name: InlineInstructionBlock
+  kind: typealias
+  decorators:
+  - type
+  fields:
+  - name: id
+    type: string
+  - name: type
+    type: '''prompt_block'''
+  - name: content
+    type: string
+  - name: rules
+    type: RuleGroup
+  lines:
+  - 22
+  - 27
+- name: RefInstructionBlock
+  kind: typealias
+  decorators:
+  - type
+  fields:
+  - name: id
+    type: string
+  - name: type
+    type: '''prompt_block_ref'''
+  - name: promptBlockId
+    type: string
+  lines:
+  - 29
+  - 33
+- name: InstructionBlock
+  kind: enum
+  decorators:
+  - type
+  variants:
+  - name: InlineInstructionBlock
+  - name: RefInstructionBlock
+  lines:
+  - 35
+  - 35
+- name: AgentFormValues
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 250
+  - 250
+- name: EntityConfig
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 251
+  - 251
+- name: ScorerConfig
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 252
+  - 252
+- name: SkillConfig
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 253
+  - 253
+functions:
+- name: createInstructionBlock
+  sig: 'createInstructionBlock(content = '''', rules?: RuleGroup): InlineInstructionBlock'
+  lines:
+  - 86
+  - 91
+  detail:
+    calls:
+    - uuid
+- name: createRefInstructionBlock
+  sig: 'createRefInstructionBlock(promptBlockId: string): RefInstructionBlock'
+  lines:
+  - 93
+  - 97
+  detail:
+    calls:
+    - uuid
+exports:
+- name: InMemoryFileNode
+  kind: type
+- name: SkillFormValue
+  kind: type
+- name: InlineInstructionBlock
+  kind: type
+- name: RefInstructionBlock
+  kind: type
+- name: InstructionBlock
+  kind: type
+- name: AgentFormValues
+  kind: type
+- name: EntityConfig
+  kind: type
+- name: ScorerConfig
+  kind: type
+- name: SkillConfig
+  kind: type
+- name: createInstructionBlock
+  kind: func
+- name: createRefInstructionBlock
+  kind: func
+- name: ruleSchema
+  kind: data
+- name: ruleGroupDepth2Schema
+  kind: data
+- name: ruleGroupDepth1Schema
+  kind: data
+- name: ruleGroupSchema
+  kind: data
+- name: inlineInstructionBlockSchema
+  kind: data
+- name: refInstructionBlockSchema
+  kind: data
+- name: instructionBlockSchema
+  kind: data
+- name: scoringSamplingConfigSchema
+  kind: data
+- name: entityConfigSchema
+  kind: data
+- name: skillConfigSchema
+  kind: data
+- name: scorerConfigSchema
+  kind: data
+- name: memoryConfigSchema
+  kind: data
+- name: inMemoryFileNodeSchema
+  kind: data
+- name: skillFormValueSchema
+  kind: data
+- name: agentFormSchema
+  kind: data

@@ -1,0 +1,353 @@
+## Roska File Descriptor — base/output-format-handlers.ts
+file: base/output-format-handlers.ts
+lines: 757
+imports:
+- sym: node:stream/web.TransformStream
+- sym: '@internal/ai-sdk-v5.isDeepEqualData'
+- sym: '@internal/ai-sdk-v5.parsePartialJson'
+- sym: '@mastra/schema-compat.isZodType'
+- sym: zod/v3.z3
+  kind: typing
+- sym: zod/v4.z4
+  kind: typing
+- sym: ../../agent/types.StructuredOutputOptions
+  kind: typing
+- sym: ../../error.ErrorCategory
+- sym: ../../error.ErrorDomain
+- sym: ../../error.MastraError
+- sym: ../../logger.IMastraLogger
+  kind: typing
+- sym: ../../schema.StandardSchemaWithJSON
+  kind: typing
+- sym: ../../schema.isStandardSchemaWithJSON
+- sym: ../../schema.toStandardSchema
+- sym: ../../schema.standardSchemaToJSONSchema
+- sym: ../aisdk/v5/compat.ValidationResult
+  kind: typing
+- sym: ../types.ChunkFrom
+- sym: ../types.ChunkType
+  kind: typing
+- sym: ./schema.getTransformedSchema
+- sym: ./schema.ZodLikePartialSchema
+  kind: typing
+types:
+- name: ProcessPartialChunkParams
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: accumulatedText
+    type: string
+  - name: previousObject
+    type: unknown
+  - name: previousResult
+    type: unknown
+  lines:
+  - 79
+  - 86
+- name: ProcessPartialChunkResult
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: shouldEmit
+    type: boolean
+  - name: emitValue
+    type: unknown
+  - name: newPreviousResult
+    type: unknown
+  lines:
+  - 88
+  - 95
+- name: ValidateAndTransformFinalResult
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 97
+  - 113
+- name: BaseFormatHandler
+  kind: trait
+  ctx: The original user-provided schema (Zod, JSON Schema, or AI SDK Schema).
+  decorators:
+  - abstract
+  fields:
+  - name: type
+    type: '''object'' | ''array'' | ''enum'''
+  - name: schema
+    type: StandardSchemaWithJSON<OUTPUT> | undefined
+  - name: validatePartialChunks
+    type: boolean
+    default: 'false'
+  - name: partialSchema
+    type: ZodLikePartialSchema<OUTPUT> | undefined
+  methods:
+  - name: constructor
+    sig: 'constructor(schema?: StandardSchemaWithJSON<OUTPUT>, options: { validatePartialChunks?: boolean } = {})'
+    lines:
+    - 132
+    - 144
+    detail:
+      calls:
+      - schema.partial
+      - this.isZodSchema
+  - name: validateValue
+    sig: 'validateValue(value: unknown): Promise<ValidationResult<OUTPUT>>'
+    is_async: true
+    vis: protected
+    lines:
+    - 156
+    - 239
+    detail:
+      calls:
+      - JSON.stringify
+      - String
+      - new Error
+      - new MastraError
+      - ssResult.issues.map
+      - 'ssResult.issues.map(e => `- ${e.path?.join(''.'') || ''root''}: ${e.message}`).join'
+      - this.isZodSchema
+      - this.schema.safeParse
+      - this.schema['~standard'].validate
+  - name: preprocessText
+    sig: 'preprocessText(accumulatedText: string): string'
+    vis: protected
+    lines:
+    - 265
+    - 297
+    detail:
+      calls:
+      - /^```json\b/.test
+      - escapeUnescapedControlCharsInJsonStrings
+      - match[1].trim
+      - processedText.includes
+      - processedText.match
+      - processedText.trimStart
+      - trimmedStart.match
+      - trimmedStart.replace
+  lines:
+  - 120
+  - 298
+- name: ObjectFormatHandler
+  kind: struct
+  bases:
+  - BaseFormatHandler
+  fields:
+  - name: type
+    type: any
+    default: '''object'' as const'
+  methods:
+  - name: processPartialChunk
+    sig: |-
+      processPartialChunk({
+          accumulatedText,
+          previousObject,
+        }: ProcessPartialChunkParams): Promise<ProcessPartialChunkResult>
+    is_async: true
+    lines:
+    - 307
+    - 345
+    detail:
+      calls:
+      - '[''successful-parse'', ''repaired-parse''].includes'
+      - isDeepEqualData
+      - parsePartialJson
+      - this.partialSchema?.safeParse
+      - this.preprocessText
+  - name: validateAndTransformFinal
+    sig: 'validateAndTransformFinal(finalRawValue: string): Promise<ValidateAndTransformFinalResult<OUTPUT>>'
+    is_async: true
+    lines:
+    - 347
+    - 358
+    detail:
+      calls:
+      - new Error
+      - parsePartialJson
+      - this.preprocessText
+      - this.validateValue
+  lines:
+  - 304
+  - 359
+- name: ArrayFormatHandler
+  kind: struct
+  ctx: Previously filtered array to track changes
+  bases:
+  - BaseFormatHandler
+  fields:
+  - name: type
+    type: any
+    default: '''array'' as const'
+  - name: textPreviousFilteredArray
+    type: any[]
+    default: '[]'
+  - name: hasEmittedInitialArray
+    type: any
+    default: 'false'
+  methods:
+  - name: processPartialChunk
+    sig: |-
+      processPartialChunk({
+          accumulatedText,
+          previousObject,
+        }: ProcessPartialChunkParams): Promise<ProcessPartialChunkResult>
+    is_async: true
+    lines:
+    - 373
+    - 429
+    detail:
+      calls:
+      - Object.keys
+      - filteredElements.push
+      - isDeepEqualData
+      - parsePartialJson
+      - this.preprocessText
+  - name: validateAndTransformFinal
+    sig: 'validateAndTransformFinal(_finalValue: string): Promise<ValidateAndTransformFinalResult<OUTPUT>>'
+    is_async: true
+    lines:
+    - 431
+    - 442
+    detail:
+      calls:
+      - new Error
+      - this.validateValue
+  lines:
+  - 366
+  - 443
+- name: EnumFormatHandler
+  kind: struct
+  ctx: Previously emitted enum result to avoid duplicate emissions
+  bases:
+  - BaseFormatHandler
+  fields:
+  - name: type
+    type: any
+    default: '''enum'' as const'
+  - name: textPreviousEnumResult
+    type: string
+  methods:
+  - name: findBestEnumMatch
+    sig: 'findBestEnumMatch(partialResult: string): string | undefined'
+    vis: private
+    lines:
+    - 462
+    - 486
+    detail:
+      calls:
+      - |-
+        enumValues
+              .filter
+      - |-
+        enumValues
+              .filter((value: unknown): value is string => typeof value === 'string')
+              .filt...
+      - standardSchemaToJSONSchema
+  - name: processPartialChunk
+    sig: |-
+      processPartialChunk({
+          accumulatedText,
+          previousObject,
+        }: ProcessPartialChunkParams): Promise<ProcessPartialChunkResult>
+    is_async: true
+    lines:
+    - 488
+    - 518
+    detail:
+      calls:
+      - Array.isArray
+      - isDeepEqualData
+      - parsePartialJson
+      - this.findBestEnumMatch
+      - this.preprocessText
+  - name: validateAndTransformFinal
+    sig: 'validateAndTransformFinal(rawFinalValue: string): Promise<ValidateAndTransformFinalResult<OUTPUT>>'
+    is_async: true
+    lines:
+    - 520
+    - 541
+    detail:
+      calls:
+      - new Error
+      - parsePartialJson
+      - this.preprocessText
+      - this.validateValue
+  lines:
+  - 451
+  - 542
+functions:
+- name: escapeUnescapedControlCharsInJsonStrings
+  sig: 'escapeUnescapedControlCharsInJsonStrings(text: string): string'
+  lines:
+  - 29
+  - 77
+  detail: {}
+- name: createOutputHandler
+  sig: 'createOutputHandler({ schema }: { schema?: StandardSchemaWithJSON<OUTPUT> })'
+  lines:
+  - 551
+  - 570
+  detail:
+    calls:
+    - getTransformedSchema
+    - isStandardSchemaWithJSON
+    - new ArrayFormatHandler
+    - new EnumFormatHandler
+    - new ObjectFormatHandler
+    - toStandardSchema
+- name: createObjectStreamTransformer
+  sig: |-
+    createObjectStreamTransformer({
+      structuredOutput,
+      logger,
+    }: {
+      structuredOutput?: StructuredOutputOptions<OUTPUT>;
+      logger?: IMastraLogger;
+    })
+  lines:
+  - 583
+  - 693
+  detail:
+    calls:
+    - accumulatedText?.trim
+    - controller.enqueue
+    - createOutputHandler
+    - handleValidationError
+    - handler.processPartialChunk
+    - handler.validateAndTransformFinal
+    - new TransformStream
+- name: createJsonTextStreamTransformer
+  sig: 'createJsonTextStreamTransformer(schema?: StandardSchemaWithJSON<OUTPUT>)'
+  lines:
+  - 702
+  - 757
+  detail:
+    calls:
+    - Array.isArray
+    - JSON.stringify
+    - controller.enqueue
+    - getTransformedSchema
+    - new TransformStream
+exports:
+- name: ProcessPartialChunkParams
+  kind: type
+- name: ProcessPartialChunkResult
+  kind: type
+- name: ValidateAndTransformFinalResult
+  kind: type
+- name: BaseFormatHandler
+  kind: type
+- name: ObjectFormatHandler
+  kind: type
+- name: ArrayFormatHandler
+  kind: type
+- name: EnumFormatHandler
+  kind: type
+- name: escapeUnescapedControlCharsInJsonStrings
+  kind: func
+- name: createOutputHandler
+  kind: func
+- name: createObjectStreamTransformer
+  kind: func
+- name: createJsonTextStreamTransformer
+  kind: func

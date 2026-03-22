@@ -1,0 +1,332 @@
+## Roska File Descriptor — observability/index.ts
+file: observability/index.ts
+lines: 785
+imports:
+- sym: '@mastra/core/error.ErrorCategory'
+- sym: '@mastra/core/error.ErrorDomain'
+- sym: '@mastra/core/error.MastraError'
+- sym: '@mastra/core/storage.createStorageErrorId'
+- sym: '@mastra/core/storage.listTracesArgsSchema'
+- sym: '@mastra/core/storage.ObservabilityStorage'
+- sym: '@mastra/core/storage.TABLE_SCHEMAS'
+- sym: '@mastra/core/storage.TABLE_SPANS'
+- sym: '@mastra/core/storage.toTraceSpans'
+- sym: '@mastra/core/storage.TraceStatus'
+- sym: '@mastra/core/storage.SpanRecord'
+  kind: typing
+- sym: '@mastra/core/storage.TracingStorageStrategy'
+  kind: typing
+- sym: '@mastra/core/storage.ListTracesArgs'
+  kind: typing
+- sym: '@mastra/core/storage.ListTracesResponse'
+  kind: typing
+- sym: '@mastra/core/storage.UpdateSpanArgs'
+  kind: typing
+- sym: '@mastra/core/storage.BatchDeleteTracesArgs'
+  kind: typing
+- sym: '@mastra/core/storage.BatchUpdateSpansArgs'
+  kind: typing
+- sym: '@mastra/core/storage.BatchCreateSpansArgs'
+  kind: typing
+- sym: '@mastra/core/storage.CreateSpanArgs'
+  kind: typing
+- sym: '@mastra/core/storage.GetSpanArgs'
+  kind: typing
+- sym: '@mastra/core/storage.GetSpanResponse'
+  kind: typing
+- sym: '@mastra/core/storage.GetRootSpanArgs'
+  kind: typing
+- sym: '@mastra/core/storage.GetRootSpanResponse'
+  kind: typing
+- sym: '@mastra/core/storage.GetTraceArgs'
+  kind: typing
+- sym: '@mastra/core/storage.GetTraceResponse'
+  kind: typing
+- sym: '@mastra/core/storage.CreateIndexOptions'
+  kind: typing
+- sym: '@mastra/core/utils.parseSqlIdentifier'
+- sym: ../../db.PgDB
+- sym: ../../db.resolvePgConfig
+- sym: ../../db.generateTableSQL
+- sym: ../../db.generateIndexSQL
+- sym: ../../db.generateTimestampTriggerSQL
+- sym: ../../db.PgDomainConfig
+  kind: typing
+- sym: ../utils.transformFromSqlRow
+- sym: ../utils.getTableName
+- sym: ../utils.getSchemaName
+types:
+- name: ObservabilityPG
+  kind: struct
+  ctx: Tables managed by this domain
+  bases:
+  - ObservabilityStorage
+  fields:
+  - name: MANAGED_TABLES
+    type: any
+    default: '[TABLE_SPANS] as const'
+  methods:
+  - name: constructor
+    sig: 'constructor(config: PgDomainConfig)'
+    lines:
+    - 43
+    - 51
+    detail:
+      calls:
+      - indexes?.filter
+      - new PgDB
+      - resolvePgConfig
+      - super
+  - name: init
+    sig: 'init(): Promise<void>'
+    is_async: true
+    lines:
+    - 53
+    - 63
+    detail:
+      calls:
+      - this.#db.alterTable
+      - this.#db.createTable
+      - this.createCustomIndexes
+      - this.createDefaultIndexes
+  - name: getDefaultIndexDefs
+    sig: 'getDefaultIndexDefs(schemaPrefix: string): CreateIndexOptions[]'
+    decorators:
+    - static
+    lines:
+    - 69
+    - 130
+    detail: {}
+  - name: getExportDDL
+    sig: 'getExportDDL(schemaName?: string): string[]'
+    decorators:
+    - static
+    lines:
+    - 136
+    - 160
+    detail:
+      calls:
+      - ObservabilityPG.getDefaultIndexDefs
+      - generateIndexSQL
+      - generateTableSQL
+      - generateTimestampTriggerSQL
+      - parseSqlIdentifier
+      - statements.push
+  - name: getDefaultIndexDefinitions
+    sig: 'getDefaultIndexDefinitions(): CreateIndexOptions[]'
+    lines:
+    - 165
+    - 168
+    detail:
+      calls:
+      - ObservabilityPG.getDefaultIndexDefs
+  - name: createDefaultIndexes
+    sig: 'createDefaultIndexes(): Promise<void>'
+    is_async: true
+    lines:
+    - 173
+    - 186
+    detail:
+      calls:
+      - this.#db.createIndex
+      - this.getDefaultIndexDefinitions
+      - this.logger?.warn
+  - name: createCustomIndexes
+    sig: 'createCustomIndexes(): Promise<void>'
+    is_async: true
+    lines:
+    - 191
+    - 204
+    detail:
+      calls:
+      - this.#db.createIndex
+      - this.logger?.warn
+  - name: migrateSpans
+    sig: |-
+      migrateSpans(): Promise<{
+          success: boolean;
+          alreadyMigrated: boolean;
+          duplicatesRemoved: number;
+          message: string;
+        }>
+    is_async: true
+    lines:
+    - 212
+    - 219
+    detail:
+      calls:
+      - this.#db.migrateSpans
+  - name: checkSpansMigrationStatus
+    sig: |-
+      checkSpansMigrationStatus(): Promise<{
+          needsMigration: boolean;
+          hasDuplicates: boolean;
+          duplicateCount: number;
+          constraintExists: boolean;
+          tableName: string;
+        }>
+    is_async: true
+    lines:
+    - 225
+    - 233
+    detail:
+      calls:
+      - this.#db.checkSpansMigrationStatus
+  - name: dangerouslyClearAll
+    sig: 'dangerouslyClearAll(): Promise<void>'
+    is_async: true
+    lines:
+    - 235
+    - 237
+    detail:
+      calls:
+      - this.#db.clearTable
+  - name: tracingStrategy
+    sig: |-
+      tracingStrategy(): {
+          preferred: TracingStorageStrategy;
+          supported: TracingStorageStrategy[];
+        }
+    lines:
+    - 239
+    - 247
+    detail: {}
+  - name: createSpan
+    sig: 'createSpan(args: CreateSpanArgs): Promise<void>'
+    is_async: true
+    lines:
+    - 249
+    - 280
+    detail:
+      calls:
+      - createStorageErrorId
+      - new MastraError
+      - span.endedAt.toISOString
+      - span.startedAt.toISOString
+      - this.#db.insert
+  - name: getSpan
+    sig: 'getSpan(args: GetSpanArgs): Promise<GetSpanResponse | null>'
+    is_async: true
+    lines:
+    - 282
+    - 327
+    detail:
+      calls:
+      - await this.#db.client.oneOrNone
+      - createStorageErrorId
+      - getSchemaName
+      - getTableName
+      - new MastraError
+      - transformFromSqlRow
+  - name: getRootSpan
+    sig: 'getRootSpan(args: GetRootSpanArgs): Promise<GetRootSpanResponse | null>'
+    is_async: true
+    lines:
+    - 329
+    - 374
+    detail:
+      calls:
+      - await this.#db.client.oneOrNone
+      - createStorageErrorId
+      - getSchemaName
+      - getTableName
+      - new MastraError
+      - transformFromSqlRow
+  - name: getTrace
+    sig: 'getTrace(args: GetTraceArgs): Promise<GetTraceResponse | null>'
+    is_async: true
+    lines:
+    - 376
+    - 427
+    detail:
+      calls:
+      - await this.#db.client.manyOrNone
+      - createStorageErrorId
+      - getSchemaName
+      - getTableName
+      - new MastraError
+      - spans.map
+  - name: updateSpan
+    sig: 'updateSpan(args: UpdateSpanArgs): Promise<void>'
+    is_async: true
+    lines:
+    - 429
+    - 463
+    detail:
+      calls:
+      - createStorageErrorId
+      - data.endedAt.toISOString
+      - data.startedAt.toISOString
+      - new MastraError
+      - this.#db.update
+  - name: listTraces
+    sig: 'listTraces(args: ListTracesArgs): Promise<ListTracesResponse>'
+    is_async: true
+    lines:
+    - 465
+    - 697
+    detail:
+      calls:
+      - JSON.stringify
+      - Number
+      - await this.#db.client.manyOrNone
+      - await this.#db.client.oneOrNone
+      - conditions.join
+      - conditions.push
+      - createStorageErrorId
+      - filters.endedAt.end.toISOString
+      - filters.endedAt.start.toISOString
+      - filters.startedAt.end.toISOString
+      - filters.startedAt.start.toISOString
+      - getSchemaName
+      - getTableName
+      - listTracesArgsSchema.parse
+      - new MastraError
+      - params.push
+      - spans.map
+      - toTraceSpans
+  - name: batchCreateSpans
+    sig: 'batchCreateSpans(args: BatchCreateSpansArgs): Promise<void>'
+    is_async: true
+    lines:
+    - 699
+    - 728
+    detail:
+      calls:
+      - args.records.map
+      - createStorageErrorId
+      - new MastraError
+      - this.#db.batchInsert
+  - name: batchUpdateSpans
+    sig: 'batchUpdateSpans(args: BatchUpdateSpansArgs): Promise<void>'
+    is_async: true
+    lines:
+    - 730
+    - 763
+    detail:
+      calls:
+      - args.records.map
+      - createStorageErrorId
+      - new MastraError
+      - this.#db.batchUpdate
+  - name: batchDeleteTraces
+    sig: 'batchDeleteTraces(args: BatchDeleteTracesArgs): Promise<void>'
+    is_async: true
+    lines:
+    - 765
+    - 784
+    detail:
+      calls:
+      - args.traceIds.map
+      - args.traceIds.map((_, i) => `$${i + 1}`).join
+      - createStorageErrorId
+      - getSchemaName
+      - getTableName
+      - new MastraError
+      - this.#db.client.none
+  lines:
+  - 34
+  - 785
+exports:
+- name: ObservabilityPG
+  kind: type

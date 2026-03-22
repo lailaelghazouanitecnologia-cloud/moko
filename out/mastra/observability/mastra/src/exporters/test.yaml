@@ -1,0 +1,974 @@
+## Roska File Descriptor — exporters/test.ts
+file: exporters/test.ts
+lines: 1680
+purpose: 'Test Exporter for Observability A full-featured exporter primarily designed for testing purposes that provides: - In-memory event collection for ALL signals (Traces, Metrics, Logs, Scores, Feedback) - File output support - Span lifecycle tracking and validation - Query methods for filtering spans by type, trace ID, span ID, etc. - Query methods for filtering logs, metrics, scores, and feedback - Statistics and analytics on all collected signals - Internal metrics collection with summary on flush()'
+imports:
+- sym: '@mastra/core/observability.TracingEvent'
+  kind: typing
+- sym: '@mastra/core/observability.TracingEventType'
+  kind: typing
+- sym: '@mastra/core/observability.AnyExportedSpan'
+  kind: typing
+- sym: '@mastra/core/observability.ExportedSpan'
+  kind: typing
+- sym: '@mastra/core/observability.SpanType'
+  kind: typing
+- sym: '@mastra/core/observability.LogEvent'
+  kind: typing
+- sym: '@mastra/core/observability.MetricEvent'
+  kind: typing
+- sym: '@mastra/core/observability.ScoreEvent'
+  kind: typing
+- sym: '@mastra/core/observability.FeedbackEvent'
+  kind: typing
+- sym: '@mastra/core/observability.ExportedLog'
+  kind: typing
+- sym: '@mastra/core/observability.ExportedMetric'
+  kind: typing
+- sym: '@mastra/core/observability.ExportedScore'
+  kind: typing
+- sym: '@mastra/core/observability.ExportedFeedback'
+  kind: typing
+- sym: '@mastra/core/observability.LogLevel'
+  kind: typing
+- sym: '@mastra/core/observability.TracingEventType as EventType'
+- sym: ./base.BaseExporter
+- sym: ./base.BaseExporterConfig
+  kind: typing
+data:
+- name: _snapshotsDir
+  type: string | undefined
+- name: JsonExporter
+  type: any
+  val: TestExporter
+types:
+- name: SpanState
+  kind: trait
+  ctx: Span state tracking for lifecycle validation
+  decorators:
+  - interface
+  fields:
+  - name: hasStart
+    type: boolean
+  - name: hasEnd
+    type: boolean
+  - name: hasUpdate
+    type: boolean
+  - name: events
+    type: TracingEvent[]
+  - name: isEventSpan
+    type: boolean
+  lines:
+  - 60
+  - 71
+- name: TestExporterStats
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: totalTracingEvents
+    type: number
+  - name: totalSpans
+    type: number
+  - name: totalTraces
+    type: number
+  - name: completedSpans
+    type: number
+  - name: incompleteSpans
+    type: number
+  - name: byEventType
+    type: |-
+      {
+          started: number;
+          updated: number;
+          ended: number;
+        }
+  - name: bySpanType
+    type: Record<string, number>
+  - name: totalLogs
+    type: number
+  - name: logsByLevel
+    type: Record<string, number>
+  - name: totalMetrics
+    type: number
+  - name: metricsByName
+    type: Record<string, number>
+  - name: totalScores
+    type: number
+  - name: scoresByScorer
+    type: Record<string, number>
+  - name: totalFeedback
+    type: number
+  - name: feedbackByType
+    type: Record<string, number>
+  - name: totalEvents
+    type: number
+  lines:
+  - 76
+  - 113
+- name: TestExporterInternalMetrics
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: startedAt
+    type: Date
+  - name: lastEventAt
+    type: Date | null
+  - name: totalEventsReceived
+    type: number
+  - name: bySignal
+    type: |-
+      {
+          tracing: number;
+          log: number;
+          metric: number;
+          score: number;
+          feedback: number;
+        }
+  - name: flushCount
+    type: number
+  - name: estimatedJsonBytes
+    type: number
+  lines:
+  - 119
+  - 138
+- name: SpanTreeNode
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: span
+    type: AnyExportedSpan
+  - name: children
+    type: SpanTreeNode[]
+  lines:
+  - 143
+  - 148
+- name: NormalizedSpan
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: id
+    type: string
+  - name: traceId
+    type: string
+  - name: parentId
+    type: string
+  - name: type
+    type: string
+  - name: entityType
+    type: string
+  - name: entityId
+    type: string
+  - name: completed
+    type: boolean
+  - name: attributes
+    type: Record<string, unknown>
+  - name: metadata
+    type: Record<string, unknown>
+  - name: input
+    type: unknown
+  - name: output
+    type: unknown
+  - name: errorInfo
+    type: unknown
+  - name: isEvent
+    type: boolean
+  - name: isRootSpan
+    type: boolean
+  - name: tags
+    type: string[]
+  lines:
+  - 154
+  - 187
+- name: NormalizedTreeNode
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: span
+    type: NormalizedSpan
+  - name: children
+    type: NormalizedTreeNode[]
+  lines:
+  - 192
+  - 197
+- name: IncompleteSpanInfo
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: spanId
+    type: string
+  - name: span
+    type: AnyExportedSpan | undefined
+  - name: state
+    type: |-
+      {
+          hasStart: boolean;
+          hasUpdate: boolean;
+          hasEnd: boolean;
+        }
+  lines:
+  - 202
+  - 210
+- name: TestExporterConfig
+  kind: trait
+  bases:
+  - BaseExporterConfig
+  decorators:
+  - interface
+  fields:
+  - name: validateLifecycle
+    type: boolean
+  - name: storeLogs
+    type: boolean
+  - name: jsonIndent
+    type: number
+  - name: logMetricsOnFlush
+    type: boolean
+  lines:
+  - 215
+  - 237
+- name: TestExporter
+  kind: struct
+  ctx: All collected tracing events
+  bases:
+  - BaseExporter
+  fields:
+  - name: name
+    type: any
+    default: '''test-exporter'''
+  methods:
+  - name: constructor
+    sig: 'constructor(config: TestExporterConfig = {})'
+    lines:
+    - 311
+    - 327
+    detail:
+      calls:
+      - new Date
+      - super
+  - name: _exportTracingEvent
+    sig: '_exportTracingEvent(event: TracingEvent): Promise<void>'
+    is_async: true
+    vis: protected
+    lines:
+    - 332
+    - 374
+    detail:
+      calls:
+      - span.traceId.slice
+      - spanId.slice
+      - state.events.push
+      - this.#debugLogs.push
+      - this.#spanStates.get
+      - this.#spanStates.set
+      - this.#tracingEvents.push
+      - this.#trackEvent
+      - this.#validateLifecycle
+  - name: onLogEvent
+    sig: 'onLogEvent(event: LogEvent): Promise<void>'
+    is_async: true
+    lines:
+    - 383
+    - 393
+    detail:
+      calls:
+      - log.traceId.slice
+      - this.#debugLogs.push
+      - this.#logEvents.push
+      - this.#trackEvent
+  - name: onMetricEvent
+    sig: 'onMetricEvent(event: MetricEvent): Promise<void>'
+    is_async: true
+    lines:
+    - 398
+    - 411
+    detail:
+      calls:
+      - Object.entries
+      - |-
+        Object.entries(metric.labels)
+                .map
+      - |-
+        Object.entries(metric.labels)
+                .map(([k, v]) => `${k}=${v}`)
+                .join
+      - this.#debugLogs.push
+      - this.#metricEvents.push
+      - this.#trackEvent
+  - name: onScoreEvent
+    sig: 'onScoreEvent(event: ScoreEvent): Promise<void>'
+    is_async: true
+    lines:
+    - 416
+    - 426
+    detail:
+      calls:
+      - score.spanId.slice
+      - score.traceId.slice
+      - this.#debugLogs.push
+      - this.#scoreEvents.push
+      - this.#trackEvent
+  - name: onFeedbackEvent
+    sig: 'onFeedbackEvent(event: FeedbackEvent): Promise<void>'
+    is_async: true
+    lines:
+    - 431
+    - 441
+    detail:
+      calls:
+      - fb.spanId.slice
+      - fb.traceId.slice
+      - this.#debugLogs.push
+      - this.#feedbackEvents.push
+      - this.#trackEvent
+  - name: unknown
+    sig: 'unknown(signal: ''tracing'' | ''log'' | ''metric'' | ''score'' | ''feedback''): void'
+    lines:
+    - 446
+    - 450
+    detail:
+      calls:
+      - new Date
+  - name: unknown
+    sig: 'unknown(event: TracingEvent, state: SpanState, spanId: string): void'
+    lines:
+    - 455
+    - 478
+    detail:
+      calls:
+      - this.logger.warn
+  - name: events
+    sig: 'events(): TracingEvent[]'
+    lines:
+    - 487
+    - 489
+    detail: {}
+  - name: getSpansByType
+    sig: 'getSpansByType(type: T): ExportedSpan<T>[]'
+    lines:
+    - 497
+    - 509
+    detail:
+      calls:
+      - Array.from
+      - |-
+        Array.from(this.#spanStates.values())
+              .filter
+      - |-
+        Array.from(this.#spanStates.values())
+              .filter(state => {
+                if (!state.hasEnd) return fal...
+      - this.#spanStates.values
+  - name: getByEventType
+    sig: 'getByEventType(type: TracingEventType): TracingEvent[]'
+    lines:
+    - 517
+    - 519
+    detail:
+      calls:
+      - this.#tracingEvents.filter
+  - name: getByTraceId
+    sig: |-
+      getByTraceId(traceId: string): {
+          events: TracingEvent[];
+          spans: AnyExportedSpan[];
+          logs: ExportedLog[];
+          scores: ExportedScore[];
+          feedback: ExportedFeedback[];
+        }
+    lines:
+    - 527
+    - 540
+    detail:
+      calls:
+      - this.#feedbackEvents.filter
+      - this.#feedbackEvents.filter(e => e.feedback.traceId === traceId).map
+      - this.#getUniqueSpansFromEvents
+      - this.#logEvents.filter
+      - this.#logEvents.filter(e => e.log.traceId === traceId).map
+      - this.#scoreEvents.filter
+      - this.#scoreEvents.filter(e => e.score.traceId === traceId).map
+      - this.#tracingEvents.filter
+  - name: getBySpanId
+    sig: |-
+      getBySpanId(spanId: string): {
+          events: TracingEvent[];
+          span: AnyExportedSpan | undefined;
+          state: SpanState | undefined;
+        }
+    lines:
+    - 548
+    - 562
+    detail:
+      calls:
+      - state.events.find
+      - this.#spanStates.get
+  - name: getAllSpans
+    sig: 'getAllSpans(): AnyExportedSpan[]'
+    lines:
+    - 567
+    - 574
+    detail:
+      calls:
+      - Array.from
+      - |-
+        Array.from(this.#spanStates.values())
+              .map
+      - |-
+        Array.from(this.#spanStates.values())
+              .map(state => {
+                const endEvent = state.events.fi...
+      - this.#spanStates.values
+  - name: getCompletedSpans
+    sig: 'getCompletedSpans(): AnyExportedSpan[]'
+    lines:
+    - 579
+    - 586
+    detail:
+      calls:
+      - Array.from
+      - |-
+        Array.from(this.#spanStates.values())
+              .filter
+      - |-
+        Array.from(this.#spanStates.values())
+              .filter(state => state.hasEnd)
+              .map
+      - this.#spanStates.values
+  - name: getRootSpans
+    sig: 'getRootSpans(): AnyExportedSpan[]'
+    lines:
+    - 591
+    - 593
+    detail:
+      calls:
+      - this.getAllSpans
+      - this.getAllSpans().filter
+  - name: getIncompleteSpans
+    sig: 'getIncompleteSpans(): IncompleteSpanInfo[]'
+    lines:
+    - 598
+    - 610
+    detail:
+      calls:
+      - Array.from
+      - |-
+        Array.from(this.#spanStates.entries())
+              .filter
+      - |-
+        Array.from(this.#spanStates.entries())
+              .filter(([_, state]) => !state.hasEnd)
+              .map
+      - this.#spanStates.entries
+  - name: getTraceIds
+    sig: 'getTraceIds(): string[]'
+    lines:
+    - 615
+    - 630
+    detail:
+      calls:
+      - Array.from
+      - new Set
+      - traceIds.add
+  - name: getLogEvents
+    sig: 'getLogEvents(): LogEvent[]'
+    lines:
+    - 639
+    - 641
+    detail: {}
+  - name: getAllLogs
+    sig: 'getAllLogs(): ExportedLog[]'
+    lines:
+    - 646
+    - 648
+    detail:
+      calls:
+      - this.#logEvents.map
+  - name: getLogsByLevel
+    sig: 'getLogsByLevel(level: LogLevel): ExportedLog[]'
+    lines:
+    - 653
+    - 655
+    detail:
+      calls:
+      - this.#logEvents.filter
+      - this.#logEvents.filter(e => e.log.level === level).map
+  - name: getLogsByTraceId
+    sig: 'getLogsByTraceId(traceId: string): ExportedLog[]'
+    lines:
+    - 660
+    - 662
+    detail:
+      calls:
+      - this.#logEvents.filter
+      - this.#logEvents.filter(e => e.log.traceId === traceId).map
+  - name: getMetricEvents
+    sig: 'getMetricEvents(): MetricEvent[]'
+    lines:
+    - 671
+    - 673
+    detail: {}
+  - name: getAllMetrics
+    sig: 'getAllMetrics(): ExportedMetric[]'
+    lines:
+    - 678
+    - 680
+    detail:
+      calls:
+      - this.#metricEvents.map
+  - name: getMetricsByName
+    sig: 'getMetricsByName(name: string): ExportedMetric[]'
+    lines:
+    - 685
+    - 687
+    detail:
+      calls:
+      - this.#metricEvents.filter
+      - this.#metricEvents.filter(e => e.metric.name === name).map
+  - name: getMetricsByType
+    sig: 'getMetricsByType(_metricType: string): ExportedMetric[]'
+    lines:
+    - 692
+    - 697
+    detail:
+      calls:
+      - new Error
+  - name: getScoreEvents
+    sig: 'getScoreEvents(): ScoreEvent[]'
+    lines:
+    - 706
+    - 708
+    detail: {}
+  - name: getAllScores
+    sig: 'getAllScores(): ExportedScore[]'
+    lines:
+    - 713
+    - 715
+    detail:
+      calls:
+      - this.#scoreEvents.map
+  - name: getScoresByScorer
+    sig: 'getScoresByScorer(scorerId: string): ExportedScore[]'
+    lines:
+    - 720
+    - 722
+    detail:
+      calls:
+      - this.#scoreEvents.filter
+      - this.#scoreEvents.filter(e => e.score.scorerId === scorerId).map
+  - name: getScoresByTraceId
+    sig: 'getScoresByTraceId(traceId: string): ExportedScore[]'
+    lines:
+    - 727
+    - 729
+    detail:
+      calls:
+      - this.#scoreEvents.filter
+      - this.#scoreEvents.filter(e => e.score.traceId === traceId).map
+  - name: getFeedbackEvents
+    sig: 'getFeedbackEvents(): FeedbackEvent[]'
+    lines:
+    - 738
+    - 740
+    detail: {}
+  - name: getAllFeedback
+    sig: 'getAllFeedback(): ExportedFeedback[]'
+    lines:
+    - 745
+    - 747
+    detail:
+      calls:
+      - this.#feedbackEvents.map
+  - name: getFeedbackByType
+    sig: 'getFeedbackByType(feedbackType: string): ExportedFeedback[]'
+    lines:
+    - 752
+    - 754
+    detail:
+      calls:
+      - this.#feedbackEvents.filter
+      - this.#feedbackEvents.filter(e => e.feedback.feedbackType === feedbackType).map
+  - name: getFeedbackByTraceId
+    sig: 'getFeedbackByTraceId(traceId: string): ExportedFeedback[]'
+    lines:
+    - 759
+    - 761
+    detail:
+      calls:
+      - this.#feedbackEvents.filter
+      - this.#feedbackEvents.filter(e => e.feedback.traceId === traceId).map
+  - name: getStatistics
+    sig: 'getStatistics(): TestExporterStats'
+    lines:
+    - 770
+    - 838
+    detail:
+      calls:
+      - state.events.find
+      - this.#spanStates.values
+      - this.#tracingEvents.filter
+      - this.getTraceIds
+  - name: toJSON
+    sig: 'toJSON(options?: { indent?: number; includeEvents?: boolean; includeStats?: boolean }): string'
+    lines:
+    - 850
+    - 882
+    detail:
+      calls:
+      - JSON.stringify
+      - this.getAllFeedback
+      - this.getAllLogs
+      - this.getAllMetrics
+      - this.getAllScores
+      - this.getAllSpans
+      - this.getStatistics
+  - name: buildSpanTree
+    sig: 'buildSpanTree(): SpanTreeNode[]'
+    lines:
+    - 889
+    - 919
+    detail:
+      calls:
+      - new Map
+      - nodeMap.get
+      - nodeMap.get(span.parentSpanId)!.children.push
+      - nodeMap.has
+      - nodeMap.set
+      - roots.forEach
+      - roots.push
+      - this.getAllSpans
+  - name: toTreeJSON
+    sig: 'toTreeJSON(options?: { indent?: number; includeStats?: boolean }): string'
+    lines:
+    - 927
+    - 940
+    detail:
+      calls:
+      - JSON.stringify
+      - this.buildSpanTree
+      - this.getStatistics
+  - name: buildNormalizedTree
+    sig: 'buildNormalizedTree(): NormalizedTreeNode[]'
+    lines:
+    - 954
+    - 1106
+    detail:
+      calls:
+      - assignIds
+      - new Map
+      - this.buildSpanTree
+      - tree.map
+  - name: generateStructureGraph
+    sig: 'generateStructureGraph(nodes?: NormalizedTreeNode[]): string[]'
+    lines:
+    - 1123
+    - 1151
+    detail:
+      calls:
+      - this.buildNormalizedTree
+      - tree.forEach
+  - name: toNormalizedTreeJSON
+    sig: 'toNormalizedTreeJSON(options?: { indent?: number; includeStructure?: boolean }): string'
+    lines:
+    - 1160
+    - 1175
+    detail:
+      calls:
+      - JSON.stringify
+      - this.buildNormalizedTree
+      - this.generateStructureGraph
+  - name: writeToFile
+    sig: |-
+      writeToFile(
+          filePath: string,
+          options?: {
+            indent?: number;
+            includeEvents?: boolean;
+            includeStats?: boolean;
+            format?: 'flat' | 'tree' | 'normalized';
+          },
+        ): Promise<void>
+    is_async: true
+    lines:
+    - 1183
+    - 1206
+    detail:
+      calls:
+      - import
+      - this.logger.info
+      - this.toJSON
+      - this.toNormalizedTreeJSON
+      - this.toTreeJSON
+      - writeFile
+  - name: assertMatchesSnapshot
+    sig: 'assertMatchesSnapshot(snapshotName: string, options?: { updateSnapshot?: boolean }): Promise<void>'
+    is_async: true
+    lines:
+    - 1233
+    - 1327
+    detail:
+      calls:
+      - Array.isArray
+      - JSON.parse
+      - JSON.stringify
+      - String
+      - expectedStructure.join
+      - getSnapshotsDir
+      - import
+      - join
+      - |-
+        mismatches
+                .map
+      - |-
+        mismatches
+                .map(
+                  (m, i) =>
+                    `${i + 1}. ${m.path}\n   Expected: ${JSON.s...
+      - new Error
+      - readFile
+      - structureGraph.join
+      - structureMismatches.join
+      - this.#compareStructure
+      - this.#deepCompareWithMarkers
+      - this.buildNormalizedTree
+      - this.generateStructureGraph
+      - this.logger.info
+      - writeFile
+  - name: unknown
+    sig: 'unknown(actual: string[], expected: string[]): string[]'
+    lines:
+    - 1332
+    - 1356
+    detail:
+      calls:
+      - Math.max
+      - diffs.push
+  - name: unknown
+    sig: |-
+      unknown(
+          actual: unknown,
+          expected: unknown,
+          path: string,
+          mismatches: { path: string; expected: unknown; actual: unknown }[],
+        ): void
+    lines:
+    - 1362
+    - 1469
+    detail:
+      calls:
+      - Array.isArray
+      - JSON.stringify
+      - JSON.stringify(actual).slice
+      - Object.keys
+      - allowedValues.some
+      - mismatches.push
+      - this.#deepCompareWithMarkers
+      - this.#isAnyMarker
+      - this.#isMetadataKey
+      - this.#isOrMarker
+  - name: unknown
+    sig: 'unknown(value: unknown): boolean'
+    lines:
+    - 1474
+    - 1482
+    detail:
+      calls:
+      - Array.isArray
+  - name: unknown
+    sig: 'unknown(value: unknown): boolean'
+    lines:
+    - 1487
+    - 1497
+    detail:
+      calls:
+      - Array.isArray
+      - '[''string'', ''number'', ''boolean'', ''object'', ''array''].includes'
+  - name: unknown
+    sig: 'unknown(key: string): boolean'
+    lines:
+    - 1502
+    - 1504
+    detail:
+      calls:
+      - key.endsWith
+      - key.startsWith
+  - name: getLogs
+    sig: 'getLogs(): string[]'
+    lines:
+    - 1523
+    - 1525
+    detail: {}
+  - name: dumpLogs
+    sig: 'dumpLogs(): void'
+    lines:
+    - 1530
+    - 1536
+    detail:
+      calls:
+      - console.error
+      - this.#debugLogs.forEach
+  - name: validateFinalState
+    sig: |-
+      validateFinalState(): {
+          valid: boolean;
+          singleTraceId: boolean;
+          allSpansComplete: boolean;
+          traceIds: string[];
+          incompleteSpans: IncompleteSpanInfo[];
+        }
+    lines:
+    - 1543
+    - 1563
+    detail:
+      calls:
+      - this.getIncompleteSpans
+      - this.getTraceIds
+  - name: clearEvents
+    sig: 'clearEvents(): void'
+    lines:
+    - 1572
+    - 1582
+    detail:
+      calls:
+      - this.#spanStates.clear
+  - name: reset
+    sig: 'reset(): void'
+    lines:
+    - 1587
+    - 1589
+    detail:
+      calls:
+      - this.clearEvents
+  - name: getInternalMetrics
+    sig: 'getInternalMetrics(): TestExporterInternalMetrics'
+    lines:
+    - 1594
+    - 1604
+    detail:
+      calls:
+      - new TextEncoder
+      - new TextEncoder().encode
+      - this.toJSON
+  - name: flush
+    sig: 'flush(): Promise<void>'
+    is_async: true
+    lines:
+    - 1609
+    - 1625
+    detail:
+      calls:
+      - (metrics.estimatedJsonBytes / 1024).toFixed
+      - (uptimeMs / 1000).toFixed
+      - Date.now
+      - |-
+        [
+                `[TestExporter] flush #${metrics.flushCount} summary:`,
+                `  uptime: ${(uptimeMs / 1...
+      - metrics.startedAt.getTime
+      - this.getInternalMetrics
+      - this.logger.info
+  - name: shutdown
+    sig: 'shutdown(): Promise<void>'
+    is_async: true
+    lines:
+    - 1627
+    - 1630
+    detail:
+      calls:
+      - this.flush
+      - this.logger.info
+  - name: unknown
+    sig: 'unknown(events: TracingEvent[]): AnyExportedSpan[]'
+    lines:
+    - 1639
+    - 1651
+    detail:
+      calls:
+      - Array.from
+      - new Map
+      - spanMap.has
+      - spanMap.set
+      - spanMap.values
+  lines:
+  - 275
+  - 1652
+- name: JsonExporter
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 1665
+  - 1665
+- name: JsonExporterConfig
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 1670
+  - 1670
+- name: JsonExporterStats
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 1675
+  - 1675
+- name: JsonExporterInternalMetrics
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 1680
+  - 1680
+functions:
+- name: getSnapshotsDir
+  sig: 'getSnapshotsDir(): Promise<string>'
+  is_async: true
+  lines:
+  - 20
+  - 34
+  detail:
+    calls:
+    - dirname
+    - fileURLToPath
+    - import
+    - join
+    - new Error
+exports:
+- name: SpanState
+  kind: type
+- name: TestExporterStats
+  kind: type
+- name: TestExporterInternalMetrics
+  kind: type
+- name: SpanTreeNode
+  kind: type
+- name: NormalizedSpan
+  kind: type
+- name: NormalizedTreeNode
+  kind: type
+- name: IncompleteSpanInfo
+  kind: type
+- name: TestExporterConfig
+  kind: type
+- name: TestExporter
+  kind: type
+- name: JsonExporter
+  kind: type
+- name: JsonExporterConfig
+  kind: type
+- name: JsonExporterStats
+  kind: type
+- name: JsonExporterInternalMetrics
+  kind: type
+- name: getSnapshotsDir
+  kind: func
+- name: _snapshotsDir
+  kind: data
+- name: JsonExporter
+  kind: data

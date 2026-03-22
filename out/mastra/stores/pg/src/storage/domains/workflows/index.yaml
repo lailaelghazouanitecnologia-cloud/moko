@@ -1,0 +1,306 @@
+## Roska File Descriptor — workflows/index.ts
+file: workflows/index.ts
+lines: 541
+imports:
+- sym: '@mastra/core/error.ErrorCategory'
+- sym: '@mastra/core/error.ErrorDomain'
+- sym: '@mastra/core/error.MastraError'
+- sym: '@mastra/core/storage.normalizePerPage'
+- sym: '@mastra/core/storage.TABLE_WORKFLOW_SNAPSHOT'
+- sym: '@mastra/core/storage.TABLE_SCHEMAS'
+- sym: '@mastra/core/storage.WorkflowsStorage'
+- sym: '@mastra/core/storage.createStorageErrorId'
+- sym: '@mastra/core/storage.UpdateWorkflowStateOptions'
+  kind: typing
+- sym: '@mastra/core/storage.StorageListWorkflowRunsInput'
+  kind: typing
+- sym: '@mastra/core/storage.WorkflowRun'
+  kind: typing
+- sym: '@mastra/core/storage.WorkflowRuns'
+  kind: typing
+- sym: '@mastra/core/storage.CreateIndexOptions'
+  kind: typing
+- sym: '@mastra/core/workflows.StepResult'
+  kind: typing
+- sym: '@mastra/core/workflows.WorkflowRunState'
+  kind: typing
+- sym: ../../db.PgDB
+- sym: ../../db.resolvePgConfig
+- sym: ../../db.generateTableSQL
+- sym: ../../db.PgDomainConfig
+  kind: typing
+types:
+- name: WorkflowsPG
+  kind: struct
+  ctx: Tables managed by this domain
+  bases:
+  - WorkflowsStorage
+  fields:
+  - name: MANAGED_TABLES
+    type: any
+    default: '[TABLE_WORKFLOW_SNAPSHOT] as const'
+  methods:
+  - name: constructor
+    sig: 'constructor(config: PgDomainConfig)'
+    lines:
+    - 48
+    - 56
+    detail:
+      calls:
+      - indexes?.filter
+      - new PgDB
+      - resolvePgConfig
+      - super
+  - name: supportsConcurrentUpdates
+    sig: 'supportsConcurrentUpdates(): boolean'
+    lines:
+    - 58
+    - 60
+    detail: {}
+  - name: getExportDDL
+    sig: 'getExportDDL(schemaName?: string): string[]'
+    decorators:
+    - static
+    lines:
+    - 85
+    - 99
+    detail:
+      calls:
+      - generateTableSQL
+      - statements.push
+  - name: getDefaultIndexDefinitions
+    sig: 'getDefaultIndexDefinitions(): CreateIndexOptions[]'
+    lines:
+    - 105
+    - 107
+    detail: {}
+  - name: createDefaultIndexes
+    sig: 'createDefaultIndexes(): Promise<void>'
+    is_async: true
+    lines:
+    - 113
+    - 118
+    detail: {}
+  - name: init
+    sig: 'init(): Promise<void>'
+    is_async: true
+    lines:
+    - 120
+    - 129
+    detail:
+      calls:
+      - this.#db.alterTable
+      - this.#db.createTable
+      - this.createCustomIndexes
+      - this.createDefaultIndexes
+  - name: createCustomIndexes
+    sig: 'createCustomIndexes(): Promise<void>'
+    is_async: true
+    lines:
+    - 134
+    - 147
+    detail:
+      calls:
+      - this.#db.createIndex
+      - this.logger?.warn
+  - name: dangerouslyClearAll
+    sig: 'dangerouslyClearAll(): Promise<void>'
+    is_async: true
+    lines:
+    - 149
+    - 151
+    detail:
+      calls:
+      - this.#db.clearTable
+  - name: updateWorkflowResults
+    sig: |-
+      updateWorkflowResults({
+          workflowName,
+          runId,
+          stepId,
+          result,
+          requestContext,
+        }: {
+          workflowName: string;
+          runId: string;
+          stepId: string;
+          result: StepResult<any, any, any, any>;
+          requestContext: Record<string, any>;
+        }): Promise<Record<string, StepResult<any, any, any, any>>>
+    is_async: true
+    lines:
+    - 153
+    - 233
+    detail:
+      calls:
+      - createStorageErrorId
+      - new MastraError
+      - this.#db.client.tx
+  - name: updateWorkflowState
+    sig: |-
+      updateWorkflowState({
+          workflowName,
+          runId,
+          opts,
+        }: {
+          workflowName: string;
+          runId: string;
+          opts: UpdateWorkflowStateOptions;
+        }): Promise<WorkflowRunState | undefined>
+    is_async: true
+    lines:
+    - 234
+    - 293
+    detail:
+      calls:
+      - createStorageErrorId
+      - new MastraError
+      - this.#db.client.tx
+  - name: persistWorkflowSnapshot
+    sig: |-
+      persistWorkflowSnapshot({
+          workflowName,
+          runId,
+          resourceId,
+          snapshot,
+          createdAt,
+          updatedAt,
+        }: {
+          workflowName: string;
+          runId: string;
+          resourceId?: string;
+          snapshot: WorkflowRunState;
+          createdAt?: Date;
+          updatedAt?: Date;
+        }): Promise<void>
+    is_async: true
+    lines:
+    - 295
+    - 333
+    detail:
+      calls:
+      - JSON.stringify
+      - createStorageErrorId
+      - getSchemaName
+      - getTableName
+      - new Date
+      - new MastraError
+      - sanitizeJsonForPg
+      - this.#db.client.none
+  - name: loadWorkflowSnapshot
+    sig: |-
+      loadWorkflowSnapshot({
+          workflowName,
+          runId,
+        }: {
+          workflowName: string;
+          runId: string;
+        }): Promise<WorkflowRunState | null>
+    is_async: true
+    lines:
+    - 335
+    - 359
+    detail:
+      calls:
+      - await this.#db.load
+      - createStorageErrorId
+      - new MastraError
+  - name: getWorkflowRunById
+    sig: |-
+      getWorkflowRunById({
+          runId,
+          workflowName,
+        }: {
+          runId: string;
+          workflowName?: string;
+        }): Promise<WorkflowRun | null>
+    is_async: true
+    lines:
+    - 361
+    - 416
+    detail:
+      calls:
+      - conditions.join
+      - conditions.push
+      - createStorageErrorId
+      - getSchemaName
+      - getTableName
+      - new MastraError
+      - this.#db.client.oneOrNone
+      - this.parseWorkflowRun
+      - values.push
+  - name: deleteWorkflowRunById
+    sig: 'deleteWorkflowRunById({ runId, workflowName }: { runId: string; workflowName: string }): Promise<void>'
+    is_async: true
+    lines:
+    - 418
+    - 438
+    detail:
+      calls:
+      - createStorageErrorId
+      - getSchemaName
+      - getTableName
+      - new MastraError
+      - this.#db.client.none
+  - name: listWorkflowRuns
+    sig: |-
+      listWorkflowRuns({
+          workflowName,
+          fromDate,
+          toDate,
+          perPage,
+          page,
+          resourceId,
+          status,
+        }: StorageListWorkflowRunsInput = {}): Promise<WorkflowRuns>
+    is_async: true
+    lines:
+    - 440
+    - 540
+    detail:
+      calls:
+      - (result || []).map
+      - Number
+      - conditions.join
+      - conditions.push
+      - createStorageErrorId
+      - getSchemaName
+      - getTableName
+      - new MastraError
+      - normalizePerPage
+      - this.#db.client.manyOrNone
+      - this.#db.client.one
+      - this.#db.hasColumn
+      - this.logger?.warn
+      - values.push
+  lines:
+  - 39
+  - 541
+functions:
+- name: getSchemaName
+  sig: 'getSchemaName(schema?: string)'
+  lines:
+  - 20
+  - 22
+- name: getTableName
+  sig: 'getTableName({ indexName, schemaName }: { indexName: string; schemaName?: string })'
+  lines:
+  - 24
+  - 27
+- name: sanitizeJsonForPg
+  sig: 'sanitizeJsonForPg(jsonString: string): string'
+  lines:
+  - 35
+  - 37
+  detail:
+    calls:
+    - jsonString.replace
+exports:
+- name: WorkflowsPG
+  kind: type
+- name: getSchemaName
+  kind: func
+- name: getTableName
+  kind: func
+- name: sanitizeJsonForPg
+  kind: func

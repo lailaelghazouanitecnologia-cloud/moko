@@ -1,0 +1,289 @@
+## Roska File Descriptor — src/tracing.ts
+file: src/tracing.ts
+lines: 625
+purpose: 'Sentry Exporter for Mastra Observability Sends observability data to Sentry for AI tracing and monitoring. Uses Sentry''s modern span model (v8+) with OpenTelemetry semantic conventions. Spans are hierarchically organized: AGENT_RUN -> MODEL_GENERATION -> TOOL_CALL MODEL_STEP and MODEL_CHUNK spans are skipped to simplify the trace hierarchy.'
+imports:
+- sym: '@mastra/core/observability.TracingEvent'
+  kind: typing
+- sym: '@mastra/core/observability.AnyExportedSpan'
+  kind: typing
+- sym: '@mastra/core/observability.ModelGenerationAttributes'
+  kind: typing
+- sym: '@mastra/core/observability.ToolCallAttributes'
+  kind: typing
+- sym: '@mastra/core/observability.AgentRunAttributes'
+  kind: typing
+- sym: '@mastra/core/observability.WorkflowRunAttributes'
+  kind: typing
+- sym: '@mastra/core/observability.WorkflowStepAttributes'
+  kind: typing
+- sym: '@mastra/core/observability.UsageStats'
+  kind: typing
+- sym: '@mastra/core/observability.SpanType'
+- sym: '@mastra/core/observability.TracingEventType'
+- sym: '@mastra/observability.BaseExporterConfig'
+  kind: typing
+- sym: '@mastra/observability.BaseExporter'
+- sym: '@mastra/otel-exporter.getAttributes as getGenAIAttributes'
+- sym: '@mastra/otel-exporter.getSpanName as getGenAISpanName'
+- sym: '@sentry/node.Sentry'
+data:
+- name: SPAN_TYPE_CONFIG
+  type: 'Record<SpanType, { opType: string; opName: string }>'
+  val: |-
+    {
+      [SpanType.AGENT_RUN]: { opType: 'gen_ai.invoke_agent', opName: 'invoke_agent' },
+      [SpanType.MODEL_GENERATION]: { op...
+- name: ATTRIBUTE_KEYS
+  type: object
+  val: |-
+    {
+      SPAN_TYPE: 'ai.span.type',
+      ORIGIN: 'sentry.origin',
+      TAGS: 'tags',
+      INPUT: 'input',
+      OUTPUT: 'output',
+      GEN_AI...
+types:
+- name: SentryExporterConfig
+  kind: trait
+  bases:
+  - BaseExporterConfig
+  decorators:
+  - interface
+  fields:
+  - name: dsn
+    type: string
+  - name: environment
+    type: string
+  - name: tracesSampleRate
+    type: number
+  - name: release
+    type: string
+  - name: options
+    type: Partial<Sentry.NodeOptions>
+  lines:
+  - 74
+  - 86
+- name: SpanData
+  kind: typealias
+  decorators:
+  - type
+  fields:
+  - name: span
+    type: Sentry.Span
+  - name: spanType
+    type: SpanType
+  - name: generation
+    type: |-
+      {
+          model?: string;
+          output?: any;
+          usage?: UsageStats;
+        }
+  - name: toolCalls
+    type: |-
+      Array<{
+          name: string;
+          id?: string;
+          type?: string;
+        }>
+  lines:
+  - 93
+  - 106
+- name: ResolvedSentryConfig
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 109
+  - 111
+- name: SentryExporter
+  kind: struct
+  ctx: ============================================================================
+  bases:
+  - BaseExporter
+  fields:
+  - name: name
+    type: any
+    default: '''sentry'''
+  - name: sentryConfig
+    type: ResolvedSentryConfig
+  - name: spanMap
+    type: any
+    default: new Map<string, SpanData>()
+  - name: skippedSpans
+    type: any
+    default: new Map<string, string>()
+  - name: initialized
+    type: any
+    default: 'false'
+  methods:
+  - name: constructor
+    sig: 'constructor(config: SentryExporterConfig = {})'
+    lines:
+    - 120
+    - 150
+    detail:
+      calls:
+      - Sentry.init
+      - super
+      - this.setDisabled
+  - name: _exportTracingEvent
+    sig: '_exportTracingEvent(event: TracingEvent): Promise<void>'
+    is_async: true
+    vis: protected
+    lines:
+    - 156
+    - 190
+    detail:
+      calls:
+      - this.handleEventSpan
+      - this.handleSpanEnded
+      - this.handleSpanStarted
+      - this.handleSpanUpdated
+      - this.skippedSpans.delete
+      - this.skippedSpans.set
+  - name: handleEventSpan
+    sig: 'handleEventSpan(span: AnyExportedSpan): void'
+    vis: private
+    lines:
+    - 192
+    - 208
+    detail:
+      calls:
+      - Sentry.addBreadcrumb
+      - span.startTime.getTime
+      - this.serializeValue
+  - name: handleSpanStarted
+    sig: 'handleSpanStarted(span: AnyExportedSpan): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 210
+    - 232
+    detail:
+      calls:
+      - Sentry.startInactiveSpan
+      - getGenAISpanName
+      - sentrySpan.setAttributes
+      - span.startTime.getTime
+      - this.buildSpanAttributes
+      - this.getOperationType
+      - this.resolveParentSpanId
+      - this.spanMap.get
+      - this.spanMap.set
+      - this.trackToolCallForParent
+  - name: handleSpanUpdated
+    sig: 'handleSpanUpdated(span: AnyExportedSpan): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 234
+    - 242
+    detail:
+      calls:
+      - this.logMissingSpan
+      - this.spanMap.get
+  - name: handleSpanEnded
+    sig: 'handleSpanEnded(span: AnyExportedSpan): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 244
+    - 303
+    detail:
+      calls:
+      - Sentry.captureException
+      - sentrySpan.end
+      - sentrySpan.setAttributes
+      - sentrySpan.setStatus
+      - span.endTime.getTime
+      - this.applyToolCallsAttribute
+      - this.applyUsageFromGeneration
+      - this.buildSpanAttributes
+      - this.logMissingSpan
+      - this.resolveParentSpanId
+      - this.setGenerationResponseAttributes
+      - this.spanMap.delete
+      - this.spanMap.get
+  - name: buildSpanAttributes
+    sig: 'buildSpanAttributes(span: AnyExportedSpan): Record<string, any>'
+    vis: private
+    lines:
+    - 326
+    - 369
+    detail:
+      calls:
+      - Object.entries
+      - Object.entries(span.metadata).forEach
+      - getGenAIAttributes
+      - span.tags?.join
+      - this.addAgentRunAttributes
+      - this.addInputOutputAttributes
+      - this.addModelGenerationAttributes
+      - this.addToolCallAttributes
+      - this.getEntityName
+      - this.setAttributeIfDefined
+  - name: applyUsageFromGeneration
+    sig: 'applyUsageFromGeneration(spanData: SpanData): void'
+    vis: private
+    lines:
+    - 455
+    - 487
+    detail:
+      calls:
+      - spanData.span.setAttribute
+  - name: trackToolCallForParent
+    sig: 'trackToolCallForParent(span: AnyExportedSpan, parentId: string): void'
+    vis: private
+    lines:
+    - 512
+    - 528
+    detail:
+      calls:
+      - parentSpanData.toolCalls.push
+      - this.getEntityName
+      - this.spanMap.get
+  - name: flush
+    sig: 'flush(): Promise<void>'
+    is_async: true
+    lines:
+    - 594
+    - 605
+    detail:
+      calls:
+      - Sentry.flush
+      - this.logger.debug
+      - this.logger.error
+  - name: shutdown
+    sig: 'shutdown(): Promise<void>'
+    is_async: true
+    lines:
+    - 607
+    - 624
+    detail:
+      calls:
+      - Sentry.close
+      - spanData.span.end
+      - super.shutdown
+      - this.logger.error
+      - this.skippedSpans.clear
+      - this.spanMap.clear
+      - this.spanMap.entries
+  lines:
+  - 113
+  - 625
+exports:
+- name: SentryExporterConfig
+  kind: type
+- name: SpanData
+  kind: type
+- name: ResolvedSentryConfig
+  kind: type
+- name: SentryExporter
+  kind: type
+- name: SPAN_TYPE_CONFIG
+  kind: data
+- name: ATTRIBUTE_KEYS
+  kind: data

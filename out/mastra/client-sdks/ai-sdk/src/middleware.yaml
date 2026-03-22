@@ -1,0 +1,396 @@
+## Roska File Descriptor — src/middleware.ts
+file: src/middleware.ts
+lines: 1047
+imports:
+- sym: node:stream/web.ReadableStream
+- sym: node:stream/web.TransformStream
+- sym: '@ai-sdk/provider.LanguageModelV2'
+  kind: typing
+- sym: '@ai-sdk/provider.LanguageModelV2Middleware'
+  kind: typing
+- sym: '@ai-sdk/provider.LanguageModelV2Prompt'
+  kind: typing
+- sym: '@ai-sdk/provider.LanguageModelV2StreamPart'
+  kind: typing
+- sym: '@internal/ai-sdk-v5.wrapLanguageModel as wrapLanguageModelV5'
+- sym: '@internal/ai-v6.LanguageModelV3'
+  kind: typing
+- sym: '@internal/ai-v6.LanguageModelMiddleware as LanguageModelV3Middleware'
+  kind: typing
+- sym: '@internal/ai-v6.wrapLanguageModel as wrapLanguageModelV6'
+- sym: '@mastra/core/agent.MessageList'
+- sym: '@mastra/core/agent.TripWire'
+- sym: '@mastra/core/agent.aiV5ModelMessageToV2PromptMessage'
+- sym: '@mastra/core/agent.MastraDBMessage'
+  kind: typing
+- sym: '@mastra/core/agent.MastraMessagePart'
+  kind: typing
+- sym: '@mastra/core/di.RequestContext'
+- sym: '@mastra/core/memory.MemoryConfig'
+  kind: typing
+- sym: '@mastra/core/memory.SemanticRecall as SemanticRecallConfig'
+  kind: typing
+- sym: '@mastra/core/processors.MessageHistory'
+- sym: '@mastra/core/processors.SemanticRecall'
+- sym: '@mastra/core/processors.WorkingMemory'
+- sym: '@mastra/core/processors.InputProcessor'
+  kind: typing
+- sym: '@mastra/core/processors.OutputProcessor'
+  kind: typing
+- sym: '@mastra/core/processors.OutputResult'
+  kind: typing
+- sym: '@mastra/core/processors.ProcessInputArgs'
+  kind: typing
+- sym: '@mastra/core/processors.ProcessOutputResultArgs'
+  kind: typing
+- sym: '@mastra/core/processors.ProcessOutputStreamArgs'
+  kind: typing
+- sym: '@mastra/core/storage.MemoryStorage'
+  kind: typing
+- sym: '@mastra/core/stream.convertFullStreamChunkToMastra'
+- sym: '@mastra/core/stream.ChunkType'
+  kind: typing
+- sym: '@mastra/core/vector.MastraEmbeddingModel'
+  kind: typing
+- sym: '@mastra/core/vector.MastraVector'
+  kind: typing
+- sym: ./helpers.toAISDKFinishReason
+types:
+- name: ProcessorMemoryContext
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: threadId
+    type: string
+  - name: resourceId
+    type: string
+  - name: config
+    type: MemoryConfig
+  lines:
+  - 33
+  - 40
+- name: ProcessorMiddlewareOptions
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: inputProcessors
+    type: InputProcessor[]
+  - name: outputProcessors
+    type: OutputProcessor[]
+  - name: memory
+    type: ProcessorMemoryContext
+  lines:
+  - 45
+  - 52
+- name: WithMastraSemanticRecallOptions
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 58
+  - 63
+- name: WithMastraMemoryOptions
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: storage
+    type: MemoryStorage
+  - name: threadId
+    type: string
+  - name: resourceId
+    type: string
+  - name: lastMessages
+    type: number | false
+  - name: semanticRecall
+    type: WithMastraSemanticRecallOptions
+  - name: workingMemory
+    type: MemoryConfig['workingMemory']
+  - name: readOnly
+    type: boolean
+  lines:
+  - 68
+  - 83
+- name: WithMastraOptions
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: memory
+    type: WithMastraMemoryOptions
+  - name: inputProcessors
+    type: InputProcessor[]
+  - name: outputProcessors
+    type: OutputProcessor[]
+  lines:
+  - 88
+  - 95
+- name: ProcessorMiddlewareState
+  kind: trait
+  ctx: Internal state stored in providerOptions to pass state between middleware methods. This ensures request isolation when middleware is reused across concurrent requests.
+  decorators:
+  - interface
+  fields:
+  - name: tripwire
+    type: boolean
+  - name: reason
+    type: string
+  - name: originalInputCount
+    type: number
+  lines:
+  - 261
+  - 265
+- name: TextPart
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: type
+    type: '''text'''
+  - name: text
+    type: string
+  lines:
+  - 267
+  - 270
+- name: ToolCallState
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: toolCallId
+    type: string
+  - name: args
+    type: unknown
+  - name: argDeltas
+    type: string[]
+  - name: result
+    type: unknown
+  - name: providerMetadata
+    type: Record<string, unknown>
+  lines:
+  - 272
+  - 279
+- name: StreamOutputAccumulator
+  kind: struct
+  ctx: 'Ordered sequence of part placeholders: either a text buffer index or a tool call ID'
+  fields:
+  - name: partOrder
+    type: '({ kind: ''text''; bufferIndex: number } | { kind: ''tool''; toolCallId: string })[]'
+    default: '[]'
+  - name: textBuffers
+    type: string[][]
+    default: '[]'
+  - name: toolStates
+    type: any
+    default: new Map<string, ToolCallState>()
+  methods:
+  - name: addChunk
+    sig: 'addChunk(chunk: ChunkType): void'
+    lines:
+    - 287
+    - 340
+    detail:
+      calls:
+      - state.argDeltas.push
+      - this.appendTextDelta
+      - this.ensureToolState
+      - this.finalizeToolArgs
+  - name: buildResponseMessage
+    sig: 'buildResponseMessage(memory?: ProcessorMemoryContext): MastraDBMessage | null'
+    lines:
+    - 342
+    - 378
+    detail:
+      calls:
+      - crypto.randomUUID
+      - new Date
+      - parts.push
+      - textSegments.join
+      - textSegments.push
+      - this.buildToolPart
+      - this.finalizeToolArgs
+      - this.textBuffers[entry.bufferIndex]!.join
+      - this.toolStates.get
+  - name: ensureToolState
+    sig: 'ensureToolState(toolCallId: string): ToolCallState'
+    vis: private
+    lines:
+    - 380
+    - 388
+    detail:
+      calls:
+      - this.partOrder.push
+      - this.toolStates.get
+      - this.toolStates.set
+  - name: appendTextDelta
+    sig: 'appendTextDelta(text: string): void'
+    vis: private
+    lines:
+    - 401
+    - 410
+    detail:
+      calls:
+      - this.partOrder.push
+      - this.textBuffers.push
+      - this.textBuffers[last.bufferIndex]!.push
+  lines:
+  - 281
+  - 434
+functions:
+- name: withMastra
+  sig: |-
+    withMastra(
+      model: LanguageModelV2 | LanguageModelV3,
+      options: WithMastraOptions = {},
+    ): LanguageModelV2 | LanguageModelV3
+  lines:
+  - 165
+  - 255
+  detail:
+    calls:
+    - allInputProcessors.push
+    - allOutputProcessors.push
+    - createProcessorMiddleware
+    - new MessageHistory
+    - new SemanticRecall
+    - new WorkingMemory
+    - wrapLanguageModelV5
+    - wrapLanguageModelV6
+- name: createProcessorMiddleware
+  sig: 'createProcessorMiddleware(options: ProcessorMiddlewareOptions): LanguageModelV2Middleware'
+  lines:
+  - 457
+  - 823
+  detail:
+    calls:
+    - |-
+      (procState?.streamParts ?? [])
+                          .filter
+    - |-
+      (procState?.streamParts ?? [])
+                          .filter(p => p.type === 'text-delta')
+                 ...
+    - (procState?.streamParts ?? []).find
+    - controller.enqueue
+    - controller.terminate
+    - convertFullStreamChunkToMastra
+    - convertMastraChunkToAISDKStreamPart
+    - createBlockedStream
+    - crypto.randomUUID
+    - doGenerate
+    - doStream
+    - messageList.add
+    - messageList.addSystem
+    - messageList.get.all.aiV5.prompt
+    - messageList.get.all.aiV5.prompt().map
+    - messageList.get.all.db
+    - messageList.get.input.db
+    - |-
+      messageList.get.response
+              .db
+    - |-
+      messageList.get.response
+              .db()
+              .map
+    - |-
+      messageList.get.response
+              .db()
+              .map(m => extractTextFromMastraMessage(m))
+              .j...
+    - messageList.getAllSystemMessages
+    - new Date
+    - new Error
+    - new Map
+    - new MessageList
+    - new RequestContext
+    - new StreamOutputAccumulator
+    - new TransformStream
+    - outputProcessors.filter
+    - params.prompt.filter
+    - processor.processInput
+    - processor.processOutputResult
+    - processor.processOutputStream
+    - processorStates.get
+    - processorStates.set
+    - requestContext.set
+    - |-
+      result.content
+              .filter
+    - |-
+      result.content
+              .filter((c): c is { type: 'text'; text: string } => c.type === 'text')
+            ...
+    - state.streamParts.push
+    - stream.pipeThrough
+    - streamAccumulator.addChunk
+    - streamAccumulator.buildResponseMessage
+- name: createBlockedStream
+  sig: 'createBlockedStream(reason: string): ReadableStream<LanguageModelV2StreamPart>'
+  lines:
+  - 828
+  - 853
+  detail:
+    calls:
+    - controller.close
+    - controller.enqueue
+    - crypto.randomUUID
+    - new ReadableStream
+- name: extractTextFromMastraMessage
+  sig: 'extractTextFromMastraMessage(msg: MastraDBMessage): string'
+  lines:
+  - 858
+  - 873
+  detail:
+    calls:
+    - |-
+      content.parts
+            .filter
+    - |-
+      content.parts
+            .filter((p): p is TextPart => p.type === 'text' && 'text' in p)
+            .map
+    - |-
+      content.parts
+            .filter((p): p is TextPart => p.type === 'text' && 'text' in p)
+            .map(p => ...
+- name: convertMastraChunkToAISDKStreamPart
+  sig: 'convertMastraChunkToAISDKStreamPart(chunk: ChunkType): LanguageModelV2StreamPart | null'
+  lines:
+  - 878
+  - 1047
+  detail:
+    calls:
+    - JSON.stringify
+    - crypto.randomUUID
+    - toAISDKFinishReason
+exports:
+- name: ProcessorMemoryContext
+  kind: type
+- name: ProcessorMiddlewareOptions
+  kind: type
+- name: WithMastraSemanticRecallOptions
+  kind: type
+- name: WithMastraMemoryOptions
+  kind: type
+- name: WithMastraOptions
+  kind: type
+- name: ProcessorMiddlewareState
+  kind: type
+- name: TextPart
+  kind: type
+- name: ToolCallState
+  kind: type
+- name: StreamOutputAccumulator
+  kind: type
+- name: withMastra
+  kind: func
+- name: createProcessorMiddleware
+  kind: func
+- name: createBlockedStream
+  kind: func
+- name: extractTextFromMastraMessage
+  kind: func
+- name: convertMastraChunkToAISDKStreamPart
+  kind: func

@@ -1,0 +1,450 @@
+## Roska File Descriptor — sandbox/index.ts
+file: sandbox/index.ts
+lines: 945
+purpose: E2B Sandbox Provider A simplified E2B sandbox implementation that supports mounting cloud filesystems (S3, GCS, R2) via FUSE.
+imports:
+- sym: '@mastra/core/di.RequestContext'
+  kind: typing
+- sym: '@mastra/core/workspace.SandboxInfo'
+  kind: typing
+- sym: '@mastra/core/workspace.WorkspaceFilesystem'
+  kind: typing
+- sym: '@mastra/core/workspace.MountResult'
+  kind: typing
+- sym: '@mastra/core/workspace.FilesystemMountConfig'
+  kind: typing
+- sym: '@mastra/core/workspace.ProviderStatus'
+  kind: typing
+- sym: '@mastra/core/workspace.MountManager'
+  kind: typing
+- sym: '@mastra/core/workspace.MastraSandboxOptions'
+  kind: typing
+- sym: '@mastra/core/workspace.MastraSandbox'
+- sym: '@mastra/core/workspace.SandboxNotReadyError'
+- sym: e2b.Sandbox
+- sym: e2b.Template
+- sym: e2b.TemplateBuilder
+  kind: typing
+- sym: e2b.TemplateClass
+  kind: typing
+- sym: ../utils/template.createDefaultMountableTemplate
+- sym: ../utils/template.TemplateSpec
+  kind: typing
+- sym: ./mounts.mountS3
+- sym: ./mounts.mountGCS
+- sym: ./mounts.LOG_PREFIX
+- sym: ./mounts.E2BMountConfig
+  kind: typing
+- sym: ./mounts.E2BS3MountConfig
+  kind: typing
+- sym: ./mounts.E2BGCSMountConfig
+  kind: typing
+- sym: ./mounts.MountContext
+  kind: typing
+- sym: ./process-manager.E2BProcessManager
+data:
+- name: SAFE_MOUNT_PATH
+  type: any
+  val: /^\/[a-zA-Z0-9_.\-/]+$/
+- name: SAFE_MARKER_NAME
+  type: any
+  val: /^mount-[a-z0-9]+$/
+types:
+- name: InstructionsOption
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 24
+  - 24
+- name: E2BSandboxOptions
+  kind: trait
+  bases:
+  - Omit<MastraSandboxOptions, 'processes'>
+  decorators:
+  - interface
+  fields:
+  - name: id
+    type: string
+  - name: template
+    type: TemplateSpec
+  - name: timeout
+    type: number
+  - name: env
+    type: Record<string, string>
+  - name: metadata
+    type: Record<string, unknown>
+  - name: domain
+    type: string
+  - name: apiUrl
+    type: string
+  - name: apiKey
+    type: string
+  - name: accessToken
+    type: string
+  - name: instructions
+    type: InstructionsOption
+  lines:
+  - 55
+  - 99
+- name: E2BSandbox
+  kind: struct
+  ctx: Non-optional (initialized by BaseSandbox)
+  bases:
+  - MastraSandbox
+  fields:
+  - name: id
+    type: string
+  - name: name
+    type: any
+    default: '''E2BSandbox'''
+  - name: provider
+    type: any
+    default: '''e2b'''
+  - name: status
+    type: ProviderStatus
+    default: '''pending'''
+  - name: mounts
+    type: MountManager
+  - name: processes
+    type: E2BProcessManager
+  - name: _sandbox
+    type: Sandbox | null
+    default: 'null'
+  - name: _createdAt
+    type: Date | null
+    default: 'null'
+  - name: _isRetrying
+    type: any
+    default: 'false'
+  - name: timeout
+    type: number
+  - name: templateSpec
+    type: TemplateSpec
+  - name: env
+    type: Record<string, string>
+  - name: metadata
+    type: Record<string, unknown>
+  - name: connectionOpts
+    type: Record<string, string>
+  - name: _instructionsOverride
+    type: InstructionsOption
+  - name: _resolvedTemplateId
+    type: string
+  - name: _templatePreparePromise
+    type: Promise<string>
+  methods:
+  - name: constructor
+    sig: 'constructor(options: E2BSandboxOptions = {})'
+    lines:
+    - 169
+    - 196
+    detail:
+      calls:
+      - new E2BProcessManager
+      - super
+      - this.generateId
+      - this.resolveTemplate
+      - this.resolveTemplate().catch
+  - name: e2b
+    sig: 'e2b(): Sandbox'
+    lines:
+    - 220
+    - 225
+    detail:
+      calls:
+      - new SandboxNotReadyError
+  - name: start
+    sig: 'start(): Promise<void>'
+    is_async: true
+    lines:
+    - 237
+    - 311
+    detail:
+      calls:
+      - Array.from
+      - Promise.all
+      - Sandbox.betaCreate
+      - String
+      - errorStr.includes
+      - new Date
+      - this.buildDefaultTemplate
+      - this.findExistingSandbox
+      - this.logger.debug
+      - this.mounts.entries.keys
+      - this.reconcileMounts
+      - this.resolveTemplate
+  - name: stop
+    sig: 'stop(): Promise<void>'
+    is_async: true
+    lines:
+    - 318
+    - 338
+    detail:
+      calls:
+      - Promise.all
+      - procs.map
+      - this.mounts.entries.keys
+      - this.processes.list
+      - this.unmount
+  - name: destroy
+    sig: 'destroy(): Promise<void>'
+    is_async: true
+    lines:
+    - 345
+    - 375
+    detail:
+      calls:
+      - Promise.all
+      - procs.map
+      - this._sandbox.kill
+      - this.mounts.clear
+      - this.mounts.entries.keys
+      - this.processes.list
+      - this.unmount
+  - name: getInfo
+    sig: 'getInfo(): Promise<SandboxInfo>'
+    is_async: true
+    lines:
+    - 377
+    - 392
+    detail:
+      calls:
+      - Array.from
+      - Array.from(this.mounts.entries).map
+      - new Date
+  - name: getInstructions
+    sig: 'getInstructions(opts?: { requestContext?: RequestContext }): string'
+    lines:
+    - 398
+    - 403
+    detail:
+      calls:
+      - this._getDefaultInstructions
+      - this._instructionsOverride
+  - name: mount
+    sig: 'mount(filesystem: WorkspaceFilesystem, mountPath: string): Promise<MountResult>'
+    is_async: true
+    lines:
+    - 419
+    - 543
+    detail:
+      calls:
+      - String
+      - checkResult.stdout.trim
+      - filesystem.getMountConfig
+      - mountGCS
+      - mountS3
+      - new SandboxNotReadyError
+      - this._sandbox!.commands.run
+      - this._sandbox.commands.run
+      - this.checkExistingMount
+      - this.logger.debug
+      - this.logger.error
+      - this.mounts.set
+      - this.unmount
+      - this.writeMarkerFile
+      - validateMountPath
+  - name: unmount
+    sig: 'unmount(mountPath: string): Promise<void>'
+    is_async: true
+    lines:
+    - 548
+    - 588
+    detail:
+      calls:
+      - new SandboxNotReadyError
+      - rmdirResult.stderr?.trim
+      - this._sandbox.commands.run
+      - this.logger.debug
+      - this.mounts.delete
+      - this.mounts.markerFilename
+      - validateMountPath
+  - name: reconcileMounts
+    sig: 'reconcileMounts(expectedMountPaths: string[]): Promise<void>'
+    is_async: true
+    lines:
+    - 595
+    - 681
+    detail:
+      calls:
+      - SAFE_MOUNT_PATH.test
+      - currentMounts.filter
+      - currentMounts.includes
+      - expectedMarkerFiles.has
+      - expectedMountPaths.map
+      - managedMountPaths.has
+      - managedMountPaths.set
+      - markerResult.stdout.trim
+      - markerToPath.get
+      - markerToPath.set
+      - |-
+        markersResult.stdout
+              .trim
+      - |-
+        markersResult.stdout
+              .trim()
+              .split
+      - |-
+        markersResult.stdout
+              .trim()
+              .split('\n')
+              .filter
+      - |-
+        mountsResult.stdout
+              .trim
+      - |-
+        mountsResult.stdout
+              .trim()
+              .split
+      - |-
+        mountsResult.stdout
+              .trim()
+              .split('\n')
+              .filter
+      - new Map
+      - new SandboxNotReadyError
+      - new Set
+      - this._sandbox.commands.run
+      - this.logger.debug
+      - this.mounts.parseMarkerContent
+      - this.unmount
+  - name: instance
+    sig: 'instance(): Sandbox'
+    lines:
+    - 688
+    - 690
+    detail: {}
+  - name: isReady
+    sig: 'isReady(): Promise<boolean>'
+    is_async: true
+    lines:
+    - 693
+    - 695
+    detail: {}
+  - name: generateId
+    sig: 'generateId(): string'
+    vis: private
+    lines:
+    - 701
+    - 703
+    detail:
+      calls:
+      - Date.now
+      - Date.now().toString
+      - Math.random
+      - Math.random().toString
+      - Math.random().toString(36).slice
+  - name: findExistingSandbox
+    sig: 'findExistingSandbox(): Promise<Sandbox | null>'
+    is_async: true
+    vis: private
+    lines:
+    - 709
+    - 738
+    detail:
+      calls:
+      - Sandbox.connect
+      - Sandbox.list
+      - paginator.nextItems
+      - this.logger.debug
+  - name: resolveTemplate
+    sig: 'resolveTemplate(): Promise<string>'
+    is_async: true
+    vis: private
+    lines:
+    - 748
+    - 803
+    detail:
+      calls:
+      - Template.build
+      - Template.exists
+      - createDefaultMountableTemplate
+      - this.id.replace
+      - this.logger.debug
+      - this.templateSpec
+  - name: buildDefaultTemplate
+    sig: 'buildDefaultTemplate(): Promise<string>'
+    is_async: true
+    vis: private
+    lines:
+    - 808
+    - 815
+    detail:
+      calls:
+      - Template.build
+      - createDefaultMountableTemplate
+      - this.logger.debug
+  - name: writeMarkerFile
+    sig: 'writeMarkerFile(mountPath: string): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 821
+    - 836
+    detail:
+      calls:
+      - this._sandbox.commands.run
+      - this._sandbox.files.write
+      - this.logger.debug
+      - this.mounts.getMarkerContent
+      - this.mounts.markerFilename
+  - name: checkExistingMount
+    sig: |-
+      checkExistingMount(
+          mountPath: string,
+          newConfig: E2BMountConfig,
+        ): Promise<'not_mounted' | 'matching' | 'mismatched'>
+    is_async: true
+    vis: private
+    lines:
+    - 841
+    - 882
+    detail:
+      calls:
+      - markerResult.stdout.trim
+      - mountCheck.stdout.trim
+      - new SandboxNotReadyError
+      - this._sandbox.commands.run
+      - this.logger.debug
+      - this.mounts.computeConfigHash
+      - this.mounts.markerFilename
+      - this.mounts.parseMarkerContent
+  - name: retryOnDead
+    sig: 'retryOnDead(fn: () => Promise<T>): Promise<T>'
+    is_async: true
+    lines:
+    - 928
+    - 944
+    detail:
+      calls:
+      - fn
+      - this.ensureRunning
+      - this.handleSandboxTimeout
+      - this.isSandboxDeadError
+  lines:
+  - 144
+  - 945
+functions:
+- name: validateMountPath
+  sig: 'validateMountPath(mountPath: string): void'
+  lines:
+  - 37
+  - 43
+  detail:
+    calls:
+    - SAFE_MOUNT_PATH.test
+    - new Error
+exports:
+- name: InstructionsOption
+  kind: type
+- name: E2BSandboxOptions
+  kind: type
+- name: E2BSandbox
+  kind: type
+- name: validateMountPath
+  kind: func
+- name: SAFE_MOUNT_PATH
+  kind: data
+- name: SAFE_MARKER_NAME
+  kind: data

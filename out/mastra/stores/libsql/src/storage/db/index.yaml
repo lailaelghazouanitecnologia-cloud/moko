@@ -1,0 +1,576 @@
+## Roska File Descriptor — db/index.ts
+file: db/index.ts
+lines: 1073
+imports:
+- sym: '@libsql/client.createClient'
+- sym: '@libsql/client.Client'
+  kind: typing
+- sym: '@libsql/client.InValue'
+  kind: typing
+- sym: '@mastra/core/base.MastraBase'
+- sym: '@mastra/core/error.ErrorCategory'
+- sym: '@mastra/core/error.ErrorDomain'
+- sym: '@mastra/core/error.MastraError'
+- sym: '@mastra/core/storage.createStorageErrorId'
+- sym: '@mastra/core/storage.getSqlType'
+- sym: '@mastra/core/storage.TABLE_WORKFLOW_SNAPSHOT'
+- sym: '@mastra/core/storage.TABLE_SPANS'
+- sym: '@mastra/core/storage.TABLE_SCHEMAS'
+- sym: '@mastra/core/storage.TABLE_NAMES'
+  kind: typing
+- sym: '@mastra/core/storage.StorageColumn'
+  kind: typing
+- sym: '@mastra/core/utils.parseSqlIdentifier'
+- sym: ./utils.buildSelectColumns
+- sym: ./utils.createExecuteWriteOperationWithRetry
+- sym: ./utils.prepareDeleteStatement
+- sym: ./utils.prepareStatement
+- sym: ./utils.prepareUpdateStatement
+types:
+- name: LibSQLDomainBaseConfig
+  kind: typealias
+  decorators:
+  - type
+  fields:
+  - name: maxRetries
+    type: number
+  - name: initialBackoffMs
+    type: number
+  lines:
+  - 25
+  - 37
+- name: LibSQLDomainConfig
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 42
+  - 52
+- name: LibSQLDB
+  kind: struct
+  ctx: 'Cache of actual table columns: tableName -> Promise<Set<columnName>> (stores in-flight promise to coalesce concurrent calls)'
+  bases:
+  - MastraBase
+  fields:
+  - name: client
+    type: Client
+  - name: maxRetries
+    type: number
+  - name: initialBackoffMs
+    type: number
+  - name: executeWriteOperationWithRetry
+    type: '<T>(operationFn: () => Promise<T>, operationDescription: string) => Promise<T>'
+  - name: tableColumnsCache
+    type: any
+    default: new Map<string, Promise<Set<string>>>()
+  methods:
+  - name: constructor
+    sig: |-
+      constructor({
+          client,
+          maxRetries,
+          initialBackoffMs,
+        }: {
+          client: Client;
+          maxRetries?: number;
+          initialBackoffMs?: number;
+        })
+    lines:
+    - 80
+    - 103
+    detail:
+      calls:
+      - createExecuteWriteOperationWithRetry
+      - super
+  - name: getTableColumns
+    sig: 'getTableColumns(tableName: TABLE_NAMES): Promise<Set<string>>'
+    is_async: true
+    vis: private
+    lines:
+    - 109
+    - 135
+    detail:
+      calls:
+      - |-
+        (async () => {
+              try {
+                const sanitizedTable = parseSqlIdentifier(tableName, 'table name'...
+      - this.tableColumnsCache.get
+      - this.tableColumnsCache.set
+  - name: filterRecordToKnownColumns
+    sig: |-
+      filterRecordToKnownColumns(
+          tableName: TABLE_NAMES,
+          record: Record<string, any>,
+        ): Promise<Record<string, any>>
+    is_async: true
+    vis: private
+    lines:
+    - 141
+    - 155
+    detail:
+      calls:
+      - Object.entries
+      - knownColumns.has
+      - this.getTableColumns
+  - name: hasColumn
+    sig: 'hasColumn(table: string, column: string): Promise<boolean>'
+    is_async: true
+    lines:
+    - 164
+    - 170
+    detail:
+      calls:
+      - parseSqlIdentifier
+      - result.rows?.some
+      - this.client.execute
+  - name: doInsert
+    sig: |-
+      doInsert({
+          tableName,
+          record,
+        }: {
+          tableName: TABLE_NAMES;
+          record: Record<string, any>;
+        }): Promise<void>
+    is_async: true
+    vis: private
+    lines:
+    - 175
+    - 191
+    detail:
+      calls:
+      - Object.keys
+      - prepareStatement
+      - this.client.execute
+      - this.filterRecordToKnownColumns
+  - name: insert
+    sig: 'insert(args: { tableName: TABLE_NAMES; record: Record<string, any> }): Promise<void>'
+    lines:
+    - 200
+    - 202
+    detail:
+      calls:
+      - this.executeWriteOperationWithRetry
+  - name: doUpdate
+    sig: |-
+      doUpdate({
+          tableName,
+          keys,
+          data,
+        }: {
+          tableName: TABLE_NAMES;
+          keys: Record<string, any>;
+          data: Record<string, any>;
+        }): Promise<void>
+    is_async: true
+    vis: private
+    lines:
+    - 207
+    - 220
+    detail:
+      calls:
+      - Object.keys
+      - prepareUpdateStatement
+      - this.client.execute
+      - this.filterRecordToKnownColumns
+  - name: update
+    sig: 'update(args: { tableName: TABLE_NAMES; keys: Record<string, any>; data: Record<string, any> }): Promise<void>'
+    lines:
+    - 230
+    - 232
+    detail:
+      calls:
+      - this.executeWriteOperationWithRetry
+  - name: doBatchInsert
+    sig: |-
+      doBatchInsert({
+          tableName,
+          records,
+        }: {
+          tableName: TABLE_NAMES;
+          records: Record<string, any>[];
+        }): Promise<void>
+    is_async: true
+    vis: private
+    lines:
+    - 237
+    - 252
+    detail:
+      calls:
+      - Promise.all
+      - filteredRecords.filter
+      - nonEmptyRecords.map
+      - records.map
+      - this.client.batch
+  - name: batchInsert
+    sig: 'batchInsert(args: { tableName: TABLE_NAMES; records: Record<string, any>[] }): Promise<void>'
+    is_async: true
+    lines:
+    - 262
+    - 279
+    detail:
+      calls:
+      - this.executeWriteOperationWithRetry
+      - |-
+        this.executeWriteOperationWithRetry(
+              () => this.doBatchInsert(args),
+              `batch insert into ...
+  - name: doBatchUpdate
+    sig: |-
+      doBatchUpdate({
+          tableName,
+          updates,
+        }: {
+          tableName: TABLE_NAMES;
+          updates: Array<{
+            keys: Record<string, any>;
+            data: Record<string, any>;
+          }>;
+        }): Promise<void>
+    is_async: true
+    vis: private
+    lines:
+    - 285
+    - 316
+    detail:
+      calls:
+      - Object.keys
+      - filteredUpdates.map
+      - filteredUpdates.push
+      - this.client.batch
+      - this.filterRecordToKnownColumns
+  - name: batchUpdate
+    sig: |-
+      batchUpdate(args: {
+          tableName: TABLE_NAMES;
+          updates: Array<{
+            keys: Record<string, any>;
+            data: Record<string, any>;
+          }>;
+        }): Promise<void>
+    is_async: true
+    lines:
+    - 327
+    - 350
+    detail:
+      calls:
+      - this.executeWriteOperationWithRetry
+      - |-
+        this.executeWriteOperationWithRetry(
+              () => this.doBatchUpdate(args),
+              `batch update in ta...
+  - name: doBatchDelete
+    sig: |-
+      doBatchDelete({
+          tableName,
+          keys,
+        }: {
+          tableName: TABLE_NAMES;
+          keys: Array<Record<string, any>>;
+        }): Promise<void>
+    is_async: true
+    vis: private
+    lines:
+    - 356
+    - 373
+    detail:
+      calls:
+      - keys.map
+      - this.client.batch
+  - name: batchDelete
+    sig: |-
+      batchDelete({
+          tableName,
+          keys,
+        }: {
+          tableName: TABLE_NAMES;
+          keys: Array<Record<string, any>>;
+        }): Promise<void>
+    is_async: true
+    lines:
+    - 384
+    - 407
+    detail:
+      calls:
+      - this.executeWriteOperationWithRetry
+      - |-
+        this.executeWriteOperationWithRetry(
+              () => this.doBatchDelete({ tableName, keys }),
+              `bat...
+  - name: doDelete
+    sig: 'doDelete({ tableName, keys }: { tableName: TABLE_NAMES; keys: Record<string, any> }): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 412
+    - 414
+    detail:
+      calls:
+      - prepareDeleteStatement
+      - this.client.execute
+  - name: delete
+    sig: 'delete(args: { tableName: TABLE_NAMES; keys: Record<string, any> }): Promise<void>'
+    is_async: true
+    lines:
+    - 424
+    - 440
+    detail:
+      calls:
+      - this.executeWriteOperationWithRetry
+      - this.executeWriteOperationWithRetry(() => this.doDelete(args), `delete from table ${args.tableName}`...
+  - name: select
+    sig: 'select({ tableName, keys }: { tableName: TABLE_NAMES; keys: Record<string, string> }): Promise<R | null>'
+    is_async: true
+    lines:
+    - 453
+    - 486
+    detail:
+      calls:
+      - Object.entries
+      - Object.entries(row || {}).map
+      - Object.fromEntries
+      - Object.keys
+      - Object.keys(keys).map
+      - Object.values
+      - buildSelectColumns
+      - parseSqlIdentifier
+      - parsedKeys.map
+      - parsedKeys.map(key => `${key} = ?`).join
+      - this.client.execute
+  - name: selectMany
+    sig: |-
+      selectMany({
+          tableName,
+          whereClause,
+          orderBy,
+          offset,
+          limit,
+          args,
+        }: {
+          tableName: TABLE_NAMES;
+          whereClause?: { sql: string; args: InValue[] };
+          orderBy?: string;
+          offset?: number;
+          limit?: number;
+          args?: any[];
+        }): Promise<R[]>
+    is_async: true
+    lines:
+    - 501
+    - 554
+    detail:
+      calls:
+      - (result.rows ?? []).map
+      - buildSelectColumns
+      - parseSqlIdentifier
+      - this.client.execute
+  - name: selectTotalCount
+    sig: |-
+      selectTotalCount({
+          tableName,
+          whereClause,
+        }: {
+          tableName: TABLE_NAMES;
+          whereClause?: { sql: string; args: InValue[] };
+        }): Promise<number>
+    is_async: true
+    lines:
+    - 564
+    - 585
+    detail:
+      calls:
+      - parseSqlIdentifier
+      - this.client.execute
+  - name: createTable
+    sig: |-
+      createTable({
+          tableName,
+          schema,
+          compositePrimaryKey,
+        }: {
+          tableName: TABLE_NAMES;
+          schema: Record<string, StorageColumn>;
+          compositePrimaryKey?: string[];
+        }): Promise<void>
+    is_async: true
+    lines:
+    - 615
+    - 690
+    detail:
+      calls:
+      - Object.entries
+      - Object.entries(schema).map
+      - '[...columnDefinitions, ...tableConstraints].join'
+      - compositePrimaryKey.map
+      - compositePrimaryKey.map(c => `"${c}"`).join
+      - createStorageErrorId
+      - new Error
+      - new MastraError
+      - new Set
+      - parseSqlIdentifier
+      - tableConstraints.push
+      - this.client.execute
+      - this.logger.debug
+      - this.migrateSpansTable
+      - this.tableColumnsCache.delete
+  - name: migrateSpansTable
+    sig: 'migrateSpansTable(): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 696
+    - 766
+    detail:
+      calls:
+      - Object.entries
+      - createStorageErrorId
+      - new MastraError
+      - this.checkForDuplicateSpans
+      - this.client.execute
+      - this.getSqlType
+      - this.hasColumn
+      - this.logger.debug
+      - this.logger.info
+      - this.logger.warn
+      - this.spansUniqueIndexExists
+  - name: spansUniqueIndexExists
+    sig: 'spansUniqueIndexExists(): Promise<boolean>'
+    is_async: true
+    vis: private
+    lines:
+    - 772
+    - 782
+    detail:
+      calls:
+      - this.client.execute
+  - name: checkForDuplicateSpans
+    sig: |-
+      checkForDuplicateSpans(): Promise<{
+          hasDuplicates: boolean;
+          duplicateCount: number;
+        }>
+    is_async: true
+    vis: private
+    lines:
+    - 788
+    - 812
+    detail:
+      calls:
+      - Number
+      - this.client.execute
+      - this.logger.debug
+  - name: migrateSpans
+    sig: |-
+      migrateSpans(): Promise<{
+          success: boolean;
+          alreadyMigrated: boolean;
+          duplicatesRemoved: number;
+          message: string;
+        }>
+    is_async: true
+    lines:
+    - 820
+    - 864
+    detail:
+      calls:
+      - this.checkForDuplicateSpans
+      - this.client.execute
+      - this.deduplicateSpans
+      - this.logger.info
+      - this.spansUniqueIndexExists
+  - name: checkSpansMigrationStatus
+    sig: |-
+      checkSpansMigrationStatus(): Promise<{
+          needsMigration: boolean;
+          hasDuplicates: boolean;
+          duplicateCount: number;
+          constraintExists: boolean;
+          tableName: string;
+        }>
+    is_async: true
+    lines:
+    - 870
+    - 897
+    detail:
+      calls:
+      - this.checkForDuplicateSpans
+      - this.spansUniqueIndexExists
+  - name: deduplicateSpans
+    sig: 'deduplicateSpans(): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 906
+    - 963
+    detail:
+      calls:
+      - Number
+      - this.client.execute
+      - this.logger.debug
+      - this.logger.warn
+  - name: alterTable
+    sig: |-
+      alterTable({
+          tableName,
+          schema,
+          ifNotExists,
+        }: {
+          tableName: TABLE_NAMES;
+          schema: Record<string, StorageColumn>;
+          ifNotExists: string[];
+        }): Promise<void>
+    is_async: true
+    lines:
+    - 997
+    - 1044
+    detail:
+      calls:
+      - (tableInfo.rows || []).map
+      - columnName.toLowerCase
+      - createStorageErrorId
+      - existingColumns.has
+      - new MastraError
+      - new Set
+      - parseSqlIdentifier
+      - this.client.execute
+      - this.getDefaultValue
+      - this.getSqlType
+      - this.logger.debug
+      - this.tableColumnsCache.delete
+  - name: deleteData
+    sig: 'deleteData({ tableName }: { tableName: TABLE_NAMES }): Promise<void>'
+    is_async: true
+    lines:
+    - 1053
+    - 1072
+    detail:
+      calls:
+      - createStorageErrorId
+      - mastraError.toString
+      - new MastraError
+      - parseSqlIdentifier
+      - this.client.execute
+      - this.logger?.error
+      - this.logger?.trackException
+  lines:
+  - 71
+  - 1073
+functions:
+- name: resolveClient
+  sig: 'resolveClient(config: LibSQLDomainConfig): Client'
+  lines:
+  - 61
+  - 69
+  detail:
+    calls:
+    - createClient
+exports:
+- name: LibSQLDomainBaseConfig
+  kind: type
+- name: LibSQLDomainConfig
+  kind: type
+- name: LibSQLDB
+  kind: type
+- name: resolveClient
+  kind: func

@@ -1,0 +1,296 @@
+## Roska File Descriptor — sandbox/mount-manager.ts
+file: sandbox/mount-manager.ts
+lines: 440
+purpose: Mount Manager Encapsulates all mount-related state and operations for sandboxes. Used by BaseSandbox to manage filesystem mounts.
+imports:
+- sym: node:crypto.createHash
+- sym: ../../logger.IMastraLogger
+  kind: typing
+- sym: ../filesystem/filesystem.WorkspaceFilesystem
+  kind: typing
+- sym: ../filesystem/mount.FilesystemMountConfig
+  kind: typing
+- sym: ../filesystem/mount.MountResult
+  kind: typing
+- sym: ../workspace.Workspace
+  kind: typing
+- sym: ./mounts/types.MountToolNotFoundError
+- sym: ./sandbox.WorkspaceSandbox
+  kind: typing
+- sym: ./types.MountEntry
+  kind: typing
+- sym: ./types.MountState
+  kind: typing
+types:
+- name: MountFn
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 24
+  - 24
+- name: OnMountResult
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 32
+  - 32
+- name: OnMountArgs
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: filesystem
+    type: WorkspaceFilesystem
+  - name: mountPath
+    type: string
+  - name: config
+    type: FilesystemMountConfig | undefined
+  - name: sandbox
+    type: WorkspaceSandbox
+  - name: workspace
+    type: Workspace
+  lines:
+  - 37
+  - 48
+- name: OnMountHook
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 73
+  - 73
+- name: MountManagerConfig
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: mount
+    type: MountFn
+  - name: logger
+    type: IMastraLogger
+  lines:
+  - 78
+  - 83
+- name: MountManager
+  kind: struct
+  ctx: Set the sandbox and workspace references for onMount hook args. Called by Workspace during construction.
+  fields:
+  - name: _entries
+    type: Map<string, MountEntry>
+    default: new Map()
+  - name: _mountFn
+    type: MountFn
+  - name: _onMount
+    type: OnMountHook
+  - name: _sandbox
+    type: WorkspaceSandbox
+  - name: _workspace
+    type: Workspace
+  - name: logger
+    type: IMastraLogger
+  methods:
+  - name: constructor
+    sig: 'constructor(config: MountManagerConfig)'
+    lines:
+    - 99
+    - 102
+    detail: {}
+  - name: setContext
+    sig: 'setContext(context: { sandbox: WorkspaceSandbox; workspace: Workspace }): void'
+    lines:
+    - 108
+    - 111
+    detail: {}
+  - name: setOnMount
+    sig: 'setOnMount(hook: OnMountHook | undefined): void'
+    lines:
+    - 117
+    - 119
+    detail: {}
+  - name: __setLogger
+    sig: '__setLogger(logger: IMastraLogger): void'
+    lines:
+    - 126
+    - 128
+    detail: {}
+  - name: entries
+    sig: 'entries(): ReadonlyMap<string, MountEntry>'
+    lines:
+    - 137
+    - 139
+    detail: {}
+  - name: get
+    sig: 'get(path: string): MountEntry | undefined'
+    lines:
+    - 144
+    - 146
+    detail:
+      calls:
+      - this._entries.get
+  - name: has
+    sig: 'has(path: string): boolean'
+    lines:
+    - 151
+    - 153
+    detail:
+      calls:
+      - this._entries.has
+  - name: add
+    sig: 'add(mounts: Record<string, WorkspaceFilesystem>): void'
+    lines:
+    - 163
+    - 173
+    detail:
+      calls:
+      - Object.entries
+      - Object.keys
+      - this._entries.set
+      - this.logger.debug
+  - name: set
+    sig: |-
+      set(
+          path: string,
+          updates: {
+            filesystem?: WorkspaceFilesystem;
+            state: MountState;
+            config?: FilesystemMountConfig;
+            error?: string;
+          },
+        ): void
+    lines:
+    - 179
+    - 211
+    detail:
+      calls:
+      - this._entries.get
+      - this._entries.set
+      - this.hashConfig
+      - this.logger.debug
+  - name: delete
+    sig: 'delete(path: string): boolean'
+    lines:
+    - 216
+    - 218
+    detail:
+      calls:
+      - this._entries.delete
+  - name: clear
+    sig: 'clear(): void'
+    lines:
+    - 223
+    - 225
+    detail:
+      calls:
+      - this._entries.clear
+  - name: processPending
+    sig: 'processPending(): Promise<void>'
+    is_async: true
+    lines:
+    - 235
+    - 338
+    detail:
+      calls:
+      - String
+      - '[...this._entries.values()].filter'
+      - entry.filesystem.getMountConfig
+      - this._entries.values
+      - this._mountFn
+      - this._onMount
+      - this.hashConfig
+      - this.logger.debug
+      - this.logger.error
+      - this.logger.info
+      - this.logger.warn
+  - name: markerFilename
+    sig: 'markerFilename(mountPath: string): string'
+    lines:
+    - 351
+    - 359
+    detail:
+      calls:
+      - Math.abs
+      - Math.abs(hash).toString
+      - mountPath.charCodeAt
+  - name: getMarkerContent
+    sig: 'getMarkerContent(mountPath: string): string | null'
+    lines:
+    - 368
+    - 374
+    detail:
+      calls:
+      - this._entries.get
+  - name: parseMarkerContent
+    sig: 'parseMarkerContent(content: string): { path: string; configHash: string } | null'
+    lines:
+    - 382
+    - 391
+    detail:
+      calls:
+      - content.lastIndexOf
+      - content.slice
+  - name: isConfigMatching
+    sig: 'isConfigMatching(mountPath: string, storedHash: string): boolean'
+    lines:
+    - 400
+    - 403
+    detail:
+      calls:
+      - this._entries.get
+  - name: computeConfigHash
+    sig: 'computeConfigHash(config: FilesystemMountConfig): string'
+    lines:
+    - 411
+    - 413
+    detail:
+      calls:
+      - this.hashConfig
+  - name: hashConfig
+    sig: 'hashConfig(config: FilesystemMountConfig): string'
+    vis: private
+    lines:
+    - 422
+    - 425
+    detail:
+      calls:
+      - JSON.stringify
+      - createHash
+      - createHash('sha256').update
+      - createHash('sha256').update(normalized).digest
+      - createHash('sha256').update(normalized).digest('hex').slice
+      - this.sortKeysDeep
+  - name: sortKeysDeep
+    sig: 'sortKeysDeep(obj: unknown): unknown'
+    vis: private
+    lines:
+    - 427
+    - 439
+    detail:
+      calls:
+      - Array.isArray
+      - Object.keys
+      - |-
+        Object.keys(obj as Record<string, unknown>)
+              .sort
+      - |-
+        Object.keys(obj as Record<string, unknown>)
+              .sort()
+              .reduce
+      - obj.map
+  lines:
+  - 91
+  - 440
+exports:
+- name: MountFn
+  kind: type
+- name: OnMountResult
+  kind: type
+- name: OnMountArgs
+  kind: type
+- name: OnMountHook
+  kind: type
+- name: MountManagerConfig
+  kind: type
+- name: MountManager
+  kind: type

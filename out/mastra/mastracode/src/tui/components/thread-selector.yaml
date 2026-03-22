@@ -1,0 +1,303 @@
+## Roska File Descriptor — components/thread-selector.ts
+file: components/thread-selector.ts
+lines: 365
+purpose: Thread selector component for switching between conversation threads. Uses pi-tui overlay pattern with search and navigation.
+imports:
+- sym: '@mariozechner/pi-tui.Box'
+- sym: '@mariozechner/pi-tui.Container'
+- sym: '@mariozechner/pi-tui.fuzzyFilter'
+- sym: '@mariozechner/pi-tui.getEditorKeybindings'
+- sym: '@mariozechner/pi-tui.Input'
+- sym: '@mariozechner/pi-tui.Spacer'
+- sym: '@mariozechner/pi-tui.Text'
+- sym: '@mariozechner/pi-tui.Focusable'
+  kind: typing
+- sym: '@mariozechner/pi-tui.TUI'
+  kind: typing
+- sym: '@mastra/core/harness.HarnessThread'
+  kind: typing
+- sym: ../theme.js.theme
+data:
+- name: MAX_VISIBLE_THREADS
+  type: number
+  val: '12'
+- name: INITIAL_PREVIEW_LOAD_COUNT
+  type: number
+  val: '24'
+- name: PREVIEW_BATCH_SIZE
+  type: number
+  val: '2'
+- name: INITIAL_PREVIEW_LOAD_DELAY_MS
+  type: number
+  val: '150'
+- name: INTERACTION_PREVIEW_LOAD_DELAY_MS
+  type: number
+  val: '250'
+- name: FOLLOW_UP_PREVIEW_LOAD_DELAY_MS
+  type: number
+  val: '50'
+types:
+- name: ThreadSelectorOptions
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: tui
+    type: TUI
+  - name: threads
+    type: HarnessThread[]
+  - name: currentThreadId
+    type: string | null
+  - name: currentResourceId
+    type: string
+  - name: currentProjectPath
+    type: string
+  - name: onSelect
+    type: '(thread: HarnessThread) => void'
+  - name: onCancel
+    type: () => void
+  - name: onClone
+    type: '(thread: HarnessThread) => void'
+  - name: getMessagePreviews
+    type: '(threadIds: string[]) => Promise<Map<string, string>>'
+  - name: initialMessagePreviews
+    type: Map<string, string>
+  - name: initialAttemptedPreviewThreadIds
+    type: Set<string>
+  - name: onMessagePreviewsLoaded
+    type: '(previews: Map<string, string>, attemptedThreadIds: Set<string>) => void'
+  lines:
+  - 15
+  - 32
+- name: ThreadSelectorComponent
+  kind: struct
+  ctx: Focusable implementation
+  bases:
+  - Box
+  - Focusable
+  fields:
+  - name: searchInput
+    type: Input
+  - name: listContainer
+    type: Container
+  - name: allThreads
+    type: HarnessThread[]
+  - name: filteredThreads
+    type: HarnessThread[]
+  - name: selectedIndex
+    type: any
+    default: '0'
+  - name: currentThreadId
+    type: string | null
+  - name: currentResourceId
+    type: string | undefined
+  - name: currentProjectPath
+    type: string | undefined
+  - name: onSelectCallback
+    type: '(thread: HarnessThread) => void'
+  - name: onCancelCallback
+    type: () => void
+  - name: onCloneCallback
+    type: '((thread: HarnessThread) => void) | undefined'
+  - name: tui
+    type: TUI
+  - name: getMessagePreviews
+    type: '((threadIds: string[]) => Promise<Map<string, string>>) | undefined'
+  - name: onMessagePreviewsLoaded
+    type: |-
+      | ((previews: Map<string, string>, attemptedThreadIds: Set<string>) => void)
+          | undefined
+  - name: messagePreviews
+    type: Map<string, string>
+  - name: attemptedPreviewThreadIds
+    type: Set<string>
+  - name: loadingPreviewThreadIds
+    type: Set<string>
+    default: new Set()
+  - name: previewLoadVersion
+    type: any
+    default: '0'
+  - name: previewLoadTimeout
+    type: ReturnType<typeof setTimeout> | null
+    default: 'null'
+  - name: _focused
+    type: any
+    default: 'false'
+  methods:
+  - name: focused
+    sig: 'focused(): boolean'
+    lines:
+    - 70
+    - 72
+    detail: {}
+  - name: focused
+    sig: 'focused(value: boolean)'
+    lines:
+    - 73
+    - 76
+    detail: {}
+  - name: constructor
+    sig: 'constructor(options: ThreadSelectorOptions)'
+    lines:
+    - 78
+    - 97
+    detail:
+      calls:
+      - new Map
+      - new Set
+      - super
+      - this.buildUI
+      - this.scheduleMessagePreviewLoad
+      - this.sortThreads
+  - name: getVisibleRange
+    sig: 'getVisibleRange(): { startIndex: number; endIndex: number }'
+    vis: private
+    lines:
+    - 99
+    - 109
+    detail:
+      calls:
+      - Math.floor
+      - Math.max
+      - Math.min
+  - name: getPreviewCandidates
+    sig: 'getPreviewCandidates(initialLoad: boolean): HarnessThread[]'
+    vis: private
+    lines:
+    - 116
+    - 137
+    detail:
+      calls:
+      - '[...prioritizedThreads, ...remainingThreads].filter'
+      - combinedThreads.filter
+      - this.filteredThreads.slice
+      - this.getVisibleThreads
+      - uniqueThreads.filter
+  - name: loadMessagePreviews
+    sig: 'loadMessagePreviews({ initialLoad = false }: { initialLoad?: boolean } = {}): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 155
+    - 193
+    detail:
+      calls:
+      - candidates.slice
+      - candidates.slice(0, PREVIEW_BATCH_SIZE).map
+      - new Map
+      - new Set
+      - this.getMessagePreviews
+      - this.getPreviewCandidates
+      - this.messagePreviews.set
+      - this.onMessagePreviewsLoaded
+      - this.scheduleMessagePreviewLoad
+      - this.tui.requestRender
+      - this.updateList
+      - threadIds.forEach
+  - name: buildUI
+    sig: 'buildUI(): void'
+    vis: private
+    lines:
+    - 195
+    - 218
+    detail:
+      calls:
+      - new Container
+      - new Input
+      - new Spacer
+      - new Text
+      - theme.bold
+      - theme.fg
+      - this.addChild
+      - this.updateList
+  - name: sortThreads
+    sig: 'sortThreads(threads: HarnessThread[], currentThreadId: string | null): HarnessThread[]'
+    vis: private
+    lines:
+    - 220
+    - 246
+    detail:
+      calls:
+      - sorted.sort
+  - name: filterThreads
+    sig: 'filterThreads(query: string): void'
+    vis: private
+    lines:
+    - 248
+    - 261
+    detail:
+      calls:
+      - Math.max
+      - Math.min
+      - fuzzyFilter
+      - this.scheduleMessagePreviewLoad
+      - this.updateList
+  - name: formatTimeAgo
+    sig: 'formatTimeAgo(date: Date): string'
+    vis: private
+    lines:
+    - 263
+    - 272
+    detail:
+      calls:
+      - Date.now
+      - Math.floor
+      - date.getTime
+  - name: updateList
+    sig: 'updateList(): void'
+    vis: private
+    lines:
+    - 274
+    - 329
+    detail:
+      calls:
+      - Math.floor
+      - Math.max
+      - Math.min
+      - new Text
+      - theme.fg
+      - this.formatTimeAgo
+      - this.listContainer.addChild
+      - this.listContainer.clear
+      - this.messagePreviews.get
+      - thread.id.slice
+      - threadPath.split
+      - threadPath.split('/').pop
+  - name: handleInput
+    sig: 'handleInput(keyData: string): void'
+    lines:
+    - 331
+    - 364
+    detail:
+      calls:
+      - getEditorKeybindings
+      - kb.matches
+      - this.filterThreads
+      - this.onCancelCallback
+      - this.onCloneCallback
+      - this.onSelectCallback
+      - this.scheduleMessagePreviewLoad
+      - this.searchInput.getValue
+      - this.searchInput.handleInput
+      - this.tui.requestRender
+      - this.updateList
+  lines:
+  - 45
+  - 365
+exports:
+- name: ThreadSelectorOptions
+  kind: type
+- name: ThreadSelectorComponent
+  kind: type
+- name: MAX_VISIBLE_THREADS
+  kind: data
+- name: INITIAL_PREVIEW_LOAD_COUNT
+  kind: data
+- name: PREVIEW_BATCH_SIZE
+  kind: data
+- name: INITIAL_PREVIEW_LOAD_DELAY_MS
+  kind: data
+- name: INTERACTION_PREVIEW_LOAD_DELAY_MS
+  kind: data
+- name: FOLLOW_UP_PREVIEW_LOAD_DELAY_MS
+  kind: data

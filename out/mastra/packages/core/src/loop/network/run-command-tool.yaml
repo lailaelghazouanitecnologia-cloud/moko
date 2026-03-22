@@ -1,0 +1,115 @@
+## Roska File Descriptor — network/run-command-tool.ts
+file: network/run-command-tool.ts
+lines: 276
+purpose: Node.js-specific tool for running shell commands. This file is separated from validation.ts to avoid bundling Node.js dependencies into browser builds. - NEVER use with untrusted input or in multi-tenant environments - Always configure allowedCommands to restrict executable commands - Always set allowedBasePaths to restrict working directories - Consider running in a sandboxed environment (container, VM) - Review all commands that agents may construct before deployment
+imports:
+- sym: node:child_process.exec
+- sym: node:path.resolve
+- sym: node:path.normalize
+- sym: node:util.promisify
+- sym: zod/v4.z
+- sym: ../../tools.createTool
+data:
+- name: execAsync
+  type: any
+  val: promisify(exec)
+- name: DANGEROUS_PATTERNS
+  type: array
+  val: |-
+    [
+      /[;&|`$(){}[\]<>]/g, // Shell metacharacters
+      /\n|\r/g, // Newlines (command chaining)
+      /\\(?![ ])/g, // Backslash...
+- name: BLOCKED_COMMANDS
+  type: array
+  val: |-
+    [
+      'rm',
+      'rmdir',
+      'del',
+      'format',
+      'mkfs',
+      'dd',
+      'shutdown',
+      'reboot',
+      'halt',
+      'poweroff',
+      'init',
+    ...
+types:
+- name: RunCommandToolOptions
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: allowedCommands
+    type: string[]
+  - name: allowedBasePaths
+    type: string[]
+  - name: additionalBlockedCommands
+    type: string[]
+  - name: maxTimeout
+    type: number
+  - name: maxBuffer
+    type: number
+  - name: allowUnsafeCharacters
+    type: boolean
+  lines:
+  - 79
+  - 118
+functions:
+- name: isPathAllowed
+  sig: 'isPathAllowed(targetPath: string, allowedBasePaths: string[]): boolean'
+  lines:
+  - 123
+  - 131
+  detail:
+    calls:
+    - allowedBasePaths.some
+    - normalize
+    - resolve
+- name: extractBaseCommand
+  sig: 'extractBaseCommand(command: string): string'
+  lines:
+  - 136
+  - 143
+  detail:
+    calls:
+    - baseCmd.lastIndexOf
+    - baseCmd.substring
+    - command.trim
+    - trimmed.indexOf
+    - trimmed.substring
+- name: createRunCommandTool
+  sig: 'createRunCommandTool(options: RunCommandToolOptions = {})'
+  lines:
+  - 169
+  - 276
+  detail:
+    calls:
+    - additionalBlockedCommands.map
+    - createTool
+    - new Set
+    - z.number
+    - z.number().default
+    - z.number().default(30000).describe
+    - z.object
+    - z.string
+    - z.string().describe
+    - z.string().optional
+    - z.string().optional().describe
+exports:
+- name: RunCommandToolOptions
+  kind: type
+- name: isPathAllowed
+  kind: func
+- name: extractBaseCommand
+  kind: func
+- name: createRunCommandTool
+  kind: func
+- name: execAsync
+  kind: data
+- name: DANGEROUS_PATTERNS
+  kind: data
+- name: BLOCKED_COMMANDS
+  kind: data

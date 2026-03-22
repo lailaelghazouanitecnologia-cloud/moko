@@ -1,0 +1,80 @@
+## Roska File Descriptor — rerank/index.ts
+file: rerank/index.ts
+lines: 96
+imports:
+- sym: '@ai-sdk/openai.openai'
+- sym: '@mastra/pg.PgVector'
+- sym: '@mastra/rag.MDocument'
+- sym: '@mastra/rag.rerank'
+- sym: ai.embedMany
+- sym: ai.embed
+data:
+- name: doc1
+  type: any
+  val: |-
+    MDocument.fromText(`
+    market data shows price resistance levels.
+    technical charts display moving averages.
+    support levels...
+- name: chunks
+  type: any
+  val: |-
+    await doc1.chunk({
+      strategy: 'recursive',
+      maxSize: 150,
+      overlap: 20,
+      separator: '\n',
+    })
+- name: '{ embeddings }'
+  type: any
+  val: |-
+    await embedMany({
+      values: chunks.map(chunk => chunk.text),
+      model: openai.embedding('text-embedding-3-small'),
+    })
+- name: pgVector
+  type: any
+  val: 'new PgVector({ connectionString: process.env.POSTGRES_CONNECTION_STRING! })'
+- name: query
+  type: string
+  val: '''explain technical trading analysis'''
+- name: '{ embedding: queryEmbedding }'
+  type: any
+  val: |-
+    await embed({
+      value: query,
+      model: openai.embedding('text-embedding-3-small'),
+    })
+- name: initialResults
+  type: any
+  val: |-
+    await pgVector.query({
+      indexName: 'embeddings',
+      queryVector: queryEmbedding,
+      topK: 3,
+    })
+- name: rerankedResults
+  type: any
+  val: |-
+    await rerank(initialResults, query, openai('gpt-4o-mini'), {
+      weights: {
+        semantic: 0.5,
+        vector: 0.3,
+        positi...
+exports:
+- name: doc1
+  kind: data
+- name: chunks
+  kind: data
+- name: '{ embeddings }'
+  kind: data
+- name: pgVector
+  kind: data
+- name: query
+  kind: data
+- name: '{ embedding: queryEmbedding }'
+  kind: data
+- name: initialResults
+  kind: data
+- name: rerankedResults
+  kind: data

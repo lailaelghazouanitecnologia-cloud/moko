@@ -1,0 +1,486 @@
+## Roska File Descriptor — server-adapter/index.ts
+file: server-adapter/index.ts
+lines: 776
+imports:
+- sym: '@mastra/core/agent.ToolsInput'
+  kind: typing
+- sym: '@mastra/core/mastra.Mastra'
+  kind: typing
+- sym: '@mastra/core/request-context.RequestContext'
+- sym: '@mastra/core/server.MastraServerBase'
+- sym: '@mastra/core/server.ApiRoute'
+  kind: typing
+- sym: '@mastra/core/server.HttpLoggingConfig'
+  kind: typing
+- sym: '@mastra/core/server.ValidationErrorContext'
+  kind: typing
+- sym: '@mastra/core/server.ValidationErrorResponse'
+  kind: typing
+- sym: hono.Hono
+- sym: zod.ZodError
+  kind: typing
+- sym: zod/v4.z
+- sym: ../a2a/store.InMemoryTaskStore
+  kind: typing
+- sym: ../auth/helpers.coreAuthMiddleware
+- sym: ../handlers/error.formatZodError
+- sym: ../utils.normalizeRoutePath
+- sym: ./openapi-utils.generateOpenAPIDocument
+- sym: ./openapi-utils.convertCustomRoutesToOpenAPIPaths
+- sym: ./routes.SERVER_ROUTES
+- sym: ./routes.getEffectivePermission
+- sym: ./routes.ServerRoute
+  kind: typing
+types:
+- name: OpenAPIConfig
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: version
+    type: string
+  - name: description
+    type: string
+  - name: path
+    type: string
+  lines:
+  - 23
+  - 28
+- name: BodyLimitOptions
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: maxSize
+    type: number
+  - name: onError
+    type: '(error: unknown) => unknown'
+  lines:
+  - 30
+  - 33
+- name: StreamOptions
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: redact
+    type: boolean
+  lines:
+  - 35
+  - 46
+- name: MCPOptions
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: serverless
+    type: boolean
+  - name: sessionIdGenerator
+    type: () => string
+  lines:
+  - 51
+  - 64
+- name: QueryParamValue
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 70
+  - 70
+- name: ParsedRequestParams
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: urlParams
+    type: Record<string, string>
+  - name: queryParams
+    type: Record<string, QueryParamValue>
+  - name: body
+    type: unknown
+  - name: bodyParseError
+    type: |-
+      {
+          message: string;
+        }
+  lines:
+  - 75
+  - 86
+- name: MastraServer
+  kind: trait
+  ctx: Parses the apiReqLogs configuration into a normalized HttpLoggingConfig.
+  bases:
+  - MastraServerBase
+  decorators:
+  - abstract
+  fields:
+  - name: mastra
+    type: Mastra
+  - name: bodyLimitOptions
+    type: BodyLimitOptions
+  - name: tools
+    type: ToolsInput
+  - name: prefix
+    type: string
+  - name: openapiPath
+    type: string
+  - name: taskStore
+    type: InMemoryTaskStore
+  - name: customRouteAuthConfig
+    type: Map<string, boolean>
+  - name: streamOptions
+    type: StreamOptions
+  - name: httpLoggingConfig
+    type: HttpLoggingConfig
+  - name: customApiRoutes
+    type: ApiRoute[]
+  - name: mcpOptions
+    type: MCPOptions
+  - name: customRouteHandler
+    type: |-
+      | ((request: Request, env?: { requestContext?: RequestContext }) => Promise<Response>)
+          | null
+    default: 'null'
+  - name: CONTEXT_LABELS
+    type: Record<ValidationErrorContext, string>
+    default: |-
+      {
+          query: 'query parameters',
+          body: 'request body',
+          path: 'path param...
+  methods:
+  - name: constructor
+    sig: |-
+      constructor({
+          app,
+          mastra,
+          bodyLimitOptions,
+          tools,
+          prefix = '/api',
+          openapiPath = '',
+          taskStore,
+          customRouteAuthConfig,
+          streamOptions,
+          customApiRoutes,
+          mcpOptions,
+        }: {
+          app: TApp;
+          mastra: Mastra;
+          bodyLimitOptions?: BodyLimitOptions;
+          tools?: ToolsInput;
+          prefix?: string;
+          openapiPath?: string;
+          taskStore?: InMemoryTaskStore;
+          customRouteAuthConfig?: Map<string, boolean>;
+          streamOptions?: StreamOptions;
+          customApiRoutes?: ApiRoute[];
+          /**
+           * MCP transport options applied to all MCP HTTP and SSE routes.
+           * Individual routes can override these via MCPHttpTransportResult.mcpOptions.
+           */
+          mcpOptions?: MCPOptions;
+        })
+    lines:
+    - 236
+    - 283
+    detail:
+      calls:
+      - mastra.getServer
+      - mastra.setMastraServer
+      - normalizeRoutePath
+      - super
+      - this.parseLoggingConfig
+  - name: checkRouteAuth
+    sig: |-
+      checkRouteAuth(
+          route: ServerRoute,
+          context: {
+            path: string;
+            method: string;
+            getHeader: (name: string) => string | undefined;
+            getQuery: (name: string) => string | undefined;
+            requestContext: RequestContext;
+            /** Raw Request object for cookie-based auth providers */
+            request?: Request;
+            /** Build framework-specific context for authorize() callback */
+            buildAuthorizeContext?: () => unknown;
+          },
+        ): Promise<{ status: number; error: string } | null>
+    is_async: true
+    vis: protected
+    lines:
+    - 358
+    - 413
+    detail:
+      calls:
+      - authHeader.replace
+      - context.getHeader
+      - context.getQuery
+      - coreAuthMiddleware
+      - this.mastra.getServer
+  - name: checkRoutePermission
+    sig: |-
+      checkRoutePermission(
+          route: ServerRoute,
+          userPermissions: string[] | undefined,
+          hasPermissionFn: (userPerms: string[], required: string) => boolean,
+        ): { status: number; error: string; message: string } | null
+    vis: protected
+    lines:
+    - 427
+    - 457
+    detail:
+      calls:
+      - getEffectivePermission
+      - hasPermissionFn
+      - this.mastra.getServer
+  - name: init
+    sig: init()
+    is_async: true
+    lines:
+    - 467
+    - 474
+    detail:
+      calls:
+      - this.registerAuthMiddleware
+      - this.registerContextMiddleware
+      - this.registerCustomApiRoutes
+      - this.registerHttpLoggingMiddleware
+      - this.registerRoutes
+      - this.validateEELicense
+  - name: validateEELicense
+    sig: 'validateEELicense(): Promise<void>'
+    is_async: true
+    lines:
+    - 480
+    - 504
+    detail:
+      calls:
+      - err.message.startsWith
+      - import
+      - isEEEnabled
+      - new Error
+      - this.mastra.getServer
+  - name: registerCustomApiRoutes
+    sig: 'registerCustomApiRoutes(): Promise<void>'
+    is_async: true
+    lines:
+    - 510
+    - 513
+    detail: {}
+  - name: buildCustomRouteHandler
+    sig: 'buildCustomRouteHandler(): Promise<boolean>'
+    is_async: true
+    vis: protected
+    lines:
+    - 520
+    - 567
+    detail:
+      calls:
+      - Array.isArray
+      - allHandlers.slice
+      - app.all
+      - app.notFound
+      - app.on
+      - app.use
+      - middlewares.push
+      - new Hono
+      - route.createHandler
+      - this.mastra.getServer
+  - name: handleCustomRouteRequest
+    sig: |-
+      handleCustomRouteRequest(
+          url: string,
+          method: string,
+          headers: Record<string, string | string[] | undefined>,
+          body: unknown,
+          requestContext?: RequestContext,
+        ): Promise<Response | null>
+    is_async: true
+    vis: protected
+    lines:
+    - 574
+    - 609
+    detail:
+      calls:
+      - Array.isArray
+      - JSON.stringify
+      - Object.entries
+      - '[''POST'', ''PUT'', ''PATCH''].includes'
+      - contentType.includes
+      - fetchHeaders.set
+      - new Headers
+      - new globalThis.Request
+      - response.headers.get
+      - this.customRouteHandler
+      - value.forEach
+  - name: writeCustomRouteResponse
+    sig: |-
+      writeCustomRouteResponse(
+          response: Response,
+          nodeRes: {
+            writeHead(status: number, headers: Record<string, string | string[]>): void;
+            write(chunk: unknown): void;
+            end(data?: string): void;
+          },
+        ): Promise<void>
+    is_async: true
+    vis: protected
+    lines:
+    - 615
+    - 649
+    detail:
+      calls:
+      - nodeRes.end
+      - nodeRes.write
+      - nodeRes.writeHead
+      - reader.read
+      - response.body.getReader
+      - response.headers.forEach
+      - response.headers.getSetCookie
+      - response.text
+  - name: buildOpenAPISpec
+    sig: 'buildOpenAPISpec(config: { title: string; version: string; description: string }, prefix?: string): any'
+    vis: private
+    lines:
+    - 654
+    - 676
+    detail:
+      calls:
+      - Object.keys
+      - convertCustomRoutesToOpenAPIPaths
+      - generateOpenAPIDocument
+      - this.mastra.getServer
+  - name: registerOpenAPIRoute
+    sig: 'registerOpenAPIRoute(app: TApp, config: OpenAPIConfig = {}, { prefix }: { prefix?: string }): Promise<void>'
+    is_async: true
+    lines:
+    - 678
+    - 696
+    detail:
+      calls:
+      - this.buildOpenAPISpec
+      - this.registerRoute
+  - name: registerRoutes
+    sig: 'registerRoutes(): Promise<void>'
+    is_async: true
+    lines:
+    - 698
+    - 715
+    detail:
+      calls:
+      - this.registerOpenAPIRoute
+      - this.registerRoute
+  - name: parsePathParams
+    sig: 'parsePathParams(route: ServerRoute, params: Record<string, string>): Promise<Record<string, any>>'
+    is_async: true
+    lines:
+    - 717
+    - 724
+    detail:
+      calls:
+      - pathParamSchema.parseAsync
+  - name: parseQueryParams
+    sig: 'parseQueryParams(route: ServerRoute, params: Record<string, QueryParamValue>): Promise<Record<string, any>>'
+    is_async: true
+    lines:
+    - 726
+    - 734
+    detail:
+      calls:
+      - parseComplexQueryParams
+      - queryParamSchema.parseAsync
+  - name: parseBody
+    sig: 'parseBody(route: ServerRoute, body: unknown): Promise<unknown>'
+    is_async: true
+    lines:
+    - 736
+    - 743
+    detail:
+      calls:
+      - bodySchema.parseAsync
+  - name: resolveValidationError
+    sig: |-
+      resolveValidationError(
+          route: ServerRoute,
+          error: ZodError,
+          context: ValidationErrorContext,
+        ): ValidationErrorResponse
+    vis: protected
+    lines:
+    - 751
+    - 775
+    detail:
+      calls:
+      - formatZodError
+      - hook
+      - this.mastra.getLogger
+      - this.mastra.getLogger()?.error
+      - this.mastra.getServer
+  lines:
+  - 220
+  - 776
+functions:
+- name: getSchemaTypeName
+  sig: 'getSchemaTypeName(schema: z.ZodTypeAny): string | undefined'
+  lines:
+  - 88
+  - 91
+- name: unwrapOptionalNullable
+  sig: 'unwrapOptionalNullable(schema: z.ZodTypeAny): z.ZodTypeAny'
+  lines:
+  - 93
+  - 112
+  detail:
+    calls:
+    - getSchemaTypeName
+- name: parseComplexQueryParams
+  sig: |-
+    parseComplexQueryParams(
+      queryParamSchema: z.ZodTypeAny,
+      params: Record<string, QueryParamValue>,
+    ): Record<string, QueryParamValue | unknown>
+  lines:
+  - 114
+  - 153
+  detail:
+    calls:
+    - JSON.parse
+    - Object.entries
+    - getSchemaTypeName
+    - unwrapOptionalNullable
+- name: normalizeQueryParams
+  sig: 'normalizeQueryParams(rawQuery: Record<string, unknown>): Record<string, QueryParamValue>'
+  lines:
+  - 165
+  - 204
+  detail:
+    calls:
+    - Array.isArray
+    - JSON.stringify
+    - Object.entries
+    - key.match
+    - value.filter
+exports:
+- name: OpenAPIConfig
+  kind: type
+- name: BodyLimitOptions
+  kind: type
+- name: StreamOptions
+  kind: type
+- name: MCPOptions
+  kind: type
+- name: QueryParamValue
+  kind: type
+- name: ParsedRequestParams
+  kind: type
+- name: MastraServer
+  kind: type
+- name: getSchemaTypeName
+  kind: func
+- name: unwrapOptionalNullable
+  kind: func
+- name: parseComplexQueryParams
+  kind: func
+- name: normalizeQueryParams
+  kind: func

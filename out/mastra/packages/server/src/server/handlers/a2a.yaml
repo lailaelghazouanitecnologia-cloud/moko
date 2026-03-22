@@ -1,0 +1,255 @@
+## Roska File Descriptor — handlers/a2a.ts
+file: handlers/a2a.ts
+lines: 511
+imports:
+- sym: '@mastra/core/a2a.MastraA2AError'
+- sym: '@mastra/core/a2a.MessageSendParams'
+  kind: typing
+- sym: '@mastra/core/a2a.TaskQueryParams'
+  kind: typing
+- sym: '@mastra/core/a2a.TaskIdParams'
+  kind: typing
+- sym: '@mastra/core/a2a.AgentCard'
+  kind: typing
+- sym: '@mastra/core/a2a.TaskStatus'
+  kind: typing
+- sym: '@mastra/core/a2a.TaskState'
+  kind: typing
+- sym: '@mastra/core/agent.Agent'
+  kind: typing
+- sym: '@mastra/core/logger.IMastraLogger'
+  kind: typing
+- sym: '@mastra/core/request-context.RequestContext'
+  kind: typing
+- sym: zod.z
+- sym: ../a2a/protocol.convertToCoreMessage
+- sym: ../a2a/protocol.normalizeError
+- sym: ../a2a/protocol.createSuccessResponse
+- sym: ../a2a/protocol.createErrorResponse
+- sym: ../a2a/store.InMemoryTaskStore
+  kind: typing
+- sym: ../a2a/tasks.applyUpdateToTask
+- sym: ../a2a/tasks.createTaskContext
+- sym: ../a2a/tasks.loadOrCreateTask
+- sym: ../schemas/a2a.a2aAgentIdPathParams
+- sym: ../schemas/a2a.agentExecutionBodySchema
+- sym: ../schemas/a2a.agentCardResponseSchema
+- sym: ../schemas/a2a.agentExecutionResponseSchema
+- sym: ../server-adapter/routes/route-builder.createRoute
+- sym: ../types.Context
+  kind: typing
+- sym: ../utils.convertInstructionsToString
+- sym: ./agents.getAgentFromSystem
+data:
+- name: messageSendParamsSchema
+  type: any
+  val: |-
+    z.object({
+      message: z.object({
+        role: z.enum(['user', 'agent']),
+        parts: z.array(
+          z.object({
+            kind:...
+- name: GET_AGENT_CARD_ROUTE
+  type: any
+  val: |-
+    createRoute({
+      method: 'GET',
+      path: '/.well-known/:agentId/agent-card.json',
+      responseType: 'json',
+      pathParamSchem...
+- name: AGENT_EXECUTION_ROUTE
+  type: any
+  val: |-
+    createRoute({
+      method: 'POST',
+      path: '/a2a/:agentId',
+      responseType: 'json',
+      pathParamSchema: a2aAgentIdPathParams...
+functions:
+- name: getAgentCardByIdHandler
+  sig: |-
+    getAgentCardByIdHandler({
+      mastra,
+      agentId,
+      executionUrl = `/a2a/${agentId}`,
+      provider = {
+        organization: 'Mastra',
+        url: 'https://mastra.ai',
+      },
+      version = '1.0',
+      requestContext,
+    }: Context & {
+      requestContext: RequestContext;
+      agentId: keyof ReturnType<typeof mastra.listAgents>;
+      executionUrl?: string;
+      version?: string;
+      provider?: {
+        organization: string;
+        url: string;
+      };
+    }): Promise<AgentCard>
+  is_async: true
+  lines:
+  - 47
+  - 99
+  detail:
+    calls:
+    - Object.entries
+    - Object.entries(tools).map
+    - Promise.all
+    - agent.getInstructions
+    - agent.listTools
+    - convertInstructionsToString
+    - getAgentFromSystem
+- name: validateMessageSendParams
+  sig: 'validateMessageSendParams(params: MessageSendParams)'
+  lines:
+  - 101
+  - 111
+  detail:
+    calls:
+    - MastraA2AError.invalidParams
+    - messageSendParamsSchema.parse
+- name: handleMessageSend
+  sig: |-
+    handleMessageSend({
+      requestId,
+      params,
+      taskStore,
+      agent,
+      agentId,
+      logger,
+      requestContext,
+    }: {
+      requestId: string;
+      params: MessageSendParams;
+      taskStore: InMemoryTaskStore;
+      agent: Agent;
+      agentId: string;
+      logger?: IMastraLogger;
+      requestContext: RequestContext;
+    })
+  is_async: true
+  lines:
+  - 113
+  - 222
+  detail:
+    calls:
+    - String
+    - agent.generate
+    - applyUpdateToTask
+    - convertToCoreMessage
+    - createSuccessResponse
+    - createTaskContext
+    - crypto.randomUUID
+    - loadOrCreateTask
+    - logger?.error
+    - normalizeError
+    - taskStore.save
+    - validateMessageSendParams
+- name: handleTaskGet
+  sig: |-
+    handleTaskGet({
+      requestId,
+      taskStore,
+      agentId,
+      taskId,
+    }: {
+      requestId: string;
+      taskStore: InMemoryTaskStore;
+      agentId: string;
+      taskId: string;
+    })
+  is_async: true
+  lines:
+  - 224
+  - 242
+  detail:
+    calls:
+    - MastraA2AError.taskNotFound
+    - createSuccessResponse
+    - taskStore.load
+- name: handleTaskCancel
+  sig: |-
+    handleTaskCancel({
+      requestId,
+      taskStore,
+      agentId,
+      taskId,
+      logger,
+    }: {
+      requestId: string;
+      taskStore: InMemoryTaskStore;
+      agentId: string;
+      taskId: string;
+      logger?: IMastraLogger;
+    })
+  is_async: true
+  lines:
+  - 293
+  - 348
+  detail:
+    calls:
+    - MastraA2AError.taskNotFound
+    - applyUpdateToTask
+    - createSuccessResponse
+    - crypto.randomUUID
+    - finalStates.includes
+    - logger?.info
+    - taskStore.activeCancellations.add
+    - taskStore.activeCancellations.delete
+    - taskStore.load
+    - taskStore.save
+- name: getAgentExecutionHandler
+  sig: |-
+    getAgentExecutionHandler({
+      requestId,
+      mastra,
+      agentId,
+      requestContext,
+      method,
+      params,
+      taskStore,
+      logger,
+    }: Context & {
+      requestId: string;
+      requestContext: RequestContext;
+      agentId: string;
+      method: 'message/send' | 'message/stream' | 'tasks/get' | 'tasks/cancel';
+      params: MessageSendParams | TaskQueryParams | TaskIdParams;
+      taskStore: InMemoryTaskStore;
+      logger?: IMastraLogger;
+    }): Promise<any>
+  is_async: true
+  lines:
+  - 350
+  - 431
+  detail:
+    calls:
+    - MastraA2AError.methodNotFound
+    - getAgentFromSystem
+    - handleMessageSend
+    - handleMessageStream
+    - handleTaskCancel
+    - handleTaskGet
+    - normalizeError
+exports:
+- name: getAgentCardByIdHandler
+  kind: func
+- name: validateMessageSendParams
+  kind: func
+- name: handleMessageSend
+  kind: func
+- name: handleTaskGet
+  kind: func
+- name: handleTaskCancel
+  kind: func
+- name: getAgentExecutionHandler
+  kind: func
+- name: messageSendParamsSchema
+  kind: data
+- name: GET_AGENT_CARD_ROUTE
+  kind: data
+- name: AGENT_EXECUTION_ROUTE
+  kind: data

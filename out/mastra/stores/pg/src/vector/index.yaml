@@ -1,0 +1,616 @@
+## Roska File Descriptor — vector/index.ts
+file: vector/index.ts
+lines: 1791
+imports:
+- sym: '@mastra/core/error.ErrorCategory'
+- sym: '@mastra/core/error.ErrorDomain'
+- sym: '@mastra/core/error.MastraError'
+- sym: '@mastra/core/storage.createVectorErrorId'
+- sym: '@mastra/core/utils.parseSqlIdentifier'
+- sym: '@mastra/core/vector.MastraVector'
+- sym: '@mastra/core/vector.validateUpsertInput'
+- sym: '@mastra/core/vector.validateTopK'
+- sym: '@mastra/core/vector.IndexStats'
+  kind: typing
+- sym: '@mastra/core/vector.QueryResult'
+  kind: typing
+- sym: '@mastra/core/vector.QueryVectorParams'
+  kind: typing
+- sym: '@mastra/core/vector.CreateIndexParams'
+  kind: typing
+- sym: '@mastra/core/vector.UpsertVectorParams'
+  kind: typing
+- sym: '@mastra/core/vector.DescribeIndexParams'
+  kind: typing
+- sym: '@mastra/core/vector.DeleteIndexParams'
+  kind: typing
+- sym: '@mastra/core/vector.DeleteVectorParams'
+  kind: typing
+- sym: '@mastra/core/vector.DeleteVectorsParams'
+  kind: typing
+- sym: '@mastra/core/vector.UpdateVectorParams'
+  kind: typing
+- sym: async-mutex.Mutex
+- sym: pg.pg
+- sym: xxhash-wasm.xxhash
+- sym: ../shared/config.validateConfig
+- sym: ../shared/config.isCloudSqlConfig
+- sym: ../shared/config.isConnectionStringConfig
+- sym: ../shared/config.isHostConfig
+- sym: ../shared/config.PgVectorConfig
+  kind: typing
+- sym: ./filter.PGFilterTranslator
+- sym: ./filter.PGVectorFilter
+  kind: typing
+- sym: ./sql-builder.buildFilterQuery
+- sym: ./sql-builder.buildDeleteFilterQuery
+- sym: ./types.IndexConfig
+  kind: typing
+- sym: ./types.IndexType
+  kind: typing
+- sym: ./types.PgMetric
+  kind: typing
+- sym: ./types.VectorOps
+  kind: typing
+- sym: ./types.VectorType
+  kind: typing
+types:
+- name: PGIndexStats
+  kind: trait
+  bases:
+  - IndexStats
+  decorators:
+  - interface
+  fields:
+  - name: type
+    type: IndexType
+  - name: vectorType
+    type: VectorType
+  - name: config
+    type: |-
+      {
+          m?: number;
+          efConstruction?: number;
+          lists?: number;
+          probes?: number;
+        }
+  lines:
+  - 29
+  - 45
+- name: PgQueryVectorParams
+  kind: trait
+  bases:
+  - QueryVectorParams<PGVectorFilter>
+  decorators:
+  - interface
+  fields:
+  - name: minScore
+    type: number
+  - name: ef
+    type: number
+  - name: probes
+    type: number
+  lines:
+  - 47
+  - 59
+- name: PgCreateIndexParams
+  kind: trait
+  bases:
+  - Omit<CreateIndexParams, 'metric'>
+  decorators:
+  - interface
+  fields:
+  - name: metric
+    type: PgMetric
+  - name: indexConfig
+    type: IndexConfig
+  - name: buildIndex
+    type: boolean
+  - name: vectorType
+    type: VectorType
+  - name: metadataIndexes
+    type: string[]
+  lines:
+  - 61
+  - 95
+- name: PgDefineIndexParams
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: metric
+    type: PgMetric
+  - name: indexConfig
+    type: IndexConfig
+  - name: vectorType
+    type: VectorType
+  lines:
+  - 97
+  - 102
+- name: PgVector
+  kind: struct
+  ctx: Detects which schema contains the vector extension and its version
+  bases:
+  - MastraVector
+  fields:
+  - name: pool
+    type: pg.Pool
+  - name: describeIndexCache
+    type: Map<string, PGIndexStats>
+    default: new Map()
+  - name: createdIndexes
+    type: any
+    default: new Map<string, number>()
+  - name: indexVectorTypes
+    type: any
+    default: new Map<string, VectorType>()
+  - name: mutexesByName
+    type: any
+    default: new Map<string, Mutex>()
+  - name: schema
+    type: string
+  - name: setupSchemaPromise
+    type: Promise<void> | null
+    default: 'null'
+  - name: installVectorExtensionPromise
+    type: Promise<void> | null
+    default: 'null'
+  - name: vectorExtensionInstalled
+    type: boolean | undefined
+    default: undefined
+  - name: vectorExtensionSchema
+    type: string | null
+    default: 'null'
+  - name: vectorExtensionVersion
+    type: string | null
+    default: 'null'
+  - name: schemaSetupComplete
+    type: boolean | undefined
+    default: undefined
+  - name: cacheWarmupPromise
+    type: Promise<void> | null
+    default: 'null'
+  - name: hasher
+    type: any
+    default: xxhash()
+  methods:
+  - name: constructor
+    sig: 'constructor(config: PgVectorConfig & { id: string })'
+    lines:
+    - 119
+    - 202
+    detail:
+      calls:
+      - |-
+        (async () => {
+                try {
+                  const existingIndexes = await this.listIndexes();
+                  a...
+      - createVectorErrorId
+      - isCloudSqlConfig
+      - isConnectionStringConfig
+      - isHostConfig
+      - new Error
+      - new MastraError
+      - new pg.Pool
+      - super
+      - validateConfig
+  - name: getMutexByName
+    sig: 'getMutexByName(indexName: string)'
+    vis: private
+    lines:
+    - 204
+    - 207
+    detail:
+      calls:
+      - new Mutex
+      - this.mutexesByName.get
+      - this.mutexesByName.has
+      - this.mutexesByName.set
+  - name: detectVectorExtensionSchema
+    sig: 'detectVectorExtensionSchema(client: pg.PoolClient): Promise<string | null>'
+    is_async: true
+    vis: private
+    lines:
+    - 212
+    - 237
+    detail:
+      calls:
+      - client.query
+      - this.logger.debug
+  - name: getVectorOps
+    sig: 'getVectorOps(vectorType: VectorType, metric: PgMetric): VectorOps'
+    vis: private
+    lines:
+    - 330
+    - 378
+    detail:
+      calls:
+      - this.getMetricOps
+  - name: transformFilter
+    sig: 'transformFilter(filter?: PGVectorFilter)'
+    lines:
+    - 395
+    - 398
+    detail:
+      calls:
+      - new PGFilterTranslator
+      - translator.translate
+  - name: getIndexInfo
+    sig: 'getIndexInfo({ indexName }: DescribeIndexParams): Promise<PGIndexStats>'
+    is_async: true
+    lines:
+    - 400
+    - 405
+    detail:
+      calls:
+      - this.describeIndex
+      - this.describeIndexCache.get
+      - this.describeIndexCache.has
+      - this.describeIndexCache.set
+  - name: query
+    sig: |-
+      query({
+          indexName,
+          queryVector,
+          topK = 10,
+          filter,
+          includeVector = false,
+          minScore = -1,
+          ef,
+          probes,
+        }: PgQueryVectorParams): Promise<QueryResult[]>
+    is_async: true
+    lines:
+    - 407
+    - 566
+    detail:
+      calls:
+      - Array.isArray
+      - Math.max
+      - Math.min
+      - Object.keys
+      - buildDeleteFilterQuery
+      - buildFilterQuery
+      - client.query
+      - client.release
+      - createVectorErrorId
+      - new Error
+      - new MastraError
+      - ops.formatVector
+      - ops.scoreExpr
+      - queryVector.every
+      - result.rows.map
+      - this.getIndexInfo
+      - this.getTableName
+      - this.getVectorOps
+      - this.getVectorTypeName
+      - this.logger?.trackException
+      - this.pool.connect
+      - this.transformFilter
+      - validateTopK
+  - name: upsert
+    sig: |-
+      upsert({
+          indexName,
+          vectors,
+          metadata,
+          ids,
+          deleteFilter,
+        }: UpsertVectorParams<PGVectorFilter>): Promise<string[]>
+    is_async: true
+    lines:
+    - 568
+    - 679
+    detail:
+      calls:
+      - JSON.stringify
+      - buildDeleteFilterQuery
+      - client.query
+      - client.release
+      - createVectorErrorId
+      - error.message.match
+      - error.message?.includes
+      - filterQuery.trim
+      - filterQuery.trim().replace
+      - new MastraError
+      - ops.formatVector
+      - this.getIndexInfo
+      - this.getTableName
+      - this.getVectorOps
+      - this.getVectorTypeName
+      - this.logger?.debug
+      - this.logger?.trackException
+      - this.pool.connect
+      - this.transformFilter
+      - validateUpsertInput
+      - vectors.map
+  - name: getIndexCacheKey
+    sig: |-
+      getIndexCacheKey({
+          indexName,
+          dimension,
+          metric,
+          type,
+          vectorType = 'vector',
+          metadataIndexes,
+        }: Omit<CreateIndexParams, 'metric'> & {
+          metric?: PgMetric;
+          type: IndexType | undefined;
+          vectorType?: VectorType;
+          metadataIndexes?: string[];
+        })
+    is_async: true
+    vis: private
+    lines:
+    - 682
+    - 704
+    detail:
+      calls:
+      - (await this.hasher).h32
+      - JSON.stringify
+      - metadataIndexes?.toSorted
+  - name: setupSchema
+    sig: 'setupSchema(client: pg.PoolClient)'
+    is_async: true
+    vis: private
+    lines:
+    - 709
+    - 758
+    detail:
+      calls:
+      - |-
+        (async () => {
+                try {
+                  // First check if schema exists and we have usage permission
+        ...
+  - name: createIndex
+    sig: |-
+      createIndex({
+          indexName,
+          dimension,
+          metric: rawMetric = 'cosine',
+          indexConfig = {},
+          buildIndex = true,
+          vectorType = 'vector',
+          metadataIndexes,
+        }: PgCreateIndexParams): Promise<void>
+    is_async: true
+    lines:
+    - 760
+    - 952
+    detail:
+      calls:
+      - Number.isInteger
+      - createVectorErrorId
+      - indexName.match
+      - |-
+        mutex
+              .runExclusive
+      - |-
+        mutex
+              .runExclusive(async () => {
+                if (this.cachedIndexExists(indexName, indexCacheKey)...
+      - new Error
+      - new MastraError
+      - this.cachedIndexExists
+      - this.getIndexCacheKey
+      - this.getMutexByName
+      - this.getTableName
+      - this.logger?.trackException
+  - name: buildIndex
+    sig: 'buildIndex({ indexName, metric = ''cosine'', indexConfig, vectorType }: PgDefineIndexParams): Promise<void>'
+    is_async: true
+    lines:
+    - 954
+    - 975
+    detail:
+      calls:
+      - client.release
+      - createVectorErrorId
+      - new MastraError
+      - this.logger?.trackException
+      - this.pool.connect
+      - this.setupIndex
+  - name: setupIndex
+    sig: |-
+      setupIndex(
+          { indexName, metric, indexConfig, vectorType = 'vector' }: PgDefineIndexParams,
+          client: pg.PoolClient,
+        )
+    is_async: true
+    vis: private
+    lines:
+    - 977
+    - 1127
+    detail:
+      calls:
+      - mutex.runExclusive
+      - this.getMutexByName
+  - name: createMetadataIndexes
+    sig: 'createMetadataIndexes(tableName: string, indexName: string, metadataFields: string[])'
+    is_async: true
+    vis: private
+    lines:
+    - 1129
+    - 1150
+    detail:
+      calls:
+      - field.replace
+      - hasher.h32
+      - hasher.h32(field).toString
+      - indexName.slice
+      - this.pool.query
+  - name: installVectorExtension
+    sig: 'installVectorExtension(client: pg.PoolClient)'
+    is_async: true
+    vis: private
+    lines:
+    - 1152
+    - 1234
+    detail:
+      calls:
+      - |-
+        (async () => {
+                try {
+                  // First, detect if and where the extension is already instal...
+  - name: listIndexes
+    sig: 'listIndexes(): Promise<string[]>'
+    is_async: true
+    lines:
+    - 1236
+    - 1286
+    detail:
+      calls:
+      - client.query
+      - client.release
+      - createVectorErrorId
+      - mastraTables.rows.map
+      - new MastraError
+      - this.logger?.trackException
+      - this.pool.connect
+  - name: describeIndex
+    sig: 'describeIndex({ indexName }: DescribeIndexParams): Promise<PGIndexStats>'
+    is_async: true
+    lines:
+    - 1294
+    - 1414
+    detail:
+      calls:
+      - client.query
+      - client.release
+      - createVectorErrorId
+      - index_def.match
+      - new Error
+      - new MastraError
+      - operator_class.includes
+      - parseInt
+      - this.getTableName
+      - this.logger?.trackException
+      - this.pool.connect
+  - name: deleteIndex
+    sig: 'deleteIndex({ indexName }: DeleteIndexParams): Promise<void>'
+    is_async: true
+    lines:
+    - 1416
+    - 1443
+    detail:
+      calls:
+      - client.query
+      - client.release
+      - createVectorErrorId
+      - new MastraError
+      - this.createdIndexes.delete
+      - this.describeIndexCache.delete
+      - this.getTableName
+      - this.indexVectorTypes.delete
+      - this.logger?.trackException
+      - this.pool.connect
+  - name: truncateIndex
+    sig: 'truncateIndex({ indexName }: DeleteIndexParams): Promise<void>'
+    is_async: true
+    lines:
+    - 1445
+    - 1468
+    detail:
+      calls:
+      - client.query
+      - client.release
+      - createVectorErrorId
+      - new MastraError
+      - this.getTableName
+      - this.logger?.trackException
+      - this.pool.connect
+  - name: disconnect
+    sig: disconnect()
+    is_async: true
+    lines:
+    - 1470
+    - 1482
+    detail:
+      calls:
+      - this.pool.end
+  - name: updateVector
+    sig: 'updateVector({ indexName, id, filter, update }: UpdateVectorParams<PGVectorFilter>): Promise<void>'
+    is_async: true
+    lines:
+    - 1494
+    - 1631
+    detail:
+      calls:
+      - JSON.stringify
+      - Object.keys
+      - buildDeleteFilterQuery
+      - client.query
+      - client?.release
+      - createVectorErrorId
+      - filterQuery.trim
+      - filterQuery.trim().replace
+      - new Error
+      - new MastraError
+      - ops.formatVector
+      - this.getIndexInfo
+      - this.getTableName
+      - this.getVectorOps
+      - this.getVectorTypeName
+      - this.logger?.info
+      - this.logger?.trackException
+      - this.pool.connect
+      - this.transformFilter
+      - updateParts.join
+      - updateParts.push
+      - values.push
+      - whereClause.replace
+  - name: deleteVector
+    sig: 'deleteVector({ indexName, id }: DeleteVectorParams): Promise<void>'
+    is_async: true
+    lines:
+    - 1640
+    - 1668
+    detail:
+      calls:
+      - client.query
+      - client?.release
+      - createVectorErrorId
+      - new MastraError
+      - this.getTableName
+      - this.logger?.trackException
+      - this.pool.connect
+  - name: deleteVectors
+    sig: 'deleteVectors({ indexName, filter, ids }: DeleteVectorsParams<PGVectorFilter>): Promise<void>'
+    is_async: true
+    lines:
+    - 1677
+    - 1790
+    detail:
+      calls:
+      - JSON.stringify
+      - Object.keys
+      - buildDeleteFilterQuery
+      - client.query
+      - client?.release
+      - createVectorErrorId
+      - filterQuery.trim
+      - filterQuery.trim().replace
+      - ids.map
+      - 'ids.map((_: string, i: number) => `$${i + 1}`).join'
+      - new MastraError
+      - this.getTableName
+      - this.logger?.info
+      - this.logger?.trackException
+      - this.pool.connect
+      - this.transformFilter
+  lines:
+  - 104
+  - 1791
+exports:
+- name: PGIndexStats
+  kind: type
+- name: PgQueryVectorParams
+  kind: type
+- name: PgCreateIndexParams
+  kind: type
+- name: PgDefineIndexParams
+  kind: type
+- name: PgVector
+  kind: type

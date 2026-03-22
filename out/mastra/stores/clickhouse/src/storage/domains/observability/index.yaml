@@ -1,0 +1,284 @@
+## Roska File Descriptor — observability/index.ts
+file: observability/index.ts
+lines: 793
+imports:
+- sym: '@clickhouse/client.ClickHouseClient'
+  kind: typing
+- sym: '@mastra/core/error.ErrorCategory'
+- sym: '@mastra/core/error.ErrorDomain'
+- sym: '@mastra/core/error.MastraError'
+- sym: '@mastra/core/storage.createStorageErrorId'
+- sym: '@mastra/core/storage.listTracesArgsSchema'
+- sym: '@mastra/core/storage.ObservabilityStorage'
+- sym: '@mastra/core/storage.SPAN_SCHEMA'
+- sym: '@mastra/core/storage.TABLE_SPANS'
+- sym: '@mastra/core/storage.toTraceSpans'
+- sym: '@mastra/core/storage.TraceStatus'
+- sym: '@mastra/core/storage.SpanRecord'
+  kind: typing
+- sym: '@mastra/core/storage.ListTracesArgs'
+  kind: typing
+- sym: '@mastra/core/storage.ListTracesResponse'
+  kind: typing
+- sym: '@mastra/core/storage.TracingStorageStrategy'
+  kind: typing
+- sym: '@mastra/core/storage.UpdateSpanArgs'
+  kind: typing
+- sym: '@mastra/core/storage.BatchDeleteTracesArgs'
+  kind: typing
+- sym: '@mastra/core/storage.BatchUpdateSpansArgs'
+  kind: typing
+- sym: '@mastra/core/storage.BatchCreateSpansArgs'
+  kind: typing
+- sym: '@mastra/core/storage.CreateSpanArgs'
+  kind: typing
+- sym: '@mastra/core/storage.GetSpanArgs'
+  kind: typing
+- sym: '@mastra/core/storage.GetSpanResponse'
+  kind: typing
+- sym: '@mastra/core/storage.GetRootSpanArgs'
+  kind: typing
+- sym: '@mastra/core/storage.GetRootSpanResponse'
+  kind: typing
+- sym: '@mastra/core/storage.GetTraceArgs'
+  kind: typing
+- sym: '@mastra/core/storage.GetTraceResponse'
+  kind: typing
+- sym: ../../db.ClickhouseDB
+- sym: ../../db.resolveClickhouseConfig
+- sym: ../../db.ClickhouseDomainConfig
+  kind: typing
+- sym: ../../db/utils.TABLE_ENGINES
+- sym: ../../db/utils.transformRows
+types:
+- name: ObservabilityStorageClickhouse
+  kind: struct
+  ctx: Manually run the spans migration to deduplicate and update the sorting key. This is intended to be called from the CLI when duplicates are detected.
+  bases:
+  - ObservabilityStorage
+  fields:
+  - name: client
+    type: ClickHouseClient
+  methods:
+  - name: constructor
+    sig: 'constructor(config: ClickhouseDomainConfig)'
+    lines:
+    - 37
+    - 42
+    detail:
+      calls:
+      - new ClickhouseDB
+      - resolveClickhouseConfig
+      - super
+  - name: init
+    sig: 'init(): Promise<void>'
+    is_async: true
+    lines:
+    - 44
+    - 101
+    detail:
+      calls:
+      - createStorageErrorId
+      - new MastraError
+      - this.#db.alterTable
+      - this.#db.checkForDuplicateSpans
+      - this.#db.checkSpansMigrationStatus
+      - this.#db.createTable
+  - name: dangerouslyClearAll
+    sig: 'dangerouslyClearAll(): Promise<void>'
+    is_async: true
+    lines:
+    - 103
+    - 105
+    detail:
+      calls:
+      - this.#db.clearTable
+  - name: migrateSpans
+    sig: |-
+      migrateSpans(): Promise<{
+          success: boolean;
+          alreadyMigrated: boolean;
+          duplicatesRemoved: number;
+          message: string;
+        }>
+    is_async: true
+    lines:
+    - 113
+    - 153
+    detail:
+      calls:
+      - this.#db.checkForDuplicateSpans
+      - this.#db.checkSpansMigrationStatus
+      - this.#db.migrateSpansTableSortingKey
+      - this.logger?.info
+  - name: checkSpansMigrationStatus
+    sig: |-
+      checkSpansMigrationStatus(): Promise<{
+          needsMigration: boolean;
+          hasDuplicates: boolean;
+          duplicateCount: number;
+          constraintExists: boolean;
+          tableName: string;
+        }>
+    is_async: true
+    lines:
+    - 159
+    - 186
+    detail:
+      calls:
+      - this.#db.checkForDuplicateSpans
+      - this.#db.checkSpansMigrationStatus
+  - name: tracingStrategy
+    sig: |-
+      tracingStrategy(): {
+          preferred: TracingStorageStrategy;
+          supported: TracingStorageStrategy[];
+        }
+    lines:
+    - 188
+    - 199
+    detail: {}
+  - name: createSpan
+    sig: 'createSpan(args: CreateSpanArgs): Promise<void>'
+    is_async: true
+    lines:
+    - 201
+    - 230
+    detail:
+      calls:
+      - Date.now
+      - createStorageErrorId
+      - new MastraError
+      - span.endedAt.getTime
+      - span.startedAt.getTime
+      - this.#db.insert
+  - name: getSpan
+    sig: 'getSpan(args: GetSpanArgs): Promise<GetSpanResponse | null>'
+    is_async: true
+    lines:
+    - 232
+    - 275
+    detail:
+      calls:
+      - createStorageErrorId
+      - engine.startsWith
+      - new MastraError
+      - result.json
+      - this.client.query
+      - transformRows
+  - name: getRootSpan
+    sig: 'getRootSpan(args: GetRootSpanArgs): Promise<GetRootSpanResponse | null>'
+    is_async: true
+    lines:
+    - 277
+    - 320
+    detail:
+      calls:
+      - createStorageErrorId
+      - engine.startsWith
+      - new MastraError
+      - result.json
+      - this.client.query
+      - transformRows
+  - name: getTrace
+    sig: 'getTrace(args: GetTraceArgs): Promise<GetTraceResponse | null>'
+    is_async: true
+    lines:
+    - 322
+    - 363
+    detail:
+      calls:
+      - createStorageErrorId
+      - engine.startsWith
+      - new MastraError
+      - result.json
+      - this.client.query
+      - transformRows
+  - name: updateSpan
+    sig: 'updateSpan(args: UpdateSpanArgs): Promise<void>'
+    is_async: true
+    lines:
+    - 365
+    - 421
+    detail:
+      calls:
+      - Date.now
+      - await this.#db.load
+      - createStorageErrorId
+      - data.endedAt.getTime
+      - data.startedAt.getTime
+      - new MastraError
+      - this.client.insert
+  - name: listTraces
+    sig: 'listTraces(args: ListTracesArgs): Promise<ListTracesResponse>'
+    is_async: true
+    lines:
+    - 423
+    - 691
+    detail:
+      calls:
+      - (transformRows(rows) as SpanRecord[]).map
+      - /^[a-zA-Z_][a-zA-Z0-9_]*$/.test
+      - JSON.stringify
+      - Number
+      - Object.entries
+      - conditions.join
+      - conditions.push
+      - countResult.json
+      - createStorageErrorId
+      - engine.startsWith
+      - filters.endedAt.end.getTime
+      - filters.endedAt.start.getTime
+      - filters.startedAt.end.getTime
+      - filters.startedAt.start.getTime
+      - listTracesArgsSchema.parse
+      - new MastraError
+      - result.json
+      - this.client.query
+      - toTraceSpans
+      - transformRows
+  - name: batchCreateSpans
+    sig: 'batchCreateSpans(args: BatchCreateSpansArgs): Promise<void>'
+    is_async: true
+    lines:
+    - 693
+    - 717
+    detail:
+      calls:
+      - Date.now
+      - args.records.map
+      - createStorageErrorId
+      - new MastraError
+      - this.#db.batchInsert
+  - name: batchUpdateSpans
+    sig: 'batchUpdateSpans(args: BatchUpdateSpansArgs): Promise<void>'
+    is_async: true
+    lines:
+    - 719
+    - 772
+    detail:
+      calls:
+      - Date.now
+      - await this.#db.load
+      - createStorageErrorId
+      - new MastraError
+      - this.client.insert
+      - updates.endedAt.getTime
+      - updates.startedAt.getTime
+  - name: batchDeleteTraces
+    sig: 'batchDeleteTraces(args: BatchDeleteTracesArgs): Promise<void>'
+    is_async: true
+    lines:
+    - 774
+    - 792
+    detail:
+      calls:
+      - createStorageErrorId
+      - new MastraError
+      - this.client.command
+  lines:
+  - 33
+  - 793
+exports:
+- name: ObservabilityStorageClickhouse
+  kind: type

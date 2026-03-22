@@ -1,0 +1,507 @@
+## Roska File Descriptor — memory/index.ts
+file: memory/index.ts
+lines: 1340
+imports:
+- sym: '@mastra/core/agent.MessageList'
+- sym: '@mastra/core/agent.MastraMessageContentV2'
+  kind: typing
+- sym: '@mastra/core/error.ErrorCategory'
+- sym: '@mastra/core/error.ErrorDomain'
+- sym: '@mastra/core/error.MastraError'
+- sym: '@mastra/core/memory.MastraDBMessage'
+  kind: typing
+- sym: '@mastra/core/memory.StorageThreadType'
+  kind: typing
+- sym: '@mastra/core/storage.MemoryStorage'
+- sym: '@mastra/core/storage.TABLE_RESOURCES'
+- sym: '@mastra/core/storage.TABLE_THREADS'
+- sym: '@mastra/core/storage.TABLE_MESSAGES'
+- sym: '@mastra/core/storage.normalizePerPage'
+- sym: '@mastra/core/storage.calculatePagination'
+- sym: '@mastra/core/storage.createStorageErrorId'
+- sym: '@mastra/core/storage.ensureDate'
+- sym: '@mastra/core/storage.filterByDateRange'
+- sym: '@mastra/core/storage.StorageResourceType'
+  kind: typing
+- sym: '@mastra/core/storage.StorageListMessagesInput'
+  kind: typing
+- sym: '@mastra/core/storage.StorageListMessagesOutput'
+  kind: typing
+- sym: '@mastra/core/storage.StorageListThreadsInput'
+  kind: typing
+- sym: '@mastra/core/storage.StorageListThreadsOutput'
+  kind: typing
+- sym: '@mastra/core/storage.ThreadOrderBy'
+  kind: typing
+- sym: '@mastra/core/storage.ThreadSortDirection'
+  kind: typing
+- sym: '@mastra/core/storage.StorageCloneThreadInput'
+  kind: typing
+- sym: '@mastra/core/storage.StorageCloneThreadOutput'
+  kind: typing
+- sym: '@mastra/core/storage.ThreadCloneMetadata'
+  kind: typing
+- sym: '@upstash/redis.Redis'
+  kind: typing
+- sym: ../../db.UpstashDB
+- sym: ../../db.resolveUpstashConfig
+- sym: ../../db.UpstashDomainConfig
+  kind: typing
+- sym: ../utils.getKey
+- sym: ../utils.processRecord
+types:
+- name: StoreMemoryUpstash
+  kind: struct
+  ctx: Lookup threadId for a message - tries index first (O(1)), falls back to scan (backwards compatible)
+  bases:
+  - MemoryStorage
+  fields:
+  - name: client
+    type: Redis
+  methods:
+  - name: constructor
+    sig: 'constructor(config: UpstashDomainConfig)'
+    lines:
+    - 50
+    - 55
+    detail:
+      calls:
+      - new UpstashDB
+      - resolveUpstashConfig
+      - super
+  - name: dangerouslyClearAll
+    sig: 'dangerouslyClearAll(): Promise<void>'
+    is_async: true
+    lines:
+    - 57
+    - 61
+    detail:
+      calls:
+      - this.#db.deleteData
+  - name: getThreadById
+    sig: 'getThreadById({ threadId }: { threadId: string }): Promise<StorageThreadType | null>'
+    is_async: true
+    lines:
+    - 63
+    - 91
+    detail:
+      calls:
+      - JSON.parse
+      - await this.#db.get
+      - createStorageErrorId
+      - ensureDate
+      - new MastraError
+  - name: listThreads
+    sig: 'listThreads(args: StorageListThreadsInput): Promise<StorageListThreadsOutput>'
+    is_async: true
+    lines:
+    - 93
+    - 217
+    detail:
+      calls:
+      - JSON.parse
+      - Object.entries
+      - Object.entries(filter.metadata).every
+      - Object.keys
+      - Object.keys(filter.metadata).join
+      - allThreads.push
+      - calculatePagination
+      - createStorageErrorId
+      - ensureDate
+      - keys.forEach
+      - mastraError.toString
+      - new Error
+      - new MastraError
+      - normalizePerPage
+      - pipeline.exec
+      - sortedThreads.slice
+      - this.#db.scanKeys
+      - this.client.pipeline
+      - this.logger.error
+      - this.logger?.trackException
+      - this.parseOrderBy
+      - this.sortThreads
+      - this.validateMetadataKeys
+      - this.validatePaginationInput
+  - name: saveThread
+    sig: 'saveThread({ thread }: { thread: StorageThreadType }): Promise<StorageThreadType>'
+    is_async: true
+    lines:
+    - 219
+    - 242
+    detail:
+      calls:
+      - createStorageErrorId
+      - mastraError.toString
+      - new MastraError
+      - this.#db.insert
+      - this.logger.error
+      - this.logger?.trackException
+  - name: updateThread
+    sig: |-
+      updateThread({
+          id,
+          title,
+          metadata,
+        }: {
+          id: string;
+          title: string;
+          metadata: Record<string, unknown>;
+        }): Promise<StorageThreadType>
+    is_async: true
+    lines:
+    - 244
+    - 291
+    detail:
+      calls:
+      - createStorageErrorId
+      - new MastraError
+      - this.getThreadById
+      - this.saveThread
+  - name: deleteThread
+    sig: 'deleteThread({ threadId }: { threadId: string }): Promise<void>'
+    is_async: true
+    lines:
+    - 293
+    - 327
+    detail:
+      calls:
+      - createStorageErrorId
+      - getKey
+      - getMessageKey
+      - getThreadMessagesKey
+      - new MastraError
+      - pipeline.del
+      - pipeline.exec
+      - this.#db.scanAndDelete
+      - this.client.pipeline
+      - this.client.zrange
+  - name: saveMessages
+    sig: 'saveMessages(args: { messages: MastraDBMessage[] }): Promise<{ messages: MastraDBMessage[] }>'
+    is_async: true
+    lines:
+    - 329
+    - 447
+    detail:
+      calls:
+      - await this.client.get
+      - createStorageErrorId
+      - getKey
+      - getMessageIndexKey
+      - getMessageKey
+      - getThreadMessagesKey
+      - keys.forEach
+      - list.get.all.db
+      - messages.map
+      - messagesWithIndex.slice
+      - new Date
+      - new Date(message.createdAt).getTime
+      - new Error
+      - new MastraError
+      - new MessageList
+      - new MessageList().add
+      - pipeline.del
+      - pipeline.exec
+      - pipeline.set
+      - pipeline.zadd
+      - pipeline.zrem
+      - pipeline2.exec
+      - processRecord
+      - results.filter
+      - this.#db.scanKeys
+      - this.client.pipeline
+      - this.getThreadById
+  - name: _getThreadIdForMessage
+    sig: '_getThreadIdForMessage(messageId: string): Promise<string | null>'
+    is_async: true
+    vis: private
+    lines:
+    - 452
+    - 474
+    detail:
+      calls:
+      - await this.client.get
+      - getMessageIndexKey
+      - getMessageKey
+      - this.#db.scanKeys
+      - this.client.set
+  - name: _getIncludedMessages
+    sig: '_getIncludedMessages(include: StorageListMessagesInput[''include'']): Promise<MastraDBMessage[]>'
+    is_async: true
+    vis: private
+    lines:
+    - 493
+    - 541
+    detail:
+      calls:
+      - Array.from
+      - Array.from(messageIds).forEach
+      - Math.max
+      - getThreadMessagesKey
+      - messageIds.add
+      - new Set
+      - nextIds.forEach
+      - pipeline.exec
+      - prevIds.forEach
+      - results.filter
+      - this._getThreadIdForMessage
+      - this.client.pipeline
+      - this.client.zrange
+      - this.client.zrank
+  - name: listMessagesById
+    sig: 'listMessagesById({ messageIds }: { messageIds: string[] }): Promise<{ messages: MastraDBMessage[] }>'
+    is_async: true
+    lines:
+    - 553
+    - 628
+    detail:
+      calls:
+      - JSON.stringify
+      - Promise.all
+      - backfillPipeline.exec
+      - createStorageErrorId
+      - foundMessages.forEach
+      - indexPipeline.exec
+      - indexedIds.forEach
+      - list.get.all.db
+      - messageIds.forEach
+      - messagePipeline.exec
+      - messageResults.filter
+      - new MastraError
+      - new MessageList
+      - new MessageList().add
+      - rawMessages.map
+      - rawMessages.push
+      - result.flat
+      - result.flat(1).filter
+      - this.client.keys
+      - this.client.pipeline
+      - threadKeys.map
+  - name: listMessages
+    sig: 'listMessages(args: StorageListMessagesInput): Promise<StorageListMessagesOutput>'
+    is_async: true
+    lines:
+    - 630
+    - 812
+    detail:
+      calls:
+      - Array.isArray
+      - allMessageIdsWithThreads.forEach
+      - allMessageIdsWithThreads.push
+      - allMessages.push
+      - calculatePagination
+      - createStorageErrorId
+      - filterByDateRange
+      - finalMessages.filter
+      - finalMessages.filter(m => m.threadId === threadId).map
+      - getThreadMessagesKey
+      - included.map
+      - list.get.all.db
+      - mastraError.toString
+      - messageIds.add
+      - messageIds.has
+      - messagesData.filter
+      - messagesData.slice
+      - new Error
+      - new MastraError
+      - new MessageList
+      - new MessageList().add
+      - new Set
+      - normalizePerPage
+      - pipeline.exec
+      - |-
+        results
+                .filter
+      - |-
+        results
+                .filter((msg): msg is MastraDBMessage & { _index?: number } => msg !== null)
+               ...
+      - this._getIncludedMessages
+      - this._sortMessages
+      - this.client.pipeline
+      - this.client.zrange
+      - this.logger.error
+      - this.logger?.trackException
+      - this.parseOrderBy
+      - threadId.join
+      - threadIds.some
+  - name: getResourceById
+    sig: 'getResourceById({ resourceId }: { resourceId: string }): Promise<StorageResourceType | null>'
+    is_async: true
+    lines:
+    - 814
+    - 835
+    detail:
+      calls:
+      - JSON.parse
+      - JSON.stringify
+      - await this.client.get
+      - new Date
+      - this.logger.error
+  - name: saveResource
+    sig: 'saveResource({ resource }: { resource: StorageResourceType }): Promise<StorageResourceType>'
+    is_async: true
+    lines:
+    - 837
+    - 854
+    detail:
+      calls:
+      - JSON.stringify
+      - resource.createdAt.toISOString
+      - resource.updatedAt.toISOString
+      - this.client.set
+      - this.logger.error
+  - name: updateResource
+    sig: |-
+      updateResource({
+          resourceId,
+          workingMemory,
+          metadata,
+        }: {
+          resourceId: string;
+          workingMemory?: string;
+          metadata?: Record<string, unknown>;
+        }): Promise<StorageResourceType>
+    is_async: true
+    lines:
+    - 856
+    - 896
+    detail:
+      calls:
+      - new Date
+      - this.getResourceById
+      - this.logger.error
+      - this.saveResource
+  - name: updateMessages
+    sig: |-
+      updateMessages(args: {
+          messages: (Partial<Omit<MastraDBMessage, 'createdAt'>> & {
+            id: string;
+            content?: { metadata?: MastraMessageContentV2['metadata']; content?: MastraMessageContentV2['content'] };
+          })[];
+        }): Promise<MastraDBMessage[]>
+    is_async: true
+    lines:
+    - 898
+    - 1058
+    detail:
+      calls:
+      - Object.keys
+      - Object.prototype.hasOwnProperty.call
+      - await this.client.get
+      - createStorageErrorId
+      - existingMessages.push
+      - getKey
+      - getMessageKey
+      - getThreadMessagesKey
+      - messages.find
+      - messages.map
+      - messages.map(m => m.id).join
+      - new Date
+      - new Date(updatedMessage.createdAt).getTime
+      - new MastraError
+      - new Set
+      - pipeline.del
+      - pipeline.exec
+      - pipeline.set
+      - pipeline.zadd
+      - pipeline.zrem
+      - processRecord
+      - this.#db.scanKeys
+      - this.client.pipeline
+      - threadIdsToUpdate.add
+      - updatedMessages.push
+  - name: deleteMessages
+    sig: 'deleteMessages(messageIds: string[]): Promise<void>'
+    is_async: true
+    lines:
+    - 1060
+    - 1159
+    detail:
+      calls:
+      - await this.client.get
+      - createStorageErrorId
+      - foundMessageIds.push
+      - getKey
+      - getMessageIndexKey
+      - getMessageKey
+      - indexPipeline.exec
+      - messageIds.forEach
+      - messageIds.join
+      - messageKeys.push
+      - new Date
+      - new MastraError
+      - new Set
+      - pipeline.del
+      - pipeline.exec
+      - pipeline.set
+      - processRecord
+      - this.#db.scanKeys
+      - this.client.pipeline
+      - threadIds.add
+  - name: cloneThread
+    sig: 'cloneThread(args: StorageCloneThreadInput): Promise<StorageCloneThreadOutput>'
+    is_async: true
+    lines:
+    - 1178
+    - 1339
+    detail:
+      calls:
+      - clonedMessages.push
+      - createStorageErrorId
+      - crypto.randomUUID
+      - filterByDateRange
+      - getKey
+      - getMessageIndexKey
+      - getMessageKey
+      - getThreadMessagesKey
+      - new Date
+      - new MastraError
+      - new Set
+      - pipeline.exec
+      - pipeline.get
+      - processRecord
+      - |-
+        results
+                .filter
+      - |-
+        results
+                .filter((msg): msg is MastraDBMessage & { _index?: number } => msg !== null)
+               ...
+      - sourceMessages.filter
+      - sourceMessages.slice
+      - sourceMessages.sort
+      - this.client.pipeline
+      - this.client.zrange
+      - this.getThreadById
+      - writePipeline.exec
+      - writePipeline.set
+      - writePipeline.zadd
+  lines:
+  - 47
+  - 1340
+functions:
+- name: getThreadMessagesKey
+  sig: 'getThreadMessagesKey(threadId: string): string'
+  lines:
+  - 33
+  - 35
+- name: getMessageKey
+  sig: 'getMessageKey(threadId: string, messageId: string): string'
+  lines:
+  - 37
+  - 40
+- name: getMessageIndexKey
+  sig: 'getMessageIndexKey(messageId: string): string'
+  lines:
+  - 43
+  - 45
+exports:
+- name: StoreMemoryUpstash
+  kind: type
+- name: getThreadMessagesKey
+  kind: func
+- name: getMessageKey
+  kind: func
+- name: getMessageIndexKey
+  kind: func

@@ -1,0 +1,295 @@
+## Roska File Descriptor — exporters/default.ts
+file: exporters/default.ts
+lines: 499
+imports:
+- sym: '@mastra/core/error.MastraError'
+- sym: '@mastra/core/error.ErrorDomain'
+- sym: '@mastra/core/logger.IMastraLogger'
+  kind: typing
+- sym: '@mastra/core/observability.TracingEvent'
+  kind: typing
+- sym: '@mastra/core/observability.InitExporterOptions'
+  kind: typing
+- sym: '@mastra/core/observability.MetricEvent'
+  kind: typing
+- sym: '@mastra/core/observability.LogEvent'
+  kind: typing
+- sym: '@mastra/core/observability.ScoreEvent'
+  kind: typing
+- sym: '@mastra/core/observability.FeedbackEvent'
+  kind: typing
+- sym: '@mastra/core/observability.TracingEventType'
+- sym: '@mastra/core/storage.ObservabilityStorage'
+  kind: typing
+- sym: '@mastra/core/storage.TracingStorageStrategy'
+  kind: typing
+- sym: '@mastra/core/storage.MastraCompositeStore'
+  kind: typing
+- sym: '@mastra/core/storage.buildCreateSpanRecord'
+- sym: '@mastra/core/storage.buildUpdateSpanRecord'
+- sym: '@mastra/core/storage.buildMetricRecord'
+- sym: '@mastra/core/storage.buildLogRecord'
+- sym: '@mastra/core/storage.buildScoreRecord'
+- sym: '@mastra/core/storage.buildFeedbackRecord'
+- sym: ./base.BaseExporterConfig
+  kind: typing
+- sym: ./base.BaseExporter
+- sym: ./event-buffer.EventBuffer
+- sym: ./event-buffer.BufferedEvent
+  kind: typing
+- sym: ./event-buffer.RetryCount
+  kind: typing
+- sym: ./event-buffer.UpdateSpanPartial
+  kind: typing
+types:
+- name: DefaultExporterConfig
+  kind: trait
+  ctx: Configuration for the DefaultExporter's batching, retry, and strategy behavior.
+  bases:
+  - BaseExporterConfig
+  decorators:
+  - interface
+  fields:
+  - name: maxBatchSize
+    type: number
+  - name: maxBufferSize
+    type: number
+  - name: maxBatchWaitMs
+    type: number
+  - name: maxRetries
+    type: number
+  - name: retryDelayMs
+    type: number
+  - name: strategy
+    type: TracingStorageStrategy | 'auto'
+  lines:
+  - 27
+  - 36
+- name: Resolve
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 63
+  - 63
+- name: DefaultExporter
+  kind: struct
+  ctx: Signals whose storage methods threw "not implemented" — skip on future flushes
+  bases:
+  - BaseExporter
+  fields:
+  - name: name
+    type: any
+    default: '''mastra-default-observability-exporter'''
+  methods:
+  - name: constructor
+    sig: 'constructor(config: DefaultExporterConfig = {})'
+    lines:
+    - 85
+    - 100
+    detail:
+      calls:
+      - new EventBuffer
+      - super
+  - name: init
+    sig: 'init(options: InitExporterOptions): Promise<void>'
+    is_async: true
+    lines:
+    - 105
+    - 155
+    detail:
+      calls:
+      - options.mastra?.getStorage
+      - resolveTracingStorageStrategy
+      - this.#eventBuffer.init
+      - this.#initPromises.clear
+      - this.#initPromises.forEach
+      - this.#storage.getStore
+      - this.logger.debug
+      - this.logger.warn
+  - name: handleBatchedFlush
+    sig: 'handleBatchedFlush(): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 206
+    - 212
+    detail:
+      calls:
+      - this.flushBuffer
+      - this.scheduleFlush
+      - this.shouldFlush
+  - name: flushCreates
+    sig: |-
+      flushCreates(
+          signal: string,
+          events: T[],
+          storageCall: (events: T[]) => Promise<void>,
+        ): Promise<void>
+    is_async: true
+    vis: private
+    lines:
+    - 219
+    - 239
+    detail:
+      calls:
+      - error.id.endsWith
+      - storageCall
+      - this.#eventBuffer.reAddCreates
+      - this.#unsupportedSignals.add
+      - this.#unsupportedSignals.has
+      - this.logger.warn
+  - name: flushSpanUpdates
+    sig: |-
+      flushSpanUpdates(
+          events: (TracingEvent & RetryCount)[],
+          deferredUpdates: BufferedEvent[],
+          isEnd: boolean,
+        ): Promise<void>
+    is_async: true
+    vis: private
+    lines:
+    - 245
+    - 287
+    detail:
+      calls:
+      - buildUpdateSpanRecord
+      - deferredUpdates.push
+      - error.id.endsWith
+      - partials.push
+      - this.#eventBuffer.endFinishedSpans
+      - this.#eventBuffer.reAddUpdates
+      - this.#eventBuffer.spanExists
+      - this.#observabilityStorage!.batchUpdateSpans
+      - this.#unsupportedSignals.add
+      - this.#unsupportedSignals.has
+      - this.logger.warn
+  - name: flushBuffer
+    sig: 'flushBuffer(): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 297
+    - 404
+    detail:
+      calls:
+      - Date.now
+      - Promise.all
+      - clearTimeout
+      - createFeedbackEvents.push
+      - createLogEvents.push
+      - createMetricEvents.push
+      - createScoreEvents.push
+      - createSpanEvents.push
+      - endSpanEvents.push
+      - this.#eventBuffer.reAddUpdates
+      - this.#eventBuffer.reset
+      - this.flushCreates
+      - this.flushSpanUpdates
+      - this.logger.debug
+      - updateSpanEvents.push
+  - name: _exportTracingEvent
+    sig: '_exportTracingEvent(event: TracingEvent): Promise<void>'
+    is_async: true
+    lines:
+    - 406
+    - 415
+    detail:
+      calls:
+      - this.#eventBuffer.addEvent
+      - this.handleBatchedFlush
+      - this.logger.debug
+      - this.waitForInit
+  - name: onMetricEvent
+    sig: 'onMetricEvent(event: MetricEvent): Promise<void>'
+    is_async: true
+    lines:
+    - 432
+    - 438
+    detail:
+      calls:
+      - this.#eventBuffer.addEvent
+      - this.handleBatchedFlush
+      - this.waitForInit
+  - name: onLogEvent
+    sig: 'onLogEvent(event: LogEvent): Promise<void>'
+    is_async: true
+    lines:
+    - 443
+    - 449
+    detail:
+      calls:
+      - this.#eventBuffer.addEvent
+      - this.handleBatchedFlush
+      - this.waitForInit
+  - name: onScoreEvent
+    sig: 'onScoreEvent(event: ScoreEvent): Promise<void>'
+    is_async: true
+    lines:
+    - 454
+    - 460
+    detail:
+      calls:
+      - this.#eventBuffer.addEvent
+      - this.handleBatchedFlush
+      - this.waitForInit
+  - name: onFeedbackEvent
+    sig: 'onFeedbackEvent(event: FeedbackEvent): Promise<void>'
+    is_async: true
+    lines:
+    - 465
+    - 471
+    detail:
+      calls:
+      - this.#eventBuffer.addEvent
+      - this.handleBatchedFlush
+      - this.waitForInit
+  - name: flush
+    sig: 'flush(): Promise<void>'
+    is_async: true
+    lines:
+    - 478
+    - 485
+    detail:
+      calls:
+      - this.flushBuffer
+      - this.logger.debug
+  - name: shutdown
+    sig: 'shutdown(): Promise<void>'
+    is_async: true
+    lines:
+    - 487
+    - 498
+    detail:
+      calls:
+      - clearTimeout
+      - this.flush
+      - this.logger.info
+  lines:
+  - 69
+  - 499
+functions:
+- name: resolveTracingStorageStrategy
+  sig: |-
+    resolveTracingStorageStrategy(
+      config: DefaultExporterConfig,
+      observabilityStorage: ObservabilityStorage,
+      storageName: string,
+      logger: IMastraLogger,
+    ): TracingStorageStrategy
+  lines:
+  - 41
+  - 61
+  detail:
+    calls:
+    - logger.warn
+    - observabilityStrategy.supported.includes
+exports:
+- name: DefaultExporterConfig
+  kind: type
+- name: Resolve
+  kind: type
+- name: DefaultExporter
+  kind: type
+- name: resolveTracingStorageStrategy
+  kind: func

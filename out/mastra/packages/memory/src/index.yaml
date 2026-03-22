@@ -1,0 +1,876 @@
+## Roska File Descriptor — src/index.ts
+file: src/index.ts
+lines: 2056
+imports:
+- sym: '@internal/ai-sdk-v4.embedMany'
+- sym: '@internal/ai-sdk-v4.TextPart'
+  kind: typing
+- sym: '@internal/ai-sdk-v5.embedMany as embedManyV5'
+- sym: '@internal/ai-v6.embedMany as embedManyV6'
+- sym: '@mastra/core/agent.MessageList'
+- sym: '@mastra/core/agent.MastraDBMessage'
+  kind: typing
+- sym: '@mastra/core/features.coreFeatures'
+- sym: '@mastra/core/memory.MastraMemory'
+- sym: '@mastra/core/memory.extractWorkingMemoryContent'
+- sym: '@mastra/core/memory.removeWorkingMemoryTags'
+- sym: '@mastra/core/memory.MemoryConfigInternal'
+  kind: typing
+- sym: '@mastra/core/memory.SharedMemoryConfig'
+  kind: typing
+- sym: '@mastra/core/memory.StorageThreadType'
+  kind: typing
+- sym: '@mastra/core/memory.WorkingMemoryTemplate'
+  kind: typing
+- sym: '@mastra/core/memory.MessageDeleteInput'
+  kind: typing
+- sym: '@mastra/core/memory.ObservationalMemoryOptions'
+  kind: typing
+- sym: '@mastra/core/memory.MemoryConfig'
+  kind: typing
+- sym: '@mastra/core/processors.InputProcessor'
+  kind: typing
+- sym: '@mastra/core/processors.InputProcessorOrWorkflow'
+  kind: typing
+- sym: '@mastra/core/processors.OutputProcessor'
+  kind: typing
+- sym: '@mastra/core/processors.OutputProcessorOrWorkflow'
+  kind: typing
+- sym: '@mastra/core/request-context.RequestContext'
+  kind: typing
+- sym: '@mastra/core/storage.StorageListThreadsInput'
+  kind: typing
+- sym: '@mastra/core/storage.StorageListThreadsOutput'
+  kind: typing
+- sym: '@mastra/core/storage.StorageListMessagesInput'
+  kind: typing
+- sym: '@mastra/core/storage.MemoryStorage'
+  kind: typing
+- sym: '@mastra/core/storage.StorageCloneThreadInput'
+  kind: typing
+- sym: '@mastra/core/storage.StorageCloneThreadOutput'
+  kind: typing
+- sym: '@mastra/core/storage.ThreadCloneMetadata'
+  kind: typing
+- sym: '@mastra/core/storage.ObservationalMemoryRecord'
+  kind: typing
+- sym: '@mastra/core/storage.BufferedObservationChunk'
+  kind: typing
+- sym: '@mastra/core/tools.ToolAction'
+  kind: typing
+- sym: '@mastra/core/utils.generateEmptyFromSchema'
+- sym: '@mastra/schema-compat/schema.isStandardSchemaWithJSON'
+- sym: '@mastra/schema-compat/schema.toStandardSchema'
+- sym: async-mutex.Mutex
+- sym: json-schema.JSONSchema7
+  kind: typing
+- sym: xxhash-wasm.xxhash
+- sym: ./tools/om-tools.recallTool
+- sym: ./tools/working-memory.updateWorkingMemoryTool
+- sym: ./tools/working-memory.__experimental_updateWorkingMemoryToolVNext
+- sym: ./tools/working-memory.deepMergeWorkingMemory
+data:
+- name: CHARS_PER_TOKEN
+  type: number
+  val: '4'
+- name: DEFAULT_MESSAGE_RANGE
+  type: object
+  val: '{ before: 1, after: 1 } as const'
+- name: DEFAULT_TOP_K
+  type: number
+  val: '4'
+- name: VECTOR_DELETE_BATCH_SIZE
+  type: number
+  val: '100'
+types:
+- name: NormalizedObservationalMemoryConfig
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 55
+  - 57
+- name: Memory
+  kind: struct
+  ctx: Gets the memory storage domain, throwing if not available.
+  bases:
+  - MastraMemory
+  fields:
+  - name: updateWorkingMemoryMutexes
+    type: any
+    default: new Map<string, Mutex>()
+  - name: hasher
+    type: any
+    default: xxhash()
+  - name: embeddingCache
+    type: any
+    default: |-
+      new Map<
+          number,
+          {
+            chunks: string[];
+            embeddings: Awaited<Ret...
+  - name: firstEmbed
+    type: Promise<any> | undefined
+  - name: defaultWorkingMemoryTemplate
+    type: any
+    default: "`\n# User Information\n- **First Name**: \n- **Last Name**: \n- **Location**: \n- **O..."
+  methods:
+  - name: constructor
+    sig: 'constructor(config: Omit<SharedMemoryConfig, ''working''> = {})'
+    lines:
+    - 84
+    - 98
+    detail:
+      calls:
+      - super
+      - this.getMergedThreadConfig
+  - name: getMemoryStore
+    sig: 'getMemoryStore(): Promise<MemoryStorage>'
+    is_async: true
+    vis: protected
+    lines:
+    - 103
+    - 109
+    detail:
+      calls:
+      - new Error
+      - this.storage.getStore
+  - name: listMessagesByResourceId
+    sig: |-
+      listMessagesByResourceId(args: {
+          resourceId: string;
+          perPage?: number | false;
+          page?: number;
+          orderBy?: { field?: 'createdAt'; direction?: 'ASC' | 'DESC' };
+          filter?: {
+            dateRange?: {
+              start?: Date;
+              end?: Date;
+              startExclusive?: boolean;
+              endExclusive?: boolean;
+            };
+          };
+          include?: Array<{
+            id: string;
+            threadId?: string;
+            withPreviousMessages?: number;
+            withNextMessages?: number;
+          }>;
+        }): Promise<{ messages: MastraDBMessage[]; total: number; page: number; perPage: number | false; hasMore: boolean }>
+    is_async: true
+    lines:
+    - 111
+    - 133
+    detail:
+      calls:
+      - memoryStore.listMessagesByResourceId
+      - this.getMemoryStore
+  - name: validateThreadIsOwnedByResource
+    sig: 'validateThreadIsOwnedByResource(threadId: string, resourceId: string, config: MemoryConfigInternal)'
+    is_async: true
+    vis: protected
+    lines:
+    - 135
+    - 154
+    detail:
+      calls:
+      - new Error
+      - this.getThreadById
+  - name: recall
+    sig: |-
+      recall(
+          args: StorageListMessagesInput & {
+            threadConfig?: MemoryConfigInternal;
+            vectorSearchString?: string;
+            threadId: string;
+          },
+        ): Promise<{
+          messages: MastraDBMessage[];
+          usage?: { tokens: number };
+          total: number;
+          page: number;
+          perPage: number | false;
+          hasMore: boolean;
+        }>
+    is_async: true
+    lines:
+    - 156
+    - 317
+    detail:
+      calls:
+      - Boolean
+      - Promise.all
+      - embeddings.map
+      - list.get.all.db
+      - memoryStore.listMessages
+      - new Error
+      - new MessageList
+      - new MessageList({ threadId, resourceId }).add
+      - paginatedResult.messages.reverse
+      - this.createEmbeddingIndex
+      - this.embedMessageContent
+      - this.getMemoryStore
+      - this.getMergedThreadConfig
+      - this.logger.debug
+      - this.validateThreadIsOwnedByResource
+      - vectorResults.map
+  - name: getThreadById
+    sig: 'getThreadById({ threadId }: { threadId: string }): Promise<StorageThreadType | null>'
+    is_async: true
+    lines:
+    - 319
+    - 322
+    detail:
+      calls:
+      - memoryStore.getThreadById
+      - this.getMemoryStore
+  - name: listThreads
+    sig: 'listThreads(args: StorageListThreadsInput): Promise<StorageListThreadsOutput>'
+    is_async: true
+    lines:
+    - 324
+    - 327
+    detail:
+      calls:
+      - memoryStore.listThreads
+      - this.getMemoryStore
+  - name: handleWorkingMemoryFromMetadata
+    sig: |-
+      handleWorkingMemoryFromMetadata({
+          workingMemory,
+          resourceId,
+          memoryConfig,
+        }: {
+          workingMemory: string;
+          resourceId: string;
+          memoryConfig?: MemoryConfigInternal;
+        }): Promise<void>
+    is_async: true
+    vis: private
+    lines:
+    - 329
+    - 353
+    detail:
+      calls:
+      - memoryStore.updateResource
+      - this.getMemoryStore
+      - this.getMergedThreadConfig
+  - name: saveThread
+    sig: |-
+      saveThread({
+          thread,
+          memoryConfig,
+        }: {
+          thread: StorageThreadType;
+          memoryConfig?: MemoryConfigInternal;
+        }): Promise<StorageThreadType>
+    is_async: true
+    lines:
+    - 355
+    - 375
+    detail:
+      calls:
+      - memoryStore.saveThread
+      - this.getMemoryStore
+      - this.handleWorkingMemoryFromMetadata
+  - name: updateThread
+    sig: |-
+      updateThread({
+          id,
+          title,
+          metadata,
+          memoryConfig,
+        }: {
+          id: string;
+          title: string;
+          metadata: Record<string, unknown>;
+          memoryConfig?: MemoryConfigInternal;
+        }): Promise<StorageThreadType>
+    is_async: true
+    lines:
+    - 377
+    - 405
+    detail:
+      calls:
+      - memoryStore.updateThread
+      - this.getMemoryStore
+      - this.handleWorkingMemoryFromMetadata
+  - name: deleteThread
+    sig: 'deleteThread(threadId: string): Promise<void>'
+    is_async: true
+    lines:
+    - 407
+    - 413
+    detail:
+      calls:
+      - memoryStore.deleteThread
+      - this.deleteThreadVectors
+      - this.getMemoryStore
+  - name: getMemoryVectorIndexes
+    sig: 'getMemoryVectorIndexes(): Promise<string[]>'
+    is_async: true
+    vis: private
+    lines:
+    - 419
+    - 425
+    detail:
+      calls:
+      - indexes.filter
+      - this.vector.listIndexes
+  - name: deleteThreadVectors
+    sig: 'deleteThreadVectors(threadId: string): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 433
+    - 452
+    detail:
+      calls:
+      - Promise.all
+      - memoryIndexes.map
+      - this.getMemoryVectorIndexes
+      - this.logger.debug
+  - name: updateWorkingMemory
+    sig: |-
+      updateWorkingMemory({
+          threadId,
+          resourceId,
+          workingMemory,
+          memoryConfig,
+        }: {
+          threadId: string;
+          resourceId?: string;
+          workingMemory: string;
+          memoryConfig?: MemoryConfigInternal;
+        }): Promise<void>
+    is_async: true
+    lines:
+    - 454
+    - 516
+    detail:
+      calls:
+      - memoryStore.updateResource
+      - memoryStore.updateThread
+      - mutex.acquire
+      - new Error
+      - new Mutex
+      - release
+      - this.getMemoryStore
+      - this.getMergedThreadConfig
+      - this.getThreadById
+      - this.updateWorkingMemoryMutexes.get
+      - this.updateWorkingMemoryMutexes.has
+      - this.updateWorkingMemoryMutexes.set
+  - name: __experimental_updateWorkingMemoryVNext
+    sig: |-
+      __experimental_updateWorkingMemoryVNext({
+          threadId,
+          resourceId,
+          workingMemory,
+          searchString,
+          memoryConfig,
+        }: {
+          threadId: string;
+          resourceId?: string;
+          workingMemory: string;
+          searchString?: string;
+          memoryConfig?: MemoryConfigInternal;
+        }): Promise<{ success: boolean; reason: string }>
+    is_async: true
+    lines:
+    - 522
+    - 666
+    detail:
+      calls:
+      - JSON.stringify
+      - existingWorkingMemory.includes
+      - existingWorkingMemory.replace
+      - existingWorkingMemory?.includes
+      - memoryStore.updateResource
+      - memoryStore.updateThread
+      - mutex.acquire
+      - new Error
+      - new Mutex
+      - normalizeForComparison
+      - release
+      - templateContent.replace
+      - templateContent?.trim
+      - this.getMemoryStore
+      - this.getMergedThreadConfig
+      - this.getThreadById
+      - this.getWorkingMemory
+      - this.getWorkingMemoryTemplate
+      - this.logger.error
+      - this.updateWorkingMemoryMutexes.get
+      - this.updateWorkingMemoryMutexes.has
+      - this.updateWorkingMemoryMutexes.set
+      - workingMemory.replaceAll
+      - workingMemory.trim
+  - name: chunkText
+    sig: 'chunkText(text: string, tokenSize = 4096)'
+    vis: protected
+    lines:
+    - 668
+    - 696
+    detail:
+      calls:
+      - chunks.push
+      - text.split
+  - name: embedMessageContent
+    sig: 'embedMessageContent(content: string)'
+    is_async: true
+    vis: protected
+    lines:
+    - 711
+    - 762
+    detail:
+      calls:
+      - (await this.hasher).h32
+      - embedFn
+      - new Error
+      - this.chunkText
+      - this.embeddingCache.get
+      - this.embeddingCache.set
+  - name: saveMessages
+    sig: |-
+      saveMessages({
+          messages,
+          memoryConfig,
+        }: {
+          messages: MastraDBMessage[];
+          memoryConfig?: MemoryConfig | undefined;
+        }): Promise<{ messages: MastraDBMessage[]; usage?: { tokens: number } }>
+    is_async: true
+    lines:
+    - 764
+    - 872
+    detail:
+      calls:
+      - Promise.all
+      - allMetadata.push
+      - allVectors.push
+      - memoryStore.saveMessages
+      - |-
+        messages
+              .map
+      - |-
+        messages
+              .map(m => {
+                return this.updateMessageToHideWorkingMemoryV2(m);
+              })
+             ...
+      - new Error
+      - new MessageList
+      - |-
+        new MessageList({
+              generateMessageId: () => this.generateId(),
+            })
+              .add
+      - |-
+        new MessageList({
+              generateMessageId: () => this.generateId(),
+            })
+              .add(updatedMessage...
+      - this.createEmbeddingIndex
+      - this.getMemoryStore
+      - this.getMergedThreadConfig
+      - this.vector.upsert
+      - updatedMessages.map
+  - name: updateMessageToHideWorkingMemoryV2
+    sig: 'updateMessageToHideWorkingMemoryV2(message: MastraDBMessage): MastraDBMessage | null'
+    vis: protected
+    lines:
+    - 874
+    - 917
+    detail:
+      calls:
+      - Array.isArray
+      - newMessage.content.content.trim
+      - |-
+        newMessage.content.parts
+                .filter
+      - |-
+        newMessage.content.parts
+                .filter(part => {
+                  if (part?.type === 'tool-invocation') {...
+      - removeWorkingMemoryTags
+      - removeWorkingMemoryTags(newMessage.content.content).trim
+  - name: getWorkingMemory
+    sig: |-
+      getWorkingMemory({
+          threadId,
+          resourceId,
+          memoryConfig,
+        }: {
+          threadId: string;
+          resourceId?: string;
+          memoryConfig?: MemoryConfigInternal;
+        }): Promise<string | null>
+    is_async: true
+    lines:
+    - 926
+    - 967
+    detail:
+      calls:
+      - memoryStore.getResourceById
+      - new Error
+      - this.getMemoryStore
+      - this.getMergedThreadConfig
+      - this.getThreadById
+  - name: getWorkingMemoryTemplate
+    sig: |-
+      getWorkingMemoryTemplate({
+          memoryConfig,
+        }: {
+          memoryConfig?: MemoryConfigInternal;
+        }): Promise<WorkingMemoryTemplate | null>
+    is_async: true
+    lines:
+    - 976
+    - 1012
+    detail:
+      calls:
+      - JSON.stringify
+      - isStandardSchemaWithJSON
+      - memory.trim
+      - schema['~standard'].jsonSchema.output
+      - standardSchema['~standard'].jsonSchema.output
+      - this.getMergedThreadConfig
+      - this.logger.error
+      - toStandardSchema
+  - name: getSystemMessage
+    sig: |-
+      getSystemMessage({
+          threadId,
+          resourceId,
+          memoryConfig,
+        }: {
+          threadId: string;
+          resourceId?: string;
+          memoryConfig?: MemoryConfigInternal;
+        }): Promise<string | null>
+    is_async: true
+    lines:
+    - 1014
+    - 1052
+    detail:
+      calls:
+      - this.__experimental_getWorkingMemoryToolInstructionVNext
+      - this.getMergedThreadConfig
+      - this.getReadOnlyWorkingMemoryInstruction
+      - this.getWorkingMemory
+      - this.getWorkingMemoryTemplate
+      - this.getWorkingMemoryToolInstruction
+      - this.isVNextWorkingMemoryConfig
+  - name: getWorkingMemoryToolInstruction
+    sig: |-
+      getWorkingMemoryToolInstruction({
+          template,
+          data,
+        }: {
+          template: WorkingMemoryTemplate;
+          data: string | null;
+        })
+    vis: protected
+    lines:
+    - 1067
+    - 1119
+    detail:
+      calls:
+      - JSON.stringify
+      - Object.keys
+      - generateEmptyFromSchema
+  - name: listTools
+    sig: 'listTools(config?: MemoryConfigInternal): Record<string, ToolAction<any, any, any>>'
+    lines:
+    - 1196
+    - 1212
+    detail:
+      calls:
+      - __experimental_updateWorkingMemoryToolVNext
+      - normalizeObservationalMemoryConfig
+      - recallTool
+      - this.getMergedThreadConfig
+      - this.isVNextWorkingMemoryConfig
+      - updateWorkingMemoryTool
+  - name: updateMessages
+    sig: |-
+      updateMessages({
+          messages,
+          memoryConfig,
+        }: {
+          messages: (Partial<MastraDBMessage> & { id: string })[];
+          memoryConfig?: MemoryConfigInternal;
+        }): Promise<MastraDBMessage[]>
+    is_async: true
+    lines:
+    - 1223
+    - 1369
+    detail:
+      calls:
+      - Promise.all
+      - allMetadata.push
+      - allVectors.push
+      - existingMessagesResult.messages.map
+      - memoryIndexes.map
+      - memoryStore.listMessagesById
+      - memoryStore.updateMessages
+      - messages.filter
+      - messagesWithContent.map
+      - new Map
+      - new Set
+      - this.createEmbeddingIndex
+      - this.getMemoryStore
+      - this.getMemoryVectorIndexes
+      - this.getMergedThreadConfig
+      - this.logger.debug
+      - this.vector.upsert
+  - name: deleteMessages
+    sig: 'deleteMessages(input: MessageDeleteInput): Promise<void>'
+    is_async: true
+    lines:
+    - 1378
+    - 1413
+    detail:
+      calls:
+      - Array.isArray
+      - input.map
+      - memoryStore.deleteMessages
+      - messageIds.filter
+      - new Error
+      - this.deleteMessageVectors
+      - this.getMemoryStore
+  - name: deleteMessageVectors
+    sig: 'deleteMessageVectors(messageIds: string[]): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 1421
+    - 1443
+    detail:
+      calls:
+      - Promise.all
+      - memoryIndexes.map
+      - this.getMemoryVectorIndexes
+      - this.logger.debug
+  - name: cloneThread
+    sig: |-
+      cloneThread(
+          args: StorageCloneThreadInput,
+          memoryConfig?: MemoryConfigInternal,
+        ): Promise<StorageCloneThreadOutput>
+    is_async: true
+    lines:
+    - 1498
+    - 1558
+    detail:
+      calls:
+      - memoryStore.cloneThread
+      - memoryStore.deleteThread
+      - this.cloneObservationalMemory
+      - this.embedClonedMessages
+      - this.getMemoryStore
+      - this.getMergedThreadConfig
+      - this.getThreadById
+      - this.getWorkingMemory
+      - this.logger.error
+      - this.updateWorkingMemory
+  - name: cloneObservationalMemory
+    sig: |-
+      cloneObservationalMemory(
+          memoryStore: MemoryStorage,
+          sourceThreadId: string,
+          sourceResourceId: string,
+          result: StorageCloneThreadOutput,
+        ): Promise<void>
+    is_async: true
+    vis: private
+    lines:
+    - 1566
+    - 1603
+    detail:
+      calls:
+      - crypto.randomUUID
+      - memoryStore.getObservationalMemory
+      - memoryStore.insertObservationalMemoryRecord
+      - new Date
+      - this.remapObservationalMemoryRecord
+  - name: remapObservationalMemoryRecord
+    sig: |-
+      remapObservationalMemoryRecord(
+          record: ObservationalMemoryRecord,
+          opts: {
+            newThreadId: string | null;
+            newResourceId: string;
+            messageIdMap: Record<string, string>;
+            sourceThreadId?: string;
+            clonedThreadId?: string;
+            hasher?: Awaited<ReturnType<typeof xxhash>>;
+          },
+        ): ObservationalMemoryRecord
+    vis: private
+    lines:
+    - 1608
+    - 1689
+    detail:
+      calls:
+      - Array.isArray
+      - |-
+        cloned.bufferedMessageIds
+                .map
+      - |-
+        cloned.bufferedMessageIds
+                .map(id => messageIdMap[id])
+                .filter
+      - cloned.bufferedObservationChunks.map
+      - |-
+        cloned.observedMessageIds
+                .map
+      - |-
+        cloned.observedMessageIds
+                .map(id => messageIdMap[id])
+                .filter
+      - hasher.h32ToString
+      - replaceThreadTags
+  - name: embedClonedMessages
+    sig: 'embedClonedMessages(messages: MastraDBMessage[], config: MemoryConfigInternal): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 1695
+    - 1766
+    detail:
+      calls:
+      - Promise.all
+      - allMetadata.push
+      - allVectors.push
+      - messages.map
+      - this.createEmbeddingIndex
+      - this.vector.upsert
+  - name: getCloneMetadata
+    sig: 'getCloneMetadata(thread: StorageThreadType | null): ThreadCloneMetadata | null'
+    lines:
+    - 1783
+    - 1788
+    detail: {}
+  - name: isClone
+    sig: 'isClone(thread: StorageThreadType | null): boolean'
+    lines:
+    - 1804
+    - 1806
+    detail:
+      calls:
+      - this.getCloneMetadata
+  - name: getSourceThread
+    sig: 'getSourceThread(threadId: string): Promise<StorageThreadType | null>'
+    is_async: true
+    lines:
+    - 1822
+    - 1831
+    detail:
+      calls:
+      - this.getCloneMetadata
+      - this.getThreadById
+  - name: listClones
+    sig: 'listClones(sourceThreadId: string, resourceId?: string): Promise<StorageThreadType[]>'
+    is_async: true
+    lines:
+    - 1846
+    - 1869
+    detail:
+      calls:
+      - this.getThreadById
+      - this.listThreads
+      - threads.filter
+  - name: getCloneHistory
+    sig: 'getCloneHistory(threadId: string): Promise<StorageThreadType[]>'
+    is_async: true
+    lines:
+    - 1883
+    - 1900
+    detail:
+      calls:
+      - history.unshift
+      - this.getCloneMetadata
+      - this.getThreadById
+  - name: getInputProcessors
+    sig: |-
+      getInputProcessors(
+          configuredProcessors: InputProcessorOrWorkflow[] = [],
+          context?: RequestContext,
+        ): Promise<InputProcessor[]>
+    is_async: true
+    lines:
+    - 1910
+    - 1923
+    detail:
+      calls:
+      - processors.push
+      - super.getInputProcessors
+      - this.createOMProcessor
+  - name: getOutputProcessors
+    sig: |-
+      getOutputProcessors(
+          configuredProcessors: OutputProcessorOrWorkflow[] = [],
+          context?: RequestContext,
+        ): Promise<OutputProcessor[]>
+    is_async: true
+    lines:
+    - 1930
+    - 1942
+    detail:
+      calls:
+      - processors.push
+      - super.getOutputProcessors
+      - this.createOMProcessor
+  - name: createOMProcessor
+    sig: |-
+      createOMProcessor(
+          configuredProcessors: (InputProcessorOrWorkflow | OutputProcessorOrWorkflow)[] = [],
+          context?: RequestContext,
+        ): Promise<InputProcessor | null>
+    is_async: true
+    vis: private
+    lines:
+    - 1949
+    - 2046
+    detail:
+      calls:
+      - configuredProcessors.some
+      - context?.get
+      - coreFeatures.has
+      - import
+      - new Error
+      - new ObservationalMemory
+      - normalizeObservationalMemoryConfig
+      - this.getMergedThreadConfig
+      - this.storage.getStore
+  lines:
+  - 83
+  - 2047
+functions:
+- name: normalizeObservationalMemoryConfig
+  sig: |-
+    normalizeObservationalMemoryConfig(
+      config: boolean | ObservationalMemoryOptions | undefined,
+    ): NormalizedObservationalMemoryConfig | undefined
+  lines:
+  - 59
+  - 66
+  detail: {}
+exports:
+- name: NormalizedObservationalMemoryConfig
+  kind: type
+- name: Memory
+  kind: type
+- name: normalizeObservationalMemoryConfig
+  kind: func
+- name: CHARS_PER_TOKEN
+  kind: data
+- name: DEFAULT_MESSAGE_RANGE
+  kind: data
+- name: DEFAULT_TOP_K
+  kind: data
+- name: VECTOR_DELETE_BATCH_SIZE
+  kind: data

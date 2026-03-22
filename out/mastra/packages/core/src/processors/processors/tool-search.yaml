@@ -1,0 +1,266 @@
+## Roska File Descriptor — processors/tool-search.ts
+file: processors/tool-search.ts
+lines: 468
+imports:
+- sym: zod/v4.z
+- sym: ../../request-context.MASTRA_THREAD_ID_KEY
+- sym: ../../tools.createTool
+- sym: ../../tools.Tool
+  kind: typing
+- sym: ../../workspace/search/bm25.BM25Index
+- sym: ../../workspace/search/bm25.TokenizeOptions
+  kind: typing
+- sym: ../index.ProcessInputStepArgs
+  kind: typing
+- sym: ../index.Processor
+  kind: typing
+data:
+- name: TOOL_SEARCH_TOKENIZE_OPTIONS
+  type: TokenizeOptions
+  val: |-
+    {
+      lowercase: true,
+      removePunctuation: false,
+      minLength: 2,
+      stopwords: new Set(),
+      splitPattern: /[\s\-_.,;:!?()...
+types:
+- name: ThreadState
+  kind: trait
+  ctx: Thread state with timestamp for TTL management
+  decorators:
+  - interface
+  fields:
+  - name: tools
+    type: Set<string>
+  - name: lastAccessed
+    type: number
+  lines:
+  - 12
+  - 15
+- name: ToolSearchProcessorOptions
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: tools
+    type: Record<string, Tool<any, any>>
+  - name: search
+    type: |-
+      {
+          /**
+           * Maximum number of tools to return in search results
+           * @default 5
+           */
+          topK?: number;
+
+          /**
+           * Minimum relevance score (0-1) for including a tool in search results
+           * @default 0
+           */
+          minScore?: number;
+        }
+  - name: ttl
+    type: number
+  lines:
+  - 20
+  - 51
+- name: SearchResult
+  kind: trait
+  ctx: Search result with ranking score
+  decorators:
+  - interface
+  fields:
+  - name: description
+    type: string
+  - name: score
+    type: number
+  lines:
+  - 56
+  - 60
+- name: ToolSearchProcessor
+  kind: struct
+  ctx: BM25 index for tool search
+  bases:
+  - Processor<'tool-search'>
+  fields:
+  - name: id
+    type: any
+    default: '''tool-search'''
+  - name: name
+    type: any
+    default: '''Tool Search Processor'''
+  - name: description
+    type: any
+    default: '''Enables dynamic tool discovery and loading via search'''
+  - name: allTools
+    type: Record<string, Tool<any, any>>
+  - name: searchConfig
+    type: Required<NonNullable<ToolSearchProcessorOptions['search']>>
+  - name: ttl
+    type: number
+  - name: bm25Index
+    type: BM25Index
+  - name: toolDescriptions
+    type: any
+    default: new Map<string, string>()
+  - name: threadLoadedTools
+    type: any
+    default: new Map<string, ThreadState>()
+  methods:
+  - name: constructor
+    sig: 'constructor(options: ToolSearchProcessorOptions)'
+    lines:
+    - 126
+    - 144
+    detail:
+      calls:
+      - new BM25Index
+      - this.indexTools
+      - this.scheduleCleanup
+  - name: getLoadedToolNames
+    sig: 'getLoadedToolNames(threadId: string): Set<string>'
+    vis: private
+    lines:
+    - 157
+    - 167
+    detail:
+      calls:
+      - Date.now
+      - new Set
+      - this.threadLoadedTools.get
+      - this.threadLoadedTools.has
+      - this.threadLoadedTools.set
+  - name: getLoadedTools
+    sig: 'getLoadedTools(threadId: string): Record<string, Tool<any, any>>'
+    vis: private
+    lines:
+    - 172
+    - 184
+    detail:
+      calls:
+      - Object.values
+      - Object.values(this.allTools).find
+      - this.getLoadedToolNames
+  - name: clearState
+    sig: 'clearState(threadId: string = ''default''): void'
+    lines:
+    - 191
+    - 193
+    detail:
+      calls:
+      - this.threadLoadedTools.delete
+  - name: clearAllState
+    sig: 'clearAllState(): void'
+    lines:
+    - 198
+    - 200
+    detail:
+      calls:
+      - this.threadLoadedTools.clear
+  - name: cleanupStaleState
+    sig: 'cleanupStaleState(): number'
+    vis: private
+    lines:
+    - 208
+    - 222
+    detail:
+      calls:
+      - Date.now
+      - this.threadLoadedTools.delete
+      - this.threadLoadedTools.entries
+  - name: getStateStats
+    sig: 'getStateStats(): { threadCount: number; oldestAccessTime: number | null }'
+    lines:
+    - 248
+    - 264
+    detail:
+      calls:
+      - Date.now
+      - this.threadLoadedTools.values
+  - name: cleanupNow
+    sig: 'cleanupNow(): number'
+    lines:
+    - 271
+    - 273
+    detail:
+      calls:
+      - this.cleanupStaleState
+  - name: indexTools
+    sig: 'indexTools(): void'
+    vis: private
+    lines:
+    - 278
+    - 285
+    detail:
+      calls:
+      - Object.values
+      - this.bm25Index.add
+      - this.toolDescriptions.set
+  - name: searchTools
+    sig: 'searchTools(query: string): SearchResult[]'
+    vis: private
+    lines:
+    - 294
+    - 336
+    detail:
+      calls:
+      - bm25Results.map
+      - |-
+        boostedResults
+              .sort
+      - |-
+        boostedResults
+              .sort((a, b) => b.score - a.score)
+              .filter
+      - |-
+        boostedResults
+              .sort((a, b) => b.score - a.score)
+              .filter(r => r.score > this.searchConf...
+      - |-
+        query
+              .toLowerCase
+      - |-
+        query
+              .toLowerCase()
+              .split
+      - |-
+        query
+              .toLowerCase()
+              .split(/[\s\-_.,;:!?()[\]{}'"]+/)
+              .filter
+      - this.bm25Index.search
+  - name: processInputStep
+    sig: 'processInputStep(args: ProcessInputStepArgs)'
+    is_async: true
+    lines:
+    - 338
+    - 467
+    detail:
+      calls:
+      - createTool
+      - messageList.addSystem
+      - this.getLoadedToolNames
+      - this.getLoadedTools
+      - this.getThreadId
+      - z.array
+      - z.boolean
+      - z.number
+      - z.object
+      - z.string
+      - z.string().describe
+      - z.string().optional
+  lines:
+  - 105
+  - 468
+exports:
+- name: ThreadState
+  kind: type
+- name: ToolSearchProcessorOptions
+  kind: type
+- name: SearchResult
+  kind: type
+- name: ToolSearchProcessor
+  kind: type
+- name: TOOL_SEARCH_TOKENIZE_OPTIONS
+  kind: data

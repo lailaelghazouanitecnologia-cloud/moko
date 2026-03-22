@@ -1,0 +1,303 @@
+## Roska File Descriptor — memory/semantic-recall.ts
+file: memory/semantic-recall.ts
+lines: 640
+imports:
+- sym: '@internal/ai-sdk-v5.SystemModelMessage'
+  kind: typing
+- sym: xxhash-wasm.xxhash
+- sym: '...Processor'
+  kind: typing
+- sym: ../../agent.MessageList
+- sym: ../../logger.IMastraLogger
+  kind: typing
+- sym: ../../memory.parseMemoryRequestContext
+- sym: ../../memory.MastraDBMessage
+  kind: typing
+- sym: ../../observability.ObservabilityContext
+  kind: typing
+- sym: ../../request-context.RequestContext
+  kind: typing
+- sym: ../../storage.MemoryStorage
+  kind: typing
+- sym: ../../vector.MastraEmbeddingModel
+  kind: typing
+- sym: ../../vector.MastraEmbeddingOptions
+  kind: typing
+- sym: ../../vector.MastraVector
+  kind: typing
+- sym: ./embedding-cache.globalEmbeddingCache
+data:
+- name: DEFAULT_TOP_K
+  type: number
+  val: '4'
+- name: DEFAULT_MESSAGE_RANGE
+  type: number
+  val: '1'
+types:
+- name: SemanticRecallOptions
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: storage
+    type: MemoryStorage
+  - name: vector
+    type: MastraVector
+  - name: embedder
+    type: MastraEmbeddingModel<string>
+  - name: topK
+    type: number
+  - name: messageRange
+    type: 'number | { before: number; after: number }'
+  - name: scope
+    type: '''thread'' | ''resource'''
+  - name: threshold
+    type: number
+  - name: logger
+    type: IMastraLogger
+  - name: embedderOptions
+    type: MastraEmbeddingOptions
+  lines:
+  - 17
+  - 88
+- name: SemanticRecall
+  kind: struct
+  ctx: xxhash-wasm hasher instance (initialized as a promise)
+  bases:
+  - Processor
+  fields:
+  - name: id
+    type: any
+    default: '''semantic-recall'''
+  - name: name
+    type: any
+    default: '''SemanticRecall'''
+  - name: storage
+    type: MemoryStorage
+  - name: vector
+    type: MastraVector
+  - name: embedder
+    type: MastraEmbeddingModel<string>
+  - name: topK
+    type: number
+  - name: messageRange
+    type: '{ before: number; after: number }'
+  - name: scope
+    type: '''thread'' | ''resource'''
+  - name: threshold
+    type: number
+  - name: logger
+    type: IMastraLogger
+  - name: embedderOptions
+    type: MastraEmbeddingOptions
+  - name: hasher
+    type: any
+    default: xxhash()
+  - name: indexValidationCache
+    type: any
+    default: 'new Map<string, { dimension: number }>()'
+  methods:
+  - name: constructor
+    sig: 'constructor(options: SemanticRecallOptions)'
+    lines:
+    - 138
+    - 163
+    detail: {}
+  - name: processInput
+    sig: |-
+      processInput(
+          args: {
+            messages: MastraDBMessage[];
+            messageList: MessageList;
+            abort: (reason?: string) => never;
+            requestContext?: RequestContext;
+          } & Partial<ObservabilityContext>,
+        ): Promise<MessageList | MastraDBMessage[]>
+    is_async: true
+    lines:
+    - 165
+    - 245
+    detail:
+      calls:
+      - existingMessages.map
+      - existingMessages.map(m => m.id).filter
+      - messageList.add
+      - messageList.addSystem
+      - messageList.get.all.db
+      - new Set
+      - newMessages.filter
+      - parseMemoryRequestContext
+      - similarMessages.filter
+      - this.extractUserQuery
+      - this.formatCrossThreadMessages
+      - this.logger?.error
+      - this.performSemanticSearch
+  - name: formatCrossThreadMessages
+    sig: 'formatCrossThreadMessages(messages: MastraDBMessage[], currentThreadId: string): SystemModelMessage'
+    vis: private
+    lines:
+    - 251
+    - 295
+    detail:
+      calls:
+      - Array.isArray
+      - date.getUTCDate
+      - date.getUTCFullYear
+      - date.getUTCHours
+      - date.getUTCMinutes
+      - date.toLocaleString
+      - msg.content.filter
+      - msg.role.charAt
+      - msg.role.charAt(0).toUpperCase
+      - msg.role.slice
+      - new MessageList
+      - new MessageList().add
+      - new MessageList().add(messages, 'memory').get.all.v1
+      - textParts.map
+      - 'textParts.map((p: any) => p.text).join'
+  - name: extractUserQuery
+    sig: 'extractUserQuery(messages: MastraDBMessage[]): string | null'
+    vis: private
+    lines:
+    - 300
+    - 333
+    detail:
+      calls:
+      - msg.content.parts?.forEach
+      - textParts.join
+  - name: performSemanticSearch
+    sig: |-
+      performSemanticSearch({
+          query,
+          threadId,
+          resourceId,
+        }: {
+          query: string;
+          threadId: string;
+          resourceId?: string;
+        }): Promise<MastraDBMessage[]>
+    is_async: true
+    vis: private
+    lines:
+    - 338
+    - 393
+    detail:
+      calls:
+      - filteredResults.map
+      - this.embedMessageContent
+      - this.ensureVectorIndex
+      - this.getDefaultIndexName
+      - this.storage.listMessages
+      - this.vector.query
+      - vectorResults.filter
+      - vectorResults.push
+  - name: hashContent
+    sig: 'hashContent(content: string, indexName: string): Promise<string>'
+    is_async: true
+    vis: private
+    lines:
+    - 402
+    - 406
+    detail:
+      calls:
+      - h.h64
+      - h.h64(combined).toString
+  - name: embedMessageContent
+    sig: |-
+      embedMessageContent(
+          content: string,
+          indexName: string,
+        ): Promise<{
+          embeddings: number[][];
+          dimension: number;
+        }>
+    is_async: true
+    vis: private
+    lines:
+    - 408
+    - 444
+    detail:
+      calls:
+      - globalEmbeddingCache.get
+      - globalEmbeddingCache.set
+      - this.embedder.doEmbed
+      - this.hashContent
+  - name: ensureVectorIndex
+    sig: 'ensureVectorIndex(indexName: string, dimension: number): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 464
+    - 481
+    detail:
+      calls:
+      - this.indexValidationCache.get
+      - this.indexValidationCache.set
+      - this.vector.createIndex
+  - name: processOutputResult
+    sig: |-
+      processOutputResult(
+          args: {
+            messages: MastraDBMessage[];
+            messageList?: MessageList;
+            abort: (reason?: string) => never;
+            requestContext?: RequestContext;
+          } & Partial<ObservabilityContext>,
+        ): Promise<MessageList | MastraDBMessage[]>
+    is_async: true
+    lines:
+    - 487
+    - 613
+    detail:
+      calls:
+      - existingIds.has
+      - ids.push
+      - message.createdAt.toISOString
+      - messageList.get.input.db
+      - messageList.get.input.db().filter
+      - messageList.isNewMessage
+      - messagesToEmbed.map
+      - messagesToEmbed.push
+      - metadataList.push
+      - new Set
+      - parseMemoryRequestContext
+      - this.embedMessageContent
+      - this.ensureVectorIndex
+      - this.extractTextContent
+      - this.getDefaultIndexName
+      - this.logger?.error
+      - this.vector.upsert
+      - vectors.push
+  - name: extractTextContent
+    sig: 'extractTextContent(message: MastraDBMessage): string'
+    vis: private
+    lines:
+    - 618
+    - 639
+    detail:
+      calls:
+      - Array.isArray
+      - |-
+        parts
+                  .filter
+      - |-
+        parts
+                  .filter(part => part.type === 'text')
+                  .map
+      - |-
+        parts
+                  .filter(part => part.type === 'text')
+                  .map(part => part.text || '')
+              ...
+  lines:
+  - 116
+  - 640
+exports:
+- name: SemanticRecallOptions
+  kind: type
+- name: SemanticRecall
+  kind: type
+- name: DEFAULT_TOP_K
+  kind: data
+- name: DEFAULT_MESSAGE_RANGE
+  kind: data

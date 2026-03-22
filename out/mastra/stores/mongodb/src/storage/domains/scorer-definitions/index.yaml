@@ -1,0 +1,354 @@
+## Roska File Descriptor — scorer-definitions/index.ts
+file: scorer-definitions/index.ts
+lines: 675
+imports:
+- sym: node:crypto.randomUUID
+- sym: '@mastra/core/error.ErrorCategory'
+- sym: '@mastra/core/error.ErrorDomain'
+- sym: '@mastra/core/error.MastraError'
+- sym: '@mastra/core/storage.ScorerDefinitionsStorage'
+- sym: '@mastra/core/storage.createStorageErrorId'
+- sym: '@mastra/core/storage.TABLE_SCORER_DEFINITIONS'
+- sym: '@mastra/core/storage.TABLE_SCORER_DEFINITION_VERSIONS'
+- sym: '@mastra/core/storage.normalizePerPage'
+- sym: '@mastra/core/storage.calculatePagination'
+- sym: '@mastra/core/storage.StorageScorerDefinitionType'
+  kind: typing
+- sym: '@mastra/core/storage.StorageCreateScorerDefinitionInput'
+  kind: typing
+- sym: '@mastra/core/storage.StorageUpdateScorerDefinitionInput'
+  kind: typing
+- sym: '@mastra/core/storage.StorageListScorerDefinitionsInput'
+  kind: typing
+- sym: '@mastra/core/storage.StorageListScorerDefinitionsOutput'
+  kind: typing
+- sym: '@mastra/core/storage/domains/scorer-definitions.ScorerDefinitionVersion'
+  kind: typing
+- sym: '@mastra/core/storage/domains/scorer-definitions.CreateScorerDefinitionVersionInput'
+  kind: typing
+- sym: '@mastra/core/storage/domains/scorer-definitions.ListScorerDefinitionVersionsInput'
+  kind: typing
+- sym: '@mastra/core/storage/domains/scorer-definitions.ListScorerDefinitionVersionsOutput'
+  kind: typing
+- sym: ../../connectors/MongoDBConnector.MongoDBConnector
+  kind: typing
+- sym: ../../db.resolveMongoDBConfig
+- sym: ../../types.MongoDBDomainConfig
+  kind: typing
+- sym: ../../types.MongoDBIndexConfig
+  kind: typing
+data:
+- name: SNAPSHOT_FIELDS
+  type: array
+  val: |-
+    [
+      'name',
+      'description',
+      'type',
+      'model',
+      'instructions',
+      'scoreRange',
+      'presetConfig',
+      'defaultSampling...
+types:
+- name: MongoDBScorerDefinitionsStorage
+  kind: struct
+  ctx: ==========================================================================
+  bases:
+  - ScorerDefinitionsStorage
+  fields:
+  - name: MANAGED_COLLECTIONS
+    type: any
+    default: '[TABLE_SCORER_DEFINITIONS, TABLE_SCORER_DEFINITION_VERSIONS] as const'
+  methods:
+  - name: constructor
+    sig: 'constructor(config: MongoDBDomainConfig)'
+    lines:
+    - 50
+    - 57
+    detail:
+      calls:
+      - config.indexes?.filter
+      - resolveMongoDBConfig
+      - super
+  - name: getCollection
+    sig: 'getCollection(name: string)'
+    is_async: true
+    vis: private
+    lines:
+    - 59
+    - 61
+    detail:
+      calls:
+      - this.#connector.getCollection
+  - name: getDefaultIndexDefinitions
+    sig: 'getDefaultIndexDefinitions(): MongoDBIndexConfig[]'
+    lines:
+    - 63
+    - 77
+    detail: {}
+  - name: createDefaultIndexes
+    sig: 'createDefaultIndexes(): Promise<void>'
+    is_async: true
+    lines:
+    - 79
+    - 92
+    detail:
+      calls:
+      - collection.createIndex
+      - this.getCollection
+      - this.getDefaultIndexDefinitions
+      - this.logger?.warn
+  - name: createCustomIndexes
+    sig: 'createCustomIndexes(): Promise<void>'
+    is_async: true
+    lines:
+    - 94
+    - 107
+    detail:
+      calls:
+      - collection.createIndex
+      - this.getCollection
+      - this.logger?.warn
+  - name: init
+    sig: 'init(): Promise<void>'
+    is_async: true
+    lines:
+    - 109
+    - 112
+    detail:
+      calls:
+      - this.createCustomIndexes
+      - this.createDefaultIndexes
+  - name: dangerouslyClearAll
+    sig: 'dangerouslyClearAll(): Promise<void>'
+    is_async: true
+    lines:
+    - 114
+    - 119
+    detail:
+      calls:
+      - scorerDefinitionsCollection.deleteMany
+      - this.getCollection
+      - versionsCollection.deleteMany
+  - name: getById
+    sig: 'getById(id: string): Promise<StorageScorerDefinitionType | null>'
+    is_async: true
+    lines:
+    - 125
+    - 146
+    detail:
+      calls:
+      - await collection.findOne
+      - createStorageErrorId
+      - new MastraError
+      - this.getCollection
+      - this.transformScorerDefinition
+  - name: create
+    sig: 'create(input: { scorerDefinition: StorageCreateScorerDefinitionInput }): Promise<StorageScorerDefinitionType>'
+    is_async: true
+    lines:
+    - 148
+    - 214
+    detail:
+      calls:
+      - Object.keys
+      - collection.findOne
+      - collection.insertOne
+      - createStorageErrorId
+      - new Date
+      - new MastraError
+      - randomUUID
+      - this.createVersion
+      - this.getCollection
+      - this.serializeScorerDefinition
+  - name: update
+    sig: 'update(input: StorageUpdateScorerDefinitionInput): Promise<StorageScorerDefinitionType>'
+    is_async: true
+    lines:
+    - 216
+    - 286
+    detail:
+      calls:
+      - await collection.findOne
+      - collection.updateOne
+      - createStorageErrorId
+      - new Date
+      - new MastraError
+      - this.getCollection
+      - this.transformScorerDefinition
+  - name: delete
+    sig: 'delete(id: string): Promise<void>'
+    is_async: true
+    lines:
+    - 288
+    - 307
+    detail:
+      calls:
+      - collection.deleteOne
+      - createStorageErrorId
+      - new MastraError
+      - this.deleteVersionsByParentId
+      - this.getCollection
+  - name: list
+    sig: 'list(args?: StorageListScorerDefinitionsInput): Promise<StorageListScorerDefinitionsOutput>'
+    is_async: true
+    lines:
+    - 309
+    - 391
+    detail:
+      calls:
+      - Object.entries
+      - calculatePagination
+      - |-
+        collection
+                .find
+      - |-
+        collection
+                .find(filter)
+                .sort
+      - |-
+        collection
+                .find(filter)
+                .sort({ [field]: sortOrder })
+                .skip
+      - collection.countDocuments
+      - createStorageErrorId
+      - cursor.limit
+      - cursor.toArray
+      - new Error
+      - new MastraError
+      - normalizePerPage
+      - results.map
+      - this.getCollection
+      - this.parseOrderBy
+  - name: createVersion
+    sig: 'createVersion(input: CreateScorerDefinitionVersionInput): Promise<ScorerDefinitionVersion>'
+    is_async: true
+    lines:
+    - 397
+    - 435
+    detail:
+      calls:
+      - collection.insertOne
+      - createStorageErrorId
+      - new Date
+      - new MastraError
+      - this.getCollection
+  - name: getVersion
+    sig: 'getVersion(id: string): Promise<ScorerDefinitionVersion | null>'
+    is_async: true
+    lines:
+    - 437
+    - 458
+    detail:
+      calls:
+      - await collection.findOne
+      - createStorageErrorId
+      - new MastraError
+      - this.getCollection
+      - this.transformVersion
+  - name: getVersionByNumber
+    sig: 'getVersionByNumber(scorerDefinitionId: string, versionNumber: number): Promise<ScorerDefinitionVersion | null>'
+    is_async: true
+    lines:
+    - 460
+    - 481
+    detail:
+      calls:
+      - await collection.findOne
+      - createStorageErrorId
+      - new MastraError
+      - this.getCollection
+      - this.transformVersion
+  - name: getLatestVersion
+    sig: 'getLatestVersion(scorerDefinitionId: string): Promise<ScorerDefinitionVersion | null>'
+    is_async: true
+    lines:
+    - 483
+    - 504
+    detail:
+      calls:
+      - await collection.find
+      - await collection.find<any>({ scorerDefinitionId }).sort
+      - 'await collection.find<any>({ scorerDefinitionId }).sort({ versionNumber: -1 }).limit'
+      - 'await collection.find<any>({ scorerDefinitionId }).sort({ versionNumber: -1 }).limit(1).toArray'
+      - createStorageErrorId
+      - new MastraError
+      - this.getCollection
+      - this.transformVersion
+  - name: listVersions
+    sig: 'listVersions(input: ListScorerDefinitionVersionsInput): Promise<ListScorerDefinitionVersionsOutput>'
+    is_async: true
+    lines:
+    - 506
+    - 572
+    detail:
+      calls:
+      - calculatePagination
+      - |-
+        collection
+                .find
+      - |-
+        collection
+                .find({ scorerDefinitionId })
+                .sort
+      - |-
+        collection
+                .find({ scorerDefinitionId })
+                .sort({ [field]: sortOrder })
+                .skip
+      - collection.countDocuments
+      - createStorageErrorId
+      - cursor.limit
+      - cursor.toArray
+      - new Error
+      - new MastraError
+      - normalizePerPage
+      - results.map
+      - this.getCollection
+      - this.parseVersionOrderBy
+  - name: deleteVersion
+    sig: 'deleteVersion(id: string): Promise<void>'
+    is_async: true
+    lines:
+    - 574
+    - 589
+    detail:
+      calls:
+      - collection.deleteOne
+      - createStorageErrorId
+      - new MastraError
+      - this.getCollection
+  - name: deleteVersionsByParentId
+    sig: 'deleteVersionsByParentId(scorerDefinitionId: string): Promise<void>'
+    is_async: true
+    lines:
+    - 591
+    - 606
+    detail:
+      calls:
+      - collection.deleteMany
+      - createStorageErrorId
+      - new MastraError
+      - this.getCollection
+  - name: countVersions
+    sig: 'countVersions(scorerDefinitionId: string): Promise<number>'
+    is_async: true
+    lines:
+    - 608
+    - 623
+    detail:
+      calls:
+      - collection.countDocuments
+      - createStorageErrorId
+      - new MastraError
+      - this.getCollection
+  lines:
+  - 43
+  - 675
+exports:
+- name: MongoDBScorerDefinitionsStorage
+  kind: type
+- name: SNAPSHOT_FIELDS
+  kind: data

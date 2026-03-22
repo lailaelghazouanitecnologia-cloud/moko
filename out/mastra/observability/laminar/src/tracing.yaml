@@ -1,0 +1,571 @@
+## Roska File Descriptor — src/tracing.ts
+file: src/tracing.ts
+lines: 706
+purpose: Laminar Exporter for Mastra Observability This exporter sends observability data to Laminar via OTLP/HTTP (protobuf). It also implements addScoreToTrace() to attach scorer results in Laminar.
+imports:
+- sym: '@mastra/core/observability.AnyExportedSpan'
+  kind: typing
+- sym: '@mastra/core/observability.InitExporterOptions'
+  kind: typing
+- sym: '@mastra/core/observability.ModelGenerationAttributes'
+  kind: typing
+- sym: '@mastra/core/observability.TracingEvent'
+  kind: typing
+- sym: '@mastra/core/observability.UsageStats'
+  kind: typing
+- sym: '@mastra/core/observability.SpanType'
+- sym: '@mastra/core/observability.TracingEventType'
+- sym: '@mastra/observability.BaseExporter'
+- sym: '@mastra/observability.BaseExporterConfig'
+  kind: typing
+- sym: '@opentelemetry/api.SpanKind'
+- sym: '@opentelemetry/api.SpanStatusCode'
+- sym: '@opentelemetry/api.TraceFlags'
+- sym: '@opentelemetry/api.Attributes'
+  kind: typing
+- sym: '@opentelemetry/api.HrTime'
+  kind: typing
+- sym: '@opentelemetry/api.Link'
+  kind: typing
+- sym: '@opentelemetry/api.SpanContext'
+  kind: typing
+- sym: '@opentelemetry/api.SpanStatus'
+  kind: typing
+- sym: '@opentelemetry/exporter-trace-otlp-proto.OTLPTraceExporter'
+- sym: '@opentelemetry/resources.resourceFromAttributes'
+- sym: '@opentelemetry/resources.Resource'
+  kind: typing
+- sym: '@opentelemetry/sdk-trace-base.BatchSpanProcessor'
+- sym: '@opentelemetry/sdk-trace-base.SimpleSpanProcessor'
+- sym: '@opentelemetry/sdk-trace-base.ReadableSpan'
+  kind: typing
+- sym: '@opentelemetry/sdk-trace-base.SpanExporter'
+  kind: typing
+- sym: '@opentelemetry/sdk-trace-base.TimedEvent'
+  kind: typing
+- sym: '@opentelemetry/semantic-conventions.ATTR_SERVICE_NAME'
+- sym: '@opentelemetry/semantic-conventions.ATTR_SERVICE_VERSION'
+- sym: '@opentelemetry/semantic-conventions.ATTR_TELEMETRY_SDK_LANGUAGE'
+- sym: '@opentelemetry/semantic-conventions.ATTR_TELEMETRY_SDK_NAME'
+- sym: '@opentelemetry/semantic-conventions.ATTR_TELEMETRY_SDK_VERSION'
+data:
+- name: LMNR_SPAN_INPUT
+  type: string
+  val: '''lmnr.span.input'''
+- name: LMNR_SPAN_OUTPUT
+  type: string
+  val: '''lmnr.span.output'''
+- name: LMNR_SPAN_TYPE
+  type: string
+  val: '''lmnr.span.type'''
+- name: LMNR_SPAN_PATH
+  type: string
+  val: '''lmnr.span.path'''
+- name: LMNR_SPAN_IDS_PATH
+  type: string
+  val: '''lmnr.span.ids_path'''
+- name: LMNR_SPAN_INSTRUMENTATION_SOURCE
+  type: string
+  val: '''lmnr.span.instrumentation_source'''
+- name: LMNR_SPAN_SDK_VERSION
+  type: string
+  val: '''lmnr.span.sdk_version'''
+- name: LMNR_SPAN_LANGUAGE_VERSION
+  type: string
+  val: '''lmnr.span.language_version'''
+- name: LMNR_ASSOCIATION_PREFIX
+  type: string
+  val: '''lmnr.association.properties'''
+- name: LMNR_SESSION_ID
+  type: string
+  val: '`${LMNR_ASSOCIATION_PREFIX}.session_id`'
+- name: LMNR_USER_ID
+  type: string
+  val: '`${LMNR_ASSOCIATION_PREFIX}.user_id`'
+- name: LMNR_TAGS
+  type: string
+  val: '`${LMNR_ASSOCIATION_PREFIX}.tags`'
+- name: GEN_AI_SYSTEM
+  type: string
+  val: '''gen_ai.system'''
+- name: GEN_AI_REQUEST_MODEL
+  type: string
+  val: '''gen_ai.request.model'''
+- name: GEN_AI_RESPONSE_MODEL
+  type: string
+  val: '''gen_ai.response.model'''
+- name: GEN_AI_USAGE_INPUT_TOKENS
+  type: string
+  val: '''gen_ai.usage.input_tokens'''
+- name: GEN_AI_USAGE_OUTPUT_TOKENS
+  type: string
+  val: '''gen_ai.usage.output_tokens'''
+- name: GEN_AI_CACHE_WRITE_INPUT_TOKENS
+  type: string
+  val: '''gen_ai.usage.cache_creation_input_tokens'''
+- name: GEN_AI_CACHE_READ_INPUT_TOKENS
+  type: string
+  val: '''gen_ai.usage.cache_read_input_tokens'''
+types:
+- name: LaminarSpanType
+  kind: enum
+  decorators:
+  - type
+  variants:
+  - name: '''TOOL'''
+  lines:
+  - 57
+  - 57
+- name: TraceState
+  kind: typealias
+  decorators:
+  - type
+  fields:
+  - name: spanPathById
+    type: Map<string, string[]>
+  - name: spanIdsPathById
+    type: Map<string, string[]>
+  - name: activeSpanIds
+    type: Set<string>
+  lines:
+  - 59
+  - 63
+- name: InstrumentationScope
+  kind: typealias
+  decorators:
+  - type
+  fields:
+  - name: version
+    type: string
+  - name: schemaUrl
+    type: string
+  lines:
+  - 65
+  - 69
+- name: LaminarExporterConfig
+  kind: trait
+  bases:
+  - BaseExporterConfig
+  decorators:
+  - interface
+  fields:
+  - name: apiKey
+    type: string
+  - name: baseUrl
+    type: string
+  - name: endpoint
+    type: string
+  - name: headers
+    type: Record<string, string>
+  - name: realtime
+    type: boolean
+  - name: disableBatch
+    type: boolean
+  - name: batchSize
+    type: number
+  - name: timeoutMillis
+    type: number
+  lines:
+  - 71
+  - 108
+- name: ResolvedLaminarConfig
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 110
+  - 116
+- name: LaminarExporter
+  kind: struct
+  ctx: Force flush any buffered spans without shutting down the exporter. This is useful in serverless environments where you need to ensure spans are exported before the runtime instance is terminated.
+  bases:
+  - BaseExporter
+  fields:
+  - name: name
+    type: any
+    default: '''laminar'''
+  - name: config
+    type: ResolvedLaminarConfig | null
+  - name: traceMap
+    type: any
+    default: new Map<string, TraceState>()
+  - name: resource
+    type: Resource
+  - name: scope
+    type: InstrumentationScope
+  - name: processor
+    type: BatchSpanProcessor | SimpleSpanProcessor
+  - name: exporter
+    type: SpanExporter
+  - name: isSetup
+    type: any
+    default: 'false'
+  methods:
+  - name: constructor
+    sig: 'constructor(config: LaminarExporterConfig = {})'
+    lines:
+    - 130
+    - 161
+    detail:
+      calls:
+      - stripTrailingSlash
+      - super
+      - this.setDisabled
+  - name: init
+    sig: 'init(options: InitExporterOptions): void'
+    lines:
+    - 163
+    - 179
+    detail:
+      calls:
+      - resourceFromAttributes
+  - name: _exportTracingEvent
+    sig: '_exportTracingEvent(event: TracingEvent): Promise<void>'
+    is_async: true
+    vis: protected
+    lines:
+    - 181
+    - 194
+    detail:
+      calls:
+      - this.handleSpanEnded
+      - this.handleSpanStarted
+  - name: handleSpanStarted
+    sig: 'handleSpanStarted(span: AnyExportedSpan): void'
+    vis: private
+    lines:
+    - 196
+    - 210
+    detail:
+      calls:
+      - otelSpanIdToUUID
+      - this.getOrCreateTraceState
+      - traceState.activeSpanIds.add
+      - traceState.spanIdsPathById.get
+      - traceState.spanIdsPathById.set
+      - traceState.spanPathById.get
+      - traceState.spanPathById.set
+  - name: handleSpanEnded
+    sig: 'handleSpanEnded(span: AnyExportedSpan): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 212
+    - 256
+    detail:
+      calls:
+      - otelSpanIdToUUID
+      - this.convertSpanToOtel
+      - this.getOrCreateTraceState
+      - this.logger.error
+      - this.processor.forceFlush
+      - this.processor.onEnd
+      - this.setupIfNeeded
+      - this.traceMap.delete
+      - traceState.activeSpanIds.delete
+      - traceState.spanIdsPathById.get
+      - traceState.spanIdsPathById.has
+      - traceState.spanIdsPathById.set
+      - traceState.spanPathById.get
+      - traceState.spanPathById.has
+      - traceState.spanPathById.set
+  - name: _addScoreToTrace
+    sig: |-
+      _addScoreToTrace({
+          traceId,
+          spanId,
+          score,
+          reason,
+          scorerName,
+          metadata,
+        }: {
+          traceId: string;
+          spanId?: string;
+          score: number;
+          reason?: string;
+          scorerName: string;
+          metadata?: Record<string, any>;
+        }): Promise<void>
+    is_async: true
+    lines:
+    - 360
+    - 419
+    detail:
+      calls:
+      - JSON.stringify
+      - fetch
+      - otelSpanIdToUUID
+      - otelTraceIdToUUID
+      - stripTrailingSlash
+      - this.logger.error
+      - this.logger.warn
+  - name: flush
+    sig: 'flush(): Promise<void>'
+    is_async: true
+    lines:
+    - 426
+    - 435
+    detail:
+      calls:
+      - this.logger.debug
+      - this.logger.error
+      - this.processor.forceFlush
+  - name: shutdown
+    sig: 'shutdown(): Promise<void>'
+    is_async: true
+    lines:
+    - 437
+    - 444
+    detail:
+      calls:
+      - super.shutdown
+      - this.processor?.shutdown
+      - this.traceMap.clear
+  lines:
+  - 118
+  - 445
+functions:
+- name: buildLaminarAttributes
+  sig: 'buildLaminarAttributes(span: AnyExportedSpan, traceState: TraceState): Attributes'
+  lines:
+  - 447
+  - 528
+  detail:
+    calls:
+    - Object.assign
+    - Object.entries
+    - formatLaminarUsage
+    - getLaminarSpanInput
+    - mapLaminarSpanType
+    - normalizeProvider
+    - serializeForLaminar
+    - toLaminarAttributeValue
+    - traceState.spanIdsPathById.get
+    - traceState.spanPathById.get
+- name: mapLaminarSpanType
+  sig: 'mapLaminarSpanType(spanType: SpanType): LaminarSpanType'
+  lines:
+  - 530
+  - 542
+  detail: {}
+- name: formatLaminarUsage
+  sig: 'formatLaminarUsage(usage?: UsageStats): Attributes'
+  lines:
+  - 544
+  - 566
+  detail: {}
+- name: serializeForLaminar
+  sig: 'serializeForLaminar(value: unknown): string'
+  lines:
+  - 568
+  - 578
+  detail:
+    calls:
+    - JSON.stringify
+- name: getLaminarSpanInput
+  sig: 'getLaminarSpanInput(span: AnyExportedSpan): unknown'
+  lines:
+  - 580
+  - 594
+  detail:
+    calls:
+    - Array.isArray
+- name: toLaminarAttributeValue
+  sig: 'toLaminarAttributeValue(value: unknown): Attributes[string] | undefined'
+  lines:
+  - 596
+  - 614
+  detail:
+    calls:
+    - Array.isArray
+    - serializeForLaminar
+    - value.every
+- name: dateToHrTime
+  sig: 'dateToHrTime(date: Date): HrTime'
+  lines:
+  - 619
+  - 624
+  detail:
+    calls:
+    - Math.floor
+    - date.getTime
+- name: computeDuration
+  sig: 'computeDuration(start: Date, end?: Date): HrTime'
+  lines:
+  - 626
+  - 630
+  detail:
+    calls:
+    - Math.floor
+    - end.getTime
+    - start.getTime
+- name: buildStatusAndEvents
+  sig: |-
+    buildStatusAndEvents(
+      span: AnyExportedSpan,
+      defaultTime: HrTime,
+    ): { status: SpanStatus; events: TimedEvent[] }
+  lines:
+  - 632
+  - 664
+  detail:
+    calls:
+    - events.push
+- name: getSpanKind
+  sig: 'getSpanKind(type: SpanType): SpanKind'
+  lines:
+  - 666
+  - 674
+  detail: {}
+- name: stripTrailingSlash
+  sig: 'stripTrailingSlash(url: string): string'
+  lines:
+  - 676
+  - 678
+  detail:
+    calls:
+    - url.replace
+- name: normalizeTraceId
+  sig: 'normalizeTraceId(traceId: string): string'
+  lines:
+  - 680
+  - 684
+  detail:
+    calls:
+    - id.padStart
+    - id.padStart(32, '0').slice
+    - id.slice
+    - id.startsWith
+    - traceId.toLowerCase
+- name: normalizeSpanId
+  sig: 'normalizeSpanId(spanId: string): string'
+  lines:
+  - 686
+  - 690
+  detail:
+    calls:
+    - id.padStart
+    - id.padStart(16, '0').slice
+    - id.slice
+    - id.startsWith
+    - spanId.toLowerCase
+- name: otelSpanIdToUUID
+  sig: 'otelSpanIdToUUID(spanId: string): string'
+  lines:
+  - 692
+  - 697
+  detail:
+    calls:
+    - normalizeSpanId
+    - |-
+      normalized
+          .padStart
+    - |-
+      normalized
+          .padStart(32, '0')
+          .replace
+- name: otelTraceIdToUUID
+  sig: 'otelTraceIdToUUID(traceId: string): string'
+  lines:
+  - 699
+  - 702
+  detail:
+    calls:
+    - normalizeTraceId
+    - normalized.replace
+- name: normalizeProvider
+  sig: 'normalizeProvider(provider: string): string'
+  lines:
+  - 704
+  - 706
+  detail:
+    calls:
+    - provider.split
+    - provider.split('.').shift
+    - provider.split('.').shift()?.toLowerCase
+    - provider.split('.').shift()?.toLowerCase().trim
+    - provider.toLowerCase
+    - provider.toLowerCase().trim
+exports:
+- name: LaminarSpanType
+  kind: type
+- name: TraceState
+  kind: type
+- name: InstrumentationScope
+  kind: type
+- name: LaminarExporterConfig
+  kind: type
+- name: ResolvedLaminarConfig
+  kind: type
+- name: LaminarExporter
+  kind: type
+- name: buildLaminarAttributes
+  kind: func
+- name: mapLaminarSpanType
+  kind: func
+- name: formatLaminarUsage
+  kind: func
+- name: serializeForLaminar
+  kind: func
+- name: getLaminarSpanInput
+  kind: func
+- name: toLaminarAttributeValue
+  kind: func
+- name: dateToHrTime
+  kind: func
+- name: computeDuration
+  kind: func
+- name: buildStatusAndEvents
+  kind: func
+- name: getSpanKind
+  kind: func
+- name: stripTrailingSlash
+  kind: func
+- name: normalizeTraceId
+  kind: func
+- name: normalizeSpanId
+  kind: func
+- name: otelSpanIdToUUID
+  kind: func
+- name: otelTraceIdToUUID
+  kind: func
+- name: normalizeProvider
+  kind: func
+- name: LMNR_SPAN_INPUT
+  kind: data
+- name: LMNR_SPAN_OUTPUT
+  kind: data
+- name: LMNR_SPAN_TYPE
+  kind: data
+- name: LMNR_SPAN_PATH
+  kind: data
+- name: LMNR_SPAN_IDS_PATH
+  kind: data
+- name: LMNR_SPAN_INSTRUMENTATION_SOURCE
+  kind: data
+- name: LMNR_SPAN_SDK_VERSION
+  kind: data
+- name: LMNR_SPAN_LANGUAGE_VERSION
+  kind: data
+- name: LMNR_ASSOCIATION_PREFIX
+  kind: data
+- name: LMNR_SESSION_ID
+  kind: data
+- name: LMNR_USER_ID
+  kind: data
+- name: LMNR_TAGS
+  kind: data
+- name: GEN_AI_SYSTEM
+  kind: data
+- name: GEN_AI_REQUEST_MODEL
+  kind: data
+- name: GEN_AI_RESPONSE_MODEL
+  kind: data
+- name: GEN_AI_USAGE_INPUT_TOKENS
+  kind: data
+- name: GEN_AI_USAGE_OUTPUT_TOKENS
+  kind: data
+- name: GEN_AI_CACHE_WRITE_INPUT_TOKENS
+  kind: data
+- name: GEN_AI_CACHE_READ_INPUT_TOKENS
+  kind: data

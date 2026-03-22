@@ -1,0 +1,585 @@
+## Roska File Descriptor — observability/tracing.ts
+file: observability/tracing.ts
+lines: 439
+imports:
+- sym: zod/v4.z
+- sym: ../../../evals/types.scoreRowDataSchema
+- sym: ../../../observability/types.SpanType
+- sym: ../shared.contextFields
+- sym: ../shared.dateRangeSchema
+- sym: ../shared.dbTimestamps
+- sym: ../shared.metadataField
+- sym: ../shared.paginationArgsSchema
+- sym: ../shared.paginationInfoSchema
+- sym: ../shared.sortDirectionSchema
+- sym: ../shared.tagsField
+- sym: ../shared.traceIdField
+- sym: ../shared.spanIdField
+data:
+- name: spanNameField
+  type: any
+  val: z.string().describe('Human-readable span name')
+- name: parentSpanIdField
+  type: any
+  val: z.string().describe('Parent span reference (null = root span)')
+- name: spanTypeField
+  type: any
+  val: z.nativeEnum(SpanType).describe('Span type (e.g., WORKFLOW_RUN, AGENT_RUN, TOOL_CALL, etc.)')
+- name: attributesField
+  type: any
+  val: |-
+    z
+      .record(z.string(), z.unknown())
+      .describe('Span-type specific attributes (e.g., model, tokens, tools)')
+- name: linksField
+  type: any
+  val: z.array(z.unknown()).describe('References to related spans in other traces')
+- name: inputField
+  type: any
+  val: z.unknown().describe('Input data passed to the span')
+- name: outputField
+  type: any
+  val: z.unknown().describe('Output data returned from the span')
+- name: errorField
+  type: any
+  val: z.unknown().describe('Error info - presence indicates failure (status derived from this)')
+- name: isEventField
+  type: any
+  val: z.boolean().describe('Whether this is an event (point-in-time) vs a span (duration)')
+- name: startedAtField
+  type: any
+  val: z.date().describe('When the span started')
+- name: endedAtField
+  type: any
+  val: z.date().describe('When the span ended (null = running, status derived from this)')
+- name: traceStatusField
+  type: any
+  val: z.nativeEnum(TraceStatus).describe('Current status of the trace')
+- name: hasChildErrorField
+  type: any
+  val: |-
+    z
+      .preprocess(v => {
+        // Handle string "true"/"false" from query params correctly
+        // z.coerce.boolean() would c...
+- name: sharedFields
+  type: object
+  val: |-
+    {
+      ...contextFields,
+      metadata: metadataField.nullish(),
+      tags: tagsField.nullish(),
+    } as const
+- name: spanIds
+  type: object
+  val: |-
+    {
+      traceId: traceIdField,
+      spanId: spanIdField,
+    } as const satisfies z.ZodRawShape
+- name: spanIdsSchema
+  type: any
+  val: |-
+    z.object({
+      ...spanIds,
+    })
+- name: omitDbTimestamps
+  type: any
+  val: createOmitKeys(dbTimestamps)
+- name: omitSpanIds
+  type: any
+  val: createOmitKeys(spanIds)
+- name: spanRecordSchema
+  type: any
+  val: |-
+    z
+      .object({
+        // Required identifiers
+        ...spanIds,
+        name: spanNameField,
+        spanType: spanTypeField,
+        isEv...
+- name: traceSpanSchema
+  type: any
+  val: |-
+    spanRecordSchema
+      .extend({
+        status: traceStatusField,
+      })
+      .describe('Trace span with computed status (root spans...
+- name: createSpanRecordSchema
+  type: any
+  val: spanRecordSchema.omit(omitDbTimestamps)
+- name: createSpanArgsSchema
+  type: any
+  val: |-
+    z
+      .object({
+        span: createSpanRecordSchema,
+      })
+      .describe('Arguments for creating a single span')
+- name: batchCreateSpansArgsSchema
+  type: any
+  val: |-
+    z
+      .object({
+        records: z.array(createSpanRecordSchema),
+      })
+      .describe('Arguments for batch creating spans')
+- name: getSpanArgsSchema
+  type: any
+  val: |-
+    z
+      .object({
+        traceId: traceIdField.min(1),
+        spanId: spanIdField.min(1),
+      })
+      .describe('Arguments for getting ...
+- name: getSpanResponseSchema
+  type: any
+  val: |-
+    z.object({
+      span: spanRecordSchema,
+    })
+- name: getRootSpanArgsSchema
+  type: any
+  val: |-
+    z
+      .object({
+        traceId: traceIdField.min(1),
+      })
+      .describe('Arguments for getting a root span')
+- name: getRootSpanResponseSchema
+  type: any
+  val: |-
+    z.object({
+      span: spanRecordSchema,
+    })
+- name: getTraceArgsSchema
+  type: any
+  val: |-
+    z
+      .object({
+        traceId: traceIdField.min(1),
+      })
+      .describe('Arguments for getting a single trace')
+- name: getTraceResponseSchema
+  type: any
+  val: |-
+    z.object({
+      traceId: traceIdField,
+      spans: z.array(spanRecordSchema),
+    })
+- name: tracesFilterSchema
+  type: any
+  val: |-
+    z
+      .object({
+        // Date range filters
+        startedAt: dateRangeSchema.optional().describe('Filter by span start time ra...
+- name: tracesOrderByFieldSchema
+  type: any
+  val: |-
+    z
+      .enum(['startedAt', 'endedAt'])
+      .describe("Field to order by: 'startedAt' | 'endedAt'")
+- name: tracesOrderBySchema
+  type: any
+  val: |-
+    z
+      .object({
+        field: tracesOrderByFieldSchema.default('startedAt').describe('Field to order by'),
+        direction: sor...
+- name: listTracesArgsSchema
+  type: any
+  val: |-
+    z
+      .object({
+        filters: tracesFilterSchema.optional().describe('Optional filters to apply'),
+        pagination: paginati...
+- name: listTracesResponseSchema
+  type: any
+  val: |-
+    z.object({
+      pagination: paginationInfoSchema,
+      spans: z.array(traceSpanSchema),
+    })
+- name: updateSpanRecordSchema
+  type: any
+  val: createSpanRecordSchema.omit(omitSpanIds)
+- name: updateSpanArgsSchema
+  type: any
+  val: |-
+    z
+      .object({
+        spanId: spanIdField,
+        traceId: traceIdField,
+        updates: updateSpanRecordSchema.partial(),
+      })
+      ...
+- name: batchUpdateSpansArgsSchema
+  type: any
+  val: |-
+    z
+      .object({
+        records: z.array(
+          z.object({
+            traceId: traceIdField,
+            spanId: spanIdField,
+           ...
+- name: batchDeleteTracesArgsSchema
+  type: any
+  val: |-
+    z
+      .object({
+        traceIds: z.array(traceIdField),
+      })
+      .describe('Arguments for batch deleting traces')
+- name: listScoresBySpanResponseSchema
+  type: any
+  val: |-
+    z.object({
+      pagination: paginationInfoSchema,
+      scores: z.array(scoreRowDataSchema),
+    })
+- name: scoreTracesRequestSchema
+  type: any
+  val: |-
+    z.object({
+      scorerName: z.string().min(1),
+      targets: z
+        .array(
+          z.object({
+            traceId: traceIdField,
+       ...
+- name: scoreTracesResponseSchema
+  type: any
+  val: |-
+    z.object({
+      status: z.string(),
+      message: z.string(),
+      traceCount: z.number(),
+    })
+types:
+- name: TraceStatus
+  kind: enum
+  variants:
+  - name: SUCCESS
+    val: '''success'''
+  - name: ERROR
+    val: '''error'''
+  - name: RUNNING
+    val: '''running'''
+  lines:
+  - 49
+  - 53
+- name: SpanIds
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 98
+  - 98
+- name: SpanRecord
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 136
+  - 136
+- name: TraceSpan
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 162
+  - 162
+- name: CreateSpanRecord
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 193
+  - 193
+- name: CreateSpanArgs
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 205
+  - 205
+- name: BatchCreateSpansArgs
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 217
+  - 217
+- name: GetSpanArgs
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 230
+  - 230
+- name: GetSpanResponse
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 240
+  - 240
+- name: GetRootSpanArgs
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 252
+  - 252
+- name: GetRootSpanResponse
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 262
+  - 262
+- name: GetTraceArgs
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 274
+  - 274
+- name: GetTraceResponse
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 285
+  - 285
+- name: TraceRecord
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 288
+  - 288
+- name: ListTracesArgs
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 342
+  - 342
+- name: ListTracesResponse
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 351
+  - 351
+- name: UpdateSpanRecord
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 359
+  - 359
+- name: UpdateSpanArgs
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 373
+  - 373
+- name: BatchUpdateSpansArgs
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 391
+  - 391
+- name: BatchDeleteTracesArgs
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 403
+  - 403
+- name: ScoreTracesRequest
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 429
+  - 429
+- name: ScoreTracesResponse
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 439
+  - 439
+functions:
+- name: createOmitKeys
+  sig: 'createOmitKeys(shape: T): { [K in keyof T]: true }'
+  lines:
+  - 27
+  - 28
+- name: computeTraceStatus
+  sig: 'computeTraceStatus(span: SpanRecord): TraceStatus'
+  lines:
+  - 148
+  - 152
+  detail: {}
+- name: toTraceSpan
+  sig: 'toTraceSpan(span: SpanRecord): TraceSpan'
+  lines:
+  - 168
+  - 173
+  detail:
+    calls:
+    - computeTraceStatus
+- name: toTraceSpans
+  sig: 'toTraceSpans(spans: SpanRecord[]): TraceSpan[]'
+  lines:
+  - 179
+  - 181
+  detail:
+    calls:
+    - spans.map
+exports:
+- name: TraceStatus
+  kind: type
+- name: SpanIds
+  kind: type
+- name: SpanRecord
+  kind: type
+- name: TraceSpan
+  kind: type
+- name: CreateSpanRecord
+  kind: type
+- name: CreateSpanArgs
+  kind: type
+- name: BatchCreateSpansArgs
+  kind: type
+- name: GetSpanArgs
+  kind: type
+- name: GetSpanResponse
+  kind: type
+- name: GetRootSpanArgs
+  kind: type
+- name: GetRootSpanResponse
+  kind: type
+- name: GetTraceArgs
+  kind: type
+- name: GetTraceResponse
+  kind: type
+- name: TraceRecord
+  kind: type
+- name: ListTracesArgs
+  kind: type
+- name: ListTracesResponse
+  kind: type
+- name: UpdateSpanRecord
+  kind: type
+- name: UpdateSpanArgs
+  kind: type
+- name: BatchUpdateSpansArgs
+  kind: type
+- name: BatchDeleteTracesArgs
+  kind: type
+- name: ScoreTracesRequest
+  kind: type
+- name: ScoreTracesResponse
+  kind: type
+- name: createOmitKeys
+  kind: func
+- name: computeTraceStatus
+  kind: func
+- name: toTraceSpan
+  kind: func
+- name: toTraceSpans
+  kind: func
+- name: spanNameField
+  kind: data
+- name: parentSpanIdField
+  kind: data
+- name: spanTypeField
+  kind: data
+- name: attributesField
+  kind: data
+- name: linksField
+  kind: data
+- name: inputField
+  kind: data
+- name: outputField
+  kind: data
+- name: errorField
+  kind: data
+- name: isEventField
+  kind: data
+- name: startedAtField
+  kind: data
+- name: endedAtField
+  kind: data
+- name: traceStatusField
+  kind: data
+- name: hasChildErrorField
+  kind: data
+- name: sharedFields
+  kind: data
+- name: spanIds
+  kind: data
+- name: spanIdsSchema
+  kind: data
+- name: omitDbTimestamps
+  kind: data
+- name: omitSpanIds
+  kind: data
+- name: spanRecordSchema
+  kind: data
+- name: traceSpanSchema
+  kind: data
+- name: createSpanRecordSchema
+  kind: data
+- name: createSpanArgsSchema
+  kind: data
+- name: batchCreateSpansArgsSchema
+  kind: data
+- name: getSpanArgsSchema
+  kind: data
+- name: getSpanResponseSchema
+  kind: data
+- name: getRootSpanArgsSchema
+  kind: data
+- name: getRootSpanResponseSchema
+  kind: data
+- name: getTraceArgsSchema
+  kind: data
+- name: getTraceResponseSchema
+  kind: data
+- name: tracesFilterSchema
+  kind: data
+- name: tracesOrderByFieldSchema
+  kind: data
+- name: tracesOrderBySchema
+  kind: data
+- name: listTracesArgsSchema
+  kind: data
+- name: listTracesResponseSchema
+  kind: data
+- name: updateSpanRecordSchema
+  kind: data
+- name: updateSpanArgsSchema
+  kind: data
+- name: batchUpdateSpansArgsSchema
+  kind: data
+- name: batchDeleteTracesArgsSchema
+  kind: data
+- name: listScoresBySpanResponseSchema
+  kind: data
+- name: scoreTracesRequestSchema
+  kind: data
+- name: scoreTracesResponseSchema
+  kind: data

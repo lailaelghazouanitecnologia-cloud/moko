@@ -1,0 +1,1293 @@
+## Roska File Descriptor — harness/harness.ts
+file: harness/harness.ts
+lines: 2955
+imports:
+- sym: ../agent.Agent
+  kind: typing
+- sym: ../agent/types.ToolsInput
+  kind: typing
+- sym: ../agent/types.ToolsetsInput
+  kind: typing
+- sym: ../mastra.Mastra
+- sym: ../memory/memory.MastraMemory
+  kind: typing
+- sym: ../memory/types.StorageThreadType
+  kind: typing
+- sym: ../observability.TracingContext
+  kind: typing
+- sym: ../observability.TracingOptions
+  kind: typing
+- sym: ../request-context.RequestContext
+- sym: ../schema.toStandardSchema
+- sym: ../schema.InferPublicSchema
+  kind: typing
+- sym: ../schema.StandardSchemaWithJSON
+  kind: typing
+- sym: ../storage/domains/memory/base.MemoryStorage
+  kind: typing
+- sym: ../storage/types.ObservationalMemoryRecord
+  kind: typing
+- sym: ../workspace/workspace.Workspace
+- sym: ../workspace/workspace.WorkspaceConfig
+  kind: typing
+- sym: ./tools.askUserTool
+- sym: ./tools.createSubagentTool
+- sym: ./tools.submitPlanTool
+- sym: ./tools.taskCheckTool
+- sym: ./tools.taskWriteTool
+- sym: ./types.defaultDisplayState
+- sym: ./types.defaultOMProgressState
+- sym: ./types.AvailableModel
+  kind: typing
+- sym: ./types.HeartbeatHandler
+  kind: typing
+- sym: ./types.HarnessConfig
+  kind: typing
+- sym: ./types.HarnessDisplayState
+  kind: typing
+- sym: ./types.HarnessEvent
+  kind: typing
+- sym: ./types.HarnessEventListener
+  kind: typing
+- sym: ./types.HarnessMessage
+  kind: typing
+- sym: ./types.HarnessMessageContent
+  kind: typing
+- sym: ./types.HarnessMode
+  kind: typing
+- sym: ./types.HarnessRequestContext
+  kind: typing
+- sym: ./types.HarnessSession
+  kind: typing
+- sym: ./types.HarnessStateSchema
+  kind: typing
+- sym: ./types.HarnessThread
+  kind: typing
+- sym: ./types.ModelAuthStatus
+  kind: typing
+- sym: ./types.PermissionPolicy
+  kind: typing
+- sym: ./types.PermissionRules
+  kind: typing
+- sym: ./types.ToolCategory
+  kind: typing
+types:
+- name: Harness
+  kind: struct
+  ctx: ===========================================================================
+  fields:
+  - name: id
+    type: string
+  - name: config
+    type: HarnessConfig<TState>
+  - name: stateSchema
+    type: StandardSchemaWithJSON | undefined
+  - name: state
+    type: InferPublicSchema<TState>
+  - name: currentModeId
+    type: string
+  - name: currentThreadId
+    type: string | null
+    default: 'null'
+  - name: resourceId
+    type: string
+  - name: defaultResourceId
+    type: string
+  - name: listeners
+    type: HarnessEventListener[]
+    default: '[]'
+  - name: abortController
+    type: AbortController | null
+    default: 'null'
+  - name: abortRequested
+    type: boolean
+    default: 'false'
+  - name: currentRunId
+    type: string | null
+    default: 'null'
+  - name: currentOperationId
+    type: number
+    default: '0'
+  - name: followUpQueue
+    type: 'Array<{ content: string; requestContext?: RequestContext }>'
+    default: '[]'
+  - name: pendingApprovalResolve
+    type: |-
+      | ((params: { decision: 'approve' | 'decline'; requestContext?: RequestContext }) => void)
+          | null
+    default: 'null'
+  - name: pendingApprovalToolName
+    type: string | null
+    default: 'null'
+  - name: pendingQuestions
+    type: any
+    default: 'new Map<string, (answer: string) => void>()'
+  - name: pendingPlanApprovals
+    type: any
+    default: |-
+      new Map<
+          string,
+          (result: { action: 'approved' | 'rejected'; feedback?: ...
+  - name: workspace
+    type: Workspace | undefined
+    default: undefined
+  - name: workspaceFn
+    type: |-
+      | ((ctx: { requestContext: RequestContext }) => Promise<Workspace | undefined> | Workspace | undefined)
+          | undefined
+    default: undefined
+  - name: workspaceInitialized
+    type: any
+    default: 'false'
+  - name: heartbeatTimers
+    type: any
+    default: 'new Map<string, { timer: NodeJS.Timeout; shutdown?: () => void | Promise<void> }...'
+  - name: tokenUsage
+    type: '{ promptTokens: number; completionTokens: number; totalTokens: number }'
+    default: |-
+      {
+          promptTokens: 0,
+          completionTokens: 0,
+          totalTokens: 0,
+        }
+  - name: sessionGrantedCategories
+    type: any
+    default: new Set<string>()
+  - name: sessionGrantedTools
+    type: any
+    default: new Set<string>()
+  - name: displayState
+    type: HarnessDisplayState
+    default: defaultDisplayState()
+  methods:
+  - name: constructor
+    sig: 'constructor(config: HarnessConfig<TState>)'
+    lines:
+    - 104
+    - 140
+    detail:
+      calls:
+      - config.modes.find
+      - new Error
+      - this.getSchemaDefaults
+      - this.setState
+      - toStandardSchema
+  - name: init
+    sig: 'init(): Promise<void>'
+    is_async: true
+    lines:
+    - 150
+    - 208
+    detail:
+      calls:
+      - String
+      - agent.__setMemory
+      - agent.__setWorkspace
+      - agent.getMastraInstance
+      - agent.hasOwnMemory
+      - agent.hasOwnWorkspace
+      - new Error
+      - new Mastra
+      - new Workspace
+      - this.#internalMastra.addAgent
+      - this.#internalMastra.getStorage
+      - this.#internalMastra.getStorage()!.init
+      - this.emit
+      - this.startHeartbeats
+      - this.workspace.init
+  - name: selectOrCreateThread
+    sig: 'selectOrCreateThread(): Promise<HarnessThread>'
+    is_async: true
+    lines:
+    - 213
+    - 227
+    detail:
+      calls:
+      - '[...threads].sort'
+      - this.config.threadLock?.acquire
+      - this.createThread
+      - this.listThreads
+      - this.loadThreadMetadata
+  - name: getMemoryStorage
+    sig: 'getMemoryStorage(): Promise<MemoryStorage>'
+    is_async: true
+    vis: private
+    lines:
+    - 229
+    - 238
+    detail:
+      calls:
+      - new Error
+      - this.config.storage.getStore
+  - name: getState
+    sig: 'getState(): Readonly<InferPublicSchema<TState>>'
+    lines:
+    - 247
+    - 249
+    detail: {}
+  - name: setState
+    sig: 'setState(updates: Partial<InferPublicSchema<TState>>): Promise<void>'
+    is_async: true
+    lines:
+    - 255
+    - 271
+    detail:
+      calls:
+      - Object.keys
+      - new Error
+      - result.issues.map
+      - result.issues.map(i => i.message).join
+      - this.emit
+      - this.stateSchema['~standard'].validate
+  - name: getSchemaDefaults
+    sig: 'getSchemaDefaults(): Partial<InferPublicSchema<TState>>'
+    vis: private
+    lines:
+    - 273
+    - 295
+    detail:
+      calls:
+      - Object.entries
+      - this.stateSchema['~standard'].jsonSchema.output
+  - name: listModes
+    sig: 'listModes(): HarnessMode<TState>[]'
+    lines:
+    - 301
+    - 303
+    detail: {}
+  - name: getCurrentModeId
+    sig: 'getCurrentModeId(): string'
+    lines:
+    - 305
+    - 307
+    detail: {}
+  - name: getCurrentMode
+    sig: 'getCurrentMode(): HarnessMode<TState>'
+    lines:
+    - 309
+    - 315
+    detail:
+      calls:
+      - new Error
+      - this.config.modes.find
+  - name: switchMode
+    sig: 'switchMode({ modeId }: { modeId: string }): Promise<void>'
+    is_async: true
+    lines:
+    - 321
+    - 348
+    detail:
+      calls:
+      - new Error
+      - this.abort
+      - this.config.modes.find
+      - this.emit
+      - this.getCurrentModelId
+      - this.loadModeModelId
+      - this.setState
+      - this.setThreadSetting
+  - name: loadModeModelId
+    sig: 'loadModeModelId(modeId: string): Promise<string | null>'
+    is_async: true
+    vis: private
+    lines:
+    - 354
+    - 371
+    detail:
+      calls:
+      - memoryStorage.getThreadById
+      - this.config.modes.find
+      - this.getMemoryStorage
+  - name: getModelName
+    sig: 'getModelName(): string'
+    lines:
+    - 387
+    - 392
+    detail:
+      calls:
+      - modelId.split
+      - this.getCurrentModelId
+  - name: getFullModelId
+    sig: 'getFullModelId(): string'
+    lines:
+    - 397
+    - 399
+    detail:
+      calls:
+      - this.getCurrentModelId
+  - name: switchModel
+    sig: |-
+      switchModel({
+          modelId,
+          scope = 'thread',
+          modeId,
+        }: {
+          modelId: string;
+          scope?: 'global' | 'thread';
+          modeId?: string;
+        }): Promise<void>
+    is_async: true
+    lines:
+    - 404
+    - 430
+    detail:
+      calls:
+      - Promise.resolve
+      - console.error
+      - this.config.modelUseCountTracker
+      - this.emit
+      - this.setState
+      - this.setThreadSetting
+  - name: getCurrentModelId
+    sig: 'getCurrentModelId(): string'
+    lines:
+    - 432
+    - 435
+    detail:
+      calls:
+      - this.getState
+  - name: hasModelSelected
+    sig: 'hasModelSelected(): boolean'
+    lines:
+    - 437
+    - 439
+    detail:
+      calls:
+      - this.getCurrentModelId
+  - name: getCurrentModelAuthStatus
+    sig: 'getCurrentModelAuthStatus(): Promise<ModelAuthStatus>'
+    is_async: true
+    lines:
+    - 445
+    - 486
+    detail:
+      calls:
+      - Array.isArray
+      - availableModels.find
+      - import
+      - modelId.split
+      - this.config.modelAuthChecker
+      - this.getCurrentModelId
+      - this.getProviderApiKeyEnvVar
+      - this.listAvailableModels
+  - name: listAvailableModels
+    sig: 'listAvailableModels(): Promise<AvailableModel[]>'
+    is_async: true
+    lines:
+    - 493
+    - 562
+    detail:
+      calls:
+      - Array.isArray
+      - Object.keys
+      - Promise.resolve
+      - console.warn
+      - import
+      - modelsById.values
+      - new Map
+      - this.config.customModelCatalogProvider
+      - this.config.modelAuthChecker
+      - this.config.modelUseCountProvider
+      - upsertModel
+  - name: getProviderApiKeyEnvVar
+    sig: 'getProviderApiKeyEnvVar(provider: string): Promise<string | undefined>'
+    is_async: true
+    vis: private
+    lines:
+    - 564
+    - 573
+    detail:
+      calls:
+      - Array.isArray
+      - import
+  - name: getCurrentThreadId
+    sig: 'getCurrentThreadId(): string | null'
+    lines:
+    - 579
+    - 581
+    detail: {}
+  - name: getResourceId
+    sig: 'getResourceId(): string'
+    lines:
+    - 583
+    - 585
+    detail: {}
+  - name: setResourceId
+    sig: 'setResourceId({ resourceId }: { resourceId: string }): void'
+    lines:
+    - 587
+    - 590
+    detail: {}
+  - name: getDefaultResourceId
+    sig: 'getDefaultResourceId(): string'
+    lines:
+    - 592
+    - 594
+    detail: {}
+  - name: getKnownResourceIds
+    sig: 'getKnownResourceIds(): Promise<string[]>'
+    is_async: true
+    lines:
+    - 596
+    - 600
+    detail:
+      calls:
+      - '[...ids].sort'
+      - new Set
+      - this.listThreads
+      - threads.map
+  - name: createThread
+    sig: 'createThread({ title }: { title?: string } = {}): Promise<HarnessThread>'
+    is_async: true
+    lines:
+    - 602
+    - 695
+    detail:
+      calls:
+      - Object.keys
+      - memoryStorage.saveThread
+      - new Date
+      - this.config.threadLock.acquire
+      - this.config.threadLock.release
+      - this.emit
+      - this.generateId
+      - this.getCurrentMode
+      - this.getMemoryStorage
+      - this.setState
+  - name: memory
+    sig: memory()
+    lines:
+    - 700
+    - 708
+    detail:
+      calls:
+      - this.createThread.bind
+      - this.deleteThread.bind
+      - this.listThreads.bind
+      - this.renameThread.bind
+      - this.switchThread.bind
+  - name: deleteThread
+    sig: 'deleteThread({ threadId }: { threadId: string }): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 710
+    - 734
+    detail:
+      calls:
+      - memoryStorage.deleteThread
+      - memoryStorage.getThreadById
+      - new Error
+      - this.config.threadLock?.release
+      - this.emit
+      - this.getMemoryStorage
+  - name: renameThread
+    sig: 'renameThread({ title }: { title: string }): Promise<void>'
+    is_async: true
+    lines:
+    - 736
+    - 746
+    detail:
+      calls:
+      - memoryStorage.getThreadById
+      - memoryStorage.saveThread
+      - new Date
+      - this.getMemoryStorage
+  - name: cloneThread
+    sig: |-
+      cloneThread({
+          sourceThreadId,
+          title,
+          resourceId,
+        }: {
+          sourceThreadId?: string;
+          title?: string;
+          resourceId?: string;
+        } = {}): Promise<HarnessThread>
+    is_async: true
+    lines:
+    - 748
+    - 808
+    detail:
+      calls:
+      - memory.cloneThread
+      - new Error
+      - this.config.threadLock.acquire
+      - this.config.threadLock.release
+      - this.emit
+      - this.loadThreadMetadata
+      - this.resolveMemory
+  - name: switchThread
+    sig: 'switchThread({ threadId }: { threadId: string }): Promise<void>'
+    is_async: true
+    lines:
+    - 810
+    - 835
+    detail:
+      calls:
+      - memoryStorage.getThreadById
+      - new Error
+      - this.abort
+      - this.config.threadLock?.acquire
+      - this.config.threadLock?.release
+      - this.emit
+      - this.getMemoryStorage
+      - this.loadThreadMetadata
+  - name: listThreads
+    sig: 'listThreads(options?: { allResources?: boolean }): Promise<HarnessThread[]>'
+    is_async: true
+    lines:
+    - 837
+    - 855
+    detail:
+      calls:
+      - memoryStorage.listThreads
+      - result.threads.map
+      - this.getMemoryStorage
+  - name: setThreadSetting
+    sig: 'setThreadSetting({ key, value }: { key: string; value: unknown }): Promise<void>'
+    is_async: true
+    lines:
+    - 857
+    - 875
+    detail:
+      calls:
+      - memoryStorage.getThreadById
+      - memoryStorage.saveThread
+      - new Date
+      - this.getMemoryStorage
+  - name: deleteThreadSetting
+    sig: 'deleteThreadSetting({ key }: { key: string }): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 877
+    - 897
+    detail:
+      calls:
+      - Object.keys
+      - memoryStorage.getThreadById
+      - memoryStorage.saveThread
+      - new Date
+      - this.getMemoryStorage
+  - name: loadThreadMetadata
+    sig: 'loadThreadMetadata(): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 899
+    - 964
+    detail:
+      calls:
+      - Object.keys
+      - memoryStorage.getThreadById
+      - this.config.modes.find
+      - this.config.modes.some
+      - this.emit
+      - this.getMemoryStorage
+      - this.setState
+  - name: loadOMProgress
+    sig: 'loadOMProgress(): Promise<void>'
+    is_async: true
+    lines:
+    - 975
+    - 1084
+    detail:
+      calls:
+      - getThreshold
+      - memoryStorage.getObservationalMemory
+      - memoryStorage.listMessages
+      - this.emit
+      - this.getMemoryStorage
+  - name: getObservationalMemoryRecord
+    sig: 'getObservationalMemoryRecord(): Promise<ObservationalMemoryRecord | null>'
+    is_async: true
+    lines:
+    - 1086
+    - 1095
+    detail:
+      calls:
+      - memoryStorage.getObservationalMemory
+      - this.getMemoryStorage
+  - name: getObserverModelId
+    sig: 'getObserverModelId(): string | undefined'
+    lines:
+    - 1100
+    - 1102
+    detail: {}
+  - name: getReflectorModelId
+    sig: 'getReflectorModelId(): string | undefined'
+    lines:
+    - 1107
+    - 1109
+    detail: {}
+  - name: getObservationThreshold
+    sig: 'getObservationThreshold(): number | undefined'
+    lines:
+    - 1114
+    - 1116
+    detail: {}
+  - name: getReflectionThreshold
+    sig: 'getReflectionThreshold(): number | undefined'
+    lines:
+    - 1121
+    - 1123
+    detail: {}
+  - name: getResolvedObserverModel
+    sig: getResolvedObserverModel()
+    lines:
+    - 1128
+    - 1132
+    detail:
+      calls:
+      - this.config.resolveModel
+      - this.getObserverModelId
+  - name: getResolvedReflectorModel
+    sig: getResolvedReflectorModel()
+    lines:
+    - 1137
+    - 1141
+    detail:
+      calls:
+      - this.config.resolveModel
+      - this.getReflectorModelId
+  - name: switchObserverModel
+    sig: 'switchObserverModel({ modelId }: { modelId: string }): Promise<void>'
+    is_async: true
+    lines:
+    - 1146
+    - 1150
+    detail:
+      calls:
+      - this.emit
+      - this.setState
+      - this.setThreadSetting
+  - name: switchReflectorModel
+    sig: 'switchReflectorModel({ modelId }: { modelId: string }): Promise<void>'
+    is_async: true
+    lines:
+    - 1155
+    - 1159
+    detail:
+      calls:
+      - this.emit
+      - this.setState
+      - this.setThreadSetting
+  - name: getSubagentModelId
+    sig: 'getSubagentModelId({ agentType }: { agentType?: string } = {}): string | null'
+    lines:
+    - 1165
+    - 1173
+    detail: {}
+  - name: setSubagentModelId
+    sig: 'setSubagentModelId({ modelId, agentType }: { modelId: string; agentType?: string }): Promise<void>'
+    is_async: true
+    lines:
+    - 1175
+    - 1180
+    detail:
+      calls:
+      - this.emit
+      - this.setState
+      - this.setThreadSetting
+  - name: grantSessionCategory
+    sig: 'grantSessionCategory({ category }: { category: ToolCategory }): void'
+    lines:
+    - 1186
+    - 1188
+    detail:
+      calls:
+      - this.sessionGrantedCategories.add
+  - name: grantSessionTool
+    sig: 'grantSessionTool({ toolName }: { toolName: string }): void'
+    lines:
+    - 1190
+    - 1192
+    detail:
+      calls:
+      - this.sessionGrantedTools.add
+  - name: getSessionGrants
+    sig: 'getSessionGrants(): { categories: ToolCategory[]; tools: string[] }'
+    lines:
+    - 1194
+    - 1199
+    detail: {}
+  - name: getToolCategory
+    sig: 'getToolCategory({ toolName }: { toolName: string }): ToolCategory | null'
+    lines:
+    - 1201
+    - 1203
+    detail:
+      calls:
+      - this.config.toolCategoryResolver
+  - name: setPermissionForCategory
+    sig: 'setPermissionForCategory({ category, policy }: { category: ToolCategory; policy: PermissionPolicy }): void'
+    lines:
+    - 1205
+    - 1209
+    detail:
+      calls:
+      - this.getPermissionRules
+      - this.setState
+  - name: setPermissionForTool
+    sig: 'setPermissionForTool({ toolName, policy }: { toolName: string; policy: PermissionPolicy }): void'
+    lines:
+    - 1211
+    - 1215
+    detail:
+      calls:
+      - this.getPermissionRules
+      - this.setState
+  - name: getPermissionRules
+    sig: 'getPermissionRules(): PermissionRules'
+    lines:
+    - 1217
+    - 1221
+    detail: {}
+  - name: resolveToolApproval
+    sig: 'resolveToolApproval(toolName: string): PermissionPolicy'
+    vis: private
+    lines:
+    - 1228
+    - 1247
+    detail:
+      calls:
+      - this.getPermissionRules
+      - this.getToolCategory
+      - this.sessionGrantedCategories.has
+      - this.sessionGrantedTools.has
+  - name: sendMessage
+    sig: |-
+      sendMessage({
+          content,
+          files,
+          tracingContext,
+          tracingOptions,
+          requestContext: requestContextInput,
+        }: {
+          content: string;
+          files?: Array<{ data: string; mediaType: string; filename?: string }>;
+          tracingContext?: TracingContext;
+          tracingOptions?: TracingOptions;
+          requestContext?: RequestContext;
+        }): Promise<void>
+    is_async: true
+    lines:
+    - 1257
+    - 1374
+    detail:
+      calls:
+      - String
+      - agent.stream
+      - error.message.match
+      - error.message.replace
+      - error.message.replace('Tool ', '').replace
+      - files.map
+      - new AbortController
+      - new Error
+      - this.buildRequestContext
+      - this.buildToolsets
+      - this.createThread
+      - this.emit
+      - this.followUpQueue.push
+      - this.followUpQueue.shift
+      - this.getCurrentAgent
+      - this.processStream
+      - this.sendMessage
+  - name: listMessages
+    sig: 'listMessages(options?: { limit?: number }): Promise<HarnessMessage[]>'
+    is_async: true
+    lines:
+    - 1376
+    - 1379
+    detail:
+      calls:
+      - this.listMessagesForThread
+  - name: listMessagesForThread
+    sig: 'listMessagesForThread({ threadId, limit }: { threadId: string; limit?: number }): Promise<HarnessMessage[]>'
+    is_async: true
+    lines:
+    - 1381
+    - 1398
+    detail:
+      calls:
+      - memoryStorage.listMessages
+      - result.messages.map
+      - result.messages.map(msg => this.convertToHarnessMessage(msg)).reverse
+      - this.getMemoryStorage
+  - name: getFirstUserMessageForThread
+    sig: 'getFirstUserMessageForThread({ threadId }: { threadId: string }): Promise<HarnessMessage | null>'
+    is_async: true
+    lines:
+    - 1400
+    - 1403
+    detail:
+      calls:
+      - messages.get
+      - this.getFirstUserMessagesForThreads
+  - name: getFirstUserMessagesForThreads
+    sig: 'getFirstUserMessagesForThreads({ threadIds }: { threadIds: string[] }): Promise<Map<string, HarnessMessage>>'
+    is_async: true
+    lines:
+    - 1405
+    - 1426
+    detail:
+      calls:
+      - firstUserMessages.has
+      - firstUserMessages.set
+      - memoryStorage.listMessages
+      - new Map
+      - this.convertToHarnessMessage
+      - this.getMemoryStorage
+  - name: convertToHarnessMessage
+    sig: |-
+      convertToHarnessMessage(msg: {
+          id: string;
+          role: 'user' | 'assistant' | 'system';
+          createdAt: Date;
+          content: {
+            parts: Array<{
+              type: string;
+              text?: string;
+              reasoning?: string;
+              toolCallId?: string;
+              toolName?: string;
+              args?: unknown;
+              result?: unknown;
+              isError?: boolean;
+              toolInvocation?: {
+                state: string;
+                toolCallId: string;
+                toolName: string;
+                args?: unknown;
+                result?: unknown;
+                isError?: boolean;
+              };
+              [key: string]: unknown;
+            }>;
+          };
+        }): HarnessMessage
+    vis: private
+    lines:
+    - 1428
+    - 1581
+    detail:
+      calls:
+      - console.warn
+      - content.push
+  - name: processStream
+    sig: |-
+      processStream(
+          response: { fullStream: AsyncIterable<any> },
+          requestContext: RequestContext,
+        ): Promise<{ message: HarnessMessage }>
+    is_async: true
+    vis: private
+    lines:
+    - 1586
+    - 2019
+    detail:
+      calls:
+      - String
+      - abortForOmFailure
+      - currentMessage.content.push
+      - new Date
+      - new Error
+      - new Map
+      - new Promise
+      - textContentById.get
+      - textContentById.set
+      - thinkingContentById.get
+      - thinkingContentById.set
+      - this.emit
+      - this.generateId
+      - this.handleToolApprove
+      - this.handleToolDecline
+      - this.persistTokenUsage
+      - this.persistTokenUsage().catch
+      - this.resolveToolApproval
+  - name: abort
+    sig: 'abort(): void'
+    lines:
+    - 2028
+    - 2036
+    detail:
+      calls:
+      - this.abortController.abort
+  - name: steer
+    sig: 'steer({ content, requestContext }: { content: string; requestContext?: RequestContext }): Promise<void>'
+    is_async: true
+    lines:
+    - 2041
+    - 2045
+    detail:
+      calls:
+      - this.abort
+      - this.sendMessage
+  - name: followUp
+    sig: 'followUp({ content, requestContext }: { content: string; requestContext?: RequestContext }): Promise<void>'
+    is_async: true
+    lines:
+    - 2050
+    - 2057
+    detail:
+      calls:
+      - this.emit
+      - this.followUpQueue.push
+      - this.isRunning
+      - this.sendMessage
+  - name: getFollowUpCount
+    sig: 'getFollowUpCount(): number'
+    lines:
+    - 2059
+    - 2061
+    detail: {}
+  - name: isRunning
+    sig: 'isRunning(): boolean'
+    lines:
+    - 2063
+    - 2065
+    detail: {}
+  - name: getCurrentRunId
+    sig: 'getCurrentRunId(): string | null'
+    lines:
+    - 2067
+    - 2069
+    detail: {}
+  - name: getDisplayState
+    sig: 'getDisplayState(): Readonly<HarnessDisplayState>'
+    lines:
+    - 2079
+    - 2081
+    detail: {}
+  - name: respondToToolApproval
+    sig: |-
+      respondToToolApproval({
+          decision,
+          requestContext,
+        }: {
+          decision: 'approve' | 'decline' | 'always_allow_category';
+          requestContext?: RequestContext;
+        }): void
+    lines:
+    - 2107
+    - 2129
+    detail:
+      calls:
+      - this.getToolCategory
+      - this.grantSessionCategory
+      - this.pendingApprovalResolve
+  - name: registerQuestion
+    sig: 'registerQuestion({ questionId, resolve }: { questionId: string; resolve: (answer: string) => void }): void'
+    lines:
+    - 2139
+    - 2141
+    detail:
+      calls:
+      - this.pendingQuestions.set
+  - name: respondToQuestion
+    sig: 'respondToQuestion({ questionId, answer }: { questionId: string; answer: string }): void'
+    lines:
+    - 2147
+    - 2153
+    detail:
+      calls:
+      - resolve
+      - this.pendingQuestions.delete
+      - this.pendingQuestions.get
+  - name: registerPlanApproval
+    sig: |-
+      registerPlanApproval({
+          planId,
+          resolve,
+        }: {
+          planId: string;
+          resolve: (result: { action: 'approved' | 'rejected'; feedback?: string }) => void;
+        }): void
+    lines:
+    - 2159
+    - 2167
+    detail:
+      calls:
+      - this.pendingPlanApprovals.set
+  - name: respondToPlanApproval
+    sig: |-
+      respondToPlanApproval({
+          planId,
+          response,
+        }: {
+          planId: string;
+          response: { action: 'approved' | 'rejected'; feedback?: string };
+        }): Promise<void>
+    is_async: true
+    lines:
+    - 2174
+    - 2193
+    detail:
+      calls:
+      - resolve
+      - this.config.modes.find
+      - this.pendingPlanApprovals.delete
+      - this.pendingPlanApprovals.get
+      - this.switchMode
+  - name: handleToolApprove
+    sig: |-
+      handleToolApprove({
+          toolCallId,
+          requestContext: requestContextInput,
+        }: {
+          toolCallId?: string;
+          requestContext?: RequestContext;
+        }): Promise<{ message: HarnessMessage }>
+    is_async: true
+    vis: private
+    lines:
+    - 2195
+    - 2224
+    detail:
+      calls:
+      - agent.approveToolCall
+      - new AbortController
+      - new Error
+      - this.buildRequestContext
+      - this.buildToolsets
+      - this.getCurrentAgent
+      - this.processStream
+  - name: handleToolDecline
+    sig: |-
+      handleToolDecline({
+          toolCallId,
+          requestContext: requestContextInput,
+        }: {
+          toolCallId?: string;
+          requestContext?: RequestContext;
+        }): Promise<{ message: HarnessMessage }>
+    is_async: true
+    vis: private
+    lines:
+    - 2226
+    - 2254
+    detail:
+      calls:
+      - agent.declineToolCall
+      - new AbortController
+      - new Error
+      - this.buildRequestContext
+      - this.buildToolsets
+      - this.getCurrentAgent
+      - this.processStream
+  - name: subscribe
+    sig: 'subscribe(listener: HarnessEventListener): () => void'
+    lines:
+    - 2263
+    - 2271
+    detail:
+      calls:
+      - this.listeners.push
+  - name: applyDisplayStateUpdate
+    sig: 'applyDisplayStateUpdate(event: HarnessEvent): void'
+    vis: private
+    lines:
+    - 2308
+    - 2679
+    detail:
+      calls:
+      - Date.now
+      - FILE_TOOLS.includes
+      - JSON.stringify
+      - ds.activeSubagents.get
+      - ds.activeSubagents.set
+      - ds.activeTools.get
+      - ds.activeTools.set
+      - ds.modifiedFiles.get
+      - ds.modifiedFiles.set
+      - ds.toolInputBuffers.delete
+      - ds.toolInputBuffers.get
+      - ds.toolInputBuffers.set
+      - existing.operations.push
+      - keys.includes
+      - new Date
+      - new Map
+      - subAgent.toolCalls.push
+      - subTool.toolCalls.find
+      - this.resetThreadDisplayState
+  - name: buildToolsets
+    sig: 'buildToolsets(requestContext: RequestContext): Promise<ToolsetsInput>'
+    is_async: true
+    vis: private
+    lines:
+    - 2690
+    - 2723
+    detail:
+      calls:
+      - createSubagentTool
+      - this.config.tools
+      - this.getCurrentMode
+  - name: buildRequestContext
+    sig: 'buildRequestContext(requestContext?: RequestContext): Promise<RequestContext>'
+    is_async: true
+    vis: private
+    lines:
+    - 2729
+    - 2757
+    detail:
+      calls:
+      - Promise.resolve
+      - new RequestContext
+      - requestContext.set
+      - this.getState
+      - this.workspaceFn
+  - name: resolveMemory
+    sig: 'resolveMemory(): Promise<MastraMemory>'
+    is_async: true
+    vis: private
+    lines:
+    - 2762
+    - 2776
+    detail:
+      calls:
+      - Promise.resolve
+      - mem
+      - new Error
+      - this.buildRequestContext
+  - name: getTokenUsage
+    sig: 'getTokenUsage(): { promptTokens: number; completionTokens: number; totalTokens: number }'
+    lines:
+    - 2782
+    - 2784
+    detail: {}
+  - name: persistTokenUsage
+    sig: 'persistTokenUsage(): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 2786
+    - 2804
+    detail:
+      calls:
+      - memoryStorage.getThreadById
+      - memoryStorage.saveThread
+      - new Date
+      - this.getMemoryStorage
+  - name: getWorkspace
+    sig: 'getWorkspace(): Workspace | undefined'
+    lines:
+    - 2810
+    - 2812
+    detail: {}
+  - name: resolveWorkspace
+    sig: |-
+      resolveWorkspace({
+          requestContext,
+        }: {
+          requestContext?: RequestContext;
+        } = {}): Promise<Workspace | undefined>
+    is_async: true
+    lines:
+    - 2819
+    - 2831
+    detail:
+      calls:
+      - this.buildRequestContext
+  - name: hasWorkspace
+    sig: 'hasWorkspace(): boolean'
+    lines:
+    - 2833
+    - 2835
+    detail: {}
+  - name: isWorkspaceReady
+    sig: 'isWorkspaceReady(): boolean'
+    lines:
+    - 2837
+    - 2840
+    detail: {}
+  - name: destroyWorkspace
+    sig: 'destroyWorkspace(): Promise<void>'
+    is_async: true
+    lines:
+    - 2842
+    - 2855
+    detail:
+      calls:
+      - console.warn
+      - this.emit
+      - this.workspace.destroy
+  - name: startHeartbeats
+    sig: 'startHeartbeats(): void'
+    vis: private
+    lines:
+    - 2861
+    - 2884
+    detail:
+      calls:
+      - run
+      - setInterval
+      - this.heartbeatTimers.has
+      - this.heartbeatTimers.set
+      - timer.unref
+  - name: registerHeartbeat
+    sig: 'registerHeartbeat(handler: HeartbeatHandler): void'
+    lines:
+    - 2886
+    - 2904
+    detail:
+      calls:
+      - run
+      - setInterval
+      - this.heartbeatTimers.set
+      - this.removeHeartbeat
+      - timer.unref
+  - name: removeHeartbeat
+    sig: 'removeHeartbeat({ id }: { id: string }): Promise<void>'
+    is_async: true
+    lines:
+    - 2906
+    - 2917
+    detail:
+      calls:
+      - clearInterval
+      - console.error
+      - entry.shutdown
+      - this.heartbeatTimers.delete
+      - this.heartbeatTimers.get
+  - name: stopHeartbeats
+    sig: 'stopHeartbeats(): Promise<void>'
+    is_async: true
+    lines:
+    - 2919
+    - 2931
+    detail:
+      calls:
+      - clearInterval
+      - console.error
+      - entry.shutdown
+      - this.heartbeatTimers.clear
+      - this.heartbeatTimers.entries
+  - name: getSession
+    sig: 'getSession(): Promise<HarnessSession>'
+    is_async: true
+    lines:
+    - 2937
+    - 2943
+    detail:
+      calls:
+      - this.listThreads
+  - name: generateId
+    sig: 'generateId(): string'
+    vis: private
+    lines:
+    - 2949
+    - 2954
+    detail:
+      calls:
+      - Date.now
+      - Math.random
+      - Math.random().toString
+      - Math.random().toString(36).slice
+      - this.config.idGenerator
+  lines:
+  - 63
+  - 2955
+exports:
+- name: Harness
+  kind: type

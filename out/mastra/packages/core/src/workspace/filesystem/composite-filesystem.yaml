@@ -1,0 +1,458 @@
+## Roska File Descriptor — filesystem/composite-filesystem.ts
+file: filesystem/composite-filesystem.ts
+lines: 533
+purpose: 'CompositeFilesystem - Routes operations to mounted filesystems based on path. Creates a unified filesystem view by combining multiple filesystems at different mount points. Useful for composing local storage, S3, and other backends. ```typescript const cfs = new CompositeFilesystem({ mounts: { ''/local'': new LocalFilesystem({ basePath: ''./data'' }), ''/s3'': new S3Filesystem({ bucket: ''my-bucket'', ... }), } }); // readdir(''/'') returns [''local'', ''s3''] // readFile(''/local/file.txt'') reads from LocalFilesystem // readFile(''/s3/data.json'') reads from S3Filesystem ```'
+imports:
+- sym: node:path/posix.posixPath
+- sym: ../../request-context.RequestContext
+  kind: typing
+- sym: ../errors.PermissionError
+- sym: ../lifecycle.callLifecycle
+- sym: ../lifecycle.ProviderStatus
+  kind: typing
+- sym: ./filesystem.WorkspaceFilesystem
+  kind: typing
+- sym: ./filesystem.FileContent
+  kind: typing
+- sym: ./filesystem.FileEntry
+  kind: typing
+- sym: ./filesystem.FileStat
+  kind: typing
+- sym: ./filesystem.FilesystemInfo
+  kind: typing
+- sym: ./filesystem.ReadOptions
+  kind: typing
+- sym: ./filesystem.WriteOptions
+  kind: typing
+- sym: ./filesystem.ListOptions
+  kind: typing
+- sym: ./filesystem.CopyOptions
+  kind: typing
+- sym: ./filesystem.RemoveOptions
+  kind: typing
+types:
+- name: CompositeFilesystemConfig
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: mounts
+    type: TMounts
+  lines:
+  - 44
+  - 49
+- name: ResolvedMount
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: fs
+    type: WorkspaceFilesystem
+  - name: fsPath
+    type: string
+  - name: mountPath
+    type: string
+  lines:
+  - 51
+  - 55
+- name: CompositeFilesystem
+  kind: struct
+  ctx: Get all mount paths.
+  bases:
+  - WorkspaceFilesystem
+  fields:
+  - name: id
+    type: string
+  - name: name
+    type: any
+    default: '''CompositeFilesystem'''
+  - name: provider
+    type: any
+    default: '''composite'''
+  - name: readOnly
+    type: boolean
+  - name: status
+    type: ProviderStatus
+    default: '''ready'''
+  - name: _mounts
+    type: Map<string, WorkspaceFilesystem>
+  methods:
+  - name: constructor
+    sig: 'constructor(config: CompositeFilesystemConfig<TMounts>)'
+    lines:
+    - 91
+    - 116
+    detail:
+      calls:
+      - Date.now
+      - Date.now().toString
+      - Object.entries
+      - '[...this._mounts.values()].every'
+      - b.startsWith
+      - new Error
+      - new Map
+      - this._mounts.keys
+      - this._mounts.set
+      - this._mounts.values
+      - this.normalizePath
+  - name: mountPaths
+    sig: 'mountPaths(): string[]'
+    lines:
+    - 121
+    - 123
+    detail:
+      calls:
+      - Array.from
+      - this._mounts.keys
+  - name: mounts
+    sig: 'mounts(): ReadonlyMountMap<TMounts>'
+    lines:
+    - 129
+    - 131
+    detail: {}
+  - name: getInfo
+    sig: 'getInfo(): Promise<FilesystemInfo>'
+    is_async: true
+    lines:
+    - 137
+    - 151
+    detail:
+      calls:
+      - fs.getInfo
+  - name: getFilesystemForPath
+    sig: 'getFilesystemForPath(path: string): WorkspaceFilesystem | undefined'
+    lines:
+    - 157
+    - 160
+    detail:
+      calls:
+      - this.resolveMount
+  - name: getMountPathForPath
+    sig: 'getMountPathForPath(path: string): string | undefined'
+    lines:
+    - 166
+    - 169
+    detail:
+      calls:
+      - this.resolveMount
+  - name: resolveAbsolutePath
+    sig: 'resolveAbsolutePath(path: string): string | undefined'
+    lines:
+    - 175
+    - 179
+    detail:
+      calls:
+      - r.fs.resolveAbsolutePath
+      - this.resolveMount
+  - name: normalizePath
+    sig: 'normalizePath(path: string): string'
+    vis: private
+    lines:
+    - 181
+    - 189
+    detail:
+      calls:
+      - n.endsWith
+      - n.slice
+      - n.startsWith
+      - posixPath.normalize
+  - name: resolveMount
+    sig: 'resolveMount(path: string): ResolvedMount | null'
+    vis: private
+    lines:
+    - 191
+    - 211
+    detail:
+      calls:
+      - fsPath.slice
+      - fsPath.startsWith
+      - normalized.slice
+      - normalized.startsWith
+      - this.normalizePath
+  - name: getVirtualEntries
+    sig: 'getVirtualEntries(path: string): FileEntry[] | null'
+    vis: private
+    lines:
+    - 213
+    - 247
+    detail:
+      calls:
+      - Array.from
+      - entriesMap.has
+      - entriesMap.set
+      - entriesMap.values
+      - mountPath.slice
+      - mountPath.startsWith
+      - new Map
+      - remaining.split
+      - this._mounts.entries
+      - this.normalizePath
+      - this.resolveMount
+  - name: isVirtualPath
+    sig: 'isVirtualPath(path: string): boolean'
+    vis: private
+    lines:
+    - 249
+    - 256
+    detail:
+      calls:
+      - mountPath.startsWith
+      - this._mounts.has
+      - this._mounts.keys
+      - this.normalizePath
+  - name: init
+    sig: 'init(): Promise<void>'
+    is_async: true
+    lines:
+    - 272
+    - 287
+    detail:
+      calls:
+      - String
+      - callLifecycle
+      - console.warn
+      - this._mounts.entries
+  - name: destroy
+    sig: 'destroy(): Promise<void>'
+    is_async: true
+    lines:
+    - 289
+    - 304
+    detail:
+      calls:
+      - String
+      - callLifecycle
+      - errors.push
+      - new AggregateError
+      - new Error
+      - this._mounts.values
+  - name: readFile
+    sig: 'readFile(path: string, options?: ReadOptions): Promise<string | Buffer>'
+    is_async: true
+    lines:
+    - 306
+    - 310
+    detail:
+      calls:
+      - new Error
+      - r.fs.readFile
+      - this.resolveMount
+  - name: writeFile
+    sig: 'writeFile(path: string, content: FileContent, options?: WriteOptions): Promise<void>'
+    is_async: true
+    lines:
+    - 312
+    - 317
+    detail:
+      calls:
+      - new Error
+      - r.fs.writeFile
+      - this.assertWritable
+      - this.resolveMount
+  - name: appendFile
+    sig: 'appendFile(path: string, content: FileContent): Promise<void>'
+    is_async: true
+    lines:
+    - 319
+    - 324
+    detail:
+      calls:
+      - new Error
+      - r.fs.appendFile
+      - this.assertWritable
+      - this.resolveMount
+  - name: deleteFile
+    sig: 'deleteFile(path: string, options?: RemoveOptions): Promise<void>'
+    is_async: true
+    lines:
+    - 326
+    - 331
+    detail:
+      calls:
+      - new Error
+      - r.fs.deleteFile
+      - this.assertWritable
+      - this.resolveMount
+  - name: copyFile
+    sig: 'copyFile(src: string, dest: string, options?: CopyOptions): Promise<void>'
+    is_async: true
+    lines:
+    - 333
+    - 348
+    detail:
+      calls:
+      - destR.fs.writeFile
+      - new Error
+      - srcR.fs.copyFile
+      - srcR.fs.readFile
+      - this.assertWritable
+      - this.resolveMount
+  - name: moveFile
+    sig: 'moveFile(src: string, dest: string, options?: CopyOptions): Promise<void>'
+    is_async: true
+    lines:
+    - 350
+    - 366
+    detail:
+      calls:
+      - new Error
+      - srcR.fs.deleteFile
+      - srcR.fs.moveFile
+      - this.assertWritable
+      - this.copyFile
+      - this.resolveMount
+  - name: readdir
+    sig: 'readdir(path: string, options?: ListOptions): Promise<FileEntry[]>'
+    is_async: true
+    lines:
+    - 368
+    - 375
+    detail:
+      calls:
+      - new Error
+      - r.fs.readdir
+      - this.getVirtualEntries
+      - this.resolveMount
+  - name: mkdir
+    sig: 'mkdir(path: string, options?: { recursive?: boolean }): Promise<void>'
+    is_async: true
+    lines:
+    - 377
+    - 382
+    detail:
+      calls:
+      - new Error
+      - r.fs.mkdir
+      - this.assertWritable
+      - this.resolveMount
+  - name: rmdir
+    sig: 'rmdir(path: string, options?: RemoveOptions): Promise<void>'
+    is_async: true
+    lines:
+    - 384
+    - 389
+    detail:
+      calls:
+      - new Error
+      - r.fs.rmdir
+      - this.assertWritable
+      - this.resolveMount
+  - name: exists
+    sig: 'exists(path: string): Promise<boolean>'
+    is_async: true
+    lines:
+    - 391
+    - 398
+    detail:
+      calls:
+      - r.fs.exists
+      - this.isVirtualPath
+      - this.resolveMount
+  - name: stat
+    sig: 'stat(path: string): Promise<FileStat>'
+    is_async: true
+    lines:
+    - 400
+    - 434
+    detail:
+      calls:
+      - new Date
+      - new Error
+      - normalized.split
+      - normalized.split('/').filter
+      - r.fs.stat
+      - this.isVirtualPath
+      - this.normalizePath
+      - this.resolveMount
+  - name: isFile
+    sig: 'isFile(path: string): Promise<boolean>'
+    is_async: true
+    lines:
+    - 436
+    - 446
+    detail:
+      calls:
+      - r.fs.stat
+      - this.isVirtualPath
+      - this.resolveMount
+  - name: isDirectory
+    sig: 'isDirectory(path: string): Promise<boolean>'
+    is_async: true
+    lines:
+    - 448
+    - 460
+    detail:
+      calls:
+      - r.fs.stat
+      - this.isVirtualPath
+      - this.resolveMount
+  - name: getInstructions
+    sig: 'getInstructions(_opts?: { requestContext?: RequestContext }): string'
+    lines:
+    - 466
+    - 476
+    detail:
+      calls:
+      - Array.from
+      - |-
+        Array.from(this._mounts.entries())
+              .map
+      - |-
+        Array.from(this._mounts.entries())
+              .map(([mountPath, fs]) => {
+                const name = fs.display...
+      - this._mounts.entries
+  lines:
+  - 79
+  - 477
+- name: MountMapEntry
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 494
+  - 496
+- name: ReadonlyMountMap
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: get
+    type: 'method: get<K extends string & keyof TMounts>(key: K): TMounts[K]'
+  - name: get
+    type: 'method: get(key: string): WorkspaceFilesystem | undefined'
+  - name: has
+    type: 'method: has(key: string): boolean'
+  - name: readonly
+    type: number
+  - name: keys
+    type: 'method: keys(): IterableIterator<string & keyof TMounts>'
+  - name: values
+    type: 'method: values(): IterableIterator<TMounts[keyof TMounts & string]>'
+  - name: entries
+    type: 'method: entries(): IterableIterator<MountMapEntry<TMounts>>'
+  - name: forEach
+    type: |-
+      method: forEach(
+          callbackfn: (
+            value: TMounts[keyof TMounts & string],
+            key: string & keyof TMounts,
+            map: ReadonlyMountMap<TMounts>,
+          ) => void,
+        ): void
+  - name: '[Symbol.iterator]'
+    type: 'method: [Symbol.iterator](): IterableIterator<MountMapEntry<TMounts>>'
+  lines:
+  - 514
+  - 533
+exports:
+- name: CompositeFilesystemConfig
+  kind: type
+- name: ResolvedMount
+  kind: type
+- name: CompositeFilesystem
+  kind: type
+- name: MountMapEntry
+  kind: type
+- name: ReadonlyMountMap
+  kind: type

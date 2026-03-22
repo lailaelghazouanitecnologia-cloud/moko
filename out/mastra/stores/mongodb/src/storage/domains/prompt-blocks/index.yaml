@@ -1,0 +1,345 @@
+## Roska File Descriptor — prompt-blocks/index.ts
+file: prompt-blocks/index.ts
+lines: 666
+imports:
+- sym: node:crypto.randomUUID
+- sym: '@mastra/core/error.ErrorCategory'
+- sym: '@mastra/core/error.ErrorDomain'
+- sym: '@mastra/core/error.MastraError'
+- sym: '@mastra/core/storage.PromptBlocksStorage'
+- sym: '@mastra/core/storage.createStorageErrorId'
+- sym: '@mastra/core/storage.TABLE_PROMPT_BLOCKS'
+- sym: '@mastra/core/storage.TABLE_PROMPT_BLOCK_VERSIONS'
+- sym: '@mastra/core/storage.normalizePerPage'
+- sym: '@mastra/core/storage.calculatePagination'
+- sym: '@mastra/core/storage.StoragePromptBlockType'
+  kind: typing
+- sym: '@mastra/core/storage.StorageCreatePromptBlockInput'
+  kind: typing
+- sym: '@mastra/core/storage.StorageUpdatePromptBlockInput'
+  kind: typing
+- sym: '@mastra/core/storage.StorageListPromptBlocksInput'
+  kind: typing
+- sym: '@mastra/core/storage.StorageListPromptBlocksOutput'
+  kind: typing
+- sym: '@mastra/core/storage/domains/prompt-blocks.PromptBlockVersion'
+  kind: typing
+- sym: '@mastra/core/storage/domains/prompt-blocks.CreatePromptBlockVersionInput'
+  kind: typing
+- sym: '@mastra/core/storage/domains/prompt-blocks.ListPromptBlockVersionsInput'
+  kind: typing
+- sym: '@mastra/core/storage/domains/prompt-blocks.ListPromptBlockVersionsOutput'
+  kind: typing
+- sym: ../../connectors/MongoDBConnector.MongoDBConnector
+  kind: typing
+- sym: ../../db.resolveMongoDBConfig
+- sym: ../../types.MongoDBDomainConfig
+  kind: typing
+- sym: ../../types.MongoDBIndexConfig
+  kind: typing
+data:
+- name: SNAPSHOT_FIELDS
+  type: array
+  val: '[''name'', ''description'', ''content'', ''rules'', ''requestContextSchema''] as const'
+types:
+- name: MongoDBPromptBlocksStorage
+  kind: struct
+  ctx: ==========================================================================
+  bases:
+  - PromptBlocksStorage
+  fields:
+  - name: MANAGED_COLLECTIONS
+    type: any
+    default: '[TABLE_PROMPT_BLOCKS, TABLE_PROMPT_BLOCK_VERSIONS] as const'
+  methods:
+  - name: constructor
+    sig: 'constructor(config: MongoDBDomainConfig)'
+    lines:
+    - 41
+    - 48
+    detail:
+      calls:
+      - config.indexes?.filter
+      - resolveMongoDBConfig
+      - super
+  - name: getCollection
+    sig: 'getCollection(name: string)'
+    is_async: true
+    vis: private
+    lines:
+    - 50
+    - 52
+    detail:
+      calls:
+      - this.#connector.getCollection
+  - name: getDefaultIndexDefinitions
+    sig: 'getDefaultIndexDefinitions(): MongoDBIndexConfig[]'
+    lines:
+    - 54
+    - 68
+    detail: {}
+  - name: createDefaultIndexes
+    sig: 'createDefaultIndexes(): Promise<void>'
+    is_async: true
+    lines:
+    - 70
+    - 83
+    detail:
+      calls:
+      - collection.createIndex
+      - this.getCollection
+      - this.getDefaultIndexDefinitions
+      - this.logger?.warn
+  - name: createCustomIndexes
+    sig: 'createCustomIndexes(): Promise<void>'
+    is_async: true
+    lines:
+    - 85
+    - 98
+    detail:
+      calls:
+      - collection.createIndex
+      - this.getCollection
+      - this.logger?.warn
+  - name: init
+    sig: 'init(): Promise<void>'
+    is_async: true
+    lines:
+    - 100
+    - 103
+    detail:
+      calls:
+      - this.createCustomIndexes
+      - this.createDefaultIndexes
+  - name: dangerouslyClearAll
+    sig: 'dangerouslyClearAll(): Promise<void>'
+    is_async: true
+    lines:
+    - 105
+    - 110
+    detail:
+      calls:
+      - blocksCollection.deleteMany
+      - this.getCollection
+      - versionsCollection.deleteMany
+  - name: getById
+    sig: 'getById(id: string): Promise<StoragePromptBlockType | null>'
+    is_async: true
+    lines:
+    - 116
+    - 137
+    detail:
+      calls:
+      - await collection.findOne
+      - createStorageErrorId
+      - new MastraError
+      - this.getCollection
+      - this.transformBlock
+  - name: create
+    sig: 'create(input: { promptBlock: StorageCreatePromptBlockInput }): Promise<StoragePromptBlockType>'
+    is_async: true
+    lines:
+    - 139
+    - 205
+    detail:
+      calls:
+      - Object.keys
+      - collection.findOne
+      - collection.insertOne
+      - createStorageErrorId
+      - new Date
+      - new MastraError
+      - randomUUID
+      - this.createVersion
+      - this.getCollection
+      - this.serializeBlock
+  - name: update
+    sig: 'update(input: StorageUpdatePromptBlockInput): Promise<StoragePromptBlockType>'
+    is_async: true
+    lines:
+    - 207
+    - 277
+    detail:
+      calls:
+      - await collection.findOne
+      - collection.updateOne
+      - createStorageErrorId
+      - new Date
+      - new MastraError
+      - this.getCollection
+      - this.transformBlock
+  - name: delete
+    sig: 'delete(id: string): Promise<void>'
+    is_async: true
+    lines:
+    - 279
+    - 298
+    detail:
+      calls:
+      - collection.deleteOne
+      - createStorageErrorId
+      - new MastraError
+      - this.deleteVersionsByParentId
+      - this.getCollection
+  - name: list
+    sig: 'list(args?: StorageListPromptBlocksInput): Promise<StorageListPromptBlocksOutput>'
+    is_async: true
+    lines:
+    - 300
+    - 382
+    detail:
+      calls:
+      - Object.entries
+      - calculatePagination
+      - |-
+        collection
+                .find
+      - |-
+        collection
+                .find(filter)
+                .sort
+      - |-
+        collection
+                .find(filter)
+                .sort({ [field]: sortOrder })
+                .skip
+      - collection.countDocuments
+      - createStorageErrorId
+      - cursor.limit
+      - cursor.toArray
+      - new Error
+      - new MastraError
+      - normalizePerPage
+      - results.map
+      - this.getCollection
+      - this.parseOrderBy
+  - name: createVersion
+    sig: 'createVersion(input: CreatePromptBlockVersionInput): Promise<PromptBlockVersion>'
+    is_async: true
+    lines:
+    - 388
+    - 426
+    detail:
+      calls:
+      - collection.insertOne
+      - createStorageErrorId
+      - new Date
+      - new MastraError
+      - this.getCollection
+  - name: getVersion
+    sig: 'getVersion(id: string): Promise<PromptBlockVersion | null>'
+    is_async: true
+    lines:
+    - 428
+    - 449
+    detail:
+      calls:
+      - await collection.findOne
+      - createStorageErrorId
+      - new MastraError
+      - this.getCollection
+      - this.transformVersion
+  - name: getVersionByNumber
+    sig: 'getVersionByNumber(blockId: string, versionNumber: number): Promise<PromptBlockVersion | null>'
+    is_async: true
+    lines:
+    - 451
+    - 472
+    detail:
+      calls:
+      - await collection.findOne
+      - createStorageErrorId
+      - new MastraError
+      - this.getCollection
+      - this.transformVersion
+  - name: getLatestVersion
+    sig: 'getLatestVersion(blockId: string): Promise<PromptBlockVersion | null>'
+    is_async: true
+    lines:
+    - 474
+    - 495
+    detail:
+      calls:
+      - await collection.find
+      - await collection.find<any>({ blockId }).sort
+      - 'await collection.find<any>({ blockId }).sort({ versionNumber: -1 }).limit'
+      - 'await collection.find<any>({ blockId }).sort({ versionNumber: -1 }).limit(1).toArray'
+      - createStorageErrorId
+      - new MastraError
+      - this.getCollection
+      - this.transformVersion
+  - name: listVersions
+    sig: 'listVersions(input: ListPromptBlockVersionsInput): Promise<ListPromptBlockVersionsOutput>'
+    is_async: true
+    lines:
+    - 497
+    - 563
+    detail:
+      calls:
+      - calculatePagination
+      - |-
+        collection
+                .find
+      - |-
+        collection
+                .find({ blockId })
+                .sort
+      - |-
+        collection
+                .find({ blockId })
+                .sort({ [field]: sortOrder })
+                .skip
+      - collection.countDocuments
+      - createStorageErrorId
+      - cursor.limit
+      - cursor.toArray
+      - new Error
+      - new MastraError
+      - normalizePerPage
+      - results.map
+      - this.getCollection
+      - this.parseVersionOrderBy
+  - name: deleteVersion
+    sig: 'deleteVersion(id: string): Promise<void>'
+    is_async: true
+    lines:
+    - 565
+    - 580
+    detail:
+      calls:
+      - collection.deleteOne
+      - createStorageErrorId
+      - new MastraError
+      - this.getCollection
+  - name: deleteVersionsByParentId
+    sig: 'deleteVersionsByParentId(blockId: string): Promise<void>'
+    is_async: true
+    lines:
+    - 582
+    - 597
+    detail:
+      calls:
+      - collection.deleteMany
+      - createStorageErrorId
+      - new MastraError
+      - this.getCollection
+  - name: countVersions
+    sig: 'countVersions(blockId: string): Promise<number>'
+    is_async: true
+    lines:
+    - 599
+    - 614
+    detail:
+      calls:
+      - collection.countDocuments
+      - createStorageErrorId
+      - new MastraError
+      - this.getCollection
+  lines:
+  - 34
+  - 666
+exports:
+- name: MongoDBPromptBlocksStorage
+  kind: type
+- name: SNAPSHOT_FIELDS
+  kind: data

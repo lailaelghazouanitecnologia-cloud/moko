@@ -1,0 +1,412 @@
+## Roska File Descriptor — sandbox/local-sandbox.ts
+file: sandbox/local-sandbox.ts
+lines: 717
+purpose: 'Local Sandbox Provider A sandbox implementation that executes commands on the local machine. This is the default sandbox for development and local agents. Supports optional native OS sandboxing: - macOS: Uses seatbelt (sandbox-exec) for filesystem and network isolation - Linux: Uses bubblewrap (bwrap) for namespace isolation'
+imports:
+- sym: node:crypto.crypto
+- sym: node:fs/promises.fs
+- sym: node:os.os
+- sym: node:path.path
+- sym: ../../request-context.RequestContext
+  kind: typing
+- sym: ../filesystem/filesystem.WorkspaceFilesystem
+  kind: typing
+- sym: ../filesystem/fs-utils.expandTilde
+- sym: ../filesystem/mount.FilesystemMountConfig
+  kind: typing
+- sym: ../filesystem/mount.MountResult
+  kind: typing
+- sym: ../lifecycle.ProviderStatus
+  kind: typing
+- sym: ../types.InstructionsOption
+  kind: typing
+- sym: ../utils.resolveInstructions
+- sym: ./errors.IsolationUnavailableError
+- sym: ./local-process-manager.LocalProcessManager
+- sym: ./mastra-sandbox.MastraSandbox
+- sym: ./mastra-sandbox.MastraSandboxOptions
+  kind: typing
+- sym: ./mount-manager.MountManager
+  kind: typing
+- sym: ./native-sandbox.IsolationBackend
+  kind: typing
+- sym: ./native-sandbox.NativeSandboxConfig
+  kind: typing
+- sym: ./native-sandbox.detectIsolation
+- sym: ./native-sandbox.isIsolationAvailable
+- sym: ./native-sandbox.generateSeatbeltProfile
+- sym: ./native-sandbox.wrapCommand
+- sym: ./types.SandboxInfo
+  kind: typing
+data:
+- name: MARKER_DIR
+  type: any
+  val: path.join(os.tmpdir(), '.mastra-mounts')
+- name: SAFE_MOUNT_PATH
+  type: any
+  val: /^\/[a-zA-Z0-9_.\-/]+$/
+types:
+- name: LocalSandboxOptions
+  kind: trait
+  bases:
+  - Omit<MastraSandboxOptions, 'processes'>
+  decorators:
+  - interface
+  fields:
+  - name: id
+    type: string
+  - name: workingDirectory
+    type: string
+  - name: env
+    type: NodeJS.ProcessEnv
+  - name: timeout
+    type: number
+  - name: isolation
+    type: IsolationBackend
+  - name: nativeSandbox
+    type: NativeSandboxConfig
+  - name: instructions
+    type: InstructionsOption
+  lines:
+  - 70
+  - 120
+- name: LocalSandbox
+  kind: struct
+  ctx: '---------------------------------------------------------------------------'
+  bases:
+  - MastraSandbox
+  fields:
+  - name: id
+    type: string
+  - name: name
+    type: any
+    default: '''LocalSandbox'''
+  - name: provider
+    type: any
+    default: '''local'''
+  - name: status
+    type: ProviderStatus
+    default: '''pending'''
+  - name: workingDirectory
+    type: string
+  - name: isolation
+    type: IsolationBackend
+  - name: processes
+    type: LocalProcessManager
+  - name: mounts
+    type: MountManager
+  - name: env
+    type: NodeJS.ProcessEnv
+  - name: _nativeSandboxConfig
+    type: NativeSandboxConfig
+  - name: _seatbeltProfile
+    type: string
+  - name: _seatbeltProfilePath
+    type: string
+  - name: _sandboxFolderPath
+    type: string
+  - name: _userProvidedProfilePath
+    type: any
+    default: 'false'
+  - name: _createdAt
+    type: Date
+  - name: _instructionsOverride
+    type: InstructionsOption
+  - name: _activeMountPaths
+    type: Set<string>
+    default: new Set()
+  methods:
+  - name: constructor
+    sig: 'constructor(options: LocalSandboxOptions = {})'
+    lines:
+    - 162
+    - 187
+    detail:
+      calls:
+      - detectIsolation
+      - expandTilde
+      - isIsolationAvailable
+      - new Date
+      - new IsolationUnavailableError
+      - new LocalProcessManager
+      - path.join
+      - process.cwd
+      - super
+      - this.generateId
+  - name: start
+    sig: 'start(): Promise<void>'
+    is_async: true
+    lines:
+    - 198
+    - 251
+    detail:
+      calls:
+      - JSON.stringify
+      - |-
+        crypto
+                  .createHash
+      - |-
+        crypto
+                  .createHash('sha256')
+                  .update
+      - |-
+        crypto
+                  .createHash('sha256')
+                  .update(this.workingDirectory)
+                  .update
+      - |-
+        crypto
+                  .createHash('sha256')
+                  .update(this.workingDirectory)
+                  .update(JS...
+      - fs.mkdir
+      - fs.readFile
+      - fs.writeFile
+      - generateSeatbeltProfile
+      - path.dirname
+      - path.join
+      - process.cwd
+      - this.logger.debug
+  - name: stop
+    sig: 'stop(): Promise<void>'
+    is_async: true
+    lines:
+    - 258
+    - 269
+    detail:
+      calls:
+      - this.logger.debug
+      - this.unmount
+  - name: destroy
+    sig: 'destroy(): Promise<void>'
+    is_async: true
+    lines:
+    - 276
+    - 315
+    detail:
+      calls:
+      - Promise.all
+      - fs.rmdir
+      - fs.unlink
+      - procs.map
+      - this._activeMountPaths.clear
+      - this.logger.debug
+      - this.mounts.clear
+      - this.processes.list
+      - this.unmount
+  - name: isReady
+    sig: 'isReady(): Promise<boolean>'
+    is_async: true
+    lines:
+    - 318
+    - 320
+    detail: {}
+  - name: getInfo
+    sig: 'getInfo(): Promise<SandboxInfo>'
+    is_async: true
+    lines:
+    - 322
+    - 348
+    detail:
+      calls:
+      - Math.round
+      - os.cpus
+      - os.platform
+      - os.totalmem
+  - name: getInstructions
+    sig: 'getInstructions(opts?: { requestContext?: RequestContext }): string'
+    lines:
+    - 350
+    - 352
+    detail:
+      calls:
+      - resolveInstructions
+  - name: generateId
+    sig: 'generateId(): string'
+    vis: private
+    lines:
+    - 362
+    - 364
+    detail:
+      calls:
+      - Date.now
+      - Date.now().toString
+      - Math.random
+      - Math.random().toString
+      - Math.random().toString(36).slice
+  - name: buildEnv
+    sig: 'buildEnv(additionalEnv?: NodeJS.ProcessEnv): NodeJS.ProcessEnv'
+    lines:
+    - 372
+    - 378
+    detail: {}
+  - name: mount
+    sig: 'mount(filesystem: WorkspaceFilesystem, mountPath: string): Promise<MountResult>'
+    is_async: true
+    lines:
+    - 392
+    - 492
+    detail:
+      calls:
+      - String
+      - filesystem.getMountConfig
+      - fs.mkdir
+      - fs.readdir
+      - fs.rmdir
+      - fs.symlink
+      - normalizeMountPath
+      - path.dirname
+      - this._activeMountPaths.add
+      - this.addMountPathToIsolation
+      - this.checkExistingMount
+      - this.logger.debug
+      - this.logger.error
+      - this.mounts.set
+      - this.resolveHostPath
+      - this.unmount
+      - this.writeMarkerFile
+      - validateMountPath
+  - name: unmount
+    sig: 'unmount(mountPath: string): Promise<void>'
+    is_async: true
+    lines:
+    - 497
+    - 535
+    detail:
+      calls:
+      - fs.lstat
+      - fs.unlink
+      - normalizeMountPath
+      - path.join
+      - stats.isSymbolicLink
+      - this._activeMountPaths.delete
+      - this.logger.debug
+      - this.mounts.delete
+      - this.mounts.markerFilename
+      - this.resolveHostPath
+      - validateMountPath
+  - name: writeMarkerFile
+    sig: 'writeMarkerFile(mountPath: string, hostPath: string): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 546
+    - 560
+    detail:
+      calls:
+      - fs.mkdir
+      - fs.writeFile
+      - path.join
+      - this.logger.debug
+      - this.mounts.get
+      - this.mounts.markerFilename
+  - name: checkExistingMount
+    sig: |-
+      checkExistingMount(
+          hostPath: string,
+          newConfig: FilesystemMountConfig,
+        ): Promise<'not_mounted' | 'matching' | 'mismatched' | 'foreign'>
+    is_async: true
+    vis: private
+    lines:
+    - 566
+    - 592
+    detail:
+      calls:
+      - fs.lstat
+      - fs.readlink
+      - fs.readlink(hostPath).catch
+      - path.dirname
+      - path.resolve
+      - stats.isSymbolicLink
+      - this.checkMarkerFile
+      - this.hasMarkerFile
+  - name: hasMarkerFile
+    sig: 'hasMarkerFile(hostPath: string): Promise<boolean>'
+    is_async: true
+    vis: private
+    lines:
+    - 598
+    - 607
+    detail:
+      calls:
+      - fs.access
+      - path.join
+      - this.mounts.markerFilename
+  - name: checkMarkerFile
+    sig: |-
+      checkMarkerFile(
+          hostPath: string,
+          newConfig: FilesystemMountConfig,
+        ): Promise<'matching' | 'mismatched' | 'foreign'>
+    is_async: true
+    vis: private
+    lines:
+    - 614
+    - 644
+    detail:
+      calls:
+      - content.trim
+      - fs.readFile
+      - path.join
+      - this.logger.debug
+      - this.mounts.computeConfigHash
+      - this.mounts.markerFilename
+      - this.mounts.parseMarkerContent
+  - name: wrapCommandForIsolation
+    sig: 'wrapCommandForIsolation(command: string): { command: string; args: string[] }'
+    lines:
+    - 689
+    - 700
+    detail:
+      calls:
+      - wrapCommand
+  - name: detectIsolation
+    sig: detectIsolation()
+    decorators:
+    - static
+    lines:
+    - 714
+    - 716
+    detail:
+      calls:
+      - detectIsolation
+  lines:
+  - 141
+  - 717
+functions:
+- name: validateMountPath
+  sig: 'validateMountPath(mountPath: string): void'
+  lines:
+  - 43
+  - 56
+  detail:
+    calls:
+    - SAFE_MOUNT_PATH.test
+    - mountPath.split
+    - mountPath.split('/').filter
+    - new Error
+    - segments.some
+- name: normalizeMountPath
+  sig: 'normalizeMountPath(mountPath: string): string'
+  lines:
+  - 59
+  - 61
+  detail:
+    calls:
+    - mountPath.split
+    - mountPath.split('/').filter
+    - mountPath.split('/').filter(Boolean).join
+exports:
+- name: LocalSandboxOptions
+  kind: type
+- name: LocalSandbox
+  kind: type
+- name: validateMountPath
+  kind: func
+- name: normalizeMountPath
+  kind: func
+- name: MARKER_DIR
+  kind: data
+- name: SAFE_MOUNT_PATH
+  kind: data

@@ -1,0 +1,291 @@
+## Roska File Descriptor — src/tracing.ts
+file: src/tracing.ts
+lines: 367
+purpose: LangSmith Exporter for Mastra Tracing This exporter sends observability data to LangSmith Root spans become top-level LangSmith RunTrees (no trace wrapper). Events are handled as zero-duration RunTrees with matching start/end times.
+imports:
+- sym: '@mastra/core/observability.AnyExportedSpan'
+  kind: typing
+- sym: '@mastra/core/observability.ModelGenerationAttributes'
+  kind: typing
+- sym: '@mastra/core/observability.SpanErrorInfo'
+  kind: typing
+- sym: '@mastra/core/observability.SpanType'
+- sym: '@mastra/core/utils.omitKeys'
+- sym: '@mastra/observability.TrackingExporter'
+- sym: '@mastra/observability.TraceData'
+  kind: typing
+- sym: '@mastra/observability.TrackingExporterConfig'
+  kind: typing
+- sym: langsmith.ClientConfig
+  kind: typing
+- sym: langsmith.RunTreeConfig
+  kind: typing
+- sym: langsmith.Client
+- sym: langsmith.RunTree
+- sym: langsmith/schemas.KVMap
+  kind: typing
+- sym: ./helpers.LangSmithMetadataInput
+  kind: typing
+- sym: ./metrics.formatUsageMetrics
+data:
+- name: DEFAULT_SPAN_TYPE
+  type: string
+  val: '''chain'''
+- name: SPAN_TYPE_EXCEPTIONS
+  type: Partial<Record<SpanType, 'llm' | 'tool' | 'chain'>>
+  val: |-
+    {
+      [SpanType.MODEL_GENERATION]: 'llm',
+      [SpanType.TOOL_CALL]: 'tool',
+      [SpanType.MCP_TOOL_CALL]: 'tool',
+      [SpanType....
+types:
+- name: LangSmithExporterConfig
+  kind: trait
+  bases:
+  - ClientConfig
+  - TrackingExporterConfig
+  decorators:
+  - interface
+  fields:
+  - name: client
+    type: Client
+  lines:
+  - 20
+  - 29
+- name: LangSmithRoot
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 31
+  - 31
+- name: LangSmithSpan
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 32
+  - 32
+- name: LangSmithEvent
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 33
+  - 33
+- name: LangSmithMetadata
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 34
+  - 34
+- name: LangSmithTraceData
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 35
+  - 35
+- name: LangSmithExporter
+  kind: struct
+  ctx: Flush pending trace batches to LangSmith. The LangSmith Client internally batches API calls; this ensures all queued runs are sent before the process exits or the flush caller continues.
+  bases:
+  - TrackingExporter
+  fields:
+  - name: name
+    type: any
+    default: '''langsmith'''
+  - name: skipBuildRootTask
+    type: any
+    default: 'true'
+  methods:
+  - name: constructor
+    sig: 'constructor(config: LangSmithExporterConfig = {})'
+    lines:
+    - 68
+    - 83
+    detail:
+      calls:
+      - new Client
+      - super
+      - this.setDisabled
+  - name: _flush
+    sig: '_flush(): Promise<void>'
+    is_async: true
+    vis: protected
+    lines:
+    - 91
+    - 95
+    detail:
+      calls:
+      - this.#client.awaitPendingTraceBatches
+  - name: _buildSpan
+    sig: |-
+      _buildSpan(args: {
+          span: AnyExportedSpan;
+          traceData: LangSmithTraceData;
+        }): Promise<LangSmithSpan | undefined>
+    is_async: true
+    vis: protected
+    lines:
+    - 105
+    - 127
+    detail:
+      calls:
+      - langSmithSpan.postRun
+      - new RunTree
+      - parent!.createChild
+      - this.buildRunTreePayload
+      - traceData.getParent
+  - name: _buildEvent
+    sig: |-
+      _buildEvent(args: {
+          span: AnyExportedSpan;
+          traceData: LangSmithTraceData;
+        }): Promise<LangSmithEvent | undefined>
+    is_async: true
+    vis: protected
+    lines:
+    - 129
+    - 144
+    detail:
+      calls:
+      - args.span.startTime.getTime
+      - langSmithSpan.end
+      - langSmithSpan.patchRun
+      - this._buildSpan
+  - name: _updateSpan
+    sig: '_updateSpan(args: { span: AnyExportedSpan; traceData: LangSmithTraceData }): Promise<void>'
+    is_async: true
+    vis: protected
+    lines:
+    - 146
+    - 148
+    detail:
+      calls:
+      - this.handleSpanUpdateOrEnd
+  - name: _finishSpan
+    sig: '_finishSpan(args: { span: AnyExportedSpan; traceData: LangSmithTraceData }): Promise<void>'
+    is_async: true
+    vis: protected
+    lines:
+    - 150
+    - 152
+    detail:
+      calls:
+      - this.handleSpanUpdateOrEnd
+  - name: _abortSpan
+    sig: |-
+      _abortSpan(args: {
+          span: LangSmithSpan;
+          traceData: LangSmithTraceData;
+          reason: SpanErrorInfo;
+        }): Promise<void>
+    is_async: true
+    vis: protected
+    lines:
+    - 154
+    - 167
+    detail:
+      calls:
+      - span.end
+      - span.patchRun
+  - name: handleSpanUpdateOrEnd
+    sig: |-
+      handleSpanUpdateOrEnd(args: {
+          span: AnyExportedSpan;
+          traceData: LangSmithTraceData;
+          isEnd: boolean;
+        }): Promise<void>
+    is_async: true
+    vis: private
+    lines:
+    - 169
+    - 218
+    detail:
+      calls:
+      - langSmithSpan.addEvent
+      - langSmithSpan.end
+      - langSmithSpan.patchRun
+      - modelAttr.completionStartTime.toISOString
+      - span.endTime.getTime
+      - this.buildRunTreePayload
+      - traceData.getSpan
+  - name: findLangsmithMetadata
+    sig: |-
+      findLangsmithMetadata(
+          traceData: LangSmithTraceData,
+          span: AnyExportedSpan,
+        ): LangSmithMetadataInput | undefined
+    vis: private
+    lines:
+    - 227
+    - 264
+    detail:
+      calls:
+      - Object.keys
+      - metadataChain.push
+      - this.logger.debug
+      - traceData.getMetadata
+      - traceData.getParentId
+  - name: buildRunTreePayload
+    sig: |-
+      buildRunTreePayload(
+          span: AnyExportedSpan,
+          traceData: LangSmithTraceData,
+          isNew = false,
+        ): Partial<RunTreeConfig>
+    vis: private
+    lines:
+    - 266
+    - 366
+    detail:
+      calls:
+      - formatUsageMetrics
+      - isKVMap
+      - mapSpanType
+      - omitKeys
+      - span.startTime.getTime
+      - this.findLangsmithMetadata
+  lines:
+  - 58
+  - 367
+functions:
+- name: mapSpanType
+  sig: 'mapSpanType(spanType: SpanType): ''llm'' | ''tool'' | ''chain'''
+  lines:
+  - 50
+  - 52
+- name: isKVMap
+  sig: 'isKVMap(value: unknown)'
+  lines:
+  - 54
+  - 56
+  detail:
+    calls:
+    - Array.isArray
+exports:
+- name: LangSmithExporterConfig
+  kind: type
+- name: LangSmithRoot
+  kind: type
+- name: LangSmithSpan
+  kind: type
+- name: LangSmithEvent
+  kind: type
+- name: LangSmithMetadata
+  kind: type
+- name: LangSmithTraceData
+  kind: type
+- name: LangSmithExporter
+  kind: type
+- name: mapSpanType
+  kind: func
+- name: isKVMap
+  kind: func
+- name: DEFAULT_SPAN_TYPE
+  kind: data
+- name: SPAN_TYPE_EXCEPTIONS
+  kind: data

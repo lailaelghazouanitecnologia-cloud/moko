@@ -1,0 +1,214 @@
+## Roska File Descriptor — lsp/client.ts
+file: lsp/client.ts
+lines: 378
+purpose: LSP Client JSON-RPC client wrapper for communicating with language servers. Uses dynamic imports for vscode-jsonrpc and vscode-languageserver-protocol to keep them as optional dependencies. Spawns LSP servers via a SandboxProcessManager, so it works with any sandbox backend (local, E2B, etc.) that has a process manager.
+imports:
+- sym: node:module.createRequire
+- sym: node:url.pathToFileURL
+- sym: ../sandbox/process-manager.ProcessHandle
+  kind: typing
+- sym: ../sandbox/process-manager.SandboxProcessManager
+  kind: typing
+- sym: ./types.LSPServerDef
+  kind: typing
+data:
+- name: jsonrpcModule
+  type: |-
+    | {
+          StreamMessageReader: any;
+          StreamMessageWriter: any;
+          createMessageConnection: any;
+        }
+      | null
+      | undefined
+- name: lspProtocolModule
+  type: |-
+    | {
+          TextDocumentIdentifier: any;
+          Position: any;
+        }
+      | null
+      | undefined
+types:
+- name: LSPClient
+  kind: struct
+  ctx: Whether the underlying server process is still running.
+  fields:
+  - name: connection
+    type: any
+    default: 'null'
+  - name: handle
+    type: ProcessHandle | null
+    default: 'null'
+  - name: serverDef
+    type: LSPServerDef
+  - name: workspaceRoot
+    type: string
+  - name: processManager
+    type: SandboxProcessManager
+  - name: diagnostics
+    type: Map<string, any[]>
+    default: new Map()
+  - name: initializationOptions
+    type: Record<string, unknown> | null
+    default: 'null'
+  methods:
+  - name: constructor
+    sig: 'constructor(serverDef: LSPServerDef, workspaceRoot: string, processManager: SandboxProcessManager)'
+    lines:
+    - 121
+    - 125
+    detail: {}
+  - name: isAlive
+    sig: 'isAlive(): boolean'
+    lines:
+    - 128
+    - 130
+    detail: {}
+  - name: initialize
+    sig: 'initialize(initTimeout: number = 10000): Promise<void>'
+    is_async: true
+    lines:
+    - 135
+    - 256
+    detail:
+      calls:
+      - Promise.race
+      - |-
+        Promise.race([
+              this.connection.sendRequest('initialize', initParams),
+              new Promise((_, re...
+      - createMessageConnection
+      - loadLSPDeps
+      - new Error
+      - new Promise
+      - new StreamMessageReader
+      - new StreamMessageWriter
+      - this.connection.listen
+      - this.connection.onError
+      - this.connection.onNotification
+      - this.connection.onRequest
+      - this.connection.sendNotification
+      - this.connection.sendRequest
+      - this.processManager.spawn
+      - this.serverDef.command
+      - this.serverDef.initialization
+      - toFileUri
+  - name: notifyOpen
+    sig: 'notifyOpen(filePath: string, content: string, languageId: string): void'
+    lines:
+    - 261
+    - 268
+    detail:
+      calls:
+      - this.connection.sendNotification
+      - this.diagnostics.delete
+      - toFileUri
+  - name: notifyChange
+    sig: 'notifyChange(filePath: string, content: string, version: number): void'
+    lines:
+    - 273
+    - 279
+    detail:
+      calls:
+      - this.connection.sendNotification
+      - toFileUri
+  - name: waitForDiagnostics
+    sig: |-
+      waitForDiagnostics(
+          filePath: string,
+          timeoutMs: number = 5000,
+          waitForChange: boolean = false,
+          settleMs: number = 500,
+        ): Promise<any[]>
+    is_async: true
+    lines:
+    - 291
+    - 326
+    detail:
+      calls:
+      - Date.now
+      - new Promise
+      - this.diagnostics.get
+      - toFileUri
+  - name: notifyClose
+    sig: 'notifyClose(filePath: string): void'
+    lines:
+    - 331
+    - 338
+    detail:
+      calls:
+      - this.connection.sendNotification
+      - this.diagnostics.delete
+      - toFileUri
+  - name: shutdown
+    sig: 'shutdown(): Promise<void>'
+    is_async: true
+    lines:
+    - 343
+    - 377
+    detail:
+      calls:
+      - Promise.race
+      - |-
+        Promise.race([
+                    this.connection.sendRequest('shutdown'),
+                    new Promise((_, reje...
+      - new Map
+      - new Promise
+      - this.connection.dispose
+      - this.connection.sendNotification
+      - this.connection.sendRequest
+      - this.handle.kill
+  lines:
+  - 112
+  - 378
+functions:
+- name: isLSPAvailable
+  sig: 'isLSPAvailable(): boolean'
+  lines:
+  - 43
+  - 56
+  detail:
+    calls:
+    - createRequire
+    - req.resolve
+- name: loadLSPDeps
+  sig: |-
+    loadLSPDeps(): Promise<{
+      StreamMessageReader: any;
+      StreamMessageWriter: any;
+      createMessageConnection: any;
+      TextDocumentIdentifier: any;
+      Position: any;
+    } | null>
+  is_async: true
+  lines:
+  - 62
+  - 93
+  detail:
+    calls:
+    - createRequire
+    - req
+- name: toFileUri
+  sig: 'toFileUri(fsPath: string): string'
+  lines:
+  - 100
+  - 102
+  detail:
+    calls:
+    - pathToFileURL
+    - pathToFileURL(fsPath).toString
+exports:
+- name: LSPClient
+  kind: type
+- name: isLSPAvailable
+  kind: func
+- name: loadLSPDeps
+  kind: func
+- name: toFileUri
+  kind: func
+- name: jsonrpcModule
+  kind: data
+- name: lspProtocolModule
+  kind: data

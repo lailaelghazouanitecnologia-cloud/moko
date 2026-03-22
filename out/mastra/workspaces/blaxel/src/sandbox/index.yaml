@@ -1,0 +1,519 @@
+## Roska File Descriptor — sandbox/index.ts
+file: sandbox/index.ts
+lines: 1039
+purpose: Blaxel Sandbox Provider A Blaxel sandbox implementation that supports mounting cloud filesystems (S3, GCS, R2) via FUSE.
+imports:
+- sym: '@blaxel/core.SandboxInstance'
+- sym: '@mastra/core/workspace.SandboxInfo'
+  kind: typing
+- sym: '@mastra/core/workspace.ExecuteCommandOptions'
+  kind: typing
+- sym: '@mastra/core/workspace.CommandResult'
+  kind: typing
+- sym: '@mastra/core/workspace.WorkspaceFilesystem'
+  kind: typing
+- sym: '@mastra/core/workspace.MountResult'
+  kind: typing
+- sym: '@mastra/core/workspace.FilesystemMountConfig'
+  kind: typing
+- sym: '@mastra/core/workspace.ProviderStatus'
+  kind: typing
+- sym: '@mastra/core/workspace.MountManager'
+  kind: typing
+- sym: '@mastra/core/workspace.MastraSandboxOptions'
+  kind: typing
+- sym: '@mastra/core/workspace.MastraSandbox'
+- sym: '@mastra/core/workspace.SandboxNotReadyError'
+- sym: ../utils/shell-quote.shellQuote
+- sym: ./mounts.mountS3
+- sym: ./mounts.mountGCS
+- sym: ./mounts.LOG_PREFIX
+- sym: ./mounts.runCommand
+- sym: ./mounts.BlaxelMountConfig
+  kind: typing
+- sym: ./mounts.BlaxelS3MountConfig
+  kind: typing
+- sym: ./mounts.BlaxelGCSMountConfig
+  kind: typing
+- sym: ./mounts.MountContext
+  kind: typing
+- sym: ./process-manager.BlaxelProcessManager
+data:
+- name: SAFE_MOUNT_PATH
+  type: any
+  val: /^\/[a-zA-Z0-9_.\-/]+$/
+- name: SAFE_MARKER_NAME
+  type: any
+  val: /^mount-[a-z0-9]+$/
+types:
+- name: SandboxRuntime
+  kind: enum
+  decorators:
+  - type
+  variants:
+  - name: '''r'''
+  lines:
+  - 64
+  - 64
+- name: BlaxelSandboxOptions
+  kind: trait
+  bases:
+  - Omit<MastraSandboxOptions, 'processes'>
+  decorators:
+  - interface
+  fields:
+  - name: id
+    type: string
+  - name: image
+    type: string
+  - name: memory
+    type: number
+  - name: timeout
+    type: string
+  - name: env
+    type: Record<string, string>
+  - name: labels
+    type: Record<string, string>
+  - name: runtimes
+    type: SandboxRuntime[]
+  - name: ports
+    type: 'Array<{ name?: string; target: number; protocol?: ''HTTP'' | ''TCP'' | ''UDP'' }>'
+  lines:
+  - 69
+  - 103
+- name: BlaxelSandbox
+  kind: struct
+  ctx: Status is managed by base class lifecycle methods
+  bases:
+  - MastraSandbox
+  fields:
+  - name: id
+    type: string
+  - name: name
+    type: any
+    default: '''BlaxelSandbox'''
+  - name: provider
+    type: any
+    default: '''blaxel'''
+  - name: status
+    type: ProviderStatus
+    default: '''pending'''
+  - name: _sandbox
+    type: SandboxInstance | null
+    default: 'null'
+  - name: _createdAt
+    type: Date | null
+    default: 'null'
+  - name: _isRetrying
+    type: any
+    default: 'false'
+  - name: image
+    type: string
+  - name: memory
+    type: number
+  - name: timeout
+    type: string
+  - name: env
+    type: Record<string, string>
+  - name: labels
+    type: Record<string, string>
+  - name: configuredRuntimes
+    type: SandboxRuntime[]
+  - name: ports
+    type: 'Array<{ name?: string; target: number; protocol?: ''HTTP'' | ''TCP'' | ''UDP'' }>'
+  - name: mounts
+    type: MountManager
+  methods:
+  - name: constructor
+    sig: 'constructor(options: BlaxelSandboxOptions = {})'
+    lines:
+    - 169
+    - 184
+    detail:
+      calls:
+      - new BlaxelProcessManager
+      - super
+      - this.generateId
+  - name: generateId
+    sig: 'generateId(): string'
+    vis: private
+    lines:
+    - 186
+    - 188
+    detail:
+      calls:
+      - Date.now
+      - Date.now().toString
+      - Math.random
+      - Math.random().toString
+      - Math.random().toString(36).slice
+  - name: supportedRuntimes
+    sig: 'supportedRuntimes(): readonly SandboxRuntime[]'
+    lines:
+    - 190
+    - 192
+    detail: {}
+  - name: defaultRuntime
+    sig: 'defaultRuntime(): SandboxRuntime'
+    lines:
+    - 194
+    - 196
+    detail: {}
+  - name: blaxel
+    sig: 'blaxel(): SandboxInstance'
+    lines:
+    - 225
+    - 230
+    detail:
+      calls:
+      - new SandboxNotReadyError
+  - name: instance
+    sig: 'instance(): SandboxInstance'
+    lines:
+    - 233
+    - 235
+    detail: {}
+  - name: mount
+    sig: 'mount(filesystem: WorkspaceFilesystem, mountPath: string): Promise<MountResult>'
+    is_async: true
+    lines:
+    - 245
+    - 369
+    detail:
+      calls:
+      - checkResult.stdout.trim
+      - errorToString
+      - filesystem.getMountConfig
+      - mountGCS
+      - mountS3
+      - new SandboxNotReadyError
+      - runCommand
+      - this.checkExistingMount
+      - this.logger.debug
+      - this.logger.error
+      - this.mounts.set
+      - this.unmount
+      - this.writeMarkerFile
+      - validateMountPath
+  - name: writeMarkerFile
+    sig: 'writeMarkerFile(mountPath: string): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 375
+    - 390
+    detail:
+      calls:
+      - runCommand
+      - this._sandbox.fs.write
+      - this.logger.debug
+      - this.mounts.getMarkerContent
+      - this.mounts.markerFilename
+  - name: unmount
+    sig: 'unmount(mountPath: string): Promise<void>'
+    is_async: true
+    lines:
+    - 395
+    - 436
+    detail:
+      calls:
+      - new SandboxNotReadyError
+      - rmdirResult.stderr?.trim
+      - runCommand
+      - this.logger.debug
+      - this.mounts.delete
+      - this.mounts.markerFilename
+      - validateMountPath
+  - name: getMounts
+    sig: 'getMounts(): Promise<Array<{ path: string; filesystem: string }>>'
+    is_async: true
+    lines:
+    - 441
+    - 446
+    detail:
+      calls:
+      - Array.from
+      - Array.from(this.mounts.entries).map
+  - name: reconcileMounts
+    sig: 'reconcileMounts(expectedMountPaths: string[]): Promise<void>'
+    is_async: true
+    lines:
+    - 453
+    - 542
+    detail:
+      calls:
+      - SAFE_MOUNT_PATH.test
+      - currentMounts.filter
+      - currentMounts.includes
+      - expectedMarkerFiles.has
+      - expectedMountPaths.map
+      - managedMountPaths.has
+      - managedMountPaths.set
+      - markerResult.stdout.trim
+      - markerToPath.get
+      - markerToPath.set
+      - |-
+        markersResult.stdout
+              .trim
+      - |-
+        markersResult.stdout
+              .trim()
+              .split
+      - |-
+        markersResult.stdout
+              .trim()
+              .split('\n')
+              .filter
+      - |-
+        mountsResult.stdout
+              .trim
+      - |-
+        mountsResult.stdout
+              .trim()
+              .split
+      - |-
+        mountsResult.stdout
+              .trim()
+              .split('\n')
+              .filter
+      - new Map
+      - new SandboxNotReadyError
+      - new Set
+      - runCommand
+      - this.logger.debug
+      - this.mounts.parseMarkerContent
+      - this.unmount
+  - name: checkExistingMount
+    sig: |-
+      checkExistingMount(
+          mountPath: string,
+          newConfig: BlaxelMountConfig,
+        ): Promise<'not_mounted' | 'matching' | 'mismatched'>
+    is_async: true
+    vis: private
+    lines:
+    - 551
+    - 593
+    detail:
+      calls:
+      - markerResult.stdout.trim
+      - mountCheck.stdout.trim
+      - new SandboxNotReadyError
+      - runCommand
+      - this.logger.debug
+      - this.mounts.computeConfigHash
+      - this.mounts.markerFilename
+      - this.mounts.parseMarkerContent
+  - name: start
+    sig: 'start(): Promise<void>'
+    is_async: true
+    lines:
+    - 605
+    - 664
+    detail:
+      calls:
+      - Array.from
+      - SandboxInstance.create
+      - errorToString
+      - new Date
+      - new Error
+      - this.findExistingSandbox
+      - this.logger.debug
+      - this.mounts.entries.keys
+      - this.ports.map
+      - this.reconcileMounts
+      - this.toSandboxName
+  - name: toSandboxName
+    sig: 'toSandboxName(id: string): string'
+    vis: private
+    lines:
+    - 670
+    - 683
+    detail:
+      calls:
+      - |-
+        id
+              .toLowerCase
+      - |-
+        id
+              .toLowerCase()
+              .replace
+      - |-
+        id
+              .toLowerCase()
+              .replace(/[^a-z0-9-]/g, '-')
+              .replace
+      - |-
+        id
+              .toLowerCase()
+              .replace(/[^a-z0-9-]/g, '-')
+              .replace(/-+/g, '-')
+              .replace
+      - |-
+        id
+              .toLowerCase()
+              .replace(/[^a-z0-9-]/g, '-')
+              .replace(/-+/g, '-')
+              .replace...
+      - new Error
+  - name: findExistingSandbox
+    sig: 'findExistingSandbox(sandboxName: string): Promise<SandboxInstance | null>'
+    is_async: true
+    vis: private
+    lines:
+    - 689
+    - 707
+    detail:
+      calls:
+      - SandboxInstance.get
+      - this.logger.debug
+  - name: stop
+    sig: 'stop(): Promise<void>'
+    is_async: true
+    lines:
+    - 714
+    - 736
+    detail:
+      calls:
+      - Promise.all
+      - procs.filter
+      - procs.filter(p => p.running).map
+      - this.mounts.entries.keys
+      - this.processes.list
+      - this.unmount
+  - name: destroy
+    sig: 'destroy(): Promise<void>'
+    is_async: true
+    lines:
+    - 743
+    - 774
+    detail:
+      calls:
+      - Promise.all
+      - procs.filter
+      - procs.filter(p => p.running).map
+      - this._sandbox.delete
+      - this.mounts.clear
+      - this.mounts.entries.keys
+      - this.processes.list
+      - this.unmount
+  - name: isReady
+    sig: 'isReady(): Promise<boolean>'
+    is_async: true
+    lines:
+    - 779
+    - 781
+    detail: {}
+  - name: getInfo
+    sig: 'getInfo(): Promise<SandboxInfo>'
+    is_async: true
+    lines:
+    - 786
+    - 804
+    detail:
+      calls:
+      - Array.from
+      - Array.from(this.mounts.entries).map
+      - new Date
+  - name: getInstructions
+    sig: 'getInstructions(): string'
+    lines:
+    - 810
+    - 814
+    detail: {}
+  - name: ensureSandbox
+    sig: 'ensureSandbox(): Promise<SandboxInstance>'
+    is_async: true
+    vis: private
+    lines:
+    - 825
+    - 828
+    detail:
+      calls:
+      - this.ensureRunning
+  - name: retryOnDead
+    sig: 'retryOnDead(fn: () => Promise<T>): Promise<T>'
+    is_async: true
+    lines:
+    - 873
+    - 889
+    detail:
+      calls:
+      - fn
+      - this.ensureRunning
+      - this.handleSandboxTimeout
+      - this.isSandboxDeadError
+  - name: executeCommand
+    sig: |-
+      executeCommand(
+          command: string,
+          args: string[] = [],
+          options: ExecuteCommandOptions = {},
+        ): Promise<CommandResult>
+    is_async: true
+    lines:
+    - 900
+    - 1038
+    detail:
+      calls:
+      - Date.now
+      - Math.ceil
+      - Object.entries
+      - Object.entries(mergedEnv).filter
+      - Object.fromEntries
+      - Promise.race
+      - args.join
+      - args.map
+      - args.map(shellQuote).join
+      - clearTimeout
+      - errorToString
+      - new Error
+      - new Promise
+      - options.abortSignal.removeEventListener
+      - racePromises.push
+      - runCommand
+      - 'runCommand(sandbox, `pkill -f ${shellQuote(fullCommand)}`, { timeout: 5000 }).catch'
+      - sandbox.process.exec
+      - shellQuote
+      - this.ensureSandbox
+      - this.executeCommand
+      - this.handleSandboxTimeout
+      - this.isSandboxDeadError
+      - this.logger.debug
+  lines:
+  - 148
+  - 1039
+functions:
+- name: errorToString
+  sig: 'errorToString(error: unknown): string'
+  lines:
+  - 33
+  - 44
+  detail:
+    calls:
+    - JSON.stringify
+    - String
+- name: validateMountPath
+  sig: 'validateMountPath(mountPath: string): void'
+  lines:
+  - 46
+  - 52
+  detail:
+    calls:
+    - SAFE_MOUNT_PATH.test
+    - new Error
+exports:
+- name: SandboxRuntime
+  kind: type
+- name: BlaxelSandboxOptions
+  kind: type
+- name: BlaxelSandbox
+  kind: type
+- name: errorToString
+  kind: func
+- name: validateMountPath
+  kind: func
+- name: SAFE_MOUNT_PATH
+  kind: data
+- name: SAFE_MARKER_NAME
+  kind: data

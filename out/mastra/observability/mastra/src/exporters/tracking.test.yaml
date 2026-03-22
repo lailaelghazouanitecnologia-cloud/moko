@@ -1,0 +1,452 @@
+## Roska File Descriptor — exporters/tracking.test.ts
+file: exporters/tracking.test.ts
+lines: 991
+purpose: 'Unit tests for TrackingExporter base class. These tests verify: - Early queue processing (waiting for root, waiting for parent) - Cascading async processing - TTL and max attempts limits - Delayed cleanup scheduling - Soft and hard cap enforcement - Shutdown behavior'
+imports:
+- sym: '@mastra/core/observability.TracingEvent'
+  kind: typing
+- sym: '@mastra/core/observability.AnyExportedSpan'
+  kind: typing
+- sym: '@mastra/core/observability.SpanErrorInfo'
+  kind: typing
+- sym: '@mastra/core/observability.SpanType'
+- sym: vitest.describe
+- sym: vitest.it
+- sym: vitest.expect
+- sym: vitest.beforeEach
+- sym: vitest.afterEach
+- sym: ./tracking.TrackingExporter
+- sym: ./tracking.TraceData
+  kind: typing
+- sym: ./tracking.TrackingExporterConfig
+  kind: typing
+data:
+- name: spanCounter
+  type: number
+  val: '0'
+types:
+- name: TestTrackingExporterConfig
+  kind: trait
+  ctx: ============================================================================
+  bases:
+  - TrackingExporterConfig
+  decorators:
+  - interface
+  fields:
+  - name: failBuildSpanFor
+    type: string[]
+  - name: failBuildEventFor
+    type: string[]
+  - name: skipRoot
+    type: boolean
+  lines:
+  - 23
+  - 30
+- name: TestRootData
+  kind: typealias
+  decorators:
+  - type
+  fields:
+  - name: type
+    type: '''root'''
+  - name: spanId
+    type: string
+  lines:
+  - 32
+  - 32
+- name: TestSpanData
+  kind: typealias
+  decorators:
+  - type
+  fields:
+  - name: type
+    type: '''span'''
+  - name: spanId
+    type: string
+  lines:
+  - 33
+  - 33
+- name: TestEventData
+  kind: typealias
+  decorators:
+  - type
+  fields:
+  - name: type
+    type: '''event'''
+  - name: spanId
+    type: string
+  lines:
+  - 34
+  - 34
+- name: TestMetadata
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 35
+  - 35
+- name: TestTraceData
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 36
+  - 36
+- name: MethodCall
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: method
+    type: string
+  - name: spanId
+    type: string
+  - name: traceId
+    type: string
+  - name: timestamp
+    type: Date
+  - name: args
+    type: Record<string, unknown>
+  lines:
+  - 38
+  - 44
+- name: TestTrackingExporter
+  kind: struct
+  ctx: Track all method calls for verification
+  bases:
+  - TrackingExporter
+  fields:
+  - name: name
+    type: any
+    default: '''test-exporter'''
+  - name: calls
+    type: MethodCall[]
+    default: '[]'
+  - name: builtRoots
+    type: Map<string, TestRootData>
+    default: new Map()
+  - name: builtSpans
+    type: Map<string, TestSpanData>
+    default: new Map()
+  - name: builtEvents
+    type: Map<string, TestEventData>
+    default: new Map()
+  - name: abortedSpans
+    type: Map<string, SpanErrorInfo>
+    default: new Map()
+  - name: rootSpanId
+    type: string
+  - name: failBuildSpanFor
+    type: Set<string>
+  - name: failBuildEventFor
+    type: Set<string>
+  methods:
+  - name: constructor
+    sig: 'constructor(config: TestTrackingExporterConfig = {})'
+    lines:
+    - 70
+    - 79
+    detail:
+      calls:
+      - new Set
+      - super
+  - name: exportTracingEvent
+    sig: 'exportTracingEvent(event: Parameters<typeof this._exportTracingEvent>[0]): Promise<void>'
+    is_async: true
+    lines:
+    - 82
+    - 84
+    detail:
+      calls:
+      - this._exportTracingEvent
+  - name: getTraceMapSize
+    sig: 'getTraceMapSize(): number'
+    lines:
+    - 87
+    - 89
+    detail:
+      calls:
+      - this.traceMapSize
+  - name: _buildRoot
+    sig: |-
+      _buildRoot(args: {
+          span: AnyExportedSpan;
+          traceData: TestTraceData;
+        }): Promise<TestRootData | undefined>
+    is_async: true
+    vis: protected
+    lines:
+    - 91
+    - 106
+    detail:
+      calls:
+      - new Date
+      - this.builtRoots.set
+      - this.calls.push
+  - name: _buildSpan
+    sig: |-
+      _buildSpan(args: {
+          span: AnyExportedSpan;
+          traceData: TestTraceData;
+        }): Promise<TestSpanData | undefined>
+    is_async: true
+    vis: protected
+    lines:
+    - 108
+    - 152
+    detail:
+      calls:
+      - args.traceData.getSpan
+      - args.traceData.hasRoot
+      - args.traceData.isRootProcessed
+      - new Date
+      - this.builtSpans.set
+      - this.calls.push
+      - this.failBuildSpanFor.has
+  - name: _buildEvent
+    sig: |-
+      _buildEvent(args: {
+          span: AnyExportedSpan;
+          traceData: TestTraceData;
+        }): Promise<TestEventData | undefined>
+    is_async: true
+    vis: protected
+    lines:
+    - 154
+    - 179
+    detail:
+      calls:
+      - args.traceData.getParentOrRoot
+      - new Date
+      - this.builtEvents.set
+      - this.calls.push
+      - this.failBuildEventFor.has
+  - name: _updateSpan
+    sig: '_updateSpan(args: { span: AnyExportedSpan; traceData: TestTraceData }): Promise<void>'
+    is_async: true
+    vis: protected
+    lines:
+    - 181
+    - 188
+    detail:
+      calls:
+      - new Date
+      - this.calls.push
+  - name: _finishSpan
+    sig: '_finishSpan(args: { span: AnyExportedSpan; traceData: TestTraceData }): Promise<void>'
+    is_async: true
+    vis: protected
+    lines:
+    - 190
+    - 197
+    detail:
+      calls:
+      - new Date
+      - this.calls.push
+  - name: _abortSpan
+    sig: |-
+      _abortSpan(args: {
+          span: TestSpanData;
+          traceData: TestTraceData;
+          reason: SpanErrorInfo;
+        }): Promise<void>
+    is_async: true
+    vis: protected
+    lines:
+    - 199
+    - 213
+    detail:
+      calls:
+      - new Date
+      - this.abortedSpans.set
+      - this.calls.push
+  - name: wasMethodCalledForSpan
+    sig: 'wasMethodCalledForSpan(method: string, spanId: string): boolean'
+    lines:
+    - 216
+    - 218
+    detail:
+      calls:
+      - this.calls.some
+  lines:
+  - 46
+  - 219
+- name: GenerateTraceOptions
+  kind: trait
+  ctx: Trace generator utilities
+  decorators:
+  - interface
+  fields:
+  - name: depth
+    type: number
+  - name: breadth
+    type: number
+  - name: includeEvents
+    type: boolean
+  - name: traceId
+    type: string
+  - name: baseTime
+    type: Date
+  - name: timeIncrementMs
+    type: number
+  lines:
+  - 223
+  - 230
+- name: SpanInfo
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: id
+    type: string
+  - name: parentId
+    type: string
+  - name: depth
+    type: number
+  - name: isRoot
+    type: boolean
+  - name: isEvent
+    type: boolean
+  lines:
+  - 232
+  - 238
+functions:
+- name: generateSpanId
+  sig: 'generateSpanId(): string'
+  lines:
+  - 242
+  - 244
+  detail:
+    calls:
+    - Date.now
+- name: generateTraceId
+  sig: 'generateTraceId(): string'
+  lines:
+  - 246
+  - 248
+  detail:
+    calls:
+    - Date.now
+    - Math.random
+    - Math.random().toString
+    - Math.random().toString(36).substring
+- name: createExportedSpan
+  sig: |-
+    createExportedSpan(args: {
+      id: string;
+      traceId: string;
+      parentSpanId?: string;
+      name: string;
+      type: SpanType;
+      isRootSpan: boolean;
+      isEvent: boolean;
+      startTime: Date;
+      endTime?: Date;
+      input?: unknown;
+      output?: unknown;
+    }): AnyExportedSpan
+  lines:
+  - 250
+  - 277
+  detail: {}
+- name: createTracingEvent
+  sig: 'createTracingEvent(type: ''span_started'' | ''span_updated'' | ''span_ended'', span: AnyExportedSpan): TracingEvent'
+  lines:
+  - 279
+  - 281
+- name: generateSpanTree
+  sig: 'generateSpanTree(opts: GenerateTraceOptions): SpanInfo[]'
+  lines:
+  - 283
+  - 320
+  detail:
+    calls:
+    - addSpan
+    - buildTree
+- name: generateTrace
+  sig: 'generateTrace(opts: GenerateTraceOptions = {}): TracingEvent[]'
+  lines:
+  - 322
+  - 377
+  detail:
+    calls:
+    - baseTime.getTime
+    - createExportedSpan
+    - createTracingEvent
+    - events.push
+    - generateSpanTree
+    - generateTraceId
+    - new Date
+    - spanTree.filter
+- name: reverseHierarchyOrder
+  sig: 'reverseHierarchyOrder(events: TracingEvent[]): TracingEvent[]'
+  lines:
+  - 379
+  - 388
+  detail:
+    calls:
+    - '[...eventSpans].reverse'
+    - '[...startEvents].reverse'
+    - events.filter
+- name: sendWithDelays
+  sig: |-
+    sendWithDelays(
+      exporter: { exportTracingEvent: (event: TracingEvent) => Promise<void> },
+      events: TracingEvent[],
+      delayMs: number = 0,
+    ): Promise<void>
+  is_async: true
+  lines:
+  - 390
+  - 401
+  detail:
+    calls:
+    - exporter.exportTracingEvent
+    - new Promise
+- name: flushAsync
+  sig: 'flushAsync(): Promise<void>'
+  is_async: true
+  lines:
+  - 412
+  - 414
+exports:
+- name: TestTrackingExporterConfig
+  kind: type
+- name: TestRootData
+  kind: type
+- name: TestSpanData
+  kind: type
+- name: TestEventData
+  kind: type
+- name: TestMetadata
+  kind: type
+- name: TestTraceData
+  kind: type
+- name: MethodCall
+  kind: type
+- name: TestTrackingExporter
+  kind: type
+- name: GenerateTraceOptions
+  kind: type
+- name: SpanInfo
+  kind: type
+- name: generateSpanId
+  kind: func
+- name: generateTraceId
+  kind: func
+- name: createExportedSpan
+  kind: func
+- name: createTracingEvent
+  kind: func
+- name: generateSpanTree
+  kind: func
+- name: generateTrace
+  kind: func
+- name: reverseHierarchyOrder
+  kind: func
+- name: sendWithDelays
+  kind: func
+- name: flushAsync
+  kind: func
+- name: spanCounter
+  kind: data

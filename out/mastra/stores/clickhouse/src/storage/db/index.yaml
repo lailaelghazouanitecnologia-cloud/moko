@@ -1,0 +1,393 @@
+## Roska File Descriptor — db/index.ts
+file: db/index.ts
+lines: 795
+imports:
+- sym: '@clickhouse/client.ClickHouseClient'
+  kind: typing
+- sym: '@clickhouse/client.createClient'
+- sym: '@mastra/core/base.MastraBase'
+- sym: '@mastra/core/error.ErrorCategory'
+- sym: '@mastra/core/error.ErrorDomain'
+- sym: '@mastra/core/error.MastraError'
+- sym: '@mastra/core/storage.createStorageErrorId'
+- sym: '@mastra/core/storage.getSqlType'
+- sym: '@mastra/core/storage.TABLE_WORKFLOW_SNAPSHOT'
+- sym: '@mastra/core/storage.TABLE_SPANS'
+- sym: '@mastra/core/storage.TABLE_SCHEMAS'
+- sym: '@mastra/core/storage.getDefaultValue'
+- sym: '@mastra/core/storage.StorageColumn'
+  kind: typing
+- sym: '@mastra/core/storage.TABLE_NAMES'
+  kind: typing
+- sym: ./utils.ClickhouseConfig
+  kind: typing
+- sym: ./utils.TABLE_ENGINES
+- sym: ./utils.transformRow
+types:
+- name: ClickhouseDomainConfig
+  kind: enum
+  decorators:
+  - type
+  variants:
+  - name: ClickhouseDomainClientConfig
+  - name: ClickhouseDomainRestConfig
+  lines:
+  - 23
+  - 23
+- name: ClickhouseDomainClientConfig
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: client
+    type: ClickHouseClient
+  - name: ttl
+    type: ClickhouseConfig['ttl']
+  lines:
+  - 28
+  - 31
+- name: ClickhouseDomainRestConfig
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: url
+    type: string
+  - name: password
+    type: string
+  - name: ttl
+    type: ClickhouseConfig['ttl']
+  lines:
+  - 36
+  - 41
+- name: ClickhouseDB
+  kind: struct
+  ctx: 'Cache of actual table columns: tableName -> Promise<Set<columnName>> (stores in-flight promise to coalesce concurrent calls)'
+  bases:
+  - MastraBase
+  fields:
+  - name: ttl
+    type: ClickhouseConfig['ttl']
+  - name: client
+    type: ClickHouseClient
+  - name: tableColumnsCache
+    type: any
+    default: new Map<string, Promise<Set<string>>>()
+  methods:
+  - name: constructor
+    sig: 'constructor({ client, ttl }: { client: ClickHouseClient; ttl: ClickhouseConfig[''ttl''] })'
+    lines:
+    - 79
+    - 85
+    detail:
+      calls:
+      - super
+  - name: getTableColumns
+    sig: 'getTableColumns(tableName: TABLE_NAMES): Promise<Set<string>>'
+    is_async: true
+    vis: private
+    lines:
+    - 91
+    - 117
+    detail:
+      calls:
+      - |-
+        (async () => {
+              try {
+                const result = await this.client.query({
+                  query: `DESCRI...
+      - this.tableColumnsCache.get
+      - this.tableColumnsCache.set
+  - name: filterRecordToKnownColumns
+    sig: |-
+      filterRecordToKnownColumns(
+          tableName: TABLE_NAMES,
+          record: Record<string, any>,
+        ): Promise<Record<string, any>>
+    is_async: true
+    vis: private
+    lines:
+    - 123
+    - 137
+    detail:
+      calls:
+      - Object.entries
+      - knownColumns.has
+      - this.getTableColumns
+  - name: hasColumn
+    sig: 'hasColumn(table: string, column: string): Promise<boolean>'
+    is_async: true
+    lines:
+    - 139
+    - 146
+    detail:
+      calls:
+      - columns.some
+      - result.json
+      - this.client.query
+  - name: tableExists
+    sig: 'tableExists(tableName: string): Promise<boolean>'
+    is_async: true
+    lines:
+    - 151
+    - 162
+    detail:
+      calls:
+      - result.json
+      - this.client.query
+  - name: getTableSortingKey
+    sig: 'getTableSortingKey(tableName: string): Promise<string | null>'
+    is_async: true
+    lines:
+    - 168
+    - 180
+    detail:
+      calls:
+      - result.json
+      - this.client.query
+  - name: checkSpansMigrationStatus
+    sig: |-
+      checkSpansMigrationStatus(tableName: string): Promise<{
+          needsMigration: boolean;
+          currentSortingKey: string | null;
+        }>
+    is_async: true
+    lines:
+    - 186
+    - 205
+    detail:
+      calls:
+      - currentSortingKey.toLowerCase
+      - currentSortingKey.toLowerCase().startsWith
+      - this.getTableSortingKey
+      - this.tableExists
+  - name: checkForDuplicateSpans
+    sig: |-
+      checkForDuplicateSpans(tableName: string): Promise<{
+          hasDuplicates: boolean;
+          duplicateCount: number;
+        }>
+    is_async: true
+    lines:
+    - 211
+    - 240
+    detail:
+      calls:
+      - parseInt
+      - result.json
+      - this.client.query
+      - this.logger?.debug
+  - name: migrateSpansTableSortingKey
+    sig: |-
+      migrateSpansTableSortingKey({
+          tableName,
+          schema,
+        }: {
+          tableName: TABLE_NAMES;
+          schema: Record<string, StorageColumn>;
+        }): Promise<boolean>
+    is_async: true
+    lines:
+    - 263
+    - 423
+    detail:
+      calls:
+      - Date.now
+      - Object.entries
+      - |-
+        Object.entries(schema)
+                .map
+      - |-
+        Object.entries(schema)
+                .map(([name, def]) => {
+                  let sqlType = this.getSqlType(def.t...
+      - Object.keys
+      - Object.keys(schema).filter
+      - backupColumns.map
+      - |-
+        columnsToInsert
+                .map
+      - |-
+        columnsToInsert
+                .map(c => (c === 'updatedAt' ? `COALESCE("updatedAt", "createdAt") as "updat...
+      - columnsToInsert.map
+      - columnsToInsert.map(c => `"${c}"`).join
+      - createStorageErrorId
+      - currentSortingKey.toLowerCase
+      - currentSortingKey.toLowerCase().startsWith
+      - describeResult.json
+      - new MastraError
+      - new Set
+      - this.client.command
+      - this.client.query
+      - this.getTableSortingKey
+      - this.logger?.debug
+      - this.logger?.error
+      - this.logger?.info
+      - this.tableExists
+  - name: createTable
+    sig: |-
+      createTable({
+          tableName,
+          schema,
+        }: {
+          tableName: TABLE_NAMES;
+          schema: Record<string, StorageColumn>;
+        }): Promise<void>
+    is_async: true
+    lines:
+    - 445
+    - 547
+    detail:
+      calls:
+      - Object.entries
+      - |-
+        Object.entries(schema)
+                .map
+      - |-
+        Object.entries(schema)
+                .map(([name, def]) => {
+                  let sqlType = this.getSqlType(def.t...
+      - '[''id String''].concat'
+      - createStorageErrorId
+      - new MastraError
+      - this.client.query
+      - this.tableColumnsCache.delete
+  - name: alterTable
+    sig: |-
+      alterTable({
+          tableName,
+          schema,
+          ifNotExists,
+        }: {
+          tableName: TABLE_NAMES;
+          schema: Record<string, StorageColumn>;
+          ifNotExists: string[];
+        }): Promise<void>
+    is_async: true
+    lines:
+    - 549
+    - 600
+    detail:
+      calls:
+      - '`ALTER TABLE ${tableName} ADD COLUMN IF NOT EXISTS "${columnName}" ${sqlType} ${defaultValue}`.trim'
+      - columnName.toLowerCase
+      - createStorageErrorId
+      - existingColumnNames.has
+      - getDefaultValue
+      - new MastraError
+      - new Set
+      - result.json
+      - rows.data.map
+      - this.client.query
+      - this.getSqlType
+      - this.logger?.debug
+      - this.tableColumnsCache.delete
+  - name: clearTable
+    sig: 'clearTable({ tableName }: { tableName: TABLE_NAMES }): Promise<void>'
+    is_async: true
+    lines:
+    - 602
+    - 625
+    detail:
+      calls:
+      - createStorageErrorId
+      - new MastraError
+      - this.client.query
+  - name: dropTable
+    sig: 'dropTable({ tableName }: { tableName: TABLE_NAMES }): Promise<void>'
+    is_async: true
+    lines:
+    - 627
+    - 645
+    detail:
+      calls:
+      - createStorageErrorId
+      - new MastraError
+      - this.client.query
+      - this.tableColumnsCache.delete
+  - name: insert
+    sig: 'insert({ tableName, record }: { tableName: TABLE_NAMES; record: Record<string, any> }): Promise<void>'
+    is_async: true
+    lines:
+    - 647
+    - 685
+    detail:
+      calls:
+      - (await this.getTableColumns(tableName)).has
+      - Object.keys
+      - createStorageErrorId
+      - new Date
+      - new MastraError
+      - rawCreatedAt.toISOString
+      - rawUpdatedAt.toISOString
+      - this.client.insert
+      - this.filterRecordToKnownColumns
+      - this.getTableColumns
+  - name: batchInsert
+    sig: 'batchInsert({ tableName, records }: { tableName: TABLE_NAMES; records: Record<string, any>[] }): Promise<void>'
+    is_async: true
+    lines:
+    - 687
+    - 732
+    detail:
+      calls:
+      - Promise.all
+      - createStorageErrorId
+      - new MastraError
+      - processedRecords.map
+      - records.map
+      - recordsToBeInserted.filter
+      - this.client.insert
+  - name: load
+    sig: 'load({ tableName, keys }: { tableName: TABLE_NAMES; keys: Record<string, string> }): Promise<R | null>'
+    is_async: true
+    lines:
+    - 734
+    - 794
+    detail:
+      calls:
+      - JSON.parse
+      - Object.entries
+      - createStorageErrorId
+      - engine.startsWith
+      - |-
+        keyEntries
+                .map
+      - |-
+        keyEntries
+                .map(
+                  ([key]) =>
+                    `"${key}" = {var_${key}:${this.getSqlType(...
+      - keyEntries.reduce
+      - new MastraError
+      - result.json
+      - this.client.query
+      - transformRow
+  lines:
+  - 72
+  - 795
+functions:
+- name: resolveClickhouseConfig
+  sig: |-
+    resolveClickhouseConfig(config: ClickhouseDomainConfig): {
+      client: ClickHouseClient;
+      ttl?: ClickhouseConfig['ttl'];
+    }
+  lines:
+  - 47
+  - 70
+  detail:
+    calls:
+    - createClient
+exports:
+- name: ClickhouseDomainConfig
+  kind: type
+- name: ClickhouseDomainClientConfig
+  kind: type
+- name: ClickhouseDomainRestConfig
+  kind: type
+- name: ClickhouseDB
+  kind: type
+- name: resolveClickhouseConfig
+  kind: func

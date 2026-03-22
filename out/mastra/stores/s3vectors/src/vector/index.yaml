@@ -1,0 +1,368 @@
+## Roska File Descriptor — vector/index.ts
+file: vector/index.ts
+lines: 667
+imports:
+- sym: '@aws-sdk/client-s3vectors.S3VectorsClient'
+- sym: '@aws-sdk/client-s3vectors.CreateIndexCommand'
+- sym: '@aws-sdk/client-s3vectors.DeleteIndexCommand'
+- sym: '@aws-sdk/client-s3vectors.ListIndexesCommand'
+- sym: '@aws-sdk/client-s3vectors.GetIndexCommand'
+- sym: '@aws-sdk/client-s3vectors.PutVectorsCommand'
+- sym: '@aws-sdk/client-s3vectors.QueryVectorsCommand'
+- sym: '@aws-sdk/client-s3vectors.GetVectorsCommand'
+- sym: '@aws-sdk/client-s3vectors.DeleteVectorsCommand'
+- sym: '@aws-sdk/client-s3vectors.ListVectorsCommand'
+- sym: '@aws-sdk/client-s3vectors.S3VectorsClientConfig'
+  kind: typing
+- sym: '@mastra/core/error.MastraError'
+- sym: '@mastra/core/error.ErrorDomain'
+- sym: '@mastra/core/error.ErrorCategory'
+- sym: '@mastra/core/storage.createVectorErrorId'
+- sym: '@mastra/core/vector.MastraVector'
+- sym: '@mastra/core/vector.QueryResult'
+  kind: typing
+- sym: '@mastra/core/vector.IndexStats'
+  kind: typing
+- sym: '@mastra/core/vector.CreateIndexParams'
+  kind: typing
+- sym: '@mastra/core/vector.UpsertVectorParams'
+  kind: typing
+- sym: '@mastra/core/vector.DeleteVectorsParams'
+  kind: typing
+- sym: '@mastra/core/vector.QueryVectorParams'
+  kind: typing
+- sym: '@mastra/core/vector.DescribeIndexParams'
+  kind: typing
+- sym: '@mastra/core/vector.DeleteIndexParams'
+  kind: typing
+- sym: '@mastra/core/vector.DeleteVectorParams'
+  kind: typing
+- sym: '@mastra/core/vector.UpdateVectorParams'
+  kind: typing
+- sym: ./filter.S3VectorsFilterTranslator
+- sym: ./filter.S3VectorsFilter
+  kind: typing
+types:
+- name: S3VectorsOptions
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: clientConfig
+    type: S3VectorsClientConfig
+  - name: nonFilterableMetadataKeys
+    type: string[]
+  lines:
+  - 39
+  - 43
+- name: S3DistanceMetric
+  kind: enum
+  decorators:
+  - type
+  variants:
+  - name: '''cosine'''
+  - name: '''euclidean'''
+  lines:
+  - 45
+  - 45
+- name: MastraMetric
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 46
+  - 46
+- name: SupportedMastraMetric
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 47
+  - 47
+- name: S3Vectors
+  kind: struct
+  ctx: No-op to satisfy the base interface.
+  bases:
+  - MastraVector
+  fields:
+  - name: client
+    type: S3VectorsClient
+  - name: nonFilterableMetadataKeys
+    type: string[]
+  - name: filterTranslator
+    type: any
+    default: new S3VectorsFilterTranslator()
+  - name: METRIC_MAP
+    type: Record<SupportedMastraMetric, S3DistanceMetric>
+    default: |-
+      {
+          cosine: 'cosine',
+          euclidean: 'euclidean',
+        } as const
+  methods:
+  - name: constructor
+    sig: 'constructor(opts: S3VectorsOptions & { id: string })'
+    lines:
+    - 69
+    - 84
+    detail:
+      calls:
+      - createVectorErrorId
+      - new Error
+      - new MastraError
+      - new S3VectorsClient
+      - super
+  - name: connect
+    sig: 'connect(): Promise<void>'
+    is_async: true
+    lines:
+    - 91
+    - 91
+    detail: {}
+  - name: disconnect
+    sig: 'disconnect(): Promise<void>'
+    is_async: true
+    lines:
+    - 96
+    - 109
+    detail:
+      calls:
+      - createVectorErrorId
+      - new MastraError
+      - this.client.destroy
+  - name: createIndex
+    sig: 'createIndex({ indexName, dimension, metric = ''cosine'' }: CreateIndexParams): Promise<void>'
+    is_async: true
+    lines:
+    - 122
+    - 169
+    detail:
+      calls:
+      - S3Vectors.toS3Metric
+      - assertPositiveInteger
+      - createVectorErrorId
+      - new CreateIndexCommand
+      - new MastraError
+      - normalizeIndexName
+      - this.bucketParams
+      - this.client.send
+      - this.validateExistingIndex
+  - name: upsert
+    sig: 'upsert({ indexName, vectors, metadata, ids }: UpsertVectorParams): Promise<string[]>'
+    is_async: true
+    lines:
+    - 181
+    - 212
+    detail:
+      calls:
+      - createVectorErrorId
+      - new MastraError
+      - new PutVectorsCommand
+      - normalizeIndexName
+      - this.bucketParams
+      - this.client.send
+      - this.getIndexInfo
+      - validateVectorDimensions
+      - vectors.map
+  - name: query
+    sig: |-
+      query({
+          indexName,
+          queryVector,
+          topK = 10,
+          filter,
+          includeVector = false,
+        }: QueryVectorParams<S3VectorsFilter>): Promise<QueryResult[]>
+    is_async: true
+    lines:
+    - 227
+    - 317
+    detail:
+      calls:
+      - (out.vectors ?? []).filter
+      - Array.isArray
+      - Object.keys
+      - assertPositiveInteger
+      - createVectorErrorId
+      - new Error
+      - new GetVectorsCommand
+      - new MastraError
+      - new QueryVectorsCommand
+      - normalizeIndexName
+      - this.bucketParams
+      - this.client.send
+      - this.transformFilter
+      - vectors.filter
+      - vectors.filter(v => v.key).map
+      - vectors.map
+  - name: listIndexes
+    sig: 'listIndexes(): Promise<string[]>'
+    is_async: true
+    lines:
+    - 325
+    - 354
+    detail:
+      calls:
+      - createVectorErrorId
+      - names.push
+      - new ListIndexesCommand
+      - new MastraError
+      - this.bucketParams
+      - this.client.send
+  - name: describeIndex
+    sig: 'describeIndex({ indexName }: DescribeIndexParams): Promise<IndexStats>'
+    is_async: true
+    lines:
+    - 365
+    - 382
+    detail:
+      calls:
+      - createVectorErrorId
+      - new MastraError
+      - normalizeIndexName
+      - this.countVectors
+      - this.getIndexInfo
+  - name: deleteIndex
+    sig: 'deleteIndex({ indexName }: DeleteIndexParams): Promise<void>'
+    is_async: true
+    lines:
+    - 390
+    - 405
+    detail:
+      calls:
+      - createVectorErrorId
+      - new DeleteIndexCommand
+      - new MastraError
+      - normalizeIndexName
+      - this.bucketParams
+      - this.client.send
+  - name: updateVector
+    sig: 'updateVector({ indexName, id, update }: UpdateVectorParams): Promise<void>'
+    is_async: true
+    lines:
+    - 418
+    - 477
+    detail:
+      calls:
+      - createVectorErrorId
+      - new Error
+      - new GetVectorsCommand
+      - new MastraError
+      - new PutVectorsCommand
+      - normalizeIndexName
+      - normalizeMetadata
+      - this.bucketParams
+      - this.client.send
+  - name: deleteVector
+    sig: 'deleteVector({ indexName, id }: DeleteVectorParams): Promise<void>'
+    is_async: true
+    lines:
+    - 486
+    - 510
+    detail:
+      calls:
+      - createVectorErrorId
+      - new DeleteVectorsCommand
+      - new MastraError
+      - normalizeIndexName
+      - this.bucketParams
+      - this.client.send
+  - name: deleteVectors
+    sig: 'deleteVectors({ indexName, filter, ids }: DeleteVectorsParams): Promise<void>'
+    is_async: true
+    lines:
+    - 512
+    - 524
+    detail:
+      calls:
+      - JSON.stringify
+      - createVectorErrorId
+      - new MastraError
+  - name: getIndexInfo
+    sig: |-
+      getIndexInfo(
+          indexName: string,
+        ): Promise<{ dimension: number; metric: 'cosine' | 'euclidean' | 'dotproduct' }>
+    is_async: true
+    vis: private
+    lines:
+    - 542
+    - 553
+    detail:
+      calls:
+      - new Error
+      - new GetIndexCommand
+      - this.bucketParams
+      - this.client.send
+  - name: countVectors
+    sig: 'countVectors(indexName: string): Promise<number>'
+    is_async: true
+    vis: private
+    lines:
+    - 560
+    - 580
+    detail:
+      calls:
+      - new ListVectorsCommand
+      - this.bucketParams
+      - this.client.send
+  lines:
+  - 58
+  - 612
+functions:
+- name: assertPositiveInteger
+  sig: 'assertPositiveInteger(value: number, name: string): void'
+  lines:
+  - 621
+  - 625
+  detail:
+    calls:
+    - Number.isInteger
+    - new Error
+- name: validateVectorDimensions
+  sig: 'validateVectorDimensions(vectors: number[][], dimension: number): void'
+  lines:
+  - 632
+  - 642
+  detail:
+    calls:
+    - Array.isArray
+    - new Error
+- name: normalizeMetadata
+  sig: 'normalizeMetadata(meta: Record<string, any> | undefined): Record<string, any>'
+  lines:
+  - 648
+  - 655
+  detail:
+    calls:
+    - Object.entries
+    - v.getTime
+- name: normalizeIndexName
+  sig: 'normalizeIndexName(str: string)'
+  lines:
+  - 662
+  - 667
+  detail:
+    calls:
+    - new TypeError
+    - str.replace
+    - str.replace(/_/g, '-').toLowerCase
+exports:
+- name: S3VectorsOptions
+  kind: type
+- name: S3DistanceMetric
+  kind: type
+- name: MastraMetric
+  kind: type
+- name: SupportedMastraMetric
+  kind: type
+- name: S3Vectors
+  kind: type
+- name: assertPositiveInteger
+  kind: func
+- name: validateVectorDimensions
+  kind: func
+- name: normalizeMetadata
+  kind: func
+- name: normalizeIndexName
+  kind: func

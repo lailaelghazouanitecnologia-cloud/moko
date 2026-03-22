@@ -1,0 +1,439 @@
+## Roska File Descriptor — tui/mastra-tui.ts
+file: tui/mastra-tui.ts
+lines: 1030
+purpose: Main TUI class for Mastra Code. Wires the Harness to pi-tui components for a full interactive experience.
+imports:
+- sym: '@mariozechner/pi-tui.Spacer'
+- sym: '@mariozechner/pi-tui.Component'
+  kind: typing
+- sym: '@mastra/core/harness.HarnessEvent'
+  kind: typing
+- sym: '@mastra/core/workspace.Workspace'
+  kind: typing
+- sym: ../auth/claude-max-warning.js.ANTHROPIC_OAUTH_PROVIDER_ID
+- sym: ../auth/storage.js.getOAuthProviders
+- sym: ../onboarding/index.js.OnboardingInlineComponent
+- sym: ../onboarding/index.js.getAvailableModePacks
+- sym: ../onboarding/index.js.getAvailableOmPacks
+- sym: ../onboarding/index.js.ONBOARDING_VERSION
+- sym: ../onboarding/index.js.loadSettings
+- sym: ../onboarding/index.js.saveSettings
+- sym: ../onboarding/index.js.OnboardingResult
+  kind: typing
+- sym: ../onboarding/index.js.ProviderAccess
+  kind: typing
+- sym: ../onboarding/index.js.ProviderAccessLevel
+  kind: typing
+- sym: ../onboarding/settings.js.resolveThreadActiveModelPackId
+- sym: ../onboarding/settings.js.THREAD_ACTIVE_MODEL_PACK_ID_KEY
+- sym: ../utils/update-check.js.detectPackageManager
+- sym: ../utils/update-check.js.fetchLatestVersion
+- sym: ../utils/update-check.js.getInstallCommand
+- sym: ../utils/update-check.js.isNewerVersion
+- sym: ../utils/update-check.js.runUpdate
+- sym: ./claude-max-warning.js.showClaudeMaxOAuthWarning
+- sym: ./command-dispatch.js.dispatchSlashCommand
+- sym: ./commands/types.js.SlashCommandContext
+  kind: typing
+- sym: ./components/ask-question-inline.js.AskQuestionInlineComponent
+- sym: ./components/login-dialog.js.LoginDialogComponent
+- sym: ./components/model-selector.js.ModelSelectorComponent
+- sym: ./components/model-selector.js.ModelItem
+  kind: typing
+- sym: ./display.js.showError
+- sym: ./display.js.showInfo
+- sym: ./display.js.showFormattedError
+- sym: ./display.js.notify
+- sym: ./event-dispatch.js.dispatchEvent
+- sym: ./handlers/types.js.EventHandlerContext
+  kind: typing
+- sym: ./prompt-api-key.js.promptForApiKeyIfNeeded
+- sym: ./render-messages.js.addUserMessage
+- sym: ./render-messages.js.renderCompletedTasksInline
+- sym: ./render-messages.js.renderClearedTasksInline
+- sym: ./render-messages.js.renderExistingMessages
+- sym: ./setup.js.setupKeyboardShortcuts
+- sym: ./setup.js.buildLayout
+- sym: ./setup.js.setupAutocomplete
+- sym: ./setup.js.loadCustomSlashCommands
+- sym: ./setup.js.setupKeyHandlers
+- sym: ./setup.js.subscribeToHarness
+- sym: ./setup.js.updateTerminalTitle
+- sym: ./setup.js.promptForThreadSelection
+- sym: ./setup.js.renderExistingTasks
+- sym: ./shell.js.handleShellPassthrough
+- sym: ./state.js.MastraTUIOptions
+  kind: typing
+- sym: ./state.js.TUIState
+  kind: typing
+- sym: ./state.js.createTUIState
+- sym: ./status-line.js.updateStatusLine
+data:
+- name: UPDATE_RECHECK_INTERVAL_MS
+  type: any
+  val: 45 * 60 * 1_000
+- name: IMAGE_PLACEHOLDER_PATTERN
+  type: any
+  val: /\[image\]\s*/g
+types:
+- name: MastraTUI
+  kind: struct
+  ctx: ===========================================================================
+  fields:
+  - name: state
+    type: TUIState
+  - name: updateCheckTimer
+    type: ReturnType<typeof setInterval> | null
+    default: 'null'
+  - name: hasShownUpdateBanner
+    type: any
+    default: 'false'
+  - name: DOUBLE_CTRL_C_MS
+    type: any
+    default: '500'
+  - name: _ectx
+    type: EventHandlerContext | undefined
+  methods:
+  - name: constructor
+    sig: 'constructor(options: MastraTUIOptions)'
+    lines:
+    - 97
+    - 146
+    detail:
+      calls:
+      - createTUIState
+      - loadSettings
+      - setupKeyboardShortcuts
+      - this.state.editor.handleInput.bind
+  - name: run
+    sig: 'run(): Promise<void>'
+    is_async: true
+    lines:
+    - 155
+    - 230
+    detail:
+      calls:
+      - Date.now
+      - addUserMessage
+      - consumePendingImages
+      - handleShellPassthrough
+      - hookMgr.runSessionStart
+      - hookMgr.runSessionStart().catch
+      - images?.map
+      - new Date
+      - showError
+      - showInfo
+      - this.fireMessage
+      - this.getUserInput
+      - this.handleSlashCommand
+      - this.init
+      - this.runUserPromptHook
+      - this.state.harness.createThread
+      - this.state.harness.hasModelSelected
+      - this.state.ui.requestRender
+      - userInput.slice
+      - userInput.slice(1).trim
+      - userInput.startsWith
+      - userInput.trim
+  - name: fireMessage
+    sig: 'fireMessage(content: string, images?: Array<{ data: string; mimeType: string }>): void'
+    vis: private
+    lines:
+    - 236
+    - 241
+    detail:
+      calls:
+      - images?.map
+      - this.state.harness.sendMessage
+      - this.state.harness.sendMessage({ content, files }).catch
+  - name: queueFollowUpMessage
+    sig: 'queueFollowUpMessage(text: string): void'
+    vis: private
+    lines:
+    - 243
+    - 259
+    detail:
+      calls:
+      - consumePendingImages
+      - text.startsWith
+      - this.state.pendingFollowUpMessages.push
+      - this.state.pendingQueuedActions.push
+      - this.state.pendingSlashCommands.push
+      - this.state.ui.requestRender
+      - updateStatusLine
+  - name: stop
+    sig: 'stop(): void'
+    lines:
+    - 264
+    - 280
+    detail:
+      calls:
+      - clearInterval
+      - hookMgr.runSessionEnd
+      - hookMgr.runSessionEnd().catch
+      - this.state.ui.stop
+      - this.state.unsubscribe
+  - name: init
+    sig: 'init(): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 286
+    - 382
+    detail:
+      calls:
+      - Object.keys
+      - buildLayout
+      - initThreads.find
+      - loadCustomSlashCommands
+      - promptForThreadSelection
+      - renderExistingMessages
+      - renderExistingTasks
+      - setInterval
+      - setupAutocomplete
+      - setupKeyHandlers
+      - showInfo
+      - subscribeToHarness
+      - this.checkClaudeMaxOAuthWarning
+      - this.checkForUpdate
+      - this.shouldShowOnboarding
+      - this.showOnboarding
+      - this.state.harness.getCurrentThreadId
+      - this.state.harness.getState
+      - this.state.harness.init
+      - this.state.harness.listThreads
+      - this.state.harness.loadOMProgress
+      - |-
+        this.state.mcpManager
+                .initInBackground
+      - |-
+        this.state.mcpManager
+                .initInBackground()
+                .then
+      - |-
+        this.state.mcpManager
+                .initInBackground()
+                .then(result => {
+                  if (result.con...
+      - this.state.mcpManager.getConfig
+      - this.state.mcpManager?.hasServers
+      - this.state.ui.start
+      - updateTerminalTitle
+  - name: refreshModelAuthStatus
+    sig: 'refreshModelAuthStatus(): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 384
+    - 387
+    detail:
+      calls:
+      - this.state.harness.getCurrentModelAuthStatus
+      - updateStatusLine
+  - name: handleEvent
+    sig: 'handleEvent(event: HarnessEvent): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 403
+    - 416
+    detail:
+      calls:
+      - dispatchEvent
+      - this.getEventContext
+      - this.runStopHook
+      - this.syncThreadActivePackMetadata
+  - name: buildProviderAccess
+    sig: 'buildProviderAccess(): Promise<ProviderAccess>'
+    is_async: true
+    vis: private
+    lines:
+    - 418
+    - 443
+    detail:
+      calls:
+      - Object.keys
+      - accessLevel
+      - hasEnv
+      - new Set
+      - seen.add
+      - seen.has
+      - this.state.harness.listAvailableModels
+  - name: syncThreadActivePackMetadata
+    sig: |-
+      syncThreadActivePackMetadata(thread?: {
+          id: string;
+          metadata?: Record<string, unknown>;
+        }): Promise<void>
+    is_async: true
+    vis: private
+    lines:
+    - 445
+    - 473
+    detail:
+      calls:
+      - (await this.state.harness.listThreads()).find
+      - getAvailableModePacks
+      - getAvailableModePacks(access, settings.customModelPacks).filter
+      - loadSettings
+      - resolveThreadActiveModelPackId
+      - saveSettings
+      - this.buildProviderAccess
+      - this.state.harness.getCurrentThreadId
+      - this.state.harness.listThreads
+  - name: runStopHook
+    sig: 'runStopHook(stopReason: ''complete'' | ''aborted'' | ''error''): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 481
+    - 494
+    detail:
+      calls:
+      - String
+      - hookMgr.runStop
+      - showError
+      - this.showHookWarnings
+  - name: runUserPromptHook
+    sig: 'runUserPromptHook(userInput: string): Promise<boolean>'
+    is_async: true
+    vis: private
+    lines:
+    - 496
+    - 514
+    detail:
+      calls:
+      - String
+      - hookMgr.runUserPromptSubmit
+      - showError
+      - this.showHookWarnings
+  - name: addChildBeforeFollowUps
+    sig: 'addChildBeforeFollowUps(child: Component): void'
+    vis: private
+    lines:
+    - 521
+    - 532
+    detail:
+      calls:
+      - (this.state.chatContainer.children as unknown[]).splice
+      - this.state.chatContainer.addChild
+      - this.state.chatContainer.children.indexOf
+      - this.state.chatContainer.invalidate
+  - name: checkClaudeMaxOAuthWarning
+    sig: 'checkClaudeMaxOAuthWarning(): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 561
+    - 580
+    detail:
+      calls:
+      - authStorage.isLoggedIn
+      - authStorage.logout
+      - loadSettings
+      - new Date
+      - new Date().toISOString
+      - saveSettings
+      - showClaudeMaxOAuthWarning
+      - this.refreshModelAuthStatus
+  - name: performLogin
+    sig: 'performLogin(providerId: string): Promise<void>'
+    is_async: true
+    lines:
+    - 650
+    - 712
+    detail:
+      calls:
+      - getOAuthProviders
+      - getOAuthProviders().find
+      - new Promise
+      - showError
+  - name: showOnboarding
+    sig: 'showOnboarding(): Promise<void>'
+    is_async: true
+    lines:
+    - 718
+    - 829
+    detail:
+      calls:
+      - Object.values
+      - Object.values(access).some
+      - allProviders.map
+      - getAvailableModePacks
+      - getAvailableOmPacks
+      - getOAuthProviders
+      - loadSettings
+      - new Promise
+      - savedSettings.models.activeModelPackId?.startsWith
+      - this.buildProviderAccess
+  - name: applyOnboardingResult
+    sig: 'applyOnboardingResult(result: OnboardingResult): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 831
+    - 911
+    detail:
+      calls:
+      - Object.entries
+      - harness.getCurrentModeId
+      - harness.getCurrentThreadId
+      - harness.listModes
+      - harness.setState
+      - harness.setSubagentModelId
+      - harness.setThreadSetting
+      - harness.switchModel
+      - loadSettings
+      - modePack.id.slice
+      - modePack.id.startsWith
+      - modePack.name?.trim
+      - new Date
+      - new Date().toISOString
+      - saveSettings
+      - settings.customModelPacks.findIndex
+      - settings.customModelPacks.push
+      - this.refreshModelAuthStatus
+      - updateStatusLine
+  - name: checkForUpdate
+    sig: 'checkForUpdate(passive = false): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 932
+    - 970
+    detail:
+      calls:
+      - detectPackageManager
+      - fetchLatestVersion
+      - isNewerVersion
+      - loadSettings
+      - showInfo
+      - this.showUpdatePrompt
+  lines:
+  - 90
+  - 1030
+functions:
+- name: consumePendingImages
+  sig: |-
+    consumePendingImages(
+      text: string,
+      pendingImages: TUIState['pendingImages'],
+    ): { content: string; images?: TUIState['pendingImages'] }
+  lines:
+  - 77
+  - 88
+  detail:
+    calls:
+    - pendingImages.slice
+    - text.match
+    - text.replace
+    - text.replace(IMAGE_PLACEHOLDER_PATTERN, '').trim
+exports:
+- name: MastraTUI
+  kind: type
+- name: consumePendingImages
+  kind: func
+- name: UPDATE_RECHECK_INTERVAL_MS
+  kind: data
+- name: IMAGE_PLACEHOLDER_PATTERN
+  kind: data

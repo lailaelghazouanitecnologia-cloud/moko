@@ -1,0 +1,328 @@
+## Roska File Descriptor — providers/openai-codex.ts
+file: providers/openai-codex.ts
+lines: 470
+purpose: 'OpenAI Codex (ChatGPT OAuth) flow Inspired by pi-mono''s OAuth implementation: https://github.com/badlogic/pi-mono/blob/main/packages/ai/src/utils/oauth/openai-codex.ts NOTE: This module uses Node.js crypto and http for the OAuth callback. It is only intended for CLI use, not browser environments.'
+imports:
+- sym: ../pkce.js.generatePKCE
+- sym: ../types.js.OAuthCredentials
+  kind: typing
+- sym: ../types.js.OAuthLoginCallbacks
+  kind: typing
+- sym: ../types.js.OAuthPrompt
+  kind: typing
+- sym: ../types.js.OAuthProviderInterface
+  kind: typing
+data:
+- name: _randomBytes
+  type: '((size: number) => Buffer) | null'
+  val: 'null'
+- name: _http
+  type: typeof import('node:http') | null
+  val: 'null'
+- name: CLIENT_ID
+  type: string
+  val: '''app_EMoamEEZ73f0CkXaXp7hrann'''
+- name: AUTHORIZE_URL
+  type: string
+  val: '''https://auth.openai.com/oauth/authorize'''
+- name: TOKEN_URL
+  type: string
+  val: '''https://auth.openai.com/oauth/token'''
+- name: REDIRECT_URI
+  type: string
+  val: '''http://localhost:1455/auth/callback'''
+- name: SCOPE
+  type: string
+  val: '''openid profile email offline_access'''
+- name: JWT_CLAIM_PATH
+  type: string
+  val: '''https://api.openai.com/auth'''
+- name: SUCCESS_HTML
+  type: string
+  val: |-
+    `<!doctype html>
+    <html lang="en">
+    <head>
+      <meta charset="utf-8" />
+      <meta name="viewport" content="width=device-width,...
+- name: openaiCodexOAuthProvider
+  type: OAuthProviderInterface
+  val: |-
+    {
+      id: 'openai-codex',
+      name: 'ChatGPT Plus/Pro (Codex Subscription)',
+      usesCallbackServer: true,
+
+      async login(call...
+types:
+- name: TokenSuccess
+  kind: typealias
+  decorators:
+  - type
+  fields:
+  - name: type
+    type: '''success'''
+  - name: access
+    type: string
+  - name: refresh
+    type: string
+  - name: expires
+    type: number
+  lines:
+  - 46
+  - 51
+- name: TokenFailure
+  kind: typealias
+  decorators:
+  - type
+  fields:
+  - name: type
+    type: '''failed'''
+  lines:
+  - 52
+  - 52
+- name: TokenResult
+  kind: enum
+  decorators:
+  - type
+  variants:
+  - name: TokenSuccess
+  - name: TokenFailure
+  lines:
+  - 53
+  - 53
+- name: JwtPayload
+  kind: typealias
+  decorators:
+  - type
+  fields:
+  - name: '[JWT_CLAIM_PATH]'
+    type: |-
+      {
+          chatgpt_account_id?: string;
+        }
+  lines:
+  - 55
+  - 60
+- name: OAuthServerInfo
+  kind: typealias
+  decorators:
+  - type
+  fields:
+  - name: close
+    type: () => void
+  - name: cancelWait
+    type: () => void
+  - name: waitForCode
+    type: '() => Promise<{ code: string } | null>'
+  lines:
+  - 218
+  - 222
+functions:
+- name: createState
+  sig: 'createState(): string'
+  lines:
+  - 62
+  - 67
+  detail:
+    calls:
+    - _randomBytes
+    - _randomBytes(16).toString
+    - new Error
+- name: parseAuthorizationInput
+  sig: |-
+    parseAuthorizationInput(input: string): {
+      code?: string;
+      state?: string;
+    }
+  lines:
+  - 69
+  - 100
+  detail:
+    calls:
+    - input.trim
+    - new URL
+    - new URLSearchParams
+    - params.get
+    - url.searchParams.get
+    - value.includes
+    - value.split
+- name: decodeJwt
+  sig: 'decodeJwt(token: string): JwtPayload | null'
+  lines:
+  - 102
+  - 112
+  detail:
+    calls:
+    - JSON.parse
+    - atob
+    - token.split
+- name: exchangeAuthorizationCode
+  sig: |-
+    exchangeAuthorizationCode(
+      code: string,
+      verifier: string,
+      redirectUri: string = REDIRECT_URI,
+    ): Promise<TokenResult>
+  is_async: true
+  lines:
+  - 114
+  - 154
+  detail:
+    calls:
+    - Date.now
+    - console.error
+    - fetch
+    - new URLSearchParams
+    - response.json
+    - response.text
+    - response.text().catch
+- name: refreshAccessToken
+  sig: 'refreshAccessToken(refreshToken: string): Promise<TokenResult>'
+  is_async: true
+  lines:
+  - 156
+  - 195
+  detail:
+    calls:
+    - Date.now
+    - console.error
+    - fetch
+    - new URLSearchParams
+    - response.json
+    - response.text
+    - response.text().catch
+- name: createAuthorizationFlow
+  sig: |-
+    createAuthorizationFlow(
+      originator: string = 'pi',
+    ): Promise<{ verifier: string; state: string; url: string }>
+  is_async: true
+  lines:
+  - 197
+  - 216
+  detail:
+    calls:
+    - createState
+    - generatePKCE
+    - new URL
+    - url.searchParams.set
+    - url.toString
+- name: startLocalOAuthServer
+  sig: 'startLocalOAuthServer(state: string): Promise<OAuthServerInfo>'
+  lines:
+  - 224
+  - 297
+  detail:
+    calls:
+    - _http.createServer
+    - new Error
+    - new Promise
+- name: getAccountId
+  sig: 'getAccountId(accessToken: string): string | null'
+  lines:
+  - 299
+  - 304
+  detail:
+    calls:
+    - decodeJwt
+- name: loginOpenAICodex
+  sig: |-
+    loginOpenAICodex(options: {
+      onAuth: (info: { url: string; instructions?: string }) => void;
+      onPrompt: (prompt: OAuthPrompt) => Promise<string>;
+      onProgress?: (message: string) => void;
+      onManualCodeInput?: () => Promise<string>;
+      originator?: string;
+    }): Promise<OAuthCredentials>
+  is_async: true
+  lines:
+  - 317
+  - 425
+  detail:
+    calls:
+    - createAuthorizationFlow
+    - exchangeAuthorizationCode
+    - getAccountId
+    - new Error
+    - |-
+      options
+              .onManualCodeInput
+    - |-
+      options
+              .onManualCodeInput()
+              .then
+    - |-
+      options
+              .onManualCodeInput()
+              .then(input => {
+                manualCode = input;
+              ...
+    - options.onAuth
+    - options.onPrompt
+    - parseAuthorizationInput
+    - server.close
+    - server.waitForCode
+    - startLocalOAuthServer
+- name: refreshOpenAICodexToken
+  sig: 'refreshOpenAICodexToken(refreshToken: string): Promise<OAuthCredentials>'
+  is_async: true
+  lines:
+  - 430
+  - 447
+  detail:
+    calls:
+    - getAccountId
+    - new Error
+    - refreshAccessToken
+exports:
+- name: TokenSuccess
+  kind: type
+- name: TokenFailure
+  kind: type
+- name: TokenResult
+  kind: type
+- name: JwtPayload
+  kind: type
+- name: OAuthServerInfo
+  kind: type
+- name: createState
+  kind: func
+- name: parseAuthorizationInput
+  kind: func
+- name: decodeJwt
+  kind: func
+- name: exchangeAuthorizationCode
+  kind: func
+- name: refreshAccessToken
+  kind: func
+- name: createAuthorizationFlow
+  kind: func
+- name: startLocalOAuthServer
+  kind: func
+- name: getAccountId
+  kind: func
+- name: loginOpenAICodex
+  kind: func
+- name: refreshOpenAICodexToken
+  kind: func
+- name: _randomBytes
+  kind: data
+- name: _http
+  kind: data
+- name: CLIENT_ID
+  kind: data
+- name: AUTHORIZE_URL
+  kind: data
+- name: TOKEN_URL
+  kind: data
+- name: REDIRECT_URI
+  kind: data
+- name: SCOPE
+  kind: data
+- name: JWT_CLAIM_PATH
+  kind: data
+- name: SUCCESS_HTML
+  kind: data
+- name: openaiCodexOAuthProvider
+  kind: data

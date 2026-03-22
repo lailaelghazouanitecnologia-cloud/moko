@@ -1,0 +1,497 @@
+## Roska File Descriptor — services/mastra-runtime-provider.tsx
+file: services/mastra-runtime-provider.tsx
+lines: 1293
+imports:
+- sym: '@assistant-ui/react.useExternalStoreRuntime'
+- sym: '@assistant-ui/react.ThreadMessageLike'
+- sym: '@assistant-ui/react.AppendMessage'
+- sym: '@assistant-ui/react.AssistantRuntimeProvider'
+- sym: react.useState
+- sym: react.useMemo
+- sym: react.ReactNode
+- sym: react.useRef
+- sym: react.useEffect
+- sym: '@mastra/core/di.RequestContext'
+- sym: '@/types.ChatProps'
+- sym: '@mastra/core/llm.CoreUserMessage'
+- sym: '@/lib/file/toBase64.fileToBase64'
+- sym: '@mastra/react.toAssistantUIMessage'
+- sym: '@mastra/react.useMastraClient'
+- sym: '@/domains/agents/context/agent-working-memory-context.useWorkingMemory'
+- sym: '@mastra/client-js.MastraClient'
+- sym: '@mastra/client-js.UIMessageWithMetadata'
+- sym: '@/lib/ai-ui/hooks/use-adapters.useAdapters'
+- sym: '@/domains/observability/context/tracing-settings-context.useTracingSettings'
+- sym: '@mastra/react.MastraUIMessage'
+- sym: '@mastra/react.useChat'
+- sym: ./tool-call-provider.ToolCallProvider
+- sym: '@/domains/agents/context.useObservationalMemoryContext'
+- sym: '@tanstack/react-query.useQueryClient'
+- sym: '@/domains/memory/hooks.useMemoryConfig'
+data:
+- name: OM_TOOL_NAME
+  type: string
+  val: '''mastra-memory-om-observation'''
+- name: '{ settings: tracingSettings }'
+  type: any
+  val: useTracingSettings()
+- name: '[isLegacyRunning, setIsLegacyRunning]'
+  type: any
+  val: useState(false)
+- name: '[legacyMessages, setLegacyMessages]'
+  type: any
+  val: useState<ThreadMessageLike[]>([])
+- name: |-
+    {
+        messages,
+        sendMessage,
+        cancelRun,
+        isRunning: isRunningStream,
+        setMessages,
+        approveToolCall,
+        declineToolCall,
+        approveToolCallGenerate,
+        declineToolCallGenerate,
+        toolCallApprovals,
+        approveNetworkToolCall,
+        declineNetworkToolCall,
+        networkToolCallApprovals,
+      }
+  type: any
+  val: |-
+    useChat({
+        agentId,
+        initialMessages,
+      })
+- name: '{ refetch: refreshWorkingMemory }'
+  type: any
+  val: useWorkingMemory()
+- name: abortControllerRef
+  type: any
+  val: useRef<AbortController | null>(null)
+- name: queryClient
+  type: any
+  val: useQueryClient()
+- name: '{ data: memoryConfigData }'
+  type: any
+  val: useMemoryConfig(agentId)
+- name: omConfig
+  type: any
+  val: memoryConfigData?.config?.observationalMemory
+- name: isOMEnabled
+  type: any
+  val: omConfig === true || (typeof omConfig === 'object' && omConfig !== null && omConfig.enabled !== false)
+- name: |-
+    {
+        setIsObservingFromStream,
+        setIsReflectingFromStream,
+        signalObservationsUpdated,
+        setStreamProgress,
+        markCycleIdActivated,
+      }
+  type: any
+  val: useObservationalMemoryContext()
+- name: |-
+    {
+        frequencyPenalty,
+        presencePenalty,
+        maxRetries,
+        maxSteps,
+        maxTokens,
+        temperature,
+        topK,
+        topP,
+        seed,
+        chatWithGenerateLegacy,
+        chatWithGenerate,
+        chatWithNetwork,
+        providerOptions,
+        requireToolApproval,
+      }
+  type: any
+  val: settings?.modelSettings ?? {}
+- name: toolCallIdToName
+  type: any
+  val: useRef<Record<string, string>>({})
+- name: modelSettingsArgs
+  type: object
+  val: |-
+    {
+        frequencyPenalty,
+        presencePenalty,
+        maxRetries,
+        temperature,
+        topK,
+        topP,
+        seed,
+        maxToken...
+- name: baseClient
+  type: any
+  val: useMastraClient()
+- name: isSupportedModel
+  type: any
+  val: modelVersion === 'v2' || modelVersion === 'v3'
+- name: '{ adapters, isReady }'
+  type: any
+  val: useAdapters(agentId)
+- name: globalOmParts
+  type: any
+  val: useMemo(() => buildGlobalOmPartsByCycleId(messages), [messages])
+- name: vnextmessages
+  type: any
+  val: |-
+    messages.map(msg => {
+        const converted = convertOmPartsInMastraMessage(msg, globalOmParts);
+        return toAssistantUIM...
+- name: runtime
+  type: any
+  val: |-
+    useExternalStoreRuntime({
+        isRunning: isLegacyRunning || isRunningStream,
+        messages: isSupportedModel ? vnextmessa...
+types:
+- name: OmCycleParts
+  kind: typealias
+  decorators:
+  - type
+  fields:
+  - name: start
+    type: any
+  - name: end
+    type: any
+  - name: failed
+    type: any
+  - name: bufferingStart
+    type: any
+  - name: bufferingEnd
+    type: any
+  - name: bufferingFailed
+    type: any
+  - name: activation
+    type: any
+  lines:
+  - 87
+  - 95
+functions:
+- name: handleFinishReason
+  sig: 'handleFinishReason(finishReason: string)'
+  lines:
+  - 23
+  - 30
+  detail:
+    calls:
+    - new Error
+- name: convertToAIAttachments
+  sig: 'convertToAIAttachments(attachments: AppendMessage[''attachments'']): Promise<Array<CoreUserMessage>>'
+  is_async: true
+  lines:
+  - 32
+  - 76
+  detail:
+    calls:
+    - |-
+      (attachments ?? [])
+          .filter
+    - |-
+      (attachments ?? [])
+          .filter(attachment => attachment.type === 'image' || attachment.type === 'do...
+    - Promise.all
+- name: indexOmPartsByCycleId
+  sig: 'indexOmPartsByCycleId(parts: any[], target: Map<string, OmCycleParts>)'
+  lines:
+  - 101
+  - 124
+  detail:
+    calls:
+    - target.get
+    - target.set
+- name: buildGlobalOmPartsByCycleId
+  sig: 'buildGlobalOmPartsByCycleId(messages: MastraUIMessage[])'
+  lines:
+  - 131
+  - 138
+  detail:
+    calls:
+    - Array.isArray
+    - indexOmPartsByCycleId
+    - new Map
+- name: convertOmPartsInMastraMessage
+  sig: |-
+    convertOmPartsInMastraMessage(
+      message: MastraUIMessage,
+      globalOmParts: Map<string, OmCycleParts>,
+    ): MastraUIMessage
+  lines:
+  - 154
+  - 278
+  detail:
+    calls:
+    - Array.isArray
+    - convertedParts.push
+    - globalOmParts.get
+    - partType?.startsWith
+- name: initializeMessageState
+  sig: 'initializeMessageState(initialMessages: UIMessageWithMetadata[])'
+  lines:
+  - 280
+  - 369
+  detail:
+    calls:
+    - |-
+      initialMessages
+          ?.map
+    - |-
+      initialMessages
+          ?.map((message: UIMessageWithMetadata) => {
+            const attachmentsAsContentPart...
+- name: handleObservationStart
+  sig: 'handleObservationStart(operationType?: string)'
+  lines:
+  - 432
+  - 438
+  detail:
+    calls:
+    - setIsObservingFromStream
+    - setIsReflectingFromStream
+- name: handleProgressUpdate
+  sig: 'handleProgressUpdate(data: any)'
+  lines:
+  - 441
+  - 453
+  detail:
+    calls:
+    - setStreamProgress
+- name: refreshObservationalMemory
+  sig: 'refreshObservationalMemory(operationType?: string)'
+  lines:
+  - 456
+  - 468
+  detail:
+    calls:
+    - queryClient.invalidateQueries
+    - setIsObservingFromStream
+    - setIsReflectingFromStream
+    - signalObservationsUpdated
+- name: handleActivation
+  sig: 'handleActivation(data: any)'
+  lines:
+  - 471
+  - 476
+  detail:
+    calls:
+    - markCycleIdActivated
+- name: markOmMarkersAsDisconnected
+  sig: 'markOmMarkersAsDisconnected(msgs: any[])'
+  lines:
+  - 482
+  - 525
+  detail:
+    calls:
+    - msgs.map
+- name: markBufferingBadgesAsComplete
+  sig: 'markBufferingBadgesAsComplete(msgs: any[], record?: any)'
+  lines:
+  - 531
+  - 588
+  detail:
+    calls:
+    - chunksByCycleId.set
+    - msgs.map
+    - new Map
+- name: resetObservationalMemoryStreamState
+  sig: resetObservationalMemoryStreamState()
+  lines:
+  - 592
+  - 606
+  detail:
+    calls:
+    - queryClient.invalidateQueries
+    - setIsObservingFromStream
+    - setIsReflectingFromStream
+    - setLegacyMessages
+    - setMessages
+- name: onNew
+  sig: 'onNew(message: AppendMessage)'
+  is_async: true
+  lines:
+  - 667
+  - 1220
+  detail:
+    calls:
+    - Object.entries
+    - Object.entries(requestContext ?? {}).forEach
+    - agent.generateLegacy
+    - agent.streamLegacy
+    - |-
+      baseClient
+                      .awaitBufferStatus
+    - |-
+      baseClient
+                      .awaitBufferStatus({ agentId, resourceId: agentId, threadId })
+                ...
+    - |-
+      baseClient
+                .awaitBufferStatus
+    - |-
+      baseClient
+                .awaitBufferStatus({ agentId, resourceId: agentId, threadId })
+                .then
+    - |-
+      baseClient
+                .awaitBufferStatus({ agentId, resourceId: agentId, threadId })
+                .then(...
+    - clientWithAbort.getAgent
+    - console.error
+    - convertToAIAttachments
+    - generateResponse.response.messages.reduce
+    - handleFinishReason
+    - new AbortController
+    - new Error
+    - new MastraClient
+    - new RequestContext
+    - refreshThreadList
+    - refreshWorkingMemory
+    - resetObservationalMemoryStreamState
+    - response.processDataStream
+    - sendMessage
+    - setIsLegacyRunning
+    - setLegacyMessages
+    - setMessages
+    - setTimeout
+    - updater
+- name: onCancel
+  sig: onCancel()
+  is_async: true
+  lines:
+  - 1222
+  - 1244
+  detail:
+    calls:
+    - abortControllerRef.current.abort
+    - |-
+      baseClient
+                .awaitBufferStatus
+    - |-
+      baseClient
+                .awaitBufferStatus({ agentId, resourceId: agentId, threadId })
+                .then
+    - |-
+      baseClient
+                .awaitBufferStatus({ agentId, resourceId: agentId, threadId })
+                .then(...
+    - cancelRun
+    - resetObservationalMemoryStreamState
+    - setIsLegacyRunning
+exports:
+- name: OmCycleParts
+  kind: type
+- name: handleFinishReason
+  kind: func
+- name: convertToAIAttachments
+  kind: func
+- name: indexOmPartsByCycleId
+  kind: func
+- name: buildGlobalOmPartsByCycleId
+  kind: func
+- name: convertOmPartsInMastraMessage
+  kind: func
+- name: initializeMessageState
+  kind: func
+- name: handleObservationStart
+  kind: func
+- name: handleProgressUpdate
+  kind: func
+- name: refreshObservationalMemory
+  kind: func
+- name: handleActivation
+  kind: func
+- name: markOmMarkersAsDisconnected
+  kind: func
+- name: markBufferingBadgesAsComplete
+  kind: func
+- name: resetObservationalMemoryStreamState
+  kind: func
+- name: onNew
+  kind: func
+- name: onCancel
+  kind: func
+- name: OM_TOOL_NAME
+  kind: data
+- name: '{ settings: tracingSettings }'
+  kind: data
+- name: '[isLegacyRunning, setIsLegacyRunning]'
+  kind: data
+- name: '[legacyMessages, setLegacyMessages]'
+  kind: data
+- name: |-
+    {
+        messages,
+        sendMessage,
+        cancelRun,
+        isRunning: isRunningStream,
+        setMessages,
+        approveToolCall,
+        declineToolCall,
+        approveToolCallGenerate,
+        declineToolCallGenerate,
+        toolCallApprovals,
+        approveNetworkToolCall,
+        declineNetworkToolCall,
+        networkToolCallApprovals,
+      }
+  kind: data
+- name: '{ refetch: refreshWorkingMemory }'
+  kind: data
+- name: abortControllerRef
+  kind: data
+- name: queryClient
+  kind: data
+- name: '{ data: memoryConfigData }'
+  kind: data
+- name: omConfig
+  kind: data
+- name: isOMEnabled
+  kind: data
+- name: |-
+    {
+        setIsObservingFromStream,
+        setIsReflectingFromStream,
+        signalObservationsUpdated,
+        setStreamProgress,
+        markCycleIdActivated,
+      }
+  kind: data
+- name: |-
+    {
+        frequencyPenalty,
+        presencePenalty,
+        maxRetries,
+        maxSteps,
+        maxTokens,
+        temperature,
+        topK,
+        topP,
+        seed,
+        chatWithGenerateLegacy,
+        chatWithGenerate,
+        chatWithNetwork,
+        providerOptions,
+        requireToolApproval,
+      }
+  kind: data
+- name: toolCallIdToName
+  kind: data
+- name: modelSettingsArgs
+  kind: data
+- name: baseClient
+  kind: data
+- name: isSupportedModel
+  kind: data
+- name: '{ adapters, isReady }'
+  kind: data
+- name: globalOmParts
+  kind: data
+- name: vnextmessages
+  kind: data
+- name: runtime
+  kind: data

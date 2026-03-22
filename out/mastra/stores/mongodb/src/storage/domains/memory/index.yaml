@@ -1,0 +1,851 @@
+## Roska File Descriptor — memory/index.ts
+file: memory/index.ts
+lines: 2261
+imports:
+- sym: node:crypto.randomUUID
+- sym: '@mastra/core/agent.MessageList'
+- sym: '@mastra/core/agent.MastraMessageContentV2'
+  kind: typing
+- sym: '@mastra/core/error.ErrorCategory'
+- sym: '@mastra/core/error.ErrorDomain'
+- sym: '@mastra/core/error.MastraError'
+- sym: '@mastra/core/memory.MastraMessageV1'
+  kind: typing
+- sym: '@mastra/core/memory.MastraDBMessage'
+  kind: typing
+- sym: '@mastra/core/memory.StorageThreadType'
+  kind: typing
+- sym: '@mastra/core/storage.createStorageErrorId'
+- sym: '@mastra/core/storage.MemoryStorage'
+- sym: '@mastra/core/storage.normalizePerPage'
+- sym: '@mastra/core/storage.calculatePagination'
+- sym: '@mastra/core/storage.safelyParseJSON'
+- sym: '@mastra/core/storage.TABLE_MESSAGES'
+- sym: '@mastra/core/storage.TABLE_RESOURCES'
+- sym: '@mastra/core/storage.TABLE_THREADS'
+- sym: '@mastra/core/storage.StorageResourceType'
+  kind: typing
+- sym: '@mastra/core/storage.StorageListMessagesInput'
+  kind: typing
+- sym: '@mastra/core/storage.StorageListMessagesByResourceIdInput'
+  kind: typing
+- sym: '@mastra/core/storage.StorageListMessagesOutput'
+  kind: typing
+- sym: '@mastra/core/storage.StorageListThreadsInput'
+  kind: typing
+- sym: '@mastra/core/storage.StorageListThreadsOutput'
+  kind: typing
+- sym: '@mastra/core/storage.StorageCloneThreadInput'
+  kind: typing
+- sym: '@mastra/core/storage.StorageCloneThreadOutput'
+  kind: typing
+- sym: '@mastra/core/storage.ThreadCloneMetadata'
+  kind: typing
+- sym: '@mastra/core/storage.ObservationalMemoryRecord'
+  kind: typing
+- sym: '@mastra/core/storage.BufferedObservationChunk'
+  kind: typing
+- sym: '@mastra/core/storage.CreateObservationalMemoryInput'
+  kind: typing
+- sym: '@mastra/core/storage.UpdateActiveObservationsInput'
+  kind: typing
+- sym: '@mastra/core/storage.UpdateBufferedObservationsInput'
+  kind: typing
+- sym: '@mastra/core/storage.SwapBufferedToActiveInput'
+  kind: typing
+- sym: '@mastra/core/storage.SwapBufferedToActiveResult'
+  kind: typing
+- sym: '@mastra/core/storage.UpdateBufferedReflectionInput'
+  kind: typing
+- sym: '@mastra/core/storage.SwapBufferedReflectionToActiveInput'
+  kind: typing
+- sym: '@mastra/core/storage.CreateReflectionGenerationInput'
+  kind: typing
+- sym: ../../connectors/MongoDBConnector.MongoDBConnector
+  kind: typing
+- sym: ../../db.resolveMongoDBConfig
+- sym: ../../types.MongoDBDomainConfig
+  kind: typing
+- sym: ../../types.MongoDBIndexConfig
+  kind: typing
+- sym: ../utils.formatDateForMongoDB
+data:
+- name: OM_TABLE
+  type: string
+  val: '''mastra_observational_memory'' as const'
+types:
+- name: MemoryStorageMongoDB
+  kind: struct
+  ctx: Collections managed by this domain
+  bases:
+  - MemoryStorage
+  fields:
+  - name: supportsObservationalMemory
+    type: any
+    default: 'true'
+  - name: MANAGED_COLLECTIONS
+    type: any
+    default: '[TABLE_THREADS, TABLE_MESSAGES, TABLE_RESOURCES, OM_TABLE] as const'
+  methods:
+  - name: constructor
+    sig: 'constructor(config: MongoDBDomainConfig)'
+    lines:
+    - 60
+    - 68
+    detail:
+      calls:
+      - config.indexes?.filter
+      - resolveMongoDBConfig
+      - super
+  - name: getCollection
+    sig: 'getCollection(name: string)'
+    is_async: true
+    vis: private
+    lines:
+    - 70
+    - 72
+    detail:
+      calls:
+      - this.#connector.getCollection
+  - name: init
+    sig: 'init(): Promise<void>'
+    is_async: true
+    lines:
+    - 74
+    - 77
+    detail:
+      calls:
+      - this.createCustomIndexes
+      - this.createDefaultIndexes
+  - name: getDefaultIndexDefinitions
+    sig: 'getDefaultIndexDefinitions(): MongoDBIndexConfig[]'
+    lines:
+    - 82
+    - 104
+    detail: {}
+  - name: createDefaultIndexes
+    sig: 'createDefaultIndexes(): Promise<void>'
+    is_async: true
+    lines:
+    - 109
+    - 123
+    detail:
+      calls:
+      - collection.createIndex
+      - this.getCollection
+      - this.getDefaultIndexDefinitions
+      - this.logger?.warn
+  - name: createCustomIndexes
+    sig: 'createCustomIndexes(): Promise<void>'
+    is_async: true
+    lines:
+    - 128
+    - 142
+    detail:
+      calls:
+      - collection.createIndex
+      - this.getCollection
+      - this.logger?.warn
+  - name: dangerouslyClearAll
+    sig: 'dangerouslyClearAll(): Promise<void>'
+    is_async: true
+    lines:
+    - 144
+    - 154
+    detail:
+      calls:
+      - Promise.all
+      - messagesCollection.deleteMany
+      - resourcesCollection.deleteMany
+      - this.getCollection
+      - threadsCollection.deleteMany
+  - name: parseRow
+    sig: 'parseRow(row: any): MastraDBMessage'
+    vis: private
+    lines:
+    - 156
+    - 177
+    detail:
+      calls:
+      - JSON.parse
+      - formatDateForMongoDB
+  - name: _getIncludedMessages
+    sig: '_getIncludedMessages({ include }: { include: StorageListMessagesInput[''include''] })'
+    is_async: true
+    vis: private
+    lines:
+    - 194
+    - 251
+    detail:
+      calls:
+      - |-
+        collection
+                  .find
+      - |-
+        collection
+                  .find({ thread_id: target.threadId, createdAt: { $gt: target.createdAt } })
+           ...
+      - |-
+        collection
+                .find
+      - |-
+        collection
+                .find({ thread_id: target.threadId, createdAt: { $lte: target.createdAt } })
+            ...
+      - |-
+        collection
+              .find
+      - |-
+        collection
+              .find({ id: { $in: targetIds } }, { projection: { id: 1, thread_id: 1, createdAt: 1...
+      - dedupedMessages.map
+      - include.map
+      - include.map(inc => inc.id).filter
+      - includedMessages.filter
+      - includedMessages.push
+      - new Map
+      - new Set
+      - targetDocs.map
+      - targetMap.get
+      - this.getCollection
+  - name: listMessagesById
+    sig: 'listMessagesById({ messageIds }: { messageIds: string[] }): Promise<{ messages: MastraDBMessage[] }>'
+    is_async: true
+    lines:
+    - 253
+    - 278
+    detail:
+      calls:
+      - JSON.stringify
+      - |-
+        collection
+                .find
+      - |-
+        collection
+                .find({ id: { $in: messageIds } })
+                .sort
+      - |-
+        collection
+                .find({ id: { $in: messageIds } })
+                .sort({ createdAt: -1 })
+                .toAr...
+      - createStorageErrorId
+      - list.get.all.db
+      - new MastraError
+      - new MessageList
+      - new MessageList().add
+      - rawMessages.map
+      - this.getCollection
+  - name: listMessages
+    sig: 'listMessages(args: StorageListMessagesInput): Promise<StorageListMessagesOutput>'
+    is_async: true
+    lines:
+    - 280
+    - 445
+    detail:
+      calls:
+      - Array.isArray
+      - calculatePagination
+      - collection.countDocuments
+      - collection.find
+      - collection.find(query).sort
+      - collection.find(query).sort(sortObj).skip
+      - createStorageErrorId
+      - cursor.limit
+      - cursor.toArray
+      - dataResult.map
+      - finalMessages.filter
+      - finalMessages.filter(m => m.threadId && threadIdSet.has(m.threadId)).map
+      - formatDateForMongoDB
+      - list.get.all.db
+      - mastraError.toString
+      - messageIds.add
+      - messageIds.has
+      - messages.map
+      - messages.push
+      - new Error
+      - new MastraError
+      - new MessageList
+      - new MessageList().add
+      - new Set
+      - normalizePerPage
+      - this._getIncludedMessages
+      - this._sortMessages
+      - this.getCollection
+      - this.logger?.error
+      - this.logger?.trackException
+      - this.parseOrderBy
+      - threadId.join
+      - threadIds.some
+  - name: listMessagesByResourceId
+    sig: |-
+      listMessagesByResourceId(
+          args: StorageListMessagesByResourceIdInput,
+        ): Promise<StorageListMessagesOutput>
+    is_async: true
+    lines:
+    - 447
+    - 603
+    detail:
+      calls:
+      - calculatePagination
+      - collection.countDocuments
+      - collection.find
+      - collection.find(query).sort
+      - collection.find(query).sort(sortObj).skip
+      - createStorageErrorId
+      - cursor.limit
+      - cursor.toArray
+      - dataResult.map
+      - formatDateForMongoDB
+      - list.get.all.db
+      - mastraError.toString
+      - messageIds.add
+      - messageIds.has
+      - messages.map
+      - messages.push
+      - new Error
+      - new MastraError
+      - new MessageList
+      - new MessageList().add
+      - new Set
+      - normalizePerPage
+      - resourceId.trim
+      - this._getIncludedMessages
+      - this._sortMessages
+      - this.getCollection
+      - this.logger?.error
+      - this.logger?.trackException
+      - this.parseOrderBy
+  - name: saveMessages
+    sig: 'saveMessages({ messages }: { messages: MastraDBMessage[] }): Promise<{ messages: MastraDBMessage[] }>'
+    is_async: true
+    lines:
+    - 605
+    - 670
+    detail:
+      calls:
+      - Promise.all
+      - collection.bulkWrite
+      - createStorageErrorId
+      - list.get.all.db
+      - messages.map
+      - new Date
+      - new Error
+      - new MastraError
+      - new MessageList
+      - new MessageList().add
+      - this.getCollection
+      - threadsCollection.updateOne
+  - name: updateMessages
+    sig: |-
+      updateMessages({
+          messages,
+        }: {
+          messages: (Partial<Omit<MastraDBMessage, 'createdAt'>> & {
+            id: string;
+            content?: { metadata?: MastraMessageContentV2['metadata']; content?: MastraMessageContentV2['content'] };
+          })[];
+        }): Promise<MastraDBMessage[]>
+    is_async: true
+    lines:
+    - 672
+    - 772
+    detail:
+      calls:
+      - Array.from
+      - JSON.stringify
+      - Object.keys
+      - Object.prototype.hasOwnProperty.call
+      - bulkOps.push
+      - collection.bulkWrite
+      - collection.find
+      - 'collection.find({ id: { $in: messageIds } }).toArray'
+      - existingMessages.map
+      - messages.find
+      - messages.map
+      - new Date
+      - new Set
+      - this.getCollection
+      - threadIdsToUpdate.add
+      - threadsCollection.updateMany
+      - updatedMessages.map
+  - name: getResourceById
+    sig: 'getResourceById({ resourceId }: { resourceId: string }): Promise<StorageResourceType | null>'
+    is_async: true
+    lines:
+    - 774
+    - 801
+    detail:
+      calls:
+      - await collection.findOne
+      - createStorageErrorId
+      - formatDateForMongoDB
+      - new MastraError
+      - safelyParseJSON
+      - this.getCollection
+  - name: saveResource
+    sig: 'saveResource({ resource }: { resource: StorageResourceType }): Promise<StorageResourceType>'
+    is_async: true
+    lines:
+    - 803
+    - 829
+    detail:
+      calls:
+      - JSON.stringify
+      - collection.updateOne
+      - createStorageErrorId
+      - new MastraError
+      - this.getCollection
+  - name: updateResource
+    sig: |-
+      updateResource({
+          resourceId,
+          workingMemory,
+          metadata,
+        }: {
+          resourceId: string;
+          workingMemory?: string;
+          metadata?: Record<string, unknown>;
+        }): Promise<StorageResourceType>
+    is_async: true
+    lines:
+    - 831
+    - 887
+    detail:
+      calls:
+      - JSON.stringify
+      - collection.updateOne
+      - createStorageErrorId
+      - new Date
+      - new MastraError
+      - this.getCollection
+      - this.getResourceById
+      - this.saveResource
+  - name: getThreadById
+    sig: 'getThreadById({ threadId }: { threadId: string }): Promise<StorageThreadType | null>'
+    is_async: true
+    lines:
+    - 889
+    - 912
+    detail:
+      calls:
+      - await collection.findOne
+      - createStorageErrorId
+      - new MastraError
+      - safelyParseJSON
+      - this.getCollection
+  - name: listThreads
+    sig: 'listThreads(args: StorageListThreadsInput): Promise<StorageListThreadsOutput>'
+    is_async: true
+    lines:
+    - 914
+    - 1023
+    detail:
+      calls:
+      - Object.entries
+      - Object.keys
+      - Object.keys(filter.metadata).join
+      - calculatePagination
+      - |-
+        collection
+                .find
+      - |-
+        collection
+                .find(query)
+                .sort
+      - |-
+        collection
+                .find(query)
+                .sort({ [field]: sortOrder })
+                .skip
+      - collection.countDocuments
+      - createStorageErrorId
+      - cursor.limit
+      - cursor.toArray
+      - new Error
+      - new MastraError
+      - normalizePerPage
+      - this.getCollection
+      - this.parseOrderBy
+      - this.validateMetadataKeys
+      - this.validatePaginationInput
+      - threads.map
+  - name: saveThread
+    sig: 'saveThread({ thread }: { thread: StorageThreadType }): Promise<StorageThreadType>'
+    is_async: true
+    lines:
+    - 1025
+    - 1050
+    detail:
+      calls:
+      - collection.updateOne
+      - createStorageErrorId
+      - new MastraError
+      - this.getCollection
+  - name: updateThread
+    sig: |-
+      updateThread({
+          id,
+          title,
+          metadata,
+        }: {
+          id: string;
+          title: string;
+          metadata: Record<string, unknown>;
+        }): Promise<StorageThreadType>
+    is_async: true
+    lines:
+    - 1052
+    - 1105
+    detail:
+      calls:
+      - collection.updateOne
+      - createStorageErrorId
+      - new MastraError
+      - this.getCollection
+      - this.getThreadById
+  - name: deleteThread
+    sig: 'deleteThread({ threadId }: { threadId: string }): Promise<void>'
+    is_async: true
+    lines:
+    - 1107
+    - 1126
+    detail:
+      calls:
+      - collectionMessages.deleteMany
+      - collectionThreads.deleteOne
+      - createStorageErrorId
+      - new MastraError
+      - this.getCollection
+  - name: deleteMessages
+    sig: 'deleteMessages(messageIds: string[]): Promise<void>'
+    is_async: true
+    lines:
+    - 1128
+    - 1157
+    detail:
+      calls:
+      - JSON.stringify
+      - createStorageErrorId
+      - messagesCollection.deleteMany
+      - messagesCollection.find
+      - 'messagesCollection.find({ id: { $in: messageIds } }).toArray'
+      - messagesToDelete.map
+      - new Date
+      - new MastraError
+      - new Set
+      - this.getCollection
+      - threadsCollection.updateMany
+  - name: cloneThread
+    sig: 'cloneThread(args: StorageCloneThreadInput): Promise<StorageCloneThreadOutput>'
+    is_async: true
+    lines:
+    - 1159
+    - 1330
+    detail:
+      calls:
+      - JSON.parse
+      - clonedMessages.push
+      - createStorageErrorId
+      - formatDateForMongoDB
+      - limited.reverse
+      - messageDocs.push
+      - |-
+        messagesCollection
+                  .find
+      - |-
+        messagesCollection
+                  .find(filter)
+                  .sort
+      - |-
+        messagesCollection
+                  .find(filter)
+                  .sort({ createdAt: -1 })
+                  .limit
+      - |-
+        messagesCollection
+                  .find(filter)
+                  .sort({ createdAt: -1 })
+                  .limit(optio...
+      - messagesCollection.deleteMany
+      - messagesCollection.find
+      - messagesCollection.find(filter).sort
+      - messagesCollection.insertMany
+      - new Date
+      - new MastraError
+      - query.toArray
+      - randomUUID
+      - this.getCollection
+      - this.getThreadById
+      - threadsCollection.deleteOne
+      - threadsCollection.insertOne
+  - name: parseOMDocument
+    sig: 'parseOMDocument(doc: any): ObservationalMemoryRecord'
+    vis: private
+    lines:
+    - 1340
+    - 1389
+    detail:
+      calls:
+      - Array.isArray
+      - Boolean
+      - Number
+      - String
+      - new Date
+      - parseInt
+  - name: getObservationalMemory
+    sig: 'getObservationalMemory(threadId: string | null, resourceId: string): Promise<ObservationalMemoryRecord | null>'
+    is_async: true
+    lines:
+    - 1391
+    - 1409
+    detail:
+      calls:
+      - collection.findOne
+      - createStorageErrorId
+      - new MastraError
+      - this.getCollection
+      - this.getOMKey
+      - this.parseOMDocument
+  - name: getObservationalMemoryHistory
+    sig: |-
+      getObservationalMemoryHistory(
+          threadId: string | null,
+          resourceId: string,
+          limit: number = 10,
+        ): Promise<ObservationalMemoryRecord[]>
+    is_async: true
+    lines:
+    - 1411
+    - 1432
+    detail:
+      calls:
+      - collection.find
+      - collection.find({ lookupKey }).sort
+      - 'collection.find({ lookupKey }).sort({ generationCount: -1 }).limit'
+      - 'collection.find({ lookupKey }).sort({ generationCount: -1 }).limit(limit).toArray'
+      - createStorageErrorId
+      - docs.map
+      - new MastraError
+      - this.getCollection
+      - this.getOMKey
+  - name: initializeObservationalMemory
+    sig: 'initializeObservationalMemory(input: CreateObservationalMemoryInput): Promise<ObservationalMemoryRecord>'
+    is_async: true
+    lines:
+    - 1434
+    - 1504
+    detail:
+      calls:
+      - collection.insertOne
+      - createStorageErrorId
+      - new Date
+      - new MastraError
+      - randomUUID
+      - this.getCollection
+      - this.getOMKey
+  - name: insertObservationalMemoryRecord
+    sig: 'insertObservationalMemoryRecord(record: ObservationalMemoryRecord): Promise<void>'
+    is_async: true
+    lines:
+    - 1506
+    - 1556
+    detail:
+      calls:
+      - Array.isArray
+      - collection.insertOne
+      - createStorageErrorId
+      - new MastraError
+      - this.getCollection
+      - this.getOMKey
+  - name: updateActiveObservations
+    sig: 'updateActiveObservations(input: UpdateActiveObservationsInput): Promise<void>'
+    is_async: true
+    lines:
+    - 1558
+    - 1604
+    detail:
+      calls:
+      - Number.isFinite
+      - collection.updateOne
+      - createStorageErrorId
+      - new Date
+      - new MastraError
+      - this.getCollection
+  - name: createReflectionGeneration
+    sig: 'createReflectionGeneration(input: CreateReflectionGenerationInput): Promise<ObservationalMemoryRecord>'
+    is_async: true
+    lines:
+    - 1606
+    - 1678
+    detail:
+      calls:
+      - collection.insertOne
+      - createStorageErrorId
+      - new Date
+      - new MastraError
+      - randomUUID
+      - this.getCollection
+      - this.getOMKey
+  - name: setReflectingFlag
+    sig: 'setReflectingFlag(id: string, isReflecting: boolean): Promise<void>'
+    is_async: true
+    lines:
+    - 1680
+    - 1708
+    detail:
+      calls:
+      - collection.updateOne
+      - createStorageErrorId
+      - new Date
+      - new MastraError
+      - this.getCollection
+  - name: setObservingFlag
+    sig: 'setObservingFlag(id: string, isObserving: boolean): Promise<void>'
+    is_async: true
+    lines:
+    - 1710
+    - 1738
+    detail:
+      calls:
+      - collection.updateOne
+      - createStorageErrorId
+      - new Date
+      - new MastraError
+      - this.getCollection
+  - name: setBufferingObservationFlag
+    sig: 'setBufferingObservationFlag(id: string, isBuffering: boolean, lastBufferedAtTokens?: number): Promise<void>'
+    is_async: true
+    lines:
+    - 1740
+    - 1777
+    detail:
+      calls:
+      - collection.updateOne
+      - createStorageErrorId
+      - new Date
+      - new MastraError
+      - this.getCollection
+  - name: setBufferingReflectionFlag
+    sig: 'setBufferingReflectionFlag(id: string, isBuffering: boolean): Promise<void>'
+    is_async: true
+    lines:
+    - 1779
+    - 1810
+    detail:
+      calls:
+      - collection.updateOne
+      - createStorageErrorId
+      - new Date
+      - new MastraError
+      - this.getCollection
+  - name: clearObservationalMemory
+    sig: 'clearObservationalMemory(threadId: string | null, resourceId: string): Promise<void>'
+    is_async: true
+    lines:
+    - 1812
+    - 1828
+    detail:
+      calls:
+      - collection.deleteMany
+      - createStorageErrorId
+      - new MastraError
+      - this.getCollection
+      - this.getOMKey
+  - name: setPendingMessageTokens
+    sig: 'setPendingMessageTokens(id: string, tokenCount: number): Promise<void>'
+    is_async: true
+    lines:
+    - 1830
+    - 1874
+    detail:
+      calls:
+      - Number.isFinite
+      - collection.updateOne
+      - createStorageErrorId
+      - new Date
+      - new MastraError
+      - this.getCollection
+  - name: updateBufferedObservations
+    sig: 'updateBufferedObservations(input: UpdateBufferedObservationsInput): Promise<void>'
+    is_async: true
+    lines:
+    - 1880
+    - 1935
+    detail:
+      calls:
+      - collection.updateOne
+      - createStorageErrorId
+      - new Date
+      - new MastraError
+      - randomUUID
+      - this.getCollection
+  - name: swapBufferedToActive
+    sig: 'swapBufferedToActive(input: SwapBufferedToActiveInput): Promise<SwapBufferedToActiveResult>'
+    is_async: true
+    lines:
+    - 1937
+    - 2116
+    detail:
+      calls:
+      - Array.isArray
+      - Math.max
+      - Math.min
+      - Number
+      - activatedChunks.flatMap
+      - activatedChunks.map
+      - activatedChunks.map(c => c.cycleId).filter
+      - activatedChunks.map(c => c.observations).join
+      - activatedChunks.reduce
+      - chunks.slice
+      - collection.findOne
+      - collection.updateOne
+      - createStorageErrorId
+      - lastObservedAt.toISOString
+      - new Date
+      - new MastraError
+      - this.getCollection
+  - name: updateBufferedReflection
+    sig: 'updateBufferedReflection(input: UpdateBufferedReflectionInput): Promise<void>'
+    is_async: true
+    lines:
+    - 2118
+    - 2179
+    detail:
+      calls:
+      - Number
+      - collection.findOne
+      - collection.updateOne
+      - createStorageErrorId
+      - new Date
+      - new MastraError
+      - this.getCollection
+  - name: swapBufferedReflectionToActive
+    sig: 'swapBufferedReflectionToActive(input: SwapBufferedReflectionToActiveInput): Promise<ObservationalMemoryRecord>'
+    is_async: true
+    lines:
+    - 2181
+    - 2260
+    detail:
+      calls:
+      - Number
+      - allLines.slice
+      - collection.findOne
+      - collection.updateOne
+      - createStorageErrorId
+      - currentObservations.split
+      - new Date
+      - new MastraError
+      - this.createReflectionGeneration
+      - this.getCollection
+      - unreflectedLines.join
+      - unreflectedLines.join('\n').trim
+  lines:
+  - 50
+  - 2261
+exports:
+- name: MemoryStorageMongoDB
+  kind: type
+- name: OM_TABLE
+  kind: data

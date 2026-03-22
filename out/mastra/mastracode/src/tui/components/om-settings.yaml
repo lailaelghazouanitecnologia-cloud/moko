@@ -1,0 +1,393 @@
+## Roska File Descriptor — components/om-settings.ts
+file: components/om-settings.ts
+lines: 459
+purpose: Observational Memory settings component. Uses pi-tui's SettingsList for a clean settings UI with threshold configuration and model selection submenus. Changes apply immediately — Esc closes the panel.
+imports:
+- sym: '@mariozechner/pi-tui.Box'
+- sym: '@mariozechner/pi-tui.Container'
+- sym: '@mariozechner/pi-tui.fuzzyFilter'
+- sym: '@mariozechner/pi-tui.getEditorKeybindings'
+- sym: '@mariozechner/pi-tui.Input'
+- sym: '@mariozechner/pi-tui.SelectList'
+- sym: '@mariozechner/pi-tui.SettingsList'
+- sym: '@mariozechner/pi-tui.Spacer'
+- sym: '@mariozechner/pi-tui.Text'
+- sym: '@mariozechner/pi-tui.Focusable'
+  kind: typing
+- sym: '@mariozechner/pi-tui.SelectItem'
+  kind: typing
+- sym: '@mariozechner/pi-tui.SettingItem'
+  kind: typing
+- sym: '@mariozechner/pi-tui.TUI'
+  kind: typing
+- sym: ../theme.js.theme
+- sym: ../theme.js.getSettingsListTheme
+- sym: ../theme.js.getSelectListTheme
+data:
+- name: OBSERVATION_THRESHOLDS
+  type: array
+  val: '[5_000, 10_000, 15_000, 20_000, 30_000, 50_000, 75_000, 100_000]'
+- name: REFLECTION_THRESHOLDS
+  type: array
+  val: '[10_000, 20_000, 30_000, 40_000, 60_000, 80_000, 100_000, 150_000]'
+- name: KITTY_CSI_U_REGEX
+  type: any
+  val: new RegExp('^\\x1b\\[(\\d+)(?::(\\d*))?(?::(\\d+))?(?:;(\\d+))?(?::(\\d+))?u$')
+- name: KITTY_MOD_SHIFT
+  type: number
+  val: '1'
+- name: KITTY_MOD_ALT
+  type: number
+  val: '2'
+- name: KITTY_MOD_CTRL
+  type: number
+  val: '4'
+- name: KITTY_LOCK_MASK
+  type: any
+  val: 64 + 128
+- name: KITTY_ALLOWED_MODIFIERS
+  type: any
+  val: KITTY_MOD_SHIFT | KITTY_LOCK_MASK
+types:
+- name: OMSettingsConfig
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: observerModelId
+    type: string
+  - name: reflectorModelId
+    type: string
+  - name: observationThreshold
+    type: number
+  - name: reflectionThreshold
+    type: number
+  lines:
+  - 27
+  - 32
+- name: OMSettingsCallbacks
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: onObserverModelChange
+    type: '(modelId: string) => void | Promise<void>'
+  - name: onReflectorModelChange
+    type: '(modelId: string) => void | Promise<void>'
+  - name: onObservationThresholdChange
+    type: '(value: number) => void'
+  - name: onReflectionThresholdChange
+    type: '(value: number) => void'
+  - name: onClose
+    type: () => void
+  lines:
+  - 34
+  - 40
+- name: ModelOption
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: id
+    type: string
+  lines:
+  - 42
+  - 45
+- name: ThresholdSubmenu
+  kind: struct
+  bases:
+  - Container
+  fields:
+  - name: input
+    type: Input
+  - name: selectList
+    type: SelectList
+  - name: onDone
+    type: '(value: number) => void'
+  - name: onBack
+    type: () => void
+  - name: inInputMode
+    type: any
+    default: 'true'
+  methods:
+  - name: constructor
+    sig: |-
+      constructor(
+          title: string,
+          currentValue: number,
+          presets: number[],
+          onDone: (value: number) => void,
+          onBack: () => void,
+        )
+    lines:
+    - 134
+    - 178
+    detail:
+      calls:
+      - Math.min
+      - getSelectListTheme
+      - new Input
+      - new SelectList
+      - new Spacer
+      - new Text
+      - presets.indexOf
+      - presets.map
+      - super
+      - theme.bold
+      - theme.fg
+      - this.addChild
+      - this.selectList.setSelectedIndex
+  - name: handleInput
+    sig: 'handleInput(data: string): void'
+    lines:
+    - 180
+    - 210
+    detail:
+      calls:
+      - parseTokenInput
+      - this.input.getValue
+      - this.input.handleInput
+      - this.onBack
+      - this.onDone
+      - this.selectList.handleInput
+  lines:
+  - 127
+  - 211
+- name: ModelSelectSubmenu
+  kind: struct
+  bases:
+  - Container
+  fields:
+  - name: searchInput
+    type: Input
+  - name: listContainer
+    type: Container
+  - name: allModels
+    type: ModelOption[]
+  - name: filteredModels
+    type: ModelOption[]
+  - name: selectedIndex
+    type: any
+    default: '0'
+  - name: currentModelId
+    type: string
+  - name: onSelect
+    type: '(modelId: string) => void | Promise<void>'
+  - name: onCancel
+    type: () => void
+  - name: tui
+    type: TUI
+  methods:
+  - name: constructor
+    sig: |-
+      constructor(
+          title: string,
+          models: ModelOption[],
+          currentModelId: string,
+          onSelect: (modelId: string) => void | Promise<void>,
+          onCancel: () => void,
+          tui: TUI,
+        )
+    lines:
+    - 228
+    - 263
+    detail:
+      calls:
+      - models.findIndex
+      - new Container
+      - new Input
+      - new Spacer
+      - new Text
+      - super
+      - theme.bold
+      - theme.fg
+      - this.addChild
+      - this.updateList
+  - name: filterModels
+    sig: 'filterModels(query: string): void'
+    vis: private
+    lines:
+    - 265
+    - 270
+    detail:
+      calls:
+      - Math.max
+      - Math.min
+      - fuzzyFilter
+      - this.updateList
+  - name: updateList
+    sig: 'updateList(): void'
+    vis: private
+    lines:
+    - 272
+    - 298
+    detail:
+      calls:
+      - Math.floor
+      - Math.max
+      - Math.min
+      - new Text
+      - theme.fg
+      - this.listContainer.addChild
+      - this.listContainer.clear
+  - name: handleInput
+    sig: 'handleInput(data: string): void'
+    lines:
+    - 300
+    - 325
+    detail:
+      calls:
+      - getEditorKeybindings
+      - kb.matches
+      - normalizeSearchInput
+      - this.filterModels
+      - this.onCancel
+      - this.onSelect
+      - this.searchInput.getValue
+      - this.searchInput.handleInput
+      - this.tui.requestRender
+      - this.updateList
+  lines:
+  - 217
+  - 326
+- name: OMSettingsComponent
+  kind: struct
+  ctx: Focusable implementation
+  bases:
+  - Box
+  - Focusable
+  fields:
+  - name: settingsList
+    type: SettingsList
+  - name: _focused
+    type: any
+    default: 'false'
+  methods:
+  - name: focused
+    sig: 'focused(): boolean'
+    lines:
+    - 337
+    - 339
+    detail: {}
+  - name: focused
+    sig: 'focused(value: boolean)'
+    lines:
+    - 340
+    - 342
+    detail: {}
+  - name: constructor
+    sig: 'constructor(config: OMSettingsConfig, callbacks: OMSettingsCallbacks, models: ModelOption[], tui: TUI)'
+    lines:
+    - 344
+    - 444
+    detail:
+      calls:
+      - formatTokens
+      - getSettingsListTheme
+      - getShortModelName
+      - new SettingsList
+      - new Spacer
+      - new Text
+      - super
+      - theme.bold
+      - theme.fg
+      - this.addChild
+  - name: handleInput
+    sig: 'handleInput(data: string): void'
+    lines:
+    - 446
+    - 448
+    detail:
+      calls:
+      - this.settingsList.handleInput
+  lines:
+  - 332
+  - 449
+functions:
+- name: formatTokens
+  sig: 'formatTokens(n: number): string'
+  lines:
+  - 55
+  - 58
+  detail:
+    calls:
+    - (n / 1000).toFixed
+    - String
+- name: parseTokenInput
+  sig: 'parseTokenInput(input: string): number | null'
+  lines:
+  - 60
+  - 81
+  detail:
+    calls:
+    - input.trim
+    - input.trim().toLowerCase
+    - isNaN
+    - parseFloat
+    - trimmed.endsWith
+    - trimmed.match
+- name: decodeKittyPrintable
+  sig: 'decodeKittyPrintable(data: string): string | undefined'
+  lines:
+  - 90
+  - 116
+  detail:
+    calls:
+    - Number.isFinite
+    - Number.parseInt
+    - String.fromCodePoint
+    - data.match
+- name: normalizeSearchInput
+  sig: 'normalizeSearchInput(data: string): string'
+  lines:
+  - 118
+  - 121
+- name: getShortModelName
+  sig: 'getShortModelName(modelId: string): string'
+  lines:
+  - 455
+  - 459
+  detail:
+    calls:
+    - modelId.split
+    - parts.slice
+    - parts.slice(1).join
+exports:
+- name: OMSettingsConfig
+  kind: type
+- name: OMSettingsCallbacks
+  kind: type
+- name: ModelOption
+  kind: type
+- name: ThresholdSubmenu
+  kind: type
+- name: ModelSelectSubmenu
+  kind: type
+- name: OMSettingsComponent
+  kind: type
+- name: formatTokens
+  kind: func
+- name: parseTokenInput
+  kind: func
+- name: decodeKittyPrintable
+  kind: func
+- name: normalizeSearchInput
+  kind: func
+- name: getShortModelName
+  kind: func
+- name: OBSERVATION_THRESHOLDS
+  kind: data
+- name: REFLECTION_THRESHOLDS
+  kind: data
+- name: KITTY_CSI_U_REGEX
+  kind: data
+- name: KITTY_MOD_SHIFT
+  kind: data
+- name: KITTY_MOD_ALT
+  kind: data
+- name: KITTY_MOD_CTRL
+  kind: data
+- name: KITTY_LOCK_MASK
+  kind: data
+- name: KITTY_ALLOWED_MODIFIERS
+  kind: data

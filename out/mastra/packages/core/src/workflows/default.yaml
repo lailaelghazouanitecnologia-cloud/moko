@@ -1,0 +1,578 @@
+## Roska File Descriptor — workflows/default.ts
+file: workflows/default.ts
+lines: 1049
+imports:
+- sym: ../agent/trip-wire.TripWire
+- sym: ../di.RequestContext
+- sym: ../error.MastraError
+- sym: ../error.ErrorDomain
+- sym: ../error.ErrorCategory
+- sym: ../error.SerializedError
+  kind: typing
+- sym: ../error/utils.js.getErrorFromUnknown
+- sym: ../events/pubsub.PubSub
+  kind: typing
+- sym: ../observability.ObservabilityContext
+  kind: typing
+- sym: ../observability.Span
+  kind: typing
+- sym: ../observability.SpanType
+  kind: typing
+- sym: ../observability.TracingPolicy
+  kind: typing
+- sym: ../observability.createObservabilityContext
+- sym: ./execution-engine.ExecutionGraph
+  kind: typing
+- sym: ./execution-engine.ExecutionEngine
+- sym: ./handlers/control-flow.ExecuteConditionalParams
+  kind: typing
+- sym: ./handlers/control-flow.ExecuteForeachParams
+  kind: typing
+- sym: ./handlers/control-flow.ExecuteLoopParams
+  kind: typing
+- sym: ./handlers/control-flow.ExecuteParallelParams
+  kind: typing
+- sym: ./handlers/control-flow.executeConditional as executeConditionalHandler
+- sym: ./handlers/control-flow.executeForeach as executeForeachHandler
+- sym: ./handlers/control-flow.executeLoop as executeLoopHandler
+- sym: ./handlers/control-flow.executeParallel as executeParallelHandler
+- sym: ./handlers/entry.ExecuteEntryParams
+  kind: typing
+- sym: ./handlers/entry.PersistStepUpdateParams
+  kind: typing
+- sym: ./handlers/entry.executeEntry as executeEntryHandler
+- sym: ./handlers/entry.persistStepUpdate as persistStepUpdateHandler
+- sym: ./handlers/sleep.ExecuteSleepParams
+  kind: typing
+- sym: ./handlers/sleep.ExecuteSleepUntilParams
+  kind: typing
+- sym: ./handlers/sleep.executeSleep as executeSleepHandler
+- sym: ./handlers/sleep.executeSleepUntil as executeSleepUntilHandler
+- sym: ./handlers/step.ExecuteStepParams
+  kind: typing
+- sym: ./handlers/step.executeStep as executeStepHandler
+- sym: ./step.ConditionFunction
+  kind: typing
+- sym: ./step.ConditionFunctionParams
+  kind: typing
+- sym: ./step.Step
+  kind: typing
+- sym: ./types.FormattedWorkflowResult
+  kind: typing
+- sym: ./types.DefaultEngineType
+  kind: typing
+- sym: ./types.EntryExecutionResult
+  kind: typing
+- sym: ./types.ExecutionContext
+  kind: typing
+- sym: ./types.MutableContext
+  kind: typing
+- sym: ./types.OutputWriter
+  kind: typing
+- sym: ./types.RestartExecutionParams
+  kind: typing
+- sym: ./types.SerializedStepFlowEntry
+  kind: typing
+- sym: ./types.StepExecutionResult
+  kind: typing
+- sym: ./types.StepFailure
+  kind: typing
+- sym: ./types.StepFlowEntry
+  kind: typing
+- sym: ./types.StepResult
+  kind: typing
+- sym: ./types.StepTripwireInfo
+  kind: typing
+- sym: ./types.TimeTravelExecutionParams
+  kind: typing
+types:
+- name: DefaultExecutionEngine
+  kind: struct
+  ctx: The retryCounts map is used to keep track of the retry count for each step. The step id is used as the key and the retry count is the value.
+  bases:
+  - ExecutionEngine
+  fields:
+  - name: retryCounts
+    type: any
+    default: new Map<string, number>()
+  methods:
+  - name: getOrGenerateRetryCount
+    sig: 'getOrGenerateRetryCount(stepId: Step[''id''])'
+    lines:
+    - 68
+    - 83
+    detail:
+      calls:
+      - this.retryCounts.get
+      - this.retryCounts.has
+      - this.retryCounts.set
+  - name: isNestedWorkflowStep
+    sig: 'isNestedWorkflowStep(_step: Step<any, any, any>): boolean'
+    lines:
+    - 97
+    - 99
+    detail: {}
+  - name: executeSleepDuration
+    sig: 'executeSleepDuration(duration: number, _sleepId: string, _workflowId: string): Promise<void>'
+    is_async: true
+    lines:
+    - 108
+    - 110
+    detail:
+      calls:
+      - new Promise
+  - name: executeSleepUntilDate
+    sig: 'executeSleepUntilDate(date: Date, _sleepUntilId: string, _workflowId: string): Promise<void>'
+    is_async: true
+    lines:
+    - 119
+    - 122
+    detail:
+      calls:
+      - Date.now
+      - date.getTime
+      - new Promise
+  - name: wrapDurableOperation
+    sig: 'wrapDurableOperation(_operationId: string, operationFn: () => Promise<T>): Promise<T>'
+    is_async: true
+    lines:
+    - 132
+    - 134
+    detail:
+      calls:
+      - operationFn
+  - name: getEngineContext
+    sig: 'getEngineContext(): Record<string, any>'
+    lines:
+    - 142
+    - 144
+    detail: {}
+  - name: evaluateCondition
+    sig: |-
+      evaluateCondition(
+          conditionFn: ConditionFunction<any, any, any, any, any, DefaultEngineType>,
+          index: number,
+          context: ConditionFunctionParams<any, any, any, any, any, DefaultEngineType>,
+          operationId: string,
+        ): Promise<number | null>
+    is_async: true
+    lines:
+    - 156
+    - 166
+    detail:
+      calls:
+      - this.wrapDurableOperation
+  - name: onStepExecutionStart
+    sig: |-
+      onStepExecutionStart(params: {
+          step: Step<string, any, any>;
+          inputData: any;
+          pubsub: PubSub;
+          executionContext: ExecutionContext;
+          stepCallId: string;
+          stepInfo: Record<string, any>;
+          operationId: string;
+          skipEmits?: boolean;
+        }): Promise<number>
+    is_async: true
+    lines:
+    - 175
+    - 203
+    detail:
+      calls:
+      - this.wrapDurableOperation
+  - name: executeWorkflowStep
+    sig: |-
+      executeWorkflowStep(
+          _params: ObservabilityContext & {
+            step: Step<string, any, any>;
+            stepResults: Record<string, StepResult<any, any, any, any>>;
+            executionContext: ExecutionContext;
+            resume?: {
+              steps: string[];
+              resumePayload: any;
+              runId?: string;
+            };
+            timeTravel?: TimeTravelExecutionParams;
+            prevOutput: any;
+            inputData: any;
+            pubsub: PubSub;
+            startedAt: number;
+            abortController: AbortController;
+            requestContext: RequestContext;
+            outputWriter?: OutputWriter;
+            stepSpan?: Span<SpanType.WORKFLOW_STEP>;
+            perStep?: boolean;
+          },
+        ): Promise<StepResult<any, any, any, any> | null>
+    is_async: true
+    lines:
+    - 215
+    - 240
+    detail: {}
+  - name: createStepSpan
+    sig: |-
+      createStepSpan(params: {
+          parentSpan: Span<SpanType> | undefined;
+          stepId: string;
+          operationId: string;
+          options: {
+            name: string;
+            type: SpanType;
+            input?: unknown;
+            entityType?: string;
+            entityId?: string;
+            tracingPolicy?: TracingPolicy;
+            requestContext?: RequestContext;
+          };
+          executionContext: ExecutionContext;
+        }): Promise<Span<SpanType> | undefined>
+    is_async: true
+    lines:
+    - 257
+    - 274
+    detail:
+      calls:
+      - params.parentSpan?.createChildSpan
+  - name: endStepSpan
+    sig: |-
+      endStepSpan(params: {
+          span: Span<SpanType> | undefined;
+          operationId: string;
+          endOptions: {
+            output?: unknown;
+            attributes?: Record<string, unknown>;
+          };
+        }): Promise<void>
+    is_async: true
+    lines:
+    - 284
+    - 294
+    detail:
+      calls:
+      - params.span?.end
+  - name: errorStepSpan
+    sig: |-
+      errorStepSpan(params: {
+          span: Span<SpanType> | undefined;
+          operationId: string;
+          errorOptions: {
+            error: Error;
+            attributes?: Record<string, unknown>;
+          };
+        }): Promise<void>
+    is_async: true
+    lines:
+    - 304
+    - 314
+    detail:
+      calls:
+      - params.span?.error
+  - name: createChildSpan
+    sig: |-
+      createChildSpan(params: {
+          parentSpan: Span<SpanType> | undefined;
+          operationId: string;
+          options: {
+            name: string;
+            type: SpanType;
+            input?: unknown;
+            attributes?: Record<string, unknown>;
+            tracingPolicy?: TracingPolicy;
+          };
+          executionContext: ExecutionContext;
+        }): Promise<Span<SpanType> | undefined>
+    is_async: true
+    lines:
+    - 325
+    - 339
+    detail:
+      calls:
+      - params.parentSpan?.createChildSpan
+  - name: endChildSpan
+    sig: |-
+      endChildSpan(params: {
+          span: Span<SpanType> | undefined;
+          operationId: string;
+          endOptions?: {
+            output?: unknown;
+            attributes?: Record<string, unknown>;
+          };
+        }): Promise<void>
+    is_async: true
+    lines:
+    - 349
+    - 359
+    detail:
+      calls:
+      - params.span?.end
+  - name: errorChildSpan
+    sig: |-
+      errorChildSpan(params: {
+          span: Span<SpanType> | undefined;
+          operationId: string;
+          errorOptions: {
+            error: Error;
+            attributes?: Record<string, unknown>;
+          };
+        }): Promise<void>
+    is_async: true
+    lines:
+    - 369
+    - 379
+    detail:
+      calls:
+      - params.span?.error
+  - name: executeStepWithRetry
+    sig: |-
+      executeStepWithRetry(
+          stepId: string,
+          runStep: () => Promise<T>,
+          params: {
+            retries: number;
+            delay: number;
+            stepSpan?: Span<SpanType>;
+            workflowId: string;
+            runId: string;
+          },
+        ): Promise<
+          | {
+              ok: true;
+              result: T;
+            }
+          | {
+              ok: false;
+              error: {
+                status: 'failed';
+                error: Error;
+                endedAt: number;
+                tripwire?: StepTripwireInfo;
+              };
+            }
+        >
+    is_async: true
+    lines:
+    - 391
+    - 474
+    detail:
+      calls:
+      - Date.now
+      - getErrorFromUnknown
+      - new Error
+      - new MastraError
+      - new Promise
+      - params.stepSpan?.error
+      - this.logger?.error
+      - this.logger?.trackException
+      - this.wrapDurableOperation
+  - name: fmtReturnValue
+    sig: |-
+      fmtReturnValue(
+          _pubsub: PubSub,
+          stepResults: Record<string, StepResult<any, any, any, any>>,
+          lastOutput: StepResult<any, any, any, any>,
+          error?: Error | unknown,
+          stepExecutionPath?: string[],
+        ): Promise<TOutput>
+    is_async: true
+    vis: protected
+    lines:
+    - 490
+    - 607
+    detail:
+      calls:
+      - Array.isArray
+      - JSON.stringify
+      - Object.entries
+      - Object.entries(stepResults).flatMap
+      - Object.keys
+      - this.formatResultError
+  - name: serializeRequestContext
+    sig: 'serializeRequestContext(requestContext: RequestContext): Record<string, any>'
+    lines:
+    - 617
+    - 623
+    detail:
+      calls:
+      - requestContext.forEach
+  - name: requiresDurableContextSerialization
+    sig: 'requiresDurableContextSerialization(): boolean'
+    lines:
+    - 642
+    - 644
+    detail: {}
+  - name: buildMutableContext
+    sig: 'buildMutableContext(executionContext: ExecutionContext): MutableContext'
+    lines:
+    - 650
+    - 656
+    detail: {}
+  - name: applyMutableContext
+    sig: 'applyMutableContext(executionContext: ExecutionContext, mutableContext: MutableContext): void'
+    lines:
+    - 661
+    - 665
+    detail:
+      calls:
+      - Object.assign
+  - name: execute
+    sig: |-
+      execute(params: {
+          workflowId: string;
+          runId: string;
+          resourceId?: string;
+          disableScorers?: boolean;
+          graph: ExecutionGraph;
+          serializedStepGraph: SerializedStepFlowEntry[];
+          input?: TInput;
+          initialState?: TState;
+          restart?: RestartExecutionParams;
+          timeTravel?: TimeTravelExecutionParams;
+          resume?: {
+            steps: string[];
+            stepResults: Record<string, StepResult<any, any, any, any>>;
+            resumePayload: any;
+            resumePath: number[];
+            stepExecutionPath?: string[];
+            label?: string;
+            forEachIndex?: number;
+          };
+          pubsub: PubSub;
+          retryConfig?: {
+            attempts?: number;
+            delay?: number;
+          };
+          requestContext: RequestContext;
+          workflowSpan?: Span<SpanType.WORKFLOW_RUN>;
+          abortController: AbortController;
+          outputWriter?: OutputWriter;
+          format?: 'legacy' | 'vnext' | undefined;
+          outputOptions?: {
+            includeState?: boolean;
+            includeResumeLabels?: boolean;
+          };
+          perStep?: boolean;
+          /** Trace IDs for creating child spans in durable execution */
+          tracingIds?: {
+            traceId: string;
+            workflowSpanId: string;
+          };
+        }): Promise<TOutput>
+    is_async: true
+    lines:
+    - 673
+    - 990
+    detail:
+      calls:
+      - createObservabilityContext
+      - new MastraError
+      - params.pubsub.publish
+      - restart.activePaths.shift
+      - resume.resumePath.shift
+      - this.applyMutableContext
+      - this.deserializeRequestContext
+      - this.executeEntry
+      - this.fmtReturnValue
+      - this.invokeLifecycleCallbacks
+      - this.persistStepUpdate
+      - this.requiresDurableContextSerialization
+      - this.retryCounts.clear
+      - timeTravel.executionPath.shift
+      - workflowSpan.getParentSpanId
+      - workflowSpan?.end
+      - workflowSpan?.error
+  - name: getStepOutput
+    sig: 'getStepOutput(stepResults: Record<string, any>, step?: StepFlowEntry): any'
+    lines:
+    - 992
+    - 1012
+    detail:
+      calls:
+      - step.steps.reduce
+  - name: executeSleep
+    sig: 'executeSleep(params: ExecuteSleepParams): Promise<void>'
+    is_async: true
+    lines:
+    - 1014
+    - 1016
+    detail:
+      calls:
+      - executeSleepHandler
+  - name: executeSleepUntil
+    sig: 'executeSleepUntil(params: ExecuteSleepUntilParams): Promise<void>'
+    is_async: true
+    lines:
+    - 1018
+    - 1020
+    detail:
+      calls:
+      - executeSleepUntilHandler
+  - name: executeStep
+    sig: 'executeStep(params: ExecuteStepParams): Promise<StepExecutionResult>'
+    is_async: true
+    lines:
+    - 1022
+    - 1024
+    detail:
+      calls:
+      - executeStepHandler
+  - name: executeParallel
+    sig: 'executeParallel(params: ExecuteParallelParams): Promise<StepResult<any, any, any, any>>'
+    is_async: true
+    lines:
+    - 1026
+    - 1028
+    detail:
+      calls:
+      - executeParallelHandler
+  - name: executeConditional
+    sig: 'executeConditional(params: ExecuteConditionalParams): Promise<StepResult<any, any, any, any>>'
+    is_async: true
+    lines:
+    - 1030
+    - 1032
+    detail:
+      calls:
+      - executeConditionalHandler
+  - name: executeLoop
+    sig: 'executeLoop(params: ExecuteLoopParams): Promise<StepResult<any, any, any, any>>'
+    is_async: true
+    lines:
+    - 1034
+    - 1036
+    detail:
+      calls:
+      - executeLoopHandler
+  - name: executeForeach
+    sig: 'executeForeach(params: ExecuteForeachParams): Promise<StepResult<any, any, any, any>>'
+    is_async: true
+    lines:
+    - 1038
+    - 1040
+    detail:
+      calls:
+      - executeForeachHandler
+  - name: persistStepUpdate
+    sig: 'persistStepUpdate(params: PersistStepUpdateParams): Promise<void>'
+    is_async: true
+    lines:
+    - 1042
+    - 1044
+    detail:
+      calls:
+      - persistStepUpdateHandler
+  - name: executeEntry
+    sig: 'executeEntry(params: ExecuteEntryParams): Promise<EntryExecutionResult>'
+    is_async: true
+    lines:
+    - 1046
+    - 1048
+    detail:
+      calls:
+      - executeEntryHandler
+  lines:
+  - 53
+  - 1049
+exports:
+- name: DefaultExecutionEngine
+  kind: type

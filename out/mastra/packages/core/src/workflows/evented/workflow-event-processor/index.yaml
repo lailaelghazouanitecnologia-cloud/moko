@@ -1,0 +1,487 @@
+## Roska File Descriptor — workflow-event-processor/index.ts
+file: workflow-event-processor/index.ts
+lines: 2001
+imports:
+- sym: node:crypto.randomUUID
+- sym: node:events.EventEmitter
+- sym: ../../../error.ErrorCategory
+- sym: ../../../error.ErrorDomain
+- sym: ../../../error.MastraError
+- sym: ../../../error.getErrorFromUnknown
+- sym: ../../../events/processor.EventProcessor
+- sym: ../../../events/types.Event
+  kind: typing
+- sym: ../../../mastra.Mastra
+  kind: typing
+- sym: ../../../request-context/.RequestContext
+- sym: ../../../workflows/types.StepFlowEntry
+  kind: typing
+- sym: ../../../workflows/types.StepResult
+  kind: typing
+- sym: ../../../workflows/types.StepSuccess
+  kind: typing
+- sym: ../../../workflows/types.TimeTravelExecutionParams
+  kind: typing
+- sym: ../../../workflows/types.WorkflowRunState
+  kind: typing
+- sym: ../../../workflows/workflow.Workflow
+  kind: typing
+- sym: ../../utils.createTimeTravelExecutionParams
+- sym: ../../utils.validateStepResumeData
+- sym: ../helpers.resolveCurrentState
+- sym: ../step-executor.StepExecutor
+- sym: ../workflow.EventedWorkflow
+- sym: ./loop.processWorkflowForEach
+- sym: ./loop.processWorkflowLoop
+- sym: ./parallel.processWorkflowConditional
+- sym: ./parallel.processWorkflowParallel
+- sym: ./sleep.processWorkflowSleep
+- sym: ./sleep.processWorkflowSleepUntil
+- sym: ./sleep.processWorkflowWaitForEvent
+- sym: ./utils.getNestedWorkflow
+- sym: ./utils.getStep
+- sym: ./utils.isExecutableStep
+types:
+- name: ProcessorArgs
+  kind: typealias
+  decorators:
+  - type
+  fields:
+  - name: activeSteps
+    type: Record<string, boolean>
+  - name: workflow
+    type: Workflow
+  - name: workflowId
+    type: string
+  - name: runId
+    type: string
+  - name: executionPath
+    type: number[]
+  - name: stepResults
+    type: Record<string, StepResult<any, any, any, any>>
+  - name: resumeSteps
+    type: string[]
+  - name: prevResult
+    type: StepResult<any, any, any, any>
+  - name: requestContext
+    type: Record<string, any>
+  - name: timeTravel
+    type: TimeTravelExecutionParams
+  - name: resumeData
+    type: any
+  - name: parentWorkflow
+    type: ParentWorkflow
+  - name: parentContext
+    type: |-
+      {
+          workflowId: string;
+          input: any;
+        }
+  - name: retryCount
+    type: number
+  - name: perStep
+    type: boolean
+  - name: format
+    type: '''legacy'' | ''vnext'''
+  - name: state
+    type: Record<string, any>
+  - name: outputOptions
+    type: |-
+      {
+          includeState?: boolean;
+          includeResumeLabels?: boolean;
+        }
+  - name: forEachIndex
+    type: number
+  - name: nestedRunId
+    type: string
+  lines:
+  - 25
+  - 52
+- name: ParentWorkflow
+  kind: typealias
+  decorators:
+  - type
+  fields:
+  - name: workflowId
+    type: string
+  - name: runId
+    type: string
+  - name: executionPath
+    type: number[]
+  - name: resume
+    type: boolean
+  - name: stepResults
+    type: Record<string, StepResult<any, any, any, any>>
+  - name: parentWorkflow
+    type: ParentWorkflow
+  - name: stepId
+    type: string
+  lines:
+  - 54
+  - 62
+- name: WorkflowEventProcessor
+  kind: struct
+  ctx: Map of runId -> AbortController for active workflow runs
+  bases:
+  - EventProcessor
+  fields:
+  - name: stepExecutor
+    type: StepExecutor
+  - name: abortControllers
+    type: Map<string, AbortController>
+    default: new Map()
+  - name: parentChildRelationships
+    type: Map<string, string>
+    default: new Map()
+  - name: runFormats
+    type: Map<string, 'legacy' | 'vnext' | undefined>
+    default: new Map()
+  methods:
+  - name: constructor
+    sig: 'constructor({ mastra }: { mastra: Mastra })'
+    lines:
+    - 72
+    - 75
+    detail:
+      calls:
+      - new StepExecutor
+      - super
+  - name: cancelRunAndChildren
+    sig: 'cancelRunAndChildren(runId: string): void'
+    vis: private
+    lines:
+    - 92
+    - 105
+    detail:
+      calls:
+      - controller.abort
+      - this.abortControllers.get
+      - this.cancelRunAndChildren
+      - this.parentChildRelationships.entries
+  - name: cleanupRun
+    sig: 'cleanupRun(runId: string): void'
+    vis: private
+    lines:
+    - 111
+    - 122
+    detail:
+      calls:
+      - this.abortControllers.delete
+      - this.parentChildRelationships.delete
+      - this.parentChildRelationships.entries
+      - this.runFormats.delete
+  - name: __registerMastra
+    sig: '__registerMastra(mastra: Mastra)'
+    lines:
+    - 124
+    - 127
+    detail:
+      calls:
+      - super.__registerMastra
+      - this.stepExecutor.__registerMastra
+  - name: errorWorkflow
+    sig: |-
+      errorWorkflow(
+          {
+            parentWorkflow,
+            workflowId,
+            runId,
+            resumeSteps,
+            stepResults,
+            resumeData,
+            requestContext,
+          }: Omit<ProcessorArgs, 'workflow'>,
+          e: Error,
+        )
+    is_async: true
+    vis: private
+    lines:
+    - 129
+    - 157
+    detail:
+      calls:
+      - getErrorFromUnknown
+      - getErrorFromUnknown(e).toJSON
+      - this.mastra.pubsub.publish
+  - name: processWorkflowCancel
+    sig: 'processWorkflowCancel({ workflowId, runId }: ProcessorArgs)'
+    is_async: true
+    vis: protected
+    lines:
+    - 159
+    - 189
+    detail:
+      calls:
+      - this.cancelRunAndChildren
+      - this.endWorkflow
+      - this.mastra.getLogger
+      - this.mastra.getLogger()?.warn
+      - this.mastra.getStorage
+      - this.mastra.getStorage()?.getStore
+      - workflowsStore?.loadWorkflowSnapshot
+  - name: processWorkflowStart
+    sig: |-
+      processWorkflowStart({
+          workflow,
+          parentWorkflow,
+          workflowId,
+          runId,
+          resumeSteps,
+          prevResult,
+          resumeData,
+          timeTravel,
+          executionPath,
+          stepResults,
+          requestContext,
+          perStep,
+          format,
+          state,
+          outputOptions,
+          forEachIndex,
+        }: ProcessorArgs & { initialState?: Record<string, any> })
+    is_async: true
+    vis: protected
+    lines:
+    - 191
+    - 286
+    detail:
+      calls:
+      - Date.now
+      - this.getOrCreateAbortController
+      - this.mastra.getStorage
+      - this.mastra.getStorage()?.getStore
+      - this.mastra.pubsub.publish
+      - this.parentChildRelationships.set
+      - this.runFormats.get
+      - this.runFormats.set
+      - workflow?.options?.shouldPersistSnapshot
+      - workflowsStore?.getWorkflowRunById
+      - workflowsStore?.persistWorkflowSnapshot
+  - name: endWorkflow
+    sig: 'endWorkflow(args: ProcessorArgs, status: ''success'' | ''failed'' | ''canceled'' | ''paused'' = ''success'')'
+    is_async: true
+    vis: protected
+    lines:
+    - 288
+    - 338
+    detail:
+      calls:
+      - this.mastra.getStorage
+      - this.mastra.getStorage()?.getStore
+      - this.mastra.pubsub.publish
+      - workflow?.options?.shouldPersistSnapshot
+      - workflowsStore?.updateWorkflowState
+  - name: processWorkflowEnd
+    sig: 'processWorkflowEnd(args: ProcessorArgs)'
+    is_async: true
+    vis: protected
+    lines:
+    - 340
+    - 392
+    detail:
+      calls:
+      - resolveCurrentState
+      - this.cleanupRun
+      - this.mastra.pubsub.publish
+  - name: processWorkflowSuspend
+    sig: 'processWorkflowSuspend(args: ProcessorArgs)'
+    is_async: true
+    vis: protected
+    lines:
+    - 394
+    - 454
+    detail:
+      calls:
+      - '[parentWorkflow.stepId].concat'
+      - resolveCurrentState
+      - this.mastra.pubsub.publish
+  - name: processWorkflowFail
+    sig: 'processWorkflowFail(args: ProcessorArgs)'
+    is_async: true
+    vis: protected
+    lines:
+    - 456
+    - 529
+    detail:
+      calls:
+      - resolveCurrentState
+      - this.cleanupRun
+      - this.mastra.getStorage
+      - this.mastra.getStorage()?.getStore
+      - this.mastra.pubsub.publish
+      - workflow?.options?.shouldPersistSnapshot
+      - workflowsStore?.updateWorkflowState
+  - name: processWorkflowStepRun
+    sig: |-
+      processWorkflowStepRun({
+          workflow,
+          workflowId,
+          runId,
+          executionPath,
+          stepResults,
+          activeSteps,
+          resumeSteps,
+          timeTravel,
+          prevResult,
+          resumeData,
+          parentWorkflow,
+          requestContext,
+          retryCount = 0,
+          perStep,
+          state,
+          outputOptions,
+          forEachIndex,
+        }: ProcessorArgs)
+    is_async: true
+    vis: protected
+    lines:
+    - 531
+    - 1209
+    detail:
+      calls:
+      - Date.now
+      - JSON.stringify
+      - Object.entries
+      - Object.fromEntries
+      - Object.keys
+      - createTimeTravelExecutionParams
+      - ee.on
+      - getStep
+      - isExecutableStep
+      - nestedWorkflow.buildExecutionGraph
+      - new EventEmitter
+      - new MastraError
+      - new RequestContext
+      - processWorkflowConditional
+      - processWorkflowForEach
+      - processWorkflowLoop
+      - processWorkflowParallel
+      - processWorkflowSleep
+      - processWorkflowSleepUntil
+      - randomUUID
+      - rc.entries
+      - rc.set
+      - resolveCurrentState
+      - resumeSteps.slice
+      - this.endWorkflow
+      - this.errorWorkflow
+      - this.getOrCreateAbortController
+      - this.mastra.getLogger
+      - this.mastra.getLogger()?.warn
+      - this.mastra.pubsub.publish
+      - this.mastra?.getStorage
+      - this.mastra?.getStorage()?.getStore
+      - this.runFormats.get
+      - this.stepExecutor.execute
+      - timeTravel.steps.slice
+      - validateStepResumeData
+      - workflowsStore?.loadWorkflowSnapshot
+  - name: processWorkflowStepEnd
+    sig: |-
+      processWorkflowStepEnd({
+          workflow,
+          workflowId,
+          runId,
+          executionPath,
+          resumeSteps,
+          timeTravel,
+          prevResult,
+          parentWorkflow,
+          stepResults,
+          activeSteps,
+          parentContext,
+          requestContext,
+          perStep,
+          state,
+          outputOptions,
+          forEachIndex,
+          nestedRunId,
+        }: ProcessorArgs)
+    is_async: true
+    vis: protected
+    lines:
+    - 1211
+    - 1860
+    detail:
+      calls:
+      - Date.now
+      - JSON.stringify
+      - Object.assign
+      - Object.keys
+      - executionPath.slice
+      - executionPath.slice(0, -1).concat
+      - getStep
+      - isExecutableStep
+      - iterationResults.filter
+      - new MastraError
+      - processWorkflowForEach
+      - step.steps.reduce
+      - this.endWorkflow
+      - this.errorWorkflow
+      - this.mastra.getStorage
+      - this.mastra.getStorage()?.getStore
+      - this.mastra.pubsub.publish
+      - workflow?.options?.shouldPersistSnapshot
+      - workflowsStore?.loadWorkflowSnapshot
+      - workflowsStore?.updateWorkflowResults
+      - workflowsStore?.updateWorkflowState
+  - name: loadData
+    sig: |-
+      loadData({
+          workflowId,
+          runId,
+        }: {
+          workflowId: string;
+          runId: string;
+        }): Promise<WorkflowRunState | null | undefined>
+    is_async: true
+    lines:
+    - 1862
+    - 1876
+    detail:
+      calls:
+      - this.mastra.getStorage
+      - this.mastra.getStorage()?.getStore
+      - workflowsStore?.loadWorkflowSnapshot
+  - name: process
+    sig: 'process(event: Event, ack?: () => Promise<void>)'
+    is_async: true
+    lines:
+    - 1878
+    - 2000
+    detail:
+      calls:
+      - ack
+      - getNestedWorkflow
+      - new MastraError
+      - processWorkflowWaitForEvent
+      - this.errorWorkflow
+      - this.loadData
+      - this.mastra.__getInternalWorkflow
+      - this.mastra.__hasInternalWorkflow
+      - this.mastra.getLogger
+      - this.mastra.getLogger()?.error
+      - this.mastra.getWorkflow
+      - this.mastra.pubsub.publish
+      - this.processWorkflowCancel
+      - this.processWorkflowEnd
+      - this.processWorkflowFail
+      - this.processWorkflowStart
+      - this.processWorkflowStepEnd
+      - this.processWorkflowStepRun
+      - this.processWorkflowSuspend
+      - type.split
+      - type.split('.').slice
+      - type.split('.').slice(2).join
+      - type.startsWith
+  lines:
+  - 64
+  - 2001
+exports:
+- name: ProcessorArgs
+  kind: type
+- name: ParentWorkflow
+  kind: type
+- name: WorkflowEventProcessor
+  kind: type

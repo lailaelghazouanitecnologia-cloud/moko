@@ -1,0 +1,616 @@
+## Roska File Descriptor — observational-memory/observer-agent.ts
+file: observational-memory/observer-agent.ts
+lines: 1342
+imports:
+- sym: '@mastra/core/agent.MastraDBMessage'
+  kind: typing
+- sym: '@mastra/core/llm.CoreMessage'
+  kind: typing
+- sym: ./anchor-ids.stripEphemeralAnchorIds
+- sym: ./tool-result-helpers.DEFAULT_OBSERVER_TOOL_RESULT_MAX_TOKENS
+- sym: ./tool-result-helpers.formatToolResultForObserver
+- sym: ./tool-result-helpers.resolveToolResultValue
+data:
+- name: OBSERVER_EXTRACTION_INSTRUCTIONS
+  type: string
+  val: |-
+    `CRITICAL: DISTINGUISH USER ASSERTIONS FROM QUESTIONS
+
+    When the user TELLS you something about themselves, mark it as an...
+- name: OBSERVER_OUTPUT_FORMAT_BASE
+  type: any
+  val: buildObserverOutputFormat()
+- name: OBSERVER_GUIDELINES
+  type: string
+  val: |-
+    `- Be specific enough for the assistant to act on
+    - Good: "User prefers short, direct answers without lengthy explanatio...
+- name: OBSERVER_SYSTEM_PROMPT
+  type: any
+  val: buildObserverSystemPrompt()
+- name: OBSERVER_IMAGE_FILE_EXTENSIONS
+  type: any
+  val: |-
+    new Set([
+      'png',
+      'jpg',
+      'jpeg',
+      'webp',
+      'gif',
+      'bmp',
+      'tiff',
+      'tif',
+      'heic',
+      'heif',
+      'avif',
+    ])
+- name: MAX_OBSERVATION_LINE_CHARS
+  type: any
+  val: 10_000
+types:
+- name: ObserverFormatOptions
+  kind: typealias
+  decorators:
+  - type
+  fields:
+  - name: maxPartLength
+    type: number
+  - name: maxToolResultTokens
+    type: number
+  lines:
+  - 11
+  - 11
+- name: ObserverResult
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: observations
+    type: string
+  - name: currentTask
+    type: string
+  - name: suggestedContinuation
+    type: string
+  - name: rawOutput
+    type: string
+  - name: degenerate
+    type: boolean
+  lines:
+  - 473
+  - 491
+- name: ObserverAttachmentPart
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 497
+  - 515
+- name: ObserverInputAttachmentPart
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 517
+  - 534
+- name: ObserverFormattedMessage
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: text
+    type: string
+  - name: attachments
+    type: ObserverInputAttachmentPart[]
+  lines:
+  - 536
+  - 539
+- name: ObserverAttachmentCounter
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: nextImageId
+    type: number
+  - name: nextFileId
+    type: number
+  lines:
+  - 541
+  - 544
+- name: MultiThreadObserverResult
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: threads
+    type: Map<string, ObserverResult>
+  - name: rawOutput
+    type: string
+  - name: degenerate
+    type: boolean
+  lines:
+  - 941
+  - 948
+- name: ParsedMemorySection
+  kind: trait
+  ctx: Parsed result from XML memory section
+  decorators:
+  - interface
+  fields:
+  - name: observations
+    type: string
+  - name: currentTask
+    type: string
+  - name: suggestedResponse
+    type: string
+  lines:
+  - 1131
+  - 1136
+functions:
+- name: buildObserverOutputFormat
+  sig: 'buildObserverOutputFormat(includeThreadTitle: boolean = false): string'
+  lines:
+  - 276
+  - 327
+  detail: {}
+- name: buildObserverSystemPrompt
+  sig: |-
+    buildObserverSystemPrompt(
+      multiThread: boolean = false,
+      instruction?: string,
+      includeThreadTitle: boolean = false,
+    ): string
+  lines:
+  - 356
+  - 459
+  detail:
+    calls:
+    - buildObserverOutputFormat
+- name: formatObserverTimestamp
+  sig: 'formatObserverTimestamp(createdAt: MastraDBMessage[''createdAt'']): string'
+  lines:
+  - 560
+  - 571
+  detail:
+    calls:
+    - new Date
+    - new Date(createdAt).toLocaleString
+- name: getObserverPathExtension
+  sig: 'getObserverPathExtension(value: string): string | undefined'
+  lines:
+  - 573
+  - 577
+  detail:
+    calls:
+    - match?.[1]?.toLowerCase
+    - normalized.match
+    - value.split
+    - value.split('#', 1)[0]?.split
+- name: hasObserverImageFilenameExtension
+  sig: 'hasObserverImageFilenameExtension(filename: unknown): boolean'
+  lines:
+  - 579
+  - 581
+  detail:
+    calls:
+    - OBSERVER_IMAGE_FILE_EXTENSIONS.has
+    - getObserverPathExtension
+- name: isImageLikeObserverFilePart
+  sig: 'isImageLikeObserverFilePart(part: ObserverAttachmentPart): boolean'
+  lines:
+  - 583
+  - 612
+  detail:
+    calls:
+    - hasObserverImageFilenameExtension
+    - new URL
+    - part.data.startsWith
+    - part.mimeType.toLowerCase
+    - part.mimeType.toLowerCase().startsWith
+- name: toObserverInputAttachmentPart
+  sig: 'toObserverInputAttachmentPart(part: ObserverAttachmentPart): ObserverInputAttachmentPart'
+  lines:
+  - 614
+  - 646
+  detail:
+    calls:
+    - isImageLikeObserverFilePart
+- name: resolveObserverAttachmentLabel
+  sig: 'resolveObserverAttachmentLabel(part: ObserverAttachmentPart): string | undefined'
+  lines:
+  - 648
+  - 665
+  detail:
+    calls:
+    - asset.startsWith
+    - decodeURIComponent
+    - new URL
+    - part.filename.trim
+    - part.filename?.trim
+    - url.pathname.split
+    - url.pathname.split('/').filter
+    - url.pathname.split('/').filter(Boolean).pop
+- name: formatObserverAttachmentPlaceholder
+  sig: 'formatObserverAttachmentPlaceholder(part: ObserverAttachmentPart, counter: ObserverAttachmentCounter): string'
+  lines:
+  - 667
+  - 672
+  detail:
+    calls:
+    - isImageLikeObserverFilePart
+    - resolveObserverAttachmentLabel
+- name: formatObserverMessage
+  sig: |-
+    formatObserverMessage(
+      msg: MastraDBMessage,
+      counter: ObserverAttachmentCounter,
+      options?: ObserverFormatOptions,
+    ): ObserverFormattedMessage
+  lines:
+  - 674
+  - 740
+  detail:
+    calls:
+    - Array.isArray
+    - formatObserverTimestamp
+    - maybeTruncate
+    - |-
+      msg.content.parts
+            .map
+    - |-
+      msg.content.parts
+            .map(part => {
+              if (part.type === 'text') return maybeTruncate(part.t...
+    - msg.role.charAt
+    - msg.role.charAt(0).toUpperCase
+    - msg.role.slice
+- name: formatMessagesForObserver
+  sig: 'formatMessagesForObserver(messages: MastraDBMessage[], options?: ObserverFormatOptions): string'
+  lines:
+  - 742
+  - 748
+  detail:
+    calls:
+    - |-
+      messages
+          .map
+    - |-
+      messages
+          .map(msg => formatObserverMessage(msg, counter, options).text)
+          .filter
+    - |-
+      messages
+          .map(msg => formatObserverMessage(msg, counter, options).text)
+          .filter(Boolean)
+         ...
+- name: buildObserverHistoryMessage
+  sig: 'buildObserverHistoryMessage(messages: MastraDBMessage[], options?: ObserverFormatOptions): CoreMessage'
+  lines:
+  - 750
+  - 770
+  detail:
+    calls:
+    - messages.forEach
+- name: maybeTruncate
+  sig: 'maybeTruncate(str: string, maxLen?: number): string'
+  lines:
+  - 773
+  - 778
+  detail:
+    calls:
+    - str.slice
+- name: formatMultiThreadMessagesForObserver
+  sig: |-
+    formatMultiThreadMessagesForObserver(
+      messagesByThread: Map<string, MastraDBMessage[]>,
+      threadOrder: string[],
+      options?: ObserverFormatOptions,
+    ): string
+  lines:
+  - 784
+  - 800
+  detail:
+    calls:
+    - formatMessagesForObserver
+    - messagesByThread.get
+    - sections.join
+    - sections.push
+- name: buildMultiThreadObserverHistoryMessage
+  sig: |-
+    buildMultiThreadObserverHistoryMessage(
+      messagesByThread: Map<string, MastraDBMessage[]>,
+      threadOrder: string[],
+      options?: ObserverFormatOptions,
+    ): CoreMessage
+  lines:
+  - 802
+  - 846
+  detail:
+    calls:
+    - threadOrder.forEach
+- name: buildMultiThreadObserverTaskPrompt
+  sig: |-
+    buildMultiThreadObserverTaskPrompt(
+      existingObservations: string | undefined,
+      threadOrder?: string[],
+      priorMetadataByThread?: Map<string, { currentTask?: string; suggestedResponse?: string; threadTitle?: string }>,
+      wasTruncated?: boolean,
+      includeThreadTitle?: boolean,
+    ): string
+  lines:
+  - 848
+  - 920
+  detail:
+    calls:
+    - |-
+      threadOrder
+          ?.map
+    - |-
+      threadOrder
+          ?.map(threadId => {
+            const metadata = priorMetadataByThread?.get(threadId);
+         ...
+- name: buildMultiThreadObserverPrompt
+  sig: |-
+    buildMultiThreadObserverPrompt(
+      existingObservations: string | undefined,
+      messagesByThread: Map<string, MastraDBMessage[]>,
+      threadOrder: string[],
+      priorMetadataByThread?: Map<string, { currentTask?: string; suggestedResponse?: string; threadTitle?: string }>,
+      wasTruncated?: boolean,
+      options?: ObserverFormatOptions,
+      includeThreadTitle?: boolean,
+    ): string
+  lines:
+  - 925
+  - 936
+  detail:
+    calls:
+    - buildMultiThreadObserverTaskPrompt
+    - formatMultiThreadMessagesForObserver
+- name: parseMultiThreadObserverOutput
+  sig: 'parseMultiThreadObserverOutput(output: string): MultiThreadObserverResult'
+  lines:
+  - 953
+  - 1021
+  detail:
+    calls:
+    - currentTaskMatch[1].trim
+    - detectDegenerateRepetition
+    - new Map
+    - observations.replace
+    - observations.trim
+    - output.match
+    - sanitizeObservationLines
+    - suggestedMatch[1].trim
+    - threadContent.match
+    - threadRegex.exec
+    - threadTitleMatch[1].trim
+    - threads.set
+- name: buildObserverTaskPrompt
+  sig: |-
+    buildObserverTaskPrompt(
+      existingObservations: string | undefined,
+      options?: {
+        skipContinuationHints?: boolean;
+        priorCurrentTask?: string;
+        priorSuggestedResponse?: string;
+        priorThreadTitle?: string;
+        wasTruncated?: boolean;
+        includeThreadTitle?: boolean;
+      },
+    ): string
+  lines:
+  - 1023
+  - 1077
+  detail:
+    calls:
+    - priorMetadataLines.join
+    - priorMetadataLines.push
+- name: buildObserverPrompt
+  sig: |-
+    buildObserverPrompt(
+      existingObservations: string | undefined,
+      messagesToObserve: MastraDBMessage[],
+      options?: {
+        skipContinuationHints?: boolean;
+        priorCurrentTask?: string;
+        priorSuggestedResponse?: string;
+        priorThreadTitle?: string;
+        wasTruncated?: boolean;
+        includeThreadTitle?: boolean;
+      },
+    ): string
+  lines:
+  - 1083
+  - 1097
+  detail:
+    calls:
+    - buildObserverTaskPrompt
+    - formatMessagesForObserver
+- name: parseObserverOutput
+  sig: 'parseObserverOutput(output: string): ObserverResult'
+  lines:
+  - 1103
+  - 1126
+  detail:
+    calls:
+    - detectDegenerateRepetition
+    - parseMemorySectionXml
+    - sanitizeObservationLines
+- name: parseMemorySectionXml
+  sig: 'parseMemorySectionXml(content: string): ParsedMemorySection'
+  lines:
+  - 1142
+  - 1189
+  detail:
+    calls:
+    - content.match
+    - content.matchAll
+    - currentTaskMatch[1].trim
+    - extractListItemsOnly
+    - |-
+      observationsMatches
+            .map
+    - |-
+      observationsMatches
+            .map(m => m[1]?.trim() ?? '')
+            .filter
+    - |-
+      observationsMatches
+            .map(m => m[1]?.trim() ?? '')
+            .filter(Boolean)
+            .join
+    - suggestedResponseMatch[1].trim
+    - threadTitleMatch[1].trim
+- name: extractListItemsOnly
+  sig: 'extractListItemsOnly(content: string): string'
+  lines:
+  - 1195
+  - 1208
+  detail:
+    calls:
+    - /^\s*[-*]\s/.test
+    - /^\s*\d+\.\s/.test
+    - content.split
+    - listLines.join
+    - listLines.join('\n').trim
+    - listLines.push
+- name: sanitizeObservationLines
+  sig: 'sanitizeObservationLines(observations: string): string'
+  lines:
+  - 1220
+  - 1231
+  detail:
+    calls:
+    - lines.join
+    - lines[i]!.slice
+    - observations.split
+- name: detectDegenerateRepetition
+  sig: 'detectDegenerateRepetition(text: string): boolean'
+  lines:
+  - 1241
+  - 1273
+  detail:
+    calls:
+    - Math.floor
+    - Math.max
+    - new Map
+    - seen.get
+    - seen.set
+    - text.slice
+    - text.split
+- name: hasCurrentTaskSection
+  sig: 'hasCurrentTaskSection(observations: string): boolean'
+  lines:
+  - 1279
+  - 1294
+  detail:
+    calls:
+    - /<current-task>/i.test
+    - currentTaskPatterns.some
+- name: extractCurrentTask
+  sig: 'extractCurrentTask(observations: string): string | null'
+  lines:
+  - 1299
+  - 1309
+  detail:
+    calls:
+    - observations.slice
+    - observations.slice(contentStart, endIdx).trim
+    - observations.toLowerCase
+    - observations.toLowerCase().indexOf
+- name: optimizeObservationsForContext
+  sig: 'optimizeObservationsForContext(observations: string): string'
+  lines:
+  - 1322
+  - 1342
+  detail:
+    calls:
+    - optimized.replace
+    - optimized.trim
+    - stripEphemeralAnchorIds
+exports:
+- name: ObserverFormatOptions
+  kind: type
+- name: ObserverResult
+  kind: type
+- name: ObserverAttachmentPart
+  kind: type
+- name: ObserverInputAttachmentPart
+  kind: type
+- name: ObserverFormattedMessage
+  kind: type
+- name: ObserverAttachmentCounter
+  kind: type
+- name: MultiThreadObserverResult
+  kind: type
+- name: ParsedMemorySection
+  kind: type
+- name: buildObserverOutputFormat
+  kind: func
+- name: buildObserverSystemPrompt
+  kind: func
+- name: formatObserverTimestamp
+  kind: func
+- name: getObserverPathExtension
+  kind: func
+- name: hasObserverImageFilenameExtension
+  kind: func
+- name: isImageLikeObserverFilePart
+  kind: func
+- name: toObserverInputAttachmentPart
+  kind: func
+- name: resolveObserverAttachmentLabel
+  kind: func
+- name: formatObserverAttachmentPlaceholder
+  kind: func
+- name: formatObserverMessage
+  kind: func
+- name: formatMessagesForObserver
+  kind: func
+- name: buildObserverHistoryMessage
+  kind: func
+- name: maybeTruncate
+  kind: func
+- name: formatMultiThreadMessagesForObserver
+  kind: func
+- name: buildMultiThreadObserverHistoryMessage
+  kind: func
+- name: buildMultiThreadObserverTaskPrompt
+  kind: func
+- name: buildMultiThreadObserverPrompt
+  kind: func
+- name: parseMultiThreadObserverOutput
+  kind: func
+- name: buildObserverTaskPrompt
+  kind: func
+- name: buildObserverPrompt
+  kind: func
+- name: parseObserverOutput
+  kind: func
+- name: parseMemorySectionXml
+  kind: func
+- name: extractListItemsOnly
+  kind: func
+- name: sanitizeObservationLines
+  kind: func
+- name: detectDegenerateRepetition
+  kind: func
+- name: hasCurrentTaskSection
+  kind: func
+- name: extractCurrentTask
+  kind: func
+- name: optimizeObservationsForContext
+  kind: func
+- name: OBSERVER_EXTRACTION_INSTRUCTIONS
+  kind: data
+- name: OBSERVER_OUTPUT_FORMAT_BASE
+  kind: data
+- name: OBSERVER_GUIDELINES
+  kind: data
+- name: OBSERVER_SYSTEM_PROMPT
+  kind: data
+- name: OBSERVER_IMAGE_FILE_EXTENSIONS
+  kind: data
+- name: MAX_OBSERVATION_LINE_CHARS
+  kind: data

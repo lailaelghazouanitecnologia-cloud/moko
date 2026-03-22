@@ -1,0 +1,316 @@
+## Roska File Descriptor — scorers/utils.ts
+file: scorers/utils.ts
+lines: 656
+imports:
+- sym: '@mastra/core/agent.MastraDBMessage'
+  kind: typing
+- sym: '@mastra/core/evals.ScorerRunInputForAgent'
+  kind: typing
+- sym: '@mastra/core/evals.ScorerRunOutputForAgent'
+  kind: typing
+- sym: '@mastra/core/evals.ScoringInput'
+  kind: typing
+- sym: '@mastra/core/request-context.RequestContext'
+types:
+- name: TestCase
+  kind: typealias
+  decorators:
+  - type
+  fields:
+  - name: input
+    type: string
+  - name: output
+    type: string
+  - name: expectedResult
+    type: |-
+      {
+          /** The expected score */
+          score: number;
+          /** The optional expected reason */
+          reason?: string;
+        }
+  lines:
+  - 77
+  - 89
+- name: TestCaseWithContext
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 94
+  - 97
+- name: ToolCallInfo
+  kind: typealias
+  decorators:
+  - type
+  fields:
+  - name: toolCallId
+    type: string
+  - name: messageIndex
+    type: number
+  - name: invocationIndex
+    type: number
+  lines:
+  - 499
+  - 508
+- name: ToolResultInfo
+  kind: typealias
+  decorators:
+  - type
+  fields:
+  - name: toolCallId
+    type: string
+  - name: args
+    type: Record<string, any>
+  - name: result
+    type: any
+  lines:
+  - 600
+  - 609
+functions:
+- name: getTextContentFromMastraDBMessage
+  sig: 'getTextContentFromMastraDBMessage(message: MastraDBMessage): string'
+  lines:
+  - 26
+  - 36
+  detail:
+    calls:
+    - Array.isArray
+    - message.content.parts.filter
+- name: roundToTwoDecimals
+  sig: 'roundToTwoDecimals(num: number)'
+  lines:
+  - 52
+  - 54
+  detail:
+    calls:
+    - Math.round
+- name: isCloserTo
+  sig: 'isCloserTo(value: number, target1: number, target2: number): boolean'
+  lines:
+  - 70
+  - 72
+  detail:
+    calls:
+    - Math.abs
+- name: createTestRun
+  sig: |-
+    createTestRun(
+      input: string,
+      output: string,
+      additionalContext?: Record<string, any>,
+      requestContext?: Record<string, any>,
+    ): ScoringInput
+  lines:
+  - 117
+  - 129
+  detail: {}
+- name: getUserMessageFromRunInput
+  sig: 'getUserMessageFromRunInput(input?: ScorerRunInputForAgent): string | undefined'
+  lines:
+  - 148
+  - 151
+  detail:
+    calls:
+    - getTextContentFromMastraDBMessage
+    - input?.inputMessages.find
+- name: getSystemMessagesFromRunInput
+  sig: 'getSystemMessagesFromRunInput(input?: ScorerRunInputForAgent): string[]'
+  lines:
+  - 171
+  - 207
+  detail:
+    calls:
+    - Object.values
+    - Object.values(input.taggedSystemMessages).forEach
+    - |-
+      input.systemMessages
+              .map
+    - |-
+      input.systemMessages
+              .map(msg => {
+                // Handle different content types - extract tex...
+    - systemMessages.push
+- name: getCombinedSystemPrompt
+  sig: 'getCombinedSystemPrompt(input?: ScorerRunInputForAgent): string'
+  lines:
+  - 226
+  - 229
+  detail:
+    calls:
+    - getSystemMessagesFromRunInput
+    - systemMessages.join
+- name: getAssistantMessageFromRunOutput
+  sig: 'getAssistantMessageFromRunOutput(output?: ScorerRunOutputForAgent)'
+  lines:
+  - 248
+  - 251
+  detail:
+    calls:
+    - getTextContentFromMastraDBMessage
+    - output?.find
+- name: getReasoningFromRunOutput
+  sig: 'getReasoningFromRunOutput(output?: ScorerRunOutputForAgent): string | undefined'
+  lines:
+  - 284
+  - 316
+  detail:
+    calls:
+    - message.content.parts?.filter
+    - output.find
+    - |-
+      reasoningParts
+            .map
+    - |-
+      reasoningParts
+            .map((p: any) => {
+              // The reasoning text can be in p.reasoning or in p....
+    - reasoningTexts.join
+- name: createToolInvocation
+  sig: |-
+    createToolInvocation({
+      toolCallId,
+      toolName,
+      args,
+      result,
+      state = 'result',
+    }: {
+      toolCallId: string;
+      toolName: string;
+      args: Record<string, any>;
+      result: Record<string, any>;
+      state?: 'call' | 'partial-call' | 'result';
+    }): { toolCallId: string; toolName: string; args: Record<string, any>; result: Record<string, any>; state: string }
+  lines:
+  - 339
+  - 359
+  detail: {}
+- name: createTestMessage
+  sig: |-
+    createTestMessage({
+      content,
+      role,
+      id = 'test-message',
+      toolInvocations = [],
+    }: {
+      content: string;
+      role: 'user' | 'assistant' | 'system';
+      id?: string;
+      toolInvocations?: Array<{
+        toolCallId: string;
+        toolName: string;
+        args: Record<string, any>;
+        result: Record<string, any>;
+        state: any;
+      }>;
+    }): MastraDBMessage
+  lines:
+  - 394
+  - 430
+  detail:
+    calls:
+    - new Date
+    - toolInvocations.map
+- name: createAgentTestRun
+  sig: |-
+    createAgentTestRun({
+      inputMessages = [],
+      output,
+      rememberedMessages = [],
+      systemMessages = [],
+      taggedSystemMessages = {},
+      requestContext = new RequestContext(),
+      runId = crypto.randomUUID(),
+    }: {
+      inputMessages?: ScorerRunInputForAgent['inputMessages'];
+      output: ScorerRunOutputForAgent;
+      rememberedMessages?: ScorerRunInputForAgent['rememberedMessages'];
+      systemMessages?: ScorerRunInputForAgent['systemMessages'];
+      taggedSystemMessages?: ScorerRunInputForAgent['taggedSystemMessages'];
+      requestContext?: RequestContext;
+      runId?: string;
+    }): {
+      input: ScorerRunInputForAgent;
+      output: ScorerRunOutputForAgent;
+      requestContext: RequestContext;
+      runId: string;
+    }
+  lines:
+  - 461
+  - 494
+  detail: {}
+- name: extractToolCalls
+  sig: 'extractToolCalls(output: ScorerRunOutputForAgent): { tools: string[]; toolCallInfos: ToolCallInfo[] }'
+  lines:
+  - 531
+  - 555
+  detail:
+    calls:
+    - toolCallInfos.push
+    - toolCalls.push
+- name: extractInputMessages
+  sig: 'extractInputMessages(runInput: ScorerRunInputForAgent | undefined): string[]'
+  lines:
+  - 572
+  - 574
+  detail:
+    calls:
+    - runInput?.inputMessages?.map
+- name: extractAgentResponseMessages
+  sig: 'extractAgentResponseMessages(runOutput: ScorerRunOutputForAgent): string[]'
+  lines:
+  - 593
+  - 595
+  detail:
+    calls:
+    - runOutput.filter
+    - runOutput.filter(msg => msg.role === 'assistant').map
+- name: extractToolResults
+  sig: 'extractToolResults(output: ScorerRunOutputForAgent): ToolResultInfo[]'
+  lines:
+  - 636
+  - 656
+  detail:
+    calls:
+    - results.push
+exports:
+- name: TestCase
+  kind: type
+- name: TestCaseWithContext
+  kind: type
+- name: ToolCallInfo
+  kind: type
+- name: ToolResultInfo
+  kind: type
+- name: getTextContentFromMastraDBMessage
+  kind: func
+- name: roundToTwoDecimals
+  kind: func
+- name: isCloserTo
+  kind: func
+- name: createTestRun
+  kind: func
+- name: getUserMessageFromRunInput
+  kind: func
+- name: getSystemMessagesFromRunInput
+  kind: func
+- name: getCombinedSystemPrompt
+  kind: func
+- name: getAssistantMessageFromRunOutput
+  kind: func
+- name: getReasoningFromRunOutput
+  kind: func
+- name: createToolInvocation
+  kind: func
+- name: createTestMessage
+  kind: func
+- name: createAgentTestRun
+  kind: func
+- name: extractToolCalls
+  kind: func
+- name: extractInputMessages
+  kind: func
+- name: extractAgentResponseMessages
+  kind: func
+- name: extractToolResults
+  kind: func

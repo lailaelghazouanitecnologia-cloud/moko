@@ -1,0 +1,345 @@
+## Roska File Descriptor — agents/index.ts
+file: agents/index.ts
+lines: 919
+imports:
+- sym: '@libsql/client.Client'
+  kind: typing
+- sym: '@libsql/client.InValue'
+  kind: typing
+- sym: '@mastra/core/error.ErrorCategory'
+- sym: '@mastra/core/error.ErrorDomain'
+- sym: '@mastra/core/error.MastraError'
+- sym: '@mastra/core/storage.AgentsStorage'
+- sym: '@mastra/core/storage.createStorageErrorId'
+- sym: '@mastra/core/storage.normalizePerPage'
+- sym: '@mastra/core/storage.calculatePagination'
+- sym: '@mastra/core/storage.TABLE_AGENTS'
+- sym: '@mastra/core/storage.TABLE_AGENT_VERSIONS'
+- sym: '@mastra/core/storage.AGENTS_SCHEMA'
+- sym: '@mastra/core/storage.AGENT_VERSIONS_SCHEMA'
+- sym: '@mastra/core/storage.StorageAgentType'
+  kind: typing
+- sym: '@mastra/core/storage.StorageCreateAgentInput'
+  kind: typing
+- sym: '@mastra/core/storage.StorageUpdateAgentInput'
+  kind: typing
+- sym: '@mastra/core/storage.StorageListAgentsInput'
+  kind: typing
+- sym: '@mastra/core/storage.StorageListAgentsOutput'
+  kind: typing
+- sym: '@mastra/core/storage.AgentVersion'
+  kind: typing
+- sym: '@mastra/core/storage.CreateVersionInput'
+  kind: typing
+- sym: '@mastra/core/storage.ListVersionsInput'
+  kind: typing
+- sym: '@mastra/core/storage.ListVersionsOutput'
+  kind: typing
+- sym: '@mastra/core/storage.AgentInstructionBlock'
+  kind: typing
+- sym: ../../db.LibSQLDB
+- sym: ../../db.resolveClient
+- sym: ../../db.LibSQLDomainConfig
+  kind: typing
+- sym: ../../db/utils.buildSelectColumns
+types:
+- name: AgentsLibSQL
+  kind: struct
+  ctx: Migrates from the legacy flat agent schema (where config fields like name, instructions, model were stored directly on mastra_agents) to the new versioned schema (thin agent record + versions table). SQLite cannot drop columns or alter NOT NULL constraints, so we must recreate the table.
+  bases:
+  - AgentsStorage
+  methods:
+  - name: constructor
+    sig: 'constructor(config: LibSQLDomainConfig)'
+    lines:
+    - 33
+    - 38
+    detail:
+      calls:
+      - new LibSQLDB
+      - resolveClient
+      - super
+  - name: init
+    sig: 'init(): Promise<void>'
+    is_async: true
+    lines:
+    - 40
+    - 64
+    detail:
+      calls:
+      - this.#cleanupStaleDrafts
+      - this.#db.alterTable
+      - this.#db.createTable
+      - this.#migrateFromLegacySchema
+      - this.#migrateToolsToJsonbFormat
+      - this.#migrateVersionsSchema
+  - name: unknown
+    sig: 'unknown(): Promise<void>'
+    is_async: true
+    lines:
+    - 71
+    - 150
+    detail:
+      calls:
+      - crypto.randomUUID
+      - new Date
+      - this.#client.execute
+      - this.#db.createTable
+      - this.#db.hasColumn
+      - this.#db.insert
+      - this.serializeInstructions
+  - name: unknown
+    sig: 'unknown(): Promise<void>'
+    is_async: true
+    lines:
+    - 157
+    - 172
+    detail:
+      calls:
+      - this.#client.execute
+      - this.#db.hasColumn
+  - name: unknown
+    sig: 'unknown(): Promise<void>'
+    is_async: true
+    lines:
+    - 179
+    - 187
+    detail:
+      calls:
+      - this.#client.execute
+  - name: unknown
+    sig: 'unknown(): Promise<void>'
+    is_async: true
+    lines:
+    - 194
+    - 247
+    detail:
+      calls:
+      - Array.isArray
+      - JSON.parse
+      - JSON.stringify
+      - decoder.decode
+      - new TextDecoder
+      - this.#client.execute
+      - this.logger?.info
+      - this.logger?.warn
+  - name: dangerouslyClearAll
+    sig: 'dangerouslyClearAll(): Promise<void>'
+    is_async: true
+    lines:
+    - 249
+    - 252
+    detail:
+      calls:
+      - this.#db.deleteData
+  - name: parseJson
+    sig: 'parseJson(value: any, fieldName?: string): any'
+    vis: private
+    lines:
+    - 254
+    - 292
+    detail:
+      calls:
+      - JSON.parse
+      - console.error
+      - createStorageErrorId
+      - decoder.decode
+      - new MastraError
+      - new TextDecoder
+      - value.substring
+  - name: getById
+    sig: 'getById(id: string): Promise<StorageAgentType | null>'
+    is_async: true
+    lines:
+    - 306
+    - 326
+    detail:
+      calls:
+      - await this.#db.select
+      - createStorageErrorId
+      - new MastraError
+      - this.parseRow
+  - name: create
+    sig: 'create(input: { agent: StorageCreateAgentInput }): Promise<StorageAgentType>'
+    is_async: true
+    lines:
+    - 328
+    - 388
+    detail:
+      calls:
+      - Object.keys
+      - createStorageErrorId
+      - crypto.randomUUID
+      - new Date
+      - new MastraError
+      - this.#db.insert
+      - this.createVersion
+      - this.getById
+  - name: update
+    sig: 'update(input: StorageUpdateAgentInput): Promise<StorageAgentType>'
+    is_async: true
+    lines:
+    - 390
+    - 451
+    detail:
+      calls:
+      - createStorageErrorId
+      - new Date
+      - new Date().toISOString
+      - new MastraError
+      - this.#db.update
+      - this.getById
+  - name: delete
+    sig: 'delete(id: string): Promise<void>'
+    is_async: true
+    lines:
+    - 453
+    - 475
+    detail:
+      calls:
+      - createStorageErrorId
+      - new MastraError
+      - this.#db.delete
+      - this.deleteVersionsByParentId
+  - name: list
+    sig: 'list(args?: StorageListAgentsInput): Promise<StorageListAgentsOutput>'
+    is_async: true
+    lines:
+    - 477
+    - 575
+    detail:
+      calls:
+      - /^[a-zA-Z_][a-zA-Z0-9_]*$/.test
+      - JSON.stringify
+      - Number
+      - Object.entries
+      - Object.keys
+      - buildSelectColumns
+      - calculatePagination
+      - conditions.join
+      - conditions.push
+      - createStorageErrorId
+      - new Error
+      - new MastraError
+      - normalizePerPage
+      - queryParams.push
+      - rows.map
+      - this.#client.execute
+      - this.parseOrderBy
+  - name: createVersion
+    sig: 'createVersion(input: CreateVersionInput): Promise<AgentVersion>'
+    is_async: true
+    lines:
+    - 581
+    - 631
+    detail:
+      calls:
+      - createStorageErrorId
+      - new Date
+      - new MastraError
+      - this.#db.insert
+      - this.serializeInstructions
+  - name: getVersion
+    sig: 'getVersion(id: string): Promise<AgentVersion | null>'
+    is_async: true
+    lines:
+    - 633
+    - 657
+    detail:
+      calls:
+      - await this.#db.select
+      - createStorageErrorId
+      - new MastraError
+      - this.parseVersionRow
+  - name: getVersionByNumber
+    sig: 'getVersionByNumber(agentId: string, versionNumber: number): Promise<AgentVersion | null>'
+    is_async: true
+    lines:
+    - 659
+    - 687
+    detail:
+      calls:
+      - await this.#db.selectMany
+      - createStorageErrorId
+      - new MastraError
+      - this.parseVersionRow
+  - name: getLatestVersion
+    sig: 'getLatestVersion(agentId: string): Promise<AgentVersion | null>'
+    is_async: true
+    lines:
+    - 689
+    - 718
+    detail:
+      calls:
+      - await this.#db.selectMany
+      - createStorageErrorId
+      - new MastraError
+      - this.parseVersionRow
+  - name: listVersions
+    sig: 'listVersions(input: ListVersionsInput): Promise<ListVersionsOutput>'
+    is_async: true
+    lines:
+    - 720
+    - 794
+    detail:
+      calls:
+      - await this.#db.selectMany
+      - calculatePagination
+      - createStorageErrorId
+      - new Error
+      - new MastraError
+      - normalizePerPage
+      - rows.map
+      - this.#db.selectTotalCount
+      - this.parseVersionOrderBy
+  - name: deleteVersion
+    sig: 'deleteVersion(id: string): Promise<void>'
+    is_async: true
+    lines:
+    - 796
+    - 814
+    detail:
+      calls:
+      - createStorageErrorId
+      - new MastraError
+      - this.#db.delete
+  - name: deleteVersionsByParentId
+    sig: 'deleteVersionsByParentId(entityId: string): Promise<void>'
+    is_async: true
+    lines:
+    - 816
+    - 846
+    detail:
+      calls:
+      - await this.#db.selectMany
+      - createStorageErrorId
+      - new MastraError
+      - this.#db.delete
+  - name: countVersions
+    sig: 'countVersions(agentId: string): Promise<number>'
+    is_async: true
+    lines:
+    - 848
+    - 870
+    detail:
+      calls:
+      - createStorageErrorId
+      - new MastraError
+      - this.#db.selectTotalCount
+  - name: parseVersionRow
+    sig: 'parseVersionRow(row: any): AgentVersion'
+    vis: private
+    lines:
+    - 891
+    - 918
+    detail:
+      calls:
+      - new Date
+      - this.deserializeInstructions
+      - this.parseJson
+  lines:
+  - 29
+  - 919
+exports:
+- name: AgentsLibSQL
+  kind: type

@@ -1,0 +1,201 @@
+## Roska File Descriptor — handlers/version-helpers.ts
+file: handlers/version-helpers.ts
+lines: 302
+purpose: Generic version management helpers shared across all versioned editor primitives. These utilities are domain-agnostic and work with any VersionedStorageDomain.
+data:
+- name: DEFAULT_MAX_VERSIONS
+  type: number
+  val: '50'
+- name: MCP_CLIENT_SNAPSHOT_CONFIG_FIELDS
+  type: array
+  val: '[''name'', ''description'', ''servers''] as const'
+types:
+- name: VersionedStoreInterface
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: getLatestVersion
+    type: '(parentId: string) => Promise<{ id: string; versionNumber: number } | null>'
+  - name: getVersion
+    type: '(id: string) => Promise<{ id: string; versionNumber: number } | null>'
+  - name: createVersion
+    type: '(params: Record<string, unknown>) => Promise<unknown>'
+  - name: update
+    type: '(params: Record<string, unknown>) => Promise<TEntity>'
+  - name: listVersions
+    type: |-
+      (params: Record<string, unknown>) => Promise<{
+          versions: Array<{ id: string; versionNumber: number }>;
+          total: number;
+          page: number;
+          perPage: number | false;
+          hasMore: boolean;
+        }>
+  - name: deleteVersion
+    type: '(id: string) => Promise<void>'
+  lines:
+  - 131
+  - 144
+functions:
+- name: deepEqual
+  sig: 'deepEqual(a: unknown, b: unknown): boolean'
+  lines:
+  - 16
+  - 41
+  detail:
+    calls:
+    - Array.isArray
+    - Object.keys
+    - a.every
+    - a.getTime
+    - aKeys.every
+    - b.getTime
+- name: generateVersionId
+  sig: 'generateVersionId(): string'
+  lines:
+  - 46
+  - 48
+  detail:
+    calls:
+    - crypto.randomUUID
+- name: extractConfigFromVersion
+  sig: |-
+    extractConfigFromVersion(
+      version: Record<string, unknown>,
+      snapshotConfigFields: readonly string[],
+    ): Record<string, unknown>
+  lines:
+  - 54
+  - 65
+  detail: {}
+- name: calculateChangedFields
+  sig: |-
+    calculateChangedFields(
+      previous: Record<string, unknown> | null | undefined,
+      current: Record<string, unknown>,
+    ): string[]
+  lines:
+  - 70
+  - 95
+  detail:
+    calls:
+    - Object.keys
+    - changedFields.push
+    - deepEqual
+    - new Set
+- name: computeVersionDiffs
+  sig: |-
+    computeVersionDiffs(
+      fromConfig: Record<string, unknown>,
+      toConfig: Record<string, unknown>,
+    ): Array<{ field: string; previousValue: unknown; currentValue: unknown }>
+  lines:
+  - 100
+  - 125
+  detail:
+    calls:
+    - Object.keys
+    - deepEqual
+    - diffs.push
+    - new Set
+- name: isVersionNumberConflictError
+  sig: 'isVersionNumberConflictError(error: unknown): boolean'
+  lines:
+  - 149
+  - 161
+  detail:
+    calls:
+    - error.message.toLowerCase
+    - message.includes
+- name: enforceRetentionLimit
+  sig: |-
+    enforceRetentionLimit(
+      store: Pick<VersionedStoreInterface, 'listVersions' | 'deleteVersion'>,
+      parentId: string,
+      parentIdField: string,
+      activeVersionId: string | undefined | null,
+      maxVersions: number = DEFAULT_MAX_VERSIONS,
+    ): Promise<{ deletedCount: number }>
+  is_async: true
+  lines:
+  - 167
+  - 203
+  detail:
+    calls:
+    - store.deleteVersion
+    - store.listVersions
+- name: createVersionWithRetry
+  sig: |-
+    createVersionWithRetry(
+      store: Pick<VersionedStoreInterface, 'getLatestVersion' | 'createVersion'>,
+      parentId: string,
+      parentIdField: string,
+      snapshotConfig: Record<string, unknown>,
+      changedFields: string[],
+      options: {
+        changeMessage?: string;
+        maxRetries?: number;
+      } = {},
+    ): Promise<{ versionId: string; versionNumber: number }>
+  is_async: true
+  lines:
+  - 208
+  - 251
+  detail:
+    calls:
+    - generateVersionId
+    - isVersionNumberConflictError
+    - new Promise
+    - store.createVersion
+    - store.getLatestVersion
+- name: handleAutoVersioning
+  sig: |-
+    handleAutoVersioning(
+      store: VersionedStoreInterface<TEntity>,
+      parentId: string,
+      parentIdField: string,
+      snapshotConfigFields: readonly string[],
+      existingEntity: TEntity & { activeVersionId?: string },
+      updatedEntity: TEntity,
+      configFields?: Record<string, unknown>,
+      options?: { changeMessage?: string },
+    ): Promise<{ entity: TEntity; versionCreated: boolean }>
+  is_async: true
+  lines:
+  - 257
+  - 302
+  detail:
+    calls:
+    - Object.entries
+    - Object.keys
+    - calculateChangedFields
+    - createVersionWithRetry
+    - enforceRetentionLimit
+    - extractConfigFromVersion
+    - store.getLatestVersion
+exports:
+- name: VersionedStoreInterface
+  kind: type
+- name: deepEqual
+  kind: func
+- name: generateVersionId
+  kind: func
+- name: extractConfigFromVersion
+  kind: func
+- name: calculateChangedFields
+  kind: func
+- name: computeVersionDiffs
+  kind: func
+- name: isVersionNumberConflictError
+  kind: func
+- name: enforceRetentionLimit
+  kind: func
+- name: createVersionWithRetry
+  kind: func
+- name: handleAutoVersioning
+  kind: func
+- name: DEFAULT_MAX_VERSIONS
+  kind: data
+- name: MCP_CLIENT_SNAPSHOT_CONFIG_FIELDS
+  kind: data

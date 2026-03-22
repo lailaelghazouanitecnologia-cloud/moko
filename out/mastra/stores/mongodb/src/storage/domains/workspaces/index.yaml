@@ -1,0 +1,375 @@
+## Roska File Descriptor — workspaces/index.ts
+file: workspaces/index.ts
+lines: 746
+imports:
+- sym: node:crypto.randomUUID
+- sym: '@mastra/core/error.ErrorCategory'
+- sym: '@mastra/core/error.ErrorDomain'
+- sym: '@mastra/core/error.MastraError'
+- sym: '@mastra/core/storage.WorkspacesStorage'
+- sym: '@mastra/core/storage.createStorageErrorId'
+- sym: '@mastra/core/storage.TABLE_WORKSPACES'
+- sym: '@mastra/core/storage.TABLE_WORKSPACE_VERSIONS'
+- sym: '@mastra/core/storage.normalizePerPage'
+- sym: '@mastra/core/storage.calculatePagination'
+- sym: '@mastra/core/storage.StorageWorkspaceType'
+  kind: typing
+- sym: '@mastra/core/storage.StorageCreateWorkspaceInput'
+  kind: typing
+- sym: '@mastra/core/storage.StorageUpdateWorkspaceInput'
+  kind: typing
+- sym: '@mastra/core/storage.StorageListWorkspacesInput'
+  kind: typing
+- sym: '@mastra/core/storage.StorageListWorkspacesOutput'
+  kind: typing
+- sym: '@mastra/core/storage/domains/workspaces.WorkspaceVersion'
+  kind: typing
+- sym: '@mastra/core/storage/domains/workspaces.CreateWorkspaceVersionInput'
+  kind: typing
+- sym: '@mastra/core/storage/domains/workspaces.ListWorkspaceVersionsInput'
+  kind: typing
+- sym: '@mastra/core/storage/domains/workspaces.ListWorkspaceVersionsOutput'
+  kind: typing
+- sym: ../../connectors/MongoDBConnector.MongoDBConnector
+  kind: typing
+- sym: ../../db.resolveMongoDBConfig
+- sym: ../../types.MongoDBDomainConfig
+  kind: typing
+- sym: ../../types.MongoDBIndexConfig
+  kind: typing
+data:
+- name: SNAPSHOT_FIELDS
+  type: array
+  val: |-
+    [
+      'name',
+      'description',
+      'filesystem',
+      'sandbox',
+      'mounts',
+      'search',
+      'skills',
+      'tools',
+      'autoSync',
+     ...
+types:
+- name: MongoDBWorkspacesStorage
+  kind: struct
+  ctx: ==========================================================================
+  bases:
+  - WorkspacesStorage
+  fields:
+  - name: MANAGED_COLLECTIONS
+    type: any
+    default: '[TABLE_WORKSPACES, TABLE_WORKSPACE_VERSIONS] as const'
+  methods:
+  - name: constructor
+    sig: 'constructor(config: MongoDBDomainConfig)'
+    lines:
+    - 52
+    - 59
+    detail:
+      calls:
+      - config.indexes?.filter
+      - resolveMongoDBConfig
+      - super
+  - name: getCollection
+    sig: 'getCollection(name: string)'
+    is_async: true
+    vis: private
+    lines:
+    - 61
+    - 63
+    detail:
+      calls:
+      - this.#connector.getCollection
+  - name: getDefaultIndexDefinitions
+    sig: 'getDefaultIndexDefinitions(): MongoDBIndexConfig[]'
+    lines:
+    - 65
+    - 79
+    detail: {}
+  - name: createDefaultIndexes
+    sig: 'createDefaultIndexes(): Promise<void>'
+    is_async: true
+    lines:
+    - 81
+    - 94
+    detail:
+      calls:
+      - collection.createIndex
+      - this.getCollection
+      - this.getDefaultIndexDefinitions
+      - this.logger?.warn
+  - name: createCustomIndexes
+    sig: 'createCustomIndexes(): Promise<void>'
+    is_async: true
+    lines:
+    - 96
+    - 109
+    detail:
+      calls:
+      - collection.createIndex
+      - this.getCollection
+      - this.logger?.warn
+  - name: init
+    sig: 'init(): Promise<void>'
+    is_async: true
+    lines:
+    - 111
+    - 114
+    detail:
+      calls:
+      - this.createCustomIndexes
+      - this.createDefaultIndexes
+  - name: dangerouslyClearAll
+    sig: 'dangerouslyClearAll(): Promise<void>'
+    is_async: true
+    lines:
+    - 116
+    - 121
+    detail:
+      calls:
+      - this.getCollection
+      - versionsCollection.deleteMany
+      - workspacesCollection.deleteMany
+  - name: getById
+    sig: 'getById(id: string): Promise<StorageWorkspaceType | null>'
+    is_async: true
+    lines:
+    - 127
+    - 148
+    detail:
+      calls:
+      - await collection.findOne
+      - createStorageErrorId
+      - new MastraError
+      - this.getCollection
+      - this.transformWorkspace
+  - name: create
+    sig: 'create(input: { workspace: StorageCreateWorkspaceInput }): Promise<StorageWorkspaceType>'
+    is_async: true
+    lines:
+    - 150
+    - 238
+    detail:
+      calls:
+      - Object.keys
+      - collection.deleteOne
+      - collection.findOne
+      - collection.insertOne
+      - createStorageErrorId
+      - new Date
+      - new MastraError
+      - randomUUID
+      - this.createVersion
+      - this.getCollection
+      - this.serializeWorkspace
+      - |-
+        workspace.name
+                .toLowerCase
+      - |-
+        workspace.name
+                .toLowerCase()
+                .replace
+      - |-
+        workspace.name
+                .toLowerCase()
+                .replace(/[^a-z0-9]+/g, '-')
+                .replace
+  - name: update
+    sig: 'update(input: StorageUpdateWorkspaceInput): Promise<StorageWorkspaceType>'
+    is_async: true
+    lines:
+    - 240
+    - 350
+    detail:
+      calls:
+      - Object.keys
+      - Object.keys(configFields).join
+      - await collection.findOne
+      - collection.updateOne
+      - createStorageErrorId
+      - new Date
+      - new MastraError
+      - randomUUID
+      - this.createVersion
+      - this.extractSnapshotFields
+      - this.getCollection
+      - this.getLatestVersion
+      - this.transformWorkspace
+  - name: delete
+    sig: 'delete(id: string): Promise<void>'
+    is_async: true
+    lines:
+    - 352
+    - 371
+    detail:
+      calls:
+      - collection.deleteOne
+      - createStorageErrorId
+      - new MastraError
+      - this.deleteVersionsByParentId
+      - this.getCollection
+  - name: list
+    sig: 'list(args?: StorageListWorkspacesInput): Promise<StorageListWorkspacesOutput>'
+    is_async: true
+    lines:
+    - 373
+    - 452
+    detail:
+      calls:
+      - Object.entries
+      - calculatePagination
+      - |-
+        collection
+                .find
+      - |-
+        collection
+                .find(filter)
+                .sort
+      - |-
+        collection
+                .find(filter)
+                .sort({ [field]: sortOrder })
+                .skip
+      - collection.countDocuments
+      - createStorageErrorId
+      - cursor.limit
+      - cursor.toArray
+      - new Error
+      - new MastraError
+      - normalizePerPage
+      - results.map
+      - this.getCollection
+      - this.parseOrderBy
+  - name: createVersion
+    sig: 'createVersion(input: CreateWorkspaceVersionInput): Promise<WorkspaceVersion>'
+    is_async: true
+    lines:
+    - 458
+    - 496
+    detail:
+      calls:
+      - collection.insertOne
+      - createStorageErrorId
+      - new Date
+      - new MastraError
+      - this.getCollection
+  - name: getVersion
+    sig: 'getVersion(id: string): Promise<WorkspaceVersion | null>'
+    is_async: true
+    lines:
+    - 498
+    - 519
+    detail:
+      calls:
+      - await collection.findOne
+      - createStorageErrorId
+      - new MastraError
+      - this.getCollection
+      - this.transformVersion
+  - name: getVersionByNumber
+    sig: 'getVersionByNumber(workspaceId: string, versionNumber: number): Promise<WorkspaceVersion | null>'
+    is_async: true
+    lines:
+    - 521
+    - 542
+    detail:
+      calls:
+      - await collection.findOne
+      - createStorageErrorId
+      - new MastraError
+      - this.getCollection
+      - this.transformVersion
+  - name: getLatestVersion
+    sig: 'getLatestVersion(workspaceId: string): Promise<WorkspaceVersion | null>'
+    is_async: true
+    lines:
+    - 544
+    - 565
+    detail:
+      calls:
+      - await collection.find
+      - await collection.find<any>({ workspaceId }).sort
+      - 'await collection.find<any>({ workspaceId }).sort({ versionNumber: -1 }).limit'
+      - 'await collection.find<any>({ workspaceId }).sort({ versionNumber: -1 }).limit(1).toArray'
+      - createStorageErrorId
+      - new MastraError
+      - this.getCollection
+      - this.transformVersion
+  - name: listVersions
+    sig: 'listVersions(input: ListWorkspaceVersionsInput): Promise<ListWorkspaceVersionsOutput>'
+    is_async: true
+    lines:
+    - 567
+    - 633
+    detail:
+      calls:
+      - calculatePagination
+      - |-
+        collection
+                .find
+      - |-
+        collection
+                .find({ workspaceId })
+                .sort
+      - |-
+        collection
+                .find({ workspaceId })
+                .sort({ [field]: sortOrder })
+                .skip
+      - collection.countDocuments
+      - createStorageErrorId
+      - cursor.limit
+      - cursor.toArray
+      - new Error
+      - new MastraError
+      - normalizePerPage
+      - results.map
+      - this.getCollection
+      - this.parseVersionOrderBy
+  - name: deleteVersion
+    sig: 'deleteVersion(id: string): Promise<void>'
+    is_async: true
+    lines:
+    - 635
+    - 650
+    detail:
+      calls:
+      - collection.deleteOne
+      - createStorageErrorId
+      - new MastraError
+      - this.getCollection
+  - name: deleteVersionsByParentId
+    sig: 'deleteVersionsByParentId(workspaceId: string): Promise<void>'
+    is_async: true
+    lines:
+    - 652
+    - 667
+    detail:
+      calls:
+      - collection.deleteMany
+      - createStorageErrorId
+      - new MastraError
+      - this.getCollection
+  - name: countVersions
+    sig: 'countVersions(workspaceId: string): Promise<number>'
+    is_async: true
+    lines:
+    - 669
+    - 684
+    detail:
+      calls:
+      - collection.countDocuments
+      - createStorageErrorId
+      - new MastraError
+      - this.getCollection
+  lines:
+  - 45
+  - 746
+exports:
+- name: MongoDBWorkspacesStorage
+  kind: type
+- name: SNAPSHOT_FIELDS
+  kind: data

@@ -1,0 +1,333 @@
+## Roska File Descriptor — src/tracing.ts
+file: src/tracing.ts
+lines: 525
+purpose: Braintrust Exporter for Mastra Observability This exporter sends observability data to Braintrust. Root spans become top-level Braintrust spans (no trace wrapper). Events are handled as zero-duration spans with matching start/end times.
+imports:
+- sym: '@mastra/core/observability.AnyExportedSpan'
+  kind: typing
+- sym: '@mastra/core/observability.ModelGenerationAttributes'
+  kind: typing
+- sym: '@mastra/core/observability.SpanErrorInfo'
+  kind: typing
+- sym: '@mastra/core/observability.SpanType'
+- sym: '@mastra/core/utils.omitKeys'
+- sym: '@mastra/observability.TrackingExporter'
+- sym: '@mastra/observability.TraceData'
+  kind: typing
+- sym: '@mastra/observability.TrackingExporterConfig'
+  kind: typing
+- sym: braintrust.initLogger
+- sym: braintrust.currentSpan
+- sym: braintrust.Span
+  kind: typing
+- sym: braintrust.Logger
+  kind: typing
+- sym: ./formatter.removeNullish
+- sym: ./formatter.convertAISDKMessage
+- sym: ./metrics.formatUsageMetrics
+- sym: ./thread-reconstruction.reconstructThreadOutput
+- sym: ./thread-reconstruction.ThreadData
+  kind: typing
+- sym: ./thread-reconstruction.ThreadStepData
+  kind: typing
+- sym: ./thread-reconstruction.PendingToolResult
+  kind: typing
+data:
+- name: DEFAULT_SPAN_TYPE
+  type: string
+  val: '''task'''
+- name: SPAN_TYPE_EXCEPTIONS
+  type: Partial<Record<SpanType, string>>
+  val: |-
+    {
+      [SpanType.MODEL_GENERATION]: 'llm',
+      [SpanType.TOOL_CALL]: 'tool',
+      [SpanType.MCP_TOOL_CALL]: 'tool',
+      [SpanType....
+types:
+- name: BraintrustSpanData
+  kind: trait
+  ctx: Extended Braintrust span data that includes span type and thread reconstruction data
+  decorators:
+  - interface
+  fields:
+  - name: span
+    type: Span
+  - name: spanType
+    type: SpanType
+  - name: threadData
+    type: ThreadData
+  - name: pendingToolResults
+    type: Map<string, PendingToolResult>
+  lines:
+  - 24
+  - 30
+- name: BraintrustExporterConfig
+  kind: trait
+  bases:
+  - TrackingExporterConfig
+  decorators:
+  - interface
+  fields:
+  - name: braintrustLogger
+    type: Logger<true>
+  - name: apiKey
+    type: string
+  - name: endpoint
+    type: string
+  - name: tuningParameters
+    type: Record<string, any>
+  lines:
+  - 32
+  - 50
+- name: BraintrustRoot
+  kind: enum
+  decorators:
+  - type
+  variants:
+  - name: Logger<true>
+  - name: Span
+  lines:
+  - 52
+  - 52
+- name: BraintrustSpan
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 53
+  - 53
+- name: BraintrustEvent
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 54
+  - 54
+- name: BraintrustMetadata
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 55
+  - 55
+- name: BraintrustTraceData
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 56
+  - 56
+- name: BraintrustExporter
+  kind: struct
+  ctx: Flags and logger for context-aware mode
+  bases:
+  - TrackingExporter
+  fields:
+  - name: name
+    type: any
+    default: '''braintrust'''
+  methods:
+  - name: constructor
+    sig: 'constructor(config: BraintrustExporterConfig = {})'
+    lines:
+    - 89
+    - 116
+    detail:
+      calls:
+      - super
+      - this.setDisabled
+  - name: getLocalLogger
+    sig: 'getLocalLogger(): Promise<Logger<true> | undefined>'
+    is_async: true
+    vis: private
+    lines:
+    - 118
+    - 135
+    detail:
+      calls:
+      - initLogger
+      - this.logger.error
+      - this.setDisabled
+  - name: startSpan
+    sig: 'startSpan(args: { parent: Span | Logger<true>; span: AnyExportedSpan }): BraintrustSpanData'
+    vis: private
+    lines:
+    - 137
+    - 164
+    detail:
+      calls:
+      - mapSpanType
+      - new Map
+      - parent.startSpan
+      - span.startTime.getTime
+      - this.buildSpanPayload
+  - name: _buildRoot
+    sig: |-
+      _buildRoot(_args: {
+          span: AnyExportedSpan;
+          traceData: BraintrustTraceData;
+        }): Promise<BraintrustRoot | undefined>
+    is_async: true
+    vis: protected
+    lines:
+    - 166
+    - 188
+    detail:
+      calls:
+      - currentSpan
+      - this.getLocalLogger
+  - name: _buildSpan
+    sig: |-
+      _buildSpan(args: {
+          span: AnyExportedSpan;
+          traceData: BraintrustTraceData;
+        }): Promise<BraintrustSpanData | undefined>
+    is_async: true
+    vis: protected
+    lines:
+    - 190
+    - 209
+    detail:
+      calls:
+      - this.startSpan
+      - traceData.getParent
+      - traceData.getRoot
+  - name: _buildEvent
+    sig: |-
+      _buildEvent(args: {
+          span: AnyExportedSpan;
+          traceData: BraintrustTraceData;
+        }): Promise<Span | undefined>
+    is_async: true
+    vis: protected
+    lines:
+    - 211
+    - 224
+    detail:
+      calls:
+      - args.span.startTime.getTime
+      - spanData.span.end
+      - this._buildSpan
+  - name: _updateSpan
+    sig: '_updateSpan(args: { span: AnyExportedSpan; traceData: BraintrustTraceData }): Promise<void>'
+    is_async: true
+    vis: protected
+    lines:
+    - 226
+    - 234
+    detail:
+      calls:
+      - spanData.span.log
+      - this.buildSpanPayload
+      - traceData.getSpan
+  - name: _finishSpan
+    sig: '_finishSpan(args: { span: AnyExportedSpan; traceData: BraintrustTraceData }): Promise<void>'
+    is_async: true
+    vis: protected
+    lines:
+    - 236
+    - 264
+    detail:
+      calls:
+      - span.endTime.getTime
+      - spanData.span.end
+      - spanData.span.log
+      - this.accumulateModelStepData
+      - this.accumulateToolCallResult
+      - this.buildModelGenerationPayload
+      - this.buildSpanPayload
+      - traceData.getSpan
+  - name: _abortSpan
+    sig: '_abortSpan(args: { span: BraintrustSpan; reason: SpanErrorInfo }): Promise<void>'
+    is_async: true
+    vis: protected
+    lines:
+    - 266
+    - 273
+    detail:
+      calls:
+      - spanData.span.end
+      - spanData.span.log
+  - name: accumulateModelStepData
+    sig: 'accumulateModelStepData(span: AnyExportedSpan, traceData: BraintrustTraceData): void'
+    vis: private
+    lines:
+    - 304
+    - 328
+    detail:
+      calls:
+      - modelGenSpanData.threadData.push
+      - output?.toolCalls?.map
+      - this.findModelGenerationAncestor
+  - name: buildModelGenerationPayload
+    sig: 'buildModelGenerationPayload(span: AnyExportedSpan, spanData: BraintrustSpanData): Record<string, any>'
+    vis: private
+    lines:
+    - 358
+    - 394
+    detail:
+      calls:
+      - reconstructThreadOutput
+      - spanData.pendingToolResults.get
+      - this.buildSpanPayload
+      - threadData.some
+  - name: transformInput
+    sig: 'transformInput(input: unknown, spanType: SpanType): unknown'
+    vis: private
+    lines:
+    - 401
+    - 420
+    detail:
+      calls:
+      - '(input as { messages: unknown[] }).messages.map'
+      - Array.isArray
+      - input.map
+  - name: buildSpanPayload
+    sig: 'buildSpanPayload(span: AnyExportedSpan, isCreate = true): Record<string, any>'
+    vis: private
+    lines:
+    - 438
+    - 524
+    detail:
+      calls:
+      - Object.keys
+      - formatUsageMetrics
+      - modelAttr.completionStartTime.getTime
+      - omitKeys
+      - removeNullish
+      - span.startTime.getTime
+      - this.transformInput
+      - this.transformOutput
+  lines:
+  - 75
+  - 525
+functions:
+- name: mapSpanType
+  sig: 'mapSpanType(spanType: SpanType): ''llm'' | ''score'' | ''function'' | ''eval'' | ''task'' | ''tool'''
+  lines:
+  - 71
+  - 73
+exports:
+- name: BraintrustSpanData
+  kind: type
+- name: BraintrustExporterConfig
+  kind: type
+- name: BraintrustRoot
+  kind: type
+- name: BraintrustSpan
+  kind: type
+- name: BraintrustEvent
+  kind: type
+- name: BraintrustMetadata
+  kind: type
+- name: BraintrustTraceData
+  kind: type
+- name: BraintrustExporter
+  kind: type
+- name: mapSpanType
+  kind: func
+- name: DEFAULT_SPAN_TYPE
+  kind: data
+- name: SPAN_TYPE_EXCEPTIONS
+  kind: data
