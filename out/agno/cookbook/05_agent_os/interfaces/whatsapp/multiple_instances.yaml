@@ -1,0 +1,55 @@
+## Roska File Descriptor — whatsapp/multiple_instances.py
+file: whatsapp/multiple_instances.py
+lines: 89
+layer: logic
+purpose: 'Multiple WhatsApp Bot Instances ================================ Deploy multiple agents as separate WhatsApp bots on one server. Each bot needs its own Meta app, phone number, and credentials. Setup: 1. Create two WhatsApp Business apps at https://developers.facebook.com 2. Each app gets its own phone number, access token, and verify token 3. Set each app''s webhook callback URL to its prefix: - Basic Bot       ->  https://myapp.com/basic/webhook - Research Bot     ->  https://myapp.com/web-research/webhook 4. Set environment variables (or pass tokens directly): BASIC_WHATSAPP_ACCESS_TOKEN, BASIC_WHATSAPP_PHONE_NUMBER_ID, BASIC_WHATSAPP_VERIFY_TOKEN RESEARCH_WHATSAPP_ACCESS_TOKEN, RESEARCH_WHATSAPP_PHONE_NUMBER_ID, RESEARCH_WHATSAPP_VERIFY_TOKEN Note: Unlike Slack (where each app can have its own Event Subscription URL), Meta only allows ONE webhook callback URL per WhatsApp Business app. You cannot route two prefixes to the same app — each instance requires a separate Meta app with its own phone number.'
+imports:
+- sym: agno.agent.Agent
+- sym: agno.db.sqlite.sqlite.SqliteDb
+- sym: agno.models.openai.OpenAIChat
+- sym: agno.os.app.AgentOS
+- sym: agno.os.interfaces.whatsapp.Whatsapp
+- sym: agno.tools.websearch.WebSearchTools
+data:
+- name: agent_db
+  type: Any
+  val: SqliteDb(session_table="agent_sessions", db_file="tmp/persistent_memory.db")
+- name: basic_agent
+  type: Any
+  val: |-
+    Agent(
+        name="Basic Agent",
+        model=OpenAIChat(id="gpt-5-mini"),
+        db=agent_db,
+        add_history_to_context=True,
+    ...
+- name: web_research_agent
+  type: Any
+  val: |-
+    Agent(
+        name="Web Research Agent",
+        model=OpenAIChat(id="gpt-5-mini"),
+        db=agent_db,
+        tools=[WebSearchTools(...
+- name: agent_os
+  type: Any
+  val: |-
+    AgentOS(
+        agents=[basic_agent, web_research_agent],
+        interfaces=[
+            Whatsapp(
+                agent=basic_agent,...
+- name: app
+  type: Any
+  val: agent_os.get_app()
+exports:
+- name: agent_db
+  kind: data
+- name: basic_agent
+  kind: data
+- name: web_research_agent
+  kind: data
+- name: agent_os
+  kind: data
+- name: app
+  kind: data

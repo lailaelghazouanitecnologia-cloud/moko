@@ -1,0 +1,258 @@
+## Roska File Descriptor — tools/memory.py
+file: tools/memory.py
+lines: 420
+layer: logic
+imports:
+- sym: agno.db.base.BaseDb
+- sym: agno.db.schemas.UserMemory
+- sym: agno.run.RunContext
+- sym: agno.tools.Toolkit
+- sym: agno.utils.log.log_debug
+- sym: agno.utils.log.log_error
+types:
+- name: MemoryTools
+  kind: struct
+  bases:
+  - Toolkit
+  fields:
+  - name: instructions
+    type: Any
+    default: self.DEFAULT_INSTRUCTIONS
+  - name: db
+    type: Any
+    default: BaseDb
+  - name: DEFAULT_INSTRUCTIONS
+    type: Any
+    default: |-
+      dedent("""\
+              You have access to the Think, Add Memory, Update Memory, Delete Memory, and Analyze tools that will help you manage user memories and analyze their operations. Use these tools as frequently as needed to successfully complete memory management tasks.
+
+              ## How to use the Think, Memory Operations, and Analyze tools:
+
+              1. **Think**
+              - Purpose: A scratchpad for planning memory operations, brainstorming memory content, and refining your approach. You never reveal your "Think" content to the user.
+              - Usage: Call `think` whenever you need to figure out what memory operations to perform, analyze requirements, or decide on strategy.
+
+              2. **Get Memories**
+              - Purpose: Retrieves a list of memories from the database for the current user.
+              - Usage: Call `get_memories` when you need to retrieve memories for the current user.
+
+              3. **Add Memory**
+              - Purpose: Creates new memories in the database with specified content and metadata.
+              - Usage: Call `add_memory` with memory content and optional topics when you need to store new information.
+
+              4. **Update Memory**
+              - Purpose: Modifies existing memories in the database by memory ID.
+              - Usage: Call `update_memory` with a memory ID and the fields you want to change. Only specify the fields that need updating.
+
+              5. **Delete Memory**
+              - Purpose: Removes memories from the database by memory ID.
+              - Usage: Call `delete_memory` with a memory ID when a memory is no longer needed or requested to be removed.
+
+              6. **Analyze**
+              - Purpose: Evaluate whether the memory operations results are correct and sufficient. If not, go back to "Think" or use memory operations with refined parameters.
+              - Usage: Call `analyze` after performing memory operations to verify:
+                  - Success: Did the operation complete successfully?
+                  - Accuracy: Is the memory content correct and well-formed?
+                  - Completeness: Are all required fields populated appropriately?
+                  - Errors: Were there any failures or unexpected behaviors?
+
+              **Important Guidelines**:
+              - Do not include your internal chain-of-thought in direct user responses.
+              - Use "Think" to reason internally. These notes are never exposed to the user.
+              - When you provide a final answer to the user, be clear, concise, and based on the memory operation results.
+              - If memory operations fail or produce unexpected results, acknowledge limitations and explain what went wrong.
+              - Always verify memory IDs exist before attempting updates or deletions.
+              - Use descriptive topics and clear memory content to make memories easily searchable and understandable.\
+          """)
+  - name: FEW_SHOT_EXAMPLES
+    type: Any
+    default: |-
+      dedent("""\
+              You can refer to the examples below as guidance for how to use each tool.
+
+              ### Examples
+
+              #### Example 1: Adding User Preferences
+
+              User: I prefer vegetarian recipes and I'm allergic to nuts.
+              Think: I should store the user's dietary preferences. I should create a memory with this information and use relevant topics for easy retrieval.
+              Add Memory: memory="User prefers vegetarian recipes and is allergic to nuts", topics=["dietary_preferences", "allergies", "food"]
+              Analyze: Successfully created memory with dietary preferences. The topics are well-chosen for future retrieval. This should help with future food-related requests.
+
+              Final Answer: Noted. I've stored your dietary preferences. I'll remember that you prefer vegetarian recipes and have a nut allergy for future reference.
+
+              #### Example 2: Updating Existing Information
+
+              User: Actually, update my dietary info - I'm now eating fish too, so I'm pescatarian.
+              Think: The user wants to update their previous dietary preference from vegetarian to pescatarian. I need to find their existing dietary memory and update it.
+              Update Memory: memory_id="previous_memory_id", memory="User follows pescatarian diet (vegetarian + fish) and is allergic to nuts", topics=["dietary_preferences", "allergies", "food", "pescatarian"]
+              Analyze: Successfully updated the dietary preference memory. The content now accurately reflects pescatarian diet and maintains the nut allergy information.
+
+              Final Answer: I've updated your dietary preferences to reflect that you follow a pescatarian diet (vegetarian plus fish) while maintaining your nut allergy information.
+
+              #### Example 3: Removing Outdated Information
+
+              User: Please forget about my old work schedule - it's completely changed.
+              Think: The user wants me to delete their old work schedule memory since it's no longer relevant. I should find and remove that memory.
+              Delete Memory: memory_id="work_schedule_memory_id"
+              Analyze: Successfully deleted the outdated work schedule memory. The old information won't interfere with future scheduling requests.
+
+              Final Answer: I've removed your old work schedule information. Feel free to share your new schedule when you're ready, and I'll store the updated information.
+
+              #### Example 4: Retrieving Memories
+
+              User: What have you remembered about me?
+              Think: The user wants to retrieve memories about themselves. I should use the get_memories tool to retrieve the memories.
+              Get Memories:
+              Analyze: Successfully retrieved the memories about the user. The memories are relevant to the user's preferences and activities.
+
+              Final Answer: I've retrieved the memories about you. You like to hike in the mountains on weekends and travel to new places and experience different cultures. You are planning to travel to Africa in December.\
+          """)
+  methods:
+  - name: __init__
+    sig: |-
+      __init__(
+              self,
+              db: BaseDb,
+              enable_get_memories: bool = True,
+              enable_add_memory: bool = True,
+              enable_update_memory: bool = True,
+              enable_delete_memory: bool = True,
+              enable_analyze: bool = True,
+              enable_think: bool = True,
+              instructions: Optional[str] = None,
+              add_instructions: bool = True,
+              add_few_shot: bool = True,
+              few_shot_examples: Optional[str] = None,
+              all: bool = False,
+              **kwargs,
+          )
+    lines:
+    - 14
+    - 64
+    detail:
+      calls:
+      - super
+      - super().__init__
+      - tools.append
+  - name: think
+    sig: 'think(self, run_context: RunContext, thought: str) -> str'
+    lines:
+    - 66
+    - 95
+    detail:
+      calls:
+      - '"\n".join'
+      - dedent
+      - |-
+        dedent(
+                        f"""Memory Thoughts:
+                        {thoughts}
+                        """
+                    ).strip
+      - log_debug
+      - log_error
+      - run_context.session_state["memory_thoughts"].append
+  - name: get_memories
+    sig: 'get_memories(self, run_context: RunContext) -> str'
+    lines:
+    - 97
+    - 124
+    detail:
+      calls:
+      - json.dumps
+      - log_error
+      - memory.to_dict
+      - run_context.session_state["memory_operations"].append
+      - self.db.get_user_memories
+      - str
+  - name: add_memory
+    sig: |-
+      add_memory(
+              self,
+              run_context: RunContext,
+              memory: str,
+              topics: Optional[List[str]] = None,
+          ) -> str
+    lines:
+    - 126
+    - 183
+    detail:
+      calls:
+      - UserMemory
+      - created_memory.to_dict
+      - json.dumps
+      - log_debug
+      - log_error
+      - run_context.session_state["memory_operations"].append
+      - self.db.upsert_user_memory
+      - str
+      - uuid4
+  - name: update_memory
+    sig: |-
+      update_memory(
+              self,
+              run_context: RunContext,
+              memory_id: str,
+              memory: Optional[str] = None,
+              topics: Optional[List[str]] = None,
+          ) -> str
+    lines:
+    - 185
+    - 249
+    detail:
+      calls:
+      - UserMemory
+      - json.dumps
+      - log_debug
+      - log_error
+      - run_context.session_state["memory_operations"].append
+      - self.db.get_user_memory
+      - self.db.upsert_user_memory
+      - str
+      - updated_result.to_dict
+  - name: delete_memory
+    sig: |-
+      delete_memory(
+              self,
+              run_context: RunContext,
+              memory_id: str,
+          ) -> str
+    lines:
+    - 251
+    - 307
+    detail:
+      calls:
+      - existing_memory.to_dict
+      - json.dumps
+      - log_debug
+      - log_error
+      - run_context.session_state["memory_operations"].append
+      - self.db.delete_user_memory
+      - self.db.get_user_memory
+      - str
+  - name: analyze
+    sig: 'analyze(self, run_context: RunContext, analysis: str) -> str'
+    lines:
+    - 309
+    - 336
+    detail:
+      calls:
+      - '"\n".join'
+      - dedent
+      - |-
+        dedent(
+                        f"""Memory Analysis:
+                        {analysis_log}
+                        """
+                    ).strip
+      - log_debug
+      - log_error
+      - run_context.session_state["memory_analysis"].append
+  lines:
+  - 13
+  - 420
+exports:
+- name: MemoryTools
+  kind: type

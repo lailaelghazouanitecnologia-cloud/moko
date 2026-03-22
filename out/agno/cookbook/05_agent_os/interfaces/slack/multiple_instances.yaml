@@ -1,0 +1,56 @@
+## Roska File Descriptor — slack/multiple_instances.py
+file: slack/multiple_instances.py
+lines: 87
+layer: logic
+purpose: 'Multiple Slack Bot Instances ============================ Deploy multiple agents as separate Slack bots in one workspace. Each bot has its own identity, token, and signing secret. Setup: 1. Create two Slack apps at https://api.slack.com/apps 2. Install both apps to the same workspace 3. Set each app''s Event Subscription URL to its prefix: - @ResearchBot  ->  https://myapp.com/research/events - @AnalystBot   ->  https://myapp.com/analyst/events 4. Set environment variables (or pass tokens directly): RESEARCH_SLACK_TOKEN, RESEARCH_SLACK_SIGNING_SECRET ANALYST_SLACK_TOKEN,  ANALYST_SLACK_SIGNING_SECRET Slack scopes (per app): app_mentions:read, assistant:write, chat:write, im:history'
+imports:
+- sym: agno.agent.Agent
+- sym: agno.db.sqlite.sqlite.SqliteDb
+- sym: agno.models.openai.OpenAIChat
+- sym: agno.os.app.AgentOS
+- sym: agno.os.interfaces.slack.Slack
+- sym: agno.tools.websearch.WebSearchTools
+data:
+- name: agent_db
+  type: Any
+  val: SqliteDb(session_table="agent_sessions", db_file="tmp/persistent_memory.db")
+- name: research_agent
+  type: Any
+  val: |-
+    Agent(
+        name="Research Agent",
+        model=OpenAIChat(id="gpt-5-mini"),
+        tools=[WebSearchTools()],
+        db=agent_db,
+    ...
+- name: analyst_agent
+  type: Any
+  val: |-
+    Agent(
+        name="Analyst Agent",
+        model=OpenAIChat(id="gpt-5-mini"),
+        instructions=[
+            "You are a data analy...
+- name: agent_os
+  type: Any
+  val: |-
+    AgentOS(
+        agents=[research_agent, analyst_agent],
+        interfaces=[
+            Slack(
+                agent=research_agent,
+     ...
+- name: app
+  type: Any
+  val: agent_os.get_app()
+exports:
+- name: agent_db
+  kind: data
+- name: research_agent
+  kind: data
+- name: analyst_agent
+  kind: data
+- name: agent_os
+  kind: data
+- name: app
+  kind: data

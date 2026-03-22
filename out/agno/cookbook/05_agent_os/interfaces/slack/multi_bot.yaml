@@ -1,0 +1,58 @@
+## Roska File Descriptor — slack/multi_bot.py
+file: slack/multi_bot.py
+lines: 84
+layer: logic
+purpose: 'Multi-Bot Streaming Test ======================== Two agents on the same Slack workspace, mounted on different prefixes. Both use streaming mode. Tests session isolation: each bot gets its own DB session even when responding in the same thread. Setup: 1. Two Slack apps (Ace + Dash) installed to the same workspace 2. Event Subscription URLs: Ace  -> https://<tunnel>/ace/events Dash -> https://<tunnel>/slack/events 3. Environment variables: ACE_SLACK_TOKEN,  ACE_SLACK_SIGNING_SECRET DASH_SLACK_TOKEN, DASH_SLACK_SIGNING_SECRET 4. ngrok: ngrok http --domain=<your-subdomain>.ngrok-free.dev 7777 Slack scopes (per app): app_mentions:read, assistant:write, chat:write, im:history'
+imports:
+- sym: agno.agent.Agent
+- sym: agno.db.sqlite.SqliteDb
+- sym: agno.models.openai.OpenAIChat
+- sym: agno.os.app.AgentOS
+- sym: agno.os.interfaces.slack.Slack
+data:
+- name: db
+  type: Any
+  val: SqliteDb(session_table="agent_sessions", db_file="tmp/multi_bot.db")
+- name: ace_agent
+  type: Any
+  val: |-
+    Agent(
+        id="ace",
+        name="Ace",
+        model=OpenAIChat(id="gpt-4.1-mini"),
+        db=db,
+        instructions=[
+            "You...
+- name: dash_agent
+  type: Any
+  val: |-
+    Agent(
+        id="dash",
+        name="Dash",
+        model=OpenAIChat(id="gpt-4.1-mini"),
+        db=db,
+        instructions=[
+            "Y...
+- name: agent_os
+  type: Any
+  val: |-
+    AgentOS(
+        agents=[ace_agent, dash_agent],
+        interfaces=[
+            Slack(
+                agent=ace_agent,
+                pr...
+- name: app
+  type: Any
+  val: agent_os.get_app()
+exports:
+- name: db
+  kind: data
+- name: ace_agent
+  kind: data
+- name: dash_agent
+  kind: data
+- name: agent_os
+  kind: data
+- name: app
+  kind: data

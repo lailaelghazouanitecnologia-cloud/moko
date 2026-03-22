@@ -1,0 +1,390 @@
+## Roska File Descriptor — models/test_client_caching.py
+file: models/test_client_caching.py
+lines: 364
+layer: test
+purpose: 'Tests for httpx client caching and resource leak prevention. This test suite verifies that: 1. Global httpx clients are singletons and reused across models 2. OpenAI clients are cached per model instance 3. No new httpx clients are created on every request'
+imports:
+- sym: httpx
+- sym: pytest
+- sym: agno.models.openai.chat.OpenAIChat
+- sym: agno.models.openai.responses.OpenAIResponses
+- sym: agno.utils.http.aclose_default_clients
+- sym: agno.utils.http.close_sync_client
+- sym: agno.utils.http.get_default_async_client
+- sym: agno.utils.http.get_default_sync_client
+- sym: agno.utils.http.set_default_async_client
+- sym: agno.utils.http.set_default_sync_client
+types:
+- name: TestGlobalHttpxClients
+  kind: struct
+  ctx: Test suite for global httpx client singleton pattern.
+  methods:
+  - name: teardown_method
+    sig: teardown_method(self)
+    lines:
+    - 33
+    - 35
+    detail:
+      calls:
+      - close_sync_client
+  - name: test_sync_client_is_singleton
+    sig: test_sync_client_is_singleton(self)
+    is_async: true
+    decorators:
+    - pytest.mark.asyncio
+    lines:
+    - 38
+    - 44
+    detail:
+      calls:
+      - get_default_sync_client
+      - isinstance
+  - name: test_async_client_is_singleton
+    sig: test_async_client_is_singleton(self)
+    is_async: true
+    decorators:
+    - pytest.mark.asyncio
+    lines:
+    - 47
+    - 53
+    detail:
+      calls:
+      - get_default_async_client
+      - isinstance
+  - name: test_sync_and_async_clients_are_different
+    sig: test_sync_and_async_clients_are_different(self)
+    lines:
+    - 55
+    - 60
+    detail:
+      calls:
+      - get_default_async_client
+      - get_default_sync_client
+  - name: test_closed_sync_client_gets_recreated
+    sig: test_closed_sync_client_gets_recreated(self)
+    lines:
+    - 62
+    - 71
+    detail:
+      calls:
+      - client1.close
+      - get_default_sync_client
+      - isinstance
+  - name: test_closed_async_client_gets_recreated
+    sig: test_closed_async_client_gets_recreated(self)
+    is_async: true
+    decorators:
+    - pytest.mark.asyncio
+    lines:
+    - 74
+    - 83
+    detail:
+      calls:
+      - client1.aclose
+      - get_default_async_client
+      - isinstance
+  lines:
+  - 30
+  - 83
+- name: TestOpenAIChatClientCaching
+  kind: struct
+  ctx: Test suite for OpenAIChat client caching.
+  methods:
+  - name: teardown_method
+    sig: teardown_method(self)
+    lines:
+    - 89
+    - 91
+    detail:
+      calls:
+      - close_sync_client
+  - name: test_sync_client_is_cached
+    sig: test_sync_client_is_cached(self)
+    lines:
+    - 93
+    - 102
+    detail:
+      calls:
+      - OpenAIChat
+      - model.get_client
+  - name: test_async_client_is_cached
+    sig: test_async_client_is_cached(self)
+    lines:
+    - 104
+    - 113
+    detail:
+      calls:
+      - OpenAIChat
+      - model.get_async_client
+  - name: test_multiple_models_share_global_httpx_client
+    sig: test_multiple_models_share_global_httpx_client(self)
+    lines:
+    - 115
+    - 129
+    detail:
+      calls:
+      - OpenAIChat
+      - get_default_sync_client
+      - isinstance
+      - model1.get_client
+      - model2.get_client
+      - model3.get_client
+  - name: test_sync_client_uses_global_httpx_client
+    sig: test_sync_client_uses_global_httpx_client(self)
+    lines:
+    - 131
+    - 139
+    detail:
+      calls:
+      - OpenAIChat
+      - get_default_sync_client
+      - model.get_client
+  - name: test_async_client_uses_global_httpx_client
+    sig: test_async_client_uses_global_httpx_client(self)
+    lines:
+    - 141
+    - 149
+    detail:
+      calls:
+      - OpenAIChat
+      - get_default_async_client
+      - model.get_async_client
+  lines:
+  - 86
+  - 149
+- name: TestOpenAIResponsesClientCaching
+  kind: struct
+  ctx: Test suite for OpenAIResponses client caching.
+  methods:
+  - name: teardown_method
+    sig: teardown_method(self)
+    lines:
+    - 155
+    - 157
+    detail:
+      calls:
+      - close_sync_client
+  - name: test_sync_client_is_cached
+    sig: test_sync_client_is_cached(self)
+    lines:
+    - 159
+    - 168
+    detail:
+      calls:
+      - OpenAIResponses
+      - model.get_client
+  - name: test_async_client_is_cached
+    sig: test_async_client_is_cached(self)
+    lines:
+    - 170
+    - 179
+    detail:
+      calls:
+      - OpenAIResponses
+      - model.get_async_client
+  - name: test_uses_global_httpx_client
+    sig: test_uses_global_httpx_client(self)
+    lines:
+    - 181
+    - 193
+    detail:
+      calls:
+      - OpenAIResponses
+      - get_default_async_client
+      - get_default_sync_client
+      - model.get_async_client
+      - model.get_client
+  lines:
+  - 152
+  - 193
+- name: TestCustomHttpClient
+  kind: struct
+  ctx: Test suite for custom httpx client support.
+  methods:
+  - name: teardown_method
+    sig: teardown_method(self)
+    lines:
+    - 199
+    - 201
+    detail:
+      calls:
+      - close_sync_client
+  - name: test_custom_sync_client_is_respected
+    sig: test_custom_sync_client_is_respected(self)
+    lines:
+    - 203
+    - 212
+    detail:
+      calls:
+      - OpenAIChat
+      - custom_client.close
+      - httpx.Client
+      - model.get_client
+  - name: test_custom_async_client_is_respected
+    sig: test_custom_async_client_is_respected(self)
+    lines:
+    - 214
+    - 222
+    detail:
+      calls:
+      - OpenAIChat
+      - httpx.AsyncClient
+      - model.get_async_client
+  lines:
+  - 196
+  - 222
+- name: TestAsyncCleanup
+  kind: struct
+  ctx: Test suite for async cleanup functionality.
+  methods:
+  - name: test_aclose_default_clients_closes_both
+    sig: test_aclose_default_clients_closes_both(self)
+    is_async: true
+    decorators:
+    - pytest.mark.asyncio
+    lines:
+    - 229
+    - 241
+    detail:
+      calls:
+      - aclose_default_clients
+      - get_default_async_client
+      - get_default_sync_client
+  - name: test_clients_recreated_after_async_close
+    sig: test_clients_recreated_after_async_close(self)
+    is_async: true
+    decorators:
+    - pytest.mark.asyncio
+    lines:
+    - 244
+    - 256
+    detail:
+      calls:
+      - aclose_default_clients
+      - get_default_async_client
+      - get_default_sync_client
+  lines:
+  - 225
+  - 256
+- name: TestSetGlobalClients
+  kind: struct
+  ctx: Test suite for setting custom global clients.
+  methods:
+  - name: teardown_method
+    sig: teardown_method(self)
+    lines:
+    - 262
+    - 264
+    detail:
+      calls:
+      - close_sync_client
+  - name: test_set_custom_sync_client_affects_all_models
+    sig: test_set_custom_sync_client_affects_all_models(self)
+    lines:
+    - 266
+    - 278
+    detail:
+      calls:
+      - OpenAIChat
+      - OpenAIResponses
+      - custom_client.close
+      - httpx.Client
+      - httpx.Limits
+      - model1.get_client
+      - model2.get_client
+      - set_default_sync_client
+  - name: test_set_custom_async_client_affects_all_models
+    sig: test_set_custom_async_client_affects_all_models(self)
+    lines:
+    - 280
+    - 291
+    detail:
+      calls:
+      - OpenAIChat
+      - OpenAIResponses
+      - httpx.AsyncClient
+      - httpx.Limits
+      - model1.get_async_client
+      - model2.get_async_client
+      - set_default_async_client
+  - name: test_custom_client_persists_across_multiple_calls
+    sig: test_custom_client_persists_across_multiple_calls(self)
+    lines:
+    - 293
+    - 304
+    detail:
+      calls:
+      - OpenAIChat
+      - custom_client.close
+      - httpx.Client
+      - httpx.Limits
+      - model.get_client
+      - range
+      - set_default_sync_client
+  - name: test_set_client_overrides_previous_default
+    sig: test_set_client_overrides_previous_default(self)
+    lines:
+    - 306
+    - 320
+    detail:
+      calls:
+      - custom_client.close
+      - get_default_sync_client
+      - httpx.Client
+      - httpx.Limits
+      - set_default_sync_client
+  lines:
+  - 259
+  - 320
+- name: TestResourceLeakPrevention
+  kind: struct
+  ctx: Test suite for resource leak prevention.
+  methods:
+  - name: teardown_method
+    sig: teardown_method(self)
+    lines:
+    - 326
+    - 328
+    detail:
+      calls:
+      - close_sync_client
+  - name: test_no_new_httpx_clients_created_per_request
+    sig: test_no_new_httpx_clients_created_per_request(self)
+    lines:
+    - 330
+    - 343
+    detail:
+      calls:
+      - OpenAIChat
+      - get_default_sync_client
+      - model.get_client
+      - range
+  - name: test_multiple_models_share_single_global_client
+    sig: test_multiple_models_share_single_global_client(self)
+    lines:
+    - 345
+    - 360
+    detail:
+      calls:
+      - OpenAIChat
+      - OpenAIResponses
+      - get_default_sync_client
+      - model.get_client
+  lines:
+  - 323
+  - 360
+exports:
+- name: TestGlobalHttpxClients
+  kind: type
+- name: TestOpenAIChatClientCaching
+  kind: type
+- name: TestOpenAIResponsesClientCaching
+  kind: type
+- name: TestCustomHttpClient
+  kind: type
+- name: TestAsyncCleanup
+  kind: type
+- name: TestSetGlobalClients
+  kind: type
+- name: TestResourceLeakPrevention
+  kind: type

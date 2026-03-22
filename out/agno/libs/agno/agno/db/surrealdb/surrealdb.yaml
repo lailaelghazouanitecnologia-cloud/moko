@@ -1,0 +1,1027 @@
+## Roska File Descriptor — surrealdb/surrealdb.py
+file: surrealdb/surrealdb.py
+lines: 2006
+layer: logic
+imports:
+- sym: agno.db.base.BaseDb
+- sym: agno.db.base.SessionType
+- sym: agno.db.postgres.utils.get_dates_to_calculate_metrics_for
+- sym: agno.db.schemas.UserMemory
+- sym: agno.db.schemas.culture.CulturalKnowledge
+- sym: agno.db.schemas.evals.EvalFilterType
+- sym: agno.db.schemas.evals.EvalRunRecord
+- sym: agno.db.schemas.evals.EvalType
+- sym: agno.db.schemas.knowledge.KnowledgeRow
+- sym: agno.db.surrealdb.utils
+- sym: agno.db.surrealdb.metrics.bulk_upsert_metrics
+- sym: agno.db.surrealdb.metrics.calculate_date_metrics
+- sym: agno.db.surrealdb.metrics.fetch_all_sessions_data
+- sym: agno.db.surrealdb.metrics.get_all_sessions_for_metrics_calculation
+- sym: agno.db.surrealdb.metrics.get_metrics_calculation_starting_date
+- sym: agno.db.surrealdb.models.TableType
+- sym: agno.db.surrealdb.models.deserialize_cultural_knowledge
+- sym: agno.db.surrealdb.models.deserialize_eval_run_record
+- sym: agno.db.surrealdb.models.deserialize_knowledge_row
+- sym: agno.db.surrealdb.models.deserialize_session
+- sym: agno.db.surrealdb.models.deserialize_sessions
+- sym: agno.db.surrealdb.models.deserialize_user_memories
+- sym: agno.db.surrealdb.models.deserialize_user_memory
+- sym: agno.db.surrealdb.models.desurrealize_eval_run_record
+- sym: agno.db.surrealdb.models.desurrealize_session
+- sym: agno.db.surrealdb.models.desurrealize_user_memory
+- sym: agno.db.surrealdb.models.get_schema
+- sym: agno.db.surrealdb.models.get_session_type
+- sym: agno.db.surrealdb.models.serialize_cultural_knowledge
+- sym: agno.db.surrealdb.models.serialize_eval_run_record
+- sym: agno.db.surrealdb.models.serialize_knowledge_row
+- sym: agno.db.surrealdb.models.serialize_session
+- sym: agno.db.surrealdb.models.serialize_user_memory
+- sym: agno.db.surrealdb.queries.COUNT_QUERY
+- sym: agno.db.surrealdb.queries.WhereClause
+- sym: agno.db.surrealdb.queries.order_limit_start
+- sym: agno.db.surrealdb.utils.build_client
+- sym: agno.session.Session
+- sym: agno.utils.log.log_debug
+- sym: agno.utils.log.log_error
+- sym: agno.utils.log.log_info
+- sym: agno.utils.string.generate_id
+types:
+- name: SurrealDb
+  kind: struct
+  bases:
+  - BaseDb
+  fields:
+  - name: _client
+    type: Any
+    default: client
+  - name: _db_url
+    type: Any
+    default: db_url
+  - name: _db_creds
+    type: Any
+    default: db_creds
+  - name: _db_ns
+    type: Any
+    default: db_ns
+  - name: _db_db
+    type: Any
+    default: db_db
+  - name: _users_table_name
+    type: Any
+    default: str
+  - name: _agents_table_name
+    type: Any
+    default: str
+  - name: _teams_table_name
+    type: Any
+    default: str
+  - name: _workflows_table_name
+    type: Any
+    default: str
+  methods:
+  - name: __init__
+    sig: |-
+      __init__(
+              self,
+              client: Optional[Union[BlockingWsSurrealConnection, BlockingHttpSurrealConnection]],
+              db_url: str,
+              db_creds: dict[str, str],
+              db_ns: str,
+              db_db: str,
+              session_table: Optional[str] = None,
+              memory_table: Optional[str] = None,
+              metrics_table: Optional[str] = None,
+              eval_table: Optional[str] = None,
+              knowledge_table: Optional[str] = None,
+              culture_table: Optional[str] = None,
+              traces_table: Optional[str] = None,
+              spans_table: Optional[str] = None,
+              id: Optional[str] = None,
+          )
+    lines:
+    - 57
+    - 117
+    detail:
+      calls:
+      - generate_id
+      - super
+      - super().__init__
+  - name: client
+    sig: client(self) -> Union[BlockingWsSurrealConnection, BlockingHttpSurrealConnection]
+    decorators:
+    - property
+    lines:
+    - 120
+    - 123
+    detail:
+      calls:
+      - build_client
+  - name: table_names
+    sig: table_names(self) -> dict[TableType, str]
+    decorators:
+    - property
+    lines:
+    - 126
+    - 139
+    detail: {}
+  - name: table_exists
+    sig: 'table_exists(self, table_name: str) -> bool'
+    lines:
+    - 141
+    - 153
+    detail:
+      calls:
+      - Exception
+      - response.get
+      - self._query_one
+  - name: get_latest_schema_version
+    sig: get_latest_schema_version(self)
+    lines:
+    - 199
+    - 201
+    detail: {}
+  - name: upsert_schema_version
+    sig: 'upsert_schema_version(self, version: str) -> None'
+    lines:
+    - 203
+    - 205
+    detail: {}
+  - name: clear_sessions
+    sig: clear_sessions(self) -> None
+    lines:
+    - 237
+    - 244
+    detail:
+      calls:
+      - self._get_table
+      - self.client.delete
+  - name: delete_session
+    sig: 'delete_session(self, session_id: str, user_id: Optional[str] = None) -> bool'
+    lines:
+    - 246
+    - 257
+    detail:
+      calls:
+      - RecordID
+      - bool
+      - isinstance
+      - len
+      - self._get_table
+      - self.client.delete
+      - self.client.query
+  - name: delete_sessions
+    sig: 'delete_sessions(self, session_ids: list[str], user_id: Optional[str] = None) -> None'
+    lines:
+    - 259
+    - 270
+    detail:
+      calls:
+      - RecordID
+      - self._get_table
+      - self.client.query
+  - name: get_session
+    sig: |-
+      get_session(
+              self,
+              session_id: str,
+              session_type: SessionType,
+              user_id: Optional[str] = None,
+              deserialize: Optional[bool] = True,
+          ) -> Optional[Union[Session, Dict[str, Any]]]
+    lines:
+    - 272
+    - 324
+    detail:
+      calls:
+      - RecordID
+      - WhereClause
+      - dedent
+      - deserialize_session
+      - raw.get
+      - self._get_table
+      - self._query_one
+      - where.and_
+      - where.build
+  - name: get_sessions
+    sig: |-
+      get_sessions(
+              self,
+              session_type: Optional[SessionType] = None,
+              user_id: Optional[str] = None,
+              component_id: Optional[str] = None,
+              session_name: Optional[str] = None,
+              start_timestamp: Optional[int] = None,
+              end_timestamp: Optional[int] = None,
+              limit: Optional[int] = None,
+              page: Optional[int] = None,
+              sort_by: Optional[str] = None,
+              sort_order: Optional[str] = None,
+              deserialize: Optional[bool] = True,
+          ) -> Union[List[Session], Tuple[List[Dict[str, Any]], int]]
+    lines:
+    - 326
+    - 420
+    detail:
+      calls:
+      - RecordID
+      - ValueError
+      - WhereClause
+      - dedent
+      - deserialize_sessions
+      - desurrealize_session
+      - list
+      - order_limit_start
+      - self._count
+      - self._get_table
+      - self._query
+      - where.and_
+      - where.build
+  - name: rename_session
+    sig: |-
+      rename_session(
+              self,
+              session_id: str,
+              session_type: SessionType,
+              session_name: str,
+              user_id: Optional[str] = None,
+              deserialize: Optional[bool] = True,
+          ) -> Optional[Union[Session, Dict[str, Any]]]
+    lines:
+    - 422
+    - 465
+    detail:
+      calls:
+      - RecordID
+      - deserialize_session
+      - isinstance
+      - len
+      - self._get_table
+      - self._query_one
+      - self.client.query
+  - name: upsert_session
+    sig: |-
+      upsert_session(
+              self, session: Session, deserialize: Optional[bool] = True
+          ) -> Optional[Union[Session, Dict[str, Any]]]
+    lines:
+    - 467
+    - 508
+    detail:
+      calls:
+      - RecordID
+      - deserialize_session
+      - existing[0].get
+      - get_session_type
+      - isinstance
+      - len
+      - self._get_table
+      - self._query_one
+      - self.client.query
+      - serialize_session
+  - name: upsert_sessions
+    sig: |-
+      upsert_sessions(
+              self, sessions: List[Session], deserialize: Optional[bool] = True
+          ) -> List[Union[Session, Dict[str, Any]]]
+    lines:
+    - 510
+    - 549
+    detail:
+      calls:
+      - RecordID
+      - deserialize_sessions
+      - get_session_type
+      - list
+      - self._get_table
+      - self._query_one
+      - serialize_session
+      - sessions_raw.append
+  - name: clear_memories
+    sig: clear_memories(self) -> None
+    lines:
+    - 552
+    - 559
+    detail:
+      calls:
+      - self._get_table
+      - self.client.delete
+  - name: clear_cultural_knowledge
+    sig: clear_cultural_knowledge(self) -> None
+    lines:
+    - 562
+    - 569
+    detail:
+      calls:
+      - self._get_table
+      - self.client.delete
+  - name: delete_cultural_knowledge
+    sig: 'delete_cultural_knowledge(self, id: str) -> None'
+    lines:
+    - 571
+    - 582
+    detail:
+      calls:
+      - RecordID
+      - self._get_table
+      - self.client.delete
+  - name: get_cultural_knowledge
+    sig: |-
+      get_cultural_knowledge(
+              self, id: str, deserialize: Optional[bool] = True
+          ) -> Optional[Union[CulturalKnowledge, Dict[str, Any]]]
+    lines:
+    - 584
+    - 609
+    detail:
+      calls:
+      - RecordID
+      - deserialize_cultural_knowledge
+      - self._get_table
+      - self.client.select
+  - name: get_all_cultural_knowledge
+    sig: |-
+      get_all_cultural_knowledge(
+              self,
+              agent_id: Optional[str] = None,
+              team_id: Optional[str] = None,
+              name: Optional[str] = None,
+              limit: Optional[int] = None,
+              page: Optional[int] = None,
+              sort_by: Optional[str] = None,
+              sort_order: Optional[str] = None,
+              deserialize: Optional[bool] = True,
+          ) -> Union[List[CulturalKnowledge], Tuple[List[Dict[str, Any]], int]]
+    lines:
+    - 611
+    - 677
+    detail:
+      calls:
+      - ''' AND ''.join'
+      - COUNT_QUERY.format
+      - RecordID
+      - chr
+      - deserialize_cultural_knowledge
+      - enumerate
+      - name.lower
+      - order_limit_start
+      - self._get_table
+      - self._query
+      - self._query_one
+      - where_clauses.append
+  - name: upsert_cultural_knowledge
+    sig: |-
+      upsert_cultural_knowledge(
+              self, cultural_knowledge: CulturalKnowledge, deserialize: Optional[bool] = True
+          ) -> Optional[Union[CulturalKnowledge, Dict[str, Any]]]
+    lines:
+    - 679
+    - 705
+    detail:
+      calls:
+      - deserialize_cultural_knowledge
+      - self._get_table
+      - self.client.upsert
+      - serialize_cultural_knowledge
+  - name: delete_user_memory
+    sig: 'delete_user_memory(self, memory_id: str, user_id: Optional[str] = None) -> None'
+    lines:
+    - 707
+    - 729
+    detail:
+      calls:
+      - RecordID
+      - self._get_table
+      - self.client.delete
+      - self.client.query
+  - name: delete_user_memories
+    sig: 'delete_user_memories(self, memory_ids: List[str], user_id: Optional[str] = None) -> None'
+    lines:
+    - 731
+    - 749
+    detail:
+      calls:
+      - RecordID
+      - self._get_table
+      - self.client.query
+  - name: get_all_memory_topics
+    sig: 'get_all_memory_topics(self, user_id: Optional[str] = None) -> List[str]'
+    lines:
+    - 751
+    - 786
+    detail:
+      calls:
+      - RecordID
+      - dedent
+      - list
+      - self._get_table
+      - self._query
+  - name: get_user_memory
+    sig: |-
+      get_user_memory(
+              self, memory_id: str, deserialize: Optional[bool] = True, user_id: Optional[str] = None
+          ) -> Optional[Union[UserMemory, Dict[str, Any]]]
+    lines:
+    - 788
+    - 819
+    detail:
+      calls:
+      - RecordID
+      - deserialize_user_memory
+      - self._get_table
+      - self._query_one
+  - name: get_user_memories
+    sig: |-
+      get_user_memories(
+              self,
+              user_id: Optional[str] = None,
+              agent_id: Optional[str] = None,
+              team_id: Optional[str] = None,
+              topics: Optional[List[str]] = None,
+              search_content: Optional[str] = None,
+              limit: Optional[int] = None,
+              page: Optional[int] = None,
+              sort_by: Optional[str] = None,
+              sort_order: Optional[str] = None,
+              deserialize: Optional[bool] = True,
+          ) -> Union[List[UserMemory], Tuple[List[Dict[str, Any]], int]]
+    lines:
+    - 821
+    - 888
+    detail:
+      calls:
+      - RecordID
+      - WhereClause
+      - dedent
+      - deserialize_user_memories
+      - desurrealize_user_memory
+      - order_limit_start
+      - self._count
+      - self._get_table
+      - self._query
+      - where.and_
+      - where.build
+  - name: get_user_memory_stats
+    sig: |-
+      get_user_memory_stats(
+              self,
+              limit: Optional[int] = None,
+              page: Optional[int] = None,
+              user_id: Optional[str] = None,
+          ) -> Tuple[List[Dict[str, Any]], int]
+    lines:
+    - 890
+    - 956
+    detail:
+      calls:
+      - RecordID
+      - WhereClause
+      - dedent
+      - int
+      - list
+      - order_limit_start
+      - row["last_memory_updated_at"].timestamp
+      - self._get_table
+      - self._query
+      - self._query_one
+      - where.and_
+      - where.build
+  - name: upsert_user_memory
+    sig: |-
+      upsert_user_memory(
+              self, memory: UserMemory, deserialize: Optional[bool] = True
+          ) -> Optional[Union[UserMemory, Dict[str, Any]]]
+    lines:
+    - 958
+    - 990
+    detail:
+      calls:
+      - RecordID
+      - deserialize_user_memory
+      - desurrealize_user_memory
+      - self._get_table
+      - self._query_one
+      - serialize_user_memory
+  - name: upsert_memories
+    sig: |-
+      upsert_memories(
+              self, memories: List[UserMemory], deserialize: Optional[bool] = True
+          ) -> List[Union[UserMemory, Dict[str, Any]]]
+    lines:
+    - 992
+    - 1037
+    detail:
+      calls:
+      - RecordID
+      - deserialize_user_memories
+      - desurrealize_user_memory
+      - list
+      - raw.append
+      - self._get_table
+      - self._query_one
+      - serialize_user_memory
+  - name: get_metrics
+    sig: |-
+      get_metrics(
+              self,
+              starting_date: Optional[date] = None,
+              ending_date: Optional[date] = None,
+          ) -> Tuple[List[Dict[str, Any]], Optional[int]]
+    lines:
+    - 1040
+    - 1112
+    detail:
+      calls:
+      - WhereClause
+      - datetime.combine
+      - datetime.combine(ending_date, datetime.min.time()).replace
+      - datetime.combine(starting_date, datetime.min.time()).replace
+      - datetime.min.time
+      - dedent
+      - dict
+      - hasattr
+      - int
+      - isinstance
+      - max
+      - r["updated_at"].timestamp
+      - self._get_table
+      - self._query
+      - str
+      - transformed.get
+      - transformed["created_at"].timestamp
+      - transformed["date"].timestamp
+      - transformed["updated_at"].timestamp
+      - transformed_results.append
+      - where.and_
+      - where.build
+  - name: calculate_metrics
+    sig: calculate_metrics(self) -> Optional[List[Dict[str, Any]]]
+    lines:
+    - 1114
+    - 1177
+    detail:
+      calls:
+      - all_sessions_data.get
+      - any
+      - bulk_upsert_metrics
+      - calculate_date_metrics
+      - date_to_process.isoformat
+      - datetime.combine
+      - datetime.combine(dates_to_process[-1] + timedelta(days=1), datetime.min.time()).replace
+      - datetime.combine(dates_to_process[0], datetime.min.time()).replace
+      - datetime.min.time
+      - fetch_all_sessions_data
+      - get_all_sessions_for_metrics_calculation
+      - get_dates_to_calculate_metrics_for
+      - get_metrics_calculation_starting_date
+      - int
+      - len
+      - log_debug
+      - log_error
+      - log_info
+      - metrics_records.append
+      - self._get_table
+      - sessions_for_date.values
+      - start_timestamp.timestamp
+      - timedelta
+  - name: clear_knowledge
+    sig: clear_knowledge(self) -> None
+    lines:
+    - 1180
+    - 1187
+    detail:
+      calls:
+      - self._get_table
+      - self.client.delete
+  - name: delete_knowledge_content
+    sig: 'delete_knowledge_content(self, id: str)'
+    lines:
+    - 1189
+    - 1196
+    detail:
+      calls:
+      - RecordID
+      - self._get_table
+      - self.client.delete
+  - name: get_knowledge_content
+    sig: 'get_knowledge_content(self, id: str) -> Optional[KnowledgeRow]'
+    lines:
+    - 1198
+    - 1210
+    detail:
+      calls:
+      - RecordID
+      - deserialize_knowledge_row
+      - self._get_table
+      - self._query_one
+  - name: get_knowledge_contents
+    sig: |-
+      get_knowledge_contents(
+              self,
+              limit: Optional[int] = None,
+              page: Optional[int] = None,
+              sort_by: Optional[str] = None,
+              sort_order: Optional[str] = None,
+              linked_to: Optional[str] = None,
+          ) -> Tuple[List[KnowledgeRow], int]
+    lines:
+    - 1212
+    - 1256
+    detail:
+      calls:
+      - WhereClause
+      - dedent
+      - deserialize_knowledge_row
+      - order_limit_start
+      - self._count
+      - self._get_table
+      - self._query
+      - where.and_
+      - where.build
+  - name: upsert_knowledge_content
+    sig: 'upsert_knowledge_content(self, knowledge_row: KnowledgeRow) -> Optional[KnowledgeRow]'
+    lines:
+    - 1258
+    - 1273
+    detail:
+      calls:
+      - RecordID
+      - deserialize_knowledge_row
+      - self._get_table
+      - self._query_one
+      - serialize_knowledge_row
+  - name: clear_evals
+    sig: clear_evals(self) -> None
+    lines:
+    - 1276
+    - 1283
+    detail:
+      calls:
+      - self._get_table
+      - self.client.delete
+  - name: create_eval_run
+    sig: 'create_eval_run(self, eval_run: EvalRunRecord) -> Optional[EvalRunRecord]'
+    lines:
+    - 1285
+    - 1303
+    detail:
+      calls:
+      - RecordID
+      - deserialize_eval_run_record
+      - self._get_table
+      - self._query_one
+      - serialize_eval_run_record
+  - name: delete_eval_runs
+    sig: 'delete_eval_runs(self, eval_run_ids: List[str]) -> None'
+    lines:
+    - 1305
+    - 1313
+    detail:
+      calls:
+      - RecordID
+      - self._get_table
+      - self.client.query
+  - name: get_eval_run
+    sig: |-
+      get_eval_run(
+              self, eval_run_id: str, deserialize: Optional[bool] = True
+          ) -> Optional[Union[EvalRunRecord, Dict[str, Any]]]
+    lines:
+    - 1315
+    - 1337
+    detail:
+      calls:
+      - RecordID
+      - deserialize_eval_run_record
+      - desurrealize_eval_run_record
+      - self._get_table
+      - self._query_one
+  - name: get_eval_runs
+    sig: |-
+      get_eval_runs(
+              self,
+              limit: Optional[int] = None,
+              page: Optional[int] = None,
+              sort_by: Optional[str] = None,
+              sort_order: Optional[str] = None,
+              agent_id: Optional[str] = None,
+              team_id: Optional[str] = None,
+              workflow_id: Optional[str] = None,
+              model_id: Optional[str] = None,
+              filter_type: Optional[EvalFilterType] = None,
+              eval_type: Optional[List[EvalType]] = None,
+              deserialize: Optional[bool] = True,
+          ) -> Union[List[EvalRunRecord], Tuple[List[Dict[str, Any]], int]]
+    lines:
+    - 1339
+    - 1409
+    detail:
+      calls:
+      - RecordID
+      - WhereClause
+      - dedent
+      - deserialize_eval_run_record
+      - list
+      - order_limit_start
+      - self._count
+      - self._get_table
+      - self._query
+      - where.and_
+      - where.build
+  - name: rename_eval_run
+    sig: |-
+      rename_eval_run(
+              self, eval_run_id: str, name: str, deserialize: Optional[bool] = True
+          ) -> Optional[Union[EvalRunRecord, Dict[str, Any]]]
+    lines:
+    - 1411
+    - 1441
+    detail:
+      calls:
+      - RecordID
+      - dedent
+      - deserialize_eval_run_record
+      - self._get_table
+      - self._query_one
+  - name: upsert_trace
+    sig: 'upsert_trace(self, trace: "Trace") -> None'
+    lines:
+    - 1444
+    - 1548
+    detail:
+      calls:
+      - ''', ''.join'
+      - (trace.end_time - existing_start_time).total_seconds
+      - RecordID
+      - datetime.fromisoformat
+      - existing.get
+      - get_component_level
+      - int
+      - isinstance
+      - log_error
+      - self._get_table
+      - self._query_one
+      - trace.to_dict
+      - trace_dict.get
+      - trace_dict.pop
+      - trace_dict["created_at"].replace
+      - trace_dict["end_time"].replace
+      - trace_dict["start_time"].replace
+      - update_fields.append
+  - name: get_trace
+    sig: |-
+      get_trace(
+              self,
+              trace_id: Optional[str] = None,
+              run_id: Optional[str] = None,
+          )
+    lines:
+    - 1550
+    - 1607
+    detail:
+      calls:
+      - RecordID
+      - count_result.get
+      - dedent
+      - error_result.get
+      - log_debug
+      - log_error
+      - self._deserialize_trace
+      - self._get_table
+      - self._query_one
+      - trace_data.get
+  - name: get_traces
+    sig: |-
+      get_traces(
+              self,
+              run_id: Optional[str] = None,
+              session_id: Optional[str] = None,
+              user_id: Optional[str] = None,
+              agent_id: Optional[str] = None,
+              team_id: Optional[str] = None,
+              workflow_id: Optional[str] = None,
+              status: Optional[str] = None,
+              start_time: Optional[datetime] = None,
+              end_time: Optional[datetime] = None,
+              limit: Optional[int] = 20,
+              page: Optional[int] = 1,
+          ) -> tuple[List, int]
+    lines:
+    - 1609
+    - 1700
+    detail:
+      calls:
+      - WhereClause
+      - count_result.get
+      - dedent
+      - error_result.get
+      - log_error
+      - order_limit_start
+      - result_traces.append
+      - self._count
+      - self._deserialize_trace
+      - self._get_table
+      - self._query
+      - self._query_one
+      - trace_data.get
+      - where.and_
+      - where.build
+  - name: get_trace_stats
+    sig: |-
+      get_trace_stats(
+              self,
+              user_id: Optional[str] = None,
+              agent_id: Optional[str] = None,
+              team_id: Optional[str] = None,
+              workflow_id: Optional[str] = None,
+              start_time: Optional[datetime] = None,
+              end_time: Optional[datetime] = None,
+              limit: Optional[int] = 20,
+              page: Optional[int] = 1,
+          ) -> tuple[List[Dict[str, Any]], int]
+    lines:
+    - 1702
+    - 1795
+    detail:
+      calls:
+      - WhereClause
+      - count_result.get
+      - dedent
+      - dict
+      - isinstance
+      - log_error
+      - order_limit_start
+      - self._get_table
+      - self._query
+      - self._query_one
+      - stat.get
+      - stats_list.append
+      - where.and_
+      - where.build
+  - name: _deserialize_trace
+    sig: '_deserialize_trace(self, trace_data: dict) -> "Trace"'
+    vis: protected
+    lines:
+    - 1797
+    - 1812
+    detail:
+      calls:
+      - Trace.from_dict
+      - isinstance
+      - trace_data.get
+      - trace_data[field].isoformat
+  - name: create_span
+    sig: 'create_span(self, span: "Span") -> None'
+    lines:
+    - 1815
+    - 1842
+    detail:
+      calls:
+      - RecordID
+      - datetime.fromisoformat
+      - isinstance
+      - log_error
+      - self._get_table
+      - self._query_one
+      - span.to_dict
+      - span_dict.get
+      - span_dict["created_at"].replace
+      - span_dict["end_time"].replace
+      - span_dict["start_time"].replace
+  - name: create_spans
+    sig: 'create_spans(self, spans: List) -> None'
+    lines:
+    - 1844
+    - 1875
+    detail:
+      calls:
+      - RecordID
+      - datetime.fromisoformat
+      - isinstance
+      - log_error
+      - self._get_table
+      - self._query_one
+      - span.to_dict
+      - span_dict.get
+      - span_dict["created_at"].replace
+      - span_dict["end_time"].replace
+      - span_dict["start_time"].replace
+  - name: get_span
+    sig: 'get_span(self, span_id: str)'
+    lines:
+    - 1877
+    - 1898
+    detail:
+      calls:
+      - RecordID
+      - log_error
+      - self._deserialize_span
+      - self._get_table
+      - self._query_one
+  - name: get_spans
+    sig: |-
+      get_spans(
+              self,
+              trace_id: Optional[str] = None,
+              parent_span_id: Optional[str] = None,
+              limit: Optional[int] = 1000,
+          ) -> List
+    lines:
+    - 1900
+    - 1942
+    detail:
+      calls:
+      - WhereClause
+      - dedent
+      - log_error
+      - self._deserialize_span
+      - self._get_table
+      - self._query
+      - where.and_
+      - where.build
+  - name: _deserialize_span
+    sig: '_deserialize_span(self, span_data: dict) -> "Span"'
+    vis: protected
+    lines:
+    - 1944
+    - 1959
+    detail:
+      calls:
+      - Span.from_dict
+      - isinstance
+      - span_data.get
+      - span_data[field].isoformat
+  - name: get_learning
+    sig: |-
+      get_learning(
+              self,
+              learning_type: str,
+              user_id: Optional[str] = None,
+              agent_id: Optional[str] = None,
+              team_id: Optional[str] = None,
+              session_id: Optional[str] = None,
+              namespace: Optional[str] = None,
+              entity_id: Optional[str] = None,
+              entity_type: Optional[str] = None,
+          ) -> Optional[Dict[str, Any]]
+    lines:
+    - 1962
+    - 1973
+    detail:
+      calls:
+      - NotImplementedError
+  - name: upsert_learning
+    sig: |-
+      upsert_learning(
+              self,
+              id: str,
+              learning_type: str,
+              content: Dict[str, Any],
+              user_id: Optional[str] = None,
+              agent_id: Optional[str] = None,
+              team_id: Optional[str] = None,
+              session_id: Optional[str] = None,
+              namespace: Optional[str] = None,
+              entity_id: Optional[str] = None,
+              entity_type: Optional[str] = None,
+              metadata: Optional[Dict[str, Any]] = None,
+          ) -> None
+    lines:
+    - 1975
+    - 1989
+    detail:
+      calls:
+      - NotImplementedError
+  - name: delete_learning
+    sig: 'delete_learning(self, id: str) -> bool'
+    lines:
+    - 1991
+    - 1992
+    detail:
+      calls:
+      - NotImplementedError
+  - name: get_learnings
+    sig: |-
+      get_learnings(
+              self,
+              learning_type: Optional[str] = None,
+              user_id: Optional[str] = None,
+              agent_id: Optional[str] = None,
+              team_id: Optional[str] = None,
+              session_id: Optional[str] = None,
+              namespace: Optional[str] = None,
+              entity_id: Optional[str] = None,
+              entity_type: Optional[str] = None,
+              limit: Optional[int] = None,
+          ) -> List[Dict[str, Any]]
+    lines:
+    - 1994
+    - 2006
+    detail:
+      calls:
+      - NotImplementedError
+  lines:
+  - 56
+  - 2006
+exports:
+- name: SurrealDb
+  kind: type

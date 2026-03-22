@@ -1,0 +1,281 @@
+## Roska File Descriptor — utils/tokens.py
+file: utils/tokens.py
+lines: 657
+layer: logic
+imports:
+- sym: pydantic.BaseModel
+- sym: agno.media.Audio
+- sym: agno.media.File
+- sym: agno.media.Image
+- sym: agno.media.Video
+- sym: agno.models.message.Message
+- sym: agno.tools.function.Function
+- sym: agno.utils.log.log_warning
+data:
+- name: DEFAULT_IMAGE_WIDTH
+  type: int
+  val: '1024'
+- name: DEFAULT_IMAGE_HEIGHT
+  type: int
+  val: '1024'
+functions:
+- name: _get_tiktoken_encoding
+  sig: '_get_tiktoken_encoding(model_id: str)'
+  vis: protected
+  decorators:
+  - lru_cache(maxsize=16)
+  lines:
+  - 22
+  - 34
+  detail:
+    calls:
+    - log_warning
+    - model_id.lower
+    - tiktoken.encoding_for_model
+    - tiktoken.get_encoding
+- name: _get_hf_tokenizer
+  sig: '_get_hf_tokenizer(model_id: str)'
+  vis: protected
+  decorators:
+  - lru_cache(maxsize=16)
+  lines:
+  - 38
+  - 61
+  detail:
+    calls:
+    - Tokenizer.from_pretrained
+    - log_warning
+    - model_id.lower
+- name: _format_function_definitions
+  sig: '_format_function_definitions(tools: List[Dict[str, Any]]) -> str'
+  vis: protected
+  lines:
+  - 98
+  - 133
+  detail:
+    calls:
+    - '"\n".join'
+    - _format_object_parameters
+    - function.get
+    - lines.append
+    - parameters.get
+    - tool.get
+- name: _format_object_parameters
+  sig: '_format_object_parameters(parameters: Dict[str, Any], indent: int) -> str'
+  vis: protected
+  lines:
+  - 136
+  - 168
+  detail:
+    calls:
+    - '"\n".join'
+    - _format_type
+    - lines.append
+    - max
+    - parameters.get
+    - properties.items
+    - props.get
+- name: _format_type
+  sig: '_format_type(props: Dict[str, Any], indent: int) -> str'
+  vis: protected
+  lines:
+  - 171
+  - 214
+  detail:
+    calls:
+    - '" | ".join'
+    - _format_object_parameters
+    - _format_type
+    - props.get
+- name: get_image_type
+  sig: 'get_image_type(data: bytes) -> Optional[str]'
+  lines:
+  - 225
+  - 244
+  detail:
+    calls:
+    - len
+- name: _parse_image_dimensions_from_bytes
+  sig: '_parse_image_dimensions_from_bytes(data: bytes, img_type: Optional[str] = None) -> Tuple[int, int]'
+  vis: protected
+  lines:
+  - 247
+  - 298
+  detail:
+    calls:
+    - f.read
+    - f.seek
+    - get_image_type
+    - io.BytesIO
+    - ord
+    - struct.unpack
+- name: _get_image_dimensions
+  sig: '_get_image_dimensions(image: Image) -> Tuple[int, int]'
+  vis: protected
+  lines:
+  - 301
+  - 325
+  detail:
+    calls:
+    - _parse_image_dimensions_from_bytes
+    - f.read
+    - httpx.get
+    - image.mime_type.split
+    - open
+- name: count_file_tokens
+  sig: 'count_file_tokens(file: File) -> int'
+  lines:
+  - 328
+  - 373
+  detail:
+    calls:
+    - Path
+    - file.format.lower
+    - file.format.lower().lstrip
+    - file.url.split
+    - int
+    - isinstance
+    - len
+    - path.exists
+    - path.stat
+    - path.suffix.lower
+    - path.suffix.lower().lstrip
+    - response.headers.get
+    - url_path.rsplit
+    - url_path.rsplit(".", 1)[-1].lower
+    - urllib.request.Request
+    - urllib.request.urlopen
+- name: count_tool_tokens
+  sig: |-
+    count_tool_tokens(
+        tools: Sequence[Union[Function, Dict[str, Any]]],
+        model_id: str = "gpt-4o",
+    ) -> int
+  lines:
+  - 376
+  - 395
+  detail:
+    calls:
+    - _format_function_definitions
+    - count_text_tokens
+    - isinstance
+    - tool.to_dict
+    - tool_dicts.append
+- name: count_schema_tokens
+  sig: |-
+    count_schema_tokens(
+        output_schema: Optional[Union[Dict, Type["BaseModel"]]],
+        model_id: str = "gpt-4o",
+    ) -> int
+  lines:
+  - 398
+  - 420
+  detail:
+    calls:
+    - count_text_tokens
+    - isinstance
+    - issubclass
+    - json.dumps
+    - output_schema.model_json_schema
+- name: count_text_tokens
+  sig: 'count_text_tokens(text: str, model_id: str = "gpt-4o") -> int'
+  lines:
+  - 423
+  - 434
+  detail:
+    calls:
+    - _select_tokenizer
+    - len
+    - tokenizer.encode
+- name: count_image_tokens
+  sig: 'count_image_tokens(image: Image) -> int'
+  lines:
+  - 463
+  - 489
+  detail:
+    calls:
+    - _get_image_dimensions
+    - int
+    - math.ceil
+    - max
+    - min
+- name: count_audio_tokens
+  sig: 'count_audio_tokens(audio: Audio) -> int'
+  lines:
+  - 501
+  - 506
+  detail:
+    calls:
+    - int
+- name: count_video_tokens
+  sig: 'count_video_tokens(video: Video) -> int'
+  lines:
+  - 523
+  - 548
+  detail:
+    calls:
+    - int
+    - math.ceil
+    - max
+    - min
+- name: _count_message_tokens
+  sig: '_count_message_tokens(message: Message, model_id: str = "gpt-4o") -> int'
+  vis: protected
+  lines:
+  - 573
+  - 632
+  detail:
+    calls:
+    - '" ".join'
+    - Image
+    - _count_media_tokens
+    - count_image_tokens
+    - count_text_tokens
+    - image_url_data.get
+    - isinstance
+    - item.get
+    - json.dumps
+    - message.get_content
+    - str
+    - text_parts.append
+    - tool_call["function"].get
+- name: count_tokens
+  sig: |-
+    count_tokens(
+        messages: List[Message],
+        tools: Optional[List[Union[Function, Dict[str, Any]]]] = None,
+        model_id: str = "gpt-4o",
+        output_schema: Optional[Union[Dict, Type["BaseModel"]]] = None,
+    ) -> int
+  lines:
+  - 635
+  - 657
+  detail:
+    calls:
+    - _count_message_tokens
+    - count_schema_tokens
+    - count_tool_tokens
+    - model_id.lower
+exports:
+- name: get_image_type
+  kind: func
+- name: count_file_tokens
+  kind: func
+- name: count_tool_tokens
+  kind: func
+- name: count_schema_tokens
+  kind: func
+- name: count_text_tokens
+  kind: func
+- name: count_image_tokens
+  kind: func
+- name: count_audio_tokens
+  kind: func
+- name: count_video_tokens
+  kind: func
+- name: count_tokens
+  kind: func
+- name: DEFAULT_IMAGE_WIDTH
+  kind: data
+- name: DEFAULT_IMAGE_HEIGHT
+  kind: data

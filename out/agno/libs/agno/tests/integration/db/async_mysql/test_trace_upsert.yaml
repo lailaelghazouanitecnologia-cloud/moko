@@ -1,0 +1,96 @@
+## Roska File Descriptor — async_mysql/test_trace_upsert.py
+file: async_mysql/test_trace_upsert.py
+lines: 183
+layer: test
+purpose: 'Test script to reproduce the UniqueViolation race condition in upsert_trace. This script demonstrates the race condition that occurs when multiple concurrent calls to upsert_trace() attempt to insert the same trace_id. The race condition window: 1. Task A: SELECT - finds no existing trace 2. Task B: SELECT - finds no existing trace (before A''s INSERT commits) 3. Task A: INSERT - succeeds 4. Task B: INSERT - FAILS with IntegrityError (Duplicate entry)'
+imports:
+- sym: asyncio
+- sym: agno.db.mysql.AsyncMySQLDb
+- sym: agno.tracing.schemas.Trace
+functions:
+- name: create_test_trace
+  sig: 'create_test_trace(trace_id: str, name: str, task_id: int) -> Trace'
+  lines:
+  - 22
+  - 41
+  detail:
+    calls:
+    - Trace
+    - datetime.now
+- name: concurrent_create_trace
+  sig: |-
+    concurrent_create_trace(
+        db: AsyncMySQLDb,
+        trace: Trace,
+        task_id: int,
+        barrier: asyncio.Barrier,
+    ) -> dict
+  is_async: true
+  lines:
+  - 44
+  - 81
+  detail:
+    calls:
+    - barrier.wait
+    - db.upsert_trace
+    - print
+    - str
+    - type
+- name: cleanup_trace
+  sig: 'cleanup_trace(db: AsyncMySQLDb, trace_id: str)'
+  is_async: true
+  lines:
+  - 84
+  - 94
+  detail:
+    calls:
+    - db._get_table
+    - db.async_session_factory
+    - delete
+    - delete(table).where
+    - print
+    - sess.begin
+    - sess.execute
+- name: run_race_test
+  sig: 'run_race_test(db: AsyncMySQLDb, num_tasks: int = 10)'
+  is_async: true
+  lines:
+  - 97
+  - 133
+  detail:
+    calls:
+    - asyncio.Barrier
+    - asyncio.create_task
+    - asyncio.gather
+    - concurrent_create_trace
+    - create_test_trace
+    - isinstance
+    - print
+    - range
+    - sum
+    - uuid.uuid4
+- name: main
+  sig: main()
+  is_async: true
+  lines:
+  - 136
+  - 179
+  detail:
+    calls:
+    - AsyncMySQLDb
+    - db._get_table
+    - db.db_engine.dispose
+    - print
+    - range
+    - run_race_test
+exports:
+- name: create_test_trace
+  kind: func
+- name: concurrent_create_trace
+  kind: func
+- name: cleanup_trace
+  kind: func
+- name: run_race_test
+  kind: func
+- name: main
+  kind: func

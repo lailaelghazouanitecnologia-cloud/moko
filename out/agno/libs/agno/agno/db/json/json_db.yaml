@@ -1,0 +1,969 @@
+## Roska File Descriptor — json/json_db.py
+file: json/json_db.py
+lines: 1850
+layer: logic
+imports:
+- sym: agno.db.base.BaseDb
+- sym: agno.db.base.SessionType
+- sym: agno.db.json.utils.apply_sorting
+- sym: agno.db.json.utils.calculate_date_metrics
+- sym: agno.db.json.utils.deserialize_cultural_knowledge_from_db
+- sym: agno.db.json.utils.fetch_all_sessions_data
+- sym: agno.db.json.utils.get_dates_to_calculate_metrics_for
+- sym: agno.db.json.utils.serialize_cultural_knowledge_for_db
+- sym: agno.db.schemas.culture.CulturalKnowledge
+- sym: agno.db.schemas.evals.EvalFilterType
+- sym: agno.db.schemas.evals.EvalRunRecord
+- sym: agno.db.schemas.evals.EvalType
+- sym: agno.db.schemas.knowledge.KnowledgeRow
+- sym: agno.db.schemas.memory.UserMemory
+- sym: agno.session.AgentSession
+- sym: agno.session.Session
+- sym: agno.session.TeamSession
+- sym: agno.session.WorkflowSession
+- sym: agno.utils.log.log_debug
+- sym: agno.utils.log.log_error
+- sym: agno.utils.log.log_info
+- sym: agno.utils.log.log_warning
+- sym: agno.utils.string.generate_id
+types:
+- name: JsonDb
+  kind: struct
+  bases:
+  - BaseDb
+  fields:
+  - name: db_path
+    type: Any
+    default: Path(db_path or os.path.join(os.getcwd(), "agno_json_db"))
+  methods:
+  - name: __init__
+    sig: |-
+      __init__(
+              self,
+              db_path: Optional[str] = None,
+              session_table: Optional[str] = None,
+              culture_table: Optional[str] = None,
+              memory_table: Optional[str] = None,
+              metrics_table: Optional[str] = None,
+              eval_table: Optional[str] = None,
+              knowledge_table: Optional[str] = None,
+              traces_table: Optional[str] = None,
+              spans_table: Optional[str] = None,
+              id: Optional[str] = None,
+          )
+    lines:
+    - 31
+    - 76
+    detail:
+      calls:
+      - Path
+      - generate_id
+      - os.getcwd
+      - os.path.join
+      - super
+      - super().__init__
+  - name: table_exists
+    sig: 'table_exists(self, table_name: str) -> bool'
+    lines:
+    - 78
+    - 80
+    detail: {}
+  - name: _read_json_file
+    sig: '_read_json_file(self, filename: str, create_table_if_not_found: Optional[bool] = True) -> List[Dict[str, Any]]'
+    vis: protected
+    lines:
+    - 82
+    - 111
+    detail:
+      calls:
+      - json.dump
+      - json.load
+      - log_error
+      - open
+      - self.db_path.mkdir
+  - name: _write_json_file
+    sig: '_write_json_file(self, filename: str, data: List[Dict[str, Any]]) -> None'
+    vis: protected
+    lines:
+    - 113
+    - 134
+    detail:
+      calls:
+      - json.dump
+      - log_error
+      - open
+      - self.db_path.mkdir
+  - name: get_latest_schema_version
+    sig: get_latest_schema_version(self)
+    lines:
+    - 136
+    - 138
+    detail: {}
+  - name: upsert_schema_version
+    sig: 'upsert_schema_version(self, version: str) -> None'
+    lines:
+    - 140
+    - 142
+    detail: {}
+  - name: delete_session
+    sig: 'delete_session(self, session_id: str, user_id: Optional[str] = None) -> bool'
+    lines:
+    - 146
+    - 179
+    detail:
+      calls:
+      - len
+      - log_debug
+      - log_error
+      - s.get
+      - self._read_json_file
+      - self._write_json_file
+  - name: delete_sessions
+    sig: 'delete_sessions(self, session_ids: List[str], user_id: Optional[str] = None) -> None'
+    lines:
+    - 181
+    - 203
+    detail:
+      calls:
+      - log_debug
+      - log_error
+      - s.get
+      - self._read_json_file
+      - self._write_json_file
+  - name: get_session
+    sig: |-
+      get_session(
+              self,
+              session_id: str,
+              session_type: SessionType,
+              user_id: Optional[str] = None,
+              deserialize: Optional[bool] = True,
+          ) -> Optional[Union[AgentSession, TeamSession, WorkflowSession, Dict[str, Any]]]
+    lines:
+    - 205
+    - 252
+    detail:
+      calls:
+      - AgentSession.from_dict
+      - TeamSession.from_dict
+      - ValueError
+      - WorkflowSession.from_dict
+      - log_error
+      - self._read_json_file
+      - session_data.get
+  - name: get_sessions
+    sig: |-
+      get_sessions(
+              self,
+              session_type: Optional[SessionType] = None,
+              user_id: Optional[str] = None,
+              component_id: Optional[str] = None,
+              session_name: Optional[str] = None,
+              start_timestamp: Optional[int] = None,
+              end_timestamp: Optional[int] = None,
+              limit: Optional[int] = None,
+              page: Optional[int] = None,
+              sort_by: Optional[str] = None,
+              sort_order: Optional[str] = None,
+              deserialize: Optional[bool] = True,
+          ) -> Union[List[Session], Tuple[List[Dict[str, Any]], int]]
+    lines:
+    - 254
+    - 347
+    detail:
+      calls:
+      - AgentSession.from_dict
+      - TeamSession.from_dict
+      - ValueError
+      - WorkflowSession.from_dict
+      - apply_sorting
+      - filtered_sessions.append
+      - isinstance
+      - len
+      - log_error
+      - self._read_json_file
+      - session_data.get
+      - session_data.get("session_data", {}).get
+      - session_name.lower
+      - stored_name.lower
+  - name: rename_session
+    sig: |-
+      rename_session(
+              self,
+              session_id: str,
+              session_type: SessionType,
+              session_name: str,
+              user_id: Optional[str] = None,
+              deserialize: Optional[bool] = True,
+          ) -> Optional[Union[Session, Dict[str, Any]]]
+    lines:
+    - 349
+    - 391
+    detail:
+      calls:
+      - AgentSession.from_dict
+      - TeamSession.from_dict
+      - ValueError
+      - WorkflowSession.from_dict
+      - enumerate
+      - log_debug
+      - log_error
+      - self._read_json_file
+      - self._write_json_file
+      - session.get
+  - name: upsert_session
+    sig: |-
+      upsert_session(
+              self, session: Session, deserialize: Optional[bool] = True
+          ) -> Optional[Union[Session, Dict[str, Any]]]
+    lines:
+    - 393
+    - 439
+    detail:
+      calls:
+      - enumerate
+      - existing_session.get
+      - int
+      - isinstance
+      - log_error
+      - self._matches_session_key
+      - self._read_json_file
+      - self._write_json_file
+      - session.to_dict
+      - session_dict.get
+      - sessions.append
+      - time.time
+  - name: upsert_sessions
+    sig: |-
+      upsert_sessions(
+              self, sessions: List[Session], deserialize: Optional[bool] = True, preserve_updated_at: bool = False
+          ) -> List[Union[Session, Dict[str, Any]]]
+    lines:
+    - 441
+    - 476
+    detail:
+      calls:
+      - len
+      - log_error
+      - log_info
+      - results.append
+      - self.upsert_session
+  - name: delete_user_memory
+    sig: 'delete_user_memory(self, memory_id: str, user_id: Optional[str] = None)'
+    lines:
+    - 489
+    - 522
+    detail:
+      calls:
+      - len
+      - log_debug
+      - log_error
+      - m.get
+      - memory_to_delete.get
+      - self._read_json_file
+      - self._write_json_file
+  - name: delete_user_memories
+    sig: 'delete_user_memories(self, memory_ids: List[str], user_id: Optional[str] = None) -> None'
+    lines:
+    - 524
+    - 549
+    detail:
+      calls:
+      - filtered_memory_ids.append
+      - len
+      - log_debug
+      - log_error
+      - m.get
+      - memory.get
+      - self._read_json_file
+      - self._write_json_file
+  - name: get_all_memory_topics
+    sig: get_all_memory_topics(self) -> List[str]
+    lines:
+    - 551
+    - 569
+    detail:
+      calls:
+      - isinstance
+      - list
+      - log_error
+      - memory.get
+      - self._read_json_file
+      - set
+      - topics.update
+  - name: get_user_memory
+    sig: |-
+      get_user_memory(
+              self,
+              memory_id: str,
+              deserialize: Optional[bool] = True,
+              user_id: Optional[str] = None,
+          ) -> Optional[Union[UserMemory, Dict[str, Any]]]
+    lines:
+    - 571
+    - 604
+    detail:
+      calls:
+      - UserMemory.from_dict
+      - log_error
+      - memory_data.get
+      - self._read_json_file
+  - name: get_user_memories
+    sig: |-
+      get_user_memories(
+              self,
+              user_id: Optional[str] = None,
+              agent_id: Optional[str] = None,
+              team_id: Optional[str] = None,
+              topics: Optional[List[str]] = None,
+              search_content: Optional[str] = None,
+              limit: Optional[int] = None,
+              page: Optional[int] = None,
+              sort_by: Optional[str] = None,
+              sort_order: Optional[str] = None,
+              deserialize: Optional[bool] = True,
+          ) -> Union[List[UserMemory], Tuple[List[Dict[str, Any]], int]]
+    lines:
+    - 606
+    - 662
+    detail:
+      calls:
+      - UserMemory.from_dict
+      - any
+      - apply_sorting
+      - filtered_memories.append
+      - len
+      - log_error
+      - memory_content.lower
+      - memory_data.get
+      - search_content.lower
+      - self._read_json_file
+      - str
+  - name: get_user_memory_stats
+    sig: |-
+      get_user_memory_stats(
+              self, limit: Optional[int] = None, page: Optional[int] = None, user_id: Optional[str] = None
+          ) -> Tuple[List[Dict[str, Any]], int]
+    lines:
+    - 664
+    - 714
+    detail:
+      calls:
+      - len
+      - list
+      - log_error
+      - memory.get
+      - self._read_json_file
+      - stats_list.sort
+      - user_stats.values
+  - name: upsert_user_memory
+    sig: |-
+      upsert_user_memory(
+              self, memory: UserMemory, deserialize: Optional[bool] = True
+          ) -> Optional[Union[UserMemory, Dict[str, Any]]]
+    lines:
+    - 716
+    - 748
+    detail:
+      calls:
+      - UserMemory.from_dict
+      - enumerate
+      - existing_memory.get
+      - hasattr
+      - int
+      - log_warning
+      - memories.append
+      - memory.to_dict
+      - self._read_json_file
+      - self._write_json_file
+      - str
+      - time.time
+      - uuid4
+  - name: upsert_memories
+    sig: |-
+      upsert_memories(
+              self, memories: List[UserMemory], deserialize: Optional[bool] = True, preserve_updated_at: bool = False
+          ) -> List[Union[UserMemory, Dict[str, Any]]]
+    lines:
+    - 750
+    - 784
+    detail:
+      calls:
+      - len
+      - log_error
+      - log_info
+      - results.append
+      - self.upsert_user_memory
+  - name: clear_memories
+    sig: clear_memories(self) -> None
+    lines:
+    - 786
+    - 798
+    detail:
+      calls:
+      - log_warning
+      - self._write_json_file
+  - name: calculate_metrics
+    sig: calculate_metrics(self) -> Optional[list[dict]]
+    lines:
+    - 801
+    - 867
+    detail:
+      calls:
+      - all_sessions_data.get
+      - any
+      - calculate_date_metrics
+      - date_to_process.isoformat
+      - datetime.combine
+      - datetime.combine(dates_to_process[-1] + timedelta(days=1), datetime.min.time()).timestamp
+      - datetime.combine(dates_to_process[0], datetime.min.time()).timestamp
+      - datetime.min.time
+      - enumerate
+      - existing_metric.get
+      - fetch_all_sessions_data
+      - get_dates_to_calculate_metrics_for
+      - int
+      - len
+      - log_debug
+      - log_info
+      - log_warning
+      - metrics.append
+      - results.append
+      - self._get_all_sessions_for_metrics_calculation
+      - self._get_metrics_calculation_starting_date
+      - self._read_json_file
+      - self._write_json_file
+      - sessions_for_date.values
+      - str
+      - timedelta
+  - name: _get_metrics_calculation_starting_date
+    sig: '_get_metrics_calculation_starting_date(self, metrics: List[Dict[str, Any]]) -> Optional[date]'
+    vis: protected
+    lines:
+    - 869
+    - 891
+    detail:
+      calls:
+      - all_sessions.sort
+      - datetime.fromtimestamp
+      - datetime.fromtimestamp(first_session_date, tz=timezone.utc).date
+      - datetime.strptime
+      - datetime.strptime(latest_metric["date"], "%Y-%m-%d").date
+      - latest_metric.get
+      - self._read_json_file
+      - sorted
+      - timedelta
+      - x.get
+  - name: _get_all_sessions_for_metrics_calculation
+    sig: |-
+      _get_all_sessions_for_metrics_calculation(
+              self, start_timestamp: Optional[int] = None, end_timestamp: Optional[int] = None
+          ) -> List[Dict[str, Any]]
+    vis: protected
+    lines:
+    - 893
+    - 922
+    detail:
+      calls:
+      - filtered_sessions.append
+      - log_error
+      - self._read_json_file
+      - session.get
+  - name: get_metrics
+    sig: |-
+      get_metrics(
+              self,
+              starting_date: Optional[date] = None,
+              ending_date: Optional[date] = None,
+          ) -> Tuple[List[dict], Optional[int]]
+    lines:
+    - 924
+    - 954
+    detail:
+      calls:
+      - datetime.strptime
+      - datetime.strptime(metric.get("date", ""), "%Y-%m-%d").date
+      - filtered_metrics.append
+      - log_error
+      - metric.get
+      - self._read_json_file
+  - name: delete_knowledge_content
+    sig: 'delete_knowledge_content(self, id: str)'
+    lines:
+    - 958
+    - 974
+    detail:
+      calls:
+      - item.get
+      - log_error
+      - self._read_json_file
+      - self._write_json_file
+  - name: get_knowledge_content
+    sig: 'get_knowledge_content(self, id: str) -> Optional[KnowledgeRow]'
+    lines:
+    - 976
+    - 999
+    detail:
+      calls:
+      - KnowledgeRow.model_validate
+      - item.get
+      - log_error
+      - self._read_json_file
+  - name: get_knowledge_contents
+    sig: |-
+      get_knowledge_contents(
+              self,
+              limit: Optional[int] = None,
+              page: Optional[int] = None,
+              sort_by: Optional[str] = None,
+              sort_order: Optional[str] = None,
+              linked_to: Optional[str] = None,
+          ) -> Tuple[List[KnowledgeRow], int]
+    lines:
+    - 1001
+    - 1047
+    detail:
+      calls:
+      - KnowledgeRow.model_validate
+      - apply_sorting
+      - item.get
+      - len
+      - log_error
+      - self._read_json_file
+  - name: upsert_knowledge_content
+    sig: 'upsert_knowledge_content(self, knowledge_row: KnowledgeRow)'
+    lines:
+    - 1049
+    - 1082
+    detail:
+      calls:
+      - enumerate
+      - existing_item.get
+      - knowledge_items.append
+      - knowledge_row.model_dump
+      - log_error
+      - self._read_json_file
+      - self._write_json_file
+  - name: create_eval_run
+    sig: 'create_eval_run(self, eval_run: EvalRunRecord) -> Optional[EvalRunRecord]'
+    lines:
+    - 1086
+    - 1105
+    detail:
+      calls:
+      - eval_run.model_dump
+      - eval_runs.append
+      - int
+      - log_debug
+      - log_error
+      - self._read_json_file
+      - self._write_json_file
+      - time.time
+  - name: delete_eval_run
+    sig: 'delete_eval_run(self, eval_run_id: str) -> None'
+    lines:
+    - 1107
+    - 1122
+    detail:
+      calls:
+      - len
+      - log_debug
+      - log_error
+      - run.get
+      - self._read_json_file
+      - self._write_json_file
+  - name: delete_eval_runs
+    sig: 'delete_eval_runs(self, eval_run_ids: List[str]) -> None'
+    lines:
+    - 1124
+    - 1140
+    detail:
+      calls:
+      - len
+      - log_debug
+      - log_error
+      - run.get
+      - self._read_json_file
+      - self._write_json_file
+  - name: get_eval_run
+    sig: |-
+      get_eval_run(
+              self, eval_run_id: str, deserialize: Optional[bool] = True
+          ) -> Optional[Union[EvalRunRecord, Dict[str, Any]]]
+    lines:
+    - 1142
+    - 1159
+    detail:
+      calls:
+      - EvalRunRecord.model_validate
+      - log_error
+      - run_data.get
+      - self._read_json_file
+  - name: get_eval_runs
+    sig: |-
+      get_eval_runs(
+              self,
+              limit: Optional[int] = None,
+              page: Optional[int] = None,
+              sort_by: Optional[str] = None,
+              sort_order: Optional[str] = None,
+              agent_id: Optional[str] = None,
+              team_id: Optional[str] = None,
+              workflow_id: Optional[str] = None,
+              model_id: Optional[str] = None,
+              filter_type: Optional[EvalFilterType] = None,
+              eval_type: Optional[List[EvalType]] = None,
+              deserialize: Optional[bool] = True,
+          ) -> Union[List[EvalRunRecord], Tuple[List[Dict[str, Any]], int]]
+    lines:
+    - 1161
+    - 1225
+    detail:
+      calls:
+      - EvalRunRecord.model_validate
+      - apply_sorting
+      - filtered_runs.append
+      - filtered_runs.sort
+      - len
+      - log_error
+      - run_data.get
+      - self._read_json_file
+      - x.get
+  - name: rename_eval_run
+    sig: |-
+      rename_eval_run(
+              self, eval_run_id: str, name: str, deserialize: Optional[bool] = True
+          ) -> Optional[Union[EvalRunRecord, Dict[str, Any]]]
+    lines:
+    - 1227
+    - 1252
+    detail:
+      calls:
+      - EvalRunRecord.model_validate
+      - enumerate
+      - int
+      - log_debug
+      - log_error
+      - run_data.get
+      - self._read_json_file
+      - self._write_json_file
+      - time.time
+  - name: clear_cultural_knowledge
+    sig: clear_cultural_knowledge(self) -> None
+    lines:
+    - 1256
+    - 1262
+    detail:
+      calls:
+      - log_error
+      - self._write_json_file
+  - name: delete_cultural_knowledge
+    sig: 'delete_cultural_knowledge(self, id: str) -> None'
+    lines:
+    - 1264
+    - 1272
+    detail:
+      calls:
+      - ck.get
+      - log_error
+      - self._read_json_file
+      - self._write_json_file
+  - name: get_cultural_knowledge
+    sig: |-
+      get_cultural_knowledge(
+              self, id: str, deserialize: Optional[bool] = True
+          ) -> Optional[Union[CulturalKnowledge, Dict[str, Any]]]
+    lines:
+    - 1274
+    - 1288
+    detail:
+      calls:
+      - ck.get
+      - deserialize_cultural_knowledge_from_db
+      - log_error
+      - self._read_json_file
+  - name: get_all_cultural_knowledge
+    sig: |-
+      get_all_cultural_knowledge(
+              self,
+              name: Optional[str] = None,
+              agent_id: Optional[str] = None,
+              team_id: Optional[str] = None,
+              limit: Optional[int] = None,
+              page: Optional[int] = None,
+              sort_by: Optional[str] = None,
+              sort_order: Optional[str] = None,
+              deserialize: Optional[bool] = True,
+          ) -> Union[List[CulturalKnowledge], Tuple[List[Dict[str, Any]], int]]
+    lines:
+    - 1290
+    - 1335
+    detail:
+      calls:
+      - apply_sorting
+      - ck.get
+      - deserialize_cultural_knowledge_from_db
+      - filtered.append
+      - len
+      - log_error
+      - self._read_json_file
+  - name: upsert_cultural_knowledge
+    sig: |-
+      upsert_cultural_knowledge(
+              self, cultural_knowledge: CulturalKnowledge, deserialize: Optional[bool] = True
+          ) -> Optional[Union[CulturalKnowledge, Dict[str, Any]]]
+    lines:
+    - 1337
+    - 1375
+    detail:
+      calls:
+      - all_cultural_knowledge.append
+      - ck.get
+      - int
+      - log_error
+      - self._read_json_file
+      - self._write_json_file
+      - self.get_cultural_knowledge
+      - serialize_cultural_knowledge_for_db
+      - str
+      - time.time
+      - uuid4
+  - name: upsert_trace
+    sig: 'upsert_trace(self, trace: "Trace") -> None'
+    lines:
+    - 1378
+    - 1461
+    detail:
+      calls:
+      - (trace.end_time - existing_start_time).total_seconds
+      - datetime.fromisoformat
+      - enumerate
+      - existing.get
+      - existing_start_time_str.replace
+      - get_component_level
+      - int
+      - isinstance
+      - log_error
+      - self._read_json_file
+      - self._write_json_file
+      - trace.end_time.isoformat
+      - trace.to_dict
+      - trace_dict.pop
+      - traces.append
+  - name: get_trace
+    sig: |-
+      get_trace(
+              self,
+              trace_id: Optional[str] = None,
+              run_id: Optional[str] = None,
+          )
+    lines:
+    - 1463
+    - 1512
+    detail:
+      calls:
+      - Trace.from_dict
+      - filtered.append
+      - filtered.sort
+      - len
+      - log_error
+      - s.get
+      - self._read_json_file
+      - sum
+      - t.get
+      - trace_data.get
+      - x.get
+  - name: get_traces
+    sig: |-
+      get_traces(
+              self,
+              run_id: Optional[str] = None,
+              session_id: Optional[str] = None,
+              user_id: Optional[str] = None,
+              agent_id: Optional[str] = None,
+              team_id: Optional[str] = None,
+              workflow_id: Optional[str] = None,
+              status: Optional[str] = None,
+              start_time: Optional[datetime] = None,
+              end_time: Optional[datetime] = None,
+              limit: Optional[int] = 20,
+              page: Optional[int] = 1,
+          ) -> tuple[List, int]
+    lines:
+    - 1514
+    - 1605
+    detail:
+      calls:
+      - Trace.from_dict
+      - end_time.isoformat
+      - filtered.append
+      - filtered.sort
+      - len
+      - log_error
+      - result_traces.append
+      - s.get
+      - self._read_json_file
+      - start_time.isoformat
+      - sum
+      - t.get
+      - x.get
+  - name: get_trace_stats
+    sig: |-
+      get_trace_stats(
+              self,
+              user_id: Optional[str] = None,
+              agent_id: Optional[str] = None,
+              team_id: Optional[str] = None,
+              workflow_id: Optional[str] = None,
+              start_time: Optional[datetime] = None,
+              end_time: Optional[datetime] = None,
+              limit: Optional[int] = 20,
+              page: Optional[int] = 1,
+          ) -> tuple[List[Dict[str, Any]], int]
+    lines:
+    - 1607
+    - 1704
+    detail:
+      calls:
+      - datetime.fromisoformat
+      - end_time.isoformat
+      - first_at.replace
+      - last_at.replace
+      - len
+      - list
+      - log_error
+      - self._read_json_file
+      - session_stats.values
+      - start_time.isoformat
+      - stat.get
+      - stats_list.sort
+      - t.get
+      - x.get
+  - name: create_span
+    sig: 'create_span(self, span: "Span") -> None'
+    lines:
+    - 1707
+    - 1719
+    detail:
+      calls:
+      - log_error
+      - self._read_json_file
+      - self._write_json_file
+      - span.to_dict
+      - spans.append
+  - name: create_spans
+    sig: 'create_spans(self, spans: List) -> None'
+    lines:
+    - 1721
+    - 1737
+    detail:
+      calls:
+      - existing_spans.append
+      - log_error
+      - self._read_json_file
+      - self._write_json_file
+      - span.to_dict
+  - name: get_span
+    sig: 'get_span(self, span_id: str)'
+    lines:
+    - 1739
+    - 1761
+    detail:
+      calls:
+      - Span.from_dict
+      - log_error
+      - s.get
+      - self._read_json_file
+  - name: get_spans
+    sig: |-
+      get_spans(
+              self,
+              trace_id: Optional[str] = None,
+              parent_span_id: Optional[str] = None,
+              limit: Optional[int] = 1000,
+          ) -> List
+    lines:
+    - 1763
+    - 1803
+    detail:
+      calls:
+      - Span.from_dict
+      - filtered.append
+      - log_error
+      - s.get
+      - self._read_json_file
+  - name: get_learning
+    sig: |-
+      get_learning(
+              self,
+              learning_type: str,
+              user_id: Optional[str] = None,
+              agent_id: Optional[str] = None,
+              team_id: Optional[str] = None,
+              session_id: Optional[str] = None,
+              namespace: Optional[str] = None,
+              entity_id: Optional[str] = None,
+              entity_type: Optional[str] = None,
+          ) -> Optional[Dict[str, Any]]
+    lines:
+    - 1806
+    - 1817
+    detail:
+      calls:
+      - NotImplementedError
+  - name: upsert_learning
+    sig: |-
+      upsert_learning(
+              self,
+              id: str,
+              learning_type: str,
+              content: Dict[str, Any],
+              user_id: Optional[str] = None,
+              agent_id: Optional[str] = None,
+              team_id: Optional[str] = None,
+              session_id: Optional[str] = None,
+              namespace: Optional[str] = None,
+              entity_id: Optional[str] = None,
+              entity_type: Optional[str] = None,
+              metadata: Optional[Dict[str, Any]] = None,
+          ) -> None
+    lines:
+    - 1819
+    - 1833
+    detail:
+      calls:
+      - NotImplementedError
+  - name: delete_learning
+    sig: 'delete_learning(self, id: str) -> bool'
+    lines:
+    - 1835
+    - 1836
+    detail:
+      calls:
+      - NotImplementedError
+  - name: get_learnings
+    sig: |-
+      get_learnings(
+              self,
+              learning_type: Optional[str] = None,
+              user_id: Optional[str] = None,
+              agent_id: Optional[str] = None,
+              team_id: Optional[str] = None,
+              session_id: Optional[str] = None,
+              namespace: Optional[str] = None,
+              entity_id: Optional[str] = None,
+              entity_type: Optional[str] = None,
+              limit: Optional[int] = None,
+          ) -> List[Dict[str, Any]]
+    lines:
+    - 1838
+    - 1850
+    detail:
+      calls:
+      - NotImplementedError
+  lines:
+  - 30
+  - 1850
+exports:
+- name: JsonDb
+  kind: type

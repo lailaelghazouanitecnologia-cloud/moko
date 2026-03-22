@@ -1,0 +1,271 @@
+## Roska File Descriptor — migrations/v1_to_v2.py
+file: migrations/v1_to_v2.py
+lines: 673
+layer: logic
+purpose: Migration utility to migrate your Agno tables from v1 to v2
+imports:
+- sym: gc
+- sym: sqlalchemy.text
+- sym: agno.db.base.BaseDb
+- sym: agno.db.migrations.utils.quote_db_identifier
+- sym: agno.db.schemas.memory.UserMemory
+- sym: agno.session.AgentSession
+- sym: agno.session.TeamSession
+- sym: agno.session.WorkflowSession
+- sym: agno.utils.log.log_error
+- sym: agno.utils.log.log_info
+- sym: agno.utils.log.log_warning
+- sym: agno.utils.string.sanitize_postgres_string
+- sym: agno.utils.string.sanitize_postgres_strings
+functions:
+- name: convert_v1_metrics_to_v2
+  sig: 'convert_v1_metrics_to_v2(metrics_dict: Dict[str, Any]) -> Dict[str, Any]'
+  lines:
+  - 17
+  - 46
+  detail:
+    calls:
+    - field_mappings.items
+    - isinstance
+    - metrics_dict.copy
+    - v2_metrics.pop
+- name: convert_any_metrics_in_data
+  sig: 'convert_any_metrics_in_data(data: Any) -> Any'
+  lines:
+  - 49
+  - 83
+  detail:
+    calls:
+    - _is_metrics_dict
+    - convert_any_metrics_in_data
+    - convert_v1_fields_to_v2
+    - convert_v1_metrics_to_v2
+    - data.items
+    - isinstance
+    - sanitize_postgres_string
+    - sanitize_postgres_strings
+- name: _is_metrics_dict
+  sig: '_is_metrics_dict(data: Dict[str, Any]) -> bool'
+  vis: protected
+  lines:
+  - 86
+  - 122
+  detail:
+    calls:
+    - any
+    - data.keys
+    - isinstance
+    - sum
+- name: convert_session_data_comprehensively
+  sig: 'convert_session_data_comprehensively(session_data: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]'
+  lines:
+  - 125
+  - 131
+  detail:
+    calls:
+    - convert_any_metrics_in_data
+- name: safe_get_runs_from_memory
+  sig: 'safe_get_runs_from_memory(memory_data: Any) -> Any'
+  lines:
+  - 134
+  - 177
+  detail:
+    calls:
+    - isinstance
+    - json.loads
+    - memory_data.get
+    - memory_dict.get
+    - response.get
+    - response.pop
+    - run.get
+    - run.pop
+- name: convert_v1_media_to_v2
+  sig: 'convert_v1_media_to_v2(media_data: Dict[str, Any]) -> Dict[str, Any]'
+  lines:
+  - 180
+  - 248
+  detail:
+    calls:
+    - base64.b64decode
+    - float
+    - format_val.lower
+    - isinstance
+    - media_data.copy
+    - str
+    - uuid4
+    - v2_media.get
+    - v2_media.pop
+- name: convert_v1_fields_to_v2
+  sig: 'convert_v1_fields_to_v2(data: Dict[str, Any]) -> Dict[str, Any]'
+  lines:
+  - 251
+  - 323
+  detail:
+    calls:
+    - convert_v1_media_to_v2
+    - data.copy
+    - isinstance
+    - v2_data.get
+    - v2_data.pop
+- name: migrate
+  sig: |-
+    migrate(
+        db: BaseDb,
+        v1_db_schema: str,
+        agent_sessions_table_name: Optional[str] = None,
+        team_sessions_table_name: Optional[str] = None,
+        workflow_sessions_table_name: Optional[str] = None,
+        memories_table_name: Optional[str] = None,
+        batch_size: int = 5000,
+    )
+  lines:
+  - 326
+  - 380
+  detail:
+    calls:
+    - migrate_table_in_batches
+- name: migrate_table_in_batches
+  sig: |-
+    migrate_table_in_batches(
+        db: BaseDb,
+        v1_db_schema: str,
+        v1_table_name: str,
+        v1_table_type: str,
+        batch_size: int = 5000,
+    )
+  lines:
+  - 383
+  - 450
+  detail:
+    calls:
+    - ValueError
+    - db.Session.remove
+    - db.upsert_memories
+    - db.upsert_sessions
+    - gc.collect
+    - get_table_content_in_batches
+    - hasattr
+    - len
+    - log_info
+    - parse_agent_sessions
+    - parse_memories
+    - parse_team_sessions
+    - parse_workflow_sessions
+- name: get_table_content_in_batches
+  sig: 'get_table_content_in_batches(db: BaseDb, db_schema: str, table_name: str, batch_size: int = 5000)'
+  lines:
+  - 453
+  - 530
+  detail:
+    calls:
+    - ValueError
+    - batch.append
+    - cast
+    - collection.find
+    - collection.find({}).batch_size
+    - db.Session
+    - db_schema.strip
+    - len
+    - log_error
+    - quote_db_identifier
+    - row._asdict
+    - sess.execute
+    - str
+    - text
+    - type
+- name: get_all_table_content
+  sig: 'get_all_table_content(db, db_schema: str, table_name: str) -> list[dict[str, Any]]'
+  lines:
+  - 533
+  - 546
+  detail:
+    calls:
+    - all_content.extend
+    - get_table_content_in_batches
+    - log_warning
+- name: parse_agent_sessions
+  sig: 'parse_agent_sessions(v1_content: List[Dict[str, Any]]) -> List[AgentSession]'
+  lines:
+  - 549
+  - 579
+  detail:
+    calls:
+    - AgentSession.from_dict
+    - convert_any_metrics_in_data
+    - convert_session_data_comprehensively
+    - item.get
+    - log_error
+    - safe_get_runs_from_memory
+    - sanitize_postgres_strings
+    - sessions_v2.append
+- name: parse_team_sessions
+  sig: 'parse_team_sessions(v1_content: List[Dict[str, Any]]) -> List[TeamSession]'
+  lines:
+  - 582
+  - 612
+  detail:
+    calls:
+    - TeamSession.from_dict
+    - convert_any_metrics_in_data
+    - convert_session_data_comprehensively
+    - item.get
+    - log_error
+    - safe_get_runs_from_memory
+    - sanitize_postgres_strings
+    - sessions_v2.append
+- name: parse_workflow_sessions
+  sig: 'parse_workflow_sessions(v1_content: List[Dict[str, Any]]) -> List[WorkflowSession]'
+  lines:
+  - 615
+  - 649
+  detail:
+    calls:
+    - WorkflowSession.from_dict
+    - convert_any_metrics_in_data
+    - convert_session_data_comprehensively
+    - item.get
+    - log_error
+    - sanitize_postgres_string
+    - sanitize_postgres_strings
+    - sessions_v2.append
+- name: parse_memories
+  sig: 'parse_memories(v1_content: List[Dict[str, Any]]) -> List[UserMemory]'
+  lines:
+  - 652
+  - 673
+  detail:
+    calls:
+    - UserMemory.from_dict
+    - item.get
+    - memories_v2.append
+    - sanitize_postgres_string
+    - sanitize_postgres_strings
+exports:
+- name: convert_v1_metrics_to_v2
+  kind: func
+- name: convert_any_metrics_in_data
+  kind: func
+- name: convert_session_data_comprehensively
+  kind: func
+- name: safe_get_runs_from_memory
+  kind: func
+- name: convert_v1_media_to_v2
+  kind: func
+- name: convert_v1_fields_to_v2
+  kind: func
+- name: migrate
+  kind: func
+- name: migrate_table_in_batches
+  kind: func
+- name: get_table_content_in_batches
+  kind: func
+- name: get_all_table_content
+  kind: func
+- name: parse_agent_sessions
+  kind: func
+- name: parse_team_sessions
+  kind: func
+- name: parse_workflow_sessions
+  kind: func
+- name: parse_memories
+  kind: func

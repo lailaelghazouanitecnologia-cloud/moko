@@ -1,0 +1,587 @@
+## Roska File Descriptor — workflow/test_workflow_run_params.py
+file: workflow/test_workflow_run_params.py
+lines: 786
+layer: test
+purpose: 'Unit tests for Workflow run-level parameter resolution. Tests cover: - _resolve_run_params(): Merge and precedence logic for dependencies, metadata, and boolean context flags (add_dependencies_to_context, add_session_state_to_context) - RunContext creation: Resolved params are correctly set on RunContext - to_dict() / from_dict(): Round-trip serialization of new fields - Precedence: Workflow-level deps take precedence over agent-level deps when both are set (full replacement, not merge) - End-to-end: Full workflow.run() -> step -> agent.run() chain with MockTestModel'
+imports:
+- sym: unittest.mock.AsyncMock
+- sym: unittest.mock.Mock
+- sym: pytest
+- sym: agno.agent.Agent
+- sym: agno.metrics.MessageMetrics
+- sym: agno.models.base.Model
+- sym: agno.models.response.ModelResponse
+- sym: agno.run.base.RunContext
+- sym: agno.workflow.step.Step
+- sym: agno.workflow.workflow.Workflow
+types:
+- name: TestResolveRunParamsDependencies
+  kind: struct
+  ctx: Tests for dependency resolution precedence.
+  methods:
+  - name: test_no_deps_anywhere
+    sig: test_no_deps_anywhere(self)
+    lines:
+    - 73
+    - 77
+    detail:
+      calls:
+      - Workflow
+      - wf._resolve_run_params
+  - name: test_class_level_only
+    sig: test_class_level_only(self, workflow_with_deps)
+    lines:
+    - 79
+    - 82
+    detail:
+      calls:
+      - workflow_with_deps._resolve_run_params
+  - name: test_call_site_only
+    sig: test_call_site_only(self)
+    lines:
+    - 84
+    - 88
+    detail:
+      calls:
+      - Workflow
+      - wf._resolve_run_params
+  - name: test_merge_call_site_wins_on_conflict
+    sig: test_merge_call_site_wins_on_conflict(self, workflow_with_deps)
+    lines:
+    - 90
+    - 97
+    detail:
+      calls:
+      - workflow_with_deps._resolve_run_params
+  - name: test_class_deps_not_mutated
+    sig: test_class_deps_not_mutated(self, workflow_with_deps)
+    lines:
+    - 99
+    - 103
+    detail:
+      calls:
+      - workflow_with_deps._resolve_run_params
+      - workflow_with_deps.dependencies.copy
+  lines:
+  - 70
+  - 103
+- name: TestResolveRunParamsMetadata
+  kind: struct
+  ctx: Tests for metadata resolution precedence.
+  methods:
+  - name: test_no_metadata_anywhere
+    sig: test_no_metadata_anywhere(self)
+    lines:
+    - 114
+    - 118
+    detail:
+      calls:
+      - Workflow
+      - wf._resolve_run_params
+  - name: test_class_level_only
+    sig: test_class_level_only(self, workflow_with_metadata)
+    lines:
+    - 120
+    - 123
+    detail:
+      calls:
+      - workflow_with_metadata._resolve_run_params
+  - name: test_call_site_only
+    sig: test_call_site_only(self)
+    lines:
+    - 125
+    - 129
+    detail:
+      calls:
+      - Workflow
+      - wf._resolve_run_params
+  - name: test_merge_class_wins_on_conflict
+    sig: test_merge_class_wins_on_conflict(self, workflow_with_metadata)
+    lines:
+    - 131
+    - 138
+    detail:
+      calls:
+      - workflow_with_metadata._resolve_run_params
+  - name: test_class_metadata_not_mutated
+    sig: test_class_metadata_not_mutated(self, workflow_with_metadata)
+    lines:
+    - 140
+    - 144
+    detail:
+      calls:
+      - workflow_with_metadata._resolve_run_params
+      - workflow_with_metadata.metadata.copy
+  lines:
+  - 111
+  - 144
+- name: TestResolveRunParamsBooleanFlags
+  kind: struct
+  ctx: 'Tests for boolean flag resolution: call-site > self.<field> > None.'
+  methods:
+  - name: test_defaults_to_none
+    sig: test_defaults_to_none(self)
+    lines:
+    - 155
+    - 160
+    detail:
+      calls:
+      - Workflow
+      - wf._resolve_run_params
+  - name: test_class_level_flags
+    sig: test_class_level_flags(self, workflow_with_all_params)
+    lines:
+    - 162
+    - 166
+    detail:
+      calls:
+      - workflow_with_all_params._resolve_run_params
+  - name: test_call_site_overrides_class
+    sig: test_call_site_overrides_class(self, workflow_with_all_params)
+    lines:
+    - 168
+    - 175
+    detail:
+      calls:
+      - workflow_with_all_params._resolve_run_params
+  - name: test_call_site_false_overrides_class_true
+    sig: test_call_site_false_overrides_class_true(self)
+    lines:
+    - 177
+    - 181
+    detail:
+      calls:
+      - Workflow
+      - wf._resolve_run_params
+  - name: test_call_site_true_overrides_class_none
+    sig: test_call_site_true_overrides_class_none(self)
+    lines:
+    - 183
+    - 187
+    detail:
+      calls:
+      - Workflow
+      - wf._resolve_run_params
+  lines:
+  - 152
+  - 187
+- name: TestRunParamsSerialization
+  kind: struct
+  ctx: Tests for round-trip serialization of run-level params.
+  methods:
+  - name: test_to_dict_includes_dependencies
+    sig: test_to_dict_includes_dependencies(self, workflow_with_deps)
+    lines:
+    - 198
+    - 201
+    detail:
+      calls:
+      - workflow_with_deps.to_dict
+  - name: test_to_dict_includes_context_flags
+    sig: test_to_dict_includes_context_flags(self, workflow_with_all_params)
+    lines:
+    - 203
+    - 207
+    detail:
+      calls:
+      - workflow_with_all_params.to_dict
+  - name: test_to_dict_omits_none_flags
+    sig: test_to_dict_omits_none_flags(self)
+    lines:
+    - 209
+    - 214
+    detail:
+      calls:
+      - Workflow
+      - wf.to_dict
+  - name: test_to_dict_omits_none_dependencies
+    sig: test_to_dict_omits_none_dependencies(self)
+    lines:
+    - 216
+    - 220
+    detail:
+      calls:
+      - Workflow
+      - wf.to_dict
+  - name: test_from_dict_restores_dependencies
+    sig: test_from_dict_restores_dependencies(self)
+    lines:
+    - 222
+    - 230
+    detail:
+      calls:
+      - Workflow.from_dict
+  - name: test_from_dict_restores_context_flags
+    sig: test_from_dict_restores_context_flags(self)
+    lines:
+    - 232
+    - 242
+    detail:
+      calls:
+      - Workflow.from_dict
+  - name: test_round_trip
+    sig: test_round_trip(self, workflow_with_all_params)
+    lines:
+    - 244
+    - 252
+    detail:
+      calls:
+      - Workflow.from_dict
+      - workflow_with_all_params.to_dict
+  lines:
+  - 195
+  - 252
+- name: TestWorkflowAgentDepsPrecedence
+  kind: struct
+  ctx: Tests verifying that workflow-level dependencies on RunContext take precedence over agent-level dependencies in apply_to_context. When a workflow sets run_context.dependencies, the agent's apply_to_context() sees run_context.dependencies is not None and skips overwriting — so workflow deps fully replace agent deps.
+  methods:
+  - name: test_workflow_deps_replace_agent_deps
+    sig: test_workflow_deps_replace_agent_deps(self)
+    lines:
+    - 269
+    - 304
+    detail:
+      calls:
+      - ResolvedRunOptions
+      - RunContext
+      - agent_options.apply_to_context
+  - name: test_no_workflow_deps_agent_deps_applied
+    sig: test_no_workflow_deps_agent_deps_applied(self)
+    lines:
+    - 306
+    - 336
+    detail:
+      calls:
+      - ResolvedRunOptions
+      - RunContext
+      - agent_options.apply_to_context
+  - name: test_explicit_agent_run_deps_override_workflow
+    sig: test_explicit_agent_run_deps_override_workflow(self)
+    lines:
+    - 338
+    - 370
+    detail:
+      calls:
+      - ResolvedRunOptions
+      - RunContext
+      - agent_options.apply_to_context
+  lines:
+  - 260
+  - 370
+- name: TestWorkflowAgentMetadataPrecedence
+  kind: struct
+  ctx: Workflow metadata on RunContext vs agent metadata in apply_to_context.
+  methods:
+  - name: test_workflow_metadata_preserved
+    sig: test_workflow_metadata_preserved(self)
+    lines:
+    - 381
+    - 407
+    detail:
+      calls:
+      - ResolvedRunOptions
+      - RunContext
+      - agent_options.apply_to_context
+  - name: test_no_workflow_metadata_agent_applied
+    sig: test_no_workflow_metadata_agent_applied(self)
+    lines:
+    - 409
+    - 434
+    detail:
+      calls:
+      - ResolvedRunOptions
+      - RunContext
+      - agent_options.apply_to_context
+  lines:
+  - 378
+  - 434
+- name: MockTestModel
+  kind: struct
+  ctx: Minimal mock model that returns a canned response.
+  bases:
+  - Model
+  fields:
+  - name: instructions
+    type: None
+    default: None
+  - name: _mock_response
+    type: Any
+    default: Mock()
+  - name: _mock_response.content
+    type: str
+    default: '"mock response"'
+  - name: _mock_response.role
+    type: str
+    default: '"assistant"'
+  - name: _mock_response.reasoning_content
+    type: None
+    default: None
+  - name: _mock_response.redacted_reasoning_content
+    type: None
+    default: None
+  - name: _mock_response.tool_calls
+    type: None
+    default: None
+  - name: _mock_response.tool_executions
+    type: None
+    default: None
+  - name: _mock_response.images
+    type: None
+    default: None
+  - name: _mock_response.videos
+    type: None
+    default: None
+  - name: _mock_response.audios
+    type: None
+    default: None
+  - name: _mock_response.audio
+    type: None
+    default: None
+  - name: _mock_response.files
+    type: None
+    default: None
+  - name: _mock_response.citations
+    type: None
+    default: None
+  - name: _mock_response.references
+    type: None
+    default: None
+  - name: _mock_response.metadata
+    type: None
+    default: None
+  - name: _mock_response.provider_data
+    type: None
+    default: None
+  - name: _mock_response.extra
+    type: None
+    default: None
+  - name: _mock_response.response_usage
+    type: Any
+    default: MessageMetrics()
+  - name: response
+    type: Any
+    default: Mock(return_value=self._mock_response)
+  - name: aresponse
+    type: Any
+    default: AsyncMock(return_value=self._mock_response)
+  methods:
+  - name: __init__
+    sig: __init__(self)
+    lines:
+    - 445
+    - 467
+    detail:
+      calls:
+      - AsyncMock
+      - MessageMetrics
+      - Mock
+      - super
+      - super().__init__
+  - name: get_instructions_for_model
+    sig: get_instructions_for_model(self, *args, **kwargs)
+    lines:
+    - 469
+    - 470
+    detail: {}
+  - name: get_system_message_for_model
+    sig: get_system_message_for_model(self, *args, **kwargs)
+    lines:
+    - 472
+    - 473
+    detail: {}
+  - name: aget_instructions_for_model
+    sig: aget_instructions_for_model(self, *args, **kwargs)
+    is_async: true
+    lines:
+    - 475
+    - 476
+    detail: {}
+  - name: aget_system_message_for_model
+    sig: aget_system_message_for_model(self, *args, **kwargs)
+    is_async: true
+    lines:
+    - 478
+    - 479
+    detail: {}
+  - name: parse_args
+    sig: parse_args(self, *args, **kwargs)
+    lines:
+    - 481
+    - 482
+    detail: {}
+  - name: invoke
+    sig: invoke(self, *args, **kwargs) -> ModelResponse
+    lines:
+    - 484
+    - 485
+    detail: {}
+  - name: ainvoke
+    sig: ainvoke(self, *args, **kwargs) -> ModelResponse
+    is_async: true
+    lines:
+    - 487
+    - 488
+    detail:
+      calls:
+      - self.aresponse
+  - name: invoke_stream
+    sig: invoke_stream(self, *args, **kwargs) -> Iterator[ModelResponse]
+    lines:
+    - 490
+    - 491
+    detail: {}
+  - name: ainvoke_stream
+    sig: ainvoke_stream(self, *args, **kwargs) -> AsyncIterator[ModelResponse]
+    is_async: true
+    lines:
+    - 493
+    - 495
+    detail: {}
+  lines:
+  - 442
+  - 501
+- name: TestWorkflowRunE2EDependencies
+  kind: struct
+  ctx: Full end-to-end tests running a real Workflow with an Agent (mock model) to verify dependency/metadata propagation through the entire chain.
+  methods:
+  - name: test_workflow_deps_reach_agent_context
+    sig: test_workflow_deps_reach_agent_context(self)
+    lines:
+    - 513
+    - 547
+    detail:
+      calls:
+      - Agent
+      - MockTestModel
+      - Step
+      - Workflow
+      - workflow.run
+  - name: test_workflow_deps_override_agent_deps_e2e
+    sig: test_workflow_deps_override_agent_deps_e2e(self)
+    lines:
+    - 549
+    - 584
+    detail:
+      calls:
+      - Agent
+      - MockTestModel
+      - Step
+      - Workflow
+      - workflow.run
+  - name: test_no_workflow_deps_agent_deps_used_e2e
+    sig: test_no_workflow_deps_agent_deps_used_e2e(self)
+    lines:
+    - 586
+    - 618
+    detail:
+      calls:
+      - Agent
+      - MockTestModel
+      - Step
+      - Workflow
+      - workflow.run
+  - name: test_call_site_deps_merged_with_class_deps_e2e
+    sig: test_call_site_deps_merged_with_class_deps_e2e(self)
+    lines:
+    - 620
+    - 652
+    detail:
+      calls:
+      - Agent
+      - MockTestModel
+      - Step
+      - Workflow
+      - workflow.run
+  - name: test_multi_step_shared_run_context
+    sig: test_multi_step_shared_run_context(self)
+    lines:
+    - 654
+    - 709
+    detail:
+      calls:
+      - Agent
+      - MockTestModel
+      - Step
+      - Workflow
+      - workflow.run
+  - name: test_multi_step_no_workflow_deps_agents_independent
+    sig: test_multi_step_no_workflow_deps_agents_independent(self)
+    lines:
+    - 711
+    - 758
+    detail:
+      calls:
+      - Agent
+      - MockTestModel
+      - Step
+      - Workflow
+      - workflow.run
+  - name: test_add_dependencies_flag_propagated_e2e
+    sig: test_add_dependencies_flag_propagated_e2e(self)
+    lines:
+    - 760
+    - 786
+    detail:
+      calls:
+      - Agent
+      - MockTestModel
+      - Step
+      - Workflow
+      - workflow.run
+  lines:
+  - 509
+  - 786
+functions:
+- name: workflow_with_deps
+  sig: workflow_with_deps()
+  decorators:
+  - pytest.fixture
+  lines:
+  - 33
+  - 39
+  detail:
+    calls:
+    - Workflow
+- name: workflow_with_metadata
+  sig: workflow_with_metadata()
+  decorators:
+  - pytest.fixture
+  lines:
+  - 43
+  - 49
+  detail:
+    calls:
+    - Workflow
+- name: workflow_with_all_params
+  sig: workflow_with_all_params()
+  decorators:
+  - pytest.fixture
+  lines:
+  - 53
+  - 62
+  detail:
+    calls:
+    - Workflow
+exports:
+- name: TestResolveRunParamsDependencies
+  kind: type
+- name: TestResolveRunParamsMetadata
+  kind: type
+- name: TestResolveRunParamsBooleanFlags
+  kind: type
+- name: TestRunParamsSerialization
+  kind: type
+- name: TestWorkflowAgentDepsPrecedence
+  kind: type
+- name: TestWorkflowAgentMetadataPrecedence
+  kind: type
+- name: MockTestModel
+  kind: type
+- name: TestWorkflowRunE2EDependencies
+  kind: type
+- name: workflow_with_deps
+  kind: func
+- name: workflow_with_metadata
+  kind: func
+- name: workflow_with_all_params
+  kind: func

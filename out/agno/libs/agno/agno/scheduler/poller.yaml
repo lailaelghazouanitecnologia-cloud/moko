@@ -1,0 +1,171 @@
+## Roska File Descriptor — scheduler/poller.py
+file: scheduler/poller.py
+lines: 148
+layer: logic
+purpose: Schedule poller -- periodically claims and executes due schedules.
+imports:
+- sym: asyncio
+- sym: agno.db.schemas.scheduler.Schedule
+- sym: agno.utils.log.log_error
+- sym: agno.utils.log.log_info
+- sym: agno.utils.log.log_warning
+data:
+- name: _DEFAULT_STOP_TIMEOUT
+  type: int
+  val: '30'
+types:
+- name: SchedulePoller
+  kind: struct
+  ctx: Periodically poll the DB for due schedules and execute them. Each poll tick repeatedly calls ``db.claim_due_schedule()`` until no more schedules are due, spawning an ``asyncio.create_task`` for each claimed schedule so they run concurrently.
+  fields:
+  - name: db
+    type: Any
+    default: db
+  - name: executor
+    type: Any
+    default: executor
+  - name: poll_interval
+    type: Any
+    default: poll_interval
+  - name: worker_id
+    type: Any
+    default: worker_id or f"worker-{uuid4().hex[:8]}"
+  - name: max_concurrent
+    type: Any
+    default: max_concurrent
+  - name: stop_timeout
+    type: Any
+    default: stop_timeout
+  - name: _task
+    type: Any
+    default: Optional[asyncio.Task]
+  - name: _running
+    type: bool
+    default: 'False'
+  - name: _in_flight
+    type: Any
+    default: Set[asyncio.Task]
+  methods:
+  - name: __init__
+    sig: |-
+      __init__(
+              self,
+              db: Any,
+              executor: Any,
+              poll_interval: int = 15,
+              worker_id: Optional[str] = None,
+              max_concurrent: int = 10,
+              stop_timeout: int = _DEFAULT_STOP_TIMEOUT,
+          ) -> None
+    lines:
+    - 22
+    - 39
+    detail:
+      calls:
+      - set
+      - uuid4
+  - name: start
+    sig: start(self) -> None
+    is_async: true
+    lines:
+    - 41
+    - 47
+    detail:
+      calls:
+      - asyncio.create_task
+      - log_info
+      - self._poll_loop
+  - name: stop
+    sig: stop(self) -> None
+    is_async: true
+    lines:
+    - 49
+    - 74
+    detail:
+      calls:
+      - asyncio.gather
+      - asyncio.wait_for
+      - hasattr
+      - len
+      - list
+      - log_info
+      - log_warning
+      - self._in_flight.clear
+      - self._task.cancel
+      - self.executor.close
+      - task.cancel
+  - name: _poll_loop
+    sig: _poll_loop(self) -> None
+    is_async: true
+    vis: protected
+    lines:
+    - 76
+    - 88
+    detail:
+      calls:
+      - asyncio.sleep
+      - log_error
+      - self._poll_once
+  - name: _poll_once
+    sig: _poll_once(self) -> None
+    is_async: true
+    vis: protected
+    lines:
+    - 90
+    - 115
+    detail:
+      calls:
+      - Schedule.from_dict
+      - asyncio.create_task
+      - asyncio.iscoroutinefunction
+      - getattr
+      - isinstance
+      - len
+      - log_error
+      - log_info
+      - log_warning
+      - self._execute_safe
+      - self._in_flight.add
+      - self._in_flight.discard
+      - self.db.claim_due_schedule
+      - t.done
+      - task.add_done_callback
+  - name: _execute_safe
+    sig: '_execute_safe(self, schedule: Union[Schedule, Dict[str, Any]]) -> None'
+    is_async: true
+    vis: protected
+    lines:
+    - 117
+    - 123
+    detail:
+      calls:
+      - isinstance
+      - log_error
+      - schedule.get
+      - self.executor.execute
+  - name: trigger
+    sig: 'trigger(self, schedule_id: str) -> None'
+    is_async: true
+    lines:
+    - 125
+    - 148
+    detail:
+      calls:
+      - Schedule.from_dict
+      - asyncio.create_task
+      - asyncio.iscoroutinefunction
+      - getattr
+      - isinstance
+      - log_error
+      - log_info
+      - log_warning
+      - self._in_flight.add
+      - self.db.get_schedule
+      - self.executor.execute
+      - task.add_done_callback
+  lines:
+  - 14
+  - 148
+exports:
+- name: SchedulePoller
+  kind: type

@@ -1,0 +1,310 @@
+## Roska File Descriptor — scheduler/manager.py
+file: scheduler/manager.py
+lines: 375
+layer: logic
+purpose: Pythonic API for managing schedules -- direct DB access, no HTTP.
+imports:
+- sym: asyncio
+- sym: concurrent.futures
+- sym: agno.db.schemas.scheduler.Schedule
+- sym: agno.db.schemas.scheduler.ScheduleRun
+- sym: agno.utils.log.log_debug
+- sym: agno.utils.log.log_warning
+data:
+- name: SchedulerDbMethod
+  type: Any
+  val: |-
+    Literal[
+        "get_schedule",
+        "get_schedule_by_name",
+        "get_schedules",
+        "create_schedule",
+        "update_schedul...
+types:
+- name: ScheduleManager
+  kind: struct
+  ctx: Direct DB-backed schedule management API. Provides a Pythonic interface for creating, listing, updating, and managing schedules without going through HTTP. Used by cookbooks and the Rich CLI console. (+1 dunder methods)
+  fields:
+  - name: db
+    type: Any
+    default: db
+  - name: _is_async
+    type: Any
+    default: asyncio.iscoroutinefunction(getattr(db, "get_schedule", None))
+  - name: _pool
+    type: Any
+    default: Optional[concurrent.futures.ThreadPoolExecutor]
+  methods:
+  - name: __init__
+    sig: '__init__(self, db: Any) -> None'
+    lines:
+    - 37
+    - 40
+    detail:
+      calls:
+      - asyncio.iscoroutinefunction
+      - getattr
+  - name: close
+    sig: close(self) -> None
+    lines:
+    - 42
+    - 46
+    detail:
+      calls:
+      - self._pool.shutdown
+  - name: _call
+    sig: '_call(self, method_name: SchedulerDbMethod, *args: Any, **kwargs: Any) -> Any'
+    vis: protected
+    lines:
+    - 51
+    - 66
+    detail:
+      calls:
+      - NotImplementedError
+      - asyncio.get_running_loop
+      - asyncio.iscoroutinefunction
+      - asyncio.run
+      - concurrent.futures.ThreadPoolExecutor
+      - fn
+      - getattr
+      - self._pool.submit
+      - self._pool.submit(asyncio.run, fn(*args, **kwargs)).result
+  - name: _acall
+    sig: '_acall(self, method_name: SchedulerDbMethod, *args: Any, **kwargs: Any) -> Any'
+    is_async: true
+    vis: protected
+    lines:
+    - 68
+    - 75
+    detail:
+      calls:
+      - NotImplementedError
+      - asyncio.iscoroutinefunction
+      - fn
+      - getattr
+  - name: create
+    sig: |-
+      create(
+              self,
+              name: str,
+              cron: str,
+              endpoint: str,
+              method: str = "POST",
+              description: Optional[str] = None,
+              payload: Optional[Dict[str, Any]] = None,
+              timezone: str = "UTC",
+              timeout_seconds: int = 3600,
+              max_retries: int = 0,
+              retry_delay_seconds: int = 60,
+              if_exists: str = "raise",
+          ) -> Schedule
+    lines:
+    - 102
+    - 189
+    detail:
+      calls:
+      - RuntimeError
+      - Schedule
+      - ValueError
+      - compute_next_run
+      - int
+      - log_debug
+      - method.upper
+      - schedule.to_dict
+      - self._call
+      - self._to_schedule
+      - str
+      - time.time
+      - uuid4
+      - validate_cron_expr
+      - validate_timezone
+  - name: list
+    sig: 'list(self, enabled: Optional[bool] = None, limit: int = 100, page: int = 1) -> List[Schedule]'
+    lines:
+    - 191
+    - 196
+    detail:
+      calls:
+      - isinstance
+      - self._call
+      - self._to_schedule_list
+  - name: get
+    sig: 'get(self, schedule_id: str) -> Optional[Schedule]'
+    lines:
+    - 198
+    - 200
+    detail:
+      calls:
+      - self._call
+      - self._to_schedule
+  - name: update
+    sig: 'update(self, schedule_id: str, **kwargs: Any) -> Optional[Schedule]'
+    lines:
+    - 202
+    - 204
+    detail:
+      calls:
+      - self._call
+      - self._to_schedule
+  - name: delete
+    sig: 'delete(self, schedule_id: str) -> bool'
+    lines:
+    - 206
+    - 208
+    detail:
+      calls:
+      - self._call
+  - name: enable
+    sig: 'enable(self, schedule_id: str) -> Optional[Schedule]'
+    lines:
+    - 210
+    - 218
+    detail:
+      calls:
+      - compute_next_run
+      - self._call
+      - self._to_schedule
+  - name: disable
+    sig: 'disable(self, schedule_id: str) -> Optional[Schedule]'
+    lines:
+    - 220
+    - 222
+    detail:
+      calls:
+      - self._call
+      - self._to_schedule
+  - name: trigger
+    sig: 'trigger(self, schedule_id: str) -> None'
+    lines:
+    - 224
+    - 235
+    detail:
+      calls:
+      - log_warning
+  - name: get_runs
+    sig: 'get_runs(self, schedule_id: str, limit: int = 20, page: int = 1) -> List[ScheduleRun]'
+    lines:
+    - 237
+    - 242
+    detail:
+      calls:
+      - isinstance
+      - self._call
+      - self._to_run_list
+  - name: acreate
+    sig: |-
+      acreate(
+              self,
+              name: str,
+              cron: str,
+              endpoint: str,
+              method: str = "POST",
+              description: Optional[str] = None,
+              payload: Optional[Dict[str, Any]] = None,
+              timezone: str = "UTC",
+              timeout_seconds: int = 3600,
+              max_retries: int = 0,
+              retry_delay_seconds: int = 60,
+              if_exists: str = "raise",
+          ) -> Schedule
+    is_async: true
+    lines:
+    - 246
+    - 333
+    detail:
+      calls:
+      - RuntimeError
+      - Schedule
+      - ValueError
+      - compute_next_run
+      - int
+      - log_debug
+      - method.upper
+      - schedule.to_dict
+      - self._acall
+      - self._to_schedule
+      - str
+      - time.time
+      - uuid4
+      - validate_cron_expr
+      - validate_timezone
+  - name: alist
+    sig: 'alist(self, enabled: Optional[bool] = None, limit: int = 100, page: int = 1) -> List[Schedule]'
+    is_async: true
+    lines:
+    - 335
+    - 340
+    detail:
+      calls:
+      - isinstance
+      - self._acall
+      - self._to_schedule_list
+  - name: aget
+    sig: 'aget(self, schedule_id: str) -> Optional[Schedule]'
+    is_async: true
+    lines:
+    - 342
+    - 344
+    detail:
+      calls:
+      - self._acall
+      - self._to_schedule
+  - name: aupdate
+    sig: 'aupdate(self, schedule_id: str, **kwargs: Any) -> Optional[Schedule]'
+    is_async: true
+    lines:
+    - 346
+    - 348
+    detail:
+      calls:
+      - self._acall
+      - self._to_schedule
+  - name: adelete
+    sig: 'adelete(self, schedule_id: str) -> bool'
+    is_async: true
+    lines:
+    - 350
+    - 352
+    detail:
+      calls:
+      - self._acall
+  - name: aenable
+    sig: 'aenable(self, schedule_id: str) -> Optional[Schedule]'
+    is_async: true
+    lines:
+    - 354
+    - 364
+    detail:
+      calls:
+      - compute_next_run
+      - self._acall
+      - self._to_schedule
+  - name: adisable
+    sig: 'adisable(self, schedule_id: str) -> Optional[Schedule]'
+    is_async: true
+    lines:
+    - 366
+    - 368
+    detail:
+      calls:
+      - self._acall
+      - self._to_schedule
+  - name: aget_runs
+    sig: 'aget_runs(self, schedule_id: str, limit: int = 20, page: int = 1) -> List[ScheduleRun]'
+    is_async: true
+    lines:
+    - 370
+    - 375
+    detail:
+      calls:
+      - isinstance
+      - self._acall
+      - self._to_run_list
+  lines:
+  - 29
+  - 375
+exports:
+- name: ScheduleManager
+  kind: type
+- name: SchedulerDbMethod
+  kind: data

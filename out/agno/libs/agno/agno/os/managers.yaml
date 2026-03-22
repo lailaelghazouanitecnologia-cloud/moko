@@ -1,0 +1,243 @@
+## Roska File Descriptor — os/managers.py
+file: os/managers.py
+lines: 326
+layer: logic
+purpose: 'Managers for AgentOS. This module provides various manager classes for AgentOS: - WebSocketManager: WebSocket connection management for real-time streaming - EventsBuffer: Event buffering for agent/team/workflow reconnection support - WebSocketHandler: Handler for sending events over WebSocket connections These managers are used by agents, teams, and workflows for background WebSocket execution.'
+imports:
+- sym: starlette.websockets.WebSocket
+- sym: agno.run.agent.RunOutputEvent
+- sym: agno.run.base.RunStatus
+- sym: agno.run.team.TeamRunOutputEvent
+- sym: agno.run.workflow.WorkflowRunOutputEvent
+- sym: agno.utils.log.log_debug
+- sym: agno.utils.log.log_warning
+- sym: agno.utils.log.logger
+- sym: agno.utils.serialize.json_serializer
+data:
+- name: websocket_manager
+  type: Any
+  val: |-
+    WebSocketManager(
+        active_connections={},
+    )
+- name: event_buffer
+  type: Any
+  val: |-
+    EventsBuffer(
+        max_events_per_run=10000,  # Keep last 10000 events per run
+        cleanup_interval=1800,  # Clean up com...
+types:
+- name: WebSocketManager
+  kind: struct
+  ctx: Manages WebSocket connections for agent, team, and workflow runs. Handles connection lifecycle, authentication, and message broadcasting for real-time event streaming across all execution types.
+  fields:
+  - name: active_connections
+    type: Any
+    default: Dict[str, WebSocket]
+  - name: authenticated_connections
+    type: Any
+    default: Dict[WebSocket, bool]
+  methods:
+  - name: __init__
+    sig: __init__(self, ...3 params)
+    lines:
+    - 103
+    - 110
+  - name: connect
+    sig: 'connect(self, websocket: WebSocket, requires_auth: bool = True)'
+    is_async: true
+    lines:
+    - 112
+    - 130
+    detail:
+      calls:
+      - json.dumps
+      - logger.debug
+      - websocket.accept
+      - websocket.send_text
+  - name: authenticate_websocket
+    sig: 'authenticate_websocket(self, websocket: WebSocket)'
+    is_async: true
+    lines:
+    - 132
+    - 145
+    detail:
+      calls:
+      - json.dumps
+      - logger.debug
+      - websocket.send_text
+  - name: is_authenticated
+    sig: 'is_authenticated(self, websocket: WebSocket) -> bool'
+    lines:
+    - 147
+    - 149
+    detail:
+      calls:
+      - self.authenticated_connections.get
+  - name: register_websocket
+    sig: 'register_websocket(self, run_id: str, websocket: WebSocket)'
+    is_async: true
+    lines:
+    - 151
+    - 154
+    detail:
+      calls:
+      - logger.debug
+  - name: broadcast_to_run
+    sig: 'broadcast_to_run(self, run_id: str, message: str)'
+    is_async: true
+    lines:
+    - 156
+    - 165
+    detail:
+      calls:
+      - log_warning
+      - self.disconnect_by_run_id
+      - websocket.send_text
+  - name: disconnect_by_run_id
+    sig: 'disconnect_by_run_id(self, run_id: str)'
+    is_async: true
+    lines:
+    - 167
+    - 175
+    detail:
+      calls:
+      - logger.debug
+  - name: disconnect_websocket
+    sig: 'disconnect_websocket(self, websocket: WebSocket)'
+    is_async: true
+    lines:
+    - 177
+    - 188
+    detail:
+      calls:
+      - logger.debug
+      - self.active_connections.items
+  - name: get_websocket_for_run
+    sig: 'get_websocket_for_run(self, run_id: str) -> Optional[WebSocket]'
+    is_async: true
+    lines:
+    - 190
+    - 192
+    detail:
+      calls:
+      - self.active_connections.get
+  lines:
+  - 92
+  - 192
+- name: EventsBuffer
+  kind: struct
+  ctx: 'In-memory buffer for events to support WebSocket reconnection. Stores recent events for active runs (agents, teams, workflows), allowing clients to catch up on missed events when reconnecting after disconnection or page refresh. Buffers all event types: RunOutputEvent (agents), TeamRunOutputEvent (teams), and WorkflowRunOutputEvent (workflows).'
+  fields:
+  - name: events
+    type: Any
+    default: Dict[str, List[Union[WorkflowRunOutputEvent, RunOutputEvent, TeamRunOutputEvent]]]
+  - name: run_metadata
+    type: Any
+    default: Dict[str, Dict[str, Any]]
+  - name: max_events_per_run
+    type: Any
+    default: max_events_per_run
+  - name: cleanup_interval
+    type: Any
+    default: cleanup_interval
+  methods:
+  - name: __init__
+    sig: __init__(self, ...2 params)
+    lines:
+    - 206
+    - 218
+  - name: add_event
+    sig: 'add_event(self, run_id: str, event: Union[WorkflowRunOutputEvent, RunOutputEvent, TeamRunOutputEvent]) -> int'
+    lines:
+    - 220
+    - 243
+    detail:
+      calls:
+      - len
+      - log_debug
+      - self.events[run_id].append
+      - time
+  - name: get_events
+    sig: |-
+      get_events(
+              self, run_id: str, last_event_index: Optional[int] = None
+          ) -> List[Union[WorkflowRunOutputEvent, RunOutputEvent, TeamRunOutputEvent]]
+    lines:
+    - 245
+    - 270
+    detail:
+      calls:
+      - len
+      - self.events.get
+  - name: get_event_count
+    sig: 'get_event_count(self, run_id: str) -> int'
+    lines:
+    - 272
+    - 274
+    detail:
+      calls:
+      - len
+      - self.events.get
+  - name: set_run_completed
+    sig: 'set_run_completed(self, run_id: str, status: RunStatus) -> None'
+    lines:
+    - 276
+    - 284
+    detail:
+      calls:
+      - log_debug
+      - self.cleanup_runs
+      - time
+  - name: cleanup_run
+    sig: 'cleanup_run(self, run_id: str) -> None'
+    lines:
+    - 286
+    - 292
+    detail:
+      calls:
+      - log_debug
+  - name: cleanup_runs
+    sig: cleanup_runs(self) -> None
+    lines:
+    - 294
+    - 310
+    detail:
+      calls:
+      - len
+      - log_debug
+      - metadata.get
+      - runs_to_cleanup.append
+      - self.cleanup_run
+      - self.run_metadata.items
+      - time
+  - name: get_run_status
+    sig: 'get_run_status(self, run_id: str) -> Optional[RunStatus]'
+    lines:
+    - 312
+    - 315
+    detail:
+      calls:
+      - self.run_metadata.get
+  lines:
+  - 195
+  - 315
+functions:
+- name: WebSocketHandler
+  sig: ''
+  decorators:
+  - dataclass
+  lines:
+  - 27
+  - 89
+exports:
+- name: WebSocketManager
+  kind: type
+- name: EventsBuffer
+  kind: type
+- name: WebSocketHandler
+  kind: func
+- name: websocket_manager
+  kind: data
+- name: event_buffer
+  kind: data

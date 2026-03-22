@@ -1,0 +1,239 @@
+## Roska File Descriptor — session_state/state_in_function.py
+file: session_state/state_in_function.py
+lines: 385
+layer: logic
+purpose: State In Function ================= Demonstrates reading and mutating workflow session state inside custom function executors.
+imports:
+- sym: agno.agent.Agent
+- sym: agno.db.in_memory.InMemoryDb
+- sym: agno.db.sqlite.SqliteDb
+- sym: agno.models.openai.OpenAIChat
+- sym: agno.run.workflow.WorkflowRunOutputEvent
+- sym: agno.team.Team
+- sym: agno.tools.hackernews.HackerNewsTools
+- sym: agno.tools.websearch.WebSearchTools
+- sym: agno.workflow.step.Step
+- sym: agno.workflow.step.StepInput
+- sym: agno.workflow.step.StepOutput
+- sym: agno.workflow.workflow.Workflow
+data:
+- name: hackernews_agent
+  type: Any
+  val: |-
+    Agent(
+        name="Hackernews Agent",
+        model=OpenAIChat(id="gpt-4o"),
+        tools=[HackerNewsTools()],
+        instructions="...
+- name: web_agent
+  type: Any
+  val: |-
+    Agent(
+        name="Web Agent",
+        model=OpenAIChat(id="gpt-4o"),
+        tools=[WebSearchTools()],
+        instructions="Search t...
+- name: content_planner
+  type: Any
+  val: |-
+    Agent(
+        name="Content Planner",
+        model=OpenAIChat(id="gpt-4o"),
+        instructions=[
+            "Plan a content schedul...
+- name: streaming_content_planner
+  type: Any
+  val: |-
+    Agent(
+        name="Content Planner",
+        model=OpenAIChat(id="gpt-4o"),
+        instructions=[
+            "Plan a content schedul...
+- name: research_team
+  type: Any
+  val: |-
+    Team(
+        name="Research Team",
+        model=OpenAIChat(id="gpt-4o"),
+        members=[hackernews_agent, web_agent],
+        instru...
+- name: research_step
+  type: Any
+  val: |-
+    Step(
+        name="Research Step",
+        team=research_team,
+    )
+- name: content_planning_step
+  type: Any
+  val: |-
+    Step(
+        name="Content Planning Step",
+        executor=custom_content_planning_function,
+    )
+- name: content_summary_step
+  type: Any
+  val: |-
+    Step(
+        name="Content Summary Step",
+        executor=content_summary_function,
+    )
+- name: stream_content_planning_step
+  type: Any
+  val: |-
+    Step(
+        name="Content Planning Step",
+        executor=custom_content_planning_function_stream,
+    )
+- name: stream_content_summary_step
+  type: Any
+  val: |-
+    Step(
+        name="Content Summary Step",
+        executor=content_summary_function_stream,
+    )
+- name: content_creation_workflow
+  type: Any
+  val: |-
+    Workflow(
+        name="Content Creation Workflow",
+        description="Automated content creation with custom execution option...
+- name: streaming_content_workflow
+  type: Any
+  val: |-
+    Workflow(
+        name="Streaming Content Creation Workflow",
+        description="Automated content creation with streaming cus...
+functions:
+- name: custom_content_planning_function
+  sig: |-
+    custom_content_planning_function(
+        step_input: StepInput,
+        session_state: dict,
+    ) -> StepOutput
+  lines:
+  - 71
+  - 143
+  detail:
+    calls:
+    - StepOutput
+    - bool
+    - content_planner.run
+    - |-
+      f"""
+                  ## Strategic Content Plan #{current_plan_id}
+
+                  **Planning Topic:** {message}
+
+                  **Research Integration:** {"[PASS] Research-based" if previous_step_content else "[FAIL] No research foundation"}
+                  **Total Plans Created:** {len(session_state["content_plans"])}
+
+                  **Content Strategy:**
+                  {response.content}
+
+                  **Custom Planning Enhancements:**
+                  - Research Integration: {"High" if previous_step_content else "Baseline"}
+                  - Strategic Alignment: Optimized for multi-channel distribution
+                  - Execution Ready: Detailed action items included
+                  - Session History: {len(session_state["content_plans"])} plans stored
+
+                  **Plan ID:** #{current_plan_id}
+              """.strip
+    - len
+    - session_state["content_plans"].append
+    - str
+- name: content_summary_function
+  sig: 'content_summary_function(step_input: StepInput, session_state: dict) -> StepOutput'
+  lines:
+  - 146
+  - 175
+  detail:
+    calls:
+    - StepOutput
+    - len
+    - summary.strip
+- name: custom_content_planning_function_stream
+  sig: |-
+    custom_content_planning_function_stream(
+        step_input: StepInput,
+        session_state: dict,
+    ) -> Iterator[Union[WorkflowRunOutputEvent, StepOutput]]
+  lines:
+  - 178
+  - 258
+  detail:
+    calls:
+    - StepOutput
+    - bool
+    - |-
+      f"""
+      ## Strategic Content Plan #{current_plan_id}
+
+      **Planning Topic:** {message}
+
+      **Research Integration:** {"[PASS] Research-based" if previous_step_content else "[FAIL] No research foundation"}
+      **Total Plans Created:** {len(session_state["content_plans"])}
+
+      **Content Strategy:**
+      {response.content if response else "Content generation failed"}
+
+      **Custom Planning Enhancements:**
+      - Research Integration: {"High" if previous_step_content else "Baseline"}
+      - Strategic Alignment: Optimized for multi-channel distribution
+      - Execution Ready: Detailed action items included
+      - Session History: {len(session_state["content_plans"])} plans stored
+
+      **Plan ID:** #{current_plan_id}
+              """.strip
+    - len
+    - session_state["content_plans"].append
+    - str
+    - streaming_content_planner.get_last_run_output
+    - streaming_content_planner.run
+- name: content_summary_function_stream
+  sig: |-
+    content_summary_function_stream(
+        step_input: StepInput,
+        session_state: dict,
+    ) -> Iterator[StepOutput]
+  lines:
+  - 261
+  - 289
+  detail:
+    calls:
+    - StepOutput
+    - len
+    - summary.strip
+exports:
+- name: custom_content_planning_function
+  kind: func
+- name: content_summary_function
+  kind: func
+- name: custom_content_planning_function_stream
+  kind: func
+- name: content_summary_function_stream
+  kind: func
+- name: hackernews_agent
+  kind: data
+- name: web_agent
+  kind: data
+- name: content_planner
+  kind: data
+- name: streaming_content_planner
+  kind: data
+- name: research_team
+  kind: data
+- name: research_step
+  kind: data
+- name: content_planning_step
+  kind: data
+- name: content_summary_step
+  kind: data
+- name: stream_content_planning_step
+  kind: data
+- name: stream_content_summary_step
+  kind: data
+- name: content_creation_workflow
+  kind: data
+- name: streaming_content_workflow
+  kind: data

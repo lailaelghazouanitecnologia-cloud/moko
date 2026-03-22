@@ -1,0 +1,1445 @@
+## Roska File Descriptor — singlestore/singlestore.py
+file: singlestore/singlestore.py
+lines: 2987
+layer: logic
+imports:
+- sym: agno.db.base.BaseDb
+- sym: agno.db.base.SessionType
+- sym: agno.db.migrations.manager.MigrationManager
+- sym: agno.db.schemas.culture.CulturalKnowledge
+- sym: agno.db.schemas.evals.EvalFilterType
+- sym: agno.db.schemas.evals.EvalRunRecord
+- sym: agno.db.schemas.evals.EvalType
+- sym: agno.db.schemas.knowledge.KnowledgeRow
+- sym: agno.db.schemas.memory.UserMemory
+- sym: agno.db.singlestore.schemas.get_table_schema_definition
+- sym: agno.db.singlestore.utils.apply_sorting
+- sym: agno.db.singlestore.utils.bulk_upsert_metrics
+- sym: agno.db.singlestore.utils.calculate_date_metrics
+- sym: agno.db.singlestore.utils.create_schema
+- sym: agno.db.singlestore.utils.deserialize_cultural_knowledge_from_db
+- sym: agno.db.singlestore.utils.fetch_all_sessions_data
+- sym: agno.db.singlestore.utils.get_dates_to_calculate_metrics_for
+- sym: agno.db.singlestore.utils.is_table_available
+- sym: agno.db.singlestore.utils.is_valid_table
+- sym: agno.db.singlestore.utils.serialize_cultural_knowledge_for_db
+- sym: agno.session.AgentSession
+- sym: agno.session.Session
+- sym: agno.session.TeamSession
+- sym: agno.session.WorkflowSession
+- sym: agno.utils.log.log_debug
+- sym: agno.utils.log.log_error
+- sym: agno.utils.log.log_info
+- sym: agno.utils.log.log_warning
+- sym: agno.utils.string.generate_id
+types:
+- name: SingleStoreDb
+  kind: struct
+  bases:
+  - BaseDb
+  fields:
+  - name: db_url
+    type: Any
+    default: Optional[str]
+  - name: db_engine
+    type: Any
+    default: Engine
+  - name: db_schema
+    type: Any
+    default: Optional[str]
+  - name: metadata
+    type: Any
+    default: MetaData
+  - name: create_schema
+    type: Any
+    default: bool
+  - name: Session
+    type: Any
+    default: scoped_session
+  methods:
+  - name: __init__
+    sig: |-
+      __init__(
+              self,
+              id: Optional[str] = None,
+              db_engine: Optional[Engine] = None,
+              db_schema: Optional[str] = None,
+              db_url: Optional[str] = None,
+              session_table: Optional[str] = None,
+              culture_table: Optional[str] = None,
+              memory_table: Optional[str] = None,
+              metrics_table: Optional[str] = None,
+              eval_table: Optional[str] = None,
+              knowledge_table: Optional[str] = None,
+              versions_table: Optional[str] = None,
+              traces_table: Optional[str] = None,
+              spans_table: Optional[str] = None,
+              create_schema: bool = True,
+          )
+    lines:
+    - 45
+    - 126
+    detail:
+      calls:
+      - MetaData
+      - ValueError
+      - create_engine
+      - generate_id
+      - scoped_session
+      - sessionmaker
+      - str
+      - super
+      - super().__init__
+  - name: table_exists
+    sig: 'table_exists(self, table_name: str) -> bool'
+    lines:
+    - 129
+    - 139
+    detail:
+      calls:
+      - is_table_available
+      - self.Session
+  - name: _create_table_structure_only
+    sig: '_create_table_structure_only(self, table_name: str, table_type: str) -> Table'
+    vis: protected
+    lines:
+    - 141
+    - 183
+    detail:
+      calls:
+      - Column
+      - Table
+      - col_config.get
+      - col_config["type"]
+      - col_name.startswith
+      - columns.append
+      - get_table_schema_definition
+      - log_error
+      - table_schema.items
+  - name: _create_table
+    sig: '_create_table(self, table_name: str, table_type: str) -> Table'
+    vis: protected
+    lines:
+    - 199
+    - 329
+    detail:
+      calls:
+      - '", ".join'
+      - Column
+      - ForeignKey
+      - Index
+      - MigrationManager
+      - Table
+      - UniqueConstraint
+      - col.type.compile
+      - col_config.get
+      - col_config["type"]
+      - column_args.append
+      - columns.append
+      - columns_sql.append
+      - create_schema
+      - get_table_schema_definition
+      - |-
+        get_table_schema_definition(
+                        table_type, traces_table_name=self.trace_table_name, db_schema=self.db_schema or "agno"
+                    ).copy
+      - idx.create
+      - indexes.append
+      - log_debug
+      - log_error
+      - self.Session
+      - self.table_exists
+      - self.upsert_schema_version
+      - sess.begin
+      - sess.execute
+      - 'sess.execute(exists_query, {"index_name": idx.name}).scalar'
+      - 'sess.execute(exists_query, {"schema": self.db_schema, "index_name": idx.name}).scalar'
+      - table.append_constraint
+      - table.create
+      - table_schema.items
+      - table_schema.pop
+      - text
+      - unique_constraints.append
+  - name: _get_or_create_table
+    sig: |-
+      _get_or_create_table(
+              self,
+              table_name: str,
+              table_type: str,
+              create_table_if_not_found: Optional[bool] = False,
+          ) -> Optional[Table]
+    vis: protected
+    lines:
+    - 409
+    - 455
+    detail:
+      calls:
+      - MigrationManager
+      - ValueError
+      - is_table_available
+      - is_valid_table
+      - log_error
+      - self.Session
+      - self._create_table
+      - self._create_table_structure_only
+      - self.upsert_schema_version
+      - sess.begin
+  - name: get_latest_schema_version
+    sig: 'get_latest_schema_version(self, table_name: str) -> str'
+    lines:
+    - 457
+    - 471
+    detail:
+      calls:
+      - dict
+      - select
+      - self.Session
+      - self._get_table
+      - sess.execute
+      - sess.execute(stmt).fetchone
+      - stmt.order_by
+      - stmt.order_by(table.c.version.desc()).limit
+      - stmt.where
+      - table.c.version.desc
+      - version_dict.get
+  - name: upsert_schema_version
+    sig: 'upsert_schema_version(self, table_name: str, version: str) -> None'
+    lines:
+    - 473
+    - 491
+    detail:
+      calls:
+      - datetime.now
+      - datetime.now().isoformat
+      - mysql.insert
+      - mysql.insert(table).values
+      - self.Session
+      - self._get_table
+      - sess.begin
+      - sess.execute
+      - stmt.on_duplicate_key_update
+  - name: delete_session
+    sig: 'delete_session(self, session_id: str, user_id: Optional[str] = None) -> bool'
+    lines:
+    - 494
+    - 527
+    detail:
+      calls:
+      - delete_stmt.where
+      - log_debug
+      - log_error
+      - self.Session
+      - self._get_table
+      - sess.begin
+      - sess.execute
+      - table.delete
+      - table.delete().where
+  - name: delete_sessions
+    sig: 'delete_sessions(self, session_ids: List[str], user_id: Optional[str] = None) -> None'
+    lines:
+    - 529
+    - 555
+    detail:
+      calls:
+      - delete_stmt.where
+      - log_debug
+      - log_error
+      - self.Session
+      - self._get_table
+      - sess.begin
+      - sess.execute
+      - table.c.session_id.in_
+      - table.delete
+      - table.delete().where
+  - name: get_session
+    sig: |-
+      get_session(
+              self,
+              session_id: str,
+              session_type: SessionType,
+              user_id: Optional[str] = None,
+              deserialize: Optional[bool] = True,
+          ) -> Optional[Union[Session, Dict[str, Any]]]
+    lines:
+    - 557
+    - 611
+    detail:
+      calls:
+      - AgentSession.from_dict
+      - TeamSession.from_dict
+      - ValueError
+      - WorkflowSession.from_dict
+      - dict
+      - log_error
+      - select
+      - select(table).where
+      - self.Session
+      - self._get_table
+      - sess.execute
+      - sess.execute(stmt).fetchone
+      - stmt.where
+  - name: get_sessions
+    sig: |-
+      get_sessions(
+              self,
+              session_type: Optional[SessionType] = None,
+              user_id: Optional[str] = None,
+              component_id: Optional[str] = None,
+              session_name: Optional[str] = None,
+              start_timestamp: Optional[int] = None,
+              end_timestamp: Optional[int] = None,
+              limit: Optional[int] = None,
+              page: Optional[int] = None,
+              sort_by: Optional[str] = None,
+              sort_order: Optional[str] = None,
+              deserialize: Optional[bool] = True,
+          ) -> Union[List[Session], Tuple[List[Dict[str, Any]], int]]
+    lines:
+    - 613
+    - 716
+    detail:
+      calls:
+      - AgentSession.from_dict
+      - TeamSession.from_dict
+      - ValueError
+      - WorkflowSession.from_dict
+      - apply_sorting
+      - dict
+      - func.JSON_EXTRACT_STRING
+      - func.coalesce
+      - func.coalesce(func.JSON_EXTRACT_STRING(table.c.session_data, "session_name"), "").like
+      - func.count
+      - isinstance
+      - log_error
+      - select
+      - select(func.count()).select_from
+      - self.Session
+      - self._get_table
+      - sess.begin
+      - sess.execute
+      - sess.execute(count_stmt).scalar
+      - sess.execute(stmt).fetchall
+      - stmt.alias
+      - stmt.limit
+      - stmt.offset
+      - stmt.where
+  - name: rename_session
+    sig: |-
+      rename_session(
+              self,
+              session_id: str,
+              session_type: SessionType,
+              session_name: str,
+              user_id: Optional[str] = None,
+              deserialize: Optional[bool] = True,
+          ) -> Optional[Union[Session, Dict[str, Any]]]
+    lines:
+    - 718
+    - 788
+    detail:
+      calls:
+      - AgentSession.from_dict
+      - TeamSession.from_dict
+      - ValueError
+      - WorkflowSession.from_dict
+      - dict
+      - func.JSON_SET_STRING
+      - log_debug
+      - log_error
+      - select
+      - select(table).where
+      - select_stmt.where
+      - self.Session
+      - self._get_table
+      - sess.begin
+      - sess.execute
+      - sess.execute(select_stmt).fetchone
+      - stmt.where
+      - update
+      - |-
+        update(table)
+                            .where
+      - |-
+        update(table)
+                            .where(table.c.session_id == session_id)
+                            .where
+      - |-
+        update(table)
+                            .where(table.c.session_id == session_id)
+                            .where(table.c.session_type == session_type.value)
+                            .values
+  - name: upsert_session
+    sig: 'upsert_session(self, session: Session, deserialize: Optional[bool] = True) -> Optional[Session]'
+    lines:
+    - 790
+    - 968
+    detail:
+      calls:
+      - AgentSession.from_dict
+      - TeamSession.from_dict
+      - WorkflowSession.from_dict
+      - int
+      - isinstance
+      - log_error
+      - mysql.insert
+      - mysql.insert(table).values
+      - select
+      - select(table).where
+      - |-
+        select(table.c.user_id)
+                                .where
+      - |-
+        select(table.c.user_id)
+                                .where(table.c.session_id == session_dict.get("session_id"))
+                                .with_for_update
+      - self.Session
+      - self._get_table
+      - sess.begin
+      - sess.execute
+      - |-
+        sess.execute(
+                                select(table.c.user_id)
+                                .where(table.c.session_id == session_dict.get("session_id"))
+                                .with_for_update()
+                            ).fetchone
+      - sess.execute(select_stmt).fetchone
+      - session.to_dict
+      - session_dict.get
+      - stmt.on_duplicate_key_update
+      - time.time
+  - name: upsert_sessions
+    sig: |-
+      upsert_sessions(
+              self, sessions: List[Session], deserialize: Optional[bool] = True, preserve_updated_at: bool = False
+          ) -> List[Union[Session, Dict[str, Any]]]
+    lines:
+    - 970
+    - 1167
+    detail:
+      calls:
+      - AgentSession.from_dict
+      - TeamSession.from_dict
+      - WorkflowSession.from_dict
+      - agent_data.append
+      - agent_sessions.append
+      - dict
+      - int
+      - isinstance
+      - log_error
+      - mysql.insert
+      - results.append
+      - select
+      - select(table).where
+      - self.Session
+      - self._get_table
+      - sess.begin
+      - sess.execute
+      - sess.execute(select_stmt).fetchall
+      - session.to_dict
+      - session_dict.get
+      - stmt.on_duplicate_key_update
+      - table.c.session_id.in_
+      - team_data.append
+      - team_sessions.append
+      - time.time
+      - workflow_data.append
+      - workflow_sessions.append
+  - name: delete_user_memory
+    sig: 'delete_user_memory(self, memory_id: str, user_id: Optional[str] = None)'
+    lines:
+    - 1170
+    - 1202
+    detail:
+      calls:
+      - delete_stmt.where
+      - log_debug
+      - log_error
+      - self.Session
+      - self._get_table
+      - sess.begin
+      - sess.execute
+      - table.delete
+      - table.delete().where
+  - name: delete_user_memories
+    sig: 'delete_user_memories(self, memory_ids: List[str], user_id: Optional[str] = None) -> None'
+    lines:
+    - 1204
+    - 1229
+    detail:
+      calls:
+      - delete_stmt.where
+      - log_debug
+      - log_error
+      - self.Session
+      - self._get_table
+      - sess.begin
+      - sess.execute
+      - table.c.memory_id.in_
+      - table.delete
+      - table.delete().where
+  - name: get_all_memory_topics
+    sig: get_all_memory_topics(self) -> List[str]
+    lines:
+    - 1231
+    - 1257
+    detail:
+      calls:
+      - isinstance
+      - json.loads
+      - list
+      - log_error
+      - select
+      - self.Session
+      - self._get_table
+      - sess.begin
+      - sess.execute
+      - sess.execute(stmt).fetchall
+      - set
+      - topics.extend
+  - name: get_user_memory
+    sig: |-
+      get_user_memory(
+              self, memory_id: str, deserialize: Optional[bool] = True, user_id: Optional[str] = None
+          ) -> Optional[UserMemory]
+    lines:
+    - 1259
+    - 1298
+    detail:
+      calls:
+      - UserMemory.from_dict
+      - log_error
+      - select
+      - select(table).where
+      - self.Session
+      - self._get_table
+      - sess.begin
+      - sess.execute
+      - sess.execute(stmt).fetchone
+      - stmt.where
+  - name: get_user_memories
+    sig: |-
+      get_user_memories(
+              self,
+              user_id: Optional[str] = None,
+              agent_id: Optional[str] = None,
+              team_id: Optional[str] = None,
+              topics: Optional[List[str]] = None,
+              search_content: Optional[str] = None,
+              limit: Optional[int] = None,
+              page: Optional[int] = None,
+              sort_by: Optional[str] = None,
+              sort_order: Optional[str] = None,
+              deserialize: Optional[bool] = True,
+          ) -> Union[List[UserMemory], Tuple[List[Dict[str, Any]], int]]
+    lines:
+    - 1300
+    - 1382
+    detail:
+      calls:
+      - UserMemory.from_dict
+      - and_
+      - apply_sorting
+      - func.JSON_ARRAY_CONTAINS_STRING
+      - func.count
+      - log_error
+      - select
+      - select(func.count()).select_from
+      - self.Session
+      - self._get_table
+      - sess.begin
+      - sess.execute
+      - sess.execute(count_stmt).scalar
+      - sess.execute(stmt).fetchall
+      - stmt.alias
+      - stmt.limit
+      - stmt.offset
+      - stmt.where
+      - table.c.memory.like
+  - name: get_user_memory_stats
+    sig: |-
+      get_user_memory_stats(
+              self, limit: Optional[int] = None, page: Optional[int] = None, user_id: Optional[str] = None
+          ) -> Tuple[List[Dict[str, Any]], int]
+    lines:
+    - 1384
+    - 1451
+    detail:
+      calls:
+      - func.count
+      - func.count(table.c.memory_id).label
+      - func.max
+      - func.max(table.c.updated_at).desc
+      - func.max(table.c.updated_at).label
+      - log_error
+      - select
+      - select(func.count()).select_from
+      - self.Session
+      - self._get_table
+      - sess.begin
+      - sess.execute
+      - sess.execute(count_stmt).scalar
+      - sess.execute(stmt).fetchall
+      - stmt.alias
+      - stmt.group_by
+      - stmt.limit
+      - stmt.offset
+      - stmt.order_by
+      - stmt.where
+      - table.c.user_id.is_not
+  - name: upsert_user_memory
+    sig: |-
+      upsert_user_memory(
+              self, memory: UserMemory, deserialize: Optional[bool] = True
+          ) -> Optional[Union[UserMemory, Dict[str, Any]]]
+    lines:
+    - 1453
+    - 1522
+    detail:
+      calls:
+      - UserMemory.from_dict
+      - int
+      - log_error
+      - mysql.insert
+      - mysql.insert(table).values
+      - select
+      - select(table).where
+      - self.Session
+      - self._get_table
+      - sess.begin
+      - sess.execute
+      - sess.execute(select_stmt).fetchone
+      - stmt.on_duplicate_key_update
+      - str
+      - time.time
+      - uuid4
+  - name: upsert_memories
+    sig: |-
+      upsert_memories(
+              self, memories: List[UserMemory], deserialize: Optional[bool] = True, preserve_updated_at: bool = False
+          ) -> List[Union[UserMemory, Dict[str, Any]]]
+    lines:
+    - 1524
+    - 1608
+    detail:
+      calls:
+      - UserMemory.from_dict
+      - dict
+      - int
+      - log_error
+      - memory_data.append
+      - mysql.insert
+      - results.append
+      - select
+      - select(table).where
+      - self.Session
+      - self._get_table
+      - sess.begin
+      - sess.execute
+      - sess.execute(select_stmt).fetchall
+      - stmt.on_duplicate_key_update
+      - str
+      - table.c.memory_id.in_
+      - time.time
+      - uuid4
+  - name: clear_memories
+    sig: clear_memories(self) -> None
+    lines:
+    - 1610
+    - 1626
+    detail:
+      calls:
+      - log_error
+      - self.Session
+      - self._get_table
+      - sess.begin
+      - sess.execute
+      - table.delete
+  - name: _get_all_sessions_for_metrics_calculation
+    sig: |-
+      _get_all_sessions_for_metrics_calculation(
+              self, start_timestamp: Optional[int] = None, end_timestamp: Optional[int] = None
+          ) -> List[Dict[str, Any]]
+    vis: protected
+    lines:
+    - 1629
+    - 1669
+    detail:
+      calls:
+      - log_error
+      - select
+      - self.Session
+      - self._get_table
+      - sess.execute
+      - sess.execute(stmt).fetchall
+      - stmt.where
+  - name: _get_metrics_calculation_starting_date
+    sig: '_get_metrics_calculation_starting_date(self, table: Table) -> Optional[date]'
+    vis: protected
+    lines:
+    - 1671
+    - 1706
+    detail:
+      calls:
+      - ValueError
+      - datetime.fromtimestamp
+      - datetime.fromtimestamp(first_session_date, tz=timezone.utc).date
+      - isinstance
+      - len
+      - select
+      - select(table).order_by
+      - select(table).order_by(table.c.date.desc()).limit
+      - self.Session
+      - self.get_sessions
+      - sess.execute
+      - sess.execute(stmt).fetchone
+      - table.c.date.desc
+      - timedelta
+  - name: calculate_metrics
+    sig: calculate_metrics(self) -> Optional[list[dict]]
+    lines:
+    - 1708
+    - 1769
+    detail:
+      calls:
+      - all_sessions_data.get
+      - any
+      - bulk_upsert_metrics
+      - calculate_date_metrics
+      - date_to_process.isoformat
+      - datetime.combine
+      - datetime.combine(dates_to_process[-1] + timedelta(days=1), datetime.min.time()).timestamp
+      - datetime.combine(dates_to_process[0], datetime.min.time()).timestamp
+      - datetime.min.time
+      - fetch_all_sessions_data
+      - get_dates_to_calculate_metrics_for
+      - int
+      - len
+      - log_debug
+      - log_error
+      - log_info
+      - metrics_records.append
+      - self.Session
+      - self._get_all_sessions_for_metrics_calculation
+      - self._get_metrics_calculation_starting_date
+      - self._get_table
+      - sess.begin
+      - sessions_for_date.values
+      - timedelta
+  - name: get_metrics
+    sig: |-
+      get_metrics(
+              self,
+              starting_date: Optional[date] = None,
+              ending_date: Optional[date] = None,
+          ) -> Tuple[List[dict], Optional[int]]
+    lines:
+    - 1771
+    - 1811
+    detail:
+      calls:
+      - func.max
+      - log_error
+      - select
+      - self.Session
+      - self._get_table
+      - sess.begin
+      - sess.execute
+      - sess.execute(latest_stmt).scalar
+      - sess.execute(stmt).fetchall
+      - stmt.where
+  - name: delete_knowledge_content
+    sig: 'delete_knowledge_content(self, id: str)'
+    lines:
+    - 1815
+    - 1833
+    detail:
+      calls:
+      - log_debug
+      - log_error
+      - self.Session
+      - self._get_table
+      - sess.begin
+      - sess.execute
+      - table.delete
+      - table.delete().where
+  - name: get_knowledge_content
+    sig: 'get_knowledge_content(self, id: str) -> Optional[KnowledgeRow]'
+    lines:
+    - 1835
+    - 1857
+    detail:
+      calls:
+      - KnowledgeRow.model_validate
+      - log_error
+      - select
+      - select(table).where
+      - self.Session
+      - self._get_table
+      - sess.begin
+      - sess.execute
+      - sess.execute(stmt).fetchone
+  - name: get_knowledge_contents
+    sig: |-
+      get_knowledge_contents(
+              self,
+              limit: Optional[int] = None,
+              page: Optional[int] = None,
+              sort_by: Optional[str] = None,
+              sort_order: Optional[str] = None,
+              linked_to: Optional[str] = None,
+          ) -> Tuple[List[KnowledgeRow], int]
+    lines:
+    - 1859
+    - 1916
+    detail:
+      calls:
+      - KnowledgeRow.model_validate
+      - func.count
+      - getattr
+      - log_error
+      - select
+      - select(func.count()).select_from
+      - self.Session
+      - self._get_table
+      - sess.begin
+      - sess.execute
+      - sess.execute(count_stmt).scalar
+      - sess.execute(stmt).fetchall
+      - stmt.alias
+      - stmt.limit
+      - stmt.offset
+      - stmt.order_by
+      - stmt.where
+  - name: upsert_knowledge_content
+    sig: 'upsert_knowledge_content(self, knowledge_row: KnowledgeRow)'
+    lines:
+    - 1918
+    - 1961
+    detail:
+      calls:
+      - knowledge_row.model_dump
+      - log_error
+      - mysql.insert
+      - mysql.insert(table).values
+      - self.Session
+      - self._get_table
+      - sess.begin
+      - sess.execute
+      - stmt.on_duplicate_key_update
+      - |-
+        {
+                                "name": knowledge_row.name,
+                                "description": knowledge_row.description,
+                                "metadata": knowledge_row.metadata,
+                                "type": knowledge_row.type,
+                                "size": knowledge_row.size,
+                                "linked_to": knowledge_row.linked_to,
+                                "access_count": knowledge_row.access_count,
+                                "status": knowledge_row.status,
+                                "status_message": knowledge_row.status_message,
+                                "created_at": knowledge_row.created_at,
+                                "updated_at": knowledge_row.updated_at,
+                                "external_id": knowledge_row.external_id,
+                            }.items
+  - name: create_eval_run
+    sig: 'create_eval_run(self, eval_run: EvalRunRecord) -> Optional[EvalRunRecord]'
+    lines:
+    - 1965
+    - 1995
+    detail:
+      calls:
+      - eval_run.model_dump
+      - int
+      - log_debug
+      - log_error
+      - mysql.insert
+      - mysql.insert(table).values
+      - self.Session
+      - self._get_table
+      - sess.begin
+      - sess.execute
+      - time.time
+  - name: delete_eval_run
+    sig: 'delete_eval_run(self, eval_run_id: str) -> None'
+    lines:
+    - 1997
+    - 2018
+    detail:
+      calls:
+      - log_debug
+      - log_error
+      - log_warning
+      - self.Session
+      - self._get_table
+      - sess.begin
+      - sess.execute
+      - table.delete
+      - table.delete().where
+  - name: delete_eval_runs
+    sig: 'delete_eval_runs(self, eval_run_ids: List[str]) -> None'
+    lines:
+    - 2020
+    - 2041
+    detail:
+      calls:
+      - log_debug
+      - log_error
+      - self.Session
+      - self._get_table
+      - sess.begin
+      - sess.execute
+      - table.c.run_id.in_
+      - table.delete
+      - table.delete().where
+  - name: get_eval_run
+    sig: |-
+      get_eval_run(
+              self, eval_run_id: str, deserialize: Optional[bool] = True
+          ) -> Optional[Union[EvalRunRecord, Dict[str, Any]]]
+    lines:
+    - 2043
+    - 2079
+    detail:
+      calls:
+      - EvalRunRecord.model_validate
+      - log_error
+      - select
+      - select(table).where
+      - self.Session
+      - self._get_table
+      - sess.begin
+      - sess.execute
+      - sess.execute(stmt).fetchone
+  - name: get_eval_runs
+    sig: |-
+      get_eval_runs(
+              self,
+              limit: Optional[int] = None,
+              page: Optional[int] = None,
+              sort_by: Optional[str] = None,
+              sort_order: Optional[str] = None,
+              agent_id: Optional[str] = None,
+              team_id: Optional[str] = None,
+              workflow_id: Optional[str] = None,
+              model_id: Optional[str] = None,
+              filter_type: Optional[EvalFilterType] = None,
+              eval_type: Optional[List[EvalType]] = None,
+              deserialize: Optional[bool] = True,
+          ) -> Union[List[EvalRunRecord], Tuple[List[Dict[str, Any]], int]]
+    lines:
+    - 2081
+    - 2174
+    detail:
+      calls:
+      - EvalRunRecord.model_validate
+      - apply_sorting
+      - func.count
+      - len
+      - log_error
+      - select
+      - select(func.count()).select_from
+      - self.Session
+      - self._get_table
+      - sess.begin
+      - sess.execute
+      - sess.execute(count_stmt).scalar
+      - sess.execute(stmt).fetchall
+      - stmt.alias
+      - stmt.limit
+      - stmt.offset
+      - stmt.order_by
+      - stmt.where
+      - table.c.agent_id.is_not
+      - table.c.created_at.desc
+      - table.c.eval_type.in_
+      - table.c.team_id.is_not
+      - table.c.workflow_id.is_not
+  - name: rename_eval_run
+    sig: |-
+      rename_eval_run(
+              self, eval_run_id: str, name: str, deserialize: Optional[bool] = True
+          ) -> Optional[Union[EvalRunRecord, Dict[str, Any]]]
+    lines:
+    - 2176
+    - 2213
+    detail:
+      calls:
+      - EvalRunRecord.model_validate
+      - int
+      - log_debug
+      - log_error
+      - self.Session
+      - self._get_table
+      - self.get_eval_run
+      - sess.begin
+      - sess.execute
+      - table.update
+      - table.update().where
+      - table.update().where(table.c.run_id == eval_run_id).values
+      - time.time
+  - name: clear_cultural_knowledge
+    sig: clear_cultural_knowledge(self) -> None
+    lines:
+    - 2217
+    - 2233
+    detail:
+      calls:
+      - log_warning
+      - self.Session
+      - self._get_table
+      - sess.begin
+      - sess.execute
+      - table.delete
+  - name: delete_cultural_knowledge
+    sig: 'delete_cultural_knowledge(self, id: str) -> None'
+    lines:
+    - 2235
+    - 2261
+    detail:
+      calls:
+      - log_debug
+      - log_error
+      - self.Session
+      - self._get_table
+      - sess.begin
+      - sess.execute
+      - table.delete
+      - table.delete().where
+  - name: get_cultural_knowledge
+    sig: |-
+      get_cultural_knowledge(
+              self, id: str, deserialize: Optional[bool] = True
+          ) -> Optional[Union[CulturalKnowledge, Dict[str, Any]]]
+    lines:
+    - 2263
+    - 2297
+    detail:
+      calls:
+      - deserialize_cultural_knowledge_from_db
+      - dict
+      - log_error
+      - select
+      - select(table).where
+      - self.Session
+      - self._get_table
+      - sess.begin
+      - sess.execute
+      - sess.execute(stmt).fetchone
+  - name: get_all_cultural_knowledge
+    sig: |-
+      get_all_cultural_knowledge(
+              self,
+              name: Optional[str] = None,
+              agent_id: Optional[str] = None,
+              team_id: Optional[str] = None,
+              limit: Optional[int] = None,
+              page: Optional[int] = None,
+              sort_by: Optional[str] = None,
+              sort_order: Optional[str] = None,
+              deserialize: Optional[bool] = True,
+          ) -> Union[List[CulturalKnowledge], Tuple[List[Dict[str, Any]], int]]
+    lines:
+    - 2299
+    - 2371
+    detail:
+      calls:
+      - apply_sorting
+      - deserialize_cultural_knowledge_from_db
+      - dict
+      - func.count
+      - log_error
+      - select
+      - select(func.count()).select_from
+      - self.Session
+      - self._get_table
+      - sess.begin
+      - sess.execute
+      - sess.execute(count_stmt).scalar
+      - sess.execute(stmt).fetchall
+      - stmt.alias
+      - stmt.limit
+      - stmt.offset
+      - stmt.where
+  - name: upsert_cultural_knowledge
+    sig: |-
+      upsert_cultural_knowledge(
+              self, cultural_knowledge: CulturalKnowledge, deserialize: Optional[bool] = True
+          ) -> Optional[Union[CulturalKnowledge, Dict[str, Any]]]
+    lines:
+    - 2373
+    - 2429
+    detail:
+      calls:
+      - int
+      - log_error
+      - mysql.insert
+      - mysql.insert(table).values
+      - self.Session
+      - self._get_table
+      - self.get_cultural_knowledge
+      - serialize_cultural_knowledge_for_db
+      - sess.begin
+      - sess.execute
+      - stmt.on_duplicate_key_update
+      - str
+      - time.time
+      - uuid4
+  - name: _get_traces_base_query
+    sig: '_get_traces_base_query(self, table: Table, spans_table: Optional[Table] = None)'
+    vis: protected
+    lines:
+    - 2432
+    - 2459
+    detail:
+      calls:
+      - case
+      - func.coalesce
+      - func.coalesce(func.count(spans_table.c.span_id), 0).label
+      - func.coalesce(func.sum(case((spans_table.c.status_code == "ERROR", 1), else_=0)), 0).label
+      - func.count
+      - func.sum
+      - literal
+      - literal(0).label
+      - select
+      - |-
+        select(
+                            table,
+                            func.coalesce(func.count(spans_table.c.span_id), 0).label("total_spans"),
+                            func.coalesce(func.sum(case((spans_table.c.status_code == "ERROR", 1), else_=0)), 0).label(
+                                "error_count"
+                            ),
+                        )
+                        .select_from
+      - |-
+        select(
+                            table,
+                            func.coalesce(func.count(spans_table.c.span_id), 0).label("total_spans"),
+                            func.coalesce(func.sum(case((spans_table.c.status_code == "ERROR", 1), else_=0)), 0).label(
+                                "error_count"
+                            ),
+                        )
+                        .select_from(table.outerjoin(spans_table, table.c.trace_id == spans_table.c.trace_id))
+                        .group_by
+      - table.outerjoin
+  - name: _get_trace_component_level_expr
+    sig: _get_trace_component_level_expr(self, workflow_id_col, team_id_col, agent_id_col, name_col)
+    vis: protected
+    lines:
+    - 2461
+    - 2492
+    detail:
+      calls:
+      - agent_id_col.isnot
+      - and_
+      - case
+      - name_col.like
+      - or_
+      - team_id_col.isnot
+      - workflow_id_col.isnot
+  - name: upsert_trace
+    sig: 'upsert_trace(self, trace: "Trace") -> None'
+    lines:
+    - 2494
+    - 2567
+    detail:
+      calls:
+      - case
+      - func.coalesce
+      - func.greatest
+      - func.least
+      - func.timestampdiff
+      - insert_stmt.on_duplicate_key_update
+      - log_error
+      - mysql.insert
+      - mysql.insert(table).values
+      - self.Session
+      - self._get_table
+      - self._get_trace_component_level_expr
+      - sess.begin
+      - sess.execute
+      - text
+      - trace.to_dict
+      - trace_dict.pop
+  - name: get_trace
+    sig: |-
+      get_trace(
+              self,
+              trace_id: Optional[str] = None,
+              run_id: Optional[str] = None,
+          )
+    lines:
+    - 2569
+    - 2619
+    detail:
+      calls:
+      - Trace.from_dict
+      - dict
+      - log_debug
+      - log_error
+      - self.Session
+      - self._get_table
+      - self._get_traces_base_query
+      - sess.execute
+      - sess.execute(stmt).fetchone
+      - stmt.order_by
+      - stmt.order_by(table.c.start_time.desc()).limit
+      - stmt.where
+      - table.c.start_time.desc
+  - name: get_traces
+    sig: |-
+      get_traces(
+              self,
+              run_id: Optional[str] = None,
+              session_id: Optional[str] = None,
+              user_id: Optional[str] = None,
+              agent_id: Optional[str] = None,
+              team_id: Optional[str] = None,
+              workflow_id: Optional[str] = None,
+              status: Optional[str] = None,
+              start_time: Optional[datetime] = None,
+              end_time: Optional[datetime] = None,
+              limit: Optional[int] = 20,
+              page: Optional[int] = 1,
+          ) -> tuple[List, int]
+    lines:
+    - 2621
+    - 2709
+    detail:
+      calls:
+      - Trace.from_dict
+      - base_stmt.alias
+      - base_stmt.order_by
+      - base_stmt.order_by(table.c.start_time.desc()).limit
+      - base_stmt.order_by(table.c.start_time.desc()).limit(limit).offset
+      - base_stmt.where
+      - dict
+      - end_time.isoformat
+      - func.count
+      - log_debug
+      - log_error
+      - select
+      - select(func.count()).select_from
+      - self.Session
+      - self._get_table
+      - self._get_traces_base_query
+      - sess.execute
+      - sess.execute(count_stmt).scalar
+      - sess.execute(paginated_stmt).fetchall
+      - start_time.isoformat
+      - table.c.start_time.desc
+  - name: get_trace_stats
+    sig: |-
+      get_trace_stats(
+              self,
+              user_id: Optional[str] = None,
+              agent_id: Optional[str] = None,
+              team_id: Optional[str] = None,
+              workflow_id: Optional[str] = None,
+              start_time: Optional[datetime] = None,
+              end_time: Optional[datetime] = None,
+              limit: Optional[int] = 20,
+              page: Optional[int] = 1,
+          ) -> tuple[List[Dict[str, Any]], int]
+    lines:
+    - 2711
+    - 2830
+    detail:
+      calls:
+      - base_stmt.alias
+      - base_stmt.order_by
+      - base_stmt.order_by(func.max(table.c.created_at).desc()).limit
+      - base_stmt.order_by(func.max(table.c.created_at).desc()).limit(limit).offset
+      - base_stmt.where
+      - datetime.fromisoformat
+      - end_time.isoformat
+      - first_trace_at_str.replace
+      - func.count
+      - func.count(table.c.trace_id).label
+      - func.max
+      - func.max(table.c.created_at).desc
+      - func.max(table.c.created_at).label
+      - func.min
+      - func.min(table.c.created_at).label
+      - last_trace_at_str.replace
+      - len
+      - log_debug
+      - log_error
+      - select
+      - |-
+        select(
+                                table.c.session_id,
+                                table.c.user_id,
+                                table.c.agent_id,
+                                table.c.team_id,
+                                table.c.workflow_id,
+                                func.count(table.c.trace_id).label("total_traces"),
+                                func.min(table.c.created_at).label("first_trace_at"),
+                                func.max(table.c.created_at).label("last_trace_at"),
+                            )
+                            .where
+      - |-
+        select(
+                                table.c.session_id,
+                                table.c.user_id,
+                                table.c.agent_id,
+                                table.c.team_id,
+                                table.c.workflow_id,
+                                func.count(table.c.trace_id).label("total_traces"),
+                                func.min(table.c.created_at).label("first_trace_at"),
+                                func.max(table.c.created_at).label("last_trace_at"),
+                            )
+                            .where(table.c.session_id.isnot(None))  # Only sessions with session_id
+                            .group_by
+      - select(func.count()).select_from
+      - self.Session
+      - self._get_table
+      - sess.execute
+      - sess.execute(count_stmt).scalar
+      - sess.execute(paginated_stmt).fetchall
+      - start_time.isoformat
+      - stats_list.append
+      - table.c.session_id.isnot
+  - name: create_span
+    sig: 'create_span(self, span: "Span") -> None'
+    lines:
+    - 2833
+    - 2849
+    detail:
+      calls:
+      - log_error
+      - mysql.insert
+      - mysql.insert(table).values
+      - self.Session
+      - self._get_table
+      - sess.begin
+      - sess.execute
+      - span.to_dict
+  - name: create_spans
+    sig: 'create_spans(self, spans: List) -> None'
+    lines:
+    - 2851
+    - 2871
+    detail:
+      calls:
+      - log_error
+      - mysql.insert
+      - mysql.insert(table).values
+      - self.Session
+      - self._get_table
+      - sess.begin
+      - sess.execute
+      - span.to_dict
+  - name: get_span
+    sig: 'get_span(self, span_id: str)'
+    lines:
+    - 2873
+    - 2898
+    detail:
+      calls:
+      - Span.from_dict
+      - dict
+      - log_error
+      - select
+      - select(table).where
+      - self.Session
+      - self._get_table
+      - sess.execute
+      - sess.execute(stmt).fetchone
+  - name: get_spans
+    sig: |-
+      get_spans(
+              self,
+              trace_id: Optional[str] = None,
+              parent_span_id: Optional[str] = None,
+              limit: Optional[int] = 1000,
+          ) -> List
+    lines:
+    - 2900
+    - 2940
+    detail:
+      calls:
+      - Span.from_dict
+      - dict
+      - log_error
+      - select
+      - self.Session
+      - self._get_table
+      - sess.execute
+      - sess.execute(stmt).fetchall
+      - stmt.limit
+      - stmt.where
+  - name: get_learning
+    sig: |-
+      get_learning(
+              self,
+              learning_type: str,
+              user_id: Optional[str] = None,
+              agent_id: Optional[str] = None,
+              team_id: Optional[str] = None,
+              session_id: Optional[str] = None,
+              namespace: Optional[str] = None,
+              entity_id: Optional[str] = None,
+              entity_type: Optional[str] = None,
+          ) -> Optional[Dict[str, Any]]
+    lines:
+    - 2943
+    - 2954
+    detail:
+      calls:
+      - NotImplementedError
+  - name: upsert_learning
+    sig: |-
+      upsert_learning(
+              self,
+              id: str,
+              learning_type: str,
+              content: Dict[str, Any],
+              user_id: Optional[str] = None,
+              agent_id: Optional[str] = None,
+              team_id: Optional[str] = None,
+              session_id: Optional[str] = None,
+              namespace: Optional[str] = None,
+              entity_id: Optional[str] = None,
+              entity_type: Optional[str] = None,
+              metadata: Optional[Dict[str, Any]] = None,
+          ) -> None
+    lines:
+    - 2956
+    - 2970
+    detail:
+      calls:
+      - NotImplementedError
+  - name: delete_learning
+    sig: 'delete_learning(self, id: str) -> bool'
+    lines:
+    - 2972
+    - 2973
+    detail:
+      calls:
+      - NotImplementedError
+  - name: get_learnings
+    sig: |-
+      get_learnings(
+              self,
+              learning_type: Optional[str] = None,
+              user_id: Optional[str] = None,
+              agent_id: Optional[str] = None,
+              team_id: Optional[str] = None,
+              session_id: Optional[str] = None,
+              namespace: Optional[str] = None,
+              entity_id: Optional[str] = None,
+              entity_type: Optional[str] = None,
+              limit: Optional[int] = None,
+          ) -> List[Dict[str, Any]]
+    lines:
+    - 2975
+    - 2987
+    detail:
+      calls:
+      - NotImplementedError
+  lines:
+  - 44
+  - 2987
+exports:
+- name: SingleStoreDb
+  kind: type
