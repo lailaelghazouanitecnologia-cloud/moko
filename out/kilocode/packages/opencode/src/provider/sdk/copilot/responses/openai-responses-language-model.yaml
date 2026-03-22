@@ -1,0 +1,626 @@
+## Roska File Descriptor — responses/openai-responses-language-model.ts
+file: responses/openai-responses-language-model.ts
+lines: 1732
+layer: logic
+imports:
+- sym: '@ai-sdk/provider.APICallError'
+- sym: '@ai-sdk/provider.type LanguageModelV2'
+- sym: '@ai-sdk/provider.type LanguageModelV2CallWarning'
+- sym: '@ai-sdk/provider.type LanguageModelV2Content'
+- sym: '@ai-sdk/provider.type LanguageModelV2FinishReason'
+- sym: '@ai-sdk/provider.type LanguageModelV2ProviderDefinedTool'
+- sym: '@ai-sdk/provider.type LanguageModelV2StreamPart'
+- sym: '@ai-sdk/provider.type LanguageModelV2Usage'
+- sym: '@ai-sdk/provider.type SharedV2ProviderMetadata'
+- sym: '@ai-sdk/provider-utils.combineHeaders'
+- sym: '@ai-sdk/provider-utils.createEventSourceResponseHandler'
+- sym: '@ai-sdk/provider-utils.createJsonResponseHandler'
+- sym: '@ai-sdk/provider-utils.generateId'
+- sym: '@ai-sdk/provider-utils.parseProviderOptions'
+- sym: '@ai-sdk/provider-utils.type ParseResult'
+- sym: '@ai-sdk/provider-utils.postJsonToApi'
+- sym: zod/v4.z
+- sym: ./openai-config.OpenAIConfig
+  kind: typing
+- sym: ./openai-error.openaiFailedResponseHandler
+- sym: ./tool/code-interpreter.codeInterpreterInputSchema
+- sym: ./tool/code-interpreter.codeInterpreterOutputSchema
+- sym: ./tool/file-search.fileSearchOutputSchema
+- sym: ./tool/image-generation.imageGenerationOutputSchema
+- sym: ./convert-to-openai-responses-input.convertToOpenAIResponsesInput
+- sym: ./map-openai-responses-finish-reason.mapOpenAIResponseFinishReason
+- sym: ./openai-responses-api-types.OpenAIResponsesIncludeOptions
+  kind: typing
+- sym: ./openai-responses-api-types.OpenAIResponsesIncludeValue
+  kind: typing
+- sym: ./openai-responses-prepare-tools.prepareResponsesTools
+- sym: ./openai-responses-settings.OpenAIResponsesModelId
+  kind: typing
+- sym: ./tool/local-shell.localShellInputSchema
+data:
+- name: webSearchCallItem
+  type: any
+  val: |-
+    z.object({
+      type: z.literal("web_search_call"),
+      id: z.string(),
+      status: z.string(),
+      action: z
+        .discriminatedU...
+- name: fileSearchCallItem
+  type: any
+  val: |-
+    z.object({
+      type: z.literal("file_search_call"),
+      id: z.string(),
+      queries: z.array(z.string()),
+      results: z
+        .ar...
+- name: codeInterpreterCallItem
+  type: any
+  val: |-
+    z.object({
+      type: z.literal("code_interpreter_call"),
+      id: z.string(),
+      code: z.string().nullable(),
+      container_id: ...
+- name: localShellCallItem
+  type: any
+  val: |-
+    z.object({
+      type: z.literal("local_shell_call"),
+      id: z.string(),
+      call_id: z.string(),
+      action: z.object({
+        type...
+- name: imageGenerationCallItem
+  type: any
+  val: |-
+    z.object({
+      type: z.literal("image_generation_call"),
+      id: z.string(),
+      result: z.string(),
+    })
+- name: TOP_LOGPROBS_MAX
+  type: number
+  val: '20'
+- name: LOGPROBS_SCHEMA
+  type: any
+  val: |-
+    z.array(
+      z.object({
+        token: z.string(),
+        logprob: z.number(),
+        top_logprobs: z.array(
+          z.object({
+          ...
+- name: usageSchema
+  type: any
+  val: |-
+    z.object({
+      input_tokens: z.number(),
+      input_tokens_details: z.object({ cached_tokens: z.number().nullish() }).nullish...
+- name: textDeltaChunkSchema
+  type: any
+  val: |-
+    z.object({
+      type: z.literal("response.output_text.delta"),
+      item_id: z.string(),
+      delta: z.string(),
+      logprobs: LOGP...
+- name: errorChunkSchema
+  type: any
+  val: |-
+    z.object({
+      type: z.literal("error"),
+      code: z.string(),
+      message: z.string(),
+      param: z.string().nullish(),
+      seque...
+- name: responseFinishedChunkSchema
+  type: any
+  val: |-
+    z.object({
+      type: z.enum(["response.completed", "response.incomplete"]),
+      response: z.object({
+        incomplete_details:...
+- name: responseCreatedChunkSchema
+  type: any
+  val: |-
+    z.object({
+      type: z.literal("response.created"),
+      response: z.object({
+        id: z.string(),
+        created_at: z.number(),...
+- name: responseOutputItemAddedSchema
+  type: any
+  val: |-
+    z.object({
+      type: z.literal("response.output_item.added"),
+      output_index: z.number(),
+      item: z.discriminatedUnion("ty...
+- name: responseOutputItemDoneSchema
+  type: any
+  val: |-
+    z.object({
+      type: z.literal("response.output_item.done"),
+      output_index: z.number(),
+      item: z.discriminatedUnion("typ...
+- name: responseFunctionCallArgumentsDeltaSchema
+  type: any
+  val: |-
+    z.object({
+      type: z.literal("response.function_call_arguments.delta"),
+      item_id: z.string(),
+      output_index: z.number(...
+- name: responseImageGenerationCallPartialImageSchema
+  type: any
+  val: |-
+    z.object({
+      type: z.literal("response.image_generation_call.partial_image"),
+      item_id: z.string(),
+      output_index: z.n...
+- name: responseCodeInterpreterCallCodeDeltaSchema
+  type: any
+  val: |-
+    z.object({
+      type: z.literal("response.code_interpreter_call_code.delta"),
+      item_id: z.string(),
+      output_index: z.numb...
+- name: responseCodeInterpreterCallCodeDoneSchema
+  type: any
+  val: |-
+    z.object({
+      type: z.literal("response.code_interpreter_call_code.done"),
+      item_id: z.string(),
+      output_index: z.numbe...
+- name: responseAnnotationAddedSchema
+  type: any
+  val: |-
+    z.object({
+      type: z.literal("response.output_text.annotation.added"),
+      annotation: z.discriminatedUnion("type", [
+        ...
+- name: responseReasoningSummaryPartAddedSchema
+  type: any
+  val: |-
+    z.object({
+      type: z.literal("response.reasoning_summary_part.added"),
+      item_id: z.string(),
+      summary_index: z.number(...
+- name: responseReasoningSummaryTextDeltaSchema
+  type: any
+  val: |-
+    z.object({
+      type: z.literal("response.reasoning_summary_text.delta"),
+      item_id: z.string(),
+      summary_index: z.number(...
+- name: openaiResponsesChunkSchema
+  type: any
+  val: |-
+    z.union([
+      textDeltaChunkSchema,
+      responseFinishedChunkSchema,
+      responseCreatedChunkSchema,
+      responseOutputItemAdded...
+- name: openaiResponsesProviderOptionsSchema
+  type: any
+  val: |-
+    z.object({
+      include: z
+        .array(z.enum(["reasoning.encrypted_content", "file_search_call.results", "message.output_te...
+types:
+- name: OpenAIResponsesLanguageModel
+  kind: model
+  bases:
+  - LanguageModelV2
+  fields:
+  - name: specificationVersion
+    type: any
+    default: '"v2"'
+  - name: modelId
+    type: OpenAIResponsesModelId
+  - name: config
+    type: OpenAIConfig
+  - name: supportedUrls
+    type: Record<string, RegExp[]>
+    default: |-
+      {
+          "image/*": [/^https?:\/\/.*$/],
+          "application/pdf": [/^https?:\/\/.*$/]...
+  methods:
+  - name: constructor
+    sig: 'constructor(modelId: OpenAIResponsesModelId, config: OpenAIConfig)'
+    lines:
+    - 138
+    - 141
+    detail: {}
+  - name: provider
+    sig: 'provider(): string'
+    lines:
+    - 148
+    - 150
+    detail: {}
+  - name: getArgs
+    sig: |-
+      getArgs({
+          maxOutputTokens,
+          temperature,
+          stopSequences,
+          topP,
+          topK,
+          presencePenalty,
+          frequencyPenalty,
+          seed,
+          prompt,
+          providerOptions,
+          tools,
+          toolChoice,
+          responseFormat,
+        }: Parameters<LanguageModelV2["doGenerate"]>[0])
+    is_async: true
+    vis: private
+    lines:
+    - 152
+    - 392
+    detail:
+      calls:
+      - addInclude
+      - convertToOpenAIResponsesInput
+      - getResponsesModelConfig
+      - hasOpenAITool
+      - parseProviderOptions
+      - prepareResponsesTools
+      - tools?.find
+      - warnings.push
+  - name: doGenerate
+    sig: |-
+      doGenerate(
+          options: Parameters<LanguageModelV2["doGenerate"]>[0],
+        ): Promise<Awaited<ReturnType<LanguageModelV2["doGenerate"]>>>
+    is_async: true
+    lines:
+    - 394
+    - 770
+    detail:
+      calls:
+      - JSON.stringify
+      - LOGPROBS_SCHEMA.nullish
+      - combineHeaders
+      - content.push
+      - createJsonResponseHandler
+      - generateId
+      - logprobs.push
+      - mapOpenAIResponseFinishReason
+      - new APICallError
+      - new Date
+      - part.results?.map
+      - part.summary.push
+      - postJsonToApi
+      - this.config.generateId
+      - this.config.headers
+      - this.config.url
+      - this.getArgs
+      - |-
+        z
+                    .object
+      - |-
+        z
+                    .object({
+                      code: z.string(),
+                      message: z.string(),
+                 ...
+      - z.array
+      - z.discriminatedUnion
+      - z.literal
+      - z.number
+      - z.number().nullish
+      - z.object
+      - 'z.object({ reason: z.string() }).nullish'
+      - z.string
+      - z.string().nullish
+      - z.string().optional
+  - name: doStream
+    sig: |-
+      doStream(
+          options: Parameters<LanguageModelV2["doStream"]>[0],
+        ): Promise<Awaited<ReturnType<LanguageModelV2["doStream"]>>>
+    is_async: true
+    lines:
+    - 772
+    - 1316
+    detail:
+      calls:
+      - JSON.stringify
+      - JSON.stringify(value.delta).slice
+      - activeItem.summaryParts.push
+      - combineHeaders
+      - controller.enqueue
+      - createEventSourceResponseHandler
+      - generateId
+      - isErrorChunk
+      - isResponseAnnotationAddedChunk
+      - isResponseCodeInterpreterCallCodeDeltaChunk
+      - isResponseCodeInterpreterCallCodeDoneChunk
+      - isResponseCreatedChunk
+      - isResponseFinishedChunk
+      - isResponseFunctionCallArgumentsDeltaChunk
+      - isResponseImageGenerationCallPartialImageChunk
+      - isResponseOutputItemAddedChunk
+      - isResponseOutputItemAddedReasoningChunk
+      - isResponseOutputItemDoneChunk
+      - isResponseOutputItemDoneReasoningChunk
+      - isResponseReasoningSummaryPartAddedChunk
+      - isResponseReasoningSummaryTextDeltaChunk
+      - isTextDeltaChunk
+      - logprobs.push
+      - mapOpenAIResponseFinishReason
+      - new Date
+      - new TransformStream
+      - postJsonToApi
+      - response.pipeThrough
+      - self.config.generateId
+      - this.config.headers
+      - this.config.url
+      - this.getArgs
+      - value.item.results?.map
+  lines:
+  - 131
+  - 1317
+- name: ExtractByType
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 1534
+  - 1534
+- name: ResponsesModelConfig
+  kind: typealias
+  decorators:
+  - type
+  fields:
+  - name: isReasoningModel
+    type: boolean
+  - name: systemMessageMode
+    type: '"remove" | "system" | "developer"'
+  - name: requiredAutoTruncation
+    type: boolean
+  - name: supportsFlexProcessing
+    type: boolean
+  - name: supportsPriorityProcessing
+    type: boolean
+  lines:
+  - 1627
+  - 1633
+- name: OpenAIResponsesProviderOptions
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 1732
+  - 1732
+functions:
+- name: isTextDeltaChunk
+  sig: |-
+    isTextDeltaChunk(
+      chunk: z.infer<typeof openaiResponsesChunkSchema>,
+    )
+  lines:
+  - 1536
+  - 1540
+  detail: {}
+- name: isResponseOutputItemDoneChunk
+  sig: |-
+    isResponseOutputItemDoneChunk(
+      chunk: z.infer<typeof openaiResponsesChunkSchema>,
+    )
+  lines:
+  - 1542
+  - 1546
+  detail: {}
+- name: isResponseOutputItemDoneReasoningChunk
+  sig: 'isResponseOutputItemDoneReasoningChunk(chunk: z.infer<typeof openaiResponsesChunkSchema>)'
+  lines:
+  - 1548
+  - 1554
+  detail:
+    calls:
+    - isResponseOutputItemDoneChunk
+- name: isResponseFinishedChunk
+  sig: |-
+    isResponseFinishedChunk(
+      chunk: z.infer<typeof openaiResponsesChunkSchema>,
+    )
+  lines:
+  - 1556
+  - 1560
+  detail: {}
+- name: isResponseCreatedChunk
+  sig: |-
+    isResponseCreatedChunk(
+      chunk: z.infer<typeof openaiResponsesChunkSchema>,
+    )
+  lines:
+  - 1562
+  - 1566
+  detail: {}
+- name: isResponseFunctionCallArgumentsDeltaChunk
+  sig: |-
+    isResponseFunctionCallArgumentsDeltaChunk(
+      chunk: z.infer<typeof openaiResponsesChunkSchema>,
+    )
+  lines:
+  - 1568
+  - 1572
+  detail: {}
+- name: isResponseImageGenerationCallPartialImageChunk
+  sig: |-
+    isResponseImageGenerationCallPartialImageChunk(
+      chunk: z.infer<typeof openaiResponsesChunkSchema>,
+    )
+  lines:
+  - 1573
+  - 1577
+  detail: {}
+- name: isResponseCodeInterpreterCallCodeDeltaChunk
+  sig: |-
+    isResponseCodeInterpreterCallCodeDeltaChunk(
+      chunk: z.infer<typeof openaiResponsesChunkSchema>,
+    )
+  lines:
+  - 1579
+  - 1583
+  detail: {}
+- name: isResponseCodeInterpreterCallCodeDoneChunk
+  sig: |-
+    isResponseCodeInterpreterCallCodeDoneChunk(
+      chunk: z.infer<typeof openaiResponsesChunkSchema>,
+    )
+  lines:
+  - 1585
+  - 1589
+  detail: {}
+- name: isResponseOutputItemAddedChunk
+  sig: |-
+    isResponseOutputItemAddedChunk(
+      chunk: z.infer<typeof openaiResponsesChunkSchema>,
+    )
+  lines:
+  - 1591
+  - 1595
+  detail: {}
+- name: isResponseOutputItemAddedReasoningChunk
+  sig: 'isResponseOutputItemAddedReasoningChunk(chunk: z.infer<typeof openaiResponsesChunkSchema>)'
+  lines:
+  - 1597
+  - 1603
+  detail:
+    calls:
+    - isResponseOutputItemAddedChunk
+- name: isResponseAnnotationAddedChunk
+  sig: |-
+    isResponseAnnotationAddedChunk(
+      chunk: z.infer<typeof openaiResponsesChunkSchema>,
+    )
+  lines:
+  - 1605
+  - 1609
+  detail: {}
+- name: isResponseReasoningSummaryPartAddedChunk
+  sig: |-
+    isResponseReasoningSummaryPartAddedChunk(
+      chunk: z.infer<typeof openaiResponsesChunkSchema>,
+    )
+  lines:
+  - 1611
+  - 1615
+  detail: {}
+- name: isResponseReasoningSummaryTextDeltaChunk
+  sig: |-
+    isResponseReasoningSummaryTextDeltaChunk(
+      chunk: z.infer<typeof openaiResponsesChunkSchema>,
+    )
+  lines:
+  - 1617
+  - 1621
+  detail: {}
+- name: isErrorChunk
+  sig: 'isErrorChunk(chunk: z.infer<typeof openaiResponsesChunkSchema>)'
+  lines:
+  - 1623
+  - 1625
+- name: getResponsesModelConfig
+  sig: 'getResponsesModelConfig(modelId: string): ResponsesModelConfig'
+  lines:
+  - 1635
+  - 1688
+  detail:
+    calls:
+    - modelId.startsWith
+exports:
+- name: OpenAIResponsesLanguageModel
+  kind: type
+- name: ExtractByType
+  kind: type
+- name: ResponsesModelConfig
+  kind: type
+- name: OpenAIResponsesProviderOptions
+  kind: type
+- name: isTextDeltaChunk
+  kind: func
+- name: isResponseOutputItemDoneChunk
+  kind: func
+- name: isResponseOutputItemDoneReasoningChunk
+  kind: func
+- name: isResponseFinishedChunk
+  kind: func
+- name: isResponseCreatedChunk
+  kind: func
+- name: isResponseFunctionCallArgumentsDeltaChunk
+  kind: func
+- name: isResponseImageGenerationCallPartialImageChunk
+  kind: func
+- name: isResponseCodeInterpreterCallCodeDeltaChunk
+  kind: func
+- name: isResponseCodeInterpreterCallCodeDoneChunk
+  kind: func
+- name: isResponseOutputItemAddedChunk
+  kind: func
+- name: isResponseOutputItemAddedReasoningChunk
+  kind: func
+- name: isResponseAnnotationAddedChunk
+  kind: func
+- name: isResponseReasoningSummaryPartAddedChunk
+  kind: func
+- name: isResponseReasoningSummaryTextDeltaChunk
+  kind: func
+- name: isErrorChunk
+  kind: func
+- name: getResponsesModelConfig
+  kind: func
+- name: webSearchCallItem
+  kind: data
+- name: fileSearchCallItem
+  kind: data
+- name: codeInterpreterCallItem
+  kind: data
+- name: localShellCallItem
+  kind: data
+- name: imageGenerationCallItem
+  kind: data
+- name: TOP_LOGPROBS_MAX
+  kind: data
+- name: LOGPROBS_SCHEMA
+  kind: data
+- name: usageSchema
+  kind: data
+- name: textDeltaChunkSchema
+  kind: data
+- name: errorChunkSchema
+  kind: data
+- name: responseFinishedChunkSchema
+  kind: data
+- name: responseCreatedChunkSchema
+  kind: data
+- name: responseOutputItemAddedSchema
+  kind: data
+- name: responseOutputItemDoneSchema
+  kind: data
+- name: responseFunctionCallArgumentsDeltaSchema
+  kind: data
+- name: responseImageGenerationCallPartialImageSchema
+  kind: data
+- name: responseCodeInterpreterCallCodeDeltaSchema
+  kind: data
+- name: responseCodeInterpreterCallCodeDoneSchema
+  kind: data
+- name: responseAnnotationAddedSchema
+  kind: data
+- name: responseReasoningSummaryPartAddedSchema
+  kind: data
+- name: responseReasoningSummaryTextDeltaSchema
+  kind: data
+- name: openaiResponsesChunkSchema
+  kind: data
+- name: openaiResponsesProviderOptionsSchema
+  kind: data

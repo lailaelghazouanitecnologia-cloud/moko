@@ -1,0 +1,785 @@
+## Roska File Descriptor — components/file.tsx
+file: components/file.tsx
+lines: 1176
+layer: ui
+imports:
+- sym: '@opencode-ai/util/encode.sampledChecksum'
+- sym: '@pierre/diffs.DEFAULT_VIRTUAL_FILE_METRICS'
+- sym: '@pierre/diffs.type ExpansionDirections'
+- sym: '@pierre/diffs.type DiffLineAnnotation'
+- sym: '@pierre/diffs.type FileContents'
+- sym: '@pierre/diffs.type FileDiffMetadata'
+- sym: '@pierre/diffs.File as PierreFile'
+- sym: '@pierre/diffs.type FileDiffOptions'
+- sym: '@pierre/diffs.FileDiff'
+- sym: '@pierre/diffs.type FileOptions'
+- sym: '@pierre/diffs.type LineAnnotation'
+- sym: '@pierre/diffs.type SelectedLineRange'
+- sym: '@pierre/diffs.type VirtualFileMetrics'
+- sym: '@pierre/diffs.VirtualizedFile'
+- sym: '@pierre/diffs.VirtualizedFileDiff'
+- sym: '@pierre/diffs.Virtualizer'
+- sym: '@pierre/diffs/ssr.type PreloadMultiFileDiffResult'
+- sym: '@solid-primitives/media.createMediaQuery'
+- sym: solid-js.ComponentProps
+- sym: solid-js.createEffect
+- sym: solid-js.createMemo
+- sym: solid-js.createSignal
+- sym: solid-js.onCleanup
+- sym: solid-js.onMount
+- sym: solid-js.Show
+- sym: solid-js.splitProps
+- sym: ../pierre.createDefaultOptions
+- sym: ../pierre.styleVariables
+- sym: ../pierre/commented-lines.markCommentedDiffLines
+- sym: ../pierre/commented-lines.markCommentedFileLines
+- sym: ../pierre/diff-selection.fixDiffSelection
+- sym: ../pierre/diff-selection.findDiffSide
+- sym: ../pierre/diff-selection.type DiffSelectionSide
+- sym: ../pierre/file-find.createFileFind
+- sym: ../pierre/file-find.type FileFindReveal
+- sym: ../pierre/file-runtime.applyViewerScheme
+- sym: ../pierre/file-runtime.clearReadyWatcher
+- sym: ../pierre/file-runtime.createReadyWatcher
+- sym: ../pierre/file-runtime.getViewerHost
+- sym: ../pierre/file-runtime.getViewerRoot
+- sym: ../pierre/file-runtime.notifyShadowReady
+- sym: ../pierre/file-runtime.observeViewerScheme
+- sym: ../pierre/file-selection.findCodeSelectionSide
+- sym: ../pierre/file-selection.findDiffLineNumber
+- sym: ../pierre/file-selection.findElement
+- sym: ../pierre/file-selection.findFileLineNumber
+- sym: ../pierre/file-selection.readShadowLineSelection
+- sym: ../pierre/selection-bridge.createLineNumberSelectionBridge
+- sym: ../pierre/selection-bridge.restoreShadowTextSelection
+- sym: ../pierre/virtualizer.acquireVirtualizer
+- sym: ../pierre/virtualizer.virtualMetrics
+- sym: ../pierre/worker.getWorkerPool
+- sym: ./file-media.FileMedia
+- sym: ./file-media.type FileMediaOptions
+- sym: ./file-search.FileSearchBar
+data:
+- name: VIRTUALIZE_BYTES
+  type: any
+  val: 500_000
+- name: codeMetrics
+  type: object
+  val: |-
+    {
+      ...DEFAULT_VIRTUAL_FILE_METRICS,
+      lineHeight: 24,
+      fileGap: 0,
+    } satisfies Partial<VirtualFileMetrics>
+- name: sharedKeys
+  type: array
+  val: |-
+    [
+      "mode",
+      "media",
+      "class",
+      "classList",
+      "annotations",
+      "selectedLines",
+      "commentedLines",
+      "search",
+      "...
+- name: textKeys
+  type: array
+  val: '["file", ...sharedKeys] as const'
+- name: diffKeys
+  type: array
+  val: '["before", "after", ...sharedKeys] as const'
+- name: instance
+  type: PierreFile<T> | VirtualizedFile<T> | undefined
+- name: viewer
+  type: Viewer
+- name: '[local, others]'
+  type: any
+  val: splitProps(props, textKeys)
+- name: bytes
+  type: any
+  val: |-
+    createMemo(() => {
+        const value = local.file.contents as unknown
+        if (typeof value === "string") return value.leng...
+- name: virtual
+  type: any
+  val: createMemo(() => bytes() > VIRTUALIZE_BYTES)
+- name: virtuals
+  type: any
+  val: createLocalVirtualStrategy(() => viewer.wrapper, virtual)
+- name: adapter
+  type: ModeAdapter
+  val: |-
+    {
+        lineFromMouseEvent,
+        setSelectedLines,
+        updateSelection: (preserveTextSelection) => {
+          const root = vie...
+- name: lineCallbacks
+  type: any
+  val: |-
+    createLineCallbacks({
+        viewer,
+        onLineSelected: (range) => local.onLineSelected?.(range),
+        onLineSelectionEnd: ...
+- name: options
+  type: any
+  val: |-
+    createMemo(() => ({
+        ...createDefaultOptions<T>("unified"),
+        ...others,
+        ...lineCallbacks,
+      }))
+- name: instance
+  type: FileDiff<T> | undefined
+- name: dragSide
+  type: DiffSelectionSide | undefined
+- name: dragEndSide
+  type: DiffSelectionSide | undefined
+- name: viewer
+  type: Viewer
+- name: '[local, others]'
+  type: any
+  val: splitProps(props, diffKeys)
+- name: mobile
+  type: any
+  val: 'createMediaQuery("(max-width: 640px)")'
+- name: adapter
+  type: ModeAdapter
+  val: |-
+    {
+        lineFromMouseEvent,
+        setSelectedLines,
+        updateSelection: (preserveTextSelection) => {
+          const root = vie...
+- name: virtuals
+  type: any
+  val: |-
+    createSharedVirtualStrategy(
+        () => viewer.container,
+        () => local.search?.disableVirtualization !== true,
+      )
+- name: large
+  type: any
+  val: |-
+    createMemo(() => {
+        const before = typeof local.before?.contents === "string" ? local.before.contents : ""
+        const ...
+- name: largeOptions
+  type: object
+  val: |-
+    {
+        lineDiffType: "none",
+        maxLineDiffLength: 0,
+        tokenizeMaxLineLength: 1,
+      } satisfies Pick<FileDiffOptions<T...
+- name: lineCallbacks
+  type: any
+  val: |-
+    createLineCallbacks({
+        viewer,
+        normalize: (range) => fixDiffSelection(viewer.getRoot(), range),
+        onLineSelecte...
+- name: options
+  type: any
+  val: |-
+    createMemo<FileDiffOptions<T>>(() => {
+        const base = {
+          ...createDefaultOptions(props.diffStyle),
+          ...other...
+types:
+- name: SharedProps
+  kind: typealias
+  decorators:
+  - type
+  fields:
+  - name: annotations
+    type: LineAnnotation<T>[] | DiffLineAnnotation<T>[]
+  - name: selectedLines
+    type: SelectedLineRange | null
+  - name: commentedLines
+    type: SelectedLineRange[]
+  - name: onLineNumberSelectionEnd
+    type: '(selection: SelectedLineRange | null) => void'
+  - name: onRendered
+    type: () => void
+  - name: class
+    type: string
+  - name: classList
+    type: ComponentProps<"div">["classList"]
+  - name: media
+    type: FileMediaOptions
+  - name: search
+    type: FileSearchControl
+  lines:
+  - 56
+  - 66
+- name: FileSearchReveal
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 68
+  - 68
+- name: FileSearchHandle
+  kind: typealias
+  decorators:
+  - type
+  fields:
+  - name: focus
+    type: () => void
+  - name: setQuery
+    type: '(value: string) => void'
+  - name: clear
+    type: () => void
+  - name: reveal
+    type: '(hit: FileSearchReveal) => boolean'
+  - name: expand
+    type: '(hit: FileSearchReveal) => boolean'
+  - name: refresh
+    type: () => void
+  lines:
+  - 70
+  - 77
+- name: FileSearchControl
+  kind: typealias
+  decorators:
+  - type
+  fields:
+  - name: shortcuts
+    type: '"global" | "disabled"'
+  - name: showBar
+    type: boolean
+  - name: disableVirtualization
+    type: boolean
+  - name: register
+    type: '(handle: FileSearchHandle | null) => void'
+  lines:
+  - 79
+  - 84
+- name: TextFileProps
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 86
+  - 92
+- name: DiffFileProps
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 94
+  - 101
+- name: FileProps
+  kind: enum
+  decorators:
+  - type
+  variants:
+  - name: TextFileProps<T>
+  - name: DiffFileProps<T>
+  lines:
+  - 103
+  - 103
+- name: MouseHit
+  kind: typealias
+  decorators:
+  - type
+  fields:
+  - name: line
+    type: number | undefined
+  - name: numberColumn
+    type: boolean
+  - name: side
+    type: DiffSelectionSide
+  lines:
+  - 162
+  - 166
+- name: ViewerConfig
+  kind: typealias
+  decorators:
+  - type
+  fields:
+  - name: enableLineSelection
+    type: () => boolean
+  - name: search
+    type: () => FileSearchControl | undefined
+  - name: selectedLines
+    type: () => SelectedLineRange | null | undefined
+  - name: commentedLines
+    type: () => SelectedLineRange[]
+  - name: onLineSelectionEnd
+    type: '(range: SelectedLineRange | null) => void'
+  - name: lineFromMouseEvent
+    type: '(event: MouseEvent) => MouseHit'
+  - name: setSelectedLines
+    type: '(range: SelectedLineRange | null, preserve?: { root: ShadowRoot; text: Range }) => void'
+  - name: updateSelection
+    type: '(preserveTextSelection: boolean) => void'
+  - name: buildDragSelection
+    type: () => SelectedLineRange | undefined
+  - name: buildClickSelection
+    type: () => SelectedLineRange | undefined
+  - name: onDragStart
+    type: '(hit: MouseHit) => void'
+  - name: onDragMove
+    type: '(hit: MouseHit) => void'
+  - name: onDragReset
+    type: () => void
+  - name: markCommented
+    type: '(root: ShadowRoot, ranges: SelectedLineRange[]) => void'
+  lines:
+  - 168
+  - 185
+- name: Viewer
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 408
+  - 408
+- name: ModeAdapter
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 410
+  - 413
+- name: ModeConfig
+  kind: typealias
+  decorators:
+  - type
+  fields:
+  - name: enableLineSelection
+    type: () => boolean
+  - name: search
+    type: () => FileSearchControl | undefined
+  - name: selectedLines
+    type: () => SelectedLineRange | null | undefined
+  - name: commentedLines
+    type: () => SelectedLineRange[] | undefined
+  - name: onLineSelectionEnd
+    type: '(range: SelectedLineRange | null) => void'
+  lines:
+  - 415
+  - 421
+- name: RenderTarget
+  kind: typealias
+  decorators:
+  - type
+  fields:
+  - name: cleanUp
+    type: () => void
+  lines:
+  - 423
+  - 425
+- name: AnnotationTarget
+  kind: typealias
+  decorators:
+  - type
+  fields:
+  - name: setLineAnnotations
+    type: '(annotations: A[]) => void'
+  - name: rerender
+    type: () => void
+  lines:
+  - 427
+  - 430
+- name: VirtualStrategy
+  kind: typealias
+  decorators:
+  - type
+  fields:
+  - name: get
+    type: () => Virtualizer | undefined
+  - name: cleanup
+    type: () => void
+  lines:
+  - 432
+  - 435
+functions:
+- name: expansionForHit
+  sig: 'expansionForHit(diff: FileDiffMetadata, hit: FileSearchReveal)'
+  lines:
+  - 124
+  - 156
+  detail:
+    calls:
+    - Math.max
+    - side.count
+    - side.start
+- name: useFileViewer
+  sig: 'useFileViewer(config: ViewerConfig)'
+  lines:
+  - 187
+  - 406
+  detail:
+    calls:
+    - config.search
+    - createEffect
+    - createFileFind
+    - createLineNumberSelectionBridge
+    - createReadyWatcher
+    - createSignal
+    - onCleanup
+    - onMount
+- name: useModeViewer
+  sig: 'useModeViewer(config: ModeConfig, adapter: ModeAdapter)'
+  lines:
+  - 437
+  - 446
+  detail:
+    calls:
+    - useFileViewer
+- name: useSearchHandle
+  sig: |-
+    useSearchHandle(opts: {
+      search: () => FileSearchControl | undefined
+      find: ReturnType<typeof createFileFind>
+      expand?: (hit: FileSearchReveal) => boolean
+    })
+  lines:
+  - 448
+  - 482
+  detail:
+    calls:
+    - createEffect
+- name: createLineCallbacks
+  sig: |-
+    createLineCallbacks(opts: {
+      viewer: Viewer
+      normalize?: (range: SelectedLineRange | null) => SelectedLineRange | null | undefined
+      onLineSelected?: (range: SelectedLineRange | null) => void
+      onLineSelectionEnd?: (range: SelectedLineRange | null) => void
+      onLineNumberSelectionEnd?: (selection: SelectedLineRange | null) => void
+    })
+  lines:
+  - 484
+  - 512
+  detail: {}
+- name: useAnnotationRerender
+  sig: |-
+    useAnnotationRerender(opts: {
+      viewer: Viewer
+      current: () => AnnotationTarget<A> | undefined
+      annotations: () => A[]
+    })
+  lines:
+  - 514
+  - 527
+  detail:
+    calls:
+    - createEffect
+- name: notifyRendered
+  sig: |-
+    notifyRendered(opts: {
+      viewer: Viewer
+      isReady: (root: ShadowRoot) => boolean
+      settleFrames?: number
+      onReady: () => void
+    })
+  lines:
+  - 529
+  - 543
+  detail:
+    calls:
+    - notifyShadowReady
+- name: renderViewer
+  sig: |-
+    renderViewer(opts: {
+      viewer: Viewer
+      current: I | undefined
+      create: () => I
+      assign: (value: I) => void
+      draw: (value: I) => void
+      onReady: () => void
+    })
+  lines:
+  - 545
+  - 564
+  detail:
+    calls:
+    - applyViewerScheme
+    - clearReadyWatcher
+    - opts.assign
+    - opts.create
+    - opts.current?.cleanUp
+    - opts.draw
+    - opts.onReady
+    - opts.viewer.getHost
+    - opts.viewer.setRendered
+- name: scrollParent
+  sig: 'scrollParent(el: HTMLElement): HTMLElement | undefined'
+  lines:
+  - 566
+  - 573
+  detail:
+    calls:
+    - getComputedStyle
+- name: createLocalVirtualStrategy
+  sig: 'createLocalVirtualStrategy(host: () => HTMLDivElement | undefined, enabled: () => boolean): VirtualStrategy'
+  lines:
+  - 575
+  - 607
+  detail: {}
+- name: createSharedVirtualStrategy
+  sig: 'createSharedVirtualStrategy(host: () => HTMLDivElement | undefined, enabled: () => boolean): VirtualStrategy'
+  lines:
+  - 609
+  - 635
+  detail: {}
+- name: parseLine
+  sig: 'parseLine(node: HTMLElement)'
+  lines:
+  - 637
+  - 642
+  detail:
+    calls:
+    - Number.isNaN
+    - parseInt
+- name: mouseHit
+  sig: |-
+    mouseHit(
+      event: MouseEvent,
+      line: (node: HTMLElement) => number | undefined,
+      side?: (node: HTMLElement) => DiffSelectionSide | undefined,
+    ): MouseHit
+  lines:
+  - 644
+  - 669
+  detail:
+    calls:
+    - event.composedPath
+    - line
+    - side
+- name: diffMouseSide
+  sig: 'diffMouseSide(node: HTMLElement)'
+  lines:
+  - 671
+  - 677
+  detail:
+    calls:
+    - node.hasAttribute
+- name: diffSelectionSide
+  sig: 'diffSelectionSide(node: Node | null)'
+  lines:
+  - 679
+  - 683
+  detail:
+    calls:
+    - findDiffSide
+    - findElement
+- name: text
+  sig: text()
+  lines:
+  - 741
+  - 747
+  detail:
+    calls:
+    - Array.isArray
+    - String
+    - value.join
+- name: lineCount
+  sig: lineCount()
+  lines:
+  - 749
+  - 753
+  detail:
+    calls:
+    - Math.max
+    - text
+    - value.endsWith
+    - value.split
+- name: lineFromMouseEvent
+  sig: 'lineFromMouseEvent(event: MouseEvent): MouseHit'
+  lines:
+  - 772
+  - 772
+- name: applySelection
+  sig: 'applySelection(range: SelectedLineRange | null)'
+  lines:
+  - 774
+  - 815
+  detail:
+    calls:
+    - |-
+      (() => {
+            if (range.endSide != null) return { start: range.start, end: range.end }
+            if (ra...
+    - Math.max
+    - Math.min
+    - current.setSelectedLines
+    - lineCount
+    - root.querySelector
+    - root.querySelectorAll
+    - viewer.getRoot
+    - virtual
+- name: setSelectedLines
+  sig: 'setSelectedLines(range: SelectedLineRange | null)'
+  lines:
+  - 817
+  - 820
+- name: notify
+  sig: notify()
+  lines:
+  - 879
+  - 892
+  detail:
+    calls:
+    - notifyRendered
+- name: lineFromMouseEvent
+  sig: 'lineFromMouseEvent(event: MouseEvent): MouseHit'
+  lines:
+  - 963
+  - 963
+- name: setSelectedLines
+  sig: 'setSelectedLines(range: SelectedLineRange | null, preserve?: { root: ShadowRoot; text: Range })'
+  lines:
+  - 965
+  - 978
+  detail:
+    calls:
+    - active.setSelectedLines
+    - fixDiffSelection
+    - restoreShadowTextSelection
+    - viewer.getRoot
+- name: notify
+  sig: notify()
+  lines:
+  - 1077
+  - 1088
+  detail:
+    calls:
+    - notifyRendered
+exports:
+- name: SharedProps
+  kind: type
+- name: FileSearchReveal
+  kind: type
+- name: FileSearchHandle
+  kind: type
+- name: FileSearchControl
+  kind: type
+- name: TextFileProps
+  kind: type
+- name: DiffFileProps
+  kind: type
+- name: FileProps
+  kind: type
+- name: MouseHit
+  kind: type
+- name: ViewerConfig
+  kind: type
+- name: Viewer
+  kind: type
+- name: ModeAdapter
+  kind: type
+- name: ModeConfig
+  kind: type
+- name: RenderTarget
+  kind: type
+- name: AnnotationTarget
+  kind: type
+- name: VirtualStrategy
+  kind: type
+- name: expansionForHit
+  kind: func
+- name: useFileViewer
+  kind: func
+- name: useModeViewer
+  kind: func
+- name: useSearchHandle
+  kind: func
+- name: createLineCallbacks
+  kind: func
+- name: useAnnotationRerender
+  kind: func
+- name: notifyRendered
+  kind: func
+- name: renderViewer
+  kind: func
+- name: scrollParent
+  kind: func
+- name: createLocalVirtualStrategy
+  kind: func
+- name: createSharedVirtualStrategy
+  kind: func
+- name: parseLine
+  kind: func
+- name: mouseHit
+  kind: func
+- name: diffMouseSide
+  kind: func
+- name: diffSelectionSide
+  kind: func
+- name: text
+  kind: func
+- name: lineCount
+  kind: func
+- name: lineFromMouseEvent
+  kind: func
+- name: applySelection
+  kind: func
+- name: setSelectedLines
+  kind: func
+- name: notify
+  kind: func
+- name: lineFromMouseEvent
+  kind: func
+- name: setSelectedLines
+  kind: func
+- name: notify
+  kind: func
+- name: VIRTUALIZE_BYTES
+  kind: data
+- name: codeMetrics
+  kind: data
+- name: sharedKeys
+  kind: data
+- name: textKeys
+  kind: data
+- name: diffKeys
+  kind: data
+- name: instance
+  kind: data
+- name: viewer
+  kind: data
+- name: '[local, others]'
+  kind: data
+- name: bytes
+  kind: data
+- name: virtual
+  kind: data
+- name: virtuals
+  kind: data
+- name: adapter
+  kind: data
+- name: lineCallbacks
+  kind: data
+- name: options
+  kind: data
+- name: instance
+  kind: data
+- name: dragSide
+  kind: data
+- name: dragEndSide
+  kind: data
+- name: viewer
+  kind: data
+- name: '[local, others]'
+  kind: data
+- name: mobile
+  kind: data
+- name: adapter
+  kind: data
+- name: virtuals
+  kind: data
+- name: large
+  kind: data
+- name: largeOptions
+  kind: data
+- name: lineCallbacks
+  kind: data
+- name: options
+  kind: data

@@ -1,0 +1,415 @@
+## Roska File Descriptor — components/session-turn.tsx
+file: components/session-turn.tsx
+lines: 540
+layer: ui
+imports:
+- sym: '@kilocode/sdk/v2/client.AssistantMessage'
+- sym: '@kilocode/sdk/v2/client.type FileDiff'
+- sym: '@kilocode/sdk/v2/client.Message as MessageType'
+- sym: '@kilocode/sdk/v2/client.Part as PartType'
+- sym: '@kilocode/sdk/v2.SessionStatus'
+  kind: typing
+- sym: ../context.useData
+- sym: ../context/file.useFileComponent
+- sym: '@opencode-ai/util/binary.Binary'
+- sym: '@opencode-ai/util/path.getDirectory'
+- sym: '@opencode-ai/util/path.getFilename'
+- sym: solid-js.createEffect
+- sym: solid-js.createMemo
+- sym: solid-js.createSignal
+- sym: solid-js.For
+- sym: solid-js.on
+- sym: solid-js.ParentProps
+- sym: solid-js.Show
+- sym: solid-js/web.Dynamic
+- sym: ./message-part.AssistantParts
+- sym: ./message-part.Message
+- sym: ./message-part.Part
+- sym: ./message-part.PART_MAPPING
+- sym: ./card.Card
+- sym: ./accordion.Accordion
+- sym: ./sticky-accordion-header.StickyAccordionHeader
+- sym: ./collapsible.Collapsible
+- sym: ./diff-changes.DiffChanges
+- sym: ./icon.Icon
+- sym: ./text-shimmer.TextShimmer
+- sym: ./session-retry.SessionRetry
+- sym: ./text-reveal.TextReveal
+- sym: ../hooks.createAutoScroll
+- sym: ../context/i18n.useI18n
+data:
+- name: hidden
+  type: any
+  val: new Set(["todowrite", "todoread"])
+- name: data
+  type: any
+  val: useData()
+- name: i18n
+  type: any
+  val: useI18n()
+- name: fileComponent
+  type: any
+  val: useFileComponent()
+- name: emptyMessages
+  type: MessageType[]
+  val: '[]'
+- name: emptyParts
+  type: PartType[]
+  val: '[]'
+- name: emptyAssistant
+  type: AssistantMessage[]
+  val: '[]'
+- name: emptyDiffs
+  type: FileDiff[]
+  val: '[]'
+- name: idle
+  type: object
+  val: '{ type: "idle" as const }'
+- name: allMessages
+  type: any
+  val: createMemo(() => list(data.store.message?.[props.sessionID], emptyMessages))
+- name: messageIndex
+  type: any
+  val: |-
+    createMemo(() => {
+        const messages = allMessages() ?? emptyMessages
+        const result = Binary.search(messages, props....
+- name: message
+  type: any
+  val: |-
+    createMemo(() => {
+        const index = messageIndex()
+        if (index < 0) return undefined
+
+        const messages = allMessage...
+- name: pending
+  type: any
+  val: |-
+    createMemo(() => {
+        if (typeof props.active === "boolean" && typeof props.queued === "boolean") return
+        const mess...
+- name: pendingUser
+  type: any
+  val: |-
+    createMemo(() => {
+        const item = pending()
+        if (!item?.parentID) return
+        const messages = allMessages() ?? empt...
+- name: active
+  type: any
+  val: |-
+    createMemo(() => {
+        if (typeof props.active === "boolean") return props.active
+        const msg = message()
+        const pa...
+- name: queued
+  type: any
+  val: |-
+    createMemo(() => {
+        if (typeof props.queued === "boolean") return props.queued
+        const id = message()?.id
+        if (!...
+- name: parts
+  type: any
+  val: |-
+    createMemo(() => {
+        const msg = message()
+        if (!msg) return emptyParts
+        return list(data.store.part?.[msg.id], ...
+- name: compaction
+  type: any
+  val: createMemo(() => parts().find((part) => part.type === "compaction"))
+- name: diffs
+  type: any
+  val: |-
+    createMemo(() => {
+        const files = message()?.summary?.diffs
+        if (!files?.length) return emptyDiffs
+
+        const seen...
+- name: edited
+  type: any
+  val: createMemo(() => diffs().length)
+- name: '[open, setOpen]'
+  type: any
+  val: createSignal(false)
+- name: '[expanded, setExpanded]'
+  type: any
+  val: createSignal<string[]>([])
+- name: assistantMessages
+  type: any
+  val: |-
+    createMemo(
+        () => {
+          const msg = message()
+          if (!msg) return emptyAssistant
+
+          const messages = allMes...
+- name: interrupted
+  type: any
+  val: createMemo(() => assistantMessages().some((m) => m.error?.name === "MessageAbortedError"))
+- name: error
+  type: any
+  val: |-
+    createMemo(
+        () => assistantMessages().find((m) => m.error && m.error.name !== "MessageAbortedError")?.error,
+      )
+- name: showAssistantCopyPartID
+  type: any
+  val: |-
+    createMemo(() => {
+        const messages = assistantMessages()
+
+        for (let i = messages.length - 1; i >= 0; i--) {
+          ...
+- name: errorText
+  type: any
+  val: |-
+    createMemo(() => {
+        const msg = error()?.data?.message
+        if (typeof msg === "string") return unwrap(msg)
+        if (ms...
+- name: status
+  type: any
+  val: |-
+    createMemo(() => {
+        if (props.status !== undefined) return props.status
+        if (typeof props.active === "boolean" && ...
+- name: working
+  type: any
+  val: createMemo(() => status().type !== "idle" && active())
+- name: showReasoningSummaries
+  type: any
+  val: createMemo(() => props.showReasoningSummaries ?? true)
+- name: assistantCopyPartID
+  type: any
+  val: |-
+    createMemo(() => {
+        if (working()) return null
+        return showAssistantCopyPartID() ?? null
+      })
+- name: turnDurationMs
+  type: any
+  val: |-
+    createMemo(() => {
+        const start = message()?.time.created
+        if (typeof start !== "number") return undefined
+
+        co...
+- name: assistantVisible
+  type: any
+  val: |-
+    createMemo(() =>
+        assistantMessages().reduce((count, message) => {
+          const parts = list(data.store.part?.[message...
+- name: assistantTailVisible
+  type: any
+  val: |-
+    createMemo(() =>
+        assistantMessages()
+          .flatMap((message) => list(data.store.part?.[message.id], emptyParts))
+      ...
+- name: reasoningHeading
+  type: any
+  val: |-
+    createMemo(() =>
+        assistantMessages()
+          .flatMap((message) => list(data.store.part?.[message.id], emptyParts))
+      ...
+- name: showThinking
+  type: any
+  val: |-
+    createMemo(() => {
+        if (!working() || !!error()) return false
+        if (queued()) return false
+        if (status().type ==...
+- name: autoScroll
+  type: any
+  val: |-
+    createAutoScroll({
+        working,
+        onUserInteracted: props.onUserInteracted,
+        overflowAnchor: "dynamic",
+      })
+- name: active
+  type: any
+  val: createMemo(() => expanded().includes(diff.file))
+- name: '[visible, setVisible]'
+  type: any
+  val: createSignal(false)
+functions:
+- name: record
+  sig: 'record(value: unknown)'
+  lines:
+  - 23
+  - 25
+  detail:
+    calls:
+    - Array.isArray
+- name: unwrap
+  sig: 'unwrap(message: string)'
+  lines:
+  - 27
+  - 74
+  detail:
+    calls:
+    - message.replace
+    - message.replace(/^Error:\s*/, "").trim
+    - read
+    - record
+    - text.indexOf
+    - text.lastIndexOf
+    - text.slice
+- name: same
+  sig: 'same(a: readonly T[], b: readonly T[])'
+  lines:
+  - 76
+  - 80
+  detail:
+    calls:
+    - a.every
+- name: list
+  sig: 'list(value: T[] | undefined | null, fallback: T[])'
+  lines:
+  - 82
+  - 85
+  detail:
+    calls:
+    - Array.isArray
+- name: partState
+  sig: 'partState(part: PartType, showReasoningSummaries: boolean)'
+  lines:
+  - 89
+  - 102
+  detail:
+    calls:
+    - hidden.has
+    - part.text?.trim
+- name: clean
+  sig: 'clean(value: string)'
+  lines:
+  - 104
+  - 110
+  detail:
+    calls:
+    - |-
+      value
+          .replace
+    - |-
+      value
+          .replace(/`([^`]+)`/g, "$1")
+          .replace
+    - |-
+      value
+          .replace(/`([^`]+)`/g, "$1")
+          .replace(/\[([^\]]+)\]\([^\)]+\)/g, "$1")
+          .replace
+    - |-
+      value
+          .replace(/`([^`]+)`/g, "$1")
+          .replace(/\[([^\]]+)\]\([^\)]+\)/g, "$1")
+          .replace(/[...
+- name: heading
+  sig: 'heading(text: string)'
+  lines:
+  - 112
+  - 138
+  detail:
+    calls:
+    - clean
+    - html[1].replace
+    - markdown.match
+    - text.replace
+exports:
+- name: record
+  kind: func
+- name: unwrap
+  kind: func
+- name: same
+  kind: func
+- name: list
+  kind: func
+- name: partState
+  kind: func
+- name: clean
+  kind: func
+- name: heading
+  kind: func
+- name: hidden
+  kind: data
+- name: data
+  kind: data
+- name: i18n
+  kind: data
+- name: fileComponent
+  kind: data
+- name: emptyMessages
+  kind: data
+- name: emptyParts
+  kind: data
+- name: emptyAssistant
+  kind: data
+- name: emptyDiffs
+  kind: data
+- name: idle
+  kind: data
+- name: allMessages
+  kind: data
+- name: messageIndex
+  kind: data
+- name: message
+  kind: data
+- name: pending
+  kind: data
+- name: pendingUser
+  kind: data
+- name: active
+  kind: data
+- name: queued
+  kind: data
+- name: parts
+  kind: data
+- name: compaction
+  kind: data
+- name: diffs
+  kind: data
+- name: edited
+  kind: data
+- name: '[open, setOpen]'
+  kind: data
+- name: '[expanded, setExpanded]'
+  kind: data
+- name: assistantMessages
+  kind: data
+- name: interrupted
+  kind: data
+- name: error
+  kind: data
+- name: showAssistantCopyPartID
+  kind: data
+- name: errorText
+  kind: data
+- name: status
+  kind: data
+- name: working
+  kind: data
+- name: showReasoningSummaries
+  kind: data
+- name: assistantCopyPartID
+  kind: data
+- name: turnDurationMs
+  kind: data
+- name: assistantVisible
+  kind: data
+- name: assistantTailVisible
+  kind: data
+- name: reasoningHeading
+  kind: data
+- name: showThinking
+  kind: data
+- name: autoScroll
+  kind: data
+- name: active
+  kind: data
+- name: '[visible, setVisible]'
+  kind: data

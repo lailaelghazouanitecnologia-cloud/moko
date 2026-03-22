@@ -1,0 +1,513 @@
+## Roska File Descriptor — session/message-timeline.tsx
+file: session/message-timeline.tsx
+lines: 829
+layer: logic
+imports:
+- sym: solid-js.For
+- sym: solid-js.createEffect
+- sym: solid-js.createMemo
+- sym: solid-js.on
+- sym: solid-js.onCleanup
+- sym: solid-js.Show
+- sym: solid-js.Index
+- sym: solid-js.type JSX
+- sym: solid-js/store.createStore
+- sym: solid-js/store.produce
+- sym: '@solidjs/router.useNavigate'
+- sym: '@solidjs/router.useParams'
+- sym: '@opencode-ai/ui/button.Button'
+- sym: '@opencode-ai/ui/file-icon.FileIcon'
+- sym: '@opencode-ai/ui/icon.Icon'
+- sym: '@opencode-ai/ui/icon-button.IconButton'
+- sym: '@opencode-ai/ui/dropdown-menu.DropdownMenu'
+- sym: '@opencode-ai/ui/dialog.Dialog'
+- sym: '@opencode-ai/ui/inline-input.InlineInput'
+- sym: '@opencode-ai/ui/spinner.Spinner'
+- sym: '@opencode-ai/ui/session-turn.SessionTurn'
+- sym: '@opencode-ai/ui/scroll-view.ScrollView'
+- sym: '@kilocode/sdk/v2.AssistantMessage'
+  kind: typing
+- sym: '@kilocode/sdk/v2.Message as MessageType'
+  kind: typing
+- sym: '@kilocode/sdk/v2.Part'
+  kind: typing
+- sym: '@kilocode/sdk/v2.TextPart'
+  kind: typing
+- sym: '@kilocode/sdk/v2.UserMessage'
+  kind: typing
+- sym: '@opencode-ai/ui/toast.showToast'
+- sym: '@opencode-ai/util/binary.Binary'
+- sym: '@opencode-ai/util/path.getFilename'
+- sym: '@/pages/session/message-gesture.shouldMarkBoundaryGesture'
+- sym: '@/pages/session/message-gesture.normalizeWheelDelta'
+- sym: '@/components/session-context-usage.SessionContextUsage'
+- sym: '@opencode-ai/ui/context/dialog.useDialog'
+- sym: '@/context/language.useLanguage'
+- sym: '@/context/settings.useSettings'
+- sym: '@/context/sdk.useSDK'
+- sym: '@/context/sync.useSync'
+- sym: '@/utils/comment-note.parseCommentNote'
+- sym: '@/utils/comment-note.readCommentMetadata'
+data:
+- name: emptyMessages
+  type: MessageType[]
+  val: '[]'
+- name: idle
+  type: object
+  val: '{ type: "idle" as const }'
+- name: touchGesture
+  type: number | undefined
+- name: params
+  type: any
+  val: useParams()
+- name: navigate
+  type: any
+  val: useNavigate()
+- name: sdk
+  type: any
+  val: useSDK()
+- name: sync
+  type: any
+  val: useSync()
+- name: settings
+  type: any
+  val: useSettings()
+- name: dialog
+  type: any
+  val: useDialog()
+- name: language
+  type: any
+  val: useLanguage()
+- name: rendered
+  type: any
+  val: createMemo(() => props.renderedUserMessages.map((message) => message.id))
+- name: sessionKey
+  type: any
+  val: 'createMemo(() => `${params.dir}${params.id ? "/" + params.id : ""}`)'
+- name: sessionID
+  type: any
+  val: createMemo(() => params.id)
+- name: sessionMessages
+  type: any
+  val: |-
+    createMemo(() => {
+        const id = sessionID()
+        if (!id) return emptyMessages
+        return sync.data.message[id] ?? empt...
+- name: pending
+  type: any
+  val: |-
+    createMemo(() =>
+        sessionMessages().findLast(
+          (item): item is AssistantMessage => item.role === "assistant" && ...
+- name: sessionStatus
+  type: any
+  val: |-
+    createMemo(() => {
+        const id = sessionID()
+        if (!id) return idle
+        return sync.data.session_status[id] ?? idle
+     ...
+- name: working
+  type: any
+  val: createMemo(() => !!pending() || sessionStatus().type !== "idle")
+- name: '[slot, setSlot]'
+  type: any
+  val: |-
+    createStore({
+        open: false,
+        show: false,
+        fade: false,
+      })
+- name: f
+  type: number | undefined
+- name: activeMessageID
+  type: any
+  val: |-
+    createMemo(() => {
+        const parentID = pending()?.parentID
+        if (parentID) {
+          const messages = sessionMessages()...
+- name: info
+  type: any
+  val: |-
+    createMemo(() => {
+        const id = sessionID()
+        if (!id) return
+        return sync.session.get(id)
+      })
+- name: titleValue
+  type: any
+  val: createMemo(() => info()?.title)
+- name: parentID
+  type: any
+  val: createMemo(() => info()?.parentID)
+- name: showHeader
+  type: any
+  val: createMemo(() => !!(titleValue() || parentID()))
+- name: stageCfg
+  type: object
+  val: '{ init: 1, batch: 3 }'
+- name: staging
+  type: any
+  val: |-
+    createTimelineStaging({
+        sessionKey,
+        turnStart: () => props.turnStart,
+        messages: () => props.renderedUserMess...
+- name: '[title, setTitle]'
+  type: any
+  val: |-
+    createStore({
+        draft: "",
+        editing: false,
+        saving: false,
+        menuOpen: false,
+        pendingRename: false,
+      })
+- name: titleRef
+  type: HTMLInputElement | undefined
+- name: active
+  type: any
+  val: createMemo(() => activeMessageID() === messageID)
+- name: queued
+  type: any
+  val: |-
+    createMemo(() => {
+                        if (active()) return false
+                        const activeID = activeMessageID()...
+- name: comments
+  type: any
+  val: |-
+    createMemo(() => messageComments(sync.data.part[messageID] ?? []), [], {
+                        equals: (a, b) => JSON.stri...
+- name: commentCount
+  type: any
+  val: createMemo(() => comments().length)
+- name: comment
+  type: any
+  val: createMemo(() => commentAccessor())
+types:
+- name: MessageComment
+  kind: typealias
+  decorators:
+  - type
+  fields:
+  - name: path
+    type: string
+  - name: comment
+    type: string
+  - name: selection
+    type: |-
+      {
+          startLine: number
+          endLine: number
+        }
+  lines:
+  - 27
+  - 34
+- name: StageConfig
+  kind: typealias
+  decorators:
+  - type
+  fields:
+  - name: init
+    type: number
+  - name: batch
+    type: number
+  lines:
+  - 89
+  - 92
+- name: TimelineStageInput
+  kind: typealias
+  decorators:
+  - type
+  fields:
+  - name: sessionKey
+    type: () => string
+  - name: turnStart
+    type: () => number
+  - name: messages
+    type: () => UserMessage[]
+  - name: config
+    type: StageConfig
+  lines:
+  - 94
+  - 99
+functions:
+- name: messageComments
+  sig: 'messageComments(parts: Part[]): MessageComment[]'
+  lines:
+  - 39
+  - 56
+  detail: {}
+- name: boundaryTarget
+  sig: 'boundaryTarget(root: HTMLElement, target: EventTarget | null)'
+  lines:
+  - 58
+  - 64
+  detail:
+    calls:
+    - current?.closest
+- name: markBoundaryGesture
+  sig: |-
+    markBoundaryGesture(input: {
+      root: HTMLDivElement
+      target: EventTarget | null
+      delta: number
+      onMarkScrollGesture: (target?: EventTarget | null) => void
+    })
+  lines:
+  - 66
+  - 87
+  detail:
+    calls:
+    - boundaryTarget
+    - input.onMarkScrollGesture
+    - shouldMarkBoundaryGesture
+- name: createTimelineStaging
+  sig: 'createTimelineStaging(input: TimelineStageInput)'
+  lines:
+  - 108
+  - 184
+  detail:
+    calls:
+    - createEffect
+    - createMemo
+    - createStore
+    - on
+    - onCleanup
+- name: clear
+  sig: clear()
+  lines:
+  - 245
+  - 248
+  detail:
+    calls:
+    - window.clearTimeout
+- name: errorMessage
+  sig: 'errorMessage(err: unknown)'
+  lines:
+  - 314
+  - 321
+  detail:
+    calls:
+    - language.t
+- name: openTitleEditor
+  sig: openTitleEditor()
+  lines:
+  - 331
+  - 338
+  detail:
+    calls:
+    - requestAnimationFrame
+    - sessionID
+    - setTitle
+    - titleValue
+- name: closeTitleEditor
+  sig: closeTitleEditor()
+  lines:
+  - 340
+  - 343
+- name: saveTitleEditor
+  sig: saveTitleEditor()
+  is_async: true
+  lines:
+  - 345
+  - 375
+  detail:
+    calls:
+    - |-
+      sdk.client.session
+            .update
+    - |-
+      sdk.client.session
+            .update({ sessionID: id, title: next })
+            .then
+    - |-
+      sdk.client.session
+            .update({ sessionID: id, title: next })
+            .then(() => {
+              sync.se...
+    - sessionID
+    - setTitle
+    - title.draft.trim
+    - titleValue
+- name: navigateAfterSessionRemoval
+  sig: 'navigateAfterSessionRemoval(sessionID: string, parentID?: string, nextSessionID?: string)'
+  lines:
+  - 377
+  - 388
+  detail:
+    calls:
+    - navigate
+- name: archiveSession
+  sig: 'archiveSession(sessionID: string)'
+  is_async: true
+  lines:
+  - 390
+  - 415
+  detail:
+    calls:
+    - Date.now
+    - |-
+      sdk.client.session
+            .update
+    - |-
+      sdk.client.session
+            .update({ sessionID, time: { archived: Date.now() } })
+            .then
+    - |-
+      sdk.client.session
+            .update({ sessionID, time: { archived: Date.now() } })
+            .then(() => {
+      ...
+    - sessions.findIndex
+    - sync.session.get
+- name: deleteSession
+  sig: 'deleteSession(sessionID: string)'
+  is_async: true
+  lines:
+  - 417
+  - 475
+  detail:
+    calls:
+    - (sync.data.session ?? []).filter
+    - navigateAfterSessionRemoval
+    - produce
+    - |-
+      sdk.client.session
+            .delete
+    - |-
+      sdk.client.session
+            .delete({ sessionID })
+            .then
+    - |-
+      sdk.client.session
+            .delete({ sessionID })
+            .then((x) => x.data)
+            .catch
+    - sessions.findIndex
+    - sync.session.get
+    - sync.set
+- name: navigateParent
+  sig: navigateParent()
+  lines:
+  - 477
+  - 481
+  detail:
+    calls:
+    - navigate
+    - parentID
+- name: DialogDeleteSession
+  sig: 'DialogDeleteSession(props: { sessionID: string })'
+  lines:
+  - 483
+  - 509
+  detail:
+    calls:
+    - createMemo
+    - language.t
+    - name
+    - '{language.t'
+exports:
+- name: MessageComment
+  kind: type
+- name: StageConfig
+  kind: type
+- name: TimelineStageInput
+  kind: type
+- name: messageComments
+  kind: func
+- name: boundaryTarget
+  kind: func
+- name: markBoundaryGesture
+  kind: func
+- name: createTimelineStaging
+  kind: func
+- name: clear
+  kind: func
+- name: errorMessage
+  kind: func
+- name: openTitleEditor
+  kind: func
+- name: closeTitleEditor
+  kind: func
+- name: saveTitleEditor
+  kind: func
+- name: navigateAfterSessionRemoval
+  kind: func
+- name: archiveSession
+  kind: func
+- name: deleteSession
+  kind: func
+- name: navigateParent
+  kind: func
+- name: DialogDeleteSession
+  kind: func
+- name: emptyMessages
+  kind: data
+- name: idle
+  kind: data
+- name: touchGesture
+  kind: data
+- name: params
+  kind: data
+- name: navigate
+  kind: data
+- name: sdk
+  kind: data
+- name: sync
+  kind: data
+- name: settings
+  kind: data
+- name: dialog
+  kind: data
+- name: language
+  kind: data
+- name: rendered
+  kind: data
+- name: sessionKey
+  kind: data
+- name: sessionID
+  kind: data
+- name: sessionMessages
+  kind: data
+- name: pending
+  kind: data
+- name: sessionStatus
+  kind: data
+- name: working
+  kind: data
+- name: '[slot, setSlot]'
+  kind: data
+- name: f
+  kind: data
+- name: activeMessageID
+  kind: data
+- name: info
+  kind: data
+- name: titleValue
+  kind: data
+- name: parentID
+  kind: data
+- name: showHeader
+  kind: data
+- name: stageCfg
+  kind: data
+- name: staging
+  kind: data
+- name: '[title, setTitle]'
+  kind: data
+- name: titleRef
+  kind: data
+- name: active
+  kind: data
+- name: queued
+  kind: data
+- name: comments
+  kind: data
+- name: commentCount
+  kind: data
+- name: comment
+  kind: data

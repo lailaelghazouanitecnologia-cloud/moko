@@ -1,0 +1,135 @@
+## Roska File Descriptor — src/cloud-sessions.ts
+file: src/cloud-sessions.ts
+lines: 158
+layer: logic
+imports:
+- sym: ./headers.js.buildKiloHeaders
+data:
+- name: UUID_RE
+  type: any
+  val: /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+- name: INGEST_BASE
+  type: any
+  val: process.env.KILO_SESSION_INGEST_URL ?? "https://ingest.kilosessions.ai"
+types:
+- name: DrizzleDb
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: insert
+    type: 'method: insert(table: object): { values(data: object): { onConflictDoNothing(): { run(): void } } }'
+  lines:
+  - 5
+  - 7
+- name: FetchResult
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 17
+  - 17
+- name: ImportDeps
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: Database
+    type: |-
+      {
+          transaction<T>(callback: (db: DrizzleDb) => T): T
+          effect(fn: () => void | Promise<unknown>): void
+        }
+  - name: Instance
+    type: |-
+      {
+          readonly directory: string
+          readonly project: { readonly id: string }
+        }
+  - name: SessionTable
+    type: object
+  - name: MessageTable
+    type: object
+  - name: PartTable
+    type: object
+  - name: SessionToRow
+    type: '(info: any) => Record<string, unknown>'
+  - name: Bus
+    type: '{ publish(event: { type: string; properties: unknown }, payload: unknown): void | Promise<unknown> }'
+  - name: SessionCreatedEvent
+    type: '{ type: string; properties: unknown }'
+  - name: Identifier
+    type: |-
+      {
+          ascending(prefix: "session" | "message" | "part", given?: string): string
+          descending(prefix: "session" | "message" | "part", given?: string): string
+        }
+  lines:
+  - 56
+  - 75
+functions:
+- name: exportUrl
+  sig: 'exportUrl(sessionId: string)'
+  lines:
+  - 11
+  - 15
+  detail:
+    calls:
+    - UUID_RE.test
+- name: fetchCloudSession
+  sig: 'fetchCloudSession(token: string, sessionId: string): Promise<FetchResult>'
+  is_async: true
+  lines:
+  - 19
+  - 32
+  detail:
+    calls:
+    - buildKiloHeaders
+    - exportUrl
+    - fetch
+    - response.json
+- name: fetchCloudSessionForImport
+  sig: 'fetchCloudSessionForImport(token: string, sessionId: string): Promise<FetchResult>'
+  is_async: true
+  lines:
+  - 34
+  - 54
+  detail:
+    calls:
+    - buildKiloHeaders
+    - console.error
+    - exportUrl
+    - fetch
+    - response.json
+    - response.text
+    - text.slice
+- name: importSessionToDb
+  sig: 'importSessionToDb(data: any, deps: ImportDeps)'
+  lines:
+  - 77
+  - 158
+  detail:
+    calls:
+    - Database.transaction
+    - Date.now
+    - Identifier.descending
+    - new Map
+exports:
+- name: DrizzleDb
+  kind: type
+- name: FetchResult
+  kind: type
+- name: ImportDeps
+  kind: type
+- name: exportUrl
+  kind: func
+- name: fetchCloudSession
+  kind: func
+- name: fetchCloudSessionForImport
+  kind: func
+- name: importSessionToDb
+  kind: func
+- name: UUID_RE
+  kind: data
+- name: INGEST_BASE
+  kind: data

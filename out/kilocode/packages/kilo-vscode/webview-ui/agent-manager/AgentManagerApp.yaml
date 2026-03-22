@@ -1,0 +1,979 @@
+## Roska File Descriptor — agent-manager/AgentManagerApp.tsx
+file: agent-manager/AgentManagerApp.tsx
+lines: 2674
+layer: logic
+purpose: Agent Manager root component
+imports:
+- sym: solid-js.Component
+- sym: solid-js.For
+- sym: solid-js.Show
+- sym: solid-js.createSignal
+- sym: solid-js.createMemo
+- sym: solid-js.createEffect
+- sym: solid-js.on
+- sym: solid-js.onMount
+- sym: solid-js.onCleanup
+- sym: solid-js.type Accessor
+- sym: ../src/types/messages.ExtensionMessage
+  kind: typing
+- sym: ../src/types/messages.AgentManagerRepoInfoMessage
+  kind: typing
+- sym: ../src/types/messages.AgentManagerWorktreeSetupMessage
+  kind: typing
+- sym: ../src/types/messages.AgentManagerStateMessage
+  kind: typing
+- sym: ../src/types/messages.AgentManagerKeybindingsMessage
+  kind: typing
+- sym: ../src/types/messages.AgentManagerMultiVersionProgressMessage
+  kind: typing
+- sym: ../src/types/messages.AgentManagerSendInitialMessage
+  kind: typing
+- sym: ../src/types/messages.AgentManagerBranchesMessage
+  kind: typing
+- sym: ../src/types/messages.AgentManagerWorktreeDiffMessage
+  kind: typing
+- sym: ../src/types/messages.AgentManagerWorktreeDiffFileMessage
+  kind: typing
+- sym: ../src/types/messages.AgentManagerWorktreeDiffLoadingMessage
+  kind: typing
+- sym: ../src/types/messages.AgentManagerApplyWorktreeDiffResultMessage
+  kind: typing
+- sym: ../src/types/messages.AgentManagerApplyWorktreeDiffStatus
+  kind: typing
+- sym: ../src/types/messages.AgentManagerApplyWorktreeDiffConflict
+  kind: typing
+- sym: ../src/types/messages.AgentManagerWorktreeStatsMessage
+  kind: typing
+- sym: ../src/types/messages.AgentManagerLocalStatsMessage
+  kind: typing
+- sym: ../src/types/messages.WorktreeFileDiff
+  kind: typing
+- sym: ../src/types/messages.WorktreeGitStats
+  kind: typing
+- sym: ../src/types/messages.LocalGitStats
+  kind: typing
+- sym: ../src/types/messages.WorktreeState
+  kind: typing
+- sym: ../src/types/messages.ManagedSessionState
+  kind: typing
+- sym: ../src/types/messages.SessionInfo
+  kind: typing
+- sym: ../src/types/messages.BranchInfo
+  kind: typing
+- sym: '@thisbeyond/solid-dnd.DragDropProvider'
+- sym: '@thisbeyond/solid-dnd.DragDropSensors'
+- sym: '@thisbeyond/solid-dnd.DragOverlay'
+- sym: '@thisbeyond/solid-dnd.SortableProvider'
+- sym: '@thisbeyond/solid-dnd.closestCenter'
+- sym: '@thisbeyond/solid-dnd.DragEvent'
+  kind: typing
+- sym: '@kilocode/kilo-ui/theme.ThemeProvider'
+- sym: '@kilocode/kilo-ui/context/dialog.DialogProvider'
+- sym: '@kilocode/kilo-ui/context/dialog.useDialog'
+- sym: '@kilocode/kilo-ui/dialog.Dialog'
+- sym: '@kilocode/kilo-ui/dropdown-menu.DropdownMenu'
+- sym: '@kilocode/kilo-ui/context/marked.MarkedProvider'
+- sym: '@kilocode/kilo-ui/context/code.CodeComponentProvider'
+- sym: '@kilocode/kilo-ui/context/diff.DiffComponentProvider'
+- sym: '@kilocode/kilo-ui/context/file.FileComponentProvider'
+- sym: '@kilocode/kilo-ui/code.Code'
+- sym: '@kilocode/kilo-ui/diff.Diff'
+- sym: '@kilocode/kilo-ui/file.File'
+- sym: '@kilocode/kilo-ui/toast.Toast'
+- sym: '@kilocode/kilo-ui/toast.showToast'
+- sym: '@kilocode/kilo-ui/resize-handle.ResizeHandle'
+- sym: '@kilocode/kilo-ui/icon.Icon'
+- sym: '@kilocode/kilo-ui/button.Button'
+- sym: '@kilocode/kilo-ui/icon-button.IconButton'
+- sym: '@kilocode/kilo-ui/spinner.Spinner'
+- sym: '@kilocode/kilo-ui/tooltip.Tooltip'
+- sym: '@kilocode/kilo-ui/tooltip.TooltipKeybind'
+- sym: '@kilocode/kilo-ui/popover.Popover'
+- sym: ../src/context/vscode.VSCodeProvider
+- sym: ../src/context/vscode.useVSCode
+- sym: ../src/context/server.ServerProvider
+- sym: ../src/context/provider.ProviderProvider
+- sym: ../src/context/config.ConfigProvider
+- sym: ../src/context/session.SessionProvider
+- sym: ../src/context/session.useSession
+- sym: ../src/context/worktree-mode.WorktreeModeProvider
+- sym: ../src/components/chat.ChatView
+- sym: ./NewWorktreeDialog.NewWorktreeDialog
+- sym: ../src/App.LanguageBridge
+- sym: ../src/App.DataBridge
+- sym: ../src/context/language.useLanguage
+- sym: ../src/utils/date.formatRelativeDate
+- sym: ./navigate.validateLocalSession
+- sym: ./navigate.nextSelectionAfterDelete
+- sym: ./navigate.adjacentHint
+- sym: ./navigate.LOCAL
+- sym: ./tab-order.reorderTabs
+- sym: ./tab-order.applyTabOrder
+- sym: ./tab-order.firstOrderedTitle
+- sym: ./sortable-tab.ConstrainDragYAxis
+- sym: ./sortable-tab.SortableReviewTab
+- sym: ./sortable-tab.SortableTab
+- sym: ./DiffPanel.DiffPanel
+- sym: ./FullScreenDiffView.FullScreenDiffView
+- sym: ./ApplyDialog.ApplyDialog
+- sym: ./apply-conflicts.groupApplyConflicts
+- sym: ./review-comments.ReviewComment
+  kind: typing
+- sym: ./BranchSelect.BranchSelect
+- sym: ./WorktreeItem.WorktreeItem
+- sym: ./diff-state.mergeWorktreeDiffs
+data:
+- name: REVIEW_TAB_ID
+  type: string
+  val: '"review"'
+- name: isMac
+  type: any
+  val: typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.userAgent)
+- name: MAX_JUMP_INDEX
+  type: number
+  val: '9'
+- name: defaultBindings
+  type: Record<string, string>
+  val: |-
+    {
+      previousSession: isMac ? "⌘⌥↑" : "Ctrl+Alt+↑",
+      nextSession: isMac ? "⌘⌥↓" : "Ctrl+Alt+↓",
+      previo...
+- name: '{ t }'
+  type: any
+  val: useLanguage()
+- name: session
+  type: any
+  val: useSession()
+- name: vscode
+  type: any
+  val: useVSCode()
+- name: dialog
+  type: any
+  val: useDialog()
+- name: '[kb, setKb]'
+  type: any
+  val: createSignal<Record<string, string>>(defaultBindings)
+- name: '[setup, setSetup]'
+  type: any
+  val: 'createSignal<SetupState>({ active: false, message: "" })'
+- name: '[worktrees, setWorktrees]'
+  type: any
+  val: createSignal<WorktreeState[]>([])
+- name: '[managedSessions, setManagedSessions]'
+  type: any
+  val: createSignal<ManagedSessionState[]>([])
+- name: '[selection, setSelection]'
+  type: any
+  val: createSignal<SidebarSelection>(LOCAL)
+- name: '[repoBranch, setRepoBranch]'
+  type: any
+  val: createSignal<string | undefined>()
+- name: '[busyWorktrees, setBusyWorktrees]'
+  type: any
+  val: createSignal<Map<string, WorktreeBusyState>>(new Map())
+- name: '[staleWorktreeIds, setStaleWorktreeIds]'
+  type: any
+  val: createSignal<Set<string>>(new Set())
+- name: '[worktreesLoaded, setWorktreesLoaded]'
+  type: any
+  val: createSignal(false)
+- name: '[sessionsLoaded, setSessionsLoaded]'
+  type: any
+  val: createSignal(false)
+- name: '[isGitRepo, setIsGitRepo]'
+  type: any
+  val: createSignal(true)
+- name: '[repoDetectedBranch, setRepoDetectedBranch]'
+  type: any
+  val: createSignal<string | undefined>()
+- name: '[defaultBaseBranch, setDefaultBaseBranch]'
+  type: any
+  val: createSignal<string | undefined>()
+- name: DEFAULT_SIDEBAR_WIDTH
+  type: number
+  val: '260'
+- name: MIN_SIDEBAR_WIDTH
+  type: number
+  val: '200'
+- name: MAX_SIDEBAR_WIDTH_RATIO
+  type: number
+  val: '0.4'
+- name: persisted
+  type: any
+  val: 'vscode.getState<{ localSessionIDs?: string[]; sidebarWidth?: number }>()'
+- name: '[localSessionIDs, setLocalSessionIDs]'
+  type: any
+  val: createSignal<string[]>(persisted?.localSessionIDs ?? [])
+- name: '[sidebarWidth, setSidebarWidth]'
+  type: any
+  val: createSignal(persisted?.sidebarWidth ?? DEFAULT_SIDEBAR_WIDTH)
+- name: '[sessionsCollapsed, setSessionsCollapsed]'
+  type: any
+  val: createSignal(false)
+- name: '[diffOpen, setDiffOpen]'
+  type: any
+  val: createSignal(false)
+- name: '[diffDatas, setDiffDatas]'
+  type: any
+  val: createSignal<Record<string, WorktreeFileDiff[]>>({})
+- name: '[diffLoading, setDiffLoading]'
+  type: any
+  val: createSignal(false)
+- name: '[diffFileLoading, setDiffFileLoading]'
+  type: any
+  val: createSignal<Record<string, Record<string, true>>>({})
+- name: '[diffWidth, setDiffWidth]'
+  type: any
+  val: createSignal(Math.round(window.innerWidth * 0.5))
+- name: '[reviewOpenByContext, setReviewOpenByContext]'
+  type: any
+  val: createSignal<Record<string, boolean>>({})
+- name: '[reviewCommentsByContext, setReviewCommentsByContext]'
+  type: any
+  val: createSignal<Record<string, ReviewComment[]>>({})
+- name: '[reviewActive, setReviewActive]'
+  type: any
+  val: createSignal(false)
+- name: '[reviewDiffStyle, setReviewDiffStyle]'
+  type: any
+  val: createSignal<"unified" | "split">("unified")
+- name: '[worktreeStats, setWorktreeStats]'
+  type: any
+  val: createSignal<Record<string, WorktreeGitStats>>({})
+- name: '[localStats, setLocalStats]'
+  type: any
+  val: createSignal<LocalGitStats | undefined>()
+- name: '[applyStates, setApplyStates]'
+  type: any
+  val: createSignal<Record<string, ApplyState>>({})
+- name: '[applyTarget, setApplyTarget]'
+  type: any
+  val: createSignal<string | undefined>()
+- name: '[applySelectedFiles, setApplySelectedFiles]'
+  type: any
+  val: createSignal<string[]>([])
+- name: '[applySelectionTouched, setApplySelectionTouched]'
+  type: any
+  val: createSignal(false)
+- name: pendingCounter
+  type: number
+  val: '0'
+- name: PENDING_PREFIX
+  type: string
+  val: '"pending:"'
+- name: '[activePendingId, setActivePendingId]'
+  type: any
+  val: createSignal<string | undefined>()
+- name: '[pendingDelete, setPendingDelete]'
+  type: any
+  val: createSignal<string | null>(null)
+- name: pendingDeleteTimer
+  type: ReturnType<typeof setTimeout> | undefined
+- name: '[tabMemory, setTabMemory]'
+  type: any
+  val: createSignal<Record<string, string>>({})
+- name: reviewOpen
+  type: any
+  val: |-
+    createMemo(() => {
+        const sel = selection()
+        if (sel === null) return false
+        return reviewOpenByContext()[sel] ...
+- name: reviewComments
+  type: any
+  val: |-
+    createMemo(() => {
+        const sel = selection()
+        if (sel === null) return [] as ReviewComment[]
+        return reviewComme...
+- name: applyStateForSelection
+  type: any
+  val: |-
+    createMemo(() => {
+        const sel = selection()
+        if (!sel || sel === LOCAL) return undefined
+        return applyStates()[...
+- name: applyTargetSessionId
+  type: any
+  val: |-
+    createMemo(() => {
+        const target = applyTarget()
+        if (!target) return undefined
+        return resolveWorktreeSessionI...
+- name: applyDiffs
+  type: any
+  val: |-
+    createMemo(() => {
+        const target = applyTarget()
+        if (!target) return [] as WorktreeFileDiff[]
+        const data = di...
+- name: applyStateForTarget
+  type: any
+  val: |-
+    createMemo(() => {
+        const target = applyTarget()
+        if (!target) return undefined
+        return applyStates()[target]
+     ...
+- name: applyBusyForTarget
+  type: any
+  val: |-
+    createMemo(() => {
+        const state = applyStateForTarget()
+        if (!state) return false
+        return state.status === "che...
+- name: applySelectedSet
+  type: any
+  val: createMemo(() => new Set(applySelectedFiles()))
+- name: applySelectionStats
+  type: any
+  val: |-
+    createMemo(() => {
+        const set = applySelectedSet()
+        const selected = applyDiffs().filter((diff) => set.has(diff.fi...
+- name: applyHasSelection
+  type: any
+  val: createMemo(() => applySelectionStats().selected > 0)
+- name: applyConflictRows
+  type: any
+  val: createMemo(() => groupApplyConflicts(applyStateForTarget()?.conflicts ?? []))
+- name: sel
+  type: any
+  val: selection()
+- name: sid
+  type: any
+  val: resolveWorktreeSessionId(sel)
+- name: '[search, setSearch]'
+  type: any
+  val: createSignal("")
+- name: '[branches, setBranches]'
+  type: any
+  val: createSignal<BranchInfo[]>([])
+- name: '[loading, setLoading]'
+  type: any
+  val: createSignal(true)
+- name: '[highlighted, setHighlighted]'
+  type: any
+  val: createSignal(-1)
+- name: unsub
+  type: any
+  val: |-
+    vscode.onMessage((msg) => {
+          if (msg.type === "agentManager.branches") {
+            const ev = msg as AgentManagerBran...
+- name: filtered
+  type: any
+  val: |-
+    createMemo(() => {
+          const s = search().toLowerCase()
+          if (!s) return branches()
+          return branches().filter...
+- name: categories
+  type: any
+  val: buildShortcutCategories(kb(), t)
+- name: '[renamingWt, setRenamingWt]'
+  type: any
+  val: createSignal<string | null>(null)
+- name: '[renameValue, setRenameValue]'
+  type: any
+  val: createSignal("")
+- name: cancelled
+  type: boolean
+  val: 'false'
+- name: sessions
+  type: any
+  val: createMemo(() => managedSessions().filter((ms) => ms.worktreeId === wt.id))
+- name: ids
+  type: any
+  val: tabIds()
+- name: activeId
+  type: any
+  val: |-
+    reviewActive()
+                                ? REVIEW_TAB_ID
+                                : (session.currentSessionID() ?? ...
+- name: tabDirection
+  type: any
+  val: |-
+    reviewActive()
+                                ? ""
+                                : adjacentHint(REVIEW_TAB_ID, activeId, ids,...
+types:
+- name: SetupState
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: active
+    type: boolean
+  - name: message
+    type: string
+  - name: branch
+    type: string
+  - name: error
+    type: boolean
+  - name: worktreeId
+    type: string
+  - name: errorCode
+    type: string
+  lines:
+  - 88
+  - 95
+- name: WorktreeBusyState
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: reason
+    type: '"setting-up" | "deleting"'
+  - name: message
+    type: string
+  - name: branch
+    type: string
+  lines:
+  - 97
+  - 101
+- name: ApplyState
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: status
+    type: AgentManagerApplyWorktreeDiffStatus
+  - name: message
+    type: string
+  - name: conflicts
+    type: AgentManagerApplyWorktreeDiffConflict[]
+  lines:
+  - 103
+  - 107
+- name: SidebarSelection
+  kind: enum
+  decorators:
+  - type
+  variants:
+  - name: 'null'
+  lines:
+  - 110
+  - 110
+- name: ShortcutEntry
+  kind: trait
+  ctx: Shortcut category definition for the keyboard shortcuts dialog
+  decorators:
+  - interface
+  fields:
+  - name: binding
+    type: string
+  lines:
+  - 204
+  - 207
+- name: ShortcutCategory
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: shortcuts
+    type: ShortcutEntry[]
+  lines:
+  - 209
+  - 212
+functions:
+- name: useTabScroll
+  sig: 'useTabScroll(activeTabs: Accessor<SessionInfo[]>, activeId: Accessor<string | undefined>)'
+  lines:
+  - 141
+  - 201
+  detail:
+    calls:
+    - createEffect
+    - createSignal
+- name: buildShortcutCategories
+  sig: |-
+    buildShortcutCategories(
+      bindings: Record<string, string>,
+      t: (key: string, params?: Record<string, string | number>) => string,
+    ): ShortcutCategory[]
+  lines:
+  - 215
+  - 269
+  detail:
+    calls:
+    - |-
+      (() => {
+                  const first = bindings.jumpTo1 ?? ""
+                  const prefix = first.replace(/...
+    - |-
+      [
+              { label: t("agentManager.shortcuts.openAgentManager"), binding: bindings.agentManagerOpen ...
+    - |-
+      [
+          {
+            title: t("agentManager.shortcuts.category.quickSwitch"),
+            shortcuts: [
+              {
+      ...
+    - t
+- name: parseBindingTokens
+  sig: 'parseBindingTokens(binding: string): string[]'
+  lines:
+  - 274
+  - 293
+  detail:
+    calls:
+    - binding.includes
+    - binding.split
+    - modifiers.find
+    - rest.slice
+    - tokens.push
+- name: repoDefaultBranch
+  sig: repoDefaultBranch()
+  lines:
+  - 316
+  - 316
+- name: hasConfiguredBranch
+  sig: hasConfiguredBranch()
+  lines:
+  - 317
+  - 317
+- name: cancelPendingDelete
+  sig: cancelPendingDelete()
+  lines:
+  - 363
+  - 366
+- name: setReviewOpenForContext
+  sig: 'setReviewOpenForContext(context: string, open: boolean)'
+  lines:
+  - 379
+  - 384
+  detail:
+    calls:
+    - setReviewOpenByContext
+- name: setReviewOpenForSelection
+  sig: 'setReviewOpenForSelection(open: boolean)'
+  lines:
+  - 386
+  - 390
+  detail:
+    calls:
+    - selection
+    - setReviewOpenForContext
+- name: setReviewCommentsForSelection
+  sig: 'setReviewCommentsForSelection(comments: ReviewComment[])'
+  lines:
+  - 398
+  - 402
+  detail:
+    calls:
+    - selection
+    - setReviewCommentsByContext
+- name: resolveWorktreeSessionId
+  sig: 'resolveWorktreeSessionId(worktreeId: string)'
+  lines:
+  - 410
+  - 417
+  detail:
+    calls:
+    - managedSessions
+    - managedSessions().find
+    - session.currentSessionID
+- name: applyToLocal
+  sig: 'applyToLocal(worktreeId: string, selectedFiles: string[])'
+  lines:
+  - 471
+  - 481
+  detail:
+    calls:
+    - setApplyStates
+    - vscode.postMessage
+- name: resetApplyDialog
+  sig: resetApplyDialog()
+  lines:
+  - 483
+  - 487
+  detail:
+    calls:
+    - setApplySelectedFiles
+    - setApplySelectionTouched
+    - setApplyTarget
+- name: closeApplyDialog
+  sig: closeApplyDialog()
+  lines:
+  - 489
+  - 492
+  detail:
+    calls:
+    - dialog.close
+    - resetApplyDialog
+- name: applySelectAll
+  sig: applySelectAll()
+  lines:
+  - 494
+  - 497
+  detail:
+    calls:
+    - applyDiffs
+    - applyDiffs().map
+    - setApplySelectedFiles
+    - setApplySelectionTouched
+- name: applySelectNone
+  sig: applySelectNone()
+  lines:
+  - 499
+  - 502
+- name: applyToggleFile
+  sig: 'applyToggleFile(file: string, checked: boolean)'
+  lines:
+  - 504
+  - 518
+  detail:
+    calls:
+    - setApplySelectedFiles
+    - setApplySelectionTouched
+- name: triggerApply
+  sig: triggerApply()
+  lines:
+  - 520
+  - 526
+  detail:
+    calls:
+    - applyBusyForTarget
+    - applyHasSelection
+    - applySelectedFiles
+    - applyTarget
+    - applyToLocal
+- name: selectBranch
+  sig: 'selectBranch(name: string | undefined)'
+  lines:
+  - 1541
+  - 1545
+  detail:
+    calls:
+    - dialog.close
+    - setDefaultBaseBranch
+    - vscode.postMessage
+- name: handleKeyDown
+  sig: 'handleKeyDown(e: KeyboardEvent)'
+  lines:
+  - 1547
+  - 1574
+  detail:
+    calls:
+    - dialog.close
+    - e.preventDefault
+    - e.stopPropagation
+    - filtered
+    - highlighted
+    - selectBranch
+    - setHighlighted
+- name: startRename
+  sig: 'startRename(wtId: string, current: string)'
+  lines:
+  - 2101
+  - 2104
+- name: commitRename
+  sig: 'commitRename(wtId: string)'
+  lines:
+  - 2108
+  - 2117
+  detail:
+    calls:
+    - renameValue
+    - renameValue().trim
+    - setRenamingWt
+    - vscode.postMessage
+- name: cancelRename
+  sig: cancelRename()
+  lines:
+  - 2119
+  - 2122
+- name: navHint
+  sig: navHint()
+  lines:
+  - 2128
+  - 2136
+  detail:
+    calls:
+    - adjacentHint
+    - kb
+    - selection
+    - session.currentSessionID
+    - sortedWorktrees
+    - sortedWorktrees().map
+    - unassignedSessions
+    - unassignedSessions().map
+- name: groupSize
+  sig: groupSize()
+  lines:
+  - 2137
+  - 2140
+  detail:
+    calls:
+    - sortedWorktrees
+    - sortedWorktrees().filter
+- name: sel
+  sig: sel()
+  lines:
+  - 2369
+  - 2369
+- name: isWorktree
+  sig: isWorktree()
+  lines:
+  - 2370
+  - 2370
+- name: stats
+  sig: stats()
+  lines:
+  - 2371
+  - 2374
+- name: hasChanges
+  sig: hasChanges()
+  lines:
+  - 2375
+  - 2378
+- name: applyBusy
+  sig: applyBusy()
+  lines:
+  - 2379
+  - 2383
+  detail:
+    calls:
+    - applyStateForSelection
+- name: overlayState
+  sig: 'overlayState(): SetupState | null'
+  lines:
+  - 2500
+  - 2518
+  detail:
+    calls:
+    - busyWorktrees
+    - busyWorktrees().get
+    - selection
+    - setup
+    - worktrees
+    - worktrees().find
+exports:
+- name: SetupState
+  kind: type
+- name: WorktreeBusyState
+  kind: type
+- name: ApplyState
+  kind: type
+- name: SidebarSelection
+  kind: type
+- name: ShortcutEntry
+  kind: type
+- name: ShortcutCategory
+  kind: type
+- name: useTabScroll
+  kind: func
+- name: buildShortcutCategories
+  kind: func
+- name: parseBindingTokens
+  kind: func
+- name: repoDefaultBranch
+  kind: func
+- name: hasConfiguredBranch
+  kind: func
+- name: cancelPendingDelete
+  kind: func
+- name: setReviewOpenForContext
+  kind: func
+- name: setReviewOpenForSelection
+  kind: func
+- name: setReviewCommentsForSelection
+  kind: func
+- name: resolveWorktreeSessionId
+  kind: func
+- name: applyToLocal
+  kind: func
+- name: resetApplyDialog
+  kind: func
+- name: closeApplyDialog
+  kind: func
+- name: applySelectAll
+  kind: func
+- name: applySelectNone
+  kind: func
+- name: applyToggleFile
+  kind: func
+- name: triggerApply
+  kind: func
+- name: selectBranch
+  kind: func
+- name: handleKeyDown
+  kind: func
+- name: startRename
+  kind: func
+- name: commitRename
+  kind: func
+- name: cancelRename
+  kind: func
+- name: navHint
+  kind: func
+- name: groupSize
+  kind: func
+- name: sel
+  kind: func
+- name: isWorktree
+  kind: func
+- name: stats
+  kind: func
+- name: hasChanges
+  kind: func
+- name: applyBusy
+  kind: func
+- name: overlayState
+  kind: func
+- name: REVIEW_TAB_ID
+  kind: data
+- name: isMac
+  kind: data
+- name: MAX_JUMP_INDEX
+  kind: data
+- name: defaultBindings
+  kind: data
+- name: '{ t }'
+  kind: data
+- name: session
+  kind: data
+- name: vscode
+  kind: data
+- name: dialog
+  kind: data
+- name: '[kb, setKb]'
+  kind: data
+- name: '[setup, setSetup]'
+  kind: data
+- name: '[worktrees, setWorktrees]'
+  kind: data
+- name: '[managedSessions, setManagedSessions]'
+  kind: data
+- name: '[selection, setSelection]'
+  kind: data
+- name: '[repoBranch, setRepoBranch]'
+  kind: data
+- name: '[busyWorktrees, setBusyWorktrees]'
+  kind: data
+- name: '[staleWorktreeIds, setStaleWorktreeIds]'
+  kind: data
+- name: '[worktreesLoaded, setWorktreesLoaded]'
+  kind: data
+- name: '[sessionsLoaded, setSessionsLoaded]'
+  kind: data
+- name: '[isGitRepo, setIsGitRepo]'
+  kind: data
+- name: '[repoDetectedBranch, setRepoDetectedBranch]'
+  kind: data
+- name: '[defaultBaseBranch, setDefaultBaseBranch]'
+  kind: data
+- name: DEFAULT_SIDEBAR_WIDTH
+  kind: data
+- name: MIN_SIDEBAR_WIDTH
+  kind: data
+- name: MAX_SIDEBAR_WIDTH_RATIO
+  kind: data
+- name: persisted
+  kind: data
+- name: '[localSessionIDs, setLocalSessionIDs]'
+  kind: data
+- name: '[sidebarWidth, setSidebarWidth]'
+  kind: data
+- name: '[sessionsCollapsed, setSessionsCollapsed]'
+  kind: data
+- name: '[diffOpen, setDiffOpen]'
+  kind: data
+- name: '[diffDatas, setDiffDatas]'
+  kind: data
+- name: '[diffLoading, setDiffLoading]'
+  kind: data
+- name: '[diffFileLoading, setDiffFileLoading]'
+  kind: data
+- name: '[diffWidth, setDiffWidth]'
+  kind: data
+- name: '[reviewOpenByContext, setReviewOpenByContext]'
+  kind: data
+- name: '[reviewCommentsByContext, setReviewCommentsByContext]'
+  kind: data
+- name: '[reviewActive, setReviewActive]'
+  kind: data
+- name: '[reviewDiffStyle, setReviewDiffStyle]'
+  kind: data
+- name: '[worktreeStats, setWorktreeStats]'
+  kind: data
+- name: '[localStats, setLocalStats]'
+  kind: data
+- name: '[applyStates, setApplyStates]'
+  kind: data
+- name: '[applyTarget, setApplyTarget]'
+  kind: data
+- name: '[applySelectedFiles, setApplySelectedFiles]'
+  kind: data
+- name: '[applySelectionTouched, setApplySelectionTouched]'
+  kind: data
+- name: pendingCounter
+  kind: data
+- name: PENDING_PREFIX
+  kind: data
+- name: '[activePendingId, setActivePendingId]'
+  kind: data
+- name: '[pendingDelete, setPendingDelete]'
+  kind: data
+- name: pendingDeleteTimer
+  kind: data
+- name: '[tabMemory, setTabMemory]'
+  kind: data
+- name: reviewOpen
+  kind: data
+- name: reviewComments
+  kind: data
+- name: applyStateForSelection
+  kind: data
+- name: applyTargetSessionId
+  kind: data
+- name: applyDiffs
+  kind: data
+- name: applyStateForTarget
+  kind: data
+- name: applyBusyForTarget
+  kind: data
+- name: applySelectedSet
+  kind: data
+- name: applySelectionStats
+  kind: data
+- name: applyHasSelection
+  kind: data
+- name: applyConflictRows
+  kind: data
+- name: sel
+  kind: data
+- name: sid
+  kind: data
+- name: '[search, setSearch]'
+  kind: data
+- name: '[branches, setBranches]'
+  kind: data
+- name: '[loading, setLoading]'
+  kind: data
+- name: '[highlighted, setHighlighted]'
+  kind: data
+- name: unsub
+  kind: data
+- name: filtered
+  kind: data
+- name: categories
+  kind: data
+- name: '[renamingWt, setRenamingWt]'
+  kind: data
+- name: '[renameValue, setRenameValue]'
+  kind: data
+- name: cancelled
+  kind: data
+- name: sessions
+  kind: data
+- name: ids
+  kind: data
+- name: activeId
+  kind: data
+- name: tabDirection
+  kind: data

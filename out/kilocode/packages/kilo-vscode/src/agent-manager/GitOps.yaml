@@ -1,0 +1,357 @@
+## Roska File Descriptor — agent-manager/GitOps.ts
+file: agent-manager/GitOps.ts
+lines: 382
+layer: logic
+imports:
+- sym: path.nodePath
+- sym: child_process.cp
+- sym: fs/promises.fs
+- sym: simple-git.simpleGit
+- sym: ./git-import.parseWorktreeList
+- sym: ./git-import.normalizePath
+types:
+- name: GitOpsOptions
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: log
+    type: '(...args: unknown[]) => void'
+  - name: refreshMs
+    type: number
+  - name: runGit
+    type: '(args: string[], cwd: string) => Promise<string>'
+  lines:
+  - 8
+  - 13
+- name: ApplyConflict
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: file
+    type: string
+  - name: reason
+    type: string
+  lines:
+  - 15
+  - 18
+- name: ApplyCheckResult
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: ok
+    type: boolean
+  - name: conflicts
+    type: ApplyConflict[]
+  - name: message
+    type: string
+  lines:
+  - 20
+  - 24
+- name: ApplyPatchResult
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: ok
+    type: boolean
+  - name: conflicts
+    type: ApplyConflict[]
+  - name: message
+    type: string
+  lines:
+  - 26
+  - 30
+- name: ExecOptions
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: env
+    type: NodeJS.ProcessEnv
+  - name: stdin
+    type: string
+  lines:
+  - 32
+  - 35
+- name: ExecResult
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: code
+    type: number
+  - name: stdout
+    type: string
+  - name: stderr
+    type: string
+  lines:
+  - 37
+  - 41
+- name: GitOps
+  kind: struct
+  ctx: Return the name of the currently checked-out branch, or `"HEAD"` if detached.
+  fields:
+  - name: lastFetch
+    type: any
+    default: new Map<string, number>()
+  - name: inflightFetch
+    type: any
+    default: new Map<string, Promise<void>>()
+  - name: refreshMs
+    type: number
+  - name: log
+    type: '(...args: unknown[]) => void'
+  - name: runGit
+    type: '(args: string[], cwd: string) => Promise<string>'
+  methods:
+  - name: constructor
+    sig: 'constructor(options: GitOpsOptions)'
+    lines:
+    - 50
+    - 59
+    detail: {}
+  - name: currentBranch
+    sig: 'currentBranch(cwd: string): Promise<string>'
+    is_async: true
+    lines:
+    - 66
+    - 68
+    detail:
+      calls:
+      - this.raw
+      - this.raw(["rev-parse", "--abbrev-ref", "HEAD"], cwd).catch
+  - name: resolveRemote
+    sig: 'resolveRemote(cwd: string, branch?: string): Promise<string>'
+    is_async: true
+    lines:
+    - 76
+    - 89
+    detail:
+      calls:
+      - this.raw
+      - this.raw(["branch", "--show-current"], cwd).catch
+      - this.raw(["config", `branch.${name}.remote`], cwd).catch
+      - this.raw(["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}"], cwd).catch
+      - upstream.includes
+      - upstream.split
+  - name: resolveTrackingBranch
+    sig: 'resolveTrackingBranch(cwd: string, branch: string): Promise<string | undefined>'
+    is_async: true
+    lines:
+    - 92
+    - 102
+    detail:
+      calls:
+      - this.raw
+      - this.raw(["rev-parse", "--abbrev-ref", "@{upstream}"], cwd).catch
+      - this.raw(["rev-parse", "--verify", ref], cwd).catch
+      - this.resolveRemote
+  - name: resolveDefaultBranch
+    sig: 'resolveDefaultBranch(cwd: string, branch?: string): Promise<string | undefined>'
+    is_async: true
+    lines:
+    - 105
+    - 109
+    detail:
+      calls:
+      - this.raw
+      - this.raw(["symbolic-ref", "--short", `refs/remotes/${remote}/HEAD`], cwd).catch
+      - this.resolveRemote
+  - name: hasRemoteRef
+    sig: 'hasRemoteRef(cwd: string, ref: string): Promise<boolean>'
+    is_async: true
+    lines:
+    - 111
+    - 115
+    detail:
+      calls:
+      - this.raw
+      - |-
+        this.raw(["rev-parse", "--verify", "--quiet", `refs/remotes/${ref}`], cwd)
+              .then
+      - |-
+        this.raw(["rev-parse", "--verify", "--quiet", `refs/remotes/${ref}`], cwd)
+              .then(() => true)
+         ...
+  - name: refreshRemote
+    sig: 'refreshRemote(cwd: string, remote: string): Promise<void>'
+    is_async: true
+    lines:
+    - 117
+    - 142
+    detail:
+      calls:
+      - Date.now
+      - nodePath.isAbsolute
+      - nodePath.resolve
+      - this.inflightFetch.get
+      - this.inflightFetch.set
+      - this.lastFetch.get
+      - this.lastFetch.set
+      - this.raw
+      - |-
+        this.raw(["fetch", "--quiet", "--no-tags", remote], cwd)
+              .catch
+      - |-
+        this.raw(["fetch", "--quiet", "--no-tags", remote], cwd)
+              .catch((err) => {
+                this.log(`F...
+      - this.raw(["rev-parse", "--git-common-dir"], cwd).catch
+  - name: listWorktreePaths
+    sig: 'listWorktreePaths(cwd: string): Promise<Set<string>>'
+    is_async: true
+    lines:
+    - 145
+    - 153
+    detail:
+      calls:
+      - new Set
+      - normalizePath
+      - parseWorktreeList
+      - paths.add
+      - this.raw
+  - name: workingTreeStats
+    sig: 'workingTreeStats(cwd: string): Promise<{ files: number; additions: number; deletions: number }>'
+    is_async: true
+    lines:
+    - 162
+    - 209
+    detail:
+      calls:
+      - Promise.all
+      - counts.reduce
+      - numstat.split
+      - numstat.split("\n").reduce
+      - paths.map
+      - this.raw
+      - this.raw(["diff", "HEAD", "--numstat"], cwd).catch
+      - this.raw(["ls-files", "--others", "--exclude-standard"], cwd).catch
+      - untracked.split
+      - untracked.split("\n").filter
+  - name: aheadBehind
+    sig: 'aheadBehind(cwd: string, base: string, remote?: string): Promise<{ ahead: number; behind: number }>'
+    is_async: true
+    lines:
+    - 218
+    - 221
+    detail:
+      calls:
+      - this.parseLeftRight
+      - this.refreshRemote
+  - name: parseLeftRight
+    sig: 'parseLeftRight(cwd: string, ref: string): Promise<{ ahead: number; behind: number }>'
+    is_async: true
+    vis: private
+    lines:
+    - 223
+    - 227
+    detail:
+      calls:
+      - out.split
+      - out.split(/\s+/).map
+      - this.raw
+      - this.raw(["rev-list", "--left-right", "--count", `${ref}...HEAD`], cwd).catch
+  - name: buildWorktreePatch
+    sig: 'buildWorktreePatch(sourcePath: string, baseBranch: string, selectedFiles?: string[]): Promise<string>'
+    is_async: true
+    lines:
+    - 233
+    - 274
+    detail:
+      calls:
+      - (await this.raw(["merge-base", "HEAD", baseBranch], sourcePath)).trim
+      - (await this.raw(["rev-parse", `${base}^{tree}`], sourcePath)).trim
+      - |-
+        (selectedFiles ?? [])
+              .map
+      - |-
+        (selectedFiles ?? [])
+              .map((file) => file.trim())
+              .filter
+      - add.stderr.trim
+      - diff.stderr.trim
+      - fs.mkdtemp
+      - fs.rm
+      - new Error
+      - nodePath.join
+      - os.tmpdir
+      - read.stderr.trim
+      - this.exec
+      - this.raw
+      - treeResult.stderr.trim
+      - treeResult.stdout.trim
+  - name: checkApplyPatch
+    sig: 'checkApplyPatch(targetPath: string, patch: string): Promise<ApplyCheckResult>'
+    is_async: true
+    lines:
+    - 276
+    - 292
+    detail:
+      calls:
+      - '[result.stderr, result.stdout].filter'
+      - '[result.stderr, result.stdout].filter(Boolean).join'
+      - output.trim
+      - patch.trim
+      - this.exec
+      - this.parseApplyConflicts
+  - name: applyPatch
+    sig: 'applyPatch(targetPath: string, patch: string): Promise<ApplyPatchResult>'
+    is_async: true
+    lines:
+    - 294
+    - 308
+    detail:
+      calls:
+      - '[result.stderr, result.stdout].filter'
+      - '[result.stderr, result.stdout].filter(Boolean).join'
+      - output.trim
+      - patch.trim
+      - this.exec
+      - this.parseApplyConflicts
+  - name: parseApplyConflicts
+    sig: 'parseApplyConflicts(output: string): ApplyConflict[]'
+    vis: private
+    lines:
+    - 310
+    - 348
+    detail:
+      calls:
+      - /^error:\s+(.+?):\s+(does not match index|patch does not apply|cannot read the current contents.*)$/...
+      - /^error:\s+patch failed:\s+(.+?):\d+$/i.exec
+      - conflicts.push
+      - new Set
+      - |-
+        output
+              .split
+      - |-
+        output
+              .split(/\r?\n/g)
+              .map
+      - |-
+        output
+              .split(/\r?\n/g)
+              .map((line) => line.trim())
+              .filter
+      - seen.add
+      - seen.has
+  lines:
+  - 43
+  - 382
+exports:
+- name: GitOpsOptions
+  kind: type
+- name: ApplyConflict
+  kind: type
+- name: ApplyCheckResult
+  kind: type
+- name: ApplyPatchResult
+  kind: type
+- name: ExecOptions
+  kind: type
+- name: ExecResult
+  kind: type
+- name: GitOps
+  kind: type

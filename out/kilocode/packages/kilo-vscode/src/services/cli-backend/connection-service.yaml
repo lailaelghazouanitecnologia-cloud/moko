@@ -1,0 +1,265 @@
+## Roska File Descriptor — cli-backend/connection-service.ts
+file: cli-backend/connection-service.ts
+lines: 326
+layer: logic
+imports:
+- sym: vscode.vscode
+- sym: ./server-manager.ServerManager
+- sym: '@kilocode/sdk/v2/client.createKiloClient'
+- sym: '@kilocode/sdk/v2/client.type KiloClient'
+- sym: '@kilocode/sdk/v2/client.type Event'
+- sym: ./sdk-sse-adapter.SdkSSEAdapter
+- sym: ./types.ServerConfig
+  kind: typing
+- sym: ./connection-utils.resolveEventSessionId as resolveEventSessionIdPure
+data:
+- name: HEALTH_POLL_INTERVAL_MS
+  type: any
+  val: 10_000
+types:
+- name: ConnectionState
+  kind: enum
+  decorators:
+  - type
+  variants:
+  - name: '"error"'
+  lines:
+  - 8
+  - 8
+- name: SSEEventListener
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 9
+  - 9
+- name: StateListener
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 10
+  - 10
+- name: SSEEventFilter
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 11
+  - 11
+- name: NotificationDismissListener
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 12
+  - 12
+- name: KiloConnectionService
+  kind: struct
+  ctx: Shared mapping used to resolve session scope for events that don't reliably include a sessionID. Used primarily for message.part.updated where only messageID may be present.
+  fields:
+  - name: serverManager
+    type: ServerManager
+  - name: client
+    type: KiloClient | null
+    default: 'null'
+  - name: sseClient
+    type: SdkSSEAdapter | null
+    default: 'null'
+  - name: info
+    type: '{ port: number } | null'
+    default: 'null'
+  - name: config
+    type: ServerConfig | null
+    default: 'null'
+  - name: state
+    type: ConnectionState
+    default: '"disconnected"'
+  - name: connectPromise
+    type: Promise<void> | null
+    default: 'null'
+  - name: healthPollTimer
+    type: ReturnType<typeof setInterval> | null
+    default: 'null'
+  - name: eventListeners
+    type: Set<SSEEventListener>
+    default: new Set()
+  - name: stateListeners
+    type: Set<StateListener>
+    default: new Set()
+  - name: notificationDismissListeners
+    type: Set<NotificationDismissListener>
+    default: new Set()
+  - name: messageSessionIdsByMessageId
+    type: Map<string, string>
+    default: new Map()
+  methods:
+  - name: constructor
+    sig: 'constructor(context: vscode.ExtensionContext)'
+    lines:
+    - 42
+    - 44
+    detail:
+      calls:
+      - new ServerManager
+  - name: connect
+    sig: 'connect(workspaceDir: string): Promise<void>'
+    is_async: true
+    lines:
+    - 49
+    - 70
+    detail:
+      calls:
+      - this.doConnect
+      - this.setState
+  - name: getClient
+    sig: 'getClient(): KiloClient'
+    lines:
+    - 75
+    - 80
+    detail:
+      calls:
+      - new Error
+  - name: getServerInfo
+    sig: 'getServerInfo(): { port: number } | null'
+    lines:
+    - 85
+    - 87
+    detail: {}
+  - name: getServerConfig
+    sig: 'getServerConfig(): ServerConfig | null'
+    lines:
+    - 93
+    - 95
+    detail: {}
+  - name: getConnectionState
+    sig: 'getConnectionState(): ConnectionState'
+    lines:
+    - 100
+    - 102
+    detail: {}
+  - name: onEvent
+    sig: 'onEvent(listener: SSEEventListener): () => void'
+    lines:
+    - 107
+    - 112
+    detail:
+      calls:
+      - this.eventListeners.add
+  - name: onEventFiltered
+    sig: 'onEventFiltered(filter: SSEEventFilter, listener: SSEEventListener): () => void'
+    lines:
+    - 117
+    - 125
+    detail:
+      calls:
+      - this.onEvent
+  - name: recordMessageSessionId
+    sig: 'recordMessageSessionId(messageId: string, sessionId: string): void'
+    lines:
+    - 130
+    - 135
+    detail:
+      calls:
+      - this.messageSessionIdsByMessageId.set
+  - name: resolveEventSessionId
+    sig: 'resolveEventSessionId(event: Event): string | undefined'
+    lines:
+    - 141
+    - 147
+    detail:
+      calls:
+      - resolveEventSessionIdPure
+  - name: onNotificationDismissed
+    sig: 'onNotificationDismissed(listener: NotificationDismissListener): () => void'
+    lines:
+    - 152
+    - 157
+    detail:
+      calls:
+      - this.notificationDismissListeners.add
+  - name: notifyNotificationDismissed
+    sig: 'notifyNotificationDismissed(notificationId: string): void'
+    lines:
+    - 162
+    - 166
+    detail:
+      calls:
+      - listener
+  - name: onStateChange
+    sig: 'onStateChange(listener: StateListener): () => void'
+    lines:
+    - 171
+    - 176
+    detail:
+      calls:
+      - this.stateListeners.add
+  - name: dispose
+    sig: 'dispose(): void'
+    lines:
+    - 181
+    - 194
+    detail:
+      calls:
+      - this.eventListeners.clear
+      - this.messageSessionIdsByMessageId.clear
+      - this.notificationDismissListeners.clear
+      - this.serverManager.dispose
+      - this.sseClient?.dispose
+      - this.stateListeners.clear
+      - this.stopHealthPoll
+  - name: checkHealth
+    sig: 'checkHealth(baseUrl: string, password: string): Promise<boolean>'
+    is_async: true
+    vis: private
+    lines:
+    - 235
+    - 248
+    detail:
+      calls:
+      - Buffer.from
+      - Buffer.from(`kilo:${password}`).toString
+      - clearTimeout
+      - fetch
+      - new AbortController
+      - setTimeout
+  - name: doConnect
+    sig: 'doConnect(workspaceDir: string): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 250
+    - 325
+    detail:
+      calls:
+      - Buffer.from
+      - Buffer.from(`kilo:${server.password}`).toString
+      - createKiloClient
+      - new Promise
+      - new SdkSSEAdapter
+      - this.serverManager.getServer
+      - this.sseClient.connect
+      - this.sseClient.onError
+      - this.sseClient.onEvent
+      - this.sseClient.onStateChange
+      - this.sseClient?.dispose
+      - this.startHealthPoll
+      - this.stopHealthPoll
+  lines:
+  - 22
+  - 326
+exports:
+- name: ConnectionState
+  kind: type
+- name: SSEEventListener
+  kind: type
+- name: StateListener
+  kind: type
+- name: SSEEventFilter
+  kind: type
+- name: NotificationDismissListener
+  kind: type
+- name: KiloConnectionService
+  kind: type
+- name: HEALTH_POLL_INTERVAL_MS
+  kind: data

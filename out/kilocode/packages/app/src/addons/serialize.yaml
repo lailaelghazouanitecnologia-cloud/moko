@@ -1,0 +1,502 @@
+## Roska File Descriptor — addons/serialize.ts
+file: addons/serialize.ts
+lines: 634
+layer: logic
+purpose: 'SerializeAddon - Serialize terminal buffer contents Port of xterm.js addon-serialize for ghostty-web. Enables serialization of terminal contents to a string that can be written back to restore terminal state. Usage: ```typescript const serializeAddon = new SerializeAddon(); term.loadAddon(serializeAddon); const content = serializeAddon.serialize(); ```'
+imports:
+- sym: ghostty-web.ITerminalAddon
+  kind: typing
+- sym: ghostty-web.ITerminalCore
+  kind: typing
+- sym: ghostty-web.IBufferRange
+  kind: typing
+types:
+- name: IBuffer
+  kind: trait
+  ctx: ============================================================================
+  decorators:
+  - interface
+  fields:
+  - name: readonly
+    type: '"normal" | "alternate"'
+  - name: readonly
+    type: number
+  - name: readonly
+    type: number
+  - name: readonly
+    type: number
+  - name: readonly
+    type: number
+  - name: readonly
+    type: number
+  - name: getLine
+    type: 'method: getLine(y: number): IBufferLine | undefined'
+  - name: getNullCell
+    type: 'method: getNullCell(): IBufferCell'
+  lines:
+  - 22
+  - 31
+- name: IBufferLine
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: readonly
+    type: number
+  - name: readonly
+    type: boolean
+  - name: getCell
+    type: 'method: getCell(x: number): IBufferCell | undefined'
+  - name: translateToString
+    type: 'method: translateToString(trimRight?: boolean, startColumn?: number, endColumn?: number): string'
+  lines:
+  - 33
+  - 38
+- name: IBufferCell
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: getChars
+    type: 'method: getChars(): string'
+  - name: getCode
+    type: 'method: getCode(): number'
+  - name: getWidth
+    type: 'method: getWidth(): number'
+  - name: getFgColorMode
+    type: 'method: getFgColorMode(): number'
+  - name: getBgColorMode
+    type: 'method: getBgColorMode(): number'
+  - name: getFgColor
+    type: 'method: getFgColor(): number'
+  - name: getBgColor
+    type: 'method: getBgColor(): number'
+  - name: isBold
+    type: 'method: isBold(): number'
+  - name: isItalic
+    type: 'method: isItalic(): number'
+  - name: isUnderline
+    type: 'method: isUnderline(): number'
+  - name: isStrikethrough
+    type: 'method: isStrikethrough(): number'
+  - name: isBlink
+    type: 'method: isBlink(): number'
+  - name: isInverse
+    type: 'method: isInverse(): number'
+  - name: isInvisible
+    type: 'method: isInvisible(): number'
+  - name: isFaint
+    type: 'method: isFaint(): number'
+  - name: isDim
+    type: 'method: isDim(): boolean'
+  lines:
+  - 40
+  - 57
+- name: TerminalBuffers
+  kind: typealias
+  decorators:
+  - type
+  fields:
+  - name: active
+    type: IBuffer
+  - name: normal
+    type: IBuffer
+  - name: alternate
+    type: IBuffer
+  lines:
+  - 59
+  - 63
+- name: ISerializeOptions
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: range
+    type: ISerializeRange
+  - name: scrollback
+    type: number
+  - name: excludeModes
+    type: boolean
+  - name: excludeAltBuffer
+    type: boolean
+  lines:
+  - 96
+  - 118
+- name: ISerializeRange
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: start
+    type: number
+  - name: end
+    type: number
+  lines:
+  - 120
+  - 129
+- name: IHTMLSerializeOptions
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: scrollback
+    type: number
+  - name: onlySelection
+    type: boolean
+  - name: includeGlobalBackground
+    type: boolean
+  - name: range
+    type: |-
+      {
+          startLine: number
+          endLine: number
+          startCol: number
+        }
+  lines:
+  - 131
+  - 155
+- name: BaseSerializeHandler
+  kind: trait
+  decorators:
+  - abstract
+  methods:
+  - name: constructor
+    sig: 'constructor(protected readonly _buffer: IBuffer)'
+    lines:
+    - 191
+    - 191
+    detail: {}
+  - name: serialize
+    sig: 'serialize(range: IBufferRange, excludeFinalCursorPosition?: boolean): string'
+    lines:
+    - 193
+    - 224
+    detail:
+      calls:
+      - Math.min
+      - line.getCell
+      - this._afterSerialize
+      - this._beforeSerialize
+      - this._buffer.getLine
+      - this._buffer.getNullCell
+      - this._nextCell
+      - this._rowEnd
+      - this._serializeString
+  lines:
+  - 190
+  - 233
+- name: StringSerializeHandler
+  kind: struct
+  bases:
+  - BaseSerializeHandler
+  fields:
+  - name: _rowIndex
+    type: number
+    default: '0'
+  - name: _allRows
+    type: string[]
+    default: '[]'
+  - name: _allRowSeparators
+    type: string[]
+    default: '[]'
+  - name: _currentRow
+    type: string
+    default: '""'
+  - name: _nullCellCount
+    type: number
+    default: '0'
+  - name: _cursorStyle
+    type: IBufferCell
+  - name: _firstRow
+    type: number
+    default: '0'
+  - name: _lastCursorRow
+    type: number
+    default: '0'
+  - name: _lastCursorCol
+    type: number
+    default: '0'
+  - name: _lastContentCursorRow
+    type: number
+    default: '0'
+  - name: _lastContentCursorCol
+    type: number
+    default: '0'
+  methods:
+  - name: constructor
+    sig: |-
+      constructor(
+          buffer: IBuffer,
+          private readonly _terminal: ITerminalCore,
+        )
+    lines:
+    - 252
+    - 258
+    detail:
+      calls:
+      - super
+      - this._buffer.getNullCell
+  - name: _rowEnd
+    sig: '_rowEnd(row: number, isLastRow: boolean): void'
+    vis: protected
+    lines:
+    - 274
+    - 296
+    detail:
+      calls:
+      - '" ".repeat'
+      - this._buffer.getLine
+  - name: _diffStyle
+    sig: '_diffStyle(cell: IBufferCell, oldCell: IBufferCell): number[]'
+    vis: private
+    lines:
+    - 298
+    - 372
+    detail:
+      calls:
+      - cell.getBgColor
+      - cell.getBgColorMode
+      - cell.getFgColor
+      - cell.getFgColorMode
+      - cell.isBlink
+      - cell.isBold
+      - cell.isDim
+      - cell.isInverse
+      - cell.isInvisible
+      - cell.isItalic
+      - cell.isStrikethrough
+      - cell.isUnderline
+      - equalBg
+      - equalFg
+      - equalFlags
+      - oldCell.isBlink
+      - oldCell.isBold
+      - oldCell.isDim
+      - oldCell.isInverse
+      - oldCell.isInvisible
+      - oldCell.isItalic
+      - oldCell.isStrikethrough
+      - oldCell.isUnderline
+      - sgrSeq.push
+      - this._isAttributeDefault
+  - name: _isAttributeDefault
+    sig: '_isAttributeDefault(cell: IBufferCell): boolean'
+    vis: private
+    lines:
+    - 374
+    - 409
+    detail:
+      calls:
+      - cell.getBgColor
+      - cell.getBgColorMode
+      - cell.getFgColor
+      - cell.getFgColorMode
+      - cell.isBlink
+      - cell.isBold
+      - cell.isDim
+      - cell.isInverse
+      - cell.isInvisible
+      - cell.isItalic
+      - cell.isStrikethrough
+      - cell.isUnderline
+      - nullCell.getBgColor
+      - nullCell.getFgColor
+      - this._buffer.getNullCell
+  - name: _nextCell
+    sig: '_nextCell(cell: IBufferCell, _oldCell: IBufferCell, row: number, col: number): void'
+    vis: protected
+    lines:
+    - 411
+    - 458
+    detail:
+      calls:
+      - '" ".repeat'
+      - cell.getChars
+      - cell.getCode
+      - cell.getWidth
+      - line?.getCell
+      - sgrSeq.join
+      - this._buffer.getLine
+      - this._diffStyle
+  - name: _serializeString
+    sig: '_serializeString(excludeFinalCursorPosition?: boolean): string'
+    vis: protected
+    lines:
+    - 460
+    - 498
+    detail:
+      calls:
+      - |-
+        (() => {
+              if (!cell) return this._buffer.getNullCell()
+              if (cell.getWidth() !== 0) return ...
+      - constrain
+      - line?.getCell
+      - sgrSeq.join
+      - this._buffer.getLine
+      - this._diffStyle
+  lines:
+  - 239
+  - 499
+- name: SerializeAddon
+  kind: struct
+  ctx: Activate the addon (called by Terminal.loadAddon)
+  bases:
+  - ITerminalAddon
+  fields:
+  - name: _terminal
+    type: ITerminalCore
+  methods:
+  - name: activate
+    sig: 'activate(terminal: ITerminalCore): void'
+    lines:
+    - 511
+    - 513
+    detail: {}
+  - name: dispose
+    sig: 'dispose(): void'
+    lines:
+    - 518
+    - 520
+    detail: {}
+  - name: serialize
+    sig: 'serialize(options?: ISerializeOptions): string'
+    lines:
+    - 529
+    - 557
+    detail:
+      calls:
+      - getTerminalBuffers
+      - new Error
+      - this._serializeBufferByRange
+      - this._serializeBufferByScrollback
+  - name: serializeAsText
+    sig: 'serializeAsText(options?: { scrollback?: number; trimWhitespace?: boolean }): string'
+    lines:
+    - 563
+    - 603
+    detail:
+      calls:
+      - activeBuffer.getLine
+      - constrain
+      - getTerminalBuffers
+      - line.translateToString
+      - lines.join
+      - lines.pop
+      - lines.push
+      - new Error
+  lines:
+  - 505
+  - 634
+functions:
+- name: isRecord
+  sig: 'isRecord(value: unknown)'
+  lines:
+  - 65
+  - 67
+- name: isBuffer
+  sig: 'isBuffer(value: unknown)'
+  lines:
+  - 69
+  - 79
+  detail:
+    calls:
+    - isRecord
+- name: getTerminalBuffers
+  sig: 'getTerminalBuffers(value: ITerminalCore): TerminalBuffers | undefined'
+  lines:
+  - 81
+  - 90
+  detail:
+    calls:
+    - isBuffer
+    - isRecord
+- name: constrain
+  sig: 'constrain(value: number, low: number, high: number): number'
+  lines:
+  - 161
+  - 163
+  detail:
+    calls:
+    - Math.max
+    - Math.min
+- name: equalFg
+  sig: 'equalFg(cell1: IBufferCell, cell2: IBufferCell): boolean'
+  lines:
+  - 165
+  - 167
+  detail:
+    calls:
+    - cell1.getFgColor
+    - cell1.getFgColorMode
+    - cell2.getFgColor
+    - cell2.getFgColorMode
+- name: equalBg
+  sig: 'equalBg(cell1: IBufferCell, cell2: IBufferCell): boolean'
+  lines:
+  - 169
+  - 171
+  detail:
+    calls:
+    - cell1.getBgColor
+    - cell1.getBgColorMode
+    - cell2.getBgColor
+    - cell2.getBgColorMode
+- name: equalFlags
+  sig: 'equalFlags(cell1: IBufferCell, cell2: IBufferCell): boolean'
+  lines:
+  - 173
+  - 184
+  detail:
+    calls:
+    - cell1.isBlink
+    - cell1.isBold
+    - cell1.isDim
+    - cell1.isInverse
+    - cell1.isInvisible
+    - cell1.isItalic
+    - cell1.isStrikethrough
+    - cell1.isUnderline
+    - cell2.isBlink
+    - cell2.isBold
+    - cell2.isDim
+    - cell2.isInverse
+    - cell2.isInvisible
+    - cell2.isItalic
+    - cell2.isStrikethrough
+    - cell2.isUnderline
+exports:
+- name: IBuffer
+  kind: type
+- name: IBufferLine
+  kind: type
+- name: IBufferCell
+  kind: type
+- name: TerminalBuffers
+  kind: type
+- name: ISerializeOptions
+  kind: type
+- name: ISerializeRange
+  kind: type
+- name: IHTMLSerializeOptions
+  kind: type
+- name: BaseSerializeHandler
+  kind: type
+- name: StringSerializeHandler
+  kind: type
+- name: SerializeAddon
+  kind: type
+- name: isRecord
+  kind: func
+- name: isBuffer
+  kind: func
+- name: getTerminalBuffers
+  kind: func
+- name: constrain
+  kind: func
+- name: equalFg
+  kind: func
+- name: equalBg
+  kind: func
+- name: equalFlags
+  kind: func
