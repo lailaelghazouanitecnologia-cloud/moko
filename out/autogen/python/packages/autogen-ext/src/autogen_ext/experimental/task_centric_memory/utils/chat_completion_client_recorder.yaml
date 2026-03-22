@@ -1,0 +1,215 @@
+## Roska File Descriptor — utils/chat_completion_client_recorder.py
+file: utils/chat_completion_client_recorder.py
+lines: 227
+imports:
+- sym: autogen_core.CancellationToken
+- sym: autogen_core.models.ChatCompletionClient
+- sym: autogen_core.models.CreateResult
+- sym: autogen_core.models.LLMMessage
+- sym: autogen_core.models.ModelCapabilities
+- sym: autogen_core.models.ModelInfo
+- sym: autogen_core.models.RequestUsage
+- sym: autogen_core.tools.Tool
+- sym: autogen_core.tools.ToolSchema
+- sym: pydantic.BaseModel
+types:
+- name: RecordDict
+  kind: struct
+  bases:
+  - TypedDict
+  fields:
+  - name: mode
+    type: Any
+    default: Literal["create", "create_stream"]
+  - name: messages
+    type: Any
+    default: List[Mapping[str, Any]]
+  - name: response
+    type: Any
+    default: Dict[str, Any]
+  - name: stream
+    type: Any
+    default: List[Mapping[str, Any]]
+  lines:
+  - 21
+  - 25
+- name: ChatCompletionClientRecorder
+  kind: struct
+  ctx: 'A chat completion client that supports fast, large-scale tests of code calling LLM clients. Two modes are supported: 1. "record": delegates to the underlying client while also recording the input messages and responses, which are saved to disk when finalize() is called. 2. "replay": loads previously recorded message and responses from disk, then on each call checks that its message matches the recorded message, and returns the recorded response. The recorded data is stored as a JSON list of records. Each record is a dictionary with a "mode" field (either "create" or "create_stream"), a serialized list of messages, and either a "response" (for create calls) or a "stream" (a list of streamed outputs for create_stream calls). ReplayChatCompletionClient and ChatCompletionCache do similar things, but with significant differences: - ReplayChatCompletionClient replays pre-defined responses in a specified order without recording anything or checking the messages sent to the client. - ChatCompletionCache caches responses and replays them for messages that have been seen before, regardless of order, and calls the base client for any uncached messages.'
+  bases:
+  - ChatCompletionClient
+  fields:
+  - name: logger
+    type: Any
+    default: PageLogger()
+  - name: base_client
+    type: Any
+    default: client
+  - name: mode
+    type: Any
+    default: mode
+  - name: session_file_path
+    type: Any
+    default: os.path.expanduser(session_file_path)
+  - name: records
+    type: Any
+    default: List[RecordDict]
+  - name: _record_index
+    type: int
+    default: '0'
+  methods:
+  - name: __init__
+    sig: |-
+      __init__(
+              self,
+              client: ChatCompletionClient,
+              mode: Literal["record", "replay"],
+              session_file_path: str,
+              logger: PageLogger | None = None,
+          ) -> None
+    lines:
+    - 49
+    - 83
+    detail:
+      calls:
+      - PageLogger
+      - ValueError
+      - json.load
+      - open
+      - os.path.expanduser
+      - self.logger.enter_function
+      - self.logger.error
+      - self.logger.info
+      - self.logger.leave_function
+  - name: create
+    sig: |-
+      create(
+              self,
+              messages: Sequence[LLMMessage],
+              *,
+              tools: Sequence[Tool | ToolSchema] = [],
+              json_output: Optional[bool | type[BaseModel]] = None,
+              extra_create_args: Mapping[str, Any] = {},
+              cancellation_token: Optional[CancellationToken] = None,
+              tool_choice: Tool | Literal["auto", "required", "none"] = "auto",
+          ) -> CreateResult
+    is_async: true
+    lines:
+    - 85
+    - 152
+    detail:
+      calls:
+      - CreateResult
+      - RequestUsage
+      - ValueError
+      - data.get
+      - len
+      - msg.model_dump
+      - rec.get
+      - response.model_dump
+      - self.base_client.create
+      - self.logger.error
+      - self.logger.log_dict_list
+      - self.records.append
+  - name: create_stream
+    sig: |-
+      create_stream(
+              self,
+              messages: Sequence[LLMMessage],
+              *,
+              tools: Sequence[Tool | ToolSchema] = [],
+              json_output: Optional[bool | type[BaseModel]] = None,
+              extra_create_args: Mapping[str, Any] = {},
+              cancellation_token: Optional[CancellationToken] = None,
+              tool_choice: Tool | Literal["auto", "required", "none"] = "auto",
+          ) -> AsyncGenerator[Union[str, CreateResult], None]
+    lines:
+    - 154
+    - 171
+    detail:
+      calls:
+      - self.base_client.create_stream
+  - name: close
+    sig: close(self) -> None
+    is_async: true
+    lines:
+    - 173
+    - 174
+    detail:
+      calls:
+      - self.base_client.close
+  - name: actual_usage
+    sig: actual_usage(self) -> RequestUsage
+    lines:
+    - 176
+    - 178
+    detail:
+      calls:
+      - self.base_client.actual_usage
+  - name: total_usage
+    sig: total_usage(self) -> RequestUsage
+    lines:
+    - 180
+    - 182
+    detail:
+      calls:
+      - self.base_client.total_usage
+  - name: count_tokens
+    sig: 'count_tokens(self, messages: Sequence[LLMMessage], *, tools: Sequence[Tool | ToolSchema] = []) -> int'
+    lines:
+    - 184
+    - 186
+    detail:
+      calls:
+      - self.base_client.count_tokens
+  - name: remaining_tokens
+    sig: 'remaining_tokens(self, messages: Sequence[LLMMessage], *, tools: Sequence[Tool | ToolSchema] = []) -> int'
+    lines:
+    - 188
+    - 190
+    detail:
+      calls:
+      - self.base_client.remaining_tokens
+  - name: capabilities
+    sig: capabilities(self) -> ModelCapabilities
+    decorators:
+    - property
+    lines:
+    - 193
+    - 196
+    detail:
+      calls:
+      - warnings.warn
+  - name: model_info
+    sig: model_info(self) -> ModelInfo
+    decorators:
+    - property
+    lines:
+    - 199
+    - 201
+    detail: {}
+  - name: finalize
+    sig: finalize(self) -> None
+    lines:
+    - 203
+    - 227
+    detail:
+      calls:
+      - ValueError
+      - json.dump
+      - len
+      - open
+      - os.makedirs
+      - os.path.dirname
+      - self.logger.enter_function
+      - self.logger.error
+      - self.logger.info
+      - self.logger.leave_function
+  lines:
+  - 28
+  - 227
+exports:
+- name: RecordDict
+  kind: type
+- name: ChatCompletionClientRecorder
+  kind: type

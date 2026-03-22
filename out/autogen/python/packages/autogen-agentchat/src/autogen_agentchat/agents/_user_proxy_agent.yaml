@@ -1,0 +1,173 @@
+## Roska File Descriptor — agents/_user_proxy_agent.py
+file: agents/_user_proxy_agent.py
+lines: 249
+imports:
+- sym: asyncio
+- sym: contextvars.ContextVar
+- sym: inspect.iscoroutinefunction
+- sym: autogen_core.CancellationToken
+- sym: autogen_core.Component
+- sym: pydantic.BaseModel
+- sym: typing_extensions.Self
+- sym: BaseAgentEvent.BaseChatMessage
+- sym: BaseAgentEvent.HandoffMessage
+- sym: BaseAgentEvent.TextMessage
+- sym: BaseAgentEvent.UserInputRequestedEvent
+data:
+- name: SyncInputFunc
+  type: Any
+  val: Callable[[str], str]
+- name: AsyncInputFunc
+  type: Any
+  val: Callable[[str, Optional[CancellationToken]], Awaitable[str]]
+- name: InputFuncType
+  type: Any
+  val: Union[SyncInputFunc, AsyncInputFunc]
+types:
+- name: UserProxyAgentConfig
+  kind: model
+  ctx: Declarative configuration for the UserProxyAgent.
+  bases:
+  - BaseModel
+  fields:
+  - name: name
+    type: Any
+    default: str
+  - name: description
+    type: Any
+    default: str
+  - name: input_func
+    type: Any
+    default: str | None
+  lines:
+  - 29
+  - 34
+- name: UserProxyAgent
+  kind: struct
+  ctx: 'An agent that can represent a human user through an input function. This agent can be used to represent a human user in a chat system by providing a custom input function. .. note:: Using :class:`UserProxyAgent` puts a running team in a temporary blocked state until the user responds. So it is important to time out the user input function and cancel using the :class:`~autogen_core.CancellationToken` if the user does not respond. The input function should also handle exceptions and return a default response if needed. For typical use cases that involve slow human responses, it is recommended to use termination conditions such as :class:`~autogen_agentchat.conditions.HandoffTermination` or :class:`~autogen_agentchat.conditions.SourceMatchTermination` to stop the running team and return the control to the application. You can run the team again with the user input. This way, the state of the team can be saved and restored when the user responds. See `Human-in-the-loop <https://microsoft.github.io/autogen/stable/user-guide/agentchat-user-guide/tutorial/human-in-the-loop.html>`_ for more information. Args: name (str): The name of the agent. description (str, optional): A description of the agent. input_func (Optional[Callable[[str], str]], Callable[[str, Optional[CancellationToken]], Awaitable[str]]): A function that takes a prompt and returns a user input string. For examples of integrating with web and UI frameworks, see the following: * `FastAPI <https://github.com/microsoft/autogen/tree/main/python/samples/agentchat_fastapi>`_ * `ChainLit <https://github.com/microsoft/autogen/tree/main/python/samples/agentchat_chainlit>`_ Example: Simple usage case:: import asyncio from autogen_core import CancellationToken from autogen_agentchat.agents import UserProxyAgent from autogen_agentchat.messages import TextMessage async def simple_user_agent(): agent = UserProxyAgent("user_proxy") response = await asyncio.create_task( agent.on_messages( [TextMessage(content="What is your name? ", source="user")], cancellation_token=CancellationToken(), ) ) assert isinstance(response.chat_message, TextMessage) print(f"Your name is {response.chat_message.content}") Example: Cancellable usage case:: import asyncio from typing import Any from autogen_core import CancellationToken from autogen_agentchat.agents import UserProxyAgent from autogen_agentchat.messages import TextMessage token = CancellationToken() agent = UserProxyAgent("user_proxy") async def timeout(delay: float): await asyncio.sleep(delay) def cancellation_callback(task: asyncio.Task[Any]): token.cancel() async def cancellable_user_agent(): try: timeout_task = asyncio.create_task(timeout(3)) timeout_task.add_done_callback(cancellation_callback) agent_task = asyncio.create_task( agent.on_messages( [TextMessage(content="What is your name? ", source="user")], cancellation_token=token, ) ) response = await agent_task assert isinstance(response.chat_message, TextMessage) print(f"Your name is {response.chat_message.content}") except Exception as e: print(f"Exception: {e}") except BaseException as e: print(f"BaseException: {e}")'
+  bases:
+  - BaseChatAgent
+  fields:
+  - name: component_type
+    type: str
+    default: '"agent"'
+  - name: component_provider_override
+    type: str
+    default: '"autogen_agentchat.agents.UserProxyAgent"'
+  - name: component_config_schema
+    type: Any
+    default: UserProxyAgentConfig
+  - name: input_func
+    type: Any
+    default: input_func or cancellable_input
+  - name: _is_async
+    type: Any
+    default: iscoroutinefunction(self.input_func)
+  methods:
+  - name: __init__
+    sig: |-
+      __init__(
+              self,
+              name: str,
+              *,
+              description: str = "A human user",
+              input_func: Optional[InputFuncType] = None,
+          ) -> None
+    lines:
+    - 160
+    - 170
+    detail:
+      calls:
+      - iscoroutinefunction
+      - super
+      - super().__init__
+  - name: produced_message_types
+    sig: produced_message_types(self) -> Sequence[type[BaseChatMessage]]
+    decorators:
+    - property
+    lines:
+    - 173
+    - 175
+    detail: {}
+  - name: _get_input
+    sig: '_get_input(self, prompt: str, cancellation_token: Optional[CancellationToken]) -> str'
+    is_async: true
+    vis: protected
+    lines:
+    - 186
+    - 202
+    detail:
+      calls:
+      - RuntimeError
+      - async_func
+      - asyncio.get_event_loop
+      - cast
+      - loop.run_in_executor
+      - str
+  - name: on_messages
+    sig: 'on_messages(self, messages: Sequence[BaseChatMessage], cancellation_token: CancellationToken) -> Response'
+    is_async: true
+    lines:
+    - 204
+    - 208
+    detail:
+      calls:
+      - AssertionError
+      - isinstance
+      - self.on_messages_stream
+  - name: on_messages_stream
+    sig: |-
+      on_messages_stream(
+              self, messages: Sequence[BaseChatMessage], cancellation_token: CancellationToken
+          ) -> AsyncGenerator[BaseAgentEvent | BaseChatMessage | Response, None]
+    is_async: true
+    lines:
+    - 210
+    - 237
+    detail:
+      calls:
+      - HandoffMessage
+      - Response
+      - RuntimeError
+      - TextMessage
+      - UserInputRequestedEvent
+      - UserProxyAgent.InputRequestContext.populate_context
+      - self._get_input
+      - self._get_latest_handoff
+      - str
+      - uuid.uuid4
+  - name: on_reset
+    sig: 'on_reset(self, cancellation_token: Optional[CancellationToken] = None) -> None'
+    is_async: true
+    lines:
+    - 239
+    - 241
+    detail: {}
+  lines:
+  - 37
+  - 249
+functions:
+- name: cancellable_input
+  sig: 'cancellable_input(prompt: str, cancellation_token: Optional[CancellationToken]) -> str'
+  is_async: true
+  lines:
+  - 22
+  - 26
+  detail:
+    calls:
+    - asyncio.create_task
+    - asyncio.to_thread
+    - cancellation_token.link_future
+exports:
+- name: UserProxyAgentConfig
+  kind: type
+- name: UserProxyAgent
+  kind: type
+- name: cancellable_input
+  kind: func
+- name: SyncInputFunc
+  kind: data
+- name: AsyncInputFunc
+  kind: data
+- name: InputFuncType
+  kind: data

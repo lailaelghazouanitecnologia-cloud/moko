@@ -1,0 +1,207 @@
+## Roska File Descriptor — chromadb/_chromadb.py
+file: chromadb/_chromadb.py
+lines: 459
+imports:
+- sym: autogen_core.CancellationToken
+- sym: autogen_core.Component
+- sym: autogen_core.Image
+- sym: autogen_core.memory.Memory
+- sym: autogen_core.memory.MemoryContent
+- sym: autogen_core.memory.MemoryMimeType
+- sym: autogen_core.memory.MemoryQueryResult
+- sym: autogen_core.memory.UpdateContextResult
+- sym: autogen_core.model_context.ChatCompletionContext
+- sym: autogen_core.models.SystemMessage
+- sym: chromadb.HttpClient
+- sym: chromadb.PersistentClient
+- sym: chromadb.api.models.Collection.Collection
+- sym: chromadb.api.types.Document
+- sym: chromadb.api.types.Metadata
+- sym: typing_extensions.Self
+- sym: ChromaDBVectorMemoryConfig.CustomEmbeddingFunctionConfig
+- sym: ChromaDBVectorMemoryConfig.DefaultEmbeddingFunctionConfig
+- sym: ChromaDBVectorMemoryConfig.HttpChromaDBVectorMemoryConfig
+- sym: ChromaDBVectorMemoryConfig.OpenAIEmbeddingFunctionConfig
+- sym: ChromaDBVectorMemoryConfig.PersistentChromaDBVectorMemoryConfig
+- sym: ChromaDBVectorMemoryConfig.SentenceTransformerEmbeddingFunctionConfig
+data:
+- name: logger
+  type: Any
+  val: logging.getLogger(__name__)
+types:
+- name: ChromaDBVectorMemory
+  kind: struct
+  ctx: 'Store and retrieve memory using vector similarity search powered by ChromaDB. `ChromaDBVectorMemory` provides a vector-based memory implementation that uses ChromaDB for storing and retrieving content based on semantic similarity. It enhances agents with the ability to recall contextually relevant information during conversations by leveraging vector embeddings to find similar content. This implementation serves as a reference for more complex memory systems using vector embeddings. For advanced use cases requiring specialized formatting of retrieved content, users should extend this class and override the `update_context()` method. This implementation requires the ChromaDB extra to be installed. Install with: .. code-block:: bash pip install "autogen-ext[chromadb]" Args: config (ChromaDBVectorMemoryConfig | None): Configuration for the ChromaDB memory. If None, defaults to a PersistentChromaDBVectorMemoryConfig with default values. Two config types are supported: * PersistentChromaDBVectorMemoryConfig: For local storage * HttpChromaDBVectorMemoryConfig: For connecting to a remote ChromaDB server Example: .. code-block:: python import os import asyncio from pathlib import Path from autogen_agentchat.agents import AssistantAgent from autogen_agentchat.ui import Console from autogen_core.memory import MemoryContent, MemoryMimeType from autogen_ext.memory.chromadb import ( ChromaDBVectorMemory, PersistentChromaDBVectorMemoryConfig, SentenceTransformerEmbeddingFunctionConfig, OpenAIEmbeddingFunctionConfig, ) from autogen_ext.models.openai import OpenAIChatCompletionClient def get_weather(city: str) -> str: return f"The weather in {city} is sunny with a high of 90°F and a low of 70°F." def fahrenheit_to_celsius(fahrenheit: float) -> float: return (fahrenheit - 32) * 5.0 / 9.0 async def main() -> None: # Use default embedding function default_memory = ChromaDBVectorMemory( config=PersistentChromaDBVectorMemoryConfig( collection_name="user_preferences", persistence_path=os.path.join(str(Path.home()), ".chromadb_autogen"), k=3,  # Return top 3 results score_threshold=0.5,  # Minimum similarity score ) ) # Using a custom SentenceTransformer model custom_memory = ChromaDBVectorMemory( config=PersistentChromaDBVectorMemoryConfig( collection_name="multilingual_memory", persistence_path=os.path.join(str(Path.home()), ".chromadb_autogen"), embedding_function_config=SentenceTransformerEmbeddingFunctionConfig( model_name="paraphrase-multilingual-mpnet-base-v2" ), ) ) # Using OpenAI embeddings openai_memory = ChromaDBVectorMemory( config=PersistentChromaDBVectorMemoryConfig( collection_name="openai_memory", persistence_path=os.path.join(str(Path.home()), ".chromadb_autogen"), embedding_function_config=OpenAIEmbeddingFunctionConfig( api_key=os.environ["OPENAI_API_KEY"], model_name="text-embedding-3-small" ), ) ) # Add user preferences to memory await openai_memory.add( MemoryContent( content="The user prefers weather temperatures in Celsius", mime_type=MemoryMimeType.TEXT, metadata={"category": "preferences", "type": "units"}, ) ) # Create assistant agent with ChromaDB memory assistant = AssistantAgent( name="assistant", model_client=OpenAIChatCompletionClient( model="gpt-4.1", ), tools=[ get_weather, fahrenheit_to_celsius, ], max_tool_iterations=10, memory=[openai_memory], ) # The memory will automatically retrieve relevant content during conversations await Console(assistant.run_stream(task="What''s the temperature in New York?")) # Remember to close the memory when finished await default_memory.close() await custom_memory.close() await openai_memory.close() asyncio.run(main()) Output: .. code-block:: text ---------- TextMessage (user) ---------- What''s the temperature in New York? ---------- MemoryQueryEvent (assistant) ---------- [MemoryContent(content=''The user prefers weather temperatures in Celsius'', mime_type=''MemoryMimeType.TEXT'', metadata={''type'': ''units'', ''category'': ''preferences'', ''mime_type'': ''MemoryMimeType.TEXT'', ''score'': 0.3133561611175537, ''id'': ''fb00506c-acf4-4174-93d7-2a942593f3f7''}), MemoryContent(content=''The user prefers weather temperatures in Celsius'', mime_type=''MemoryMimeType.TEXT'', metadata={''mime_type'': ''MemoryMimeType.TEXT'', ''category'': ''preferences'', ''type'': ''units'', ''score'': 0.3133561611175537, ''id'': ''34311689-b419-4e1a-8bc4-09143f356c66''})] ---------- ToolCallRequestEvent (assistant) ---------- [FunctionCall(id=''call_7TjsFd430J1aKwU5T2w8bvdh'', arguments=''{"city":"New York"}'', name=''get_weather'')] ---------- ToolCallExecutionEvent (assistant) ---------- [FunctionExecutionResult(content=''The weather in New York is sunny with a high of 90°F and a low of 70°F.'', name=''get_weather'', call_id=''call_7TjsFd430J1aKwU5T2w8bvdh'', is_error=False)] ---------- ToolCallRequestEvent (assistant) ---------- [FunctionCall(id=''call_RTjMHEZwDXtjurEYTjDlvq9c'', arguments=''{"fahrenheit": 90}'', name=''fahrenheit_to_celsius''), FunctionCall(id=''call_3mMuCK1aqtzZPTqIHPoHKxtP'', arguments=''{"fahrenheit": 70}'', name=''fahrenheit_to_celsius'')] ---------- ToolCallExecutionEvent (assistant) ---------- [FunctionExecutionResult(content=''32.22222222222222'', name=''fahrenheit_to_celsius'', call_id=''call_RTjMHEZwDXtjurEYTjDlvq9c'', is_error=False), FunctionExecutionResult(content=''21.11111111111111'', name=''fahrenheit_to_celsius'', call_id=''call_3mMuCK1aqtzZPTqIHPoHKxtP'', is_error=False)] ---------- TextMessage (assistant) ---------- The temperature in New York today is sunny with a high of about 32°C and a low of about 21°C.'
+  bases:
+  - Memory
+  fields:
+  - name: component_config_schema
+    type: Any
+    default: ChromaDBVectorMemoryConfig
+  - name: component_provider_override
+    type: str
+    default: '"autogen_ext.memory.chromadb.ChromaDBVectorMemory"'
+  - name: _config
+    type: Any
+    default: config or PersistentChromaDBVectorMemoryConfig()
+  - name: _client
+    type: Any
+    default: ClientAPI | None
+  - name: _collection
+    type: Any
+    default: Collection | None
+  methods:
+  - name: __init__
+    sig: '__init__(self, config: ChromaDBVectorMemoryConfig | None = None) -> None'
+    lines:
+    - 179
+    - 182
+    detail:
+      calls:
+      - PersistentChromaDBVectorMemoryConfig
+  - name: collection_name
+    sig: collection_name(self) -> str
+    decorators:
+    - property
+    lines:
+    - 185
+    - 187
+    detail: {}
+  - name: _create_embedding_function
+    sig: _create_embedding_function(self) -> Any
+    vis: protected
+    lines:
+    - 189
+    - 236
+    detail:
+      calls:
+      - ImportError
+      - ValueError
+      - config.function
+      - embedding_functions.DefaultEmbeddingFunction
+      - embedding_functions.OpenAIEmbeddingFunction
+      - embedding_functions.SentenceTransformerEmbeddingFunction
+      - isinstance
+      - type
+  - name: _ensure_initialized
+    sig: _ensure_initialized(self) -> None
+    vis: protected
+    lines:
+    - 238
+    - 282
+    detail:
+      calls:
+      - HttpClient
+      - PersistentClient
+      - Settings
+      - ValueError
+      - isinstance
+      - logger.error
+      - self._client.get_or_create_collection
+      - self._create_embedding_function
+      - type
+  - name: update_context
+    sig: |-
+      update_context(
+              self,
+              model_context: ChatCompletionContext,
+          ) -> UpdateContextResult
+    is_async: true
+    lines:
+    - 310
+    - 333
+    detail:
+      calls:
+      - '"\n".join'
+      - MemoryQueryResult
+      - SystemMessage
+      - UpdateContextResult
+      - enumerate
+      - isinstance
+      - model_context.add_message
+      - model_context.get_messages
+      - self.query
+      - str
+  - name: add
+    sig: 'add(self, content: MemoryContent, cancellation_token: CancellationToken | None = None) -> None'
+    is_async: true
+    lines:
+    - 335
+    - 353
+    detail:
+      calls:
+      - RuntimeError
+      - logger.error
+      - self._collection.add
+      - self._ensure_initialized
+      - self._extract_text
+      - str
+      - uuid.uuid4
+  - name: query
+    sig: |-
+      query(
+              self,
+              query: str | MemoryContent,
+              cancellation_token: CancellationToken | None = None,
+              **kwargs: Any,
+          ) -> MemoryQueryResult
+    is_async: true
+    lines:
+    - 355
+    - 417
+    detail:
+      calls:
+      - MemoryContent
+      - MemoryQueryResult
+      - RuntimeError
+      - dict
+      - logger.error
+      - memory_results.append
+      - metadata_dict.get
+      - results.get
+      - self._calculate_score
+      - self._collection.query
+      - self._ensure_initialized
+      - self._extract_text
+      - str
+      - zip
+  - name: clear
+    sig: clear(self) -> None
+    is_async: true
+    lines:
+    - 419
+    - 430
+    detail:
+      calls:
+      - RuntimeError
+      - logger.error
+      - self._collection.delete
+      - self._collection.get
+      - self._ensure_initialized
+  - name: close
+    sig: close(self) -> None
+    is_async: true
+    lines:
+    - 432
+    - 435
+    detail: {}
+  - name: reset
+    sig: reset(self) -> None
+    is_async: true
+    lines:
+    - 437
+    - 448
+    detail:
+      calls:
+      - RuntimeError
+      - logger.error
+      - self._client.reset
+      - self._ensure_initialized
+  lines:
+  - 35
+  - 459
+exports:
+- name: ChromaDBVectorMemory
+  kind: type
+- name: logger
+  kind: data

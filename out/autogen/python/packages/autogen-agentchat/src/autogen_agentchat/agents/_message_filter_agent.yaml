@@ -1,0 +1,141 @@
+## Roska File Descriptor — agents/_message_filter_agent.py
+file: agents/_message_filter_agent.py
+lines: 203
+imports:
+- sym: autogen_core.CancellationToken
+- sym: autogen_core.Component
+- sym: autogen_core.ComponentModel
+- sym: pydantic.BaseModel
+- sym: autogen_agentchat.agents.BaseChatAgent
+- sym: autogen_agentchat.base.Response
+- sym: autogen_agentchat.messages.BaseAgentEvent
+- sym: autogen_agentchat.messages.BaseChatMessage
+types:
+- name: PerSourceFilter
+  kind: model
+  bases:
+  - BaseModel
+  fields:
+  - name: source
+    type: Any
+    default: str
+  - name: position
+    type: Any
+    default: Optional[Literal["first", "last"]]
+  - name: count
+    type: Any
+    default: Optional[int]
+  lines:
+  - 15
+  - 18
+- name: MessageFilterConfig
+  kind: model
+  bases:
+  - BaseModel
+  fields:
+  - name: per_source
+    type: Any
+    default: List[PerSourceFilter]
+  lines:
+  - 21
+  - 22
+- name: MessageFilterAgentConfig
+  kind: model
+  bases:
+  - BaseModel
+  fields:
+  - name: name
+    type: Any
+    default: str
+  - name: wrapped_agent
+    type: Any
+    default: ComponentModel
+  - name: filter
+    type: Any
+    default: MessageFilterConfig
+  lines:
+  - 30
+  - 33
+- name: MessageFilterAgent
+  kind: struct
+  ctx: 'A wrapper agent that filters incoming messages before passing them to the inner agent. .. warning:: This is an experimental feature, and the API will change in the future releases. This is useful in scenarios like multi-agent workflows where an agent should only process a subset of the full message history—for example, only the last message from each upstream agent, or only the first message from a specific source. Filtering is configured using :class:`MessageFilterConfig`, which supports: - Filtering by message source (e.g., only messages from "user" or another agent) - Selecting the first N or last N messages from each source - If position is `None`, all messages from that source are included This agent is compatible with both direct message passing and team-based execution such as :class:`~autogen_agentchat.teams.GraphFlow`. Example: >>> agent_a = MessageFilterAgent( ...     name="A", ...     wrapped_agent=some_other_agent, ...     filter=MessageFilterConfig( ...         per_source=[ ...             PerSourceFilter(source="user", position="first", count=1), ...             PerSourceFilter(source="B", position="last", count=2), ...         ] ...     ), ... ) Example use case with Graph: Suppose you have a looping multi-agent graph: A → B → A → B → C. You want: - A to only see the user message and the last message from B - B to see the user message, last message from A, and its own prior responses (for reflection) - C to see the user message and the last message from B Wrap the agents like so: >>> agent_a = MessageFilterAgent( ...     name="A", ...     wrapped_agent=agent_a_inner, ...     filter=MessageFilterConfig( ...         per_source=[ ...             PerSourceFilter(source="user", position="first", count=1), ...             PerSourceFilter(source="B", position="last", count=1), ...         ] ...     ), ... ) >>> agent_b = MessageFilterAgent( ...     name="B", ...     wrapped_agent=agent_b_inner, ...     filter=MessageFilterConfig( ...         per_source=[ ...             PerSourceFilter(source="user", position="first", count=1), ...             PerSourceFilter(source="A", position="last", count=1), ...             PerSourceFilter(source="B", position="last", count=10), ...         ] ...     ), ... ) >>> agent_c = MessageFilterAgent( ...     name="C", ...     wrapped_agent=agent_c_inner, ...     filter=MessageFilterConfig( ...         per_source=[ ...             PerSourceFilter(source="user", position="first", count=1), ...             PerSourceFilter(source="B", position="last", count=1), ...         ] ...     ), ... ) Then define the graph: >>> graph = DiGraph( ...     nodes={ ...         "A": DiGraphNode(name="A", edges=[DiGraphEdge(target="B")]), ...         "B": DiGraphNode( ...             name="B", ...             edges=[ ...                 DiGraphEdge(target="C", condition="exit"), ...                 DiGraphEdge(target="A", condition="loop"), ...             ], ...         ), ...         "C": DiGraphNode(name="C", edges=[]), ...     }, ...     default_start_node="A", ... ) This will ensure each agent sees only what is needed for its decision or action logic.'
+  bases:
+  - BaseChatAgent
+  fields:
+  - name: component_config_schema
+    type: Any
+    default: MessageFilterAgentConfig
+  - name: component_provider_override
+    type: str
+    default: '"autogen_agentchat.agents.MessageFilterAgent"'
+  - name: _wrapped_agent
+    type: Any
+    default: wrapped_agent
+  - name: _filter
+    type: Any
+    default: filter
+  methods:
+  - name: __init__
+    sig: __init__(self, ...4 params)
+    lines:
+    - 140
+    - 148
+  - name: produced_message_types
+    sig: produced_message_types(self) -> Sequence[type[BaseChatMessage]]
+    decorators:
+    - property
+    lines:
+    - 151
+    - 152
+    detail: {}
+  - name: on_messages
+    sig: |-
+      on_messages(
+              self,
+              messages: Sequence[BaseChatMessage],
+              cancellation_token: CancellationToken,
+          ) -> Response
+    is_async: true
+    lines:
+    - 169
+    - 175
+    detail:
+      calls:
+      - self._apply_filter
+      - self._wrapped_agent.on_messages
+  - name: on_messages_stream
+    sig: |-
+      on_messages_stream(
+              self,
+              messages: Sequence[BaseChatMessage],
+              cancellation_token: CancellationToken,
+          ) -> AsyncGenerator[Union[BaseAgentEvent, BaseChatMessage, Response], None]
+    is_async: true
+    lines:
+    - 177
+    - 184
+    detail:
+      calls:
+      - self._apply_filter
+      - self._wrapped_agent.on_messages_stream
+  - name: on_reset
+    sig: 'on_reset(self, cancellation_token: CancellationToken) -> None'
+    is_async: true
+    lines:
+    - 186
+    - 187
+    detail:
+      calls:
+      - self._wrapped_agent.on_reset
+  lines:
+  - 41
+  - 203
+exports:
+- name: PerSourceFilter
+  kind: type
+- name: MessageFilterConfig
+  kind: type
+- name: MessageFilterAgentConfig
+  kind: type
+- name: MessageFilterAgent
+  kind: type

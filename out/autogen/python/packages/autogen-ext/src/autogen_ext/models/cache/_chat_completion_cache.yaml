@@ -1,0 +1,227 @@
+## Roska File Descriptor — cache/_chat_completion_cache.py
+file: cache/_chat_completion_cache.py
+lines: 398
+imports:
+- sym: autogen_core.CacheStore
+- sym: autogen_core.CancellationToken
+- sym: autogen_core.Component
+- sym: autogen_core.ComponentModel
+- sym: autogen_core.InMemoryStore
+- sym: autogen_core.models.ChatCompletionClient
+- sym: autogen_core.models.CreateResult
+- sym: autogen_core.models.LLMMessage
+- sym: autogen_core.models.ModelCapabilities
+- sym: autogen_core.models.ModelInfo
+- sym: autogen_core.models.RequestUsage
+- sym: autogen_core.tools.Tool
+- sym: autogen_core.tools.ToolSchema
+- sym: pydantic.BaseModel
+- sym: pydantic.ValidationError
+- sym: typing_extensions.Self
+data:
+- name: CHAT_CACHE_VALUE_TYPE
+  type: Any
+  val: Union[CreateResult, List[Union[str, CreateResult]]]
+types:
+- name: ChatCompletionCacheConfig
+  kind: model
+  ctx: ''
+  bases:
+  - BaseModel
+  fields:
+  - name: client
+    type: Any
+    default: ComponentModel
+  - name: store
+    type: Any
+    default: Optional[ComponentModel]
+  lines:
+  - 22
+  - 26
+- name: ChatCompletionCache
+  kind: struct
+  ctx: 'A wrapper around a :class:`~autogen_ext.models.cache.ChatCompletionClient` that caches creation results from an underlying client. Cache hits do not contribute to token usage of the original client. Typical Usage: Lets use caching on disk with `openai` client as an example. First install `autogen-ext` with the required packages: .. code-block:: bash pip install -U "autogen-ext[openai, diskcache]" And use it as: .. code-block:: python import asyncio import tempfile from autogen_core.models import UserMessage from autogen_ext.models.openai import OpenAIChatCompletionClient from autogen_ext.models.cache import ChatCompletionCache, CHAT_CACHE_VALUE_TYPE from autogen_ext.cache_store.diskcache import DiskCacheStore from diskcache import Cache async def main(): with tempfile.TemporaryDirectory() as tmpdirname: # Initialize the original client openai_model_client = OpenAIChatCompletionClient(model="gpt-4o") # Then initialize the CacheStore, in this case with diskcache.Cache. # You can also use redis like: # from autogen_ext.cache_store.redis import RedisStore # import redis # redis_instance = redis.Redis() # cache_store = RedisCacheStore[CHAT_CACHE_VALUE_TYPE](redis_instance) cache_store = DiskCacheStore[CHAT_CACHE_VALUE_TYPE](Cache(tmpdirname)) cache_client = ChatCompletionCache(openai_model_client, cache_store) response = await cache_client.create([UserMessage(content="Hello, how are you?", source="user")]) print(response)  # Should print response from OpenAI response = await cache_client.create([UserMessage(content="Hello, how are you?", source="user")]) print(response)  # Should print cached response asyncio.run(main()) For Redis caching: .. code-block:: python import asyncio from autogen_core.models import UserMessage from autogen_ext.models.openai import OpenAIChatCompletionClient from autogen_ext.models.cache import ChatCompletionCache, CHAT_CACHE_VALUE_TYPE from autogen_ext.cache_store.redis import RedisStore import redis async def main(): # Initialize the original client openai_model_client = OpenAIChatCompletionClient(model="gpt-4o") # Initialize Redis cache store redis_instance = redis.Redis() cache_store = RedisStore[CHAT_CACHE_VALUE_TYPE](redis_instance) cache_client = ChatCompletionCache(openai_model_client, cache_store) response = await cache_client.create([UserMessage(content="Hello, how are you?", source="user")]) print(response)  # Should print response from OpenAI response = await cache_client.create([UserMessage(content="Hello, how are you?", source="user")]) print(response)  # Should print cached response asyncio.run(main()) For streaming with Redis caching: .. code-block:: python import asyncio from autogen_core.models import UserMessage, CreateResult from autogen_ext.models.openai import OpenAIChatCompletionClient from autogen_ext.models.cache import ChatCompletionCache, CHAT_CACHE_VALUE_TYPE from autogen_ext.cache_store.redis import RedisStore import redis async def main(): # Initialize the original client openai_model_client = OpenAIChatCompletionClient(model="gpt-4o") # Initialize Redis cache store redis_instance = redis.Redis() cache_store = RedisStore[CHAT_CACHE_VALUE_TYPE](redis_instance) cache_client = ChatCompletionCache(openai_model_client, cache_store) # First streaming call async for chunk in cache_client.create_stream( [UserMessage(content="List all countries in Africa", source="user")] ): if isinstance(chunk, CreateResult): print("\\n") print("Cached: ", chunk.cached)  # Should print False else: print(chunk, end="") # Second streaming call (cached) async for chunk in cache_client.create_stream( [UserMessage(content="List all countries in Africa", source="user")] ): if isinstance(chunk, CreateResult): print("\\n") print("Cached: ", chunk.cached)  # Should print True else: print(chunk, end="") asyncio.run(main()) You can now use the `cached_client` as you would the original client, but with caching enabled. Args: client (ChatCompletionClient): The original ChatCompletionClient to wrap. store (CacheStore): A store object that implements get and set methods. The user is responsible for managing the store''s lifecycle & clearing it (if needed). Defaults to using in-memory cache.'
+  bases:
+  - ChatCompletionClient
+  fields:
+  - name: component_type
+    type: str
+    default: '"chat_completion_cache"'
+  - name: component_provider_override
+    type: str
+    default: '"autogen_ext.models.cache.ChatCompletionCache"'
+  - name: component_config_schema
+    type: Any
+    default: ChatCompletionCacheConfig
+  - name: client
+    type: Any
+    default: client
+  - name: store
+    type: Any
+    default: store or InMemoryStore[CHAT_CACHE_VALUE_TYPE]()
+  methods:
+  - name: __init__
+    sig: |-
+      __init__(
+              self,
+              client: ChatCompletionClient,
+              store: Optional[CacheStore[CHAT_CACHE_VALUE_TYPE]] = None,
+          )
+    lines:
+    - 168
+    - 174
+    detail:
+      calls:
+      - InMemoryStore[CHAT_CACHE_VALUE_TYPE]
+  - name: _check_cache
+    sig: |-
+      _check_cache(
+              self,
+              messages: Sequence[LLMMessage],
+              tools: Sequence[Tool | ToolSchema],
+              json_output: Optional[bool | type[BaseModel]],
+              extra_create_args: Mapping[str, Any],
+          ) -> tuple[Optional[Union[CreateResult, List[Union[str, CreateResult]]]], str]
+    vis: protected
+    lines:
+    - 176
+    - 254
+    detail:
+      calls:
+      - CreateResult.model_validate
+      - hashlib.sha256
+      - hashlib.sha256(serialized_data.encode()).hexdigest
+      - isinstance
+      - issubclass
+      - json.dumps
+      - json.loads
+      - json_output.model_json_schema
+      - message.model_dump
+      - reconstructed_list.append
+      - reconstructed_list_2.append
+      - self.store.get
+      - serialized_data.encode
+  - name: create
+    sig: |-
+      create(
+              self,
+              messages: Sequence[LLMMessage],
+              *,
+              tools: Sequence[Tool | ToolSchema] = [],
+              tool_choice: Tool | Literal["auto", "required", "none"] = "auto",
+              json_output: Optional[bool | type[BaseModel]] = None,
+              extra_create_args: Mapping[str, Any] = {},
+              cancellation_token: Optional[CancellationToken] = None,
+          ) -> CreateResult
+    is_async: true
+    lines:
+    - 256
+    - 296
+    detail:
+      calls:
+      - isinstance
+      - reversed
+      - self._check_cache
+      - self.client.create
+      - self.store.set
+  - name: create_stream
+    sig: |-
+      create_stream(
+              self,
+              messages: Sequence[LLMMessage],
+              *,
+              tools: Sequence[Tool | ToolSchema] = [],
+              tool_choice: Tool | Literal["auto", "required", "none"] = "auto",
+              json_output: Optional[bool | type[BaseModel]] = None,
+              extra_create_args: Mapping[str, Any] = {},
+              cancellation_token: Optional[CancellationToken] = None,
+          ) -> AsyncGenerator[Union[str, CreateResult], None]
+    lines:
+    - 298
+    - 360
+    detail:
+      calls:
+      - _generator
+  - name: close
+    sig: close(self) -> None
+    is_async: true
+    lines:
+    - 362
+    - 363
+    detail:
+      calls:
+      - self.client.close
+  - name: actual_usage
+    sig: actual_usage(self) -> RequestUsage
+    lines:
+    - 365
+    - 366
+    detail:
+      calls:
+      - self.client.actual_usage
+  - name: count_tokens
+    sig: 'count_tokens(self, messages: Sequence[LLMMessage], *, tools: Sequence[Tool | ToolSchema] = []) -> int'
+    lines:
+    - 368
+    - 369
+    detail:
+      calls:
+      - self.client.count_tokens
+  - name: capabilities
+    sig: capabilities(self) -> ModelCapabilities
+    decorators:
+    - property
+    lines:
+    - 372
+    - 374
+    detail:
+      calls:
+      - warnings.warn
+  - name: model_info
+    sig: model_info(self) -> ModelInfo
+    decorators:
+    - property
+    lines:
+    - 377
+    - 378
+    detail: {}
+  - name: remaining_tokens
+    sig: 'remaining_tokens(self, messages: Sequence[LLMMessage], *, tools: Sequence[Tool | ToolSchema] = []) -> int'
+    lines:
+    - 380
+    - 381
+    detail:
+      calls:
+      - self.client.remaining_tokens
+  - name: total_usage
+    sig: total_usage(self) -> RequestUsage
+    lines:
+    - 383
+    - 384
+    detail:
+      calls:
+      - self.client.total_usage
+  - name: _from_config
+    sig: '_from_config(cls, config: ChatCompletionCacheConfig) -> Self'
+    vis: protected
+    decorators:
+    - classmethod
+    lines:
+    - 393
+    - 398
+    detail:
+      calls:
+      - CacheStore.load_component
+      - ChatCompletionClient.load_component
+      - InMemoryStore
+      - cls
+  lines:
+  - 29
+  - 398
+exports:
+- name: ChatCompletionCacheConfig
+  kind: type
+- name: ChatCompletionCache
+  kind: type
+- name: CHAT_CACHE_VALUE_TYPE
+  kind: data

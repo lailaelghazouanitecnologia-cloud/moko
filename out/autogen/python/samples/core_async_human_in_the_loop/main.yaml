@@ -1,0 +1,308 @@
+## Roska File Descriptor — core_async_human_in_the_loop/main.py
+file: core_async_human_in_the_loop/main.py
+lines: 356
+purpose: 'This example demonstrates an approach one can use to implement a async human in the loop system. The system consists of two agents: 1. An assistant agent that uses a tool call to schedule a meeting (this is a mock) 2. A user proxy that is used as a proxy for a slow human user. When this user receives a message from the assistant, it sends out a termination request with the query for the real human. The query to the human is sent out (as an input to the terminal here, but it could be an email or anything else) and the state of the runtime is saved in a persistent layer. When the user responds, the runtime is rehydrated with the state and the user input is sent back to the runtime. This is a simple example that can be extended to more complex scenarios as well. Whenever implementing a human in the loop system, it is important to consider that human looped systems can be slow - Humans take time to respond, but also depending on your medium of communication, the time taken can vary significantly. When waiting for the human to respond, it is possible that the system may be torn down. In such cases, it is important to save the state of the system with any relevant information that is needed to rehydrate the system. When designing such systems, it can be helpful recognize the trade-offs at which point to save the system state. In the given (simple) example, the system state is saved when the user input is needed. However, in a more complex system, it may be necessary to save the state at multiple points to ensure that the system can be rehydrated to the correct state. Additionally, we use "human"-in-loop in this example, but the same principles can be applied to any slow external system that the agent needs to interact with.'
+imports:
+- sym: asyncio
+- sym: concurrent.futures.ThreadPoolExecutor
+- sym: autogen_core.CancellationToken
+- sym: autogen_core.DefaultInterventionHandler
+- sym: autogen_core.DefaultTopicId
+- sym: autogen_core.FunctionCall
+- sym: autogen_core.MessageContext
+- sym: autogen_core.RoutedAgent
+- sym: autogen_core.SingleThreadedAgentRuntime
+- sym: autogen_core.message_handler
+- sym: autogen_core.type_subscription
+- sym: autogen_core.model_context.BufferedChatCompletionContext
+- sym: autogen_core.models.AssistantMessage
+- sym: autogen_core.models.ChatCompletionClient
+- sym: autogen_core.models.SystemMessage
+- sym: autogen_core.models.UserMessage
+- sym: autogen_core.tools.BaseTool
+- sym: pydantic.BaseModel
+- sym: pydantic.Field
+- sym: yaml
+data:
+- name: state_persister
+  type: Any
+  val: MockPersistence()
+types:
+- name: MockPersistence
+  kind: struct
+  fields:
+  - name: _content
+    type: Any
+    default: Mapping[str, Any]
+  methods:
+  - name: __init__
+    sig: __init__(self, ...0 params)
+    lines:
+    - 83
+    - 84
+  - name: load_content
+    sig: load_content(self) -> Mapping[str, Any]
+    lines:
+    - 86
+    - 87
+    detail: {}
+  - name: save_content
+    sig: 'save_content(self, content: Mapping[str, Any]) -> None'
+    lines:
+    - 89
+    - 90
+    detail: {}
+  lines:
+  - 82
+  - 90
+- name: ScheduleMeetingInput
+  kind: model
+  bases:
+  - BaseModel
+  fields:
+  - name: recipient
+    type: Any
+    default: str
+  - name: date
+    type: Any
+    default: str
+  - name: time
+    type: Any
+    default: str
+  lines:
+  - 124
+  - 127
+- name: ScheduleMeetingOutput
+  kind: model
+  bases:
+  - BaseModel
+  lines:
+  - 130
+  - 131
+- name: ScheduleMeetingTool
+  kind: struct
+  methods:
+  - name: __init__
+    sig: __init__(self, ...0 params)
+    lines:
+    - 135
+    - 141
+  - name: run
+    sig: 'run(self, args: ScheduleMeetingInput, cancellation_token: CancellationToken) -> ScheduleMeetingOutput'
+    is_async: true
+    lines:
+    - 143
+    - 145
+    detail:
+      calls:
+      - ScheduleMeetingOutput
+      - print
+  lines:
+  - 134
+  - 145
+- name: NeedsUserInputHandler
+  kind: struct
+  bases:
+  - DefaultInterventionHandler
+  fields:
+  - name: question_for_user
+    type: Any
+    default: GetSlowUserMessage | None
+  methods:
+  - name: __init__
+    sig: __init__(self, ...0 params)
+    lines:
+    - 215
+    - 216
+  - name: on_publish
+    sig: 'on_publish(self, message: Any, *, message_context: MessageContext) -> Any'
+    is_async: true
+    lines:
+    - 218
+    - 221
+    detail:
+      calls:
+      - isinstance
+  - name: needs_user_input
+    sig: needs_user_input(self) -> bool
+    decorators:
+    - property
+    lines:
+    - 224
+    - 225
+    detail: {}
+  - name: user_input_content
+    sig: user_input_content(self) -> str | None
+    decorators:
+    - property
+    lines:
+    - 228
+    - 231
+    detail: {}
+  lines:
+  - 214
+  - 231
+- name: TerminationHandler
+  kind: struct
+  bases:
+  - DefaultInterventionHandler
+  fields:
+  - name: terminateMessage
+    type: Any
+    default: TerminateMessage | None
+  methods:
+  - name: __init__
+    sig: __init__(self, ...0 params)
+    lines:
+    - 235
+    - 236
+  - name: on_publish
+    sig: 'on_publish(self, message: Any, *, message_context: MessageContext) -> Any'
+    is_async: true
+    lines:
+    - 238
+    - 241
+    detail:
+      calls:
+      - isinstance
+  - name: is_terminated
+    sig: is_terminated(self) -> bool
+    decorators:
+    - property
+    lines:
+    - 244
+    - 245
+    detail: {}
+  - name: termination_msg
+    sig: termination_msg(self) -> str | None
+    decorators:
+    - property
+    lines:
+    - 248
+    - 251
+    detail: {}
+  lines:
+  - 234
+  - 251
+functions:
+- name: TextMessage
+  sig: ''
+  decorators:
+  - dataclass
+  lines:
+  - 56
+  - 59
+- name: UserTextMessage
+  sig: ''
+  decorators:
+  - dataclass
+  lines:
+  - 62
+  - 64
+- name: AssistantTextMessage
+  sig: ''
+  decorators:
+  - dataclass
+  lines:
+  - 67
+  - 69
+- name: GetSlowUserMessage
+  sig: ''
+  decorators:
+  - dataclass
+  lines:
+  - 72
+  - 74
+- name: TerminateMessage
+  sig: ''
+  decorators:
+  - dataclass
+  lines:
+  - 77
+  - 79
+- name: SlowUserProxyAgent
+  sig: ''
+  decorators:
+  - type_subscription("scheduling_assistant_conversation")
+  lines:
+  - 96
+  - 121
+- name: SchedulingAssistantAgent
+  sig: ''
+  decorators:
+  - type_subscription("scheduling_assistant_conversation")
+  lines:
+  - 148
+  - 211
+- name: main
+  sig: 'main(model_config: Dict[str, Any], latest_user_input: Optional[str] = None) -> None | str'
+  is_async: true
+  lines:
+  - 254
+  - 320
+  detail:
+    calls:
+    - AssistantTextMessage
+    - ChatCompletionClient.load_component
+    - DefaultTopicId
+    - NeedsUserInputHandler
+    - SchedulingAssistantAgent
+    - SchedulingAssistantAgent.register
+    - SingleThreadedAgentRuntime
+    - SlowUserProxyAgent
+    - SlowUserProxyAgent.register
+    - TerminationHandler
+    - UserTextMessage
+    - model_client.close
+    - print
+    - runtime.load_state
+    - runtime.publish_message
+    - runtime.save_state
+    - runtime.start
+    - runtime.stop_when
+    - state_persister.load_content
+    - state_persister.save_content
+- name: ainput
+  sig: 'ainput(prompt: str = "") -> str'
+  is_async: true
+  lines:
+  - 323
+  - 325
+  detail:
+    calls:
+    - ThreadPoolExecutor
+    - asyncio.get_event_loop
+    - asyncio.get_event_loop().run_in_executor
+exports:
+- name: MockPersistence
+  kind: type
+- name: ScheduleMeetingInput
+  kind: type
+- name: ScheduleMeetingOutput
+  kind: type
+- name: ScheduleMeetingTool
+  kind: type
+- name: NeedsUserInputHandler
+  kind: type
+- name: TerminationHandler
+  kind: type
+- name: TextMessage
+  kind: func
+- name: UserTextMessage
+  kind: func
+- name: AssistantTextMessage
+  kind: func
+- name: GetSlowUserMessage
+  kind: func
+- name: TerminateMessage
+  kind: func
+- name: SlowUserProxyAgent
+  kind: func
+- name: SchedulingAssistantAgent
+  kind: func
+- name: main
+  kind: func
+- name: ainput
+  kind: func
+- name: state_persister
+  kind: data

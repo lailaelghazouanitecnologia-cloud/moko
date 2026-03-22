@@ -1,0 +1,283 @@
+## Roska File Descriptor — ParallelAgents/scenario.py
+file: ParallelAgents/scenario.py
+lines: 402
+imports:
+- sym: asyncio
+- sym: yaml
+- sym: contextvars
+- sym: builtins
+- sym: shutil
+- sym: autogen_agentchat.TRACE_LOGGER_NAME
+- sym: autogen_agentchat.EVENT_LOGGER_NAME
+- sym: autogen_core.TRACE_LOGGER_NAME
+- sym: autogen_core.EVENT_LOGGER_NAME
+- sym: autogen_ext.agents.magentic_one.MagenticOneCoderAgent
+- sym: autogen_agentchat.teams.MagenticOneGroupChat
+- sym: autogen_agentchat.ui.Console
+- sym: autogen_core.models.AssistantMessage
+- sym: autogen_core.models.ChatCompletionClient
+- sym: autogen_core.models.LLMMessage
+- sym: autogen_core.models.UserMessage
+- sym: autogen_core.logging.LLMCallEvent
+- sym: autogen_ext.code_executors.local.LocalCommandLineCodeExecutor
+- sym: autogen_agentchat.conditions.TextMentionTermination
+- sym: autogen_core.models.ChatCompletionClient
+- sym: autogen_ext.agents.web_surfer.MultimodalWebSurfer
+- sym: autogen_ext.agents.file_surfer.FileSurfer
+- sym: autogen_agentchat.agents.CodeExecutorAgent
+- sym: autogen_agentchat.messages.TextMessage
+- sym: autogen_agentchat.messages.AgentEvent
+- sym: autogen_agentchat.messages.ChatMessage
+- sym: autogen_agentchat.messages.HandoffMessage
+- sym: autogen_agentchat.messages.MultiModalMessage
+- sym: autogen_agentchat.messages.StopMessage
+- sym: autogen_agentchat.messages.TextMessage
+- sym: autogen_agentchat.messages.ToolCallExecutionEvent
+- sym: autogen_agentchat.messages.ToolCallRequestEvent
+- sym: autogen_agentchat.messages.ToolCallSummaryMessage
+- sym: autogen_core.CancellationToken
+- sym: autogen_ext.models.openai.OpenAIChatCompletionClient
+- sym: autogen_ext.models.openai._model_info._MODEL_TOKEN_LIMITS
+- sym: autogen_ext.models.openai._model_info.resolve_model
+- sym: autogen_agentchat.utils.content_to_str
+data:
+- name: core_event_logger
+  type: Any
+  val: logging.getLogger(CORE_EVENT_LOGGER_NAME)
+- name: agentchat_event_logger
+  type: Any
+  val: logging.getLogger(AGENTCHAT_EVENT_LOGGER_NAME)
+- name: agentchat_trace_logger
+  type: Any
+  val: logging.getLogger(AGENTCHAT_TRACE_LOGGER_NAME)
+- name: current_log_file
+  type: Any
+  val: contextvars.ContextVar("current_log_file", default=None)
+- name: current_team_id
+  type: Any
+  val: contextvars.ContextVar("current_team_id", default=None)
+- name: original_print
+  type: Any
+  val: builtins.print
+- name: original_agentchat_event_logger_info
+  type: Any
+  val: agentchat_event_logger.info
+- name: original_core_event_logger_info
+  type: Any
+  val: core_event_logger.info
+types:
+- name: LogHandler
+  kind: struct
+  bases:
+  - logging.FileHandler
+  fields:
+  - name: print_message
+    type: Any
+    default: print_message
+  methods:
+  - name: __init__
+    sig: __init__(self, ...2 params)
+    lines:
+    - 66
+    - 68
+  - name: emit
+    sig: 'emit(self, record: logging.LogRecord) -> None'
+    lines:
+    - 70
+    - 100
+    detail:
+      calls:
+      - content_to_str
+      - datetime.fromtimestamp
+      - datetime.fromtimestamp(record.created).isoformat
+      - isinstance
+      - json.dumps
+      - print
+      - self.handleError
+      - super
+      - super().emit
+  lines:
+  - 65
+  - 100
+functions:
+- name: tee_print
+  sig: tee_print(*args, **kwargs)
+  lines:
+  - 102
+  - 113
+  detail:
+    calls:
+    - current_log_file.get
+    - kwargs.get
+    - log_file.flush
+    - log_file.write
+    - map
+    - original_print
+    - sep.join
+- name: team_specific_agentchat_event_logger_info
+  sig: team_specific_agentchat_event_logger_info(msg, *args, **kwargs)
+  lines:
+  - 115
+  - 122
+  detail:
+    calls:
+    - current_team_id.get
+    - logging.getLogger
+    - original_agentchat_event_logger_info
+    - team_logger.info
+- name: team_specific_core_event_logger_info
+  sig: team_specific_core_event_logger_info(msg, *args, **kwargs)
+  lines:
+  - 124
+  - 131
+  detail:
+    calls:
+    - current_team_id.get
+    - logging.getLogger
+    - original_core_event_logger_info
+    - team_logger.info
+- name: run_team
+  sig: 'run_team(team: MagenticOneGroupChat, team_idx: int, task: str, cancellation_token: CancellationToken, logfile)'
+  is_async: true
+  lines:
+  - 138
+  - 152
+  detail:
+    calls:
+    - Console
+    - current_log_file.reset
+    - current_log_file.set
+    - current_team_id.reset
+    - current_team_id.set
+    - logfile.close
+    - task.strip
+    - team.run_stream
+- name: aggregate_final_answer
+  sig: 'aggregate_final_answer(task: str, client: ChatCompletionClient, team_results, source: str = "Aggregator", cancellation_token: Optional[CancellationToken] = None) -> str'
+  is_async: true
+  lines:
+  - 154
+  - 264
+  detail:
+    calls:
+    - AssistantMessage
+    - UserMessage
+    - aggregator_logger.info
+    - aggregator_messages_to_send.items
+    - aggregator_messages_to_send.values
+    - aggregator_messages_to_send[team_idx].appendleft
+    - all
+    - client.create
+    - client.remaining_tokens
+    - context.append
+    - deque
+    - |-
+      f"""
+          Let's think step-by-step. Carefully review the conversation above, critically evaluate the correctness of each team's response, and then output a FINAL ANSWER to the question. The question is repeated here for convenience:
+
+          {task}
+
+          To output the final answer, use the following template: FINAL ANSWER: [YOUR FINAL ANSWER]
+          Your FINAL ANSWER should be a number OR as few words as possible OR a comma separated list of numbers and/or strings.
+          ADDITIONALLY, your FINAL ANSWER MUST adhere to any formatting instructions specified in the original question (e.g., alphabetization, sequencing, units, rounding, decimal places, etc.)
+          If you are asked for a number, express it numerically (i.e., with digits rather than words), don't use commas, and don't include units such as $ or percent signs unless specified otherwise.
+          If you are asked for a string, don't use articles or abbreviations (e.g. for cities), unless specified otherwise. Don't output any final sentence punctuation such as '.', '!', or '?'.
+          If you are asked for a comma separated list, apply the above rules depending on whether the elements are numbers or strings.
+          """.strip
+    - isinstance
+    - len
+    - list
+    - m.to_model_text
+    - re.sub
+    - resolve_model
+    - team_results.keys
+    - team_results.values
+    - team_results[team_idx].messages.pop
+- name: main
+  sig: 'main(num_teams: int, num_answers: int) -> None'
+  is_async: true
+  lines:
+  - 267
+  - 373
+  detail:
+    calls:
+    - '"__FILE_NAME__".strip'
+    - CancellationToken
+    - ChatCompletionClient.load_component
+    - CodeExecutorAgent
+    - FileSurfer
+    - LocalCommandLineCodeExecutor
+    - LogHandler
+    - MagenticOneCoderAgent
+    - MagenticOneGroupChat
+    - MultimodalWebSurfer
+    - aggregate_final_answer
+    - async_tasks.append
+    - asyncio.as_completed
+    - asyncio.create_task
+    - asyncio.gather
+    - |-
+      f""",
+      We have completed the following task:
+
+      {prompt}
+
+      The above messages contain the conversation that took place to complete the task.
+      Read the above conversation and output a FINAL ANSWER to the question.
+      To output the final answer, use the following template: FINAL ANSWER: [YOUR FINAL ANSWER]
+      Your FINAL ANSWER should be a number OR as few words as possible OR a comma separated list of numbers and/or strings.
+      ADDITIONALLY, your FINAL ANSWER MUST adhere to any formatting instructions specified in the original question (e.g., alphabetization, sequencing, units, rounding, decimal places, etc.)
+      If you are asked for a number, express it numerically (i.e., with digits rather than words), don't use commas, and don't include units such as $ or percent signs unless specified otherwise.
+      If you are asked for a string, don't use articles or abbreviations (e.g. for cities), unless specified otherwise. Don't output any final sentence punctuation such as '.', '!', or '?'.
+      If you are asked for a comma separated list, apply the above rules depending on whether the elements are numbers or strings.
+      """.strip
+    - fh.read
+    - fh.read().strip
+    - len
+    - logging.getLogger
+    - open
+    - os.getcwd
+    - os.path.exists
+    - print
+    - range
+    - run_team
+    - shutil.rmtree
+    - task.done
+    - team_agentchat_logger.addHandler
+    - team_core_logger.addHandler
+    - teams.append
+    - token.cancel
+    - tokens.append
+    - yaml.safe_load
+    - zip
+exports:
+- name: LogHandler
+  kind: type
+- name: tee_print
+  kind: func
+- name: team_specific_agentchat_event_logger_info
+  kind: func
+- name: team_specific_core_event_logger_info
+  kind: func
+- name: run_team
+  kind: func
+- name: aggregate_final_answer
+  kind: func
+- name: main
+  kind: func
+- name: core_event_logger
+  kind: data
+- name: agentchat_event_logger
+  kind: data
+- name: agentchat_trace_logger
+  kind: data
+- name: current_log_file
+  kind: data
+- name: current_team_id
+  kind: data
+- name: original_print
+  kind: data
+- name: original_agentchat_event_logger_info
+  kind: data
+- name: original_core_event_logger_info
+  kind: data

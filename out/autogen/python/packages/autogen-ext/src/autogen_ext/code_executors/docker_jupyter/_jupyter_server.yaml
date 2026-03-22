@@ -1,0 +1,443 @@
+## Roska File Descriptor — docker_jupyter/_jupyter_server.py
+file: docker_jupyter/_jupyter_server.py
+lines: 430
+imports:
+- sym: asyncio
+- sym: atexit
+- sym: secrets
+- sym: types.TracebackType
+- sym: aiohttp
+- sym: docker
+- sym: docker.errors
+- sym: requests
+- sym: websockets
+- sym: requests.adapters.HTTPAdapter
+- sym: requests.adapters.Retry
+- sym: typing_extensions.Self
+types:
+- name: JupyterClient
+  kind: struct
+  fields:
+  - name: _connection_info
+    type: Any
+    default: connection_info
+  - name: _session
+    type: Any
+    default: requests.Session()
+  - name: _async_session
+    type: Any
+    default: aiohttp.ClientSession | None
+  methods:
+  - name: __init__
+    sig: '__init__(self, connection_info: JupyterConnectionInfo)'
+    lines:
+    - 50
+    - 61
+    detail:
+      calls:
+      - HTTPAdapter
+      - Retry
+      - requests.Session
+      - self._session.mount
+  - name: _ensure_async_session
+    sig: _ensure_async_session(self) -> aiohttp.ClientSession
+    is_async: true
+    vis: protected
+    lines:
+    - 63
+    - 66
+    detail:
+      calls:
+      - aiohttp.ClientSession
+  - name: list_kernel_specs
+    sig: list_kernel_specs(self) -> Dict[str, Dict[str, str]]
+    is_async: true
+    lines:
+    - 82
+    - 84
+    detail:
+      calls:
+      - cast
+      - response.json
+      - self._get_api_base_url
+      - self._get_headers
+      - self._session.get
+  - name: list_kernels
+    sig: list_kernels(self) -> List[Dict[str, str]]
+    is_async: true
+    lines:
+    - 86
+    - 88
+    detail:
+      calls:
+      - cast
+      - response.json
+      - self._get_api_base_url
+      - self._get_headers
+      - self._session.get
+  - name: start_kernel
+    sig: 'start_kernel(self, kernel_spec_name: str) -> str'
+    is_async: true
+    lines:
+    - 90
+    - 106
+    detail:
+      calls:
+      - cast
+      - response.json
+      - self._ensure_async_session
+      - self._get_api_base_url
+      - self._get_headers
+      - session.post
+  - name: delete_kernel
+    sig: 'delete_kernel(self, kernel_id: str) -> None'
+    is_async: true
+    lines:
+    - 108
+    - 113
+    detail:
+      calls:
+      - response.raise_for_status
+      - self._ensure_async_session
+      - self._get_api_base_url
+      - self._get_headers
+      - session.delete
+  - name: restart_kernel
+    sig: 'restart_kernel(self, kernel_id: str) -> None'
+    is_async: true
+    lines:
+    - 115
+    - 120
+    detail:
+      calls:
+      - response.raise_for_status
+      - self._ensure_async_session
+      - self._get_api_base_url
+      - self._get_headers
+      - session.post
+  - name: get_kernel_client
+    sig: 'get_kernel_client(self, kernel_id: str) -> "JupyterKernelClient"'
+    is_async: true
+    lines:
+    - 122
+    - 126
+    detail:
+      calls:
+      - JupyterKernelClient
+      - self._get_headers
+      - self._get_ws_base_url
+      - websockets.connect
+  - name: close
+    sig: close(self) -> None
+    is_async: true
+    lines:
+    - 128
+    - 133
+    detail:
+      calls:
+      - self._async_session.close
+      - self._session.close
+  lines:
+  - 49
+  - 133
+- name: JupyterKernelClient
+  kind: struct
+  ctx: An asynchronous client for communicating with a Jupyter kernel.
+  fields:
+  - name: _session_id
+    type: Any
+    default: uuid.uuid4().hex
+  - name: _websocket
+    type: Any
+    default: websocket
+  methods:
+  - name: __init__
+    sig: '__init__(self, websocket: websockets.ClientConnection) -> None'
+    lines:
+    - 152
+    - 154
+    detail:
+      calls:
+      - uuid.uuid4
+  - name: __aenter__
+    sig: __aenter__(self) -> Self
+    is_async: true
+    lines:
+    - 156
+    - 157
+    detail: {}
+  - name: __aexit__
+    sig: |-
+      __aexit__(
+              self, exc_type: Optional[Type[BaseException]], exc_val: Optional[BaseException], exc_tb: Optional[TracebackType]
+          ) -> None
+    is_async: true
+    lines:
+    - 159
+    - 162
+    detail:
+      calls:
+      - self.stop
+  - name: stop
+    sig: stop(self) -> None
+    is_async: true
+    lines:
+    - 164
+    - 165
+    detail:
+      calls:
+      - self._websocket.close
+  - name: _send_message
+    sig: '_send_message(self, *, content: Dict[str, Any], channel: str, message_type: str) -> str'
+    is_async: true
+    vis: protected
+    lines:
+    - 167
+    - 186
+    detail:
+      calls:
+      - datetime.datetime.now
+      - datetime.datetime.now().isoformat
+      - json.dumps
+      - self._websocket.send
+      - uuid.uuid4
+  - name: _receive_message
+    sig: '_receive_message(self, timeout_seconds: Optional[float]) -> Optional[Dict[str, Any]]'
+    is_async: true
+    vis: protected
+    lines:
+    - 188
+    - 198
+    detail:
+      calls:
+      - asyncio.wait_for
+      - cast
+      - data.decode
+      - isinstance
+      - json.loads
+      - self._websocket.recv
+  - name: wait_for_ready
+    sig: 'wait_for_ready(self, timeout_seconds: Optional[float] = None) -> bool'
+    is_async: true
+    lines:
+    - 200
+    - 211
+    detail:
+      calls:
+      - message.get
+      - message.get("parent_header", {}).get
+      - self._receive_message
+      - self._send_message
+  - name: execute
+    sig: 'execute(self, code: str, timeout_seconds: Optional[float] = None) -> ExecutionResult'
+    is_async: true
+    lines:
+    - 213
+    - 263
+    detail:
+      calls:
+      - '"\n".join'
+      - DataItem
+      - ExecutionResult
+      - content["data"].items
+      - data_output.append
+      - data_type.startswith
+      - json.dumps
+      - message.get
+      - message.get("parent_header", {}).get
+      - self._receive_message
+      - self._send_message
+      - str
+      - text_output.append
+  lines:
+  - 149
+  - 263
+- name: DockerJupyterServer
+  kind: struct
+  bases:
+  - JupyterConnectable
+  fields:
+  - name: DEFAULT_DOCKERFILE
+    type: str
+    default: |-
+      """FROM quay.io/jupyter/docker-stacks-foundation
+
+              SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+
+              USER ${NB_UID}
+              RUN mamba install --yes jupyter_kernel_gateway ipykernel && \
+                  mamba clean --all -f -y && \
+                  fix-permissions "${CONDA_DIR}" && \
+                  fix-permissions "/home/${NB_USER}"
+
+              ENV TOKEN="UNSET"
+              CMD python -m jupyter kernelgateway --KernelGatewayApp.ip=0.0.0.0 \
+                  --KernelGatewayApp.port=8888 \
+                  --KernelGatewayApp.auth_token="${TOKEN}" \
+                  --JupyterApp.answer_yes=true \
+                  --JupyterWebsocketPersonality.list_kernels=true
+
+              EXPOSE 8888
+
+              WORKDIR "${HOME}"
+              """
+  - name: _bind_dir
+    type: Any
+    default: Optional[Path]
+  - name: _token
+    type: Any
+    default: secrets.token_hex(32) if isinstance(token, DockerJupyterServer.GenerateToken) else token
+  - name: _container
+    type: Any
+    default: container
+  - name: _port
+    type: Any
+    default: int(container.ports[f"{expose_port}/tcp"][0]["HostPort"])
+  - name: _container_id
+    type: Any
+    default: container.id
+  - name: _expose_port
+    type: Any
+    default: expose_port
+  - name: _cleanup_func
+    type: Any
+    default: cleanup
+  - name: _stop_container
+    type: Any
+    default: stop_container
+  methods:
+  - name: __init__
+    sig: |-
+      __init__(
+              self,
+              *,
+              custom_image_name: Optional[str] = None,
+              container_name: Optional[str] = None,
+              auto_remove: bool = True,
+              stop_container: bool = True,
+              docker_env: Optional[Dict[str, str]] = None,
+              expose_port: int = 8888,
+              token: Optional[Union[str, GenerateToken]] = None,
+              work_dir: Union[Path, str] = "/workspace",
+              bind_dir: Optional[Union[Path, str]] = None,
+          )
+    lines:
+    - 292
+    - 401
+    detail:
+      calls:
+      - DockerJupyterServer.GenerateToken
+      - Path
+      - ValueError
+      - atexit.register
+      - client.containers.run
+      - client.images.build
+      - client.images.get
+      - docker.from_env
+      - env.update
+      - int
+      - io.BytesIO
+      - isinstance
+      - logging.info
+      - os.chmod
+      - secrets.token_hex
+      - self.DEFAULT_DOCKERFILE.encode
+      - self._bind_dir.mkdir
+      - self._wait_for_ready
+      - str
+      - uuid.uuid4
+  - name: connection_info
+    sig: connection_info(self) -> JupyterConnectionInfo
+    decorators:
+    - property
+    lines:
+    - 404
+    - 405
+    detail:
+      calls:
+      - JupyterConnectionInfo
+  - name: stop
+    sig: stop(self) -> None
+    is_async: true
+    lines:
+    - 417
+    - 419
+    detail:
+      calls:
+      - asyncio.get_event_loop
+      - loop.run_in_executor
+  - name: get_client
+    sig: get_client(self) -> JupyterClient
+    is_async: true
+    lines:
+    - 421
+    - 422
+    detail:
+      calls:
+      - JupyterClient
+  - name: __aenter__
+    sig: __aenter__(self) -> Self
+    is_async: true
+    lines:
+    - 424
+    - 425
+    detail: {}
+  - name: __aexit__
+    sig: |-
+      __aexit__(
+              self, exc_type: Optional[Type[BaseException]], exc_val: Optional[BaseException], exc_tb: Optional[TracebackType]
+          ) -> None
+    is_async: true
+    lines:
+    - 427
+    - 430
+    detail:
+      calls:
+      - self.stop
+  lines:
+  - 266
+  - 430
+functions:
+- name: JupyterConnectionInfo
+  sig: ''
+  decorators:
+  - dataclass
+  lines:
+  - 25
+  - 36
+- name: JupyterConnectable
+  sig: ''
+  decorators:
+  - runtime_checkable
+  lines:
+  - 39
+  - 46
+- name: DataItem
+  sig: ''
+  decorators:
+  - dataclass
+  lines:
+  - 136
+  - 139
+- name: ExecutionResult
+  sig: ''
+  decorators:
+  - dataclass
+  lines:
+  - 142
+  - 146
+exports:
+- name: JupyterClient
+  kind: type
+- name: JupyterKernelClient
+  kind: type
+- name: DockerJupyterServer
+  kind: type
+- name: JupyterConnectionInfo
+  kind: func
+- name: JupyterConnectable
+  kind: func
+- name: DataItem
+  kind: func
+- name: ExecutionResult
+  kind: func

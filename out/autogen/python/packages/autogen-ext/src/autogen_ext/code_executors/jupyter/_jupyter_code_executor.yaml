@@ -1,0 +1,219 @@
+## Roska File Descriptor — jupyter/_jupyter_code_executor.py
+file: jupyter/_jupyter_code_executor.py
+lines: 335
+imports:
+- sym: asyncio
+- sym: base64
+- sym: tempfile
+- sym: autogen_core.Component
+- sym: pydantic.BaseModel
+- sym: autogen_core.CancellationToken
+- sym: autogen_core.code_executor.CodeBlock
+- sym: autogen_core.code_executor.CodeExecutor
+- sym: autogen_core.code_executor.CodeResult
+- sym: nbclient.NotebookClient
+- sym: nbformat.NotebookNode
+- sym: nbformat.v4
+- sym: typing_extensions.Self
+types:
+- name: JupyterCodeExecutorConfig
+  kind: model
+  ctx: Configuration for JupyterCodeExecutor
+  bases:
+  - BaseModel
+  fields:
+  - name: kernel_name
+    type: Any
+    default: str
+  - name: timeout
+    type: Any
+    default: int
+  - name: output_dir
+    type: Any
+    default: Optional[str]
+  lines:
+  - 40
+  - 45
+- name: JupyterCodeExecutor
+  kind: struct
+  ctx: 'A code executor class that executes code statefully using [nbclient](https://github.com/jupyter/nbclient). .. danger:: This will execute code on the local machine. If being used with LLM generated code, caution should be used. Example of using it directly: .. code-block:: python import asyncio from autogen_core import CancellationToken from autogen_core.code_executor import CodeBlock from autogen_ext.code_executors.jupyter import JupyterCodeExecutor async def main() -> None: async with JupyterCodeExecutor() as executor: cancel_token = CancellationToken() code_blocks = [CodeBlock(code="print(''hello world!'')", language="python")] code_result = await executor.execute_code_blocks(code_blocks, cancel_token) print(code_result) asyncio.run(main()) Example of using it with :class:`~autogen_ext.tools.code_execution.PythonCodeExecutionTool`: .. code-block:: python import asyncio from autogen_agentchat.agents import AssistantAgent from autogen_ext.code_executors.jupyter import JupyterCodeExecutor from autogen_ext.models.openai import OpenAIChatCompletionClient from autogen_ext.tools.code_execution import PythonCodeExecutionTool async def main() -> None: async with JupyterCodeExecutor() as executor: tool = PythonCodeExecutionTool(executor) model_client = OpenAIChatCompletionClient(model="gpt-4o") agent = AssistantAgent("assistant", model_client=model_client, tools=[tool]) result = await agent.run(task="What is the 10th Fibonacci number? Use Python to calculate it.") print(result) asyncio.run(main()) Example of using it inside a :class:`~autogen_agentchat.agents._code_executor_agent.CodeExecutorAgent`: .. code-block:: python import asyncio from autogen_agentchat.agents import CodeExecutorAgent from autogen_agentchat.messages import TextMessage from autogen_ext.code_executors.jupyter import JupyterCodeExecutor from autogen_core import CancellationToken async def main() -> None: async with JupyterCodeExecutor() as executor: code_executor_agent = CodeExecutorAgent("code_executor", code_executor=executor) task = TextMessage( content=''''''Here is some code ```python print(''Hello world'') ``` '''''', source="user", ) response = await code_executor_agent.on_messages([task], CancellationToken()) print(response.chat_message) asyncio.run(main()) Args: kernel_name (str): The kernel name to use. By default, "python3". timeout (int): The timeout for code execution, by default 60. output_dir (Path): The directory to save output files, by default a temporary directory. .. note:: Using the current directory (".") as output directory is deprecated. Using it will raise a deprecation warning.'
+  bases:
+  - CodeExecutor
+  fields:
+  - name: component_config_schema
+    type: Any
+    default: JupyterCodeExecutorConfig
+  - name: component_provider_override
+    type: str
+    default: '"autogen_ext.code_executors.jupyter.JupyterCodeExecutor"'
+  - name: _output_dir
+    type: Any
+    default: Path
+  - name: _temp_dir
+    type: Any
+    default: Optional[tempfile.TemporaryDirectory[str]]
+  - name: _temp_dir_path
+    type: Any
+    default: Optional[Path]
+  - name: _started
+    type: bool
+    default: 'False'
+  - name: _kernel_name
+    type: Any
+    default: kernel_name
+  - name: _timeout
+    type: Any
+    default: timeout
+  - name: _client
+    type: Any
+    default: Optional[NotebookClient]
+  - name: kernel_context
+    type: Any
+    default: Optional[AbstractAsyncContextManager[None]]
+  methods:
+  - name: __init__
+    sig: |-
+      __init__(
+              self,
+              kernel_name: str = "python3",
+              timeout: int = 60,
+              output_dir: Optional[Union[Path, str]] = None,
+          )
+    lines:
+    - 139
+    - 160
+    detail:
+      calls:
+      - Path
+      - ValueError
+      - self._output_dir.mkdir
+      - tempfile.mkdtemp
+  - name: execute_code_blocks
+    sig: |-
+      execute_code_blocks(
+              self, code_blocks: list[CodeBlock], cancellation_token: CancellationToken
+          ) -> JupyterCodeResult
+    is_async: true
+    lines:
+    - 162
+    - 187
+    detail:
+      calls:
+      - '"\n".join'
+      - JupyterCodeResult
+      - output_files.extend
+      - outputs.append
+      - self._execute_code_block
+  - name: _execute_code_block
+    sig: |-
+      _execute_code_block(
+              self, code_block: CodeBlock, cancellation_token: CancellationToken
+          ) -> JupyterCodeResult
+    is_async: true
+    vis: protected
+    lines:
+    - 189
+    - 241
+    detail:
+      calls:
+      - '"\n".join'
+      - JupyterCodeResult
+      - asyncio.create_task
+      - asyncio.shield
+      - asyncio.wait_for
+      - cancellation_token.link_future
+      - data.items
+      - json.dumps
+      - nbformat.new_code_cell
+      - output.get
+      - output_cell.get
+      - output_files.append
+      - outputs.append
+      - re.sub
+      - self._execute_cell
+      - self._save_html
+      - self._save_image
+      - silence_pip
+  - name: _save_image
+    sig: '_save_image(self, image_data_base64: str) -> Path'
+    vis: protected
+    lines:
+    - 255
+    - 260
+    detail:
+      calls:
+      - base64.b64decode
+      - path.absolute
+      - path.write_bytes
+      - uuid.uuid4
+  - name: _save_html
+    sig: '_save_html(self, html_data: str) -> Path'
+    vis: protected
+    lines:
+    - 262
+    - 266
+    detail:
+      calls:
+      - path.absolute
+      - path.write_text
+      - uuid.uuid4
+  - name: restart
+    sig: restart(self) -> None
+    is_async: true
+    lines:
+    - 268
+    - 271
+    detail:
+      calls:
+      - self.start
+      - self.stop
+  - name: start
+    sig: start(self) -> None
+    is_async: true
+    lines:
+    - 273
+    - 295
+    detail:
+      calls:
+      - NotebookClient
+      - nbformat.new_notebook
+      - self._client.async_setup_kernel
+      - self.kernel_context.__aenter__
+  - name: stop
+    sig: stop(self) -> None
+    is_async: true
+    lines:
+    - 297
+    - 309
+    detail:
+      calls:
+      - self.kernel_context.__aexit__
+  - name: output_dir
+    sig: output_dir(self) -> Path
+    decorators:
+    - property
+    lines:
+    - 318
+    - 326
+    detail:
+      calls:
+      - Path
+      - warnings.warn
+  lines:
+  - 48
+  - 335
+functions:
+- name: JupyterCodeResult
+  sig: ''
+  decorators:
+  - dataclass
+  lines:
+  - 33
+  - 37
+exports:
+- name: JupyterCodeExecutorConfig
+  kind: type
+- name: JupyterCodeExecutor
+  kind: type
+- name: JupyterCodeResult
+  kind: func

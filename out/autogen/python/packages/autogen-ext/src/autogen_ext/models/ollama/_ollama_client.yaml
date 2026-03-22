@@ -1,0 +1,587 @@
+## Roska File Descriptor — ollama/_ollama_client.py
+file: ollama/_ollama_client.py
+lines: 1012
+imports:
+- sym: asyncio
+- sym: inspect
+- sym: tiktoken
+- sym: autogen_core.EVENT_LOGGER_NAME
+- sym: autogen_core.TRACE_LOGGER_NAME
+- sym: autogen_core.CancellationToken
+- sym: autogen_core.Component
+- sym: autogen_core.FunctionCall
+- sym: autogen_core.Image
+- sym: autogen_core.logging.LLMCallEvent
+- sym: autogen_core.logging.LLMStreamEndEvent
+- sym: autogen_core.logging.LLMStreamStartEvent
+- sym: autogen_core.models.AssistantMessage
+- sym: autogen_core.models.ChatCompletionClient
+- sym: autogen_core.models.CreateResult
+- sym: autogen_core.models.FinishReasons
+- sym: autogen_core.models.FunctionExecutionResultMessage
+- sym: autogen_core.models.LLMMessage
+- sym: autogen_core.models.ModelCapabilities
+- sym: autogen_core.models.ModelFamily
+- sym: autogen_core.models.ModelInfo
+- sym: autogen_core.models.RequestUsage
+- sym: autogen_core.models.SystemMessage
+- sym: autogen_core.models.UserMessage
+- sym: autogen_core.tools.Tool
+- sym: autogen_core.tools.ToolSchema
+- sym: ollama.AsyncClient
+- sym: ollama.ChatResponse
+- sym: ollama.Message
+- sym: ollama.Image
+- sym: ollama.Tool
+- sym: ollama._types.ChatRequest
+- sym: pydantic.BaseModel
+- sym: pydantic.json_schema.JsonSchemaValue
+- sym: typing_extensions.Self
+- sym: typing_extensions.Unpack
+- sym: BaseOllamaClientConfiguration.BaseOllamaClientConfigurationConfigModel
+data:
+- name: logger
+  type: Any
+  val: logging.getLogger(EVENT_LOGGER_NAME)
+- name: trace_logger
+  type: Any
+  val: logging.getLogger(TRACE_LOGGER_NAME)
+- name: ollama_init_kwargs
+  type: Any
+  val: set(["host"])
+- name: LLM_CONTROL_PARAMS
+  type: dict
+  val: |-
+    {
+        "temperature",
+        "top_p",
+        "top_k",
+        "repeat_penalty",
+        "frequency_penalty",
+        "presence_penalty",
+      ...
+- name: ollama_chat_request_fields
+  type: Any
+  val: dict[str, Any]
+- name: OLLAMA_VALID_CREATE_KWARGS_KEYS
+  type: Any
+  val: |-
+    set(ollama_chat_request_fields.keys()) | set(
+        ("model", "messages", "tools", "stream", "format", "options", "keep_al...
+types:
+- name: BaseOllamaChatCompletionClient
+  kind: struct
+  bases:
+  - ChatCompletionClient
+  fields:
+  - name: _client
+    type: Any
+    default: client
+  - name: _model_name
+    type: Any
+    default: create_args["model"]
+  - name: _model_info
+    type: Any
+    default: _model_info.get_info(create_args["model"])
+  - name: _resolved_model
+    type: Any
+    default: Optional[str]
+  - name: _model_class
+    type: Any
+    default: Optional[str]
+  - name: _create_args
+    type: Any
+    default: create_args
+  - name: _total_usage
+    type: Any
+    default: RequestUsage(prompt_tokens=0, completion_tokens=0)
+  - name: _actual_usage
+    type: Any
+    default: RequestUsage(prompt_tokens=0, completion_tokens=0)
+  - name: _tool_id
+    type: int
+    default: '0'
+  methods:
+  - name: __init__
+    sig: |-
+      __init__(
+              self,
+              client: AsyncClient,
+              *,
+              create_args: Dict[str, Any],
+              model_capabilities: Optional[ModelCapabilities] = None,  # type: ignore
+              model_info: Optional[ModelInfo] = None,
+          )
+    lines:
+    - 459
+    - 504
+    detail:
+      calls:
+      - RequestUsage
+      - ValueError
+      - _model_info.get_info
+      - _model_info.resolve_model_class
+      - cast
+      - isinstance
+      - warnings.warn
+  - name: create_from_config
+    sig: 'create_from_config(cls, config: Dict[str, Any]) -> ChatCompletionClient'
+    decorators:
+    - classmethod
+    lines:
+    - 507
+    - 508
+    detail:
+      calls:
+      - OllamaChatCompletionClient
+  - name: get_create_args
+    sig: get_create_args(self) -> Mapping[str, Any]
+    lines:
+    - 510
+    - 511
+    detail: {}
+  - name: _process_create_args
+    sig: |-
+      _process_create_args(
+              self,
+              messages: Sequence[LLMMessage],
+              tools: Sequence[Tool | ToolSchema],
+              tool_choice: Tool | Literal["auto", "required", "none"],
+              json_output: Optional[bool | type[BaseModel]],
+              extra_create_args: Mapping[str, Any],
+          ) -> CreateParams
+    vis: protected
+    lines:
+    - 513
+    - 610
+    detail:
+      calls:
+      - CreateParams
+      - ValueError
+      - _create_args_from_config
+      - any
+      - convert_tools
+      - create_args.update
+      - isinstance
+      - issubclass
+      - json_output.model_json_schema
+      - len
+      - self._create_args.copy
+      - to_ollama_type
+      - type
+      - value.model_json_schema
+      - warnings.warn
+  - name: create
+    sig: |-
+      create(
+              self,
+              messages: Sequence[LLMMessage],
+              *,
+              tools: Sequence[Tool | ToolSchema] = [],
+              tool_choice: Tool | Literal["auto", "required", "none"] = "auto",
+              json_output: Optional[bool | type[BaseModel]] = None,
+              extra_create_args: Mapping[str, Any] = {},
+              cancellation_token: Optional[CancellationToken] = None,
+          ) -> CreateResult
+    is_async: true
+    lines:
+    - 612
+    - 718
+    detail:
+      calls:
+      - CreateResult
+      - FunctionCall
+      - LLMCallEvent
+      - RequestUsage
+      - _add_usage
+      - asyncio.ensure_future
+      - cancellation_token.link_future
+      - json.dumps
+      - len
+      - logger.info
+      - m.model_dump
+      - normalize_name
+      - normalize_stop_reason
+      - result.model_dump
+      - self._client.chat
+      - self._process_create_args
+      - str
+      - warnings.warn
+  - name: create_stream
+    sig: |-
+      create_stream(
+              self,
+              messages: Sequence[LLMMessage],
+              *,
+              tools: Sequence[Tool | ToolSchema] = [],
+              tool_choice: Tool | Literal["auto", "required", "none"] = "auto",
+              json_output: Optional[bool | type[BaseModel]] = None,
+              extra_create_args: Mapping[str, Any] = {},
+              cancellation_token: Optional[CancellationToken] = None,
+          ) -> AsyncGenerator[Union[str, CreateResult], None]
+    is_async: true
+    lines:
+    - 720
+    - 865
+    detail:
+      calls:
+      - '"".join'
+      - CreateResult
+      - FunctionCall
+      - LLMStreamEndEvent
+      - LLMStreamStartEvent
+      - RequestUsage
+      - _add_usage
+      - anext
+      - asyncio.ensure_future
+      - cancellation_token.link_future
+      - content_chunks.append
+      - full_tool_calls.extend
+      - json.dumps
+      - len
+      - logger.info
+      - m.model_dump
+      - normalize_name
+      - normalize_stop_reason
+      - result.model_dump
+      - self._client.chat
+      - self._process_create_args
+      - str
+  - name: close
+    sig: close(self) -> None
+    is_async: true
+    lines:
+    - 867
+    - 868
+    detail: {}
+  - name: actual_usage
+    sig: actual_usage(self) -> RequestUsage
+    lines:
+    - 870
+    - 871
+    detail: {}
+  - name: total_usage
+    sig: total_usage(self) -> RequestUsage
+    lines:
+    - 873
+    - 874
+    detail: {}
+  - name: count_tokens
+    sig: 'count_tokens(self, messages: Sequence[LLMMessage], *, tools: Sequence[Tool | ToolSchema] = []) -> int'
+    lines:
+    - 876
+    - 877
+    detail:
+      calls:
+      - count_tokens_ollama
+  - name: remaining_tokens
+    sig: 'remaining_tokens(self, messages: Sequence[LLMMessage], *, tools: Sequence[Tool | ToolSchema] = []) -> int'
+    lines:
+    - 879
+    - 881
+    detail:
+      calls:
+      - _model_info.get_token_limit
+      - self.count_tokens
+  - name: capabilities
+    sig: capabilities(self) -> ModelCapabilities
+    decorators:
+    - property
+    lines:
+    - 884
+    - 886
+    detail:
+      calls:
+      - warnings.warn
+  - name: model_info
+    sig: model_info(self) -> ModelInfo
+    decorators:
+    - property
+    lines:
+    - 889
+    - 890
+    detail: {}
+  lines:
+  - 458
+  - 890
+- name: OllamaChatCompletionClient
+  kind: struct
+  ctx: 'Chat completion client for Ollama hosted models. Ollama must be installed and the appropriate model pulled. Args: model (str): Which Ollama model to use. host (optional, str): Model host url. response_format (optional, pydantic.BaseModel): The format of the response. If provided, the response will be parsed into this format as json. options (optional, Mapping[str, Any] | Options): Additional options to pass to the Ollama client. model_info (optional, ModelInfo): The capabilities of the model. **Required if the model is not listed in the ollama model info.** Note: Only models with 200k+ downloads (as of Jan 21, 2025), + phi4, deepseek-r1 have pre-defined model infos. See `this file <https://github.com/microsoft/autogen/blob/main/python/packages/autogen-ext/src/autogen_ext/models/ollama/_model_info.py>`__ for the full list. An entry for one model encompases all parameter variants of that model. To use this client, you must install the `ollama` extension: .. code-block:: bash pip install "autogen-ext[ollama]" The following code snippet shows how to use the client with an Ollama model: .. code-block:: python from autogen_ext.models.ollama import OllamaChatCompletionClient from autogen_core.models import UserMessage ollama_client = OllamaChatCompletionClient( model="llama3", ) result = await ollama_client.create([UserMessage(content="What is the capital of France?", source="user")])  # type: ignore print(result) To load the client from a configuration, you can use the `load_component` method: .. code-block:: python from autogen_core.models import ChatCompletionClient config = { "provider": "OllamaChatCompletionClient", "config": {"model": "llama3"}, } client = ChatCompletionClient.load_component(config) To output structured data, you can use the `response_format` argument: .. code-block:: python from autogen_ext.models.ollama import OllamaChatCompletionClient from autogen_core.models import UserMessage from pydantic import BaseModel class StructuredOutput(BaseModel): first_name: str last_name: str ollama_client = OllamaChatCompletionClient( model="llama3", response_format=StructuredOutput, ) result = await ollama_client.create([UserMessage(content="Who was the first man on the moon?", source="user")])  # type: ignore print(result) Note: Tool usage in ollama is stricter than in its OpenAI counterparts. While OpenAI accepts a map of [str, Any], Ollama requires a map of [str, Property] where Property is a typed object containing ``type`` and ``description`` fields. Therefore, only the keys ``type`` and ``description`` will be converted from the properties blob in the tool schema. To view the full list of available configuration options, see the :py:class:`OllamaClientConfigurationConfigModel` class.'
+  bases:
+  - BaseOllamaChatCompletionClient
+  fields:
+  - name: component_type
+    type: str
+    default: '"model"'
+  - name: component_config_schema
+    type: Any
+    default: BaseOllamaClientConfigurationConfigModel
+  - name: component_provider_override
+    type: str
+    default: '"autogen_ext.models.ollama.OllamaChatCompletionClient"'
+  - name: _raw_config
+    type: Any
+    default: Dict[str, Any]
+  methods:
+  - name: __init__
+    sig: '__init__(self, **kwargs: Unpack[BaseOllamaClientConfiguration])'
+    lines:
+    - 974
+    - 994
+    detail:
+      calls:
+      - ValueError
+      - _create_args_from_config
+      - _ollama_client_from_config
+      - dict
+      - dict(kwargs).copy
+      - super
+      - super().__init__
+  - name: __getstate__
+    sig: __getstate__(self) -> Dict[str, Any]
+    lines:
+    - 996
+    - 999
+    detail:
+      calls:
+      - self.__dict__.copy
+  - name: __setstate__
+    sig: '__setstate__(self, state: Dict[str, Any]) -> None'
+    lines:
+    - 1001
+    - 1003
+    detail:
+      calls:
+      - _ollama_client_from_config
+      - self.__dict__.update
+  - name: _from_config
+    sig: '_from_config(cls, config: BaseOllamaClientConfigurationConfigModel) -> Self'
+    vis: protected
+    decorators:
+    - classmethod
+    lines:
+    - 1010
+    - 1012
+    detail:
+      calls:
+      - cls
+      - config.model_copy
+      - config.model_copy().model_dump
+  lines:
+  - 894
+  - 1012
+functions:
+- name: _create_args_from_config
+  sig: '_create_args_from_config(config: Mapping[str, Any]) -> Dict[str, Any]'
+  vis: protected
+  lines:
+  - 110
+  - 141
+  detail:
+    calls:
+    - config.items
+    - dict
+    - isinstance
+    - k.lower
+    - trace_logger.info
+    - warnings.warn
+- name: type_to_role
+  sig: 'type_to_role(message: LLMMessage) -> str'
+  lines:
+  - 151
+  - 159
+  detail:
+    calls:
+    - isinstance
+- name: user_message_to_ollama
+  sig: 'user_message_to_ollama(message: UserMessage) -> Sequence[Message]'
+  lines:
+  - 162
+  - 188
+  detail:
+    calls:
+    - Message
+    - OllamaImage
+    - ValueError
+    - assert_valid_name
+    - isinstance
+    - ollama_messages.append
+    - ollama_messages[-1].images.append
+    - part.to_base64
+- name: system_message_to_ollama
+  sig: 'system_message_to_ollama(message: SystemMessage) -> Message'
+  lines:
+  - 191
+  - 195
+  detail:
+    calls:
+    - Message
+- name: func_call_to_ollama
+  sig: 'func_call_to_ollama(message: FunctionCall) -> Message.ToolCall'
+  lines:
+  - 202
+  - 208
+  detail:
+    calls:
+    - Message.ToolCall
+    - Message.ToolCall.Function
+    - _func_args_to_ollama_args
+- name: tool_message_to_ollama
+  sig: |-
+    tool_message_to_ollama(
+        message: FunctionExecutionResultMessage,
+    ) -> Sequence[Message]
+  lines:
+  - 211
+  - 214
+- name: assistant_message_to_ollama
+  sig: |-
+    assistant_message_to_ollama(
+        message: AssistantMessage,
+    ) -> Message
+  lines:
+  - 217
+  - 231
+  detail:
+    calls:
+    - Message
+    - assert_valid_name
+    - func_call_to_ollama
+    - isinstance
+- name: to_ollama_type
+  sig: 'to_ollama_type(message: LLMMessage) -> Sequence[Message]'
+  lines:
+  - 234
+  - 242
+  detail:
+    calls:
+    - assistant_message_to_ollama
+    - isinstance
+    - system_message_to_ollama
+    - tool_message_to_ollama
+    - user_message_to_ollama
+- name: calculate_vision_tokens
+  sig: 'calculate_vision_tokens(image: Image, detail: str = "auto") -> int'
+  lines:
+  - 246
+  - 292
+  detail:
+    calls:
+    - int
+    - math.ceil
+- name: convert_tools
+  sig: |-
+    convert_tools(
+        tools: Sequence[Tool | ToolSchema],
+    ) -> List[OllamaTool]
+  lines:
+  - 303
+  - 348
+  detail:
+    calls:
+    - OllamaTool
+    - OllamaTool.Function
+    - OllamaTool.Function.Parameters
+    - OllamaTool.Function.Parameters.Property
+    - assert_valid_name
+    - isinstance
+    - next
+    - opt.get
+    - parameters["properties"].items
+    - prop_schema.get
+    - result.append
+- name: normalize_name
+  sig: 'normalize_name(name: str) -> str'
+  lines:
+  - 351
+  - 357
+  detail:
+    calls:
+    - re.sub
+- name: assert_valid_name
+  sig: 'assert_valid_name(name: str) -> str'
+  lines:
+  - 360
+  - 370
+  detail:
+    calls:
+    - ValueError
+    - len
+    - re.match
+- name: normalize_stop_reason
+  sig: 'normalize_stop_reason(stop_reason: str | None) -> FinishReasons'
+  lines:
+  - 374
+  - 387
+  detail:
+    calls:
+    - KNOWN_STOP_MAPPINGS.get
+    - stop_reason.lower
+- name: count_tokens_ollama
+  sig: 'count_tokens_ollama(messages: Sequence[LLMMessage], model: str, *, tools: Sequence[Tool | ToolSchema] = []) -> int'
+  lines:
+  - 391
+  - 447
+  detail:
+    calls:
+    - calculate_vision_tokens
+    - convert_tools
+    - encoding.encode
+    - isinstance
+    - len
+    - tiktoken.encoding_for_model
+    - tiktoken.get_encoding
+    - to_ollama_type
+    - trace_logger.warning
+- name: CreateParams
+  sig: ''
+  decorators:
+  - dataclass
+  lines:
+  - 450
+  - 455
+exports:
+- name: BaseOllamaChatCompletionClient
+  kind: type
+- name: OllamaChatCompletionClient
+  kind: type
+- name: type_to_role
+  kind: func
+- name: user_message_to_ollama
+  kind: func
+- name: system_message_to_ollama
+  kind: func
+- name: func_call_to_ollama
+  kind: func
+- name: tool_message_to_ollama
+  kind: func
+- name: assistant_message_to_ollama
+  kind: func
+- name: to_ollama_type
+  kind: func
+- name: calculate_vision_tokens
+  kind: func
+- name: convert_tools
+  kind: func
+- name: normalize_name
+  kind: func
+- name: assert_valid_name
+  kind: func
+- name: normalize_stop_reason
+  kind: func
+- name: count_tokens_ollama
+  kind: func
+- name: CreateParams
+  kind: func
+- name: logger
+  kind: data
+- name: trace_logger
+  kind: data
+- name: ollama_init_kwargs
+  kind: data
+- name: LLM_CONTROL_PARAMS
+  kind: data
+- name: ollama_chat_request_fields
+  kind: data
+- name: OLLAMA_VALID_CREATE_KWARGS_KEYS
+  kind: data

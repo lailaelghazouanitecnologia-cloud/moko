@@ -1,0 +1,591 @@
+## Roska File Descriptor — web_surfer/_multimodal_web_surfer.py
+file: web_surfer/_multimodal_web_surfer.py
+lines: 988
+imports:
+- sym: asyncio
+- sym: base64
+- sym: traceback
+- sym: urllib.parse.quote_plus
+- sym: aiofiles
+- sym: PIL.Image
+- sym: autogen_agentchat.agents.BaseChatAgent
+- sym: autogen_agentchat.base.Response
+- sym: autogen_agentchat.messages.BaseAgentEvent
+- sym: autogen_agentchat.messages.BaseChatMessage
+- sym: autogen_agentchat.messages.MultiModalMessage
+- sym: autogen_agentchat.messages.TextMessage
+- sym: autogen_agentchat.utils.content_to_str
+- sym: autogen_agentchat.utils.remove_images
+- sym: autogen_core.EVENT_LOGGER_NAME
+- sym: autogen_core.CancellationToken
+- sym: autogen_core.Component
+- sym: autogen_core.ComponentModel
+- sym: autogen_core.FunctionCall
+- sym: autogen_core.Image
+- sym: autogen_core.models.AssistantMessage
+- sym: autogen_core.models.ChatCompletionClient
+- sym: autogen_core.models.LLMMessage
+- sym: autogen_core.models.ModelFamily
+- sym: autogen_core.models.RequestUsage
+- sym: autogen_core.models.SystemMessage
+- sym: autogen_core.models.UserMessage
+- sym: PIL.Image
+- sym: playwright.async_api.BrowserContext
+- sym: playwright.async_api.Download
+- sym: playwright.async_api.Page
+- sym: playwright.async_api.Playwright
+- sym: playwright.async_api.async_playwright
+- sym: pydantic.BaseModel
+- sym: typing_extensions.Self
+- sym: WEB_SURFER_QA_PROMPT.WEB_SURFER_QA_SYSTEM_MESSAGE
+- sym: WEB_SURFER_QA_PROMPT.WEB_SURFER_TOOL_PROMPT_MM
+- sym: WEB_SURFER_QA_PROMPT.WEB_SURFER_TOOL_PROMPT_TEXT
+- sym: TOOL_CLICK.TOOL_HISTORY_BACK
+- sym: TOOL_CLICK.TOOL_HOVER
+- sym: TOOL_CLICK.TOOL_READ_PAGE_AND_ANSWER
+- sym: TOOL_CLICK.TOOL_SCROLL_DOWN
+- sym: TOOL_CLICK.TOOL_SCROLL_UP
+- sym: TOOL_CLICK.TOOL_SLEEP
+- sym: TOOL_CLICK.TOOL_SUMMARIZE_PAGE
+- sym: TOOL_CLICK.TOOL_TYPE
+- sym: TOOL_CLICK.TOOL_VISIT_URL
+- sym: TOOL_CLICK.TOOL_WEB_SEARCH
+- sym: InteractiveRegion.UserContent
+data:
+- name: DEFAULT_CONTEXT_SIZE
+  type: int
+  val: '128000'
+types:
+- name: MultimodalWebSurferConfig
+  kind: model
+  bases:
+  - BaseModel
+  fields:
+  - name: name
+    type: Any
+    default: str
+  - name: model_client
+    type: Any
+    default: ComponentModel
+  - name: downloads_folder
+    type: Any
+    default: str | None
+  - name: description
+    type: Any
+    default: str | None
+  - name: debug_dir
+    type: Any
+    default: str | None
+  - name: headless
+    type: Any
+    default: bool
+  - name: start_page
+    type: Any
+    default: str | None
+  - name: animate_actions
+    type: Any
+    default: bool
+  - name: to_save_screenshots
+    type: Any
+    default: bool
+  - name: use_ocr
+    type: Any
+    default: bool
+  - name: browser_channel
+    type: Any
+    default: str | None
+  - name: browser_data_dir
+    type: Any
+    default: str | None
+  - name: to_resize_viewport
+    type: Any
+    default: bool
+  lines:
+  - 72
+  - 85
+- name: MultimodalWebSurfer
+  kind: struct
+  ctx: 'MultimodalWebSurfer is a multimodal agent that acts as a web surfer that can search the web and visit web pages. Installation: .. code-block:: bash pip install "autogen-ext[web-surfer]" It launches a chromium browser and allows the playwright to interact with the web browser and can perform a variety of actions. The browser is launched on the first call to the agent and is reused for subsequent calls. It must be used with a multimodal model client that supports function/tool calling, ideally GPT-4o currently. When :meth:`on_messages` or :meth:`on_messages_stream` is called, the following occurs: 1) If this is the first call, the browser is initialized and the page is loaded. This is done in :meth:`_lazy_init`. The browser is only closed when :meth:`close` is called. 2) The method :meth:`_generate_reply` is called, which then creates the final response as below. 3) The agent takes a screenshot of the page, extracts the interactive elements, and prepares a set-of-mark screenshot with bounding boxes around the interactive elements. 4) The agent makes a call to the :attr:`model_client` with the SOM screenshot, history of messages, and the list of available tools. - If the model returns a string, the agent returns the string as the final response. - If the model returns a list of tool calls, the agent executes the tool calls with :meth:`_execute_tool` using :attr:`_playwright_controller`. - The agent returns a final response which includes a screenshot of the page, page metadata, description of the action taken and the inner text of the webpage. 5) If at any point the agent encounters an error, it returns the error message as the final response. .. note:: Please note that using the MultimodalWebSurfer involves interacting with a digital world designed for humans, which carries inherent risks. Be aware that agents may occasionally attempt risky actions, such as recruiting humans for help or accepting cookie agreements without human involvement. Always ensure agents are monitored and operate within a controlled environment to prevent unintended consequences. Moreover, be cautious that MultimodalWebSurfer may be susceptible to prompt injection attacks from webpages. .. note:: On Windows, the event loop policy must be set to `WindowsProactorEventLoopPolicy` to avoid issues with subprocesses. .. code-block:: python import sys import asyncio if sys.platform == "win32": asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy()) Args: name (str): The name of the agent. model_client (ChatCompletionClient): The model client used by the agent. Must be multimodal and support function calling. downloads_folder (str, optional): The folder where downloads are saved. Defaults to None, no downloads are saved. description (str, optional): The description of the agent. Defaults to MultimodalWebSurfer.DEFAULT_DESCRIPTION. debug_dir (str, optional): The directory where debug information is saved. Defaults to None. headless (bool, optional): Whether the browser should be headless. Defaults to True. start_page (str, optional): The start page for the browser. Defaults to MultimodalWebSurfer.DEFAULT_START_PAGE. animate_actions (bool, optional): Whether to animate actions. Defaults to False. to_save_screenshots (bool, optional): Whether to save screenshots. Defaults to False. use_ocr (bool, optional): Whether to use OCR. Defaults to False. browser_channel (str, optional): The browser channel. Defaults to None. browser_data_dir (str, optional): The browser data directory. Defaults to None. to_resize_viewport (bool, optional): Whether to resize the viewport. Defaults to True. playwright (Playwright, optional): The playwright instance. Defaults to None. context (BrowserContext, optional): The browser context. Defaults to None. Example usage: The following example demonstrates how to create a web surfing agent with a model client and run it for multiple turns. .. code-block:: python import asyncio from autogen_agentchat.ui import Console from autogen_agentchat.teams import RoundRobinGroupChat from autogen_ext.models.openai import OpenAIChatCompletionClient from autogen_ext.agents.web_surfer import MultimodalWebSurfer async def main() -> None: # Define an agent web_surfer_agent = MultimodalWebSurfer( name="MultimodalWebSurfer", model_client=OpenAIChatCompletionClient(model="gpt-4o-2024-08-06"), ) # Define a team agent_team = RoundRobinGroupChat([web_surfer_agent], max_turns=3) # Run the team and stream messages to the console stream = agent_team.run_stream(task="Navigate to the AutoGen readme on GitHub.") await Console(stream) # Close the browser controlled by the agent await web_surfer_agent.close() asyncio.run(main())'
+  bases:
+  - BaseChatAgent
+  fields:
+  - name: component_type
+    type: str
+    default: '"agent"'
+  - name: component_config_schema
+    type: Any
+    default: MultimodalWebSurferConfig
+  - name: component_provider_override
+    type: str
+    default: '"autogen_ext.agents.web_surfer.MultimodalWebSurfer"'
+  - name: DEFAULT_DESCRIPTION
+    type: str
+    default: |-
+      """
+          A helpful assistant with access to a web browser.
+          Ask them to perform web searches, open pages, and interact with content (e.g., clicking links, scrolling the viewport, filling in form fields, etc.).
+          It can also summarize the entire page, or answer questions based on the content of the page.
+          It can also be asked to sleep and wait for pages to load, in cases where the page seems not yet fully loaded.
+          """
+  - name: DEFAULT_START_PAGE
+    type: str
+    default: '"https://www.bing.com/"'
+  - name: VIEWPORT_HEIGHT
+    type: int
+    default: '900'
+  - name: VIEWPORT_WIDTH
+    type: int
+    default: '1440'
+  - name: MLM_HEIGHT
+    type: int
+    default: '765'
+  - name: MLM_WIDTH
+    type: int
+    default: '1224'
+  - name: SCREENSHOT_TOKENS
+    type: int
+    default: '1105'
+  - name: _model_client
+    type: Any
+    default: model_client
+  - name: headless
+    type: Any
+    default: headless
+  - name: browser_channel
+    type: Any
+    default: browser_channel
+  - name: browser_data_dir
+    type: Any
+    default: browser_data_dir
+  - name: start_page
+    type: Any
+    default: start_page or self.DEFAULT_START_PAGE
+  - name: downloads_folder
+    type: Any
+    default: downloads_folder
+  - name: debug_dir
+    type: Any
+    default: debug_dir
+  - name: to_save_screenshots
+    type: Any
+    default: to_save_screenshots
+  - name: use_ocr
+    type: Any
+    default: use_ocr
+  - name: to_resize_viewport
+    type: Any
+    default: to_resize_viewport
+  - name: animate_actions
+    type: Any
+    default: animate_actions
+  - name: _playwright
+    type: Any
+    default: Playwright | None
+  - name: _context
+    type: Any
+    default: BrowserContext | None
+  - name: _page
+    type: Any
+    default: Page | None
+  - name: _last_download
+    type: Any
+    default: Download | None
+  - name: _prior_metadata_hash
+    type: Any
+    default: str | None
+  - name: logger
+    type: Any
+    default: logging.getLogger(EVENT_LOGGER_NAME + f".{self.name}.MultimodalWebSurfer")
+  - name: _chat_history
+    type: Any
+    default: List[LLMMessage]
+  - name: _download_handler
+    type: Any
+    default: _download_handler
+  - name: _playwright_controller
+    type: Any
+    default: |-
+      PlaywrightController(
+                  animate_actions=self.animate_actions,
+                  downloads_folder=self.downloads_folder,
+                  viewport_width=self.VIEWPORT_WIDTH,
+                  viewport_height=self.VIEWPORT_HEIGHT,
+                  _download_handler=self._download_handler,
+                  to_resize_viewport=self.to_resize_viewport,
+              )
+  - name: default_tools
+    type: list
+    default: |-
+      [
+                  TOOL_VISIT_URL,
+                  TOOL_WEB_SEARCH,
+                  TOOL_HISTORY_BACK,
+                  TOOL_CLICK,
+                  TOOL_TYPE,
+                  TOOL_READ_PAGE_AND_ANSWER,
+                  TOOL_SUMMARIZE_PAGE,
+                  TOOL_SLEEP,
+                  TOOL_HOVER,
+              ]
+  - name: did_lazy_init
+    type: bool
+    default: 'False'
+  methods:
+  - name: __init__
+    sig: |-
+      __init__(
+              self,
+              name: str,
+              model_client: ChatCompletionClient,
+              downloads_folder: str | None = None,
+              description: str = DEFAULT_DESCRIPTION,
+              debug_dir: str | None = None,
+              headless: bool = True,
+              start_page: str | None = DEFAULT_START_PAGE,
+              animate_actions: bool = False,
+              to_save_screenshots: bool = False,
+              use_ocr: bool = False,
+              browser_channel: str | None = None,
+              browser_data_dir: str | None = None,
+              to_resize_viewport: bool = True,
+              playwright: Playwright | None = None,
+              context: BrowserContext | None = None,
+          )
+    lines:
+    - 209
+    - 287
+    detail:
+      calls:
+      - PlaywrightController
+      - ValueError
+      - logging.getLogger
+      - super
+      - super().__init__
+  - name: _lazy_init
+    sig: |-
+      _lazy_init(
+              self,
+          ) -> None
+    is_async: true
+    vis: protected
+    lines:
+    - 289
+    - 349
+    detail:
+      calls:
+      - async_playwright
+      - async_playwright().start
+      - asyncio.get_event_loop_policy
+      - browser.new_context
+      - hasattr
+      - isinstance
+      - os.path.abspath
+      - os.path.dirname
+      - os.path.join
+      - self._context.new_page
+      - self._context.set_default_timeout
+      - self._page.add_init_script
+      - self._page.goto
+      - self._page.on
+      - self._page.set_viewport_size
+      - self._page.wait_for_load_state
+      - self._playwright.chromium.launch
+      - self._playwright.chromium.launch_persistent_context
+      - self._set_debug_dir
+      - warnings.warn
+  - name: close
+    sig: close(self) -> None
+    is_async: true
+    lines:
+    - 351
+    - 364
+    detail:
+      calls:
+      - self._context.close
+      - self._page.close
+      - self._playwright.stop
+  - name: _set_debug_dir
+    sig: '_set_debug_dir(self, debug_dir: str | None) -> None'
+    is_async: true
+    vis: protected
+    lines:
+    - 366
+    - 385
+    detail:
+      calls:
+      - WebSurferEvent
+      - int
+      - int(time.time()).__str__
+      - os.mkdir
+      - os.path.isdir
+      - os.path.join
+      - self._page.screenshot
+      - self.logger.info
+      - time.time
+  - name: produced_message_types
+    sig: produced_message_types(self) -> Sequence[type[BaseChatMessage]]
+    decorators:
+    - property
+    lines:
+    - 388
+    - 389
+    detail: {}
+  - name: on_reset
+    sig: 'on_reset(self, cancellation_token: CancellationToken) -> None'
+    is_async: true
+    lines:
+    - 391
+    - 423
+    detail:
+      calls:
+      - WebSurferEvent
+      - int
+      - int(time.time()).__str__
+      - os.path.join
+      - self._chat_history.clear
+      - self._page.screenshot
+      - self._playwright_controller.visit_page
+      - self.logger.info
+      - time.time
+  - name: on_messages
+    sig: 'on_messages(self, messages: Sequence[BaseChatMessage], cancellation_token: CancellationToken) -> Response'
+    is_async: true
+    lines:
+    - 425
+    - 429
+    detail:
+      calls:
+      - AssertionError
+      - isinstance
+      - self.on_messages_stream
+  - name: on_messages_stream
+    sig: |-
+      on_messages_stream(
+              self, messages: Sequence[BaseChatMessage], cancellation_token: CancellationToken
+          ) -> AsyncGenerator[BaseAgentEvent | BaseChatMessage | Response, None]
+    is_async: true
+    lines:
+    - 431
+    - 460
+    detail:
+      calls:
+      - AssistantMessage
+      - MultiModalMessage
+      - RequestUsage
+      - Response
+      - TextMessage
+      - chat_message.to_model_message
+      - content_to_str
+      - isinstance
+      - self._chat_history.append
+      - self._generate_reply
+      - sum
+      - traceback.format_exc
+  - name: _generate_reply
+    sig: '_generate_reply(self, cancellation_token: CancellationToken) -> UserContent'
+    is_async: true
+    vis: protected
+    lines:
+    - 462
+    - 626
+    detail:
+      calls:
+      - '"\n".join'
+      - AGImage.from_pil
+      - AssertionError
+      - TextMessage
+      - UserMessage
+      - WEB_SURFER_TOOL_PROMPT_MM.format
+      - |-
+        WEB_SURFER_TOOL_PROMPT_MM.format(
+                        state_description=state_description,
+                        visible_targets=visible_targets,
+                        other_targets_str=other_targets_str,
+                        focused_hint=focused_hint,
+                        tool_names=tool_names,
+                        title=page_title,
+                        url=self._page.url,
+                    ).strip
+      - WEB_SURFER_TOOL_PROMPT_TEXT.format
+      - |-
+        WEB_SURFER_TOOL_PROMPT_TEXT.format(
+                        state_description=state_description,
+                        visible_targets=visible_targets,
+                        other_targets_str=other_targets_str,
+                        focused_hint=focused_hint,
+                        tool_names=tool_names,
+                        title=page_title,
+                        url=self._page.url,
+                    ).strip
+      - WebSurferEvent
+      - add_set_of_mark
+      - history.append
+      - history.pop
+      - int
+      - int(time.time()).__str__
+      - isinstance
+      - len
+      - os.path.join
+      - other_targets.append
+      - other_targets.extend
+      - re.sub
+      - remove_images
+      - scaled_screenshot.save
+      - self._execute_tool
+      - self._format_target_list
+      - self._get_state_description
+      - self._lazy_init
+      - self._model_client.create
+      - self._page.screenshot
+      - self._page.title
+      - self._playwright_controller.get_focused_rect_id
+      - self._playwright_controller.get_interactive_rects
+      - self._playwright_controller.get_visual_viewport
+      - self._target_name
+      - self.default_tools.copy
+      - self.inner_messages.append
+      - self.logger.info
+      - self.model_usage.append
+      - som_screenshot.close
+      - som_screenshot.resize
+      - som_screenshot.save
+      - time.time
+      - tools.append
+  - name: _execute_tool
+    sig: |-
+      _execute_tool(
+              self,
+              message: List[FunctionCall],
+              rects: Dict[str, InteractiveRegion],
+              tool_names: str,
+              cancellation_token: Optional[CancellationToken] = None,
+          ) -> UserContent
+    is_async: true
+    vis: protected
+    lines:
+    - 628
+    - 818
+    detail:
+      calls:
+      - AGImage.from_pil
+      - PIL.Image.open
+      - TextMessage
+      - ValueError
+      - WebSurferEvent
+      - aiofiles.open
+      - args.get
+      - base64.b64encode
+      - base64.b64encode(page_body.encode("utf-8")).decode
+      - file.write
+      - hashlib.md5
+      - hashlib.md5(page_metadata.encode("utf-8")).hexdigest
+      - int
+      - int(time.time()).__str__
+      - io.BytesIO
+      - json.dumps
+      - json.loads
+      - os.path.join
+      - page_body.encode
+      - page_metadata.encode
+      - page_metadata.strip
+      - quote_plus
+      - re.sub
+      - self._get_state_description
+      - self._last_download.save_as
+      - self._page.goto
+      - self._page.screenshot
+      - self._page.wait_for_load_state
+      - self._playwright_controller.back
+      - self._playwright_controller.click_id
+      - self._playwright_controller.fill_id
+      - self._playwright_controller.get_page_metadata
+      - self._playwright_controller.hover_id
+      - self._playwright_controller.page_down
+      - self._playwright_controller.page_up
+      - self._playwright_controller.scroll_id
+      - self._playwright_controller.sleep
+      - self._playwright_controller.visit_page
+      - self._summarize_page
+      - self._target_name
+      - self.inner_messages.append
+      - self.logger.info
+      - str
+      - time.time
+      - url.startswith
+  - name: _get_state_description
+    sig: _get_state_description(self) -> str
+    is_async: true
+    vis: protected
+    lines:
+    - 820
+    - 841
+    detail:
+      calls:
+      - int
+      - self._page.title
+      - self._playwright_controller.get_visible_text
+      - self._playwright_controller.get_visual_viewport
+      - str
+  - name: _format_target_list
+    sig: '_format_target_list(self, ids: List[str], rects: Dict[str, InteractiveRegion]) -> List[str]'
+    vis: protected
+    lines:
+    - 849
+    - 872
+    detail:
+      calls:
+      - '",".join'
+      - len
+      - list
+      - re.sub
+      - re.sub(r"[\n\r]+", " ", rects[r].get("aria_name", "")).strip
+      - rects[r].get
+      - rects[r].get("role", "").strip
+      - rects[r].get("tag_name", "").strip
+      - set
+      - targets.append
+  - name: _summarize_page
+    sig: |-
+      _summarize_page(
+              self,
+              question: str | None = None,
+              cancellation_token: Optional[CancellationToken] = None,
+          ) -> str
+    is_async: true
+    vis: protected
+    lines:
+    - 874
+    - 953
+    detail:
+      calls:
+      - AGImage.from_pil
+      - Image.open
+      - SystemMessage
+      - UserMessage
+      - WEB_SURFER_QA_PROMPT
+      - buffer.strip
+      - io.BytesIO
+      - isinstance
+      - len
+      - messages.append
+      - page_markdown.splitlines
+      - scaled_screenshot.close
+      - screenshot.close
+      - screenshot.resize
+      - self._model_client.count_tokens
+      - self._model_client.create
+      - self._model_client.remaining_tokens
+      - self._page.screenshot
+      - self._page.title
+      - self._playwright_controller.get_page_markdown
+      - self.model_usage.append
+  lines:
+  - 88
+  - 988
+exports:
+- name: MultimodalWebSurferConfig
+  kind: type
+- name: MultimodalWebSurfer
+  kind: type
+- name: DEFAULT_CONTEXT_SIZE
+  kind: data

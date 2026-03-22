@@ -1,0 +1,177 @@
+## Roska File Descriptor — regressions/test_clean_terminate.py
+file: regressions/test_clean_terminate.py
+lines: 117
+imports:
+- sym: asyncio
+- sym: typing as t
+- sym: asyncio_atexit
+- sym: pytest
+types:
+- name: AtExitImpl
+  kind: trait
+  bases:
+  - Protocol
+  methods:
+  - name: register
+    sig: 'register(self, func: t.Callable[..., t.Any], /, *args: t.Any, **kwargs: t.Any) -> t.Callable[..., t.Any]'
+    lines:
+    - 11
+    - 11
+    detail: {}
+  - name: unregister
+    sig: 'unregister(self, func: t.Callable[..., t.Any], /) -> None'
+    lines:
+    - 12
+    - 12
+    detail: {}
+  lines:
+  - 10
+  - 12
+- name: AtExitSimulator
+  kind: struct
+  bases:
+  - AtExitImpl
+  fields:
+  - name: _funcs
+    type: Any
+    default: t.List[t.Callable[..., t.Any]]
+  methods:
+  - name: __init__
+    sig: __init__(self, ...0 params)
+    lines:
+    - 16
+    - 17
+  - name: complete
+    sig: complete(self) -> None
+    lines:
+    - 19
+    - 23
+    detail:
+      calls:
+      - func
+      - self._funcs.clear
+  - name: register
+    sig: 'register(self, func: t.Callable[..., t.Any], /, *args: t.Any, **kwargs: t.Any) -> t.Callable[..., t.Any]'
+    lines:
+    - 25
+    - 27
+    detail:
+      calls:
+      - self._funcs.append
+  - name: unregister
+    sig: 'unregister(self, func: t.Callable[..., t.Any], /) -> None'
+    lines:
+    - 29
+    - 30
+    detail:
+      calls:
+      - self._funcs.remove
+  lines:
+  - 15
+  - 30
+- name: AsyncioAtExitWrapper
+  kind: struct
+  ctx: This only exists to make mypy happy
+  bases:
+  - AtExitImpl
+  methods:
+  - name: register
+    sig: 'register(self, func: t.Callable[..., t.Any], /, *args: t.Any, **kwargs: t.Any) -> t.Callable[..., t.Any]'
+    lines:
+    - 36
+    - 46
+    detail:
+      calls:
+      - asyncio_atexit.register
+      - kwargs.pop
+      - partial
+  - name: unregister
+    sig: 'unregister(self, func: t.Callable[..., t.Any], /, **kwargs: t.Any) -> None'
+    lines:
+    - 48
+    - 54
+    detail:
+      calls:
+      - asyncio_atexit.unregister
+      - kwargs.pop
+  lines:
+  - 33
+  - 54
+- name: CleanupComponent
+  kind: struct
+  fields:
+  - name: atexit_impl
+    type: Any
+    default: atexit_impl
+  - name: cleanup_has_run
+    type: bool
+    default: 'False'
+  - name: stop_has_run
+    type: bool
+    default: 'False'
+  - name: cleanup
+    type: Any
+    default: self._acleanup if use_async_cleanup else self._cleanup
+  methods:
+  - name: __init__
+    sig: __init__(self, ...2 params)
+    lines:
+    - 59
+    - 65
+  - name: stop
+    sig: stop(self) -> None
+    is_async: true
+    lines:
+    - 67
+    - 68
+    detail: {}
+  lines:
+  - 58
+  - 77
+functions:
+- name: create_component
+  sig: 'create_component(atexit_impl: AtExitImpl, /, use_async_cleanup: bool) -> CleanupComponent'
+  is_async: true
+  lines:
+  - 80
+  - 82
+  detail:
+    calls:
+    - CleanupComponent
+    - asyncio.sleep
+- name: run_test_impl
+  sig: 'run_test_impl(debug_printer: t.Callable[[str], t.Any] | None = None) -> None'
+  lines:
+  - 85
+  - 108
+  detail:
+    calls:
+    - AsyncioAtExitWrapper
+    - AtExitSimulator
+    - asyncio.new_event_loop
+    - atexit_simulator.complete
+    - create_component
+    - loop.close
+    - loop.run_until_complete
+    - pytest.raises
+    - validate
+- name: test_asyncio_atexit_assumptions
+  sig: test_asyncio_atexit_assumptions() -> None
+  lines:
+  - 111
+  - 112
+exports:
+- name: AtExitImpl
+  kind: type
+- name: AtExitSimulator
+  kind: type
+- name: AsyncioAtExitWrapper
+  kind: type
+- name: CleanupComponent
+  kind: type
+- name: create_component
+  kind: func
+- name: run_test_impl
+  kind: func
+- name: test_asyncio_atexit_assumptions
+  kind: func

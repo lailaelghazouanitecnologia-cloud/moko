@@ -1,0 +1,101 @@
+## Roska File Descriptor — _graph/_graph_builder.py
+file: _graph/_graph_builder.py
+lines: 209
+imports:
+- sym: autogen_agentchat.base.ChatAgent
+- sym: autogen_agentchat.messages.BaseChatMessage
+- sym: DiGraph.DiGraphEdge
+- sym: DiGraph.DiGraphNode
+types:
+- name: DiGraphBuilder
+  kind: struct
+  ctx: 'A fluent builder for constructing :class:`DiGraph` execution graphs used in :class:`GraphFlow`. .. warning:: This is an experimental feature, and the API will change in the future releases. This utility provides a convenient way to programmatically build a graph of agent interactions, including complex execution flows such as: - Sequential chains - Parallel fan-outs - Conditional branching - Cyclic loops with safe exits Each node in the graph represents an agent. Edges define execution paths between agents, and can optionally be conditioned on message content using callable functions. The builder is compatible with the `Graph` runner and supports both standard and filtered agents. Methods: - add_node(agent, activation): Add an agent node to the graph. - add_edge(source, target, condition): Connect two nodes optionally with a condition. - add_conditional_edges(source, condition_to_target): Add multiple conditional edges from a source. - set_entry_point(agent): Define the default start node (optional). - build(): Generate a validated `DiGraph`. - get_participants(): Return the list of added agents. Example — Sequential Flow A → B → C: >>> builder = GraphBuilder() >>> builder.add_node(agent_a).add_node(agent_b).add_node(agent_c) >>> builder.add_edge(agent_a, agent_b).add_edge(agent_b, agent_c) >>> team = Graph( ...     participants=builder.get_participants(), ...     graph=builder.build(), ...     termination_condition=MaxMessageTermination(5), ... ) Example — Parallel Fan-out A → (B, C): >>> builder = GraphBuilder() >>> builder.add_node(agent_a).add_node(agent_b).add_node(agent_c) >>> builder.add_edge(agent_a, agent_b).add_edge(agent_a, agent_c) Example — Conditional Branching A → B or A → C: >>> builder = GraphBuilder() >>> builder.add_node(agent_a).add_node(agent_b).add_node(agent_c) >>> # Add conditional edges using keyword check >>> builder.add_edge(agent_a, agent_b, condition="keyword1") >>> builder.add_edge(agent_a, agent_c, condition="keyword2") Example — Using Custom String Conditions: >>> builder = GraphBuilder() >>> builder.add_node(agent_a).add_node(agent_b).add_node(agent_c) >>> # Add condition strings to check in messages >>> builder.add_edge(agent_a, agent_b, condition="big") >>> builder.add_edge(agent_a, agent_c, condition="small") Example — Loop: A → B → A or B → C: >>> builder = GraphBuilder() >>> builder.add_node(agent_a).add_node(agent_b).add_node(agent_c) >>> builder.add_edge(agent_a, agent_b) >> # Add a loop back to agent A >>> builder.add_edge(agent_b, agent_a, condition=lambda msg: "loop" in msg.to_model_text()) >>> # Add exit condition to break the loop >>> builder.add_edge(agent_b, agent_c, condition=lambda msg: "loop" not in msg.to_model_text()) Example — Loop with multiple paths to the same node: A → B → C → B: >>> builder = GraphBuilder() >>> builder.add_node(agent_a).add_node(agent_b).add_node(agent_c) >>> builder.add_edge(agent_a, agent_b) >>> builder.add_edge(agent_b, agent_c) >>> builder.add_edge(agent_c, agent_b, activation_group="loop_back") Example — Loop with multiple paths to the same node with any activation condition: A → B → (C1, C2) → B → E(exit): >>> builder = GraphBuilder() >>> builder.add_node(agent_a).add_node(agent_b).add_node(agent_c1).add_node(agent_c2).add_node(agent_e) >>> builder.add_edge(agent_a, agent_b) >>> builder.add_edge(agent_b, agent_c1) >>> builder.add_edge(agent_b, agent_c2) >>> builder.add_edge(agent_b, agent_e, condition="exit") >>> builder.add_edge(agent_c1, agent_b, activation_group="loop_back_group", activation_condition="any") >>> builder.add_edge(agent_c2, agent_b, activation_group="loop_back_group", activation_condition="any")'
+  fields:
+  - name: nodes
+    type: Any
+    default: Dict[str, DiGraphNode]
+  - name: agents
+    type: Any
+    default: Dict[str, ChatAgent]
+  - name: _default_start_node
+    type: Any
+    default: Optional[str]
+  methods:
+  - name: __init__
+    sig: __init__(self, ...0 params)
+    lines:
+    - 96
+    - 99
+  - name: add_node
+    sig: 'add_node(self, agent: ChatAgent, activation: Literal["all", "any"] = "all") -> "DiGraphBuilder"'
+    lines:
+    - 104
+    - 110
+    detail:
+      calls:
+      - DiGraphNode
+  - name: add_edge
+    sig: |-
+      add_edge(
+              self,
+              source: Union[str, ChatAgent],
+              target: Union[str, ChatAgent],
+              condition: Optional[Union[str, Callable[[BaseChatMessage], bool]]] = None,
+              activation_group: Optional[str] = None,
+              activation_condition: Optional[Literal["all", "any"]] = None,
+          ) -> "DiGraphBuilder"
+    lines:
+    - 112
+    - 154
+    detail:
+      calls:
+      - DiGraphEdge
+      - ValueError
+      - self._get_name
+      - self.nodes[source_name].edges.append
+  - name: add_conditional_edges
+    sig: |-
+      add_conditional_edges(
+              self, source: Union[str, ChatAgent], condition_to_target: Dict[str, Union[str, ChatAgent]]
+          ) -> "DiGraphBuilder"
+    lines:
+    - 156
+    - 188
+    detail:
+      calls:
+      - condition_to_target.items
+      - self.add_edge
+      - warnings.warn
+  - name: set_entry_point
+    sig: 'set_entry_point(self, name: Union[str, ChatAgent]) -> "DiGraphBuilder"'
+    lines:
+    - 190
+    - 196
+    detail:
+      calls:
+      - ValueError
+      - self._get_name
+  - name: build
+    sig: build(self) -> DiGraph
+    lines:
+    - 198
+    - 205
+    detail:
+      calls:
+      - DiGraph
+      - graph.graph_validate
+  - name: get_participants
+    sig: get_participants(self) -> list[ChatAgent]
+    lines:
+    - 207
+    - 209
+    detail:
+      calls:
+      - list
+      - self.agents.values
+  lines:
+  - 10
+  - 209
+exports:
+- name: DiGraphBuilder
+  kind: type

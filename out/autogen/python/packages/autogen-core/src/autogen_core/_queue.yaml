@@ -1,0 +1,211 @@
+## Roska File Descriptor — autogen_core/_queue.py
+file: autogen_core/_queue.py
+lines: 264
+imports:
+- sym: asyncio
+- sym: threading
+data:
+- name: _global_lock
+  type: Any
+  val: threading.Lock()
+- name: T
+  type: Any
+  val: TypeVar("T")
+types:
+- name: _LoopBoundMixin
+  kind: struct
+  vis: protected
+  fields:
+  - name: _loop
+    type: None
+    default: None
+  lines:
+  - 13
+  - 25
+- name: QueueShutDown
+  kind: struct
+  ctx: Raised when putting on to or getting from a shut-down Queue.
+  bases:
+  - Exception
+  lines:
+  - 28
+  - 31
+- name: Queue
+  kind: struct
+  ctx: +2 dunder methods
+  bases:
+  - _LoopBoundMixin
+  fields:
+  - name: _maxsize
+    type: Any
+    default: maxsize
+  - name: _getters
+    type: Any
+    default: collections.deque[asyncio.Future[None]]()
+  - name: _putters
+    type: Any
+    default: collections.deque[asyncio.Future[None]]()
+  - name: _unfinished_tasks
+    type: int
+    default: '0'
+  - name: _finished
+    type: Any
+    default: asyncio.Event()
+  - name: _queue
+    type: Any
+    default: collections.deque[T]()
+  - name: _is_shutdown
+    type: bool
+    default: 'False'
+  methods:
+  - name: __init__
+    sig: '__init__(self, maxsize: int = 0)'
+    lines:
+    - 38
+    - 46
+    detail:
+      calls:
+      - asyncio.Event
+      - collections.deque[T]
+      - collections.deque[asyncio.Future[None]]
+      - self._finished.set
+  - name: _wakeup_next
+    sig: '_wakeup_next(self, waiters: collections.deque[asyncio.Future[None]]) -> None'
+    vis: protected
+    lines:
+    - 58
+    - 64
+    detail:
+      calls:
+      - waiter.done
+      - waiter.set_result
+      - waiters.popleft
+  - name: qsize
+    sig: qsize(self) -> int
+    lines:
+    - 86
+    - 88
+    detail:
+      calls:
+      - len
+  - name: maxsize
+    sig: maxsize(self) -> int
+    decorators:
+    - property
+    lines:
+    - 91
+    - 93
+    detail: {}
+  - name: empty
+    sig: empty(self) -> bool
+    lines:
+    - 95
+    - 97
+    detail: {}
+  - name: full
+    sig: full(self) -> bool
+    lines:
+    - 99
+    - 108
+    detail:
+      calls:
+      - self.qsize
+  - name: put
+    sig: 'put(self, item: T) -> None'
+    is_async: true
+    lines:
+    - 110
+    - 139
+    detail:
+      calls:
+      - putter.cancel
+      - putter.cancelled
+      - self._get_loop
+      - self._get_loop().create_future
+      - self._putters.append
+      - self._putters.remove
+      - self._wakeup_next
+      - self.full
+      - self.put_nowait
+  - name: put_nowait
+    sig: 'put_nowait(self, item: T) -> None'
+    lines:
+    - 141
+    - 155
+    detail:
+      calls:
+      - self._finished.clear
+      - self._put
+      - self._wakeup_next
+      - self.full
+  - name: get
+    sig: get(self) -> T
+    is_async: true
+    lines:
+    - 157
+    - 186
+    detail:
+      calls:
+      - getter.cancel
+      - getter.cancelled
+      - self._get_loop
+      - self._get_loop().create_future
+      - self._getters.append
+      - self._getters.remove
+      - self._wakeup_next
+      - self.empty
+      - self.get_nowait
+  - name: get_nowait
+    sig: get_nowait(self) -> T
+    lines:
+    - 188
+    - 202
+    detail:
+      calls:
+      - self._get
+      - self._wakeup_next
+      - self.empty
+  - name: task_done
+    sig: task_done(self) -> None
+    lines:
+    - 204
+    - 225
+    detail:
+      calls:
+      - ValueError
+      - self._finished.set
+  - name: join
+    sig: join(self) -> None
+    is_async: true
+    lines:
+    - 227
+    - 236
+    detail:
+      calls:
+      - self._finished.wait
+  - name: shutdown
+    sig: 'shutdown(self, immediate: bool = False) -> None'
+    lines:
+    - 238
+    - 264
+    detail:
+      calls:
+      - getter.done
+      - getter.set_result
+      - putter.done
+      - putter.set_result
+      - self._finished.set
+      - self._get
+      - self._getters.popleft
+      - self._putters.popleft
+      - self.empty
+  lines:
+  - 37
+  - 264
+exports:
+- name: QueueShutDown
+  kind: type
+- name: Queue
+  kind: type
+- name: T
+  kind: data

@@ -1,0 +1,444 @@
+## Roska File Descriptor — _group_chat/_selector_group_chat.py
+file: _group_chat/_selector_group_chat.py
+lines: 730
+imports:
+- sym: asyncio
+- sym: inspect.iscoroutinefunction
+- sym: autogen_core.AgentRuntime
+- sym: autogen_core.CancellationToken
+- sym: autogen_core.Component
+- sym: autogen_core.ComponentModel
+- sym: autogen_core.model_context.ChatCompletionContext
+- sym: autogen_core.model_context.UnboundedChatCompletionContext
+- sym: autogen_core.models.AssistantMessage
+- sym: autogen_core.models.ChatCompletionClient
+- sym: autogen_core.models.CreateResult
+- sym: autogen_core.models.LLMMessage
+- sym: autogen_core.models.ModelFamily
+- sym: autogen_core.models.SystemMessage
+- sym: autogen_core.models.UserMessage
+- sym: pydantic.BaseModel
+- sym: typing_extensions.Self
+- sym: ChatAgent.Team
+- sym: ChatAgent.TerminationCondition
+- sym: BaseAgentEvent.BaseChatMessage
+- sym: BaseAgentEvent.HandoffMessage
+- sym: BaseAgentEvent.MessageFactory
+- sym: BaseAgentEvent.ModelClientStreamingChunkEvent
+- sym: BaseAgentEvent.SelectorEvent
+data:
+- name: trace_logger
+  type: Any
+  val: logging.getLogger(TRACE_LOGGER_NAME)
+- name: SyncSelectorFunc
+  type: Any
+  val: Callable[[Sequence[BaseAgentEvent | BaseChatMessage]], str | None]
+- name: AsyncSelectorFunc
+  type: Any
+  val: Callable[[Sequence[BaseAgentEvent | BaseChatMessage]], Awaitable[str | None]]
+- name: SelectorFuncType
+  type: Any
+  val: Union[SyncSelectorFunc | AsyncSelectorFunc]
+- name: SyncCandidateFunc
+  type: Any
+  val: Callable[[Sequence[BaseAgentEvent | BaseChatMessage]], List[str]]
+- name: AsyncCandidateFunc
+  type: Any
+  val: Callable[[Sequence[BaseAgentEvent | BaseChatMessage]], Awaitable[List[str]]]
+- name: CandidateFuncType
+  type: Any
+  val: Union[SyncCandidateFunc | AsyncCandidateFunc]
+types:
+- name: SelectorGroupChatManager
+  kind: struct
+  ctx: A group chat manager that selects the next speaker using a ChatCompletion model and a custom selector function.
+  bases:
+  - BaseGroupChatManager
+  fields:
+  - name: _model_client
+    type: Any
+    default: model_client
+  - name: _selector_prompt
+    type: Any
+    default: selector_prompt
+  - name: _previous_speaker
+    type: Any
+    default: str | None
+  - name: _allow_repeated_speaker
+    type: Any
+    default: allow_repeated_speaker
+  - name: _selector_func
+    type: Any
+    default: selector_func
+  - name: _is_selector_func_async
+    type: Any
+    default: iscoroutinefunction(self._selector_func)
+  - name: _max_selector_attempts
+    type: Any
+    default: max_selector_attempts
+  - name: _candidate_func
+    type: Any
+    default: candidate_func
+  - name: _is_candidate_func_async
+    type: Any
+    default: iscoroutinefunction(self._candidate_func)
+  - name: _model_client_streaming
+    type: Any
+    default: model_client_streaming
+  - name: _model_context
+    type: Any
+    default: model_context
+  - name: _cancellation_token
+    type: Any
+    default: CancellationToken()
+  methods:
+  - name: __init__
+    sig: |-
+      __init__(
+              self,
+              name: str,
+              group_topic_type: str,
+              output_topic_type: str,
+              participant_topic_types: List[str],
+              participant_names: List[str],
+              participant_descriptions: List[str],
+              output_message_queue: asyncio.Queue[BaseAgentEvent | BaseChatMessage | GroupChatTermination],
+              termination_condition: TerminationCondition | None,
+              max_turns: int | None,
+              message_factory: MessageFactory,
+              model_client: ChatCompletionClient,
+              selector_prompt: str,
+              allow_repeated_speaker: bool,
+              selector_func: Optional[SelectorFuncType],
+              max_selector_attempts: int,
+              candidate_func: Optional[CandidateFuncType],
+              emit_team_events: bool,
+              model_context: ChatCompletionContext | None,
+              model_client_streaming: bool = False,
+          ) -> None
+    lines:
+    - 54
+    - 103
+    detail:
+      calls:
+      - CancellationToken
+      - UnboundedChatCompletionContext
+      - iscoroutinefunction
+      - super
+      - super().__init__
+  - name: validate_group_state
+    sig: 'validate_group_state(self, messages: List[BaseChatMessage] | None) -> None'
+    is_async: true
+    lines:
+    - 105
+    - 106
+    detail: {}
+  - name: reset
+    sig: reset(self) -> None
+    is_async: true
+    lines:
+    - 108
+    - 114
+    detail:
+      calls:
+      - self._message_thread.clear
+      - self._model_context.clear
+      - self._termination_condition.reset
+  - name: save_state
+    sig: save_state(self) -> Mapping[str, Any]
+    is_async: true
+    lines:
+    - 116
+    - 122
+    detail:
+      calls:
+      - SelectorManagerState
+      - msg.dump
+      - state.model_dump
+  - name: load_state
+    sig: 'load_state(self, state: Mapping[str, Any]) -> None'
+    is_async: true
+    lines:
+    - 124
+    - 131
+    detail:
+      calls:
+      - SelectorManagerState.model_validate
+      - isinstance
+      - self._add_messages_to_context
+      - self._message_factory.create
+  - name: _add_messages_to_context
+    sig: |-
+      _add_messages_to_context(
+              model_context: ChatCompletionContext,
+              messages: Sequence[BaseChatMessage],
+          ) -> None
+    is_async: true
+    vis: protected
+    decorators:
+    - staticmethod
+    lines:
+    - 134
+    - 145
+    detail:
+      calls:
+      - isinstance
+      - model_context.add_message
+      - msg.to_model_message
+  - name: update_message_thread
+    sig: 'update_message_thread(self, messages: Sequence[BaseAgentEvent | BaseChatMessage]) -> None'
+    is_async: true
+    lines:
+    - 147
+    - 150
+    detail:
+      calls:
+      - isinstance
+      - self._add_messages_to_context
+      - self._message_thread.extend
+  - name: select_speaker
+    sig: 'select_speaker(self, thread: Sequence[BaseAgentEvent | BaseChatMessage]) -> List[str] | str'
+    is_async: true
+    lines:
+    - 152
+    - 217
+    detail:
+      calls:
+      - ValueError
+      - all
+      - async_candidate_func
+      - async_selector_func
+      - cast
+      - len
+      - list
+      - re.sub
+      - 're.sub(r"\s+", " ", f"{topic_type}: {description}").strip'
+      - roles.strip
+      - self._select_speaker
+      - sync_candidate_func
+      - sync_selector_func
+      - trace_logger.debug
+      - zip
+  - name: construct_message_history
+    sig: 'construct_message_history(self, message_history: List[LLMMessage]) -> str'
+    lines:
+    - 219
+    - 230
+    detail:
+      calls:
+      - '"\n".join'
+      - history_messages.append
+      - isinstance
+      - message.rstrip
+  - name: _select_speaker
+    sig: '_select_speaker(self, roles: str, participants: List[str], max_attempts: int) -> str'
+    is_async: true
+    vis: protected
+    lines:
+    - 232
+    - 308
+    detail:
+      calls:
+      - AssistantMessage
+      - ModelClientStreamingChunkEvent
+      - ModelFamily.is_openai
+      - SelectorEvent
+      - SystemMessage
+      - UserMessage
+      - cast
+      - isinstance
+      - len
+      - list
+      - mentions.keys
+      - select_speaker_messages.append
+      - self._mentioned_agents
+      - self._model_client.create
+      - self._model_client.create_stream
+      - self._model_context.get_messages
+      - self._output_message_queue.put
+      - self._selector_prompt.format
+      - self.construct_message_history
+      - str
+      - trace_logger.debug
+      - trace_logger.warning
+  - name: _mentioned_agents
+    sig: '_mentioned_agents(self, message_content: str, agent_names: List[str]) -> Dict[str, int]'
+    vis: protected
+    lines:
+    - 310
+    - 341
+    detail:
+      calls:
+      - dict
+      - len
+      - name.replace
+      - re.escape
+      - re.findall
+  lines:
+  - 50
+  - 341
+- name: SelectorGroupChatConfig
+  kind: model
+  ctx: The declarative configuration for SelectorGroupChat.
+  bases:
+  - BaseModel
+  fields:
+  - name: name
+    type: Any
+    default: str | None
+  - name: description
+    type: Any
+    default: str | None
+  - name: participants
+    type: Any
+    default: List[ComponentModel]
+  - name: model_client
+    type: Any
+    default: ComponentModel
+  - name: termination_condition
+    type: Any
+    default: ComponentModel | None
+  - name: max_turns
+    type: Any
+    default: int | None
+  - name: selector_prompt
+    type: Any
+    default: str
+  - name: allow_repeated_speaker
+    type: Any
+    default: bool
+  - name: max_selector_attempts
+    type: Any
+    default: int
+  - name: emit_team_events
+    type: Any
+    default: bool
+  - name: model_client_streaming
+    type: Any
+    default: bool
+  - name: model_context
+    type: Any
+    default: ComponentModel | None
+  lines:
+  - 344
+  - 359
+- name: SelectorGroupChat
+  kind: struct
+  ctx: 'A group chat team that have participants takes turn to publish a message to all, using a ChatCompletion model to select the next speaker after each message. If an :class:`~autogen_agentchat.base.ChatAgent` is a participant, the :class:`~autogen_agentchat.messages.BaseChatMessage` from the agent response''s :attr:`~autogen_agentchat.base.Response.chat_message` will be published to other participants in the group chat. If a :class:`~autogen_agentchat.base.Team` is a participant, the :class:`~autogen_agentchat.messages.BaseChatMessage` from the team result'' :attr:`~autogen_agentchat.base.TaskResult.messages` will be published to other participants in the group chat. Args: participants (List[ChatAgent | Team]): The participants in the group chat, must have unique names and at least two participants. model_client (ChatCompletionClient): The ChatCompletion model client used to select the next speaker. name (str | None, optional): The name of the group chat, using :attr:`~autogen_agentchat.teams.SelectorGroupChat.DEFAULT_NAME` if not provided. The name is used by a parent team to identify this group chat so it must be unique within the parent team. description (str | None, optional): The description of the group chat, using :attr:`~autogen_agentchat.teams.SelectorGroupChat.DEFAULT_DESCRIPTION` if not provided. termination_condition (TerminationCondition, optional): The termination condition for the group chat. Defaults to None. Without a termination condition, the group chat will run indefinitely. max_turns (int, optional): The maximum number of turns in the group chat before stopping. Defaults to None, meaning no limit. selector_prompt (str, optional): The prompt template to use for selecting the next speaker. Available fields: ''{roles}'', ''{participants}'', and ''{history}''. `{participants}` is the names of candidates for selection. The format is `["<name1>", "<name2>", ...]`. `{roles}` is a newline-separated list of names and descriptions of the candidate agents. The format for each line is: `"<name> : <description>"`. `{history}` is the conversation history formatted as a double newline separated of names and message content. The format for each message is: `"<name> : <message content>"`. allow_repeated_speaker (bool, optional): Whether to include the previous speaker in the list of candidates to be selected for the next turn. Defaults to False. The model may still select the previous speaker -- a warning will be logged if this happens. max_selector_attempts (int, optional): The maximum number of attempts to select a speaker using the model. Defaults to 3. If the model fails to select a speaker after the maximum number of attempts, the previous speaker will be used if available, otherwise the first participant will be used. selector_func (Callable[[Sequence[BaseAgentEvent | BaseChatMessage]], str | None], Callable[[Sequence[BaseAgentEvent | BaseChatMessage]], Awaitable[str | None]], optional): A custom selector function that takes the conversation history and returns the name of the next speaker. If provided, this function will be used to override the model to select the next speaker. If the function returns None, the model will be used to select the next speaker. NOTE: `selector_func` is not serializable and will be ignored during serialization and deserialization process. candidate_func (Callable[[Sequence[BaseAgentEvent | BaseChatMessage]], List[str]], Callable[[Sequence[BaseAgentEvent | BaseChatMessage]], Awaitable[List[str]]], optional): A custom function that takes the conversation history and returns a filtered list of candidates for the next speaker selection using model. If the function returns an empty list or `None`, `SelectorGroupChat` will raise a `ValueError`. This function is only used if `selector_func` is not set. The `allow_repeated_speaker` will be ignored if set. custom_message_types (List[type[BaseAgentEvent | BaseChatMessage]], optional): A list of custom message types that will be used in the group chat. If you are using custom message types or your agents produces custom message types, you need to specify them here. Make sure your custom message types are subclasses of :class:`~autogen_agentchat.messages.BaseAgentEvent` or :class:`~autogen_agentchat.messages.BaseChatMessage`. emit_team_events (bool, optional): Whether to emit team events through :meth:`BaseGroupChat.run_stream`. Defaults to False. model_client_streaming (bool, optional): Whether to use streaming for the model client. (This is useful for reasoning models like QwQ). Defaults to False. model_context (ChatCompletionContext | None, optional): The model context for storing and retrieving :class:`~autogen_core.models.LLMMessage`. It can be preloaded with initial messages. Messages stored in model context will be used for speaker selection. The initial messages will be cleared when the team is reset. Raises: ValueError: If the number of participants is less than two or if the selector prompt is invalid. Examples: A team with multiple participants: .. code-block:: python import asyncio from autogen_ext.models.openai import OpenAIChatCompletionClient from autogen_agentchat.agents import AssistantAgent from autogen_agentchat.teams import SelectorGroupChat from autogen_agentchat.conditions import TextMentionTermination from autogen_agentchat.ui import Console async def main() -> None: model_client = OpenAIChatCompletionClient(model="gpt-4o") async def lookup_hotel(location: str) -> str: return f"Here are some hotels in {location}: hotel1, hotel2, hotel3." async def lookup_flight(origin: str, destination: str) -> str: return f"Here are some flights from {origin} to {destination}: flight1, flight2, flight3." async def book_trip() -> str: return "Your trip is booked!" travel_advisor = AssistantAgent( "Travel_Advisor", model_client, tools=[book_trip], description="Helps with travel planning.", ) hotel_agent = AssistantAgent( "Hotel_Agent", model_client, tools=[lookup_hotel], description="Helps with hotel booking.", ) flight_agent = AssistantAgent( "Flight_Agent", model_client, tools=[lookup_flight], description="Helps with flight booking.", ) termination = TextMentionTermination("TERMINATE") team = SelectorGroupChat( [travel_advisor, hotel_agent, flight_agent], model_client=model_client, termination_condition=termination, ) await Console(team.run_stream(task="Book a 3-day trip to new york.")) asyncio.run(main()) A team with a custom selector function: .. code-block:: python import asyncio from typing import Sequence from autogen_ext.models.openai import OpenAIChatCompletionClient from autogen_agentchat.agents import AssistantAgent from autogen_agentchat.teams import SelectorGroupChat from autogen_agentchat.conditions import TextMentionTermination from autogen_agentchat.ui import Console from autogen_agentchat.messages import BaseAgentEvent, BaseChatMessage async def main() -> None: model_client = OpenAIChatCompletionClient(model="gpt-4o") def check_calculation(x: int, y: int, answer: int) -> str: if x + y == answer: return "Correct!" else: return "Incorrect!" agent1 = AssistantAgent( "Agent1", model_client, description="For calculation", system_message="Calculate the sum of two numbers", ) agent2 = AssistantAgent( "Agent2", model_client, tools=[check_calculation], description="For checking calculation", system_message="Check the answer and respond with ''Correct!'' or ''Incorrect!''", ) def selector_func(messages: Sequence[BaseAgentEvent | BaseChatMessage]) -> str | None: if len(messages) == 1 or messages[-1].to_text() == "Incorrect!": return "Agent1" if messages[-1].source == "Agent1": return "Agent2" return None termination = TextMentionTermination("Correct!") team = SelectorGroupChat( [agent1, agent2], model_client=model_client, selector_func=selector_func, termination_condition=termination, ) await Console(team.run_stream(task="What is 1 + 1?")) asyncio.run(main()) A team with custom model context: .. code-block:: python import asyncio from autogen_core.model_context import BufferedChatCompletionContext from autogen_ext.models.openai import OpenAIChatCompletionClient from autogen_agentchat.agents import AssistantAgent from autogen_agentchat.conditions import TextMentionTermination from autogen_agentchat.teams import SelectorGroupChat from autogen_agentchat.ui import Console async def main() -> None: model_client = OpenAIChatCompletionClient(model="gpt-4o") model_context = BufferedChatCompletionContext(buffer_size=5) async def lookup_hotel(location: str) -> str: return f"Here are some hotels in {location}: hotel1, hotel2, hotel3." async def lookup_flight(origin: str, destination: str) -> str: return f"Here are some flights from {origin} to {destination}: flight1, flight2, flight3." async def book_trip() -> str: return "Your trip is booked!" travel_advisor = AssistantAgent( "Travel_Advisor", model_client, tools=[book_trip], description="Helps with travel planning.", ) hotel_agent = AssistantAgent( "Hotel_Agent", model_client, tools=[lookup_hotel], description="Helps with hotel booking.", ) flight_agent = AssistantAgent( "Flight_Agent", model_client, tools=[lookup_flight], description="Helps with flight booking.", ) termination = TextMentionTermination("TERMINATE") team = SelectorGroupChat( [travel_advisor, hotel_agent, flight_agent], model_client=model_client, termination_condition=termination, model_context=model_context, ) await Console(team.run_stream(task="Book a 3-day trip to new york.")) asyncio.run(main())'
+  bases:
+  - BaseGroupChat
+  fields:
+  - name: component_config_schema
+    type: Any
+    default: SelectorGroupChatConfig
+  - name: component_provider_override
+    type: str
+    default: '"autogen_agentchat.teams.SelectorGroupChat"'
+  - name: DEFAULT_DESCRIPTION
+    type: str
+    default: '"A team of agents."'
+  - name: _selector_prompt
+    type: Any
+    default: selector_prompt
+  - name: _model_client
+    type: Any
+    default: model_client
+  - name: _allow_repeated_speaker
+    type: Any
+    default: allow_repeated_speaker
+  - name: _selector_func
+    type: Any
+    default: selector_func
+  - name: _max_selector_attempts
+    type: Any
+    default: max_selector_attempts
+  - name: _candidate_func
+    type: Any
+    default: candidate_func
+  - name: _model_client_streaming
+    type: Any
+    default: model_client_streaming
+  - name: _model_context
+    type: Any
+    default: model_context
+  methods:
+  - name: __init__
+    sig: |-
+      __init__(
+              self,
+              participants: List[ChatAgent | Team],
+              model_client: ChatCompletionClient,
+              *,
+              name: str | None = None,
+              description: str | None = None,
+              termination_condition: TerminationCondition | None = None,
+              max_turns: int | None = None,
+              runtime: AgentRuntime | None = None,
+              selector_prompt: str = """You are in a role play game. The following roles are available:
+      {roles}.
+      Read the following conversation. Then select the next role from {participants} to play. Only return the role.
+
+      {history}
+
+      Read the above conversation. Then select the next role from {participants} to play. Only return the role.
+      """,
+              allow_repeated_speaker: bool = False,
+              max_selector_attempts: int = 3,
+              selector_func: Optional[SelectorFuncType] = None,
+              candidate_func: Optional[CandidateFuncType] = None,
+              custom_message_types: List[type[BaseAgentEvent | BaseChatMessage]] | None = None,
+              emit_team_events: bool = False,
+              model_client_streaming: bool = False,
+              model_context: ChatCompletionContext | None = None,
+          )
+    lines:
+    - 597
+    - 646
+    detail:
+      calls:
+      - ValueError
+      - len
+      - super
+      - super().__init__
+  - name: _from_config
+    sig: '_from_config(cls, config: SelectorGroupChatConfig) -> Self'
+    vis: protected
+    decorators:
+    - classmethod
+    lines:
+    - 701
+    - 730
+    detail:
+      calls:
+      - ChatAgent.load_component
+      - ChatCompletionClient.load_component
+      - ChatCompletionContext.load_component
+      - Team.load_component
+      - TerminationCondition.load_component
+      - ValueError
+      - cls
+      - participants.append
+  lines:
+  - 362
+  - 730
+exports:
+- name: SelectorGroupChatManager
+  kind: type
+- name: SelectorGroupChatConfig
+  kind: type
+- name: SelectorGroupChat
+  kind: type
+- name: trace_logger
+  kind: data
+- name: SyncSelectorFunc
+  kind: data
+- name: AsyncSelectorFunc
+  kind: data
+- name: SelectorFuncType
+  kind: data
+- name: SyncCandidateFunc
+  kind: data
+- name: AsyncCandidateFunc
+  kind: data
+- name: CandidateFuncType
+  kind: data

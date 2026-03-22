@@ -1,0 +1,286 @@
+## Roska File Descriptor — _group_chat/_base_group_chat_manager.py
+file: _group_chat/_base_group_chat_manager.py
+lines: 326
+imports:
+- sym: asyncio
+- sym: autogen_core.CancellationToken
+- sym: autogen_core.DefaultTopicId
+- sym: autogen_core.MessageContext
+- sym: autogen_core.event
+- sym: autogen_core.rpc
+- sym: BaseAgentEvent.BaseChatMessage
+- sym: BaseAgentEvent.MessageFactory
+- sym: BaseAgentEvent.SelectSpeakerEvent
+- sym: BaseAgentEvent.StopMessage
+- sym: GroupChatAgentResponse.GroupChatError
+- sym: GroupChatAgentResponse.GroupChatMessage
+- sym: GroupChatAgentResponse.GroupChatPause
+- sym: GroupChatAgentResponse.GroupChatRequestPublish
+- sym: GroupChatAgentResponse.GroupChatReset
+- sym: GroupChatAgentResponse.GroupChatResume
+- sym: GroupChatAgentResponse.GroupChatStart
+- sym: GroupChatAgentResponse.GroupChatTeamResponse
+- sym: GroupChatAgentResponse.GroupChatTermination
+- sym: GroupChatAgentResponse.SerializableException
+types:
+- name: BaseGroupChatManager
+  kind: trait
+  ctx: 'Base class for a group chat manager that manages a group chat with multiple participants. It is the responsibility of the caller to ensure: - All participants must subscribe to the group chat topic and each of their own topics. - The group chat manager must subscribe to the group chat topic. - The agent types of the participants must be unique. - For each participant, the agent type must be the same as the topic type. Without the above conditions, the group chat will not function correctly.'
+  bases:
+  - SequentialRoutedAgent
+  - ABC
+  fields:
+  - name: _name
+    type: Any
+    default: name
+  - name: _group_topic_type
+    type: Any
+    default: group_topic_type
+  - name: _output_topic_type
+    type: Any
+    default: output_topic_type
+  - name: _participant_names
+    type: Any
+    default: participant_names
+  - name: _participant_name_to_topic_type
+    type: dict
+    default: |-
+      {
+                  name: topic_type for name, topic_type in zip(participant_names, participant_topic_types, strict=True)
+              }
+  - name: _participant_descriptions
+    type: Any
+    default: participant_descriptions
+  - name: _message_thread
+    type: Any
+    default: List[BaseAgentEvent | BaseChatMessage]
+  - name: _output_message_queue
+    type: Any
+    default: output_message_queue
+  - name: _termination_condition
+    type: Any
+    default: termination_condition
+  - name: _max_turns
+    type: Any
+    default: max_turns
+  - name: _current_turn
+    type: int
+    default: '0'
+  - name: _message_factory
+    type: Any
+    default: message_factory
+  - name: _emit_team_events
+    type: Any
+    default: emit_team_events
+  - name: _active_speakers
+    type: Any
+    default: List[str]
+  methods:
+  - name: __init__
+    sig: |-
+      __init__(
+              self,
+              name: str,
+              group_topic_type: str,
+              output_topic_type: str,
+              participant_topic_types: List[str],
+              participant_names: List[str],
+              participant_descriptions: List[str],
+              output_message_queue: asyncio.Queue[BaseAgentEvent | BaseChatMessage | GroupChatTermination],
+              termination_condition: TerminationCondition | None,
+              max_turns: int | None,
+              message_factory: MessageFactory,
+              emit_team_events: bool = False,
+          )
+    lines:
+    - 37
+    - 84
+    detail:
+      calls:
+      - ValueError
+      - len
+      - set
+      - super
+      - super().__init__
+      - zip
+  - name: handle_start
+    sig: 'handle_start(self, message: GroupChatStart, ctx: MessageContext) -> None'
+    is_async: true
+    decorators:
+    - rpc
+    lines:
+    - 87
+    - 132
+    detail:
+      calls:
+      - DefaultTopicId
+      - GroupChatStart
+      - StopMessage
+      - self._apply_termination_condition
+      - self._output_message_queue.put
+      - self._signal_termination
+      - self._transition_to_next_speakers
+      - self.publish_message
+      - self.update_message_thread
+      - self.validate_group_state
+  - name: handle_agent_response
+    sig: |-
+      handle_agent_response(
+              self, message: GroupChatAgentResponse | GroupChatTeamResponse, ctx: MessageContext
+          ) -> None
+    is_async: true
+    decorators:
+    - event
+    lines:
+    - 135
+    - 170
+    detail:
+      calls:
+      - SerializableException.from_exception
+      - delta.append
+      - delta.extend
+      - isinstance
+      - len
+      - self._active_speakers.remove
+      - self._apply_termination_condition
+      - self._signal_termination_with_error
+      - self._transition_to_next_speakers
+      - self.update_message_thread
+  - name: _transition_to_next_speakers
+    sig: '_transition_to_next_speakers(self, cancellation_token: CancellationToken) -> None'
+    is_async: true
+    vis: protected
+    lines:
+    - 172
+    - 193
+    detail:
+      calls:
+      - DefaultTopicId
+      - GroupChatRequestPublish
+      - RuntimeError
+      - asyncio.ensure_future
+      - cancellation_token.link_future
+      - isinstance
+      - self._active_speakers.append
+      - self._log_speaker_selection
+      - self.publish_message
+      - self.select_speaker
+  - name: _apply_termination_condition
+    sig: |-
+      _apply_termination_condition(
+              self, delta: Sequence[BaseAgentEvent | BaseChatMessage], increment_turn_count: bool = False
+          ) -> bool
+    is_async: true
+    vis: protected
+    lines:
+    - 195
+    - 228
+    detail:
+      calls:
+      - StopMessage
+      - self._signal_termination
+      - self._termination_condition
+      - self._termination_condition.reset
+  - name: handle_group_chat_message
+    sig: 'handle_group_chat_message(self, message: GroupChatMessage, ctx: MessageContext) -> None'
+    is_async: true
+    decorators:
+    - event
+    lines:
+    - 263
+    - 265
+    detail:
+      calls:
+      - self._output_message_queue.put
+  - name: handle_group_chat_error
+    sig: 'handle_group_chat_error(self, message: GroupChatError, ctx: MessageContext) -> None'
+    is_async: true
+    decorators:
+    - event
+    lines:
+    - 268
+    - 270
+    detail:
+      calls:
+      - self._signal_termination_with_error
+  - name: handle_reset
+    sig: 'handle_reset(self, message: GroupChatReset, ctx: MessageContext) -> None'
+    is_async: true
+    decorators:
+    - rpc
+    lines:
+    - 273
+    - 276
+    detail:
+      calls:
+      - self.reset
+  - name: handle_pause
+    sig: 'handle_pause(self, message: GroupChatPause, ctx: MessageContext) -> None'
+    is_async: true
+    decorators:
+    - rpc
+    lines:
+    - 279
+    - 281
+    detail: {}
+  - name: handle_resume
+    sig: 'handle_resume(self, message: GroupChatResume, ctx: MessageContext) -> None'
+    is_async: true
+    decorators:
+    - rpc
+    lines:
+    - 284
+    - 286
+    detail: {}
+  - name: validate_group_state
+    sig: 'validate_group_state(self, messages: List[BaseChatMessage] | None) -> None'
+    is_async: true
+    decorators:
+    - abstractmethod
+    lines:
+    - 289
+    - 296
+    detail: {}
+  - name: update_message_thread
+    sig: 'update_message_thread(self, messages: Sequence[BaseAgentEvent | BaseChatMessage]) -> None'
+    is_async: true
+    lines:
+    - 298
+    - 303
+    detail:
+      calls:
+      - self._message_thread.extend
+  - name: select_speaker
+    sig: 'select_speaker(self, thread: Sequence[BaseAgentEvent | BaseChatMessage]) -> List[str] | str'
+    is_async: true
+    decorators:
+    - abstractmethod
+    lines:
+    - 306
+    - 318
+    detail: {}
+  - name: reset
+    sig: reset(self) -> None
+    is_async: true
+    decorators:
+    - abstractmethod
+    lines:
+    - 321
+    - 323
+    detail: {}
+  - name: on_unhandled_message
+    sig: 'on_unhandled_message(self, message: Any, ctx: MessageContext) -> None'
+    is_async: true
+    lines:
+    - 325
+    - 326
+    detail:
+      calls:
+      - ValueError
+      - type
+  lines:
+  - 25
+  - 326
+exports:
+- name: BaseGroupChatManager
+  kind: type

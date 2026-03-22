@@ -1,0 +1,327 @@
+## Roska File Descriptor — semantic_kernel/_sk_chat_completion_adapter.py
+file: semantic_kernel/_sk_chat_completion_adapter.py
+lines: 764
+imports:
+- sym: autogen_core.EVENT_LOGGER_NAME
+- sym: autogen_core.FunctionCall
+- sym: autogen_core._cancellation_token.CancellationToken
+- sym: autogen_core.logging.LLMCallEvent
+- sym: autogen_core.logging.LLMStreamEndEvent
+- sym: autogen_core.logging.LLMStreamStartEvent
+- sym: autogen_core.models.ChatCompletionClient
+- sym: autogen_core.models.CreateResult
+- sym: autogen_core.models.LLMMessage
+- sym: autogen_core.models.ModelFamily
+- sym: autogen_core.models.ModelInfo
+- sym: autogen_core.models.RequestUsage
+- sym: autogen_core.models.validate_model_info
+- sym: autogen_core.tools.BaseTool
+- sym: autogen_core.tools.Tool
+- sym: autogen_core.tools.ToolSchema
+- sym: pydantic.BaseModel
+- sym: semantic_kernel.connectors.ai.chat_completion_client_base.ChatCompletionClientBase
+- sym: semantic_kernel.connectors.ai.function_choice_behavior.FunctionChoiceBehavior
+- sym: semantic_kernel.connectors.ai.prompt_execution_settings.PromptExecutionSettings
+- sym: semantic_kernel.contents.ChatHistory
+- sym: semantic_kernel.contents.ChatMessageContent
+- sym: semantic_kernel.contents.FinishReason
+- sym: semantic_kernel.contents.FunctionCallContent
+- sym: semantic_kernel.contents.FunctionResultContent
+- sym: semantic_kernel.functions.kernel_plugin.KernelPlugin
+- sym: semantic_kernel.kernel.Kernel
+- sym: typing_extensions.AsyncGenerator
+- sym: autogen_ext.tools.semantic_kernel.KernelFunctionFromTool
+- sym: autogen_ext.tools.semantic_kernel.KernelFunctionFromToolSchema
+data:
+- name: logger
+  type: Any
+  val: logging.getLogger(EVENT_LOGGER_NAME)
+types:
+- name: SKChatCompletionAdapter
+  kind: struct
+  ctx: 'SKChatCompletionAdapter is an adapter that allows using Semantic Kernel model clients as Autogen ChatCompletion clients. This makes it possible to seamlessly integrate Semantic Kernel connectors (e.g., Azure OpenAI, Google Gemini, Ollama, etc.) into Autogen agents that rely on a ChatCompletionClient interface. By leveraging this adapter, you can: - Pass in a `Kernel` and any supported Semantic Kernel `ChatCompletionClientBase` connector. - Provide tools (via Autogen `Tool` or `ToolSchema`) for function calls during chat completion. - Stream responses or retrieve them in a single request. - Provide prompt settings to control the chat completion behavior either globally through the constructor or on a per-request basis through the `extra_create_args` dictionary. The list of extras that can be installed: - `semantic-kernel-anthropic`: Install this extra to use Anthropic models. - `semantic-kernel-google`: Install this extra to use Google Gemini models. - `semantic-kernel-ollama`: Install this extra to use Ollama models. - `semantic-kernel-mistralai`: Install this extra to use MistralAI models. - `semantic-kernel-aws`: Install this extra to use AWS models. - `semantic-kernel-hugging-face`: Install this extra to use Hugging Face models. Args: sk_client (ChatCompletionClientBase): The Semantic Kernel client to wrap (e.g., AzureChatCompletion, GoogleAIChatCompletion, OllamaChatCompletion). kernel (Optional[Kernel]): The Semantic Kernel instance to use for executing requests. If not provided, one must be passed in the extra_create_args for each request. prompt_settings (Optional[PromptExecutionSettings]): Default prompt execution settings to use. Can be overridden per request. model_info (Optional[ModelInfo]): Information about the model''s capabilities. service_id (Optional[str]): Optional service identifier. Examples: Anthropic models with function calling: .. code-block:: bash pip install "autogen-ext[semantic-kernel-anthropic]" .. code-block:: python import asyncio import os from autogen_agentchat.agents import AssistantAgent from autogen_agentchat.ui import Console from autogen_core.models import ModelFamily, UserMessage from autogen_ext.models.semantic_kernel import SKChatCompletionAdapter from semantic_kernel import Kernel from semantic_kernel.connectors.ai.anthropic import AnthropicChatCompletion, AnthropicChatPromptExecutionSettings from semantic_kernel.memory.null_memory import NullMemory async def get_weather(city: str) -> str: \"\"\"Get the weather for a city.\"\"\" return f"The weather in {city} is 75 degrees." async def main() -> None: sk_client = AnthropicChatCompletion( ai_model_id="claude-3-5-sonnet-20241022", api_key=os.environ["ANTHROPIC_API_KEY"], service_id="my-service-id",  # Optional; for targeting specific services within Semantic Kernel ) settings = AnthropicChatPromptExecutionSettings( temperature=0.2, ) model_client = SKChatCompletionAdapter( sk_client, kernel=Kernel(memory=NullMemory()), prompt_settings=settings, model_info={ "function_calling": True, "json_output": True, "vision": True, "family": ModelFamily.CLAUDE_3_5_SONNET, "structured_output": True, }, ) # Call the model directly. response = await model_client.create([UserMessage(content="What is the capital of France?", source="test")]) print(response) # Create an assistant agent with the model client. assistant = AssistantAgent( "assistant", model_client=model_client, system_message="You are a helpful assistant.", tools=[get_weather] ) # Call the assistant with a task. await Console(assistant.run_stream(task="What is the weather in Paris and London?")) asyncio.run(main()) Google Gemini models with function calling: .. code-block:: bash pip install "autogen-ext[semantic-kernel-google]" .. code-block:: python import asyncio import os from autogen_agentchat.agents import AssistantAgent from autogen_agentchat.ui import Console from autogen_core.models import UserMessage, ModelFamily from autogen_ext.models.semantic_kernel import SKChatCompletionAdapter from semantic_kernel import Kernel from semantic_kernel.connectors.ai.google.google_ai import ( GoogleAIChatCompletion, GoogleAIChatPromptExecutionSettings, ) from semantic_kernel.memory.null_memory import NullMemory def get_weather(city: str) -> str: \"\"\"Get the weather for a city.\"\"\" return f"The weather in {city} is 75 degrees." async def main() -> None: sk_client = GoogleAIChatCompletion( gemini_model_id="gemini-2.0-flash", api_key=os.environ["GEMINI_API_KEY"], ) settings = GoogleAIChatPromptExecutionSettings( temperature=0.2, ) kernel = Kernel(memory=NullMemory()) model_client = SKChatCompletionAdapter( sk_client, kernel=kernel, prompt_settings=settings, model_info={ "family": ModelFamily.GEMINI_2_0_FLASH, "function_calling": True, "json_output": True, "vision": True, "structured_output": True, }, ) # Call the model directly. model_result = await model_client.create( messages=[UserMessage(content="What is the capital of France?", source="User")] ) print(model_result) # Create an assistant agent with the model client. assistant = AssistantAgent( "assistant", model_client=model_client, tools=[get_weather], system_message="You are a helpful assistant." ) # Call the assistant with a task. stream = assistant.run_stream(task="What is the weather in Paris and London?") await Console(stream) asyncio.run(main()) Ollama models: .. code-block:: bash pip install "autogen-ext[semantic-kernel-ollama]" .. code-block:: python import asyncio from autogen_agentchat.agents import AssistantAgent from autogen_core.models import UserMessage from autogen_ext.models.semantic_kernel import SKChatCompletionAdapter from semantic_kernel import Kernel from semantic_kernel.connectors.ai.ollama import OllamaChatCompletion, OllamaChatPromptExecutionSettings from semantic_kernel.memory.null_memory import NullMemory async def main() -> None: sk_client = OllamaChatCompletion( host="http://localhost:11434", ai_model_id="llama3.2:latest", ) ollama_settings = OllamaChatPromptExecutionSettings( options={"temperature": 0.5}, ) model_client = SKChatCompletionAdapter( sk_client, kernel=Kernel(memory=NullMemory()), prompt_settings=ollama_settings ) # Call the model directly. model_result = await model_client.create( messages=[UserMessage(content="What is the capital of France?", source="User")] ) print(model_result) # Create an assistant agent with the model client. assistant = AssistantAgent("assistant", model_client=model_client) # Call the assistant with a task. result = await assistant.run(task="What is the capital of France?") print(result) asyncio.run(main())'
+  bases:
+  - ChatCompletionClient
+  fields:
+  - name: _service_id
+    type: Any
+    default: service_id
+  - name: _kernel
+    type: Any
+    default: kernel
+  - name: _prompt_settings
+    type: Any
+    default: prompt_settings
+  - name: _sk_client
+    type: Any
+    default: sk_client
+  - name: _model_info
+    type: Any
+    default: |-
+      model_info or ModelInfo(
+                  vision=False, function_calling=False, json_output=False, family=ModelFamily.UNKNOWN, structured_output=False
+              )
+  - name: _total_prompt_tokens
+    type: int
+    default: '0'
+  - name: _total_completion_tokens
+    type: int
+    default: '0'
+  - name: _tools_plugin
+    type: Any
+    default: KernelPlugin
+  methods:
+  - name: __init__
+    sig: |-
+      __init__(
+              self,
+              sk_client: ChatCompletionClientBase,
+              kernel: Optional[Kernel] = None,
+              prompt_settings: Optional[PromptExecutionSettings] = None,
+              model_info: Optional[ModelInfo] = None,
+              service_id: Optional[str] = None,
+          )
+    lines:
+    - 275
+    - 293
+    detail:
+      calls:
+      - KernelPlugin
+      - ModelInfo
+      - validate_model_info
+  - name: _convert_to_chat_history
+    sig: '_convert_to_chat_history(self, messages: Sequence[LLMMessage]) -> ChatHistory'
+    vis: protected
+    lines:
+    - 295
+    - 353
+    detail:
+      calls:
+      - ChatHistory
+      - FunctionCallContent
+      - FunctionResultContent
+      - all
+      - chat_history.add_assistant_message
+      - chat_history.add_system_message
+      - chat_history.add_tool_message
+      - chat_history.add_user_message
+      - function_call_contents.append
+      - isinstance
+      - str
+      - tool_results.append
+  - name: _build_execution_settings
+    sig: |-
+      _build_execution_settings(
+              self, default_prompt_settings: Optional[PromptExecutionSettings], tools: Sequence[Tool | ToolSchema]
+          ) -> PromptExecutionSettings
+    vis: protected
+    lines:
+    - 355
+    - 379
+    detail:
+      calls:
+      - FunctionChoiceBehavior.Auto
+      - PromptExecutionSettings
+      - default_prompt_settings.prepare_settings_dict
+  - name: _sync_tools_with_kernel
+    sig: '_sync_tools_with_kernel(self, kernel: Kernel, tools: Sequence[Tool | ToolSchema]) -> None'
+    vis: protected
+    lines:
+    - 381
+    - 403
+    detail:
+      calls:
+      - KernelFunctionFromTool
+      - KernelFunctionFromToolSchema
+      - isinstance
+      - kernel.add_plugin
+      - self._tools_plugin.functions.keys
+      - set
+      - tool.get
+  - name: _process_tool_calls
+    sig: '_process_tool_calls(self, result: ChatMessageContent) -> list[FunctionCall]'
+    vis: protected
+    lines:
+    - 405
+    - 427
+    detail:
+      calls:
+      - FunctionCall
+      - ValueError
+      - function_calls.append
+      - isinstance
+      - json.dumps
+  - name: create
+    sig: |-
+      create(
+              self,
+              messages: Sequence[LLMMessage],
+              *,
+              tools: Sequence[Tool | ToolSchema] = [],
+              tool_choice: Tool | Literal["auto", "required", "none"] = "auto",
+              json_output: Optional[bool | type[BaseModel]] = None,
+              extra_create_args: Mapping[str, Any] = {},
+              cancellation_token: Optional[CancellationToken] = None,
+          ) -> CreateResult
+    is_async: true
+    lines:
+    - 440
+    - 535
+    detail:
+      calls:
+      - CreateResult
+      - LLMCallEvent
+      - RequestUsage
+      - ValueError
+      - any
+      - ensure_serializable
+      - ensure_serializable(result[0]).model_dump
+      - getattr
+      - isinstance
+      - issubclass
+      - logger.info
+      - msg.model_dump
+      - parse_r1_content
+      - self._build_execution_settings
+      - self._convert_to_chat_history
+      - self._get_kernel
+      - self._get_prompt_settings
+      - self._process_tool_calls
+      - self._sk_client.get_chat_message_contents
+      - self._sync_tools_with_kernel
+      - warnings.warn
+  - name: _merge_function_call_content
+    sig: '_merge_function_call_content(existing_call: FunctionCallContent, new_chunk: FunctionCallContent) -> None'
+    vis: protected
+    decorators:
+    - staticmethod
+    lines:
+    - 538
+    - 557
+    detail:
+      calls:
+      - existing_call.arguments.update
+      - isinstance
+      - warnings.warn
+  - name: create_stream
+    sig: |-
+      create_stream(
+              self,
+              messages: Sequence[LLMMessage],
+              *,
+              tools: Sequence[Tool | ToolSchema] = [],
+              tool_choice: Tool | Literal["auto", "required", "none"] = "auto",
+              json_output: Optional[bool | type[BaseModel]] = None,
+              extra_create_args: Mapping[str, Any] = {},
+              cancellation_token: Optional[CancellationToken] = None,
+          ) -> AsyncGenerator[Union[str, CreateResult], None]
+    is_async: true
+    lines:
+    - 559
+    - 731
+    detail:
+      calls:
+      - CreateResult
+      - FunctionCall
+      - LLMStreamEndEvent
+      - LLMStreamStartEvent
+      - RequestUsage
+      - ValueError
+      - calls_to_yield.append
+      - function_calls_in_progress.items
+      - getattr
+      - isinstance
+      - issubclass
+      - json.dumps
+      - logger.info
+      - msg.model_dump
+      - parse_r1_content
+      - result.model_dump
+      - self._build_execution_settings
+      - self._convert_to_chat_history
+      - self._get_kernel
+      - self._get_prompt_settings
+      - self._merge_function_call_content
+      - self._sk_client.get_streaming_chat_message_contents
+      - self._sync_tools_with_kernel
+      - warnings.warn
+  - name: close
+    sig: close(self) -> None
+    is_async: true
+    lines:
+    - 733
+    - 734
+    detail: {}
+  - name: actual_usage
+    sig: actual_usage(self) -> RequestUsage
+    lines:
+    - 736
+    - 737
+    detail:
+      calls:
+      - RequestUsage
+  - name: total_usage
+    sig: total_usage(self) -> RequestUsage
+    lines:
+    - 739
+    - 740
+    detail:
+      calls:
+      - RequestUsage
+  - name: count_tokens
+    sig: 'count_tokens(self, messages: Sequence[LLMMessage], *, tools: Sequence[Tool | ToolSchema] = []) -> int'
+    lines:
+    - 742
+    - 749
+    detail:
+      calls:
+      - getattr
+      - self._convert_to_chat_history
+  - name: remaining_tokens
+    sig: 'remaining_tokens(self, messages: Sequence[LLMMessage], *, tools: Sequence[Tool | ToolSchema] = []) -> int'
+    lines:
+    - 751
+    - 756
+    detail:
+      calls:
+      - getattr
+      - self.count_tokens
+  - name: model_info
+    sig: model_info(self) -> ModelInfo
+    decorators:
+    - property
+    lines:
+    - 759
+    - 760
+    detail: {}
+  - name: capabilities
+    sig: capabilities(self) -> ModelInfo
+    decorators:
+    - property
+    lines:
+    - 763
+    - 764
+    detail: {}
+  lines:
+  - 55
+  - 764
+functions:
+- name: ensure_serializable
+  sig: 'ensure_serializable(data: BaseModel) -> BaseModel'
+  lines:
+  - 41
+  - 52
+  detail:
+    calls:
+    - json.dumps
+    - json.loads
+    - type
+    - type(data)
+    - vars
+exports:
+- name: SKChatCompletionAdapter
+  kind: type
+- name: ensure_serializable
+  kind: func
+- name: logger
+  kind: data

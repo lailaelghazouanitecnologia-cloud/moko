@@ -1,0 +1,286 @@
+## Roska File Descriptor — task_centric_memory/memory_controller.py
+file: task_centric_memory/memory_controller.py
+lines: 478
+imports:
+- sym: autogen_core.models.ChatCompletionClient
+- sym: Memo.MemoryBank
+types:
+- name: MemoryControllerConfig
+  kind: struct
+  bases:
+  - TypedDict
+  - total=False
+  fields:
+  - name: generalize_task
+    type: Any
+    default: bool
+  - name: revise_generalized_task
+    type: Any
+    default: bool
+  - name: generate_topics
+    type: Any
+    default: bool
+  - name: validate_memos
+    type: Any
+    default: bool
+  - name: max_memos_to_retrieve
+    type: Any
+    default: int
+  - name: max_train_trials
+    type: Any
+    default: int
+  - name: max_test_trials
+    type: Any
+    default: int
+  - name: MemoryBank
+    type: str
+    default: '"MemoryBankConfig"'
+  lines:
+  - 18
+  - 26
+- name: MemoryController
+  kind: struct
+  ctx: '(EXPERIMENTAL, RESEARCH IN PROGRESS) Implements fast, memory-based learning, and manages the flow of information to and from a memory bank. Args: reset: True to empty the memory bank before starting. client: The model client to use internally. task_assignment_callback: An optional callback used to assign a task to any agent managed by the caller. config: An optional dict that can be used to override the following values: - generalize_task: Whether to rewrite tasks in more general terms. - revise_generalized_task: Whether to critique then rewrite the generalized task. - generate_topics: Whether to base retrieval directly on tasks, or on topics extracted from tasks. - validate_memos: Whether to apply a final validation stage to retrieved memos. - max_memos_to_retrieve: The maximum number of memos to return from retrieve_relevant_memos(). - max_train_trials: The maximum number of learning iterations to attempt when training on a task. - max_test_trials: The total number of attempts made when testing for failure on a task. - MemoryBank: A config dict passed to MemoryBank. logger: An optional logger. If None, a default logger will be created. Example: The `task-centric-memory` extra first needs to be installed: .. code-block:: bash pip install "autogen-ext[task-centric-memory]" The following code snippet shows how to use this class for the most basic storage and retrieval of memories.: .. code-block:: python import asyncio from autogen_ext.models.openai import OpenAIChatCompletionClient from autogen_ext.experimental.task_centric_memory import MemoryController from autogen_ext.experimental.task_centric_memory.utils import PageLogger async def main() -> None: client = OpenAIChatCompletionClient(model="gpt-4o") logger = PageLogger(config={"level": "DEBUG", "path": "./pagelogs/quickstart"})  # Optional, but very useful. memory_controller = MemoryController(reset=True, client=client, logger=logger) # Add a few task-insight pairs as memories, where an insight can be any string that may help solve the task. await memory_controller.add_memo(task="What color do I like?", insight="Deep blue is my favorite color") await memory_controller.add_memo(task="What''s another color I like?", insight="I really like cyan") await memory_controller.add_memo(task="What''s my favorite food?", insight="Halibut is my favorite") # Retrieve memories for a new task that''s related to only two of the stored memories. memos = await memory_controller.retrieve_relevant_memos(task="What colors do I like most?") print("{} memories retrieved".format(len(memos))) for memo in memos: print("- " + memo.insight) asyncio.run(main())'
+  fields:
+  - name: logger
+    type: Any
+    default: logger
+  - name: generalize_task
+    type: bool
+    default: 'True'
+  - name: revise_generalized_task
+    type: bool
+    default: 'True'
+  - name: generate_topics
+    type: bool
+    default: 'True'
+  - name: validate_memos
+    type: bool
+    default: 'True'
+  - name: client
+    type: Any
+    default: client
+  - name: task_assignment_callback
+    type: Any
+    default: task_assignment_callback
+  - name: prompter
+    type: Any
+    default: Prompter(client, logger)
+  - name: memory_bank
+    type: Any
+    default: MemoryBank(reset=reset, config=memory_bank_config, logger=logger)
+  - name: grader
+    type: Any
+    default: Grader(client, logger)
+  methods:
+  - name: __init__
+    sig: |-
+      __init__(
+              self,
+              reset: bool,
+              client: ChatCompletionClient,
+              task_assignment_callback: Callable[[str], Awaitable[Tuple[str, str]]] | None = None,
+              config: MemoryControllerConfig | None = None,
+              logger: PageLogger | None = None,
+          ) -> None
+    lines:
+    - 90
+    - 127
+    detail:
+      calls:
+      - Grader
+      - MemoryBank
+      - PageLogger
+      - Prompter
+      - config.get
+      - self.logger.enter_function
+      - self.logger.leave_function
+  - name: reset_memory
+    sig: reset_memory(self) -> None
+    lines:
+    - 129
+    - 133
+    detail:
+      calls:
+      - self.memory_bank.reset
+  - name: train_on_task
+    sig: 'train_on_task(self, task: str, expected_answer: str) -> None'
+    is_async: true
+    lines:
+    - 135
+    - 147
+    detail:
+      calls:
+      - '"A new insight was created:\n{}".format'
+      - self._iterate_on_task
+      - self.add_memo
+      - self.logger.enter_function
+      - self.logger.info
+      - self.logger.leave_function
+  - name: test_on_task
+    sig: 'test_on_task(self, task: str, expected_answer: str, num_trials: int = 1) -> Tuple[str, int, int]'
+    is_async: true
+    lines:
+    - 149
+    - 189
+    detail:
+      calls:
+      - '"Extracted answer:  {}".format'
+      - '"\n-----  TRIAL {}  -----\n".format'
+      - '"\nSuccess rate:  {}%\n".format'
+      - len
+      - range
+      - round
+      - self._format_memory_section
+      - self.grader.is_response_correct
+      - self.logger.enter_function
+      - self.logger.info
+      - self.logger.leave_function
+      - self.retrieve_relevant_memos
+      - self.task_assignment_callback
+  - name: add_memo
+    sig: 'add_memo(self, insight: str, task: None | str = None, index_on_both: bool = True) -> None'
+    is_async: true
+    lines:
+    - 191
+    - 230
+    detail:
+      calls:
+      - '"\n".join'
+      - generalized_task.strip
+      - self.logger.enter_function
+      - self.logger.info
+      - self.logger.leave_function
+      - self.memory_bank.add_memo
+      - self.prompter.find_index_topics
+      - self.prompter.generalize_task
+  - name: add_task_solution_pair_to_memory
+    sig: 'add_task_solution_pair_to_memory(self, task: str, solution: str) -> None'
+    is_async: true
+    lines:
+    - 232
+    - 256
+    detail:
+      calls:
+      - '"\n".join'
+      - self.logger.enter_function
+      - self.logger.info
+      - self.logger.leave_function
+      - self.memory_bank.add_task_with_solution
+      - self.prompter.find_index_topics
+      - task.strip
+  - name: retrieve_relevant_memos
+    sig: 'retrieve_relevant_memos(self, task: str) -> List[Memo]'
+    is_async: true
+    lines:
+    - 258
+    - 302
+    detail:
+      calls:
+      - '"\n  INSIGHT: {}".format'
+      - '"\n  TASK: {}".format'
+      - '"\n".join'
+      - '"\n{} VALIDATED MEMOS".format'
+      - len
+      - self.logger.enter_function
+      - self.logger.info
+      - self.logger.leave_function
+      - self.memory_bank.contains_memos
+      - self.memory_bank.get_relevant_memos
+      - self.prompter.find_index_topics
+      - self.prompter.generalize_task
+      - self.prompter.validate_insight
+      - validated_memos.append
+  - name: _test_for_failure
+    sig: |-
+      _test_for_failure(
+              self, task: str, task_plus_insights: str, expected_answer: str
+          ) -> Tuple[bool, str, str]
+    is_async: true
+    vis: protected
+    lines:
+    - 315
+    - 348
+    detail:
+      calls:
+      - '"Extracted answer:  {}".format'
+      - '"\n-----  TRIAL {}  -----\n".format'
+      - '"\nExpected answer:  {}\n".format'
+      - '"\nTask description, including any insights:  {}".format'
+      - range
+      - self.grader.is_response_correct
+      - self.logger.enter_function
+      - self.logger.info
+      - self.logger.leave_function
+      - self.task_assignment_callback
+  - name: _iterate_on_task
+    sig: '_iterate_on_task(self, task: str, expected_answer: str) -> Tuple[str, None | str]'
+    is_async: true
+    vis: protected
+    lines:
+    - 350
+    - 413
+    detail:
+      calls:
+      - '"\n-----  TRAIN TRIAL {}  -----\n".format'
+      - '"\nExpected answer:  {}\n".format'
+      - '"\nInsight:  {}\n".format'
+      - '"\nTask description:  {}".format'
+      - '"\n{}\n".format'
+      - len
+      - new_insights.append
+      - range
+      - self._format_memory_section
+      - self._test_for_failure
+      - self.logger.enter_function
+      - self.logger.info
+      - self.logger.leave_function
+      - self.prompter.learn_from_failure
+      - self.retrieve_relevant_memos
+  - name: assign_task
+    sig: 'assign_task(self, task: str, use_memory: bool = True, should_await: bool = True) -> str'
+    is_async: true
+    lines:
+    - 432
+    - 449
+    detail:
+      calls:
+      - self._append_any_relevant_memories
+      - self.logger.enter_function
+      - self.logger.info
+      - self.logger.leave_function
+      - self.task_assignment_callback
+  - name: consider_memo_storage
+    sig: 'consider_memo_storage(self, text: str) -> str | None'
+    is_async: true
+    lines:
+    - 451
+    - 463
+    detail:
+      calls:
+      - '"Advice:  {}".format'
+      - self.add_memo
+      - self.logger.enter_function
+      - self.logger.info
+      - self.logger.leave_function
+      - self.prompter.extract_advice
+  - name: handle_user_message
+    sig: 'handle_user_message(self, text: str, should_await: bool = True) -> str'
+    is_async: true
+    lines:
+    - 465
+    - 478
+    detail:
+      calls:
+      - self.assign_task
+      - self.consider_memo_storage
+      - self.logger.enter_function
+      - self.logger.leave_function
+  lines:
+  - 29
+  - 478
+exports:
+- name: MemoryControllerConfig
+  kind: type
+- name: MemoryController
+  kind: type

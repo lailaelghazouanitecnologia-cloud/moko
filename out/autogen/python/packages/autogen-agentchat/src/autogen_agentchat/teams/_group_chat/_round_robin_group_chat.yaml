@@ -1,0 +1,153 @@
+## Roska File Descriptor — _group_chat/_round_robin_group_chat.py
+file: _group_chat/_round_robin_group_chat.py
+lines: 328
+imports:
+- sym: asyncio
+- sym: autogen_core.AgentRuntime
+- sym: autogen_core.Component
+- sym: autogen_core.ComponentModel
+- sym: pydantic.BaseModel
+- sym: typing_extensions.Self
+- sym: ChatAgent.Team
+- sym: ChatAgent.TerminationCondition
+- sym: BaseAgentEvent.BaseChatMessage
+- sym: BaseAgentEvent.MessageFactory
+types:
+- name: RoundRobinGroupChatManager
+  kind: struct
+  ctx: A group chat manager that selects the next speaker in a round-robin fashion.
+  bases:
+  - BaseGroupChatManager
+  fields:
+  - name: _next_speaker_index
+    type: int
+    default: '0'
+  methods:
+  - name: __init__
+    sig: __init__(self, ...12 params)
+    lines:
+    - 19
+    - 46
+  - name: validate_group_state
+    sig: 'validate_group_state(self, messages: List[BaseChatMessage] | None) -> None'
+    is_async: true
+    lines:
+    - 48
+    - 49
+    detail: {}
+  - name: reset
+    sig: reset(self) -> None
+    is_async: true
+    lines:
+    - 51
+    - 56
+    detail:
+      calls:
+      - self._message_thread.clear
+      - self._termination_condition.reset
+  - name: save_state
+    sig: save_state(self) -> Mapping[str, Any]
+    is_async: true
+    lines:
+    - 58
+    - 64
+    detail:
+      calls:
+      - RoundRobinManagerState
+      - message.dump
+      - state.model_dump
+  - name: load_state
+    sig: 'load_state(self, state: Mapping[str, Any]) -> None'
+    is_async: true
+    lines:
+    - 66
+    - 70
+    detail:
+      calls:
+      - RoundRobinManagerState.model_validate
+      - self._message_factory.create
+  - name: select_speaker
+    sig: 'select_speaker(self, thread: Sequence[BaseAgentEvent | BaseChatMessage]) -> List[str] | str'
+    is_async: true
+    lines:
+    - 72
+    - 82
+    detail:
+      calls:
+      - len
+  lines:
+  - 16
+  - 82
+- name: RoundRobinGroupChatConfig
+  kind: model
+  ctx: The declarative configuration RoundRobinGroupChat.
+  bases:
+  - BaseModel
+  fields:
+  - name: name
+    type: Any
+    default: str | None
+  - name: description
+    type: Any
+    default: str | None
+  - name: participants
+    type: Any
+    default: List[ComponentModel]
+  - name: termination_condition
+    type: Any
+    default: ComponentModel | None
+  - name: max_turns
+    type: Any
+    default: int | None
+  - name: emit_team_events
+    type: Any
+    default: bool
+  lines:
+  - 85
+  - 93
+- name: RoundRobinGroupChat
+  kind: struct
+  ctx: 'A team that runs a group chat with participants taking turns in a round-robin fashion to publish a message to all. If an :class:`~autogen_agentchat.base.ChatAgent` is a participant, the :class:`~autogen_agentchat.messages.BaseChatMessage` from the agent response''s :attr:`~autogen_agentchat.base.Response.chat_message` will be published to other participants in the group chat. If a :class:`~autogen_agentchat.base.Team` is a participant, the :class:`~autogen_agentchat.messages.BaseChatMessage` from the team result'' :attr:`~autogen_agentchat.base.TaskResult.messages` will be published to other participants in the group chat. If a single participant is in the team, the participant will be the only speaker. Args: participants (List[ChatAgent | Team]): The participants in the group chat. name (str | None, optional): The name of the group chat, using :attr:`~autogen_agentchat.teams.RoundRobinGroupChat.DEFAULT_NAME` if not provided. The name is used by a parent team to identify this group chat so it must be unique within the parent team. description (str | None, optional): The description of the group chat, using :attr:`~autogen_agentchat.teams.RoundRobinGroupChat.DEFAULT_DESCRIPTION` if not provided. termination_condition (TerminationCondition, optional): The termination condition for the group chat. Defaults to None. Without a termination condition, the group chat will run indefinitely. max_turns (int, optional): The maximum number of turns in the group chat before stopping. Defaults to None, meaning no limit. custom_message_types (List[type[BaseAgentEvent | BaseChatMessage]], optional): A list of custom message types that will be used in the group chat. If you are using custom message types or your agents produces custom message types, you need to specify them here. Make sure your custom message types are subclasses of :class:`~autogen_agentchat.messages.BaseAgentEvent` or :class:`~autogen_agentchat.messages.BaseChatMessage`. emit_team_events (bool, optional): Whether to emit team events through :meth:`BaseGroupChat.run_stream`. Defaults to False. Raises: ValueError: If no participants are provided or if participant names are not unique. Examples: A team with one participant with tools: .. code-block:: python import asyncio from autogen_ext.models.openai import OpenAIChatCompletionClient from autogen_agentchat.agents import AssistantAgent from autogen_agentchat.teams import RoundRobinGroupChat from autogen_agentchat.conditions import TextMentionTermination from autogen_agentchat.ui import Console async def main() -> None: model_client = OpenAIChatCompletionClient(model="gpt-4o") async def get_weather(location: str) -> str: return f"The weather in {location} is sunny." assistant = AssistantAgent( "Assistant", model_client=model_client, tools=[get_weather], ) termination = TextMentionTermination("TERMINATE") team = RoundRobinGroupChat([assistant], termination_condition=termination) await Console(team.run_stream(task="What''s the weather in New York?")) asyncio.run(main()) A team with multiple participants: .. code-block:: python import asyncio from autogen_ext.models.openai import OpenAIChatCompletionClient from autogen_agentchat.agents import AssistantAgent from autogen_agentchat.teams import RoundRobinGroupChat from autogen_agentchat.conditions import TextMentionTermination from autogen_agentchat.ui import Console async def main() -> None: model_client = OpenAIChatCompletionClient(model="gpt-4o") agent1 = AssistantAgent("Assistant1", model_client=model_client) agent2 = AssistantAgent("Assistant2", model_client=model_client) termination = TextMentionTermination("TERMINATE") team = RoundRobinGroupChat([agent1, agent2], termination_condition=termination) await Console(team.run_stream(task="Tell me some jokes.")) asyncio.run(main()) A team of user proxy and a nested team of writer and reviewer agents: .. code-block:: python import asyncio from autogen_agentchat.agents import UserProxyAgent, AssistantAgent from autogen_agentchat.conditions import TextMentionTermination, MaxMessageTermination from autogen_agentchat.teams import RoundRobinGroupChat from autogen_agentchat.ui import Console from autogen_ext.models.openai import OpenAIChatCompletionClient async def main() -> None: model_client = OpenAIChatCompletionClient(model="gpt-4.1-nano") writer = AssistantAgent( "writer", model_client=model_client, system_message="You are a writer.", model_client_stream=True ) reviewer = AssistantAgent( "reviewer", model_client=model_client, system_message="Provide feedback to the input and suggest improvements.", model_client_stream=True, ) # NOTE: you can skip input by pressing Enter. user_proxy = UserProxyAgent("user_proxy") # Maximum 1 round of review and revision. inner_termination = MaxMessageTermination(max_messages=4) # The outter-loop termination condition that will terminate the team when the user types "exit". outter_termination = TextMentionTermination("exit", sources=["user_proxy"]) team = RoundRobinGroupChat( [ # For each turn, the writer writes a summary and the reviewer reviews it. RoundRobinGroupChat([writer, reviewer], termination_condition=inner_termination), # The user proxy gets user input once the writer and reviewer have finished their actions. user_proxy, ], termination_condition=outter_termination, ) # Start the team and wait for it to terminate. await Console(team.run_stream(task="Write a short essay about the impact of AI on society.")) asyncio.run(main())'
+  bases:
+  - BaseGroupChat
+  fields:
+  - name: component_config_schema
+    type: Any
+    default: RoundRobinGroupChatConfig
+  - name: component_provider_override
+    type: str
+    default: '"autogen_agentchat.teams.RoundRobinGroupChat"'
+  - name: DEFAULT_DESCRIPTION
+    type: str
+    default: '"A team of agents."'
+  methods:
+  - name: __init__
+    sig: __init__(self, ...10 params)
+    lines:
+    - 242
+    - 265
+  - name: _from_config
+    sig: '_from_config(cls, config: RoundRobinGroupChatConfig) -> Self'
+    vis: protected
+    decorators:
+    - classmethod
+    lines:
+    - 310
+    - 328
+    detail:
+      calls:
+      - ChatAgent.load_component
+      - Team.load_component
+      - TerminationCondition.load_component
+      - cls
+      - participants.append
+  lines:
+  - 96
+  - 328
+exports:
+- name: RoundRobinGroupChatManager
+  kind: type
+- name: RoundRobinGroupChatConfig
+  kind: type
+- name: RoundRobinGroupChat
+  kind: type

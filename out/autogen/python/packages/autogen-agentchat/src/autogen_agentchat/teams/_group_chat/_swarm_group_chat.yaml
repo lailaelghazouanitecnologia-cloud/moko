@@ -1,0 +1,175 @@
+## Roska File Descriptor — _group_chat/_swarm_group_chat.py
+file: _group_chat/_swarm_group_chat.py
+lines: 321
+imports:
+- sym: asyncio
+- sym: autogen_core.AgentRuntime
+- sym: autogen_core.Component
+- sym: autogen_core.ComponentModel
+- sym: pydantic.BaseModel
+- sym: ChatAgent.TerminationCondition
+- sym: BaseAgentEvent.BaseChatMessage
+- sym: BaseAgentEvent.HandoffMessage
+- sym: BaseAgentEvent.MessageFactory
+types:
+- name: SwarmGroupChatManager
+  kind: struct
+  ctx: A group chat manager that selects the next speaker based on handoff message only.
+  bases:
+  - BaseGroupChatManager
+  fields:
+  - name: _current_speaker
+    type: Any
+    default: self._participant_names[0]
+  methods:
+  - name: __init__
+    sig: __init__(self, ...12 params)
+    lines:
+    - 18
+    - 45
+  - name: validate_group_state
+    sig: 'validate_group_state(self, messages: List[BaseChatMessage] | None) -> None'
+    is_async: true
+    lines:
+    - 47
+    - 73
+    detail:
+      calls:
+      - ValueError
+      - isinstance
+      - reversed
+  - name: reset
+    sig: reset(self) -> None
+    is_async: true
+    lines:
+    - 75
+    - 80
+    detail:
+      calls:
+      - self._message_thread.clear
+      - self._termination_condition.reset
+  - name: select_speaker
+    sig: 'select_speaker(self, thread: Sequence[BaseAgentEvent | BaseChatMessage]) -> List[str] | str'
+    is_async: true
+    lines:
+    - 82
+    - 98
+    detail:
+      calls:
+      - isinstance
+      - len
+      - reversed
+  - name: save_state
+    sig: save_state(self) -> Mapping[str, Any]
+    is_async: true
+    lines:
+    - 100
+    - 106
+    detail:
+      calls:
+      - SwarmManagerState
+      - msg.dump
+      - state.model_dump
+  - name: load_state
+    sig: 'load_state(self, state: Mapping[str, Any]) -> None'
+    is_async: true
+    lines:
+    - 108
+    - 112
+    detail:
+      calls:
+      - SwarmManagerState.model_validate
+      - self._message_factory.create
+  lines:
+  - 15
+  - 112
+- name: SwarmConfig
+  kind: model
+  ctx: The declarative configuration for Swarm.
+  bases:
+  - BaseModel
+  fields:
+  - name: name
+    type: Any
+    default: str | None
+  - name: description
+    type: Any
+    default: str | None
+  - name: participants
+    type: Any
+    default: List[ComponentModel]
+  - name: termination_condition
+    type: Any
+    default: ComponentModel | None
+  - name: max_turns
+    type: Any
+    default: int | None
+  - name: emit_team_events
+    type: Any
+    default: bool
+  lines:
+  - 115
+  - 123
+- name: Swarm
+  kind: struct
+  ctx: 'A group chat team that selects the next speaker based on handoff message only. The first participant in the list of participants is the initial speaker. The next speaker is selected based on the :class:`~autogen_agentchat.messages.HandoffMessage` message sent by the current speaker. If no handoff message is sent, the current speaker continues to be the speaker. .. note:: Unlike :class:`~autogen_agentchat.teams.RoundRobinGroupChat` and :class:`~autogen_agentchat.teams.SelectorGroupChat`, this group chat team does not support inner teams as participants. Args: participants (List[ChatAgent]): The agents participating in the group chat. The first agent in the list is the initial speaker. name (str | None, optional): The name of the group chat, using :attr:`~autogen_agentchat.teams.Swarm.DEFAULT_NAME` if not provided. The name is used by a parent team to identify this group chat so it must be unique within the parent team. description (str | None, optional): The description of the group chat, using :attr:`~autogen_agentchat.teams.Swarm.DEFAULT_DESCRIPTION` if not provided. termination_condition (TerminationCondition, optional): The termination condition for the group chat. Defaults to None. Without a termination condition, the group chat will run indefinitely. max_turns (int, optional): The maximum number of turns in the group chat before stopping. Defaults to None, meaning no limit. custom_message_types (List[type[BaseAgentEvent | BaseChatMessage]], optional): A list of custom message types that will be used in the group chat. If you are using custom message types or your agents produces custom message types, you need to specify them here. Make sure your custom message types are subclasses of :class:`~autogen_agentchat.messages.BaseAgentEvent` or :class:`~autogen_agentchat.messages.BaseChatMessage`. emit_team_events (bool, optional): Whether to emit team events through :meth:`BaseGroupChat.run_stream`. Defaults to False. Basic example: .. code-block:: python import asyncio from autogen_ext.models.openai import OpenAIChatCompletionClient from autogen_agentchat.agents import AssistantAgent from autogen_agentchat.teams import Swarm from autogen_agentchat.conditions import MaxMessageTermination async def main() -> None: model_client = OpenAIChatCompletionClient(model="gpt-4o") agent1 = AssistantAgent( "Alice", model_client=model_client, handoffs=["Bob"], system_message="You are Alice and you only answer questions about yourself.", ) agent2 = AssistantAgent( "Bob", model_client=model_client, system_message="You are Bob and your birthday is on 1st January." ) termination = MaxMessageTermination(3) team = Swarm([agent1, agent2], termination_condition=termination) stream = team.run_stream(task="What is bob''s birthday?") async for message in stream: print(message) asyncio.run(main()) Using the :class:`~autogen_agentchat.conditions.HandoffTermination` for human-in-the-loop handoff: .. code-block:: python import asyncio from autogen_ext.models.openai import OpenAIChatCompletionClient from autogen_agentchat.agents import AssistantAgent from autogen_agentchat.teams import Swarm from autogen_agentchat.conditions import HandoffTermination, MaxMessageTermination from autogen_agentchat.ui import Console from autogen_agentchat.messages import HandoffMessage async def main() -> None: model_client = OpenAIChatCompletionClient(model="gpt-4o") agent = AssistantAgent( "Alice", model_client=model_client, handoffs=["user"], system_message="You are Alice and you only answer questions about yourself, ask the user for help if needed.", ) termination = HandoffTermination(target="user") | MaxMessageTermination(3) team = Swarm([agent], termination_condition=termination) # Start the conversation. await Console(team.run_stream(task="What is bob''s birthday?")) # Resume with user feedback. await Console( team.run_stream( task=HandoffMessage(source="user", target="Alice", content="Bob''s birthday is on 1st January.") ) ) asyncio.run(main())'
+  bases:
+  - BaseGroupChat
+  fields:
+  - name: component_config_schema
+    type: Any
+    default: SwarmConfig
+  - name: component_provider_override
+    type: str
+    default: '"autogen_agentchat.teams.Swarm"'
+  - name: DEFAULT_DESCRIPTION
+    type: str
+    default: '"A team of agents."'
+  methods:
+  - name: __init__
+    sig: |-
+      __init__(
+              self,
+              participants: List[ChatAgent],
+              *,
+              name: str | None = None,
+              description: str | None = None,
+              termination_condition: TerminationCondition | None = None,
+              max_turns: int | None = None,
+              runtime: AgentRuntime | None = None,
+              custom_message_types: List[type[BaseAgentEvent | BaseChatMessage]] | None = None,
+              emit_team_events: bool = False,
+          ) -> None
+    lines:
+    - 233
+    - 264
+    detail:
+      calls:
+      - TypeError
+      - ValueError
+      - isinstance
+      - super
+      - super().__init__
+  - name: _from_config
+    sig: '_from_config(cls, config: SwarmConfig) -> "Swarm"'
+    vis: protected
+    decorators:
+    - classmethod
+    lines:
+    - 309
+    - 321
+    detail:
+      calls:
+      - ChatAgent.load_component
+      - TerminationCondition.load_component
+      - cls
+  lines:
+  - 126
+  - 321
+exports:
+- name: SwarmGroupChatManager
+  kind: type
+- name: SwarmConfig
+  kind: type
+- name: Swarm
+  kind: type
