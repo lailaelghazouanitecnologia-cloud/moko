@@ -1,0 +1,571 @@
+## Roska File Descriptor — editor/breadcrumbsPicker.ts
+file: editor/breadcrumbsPicker.ts
+lines: 515
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: ../../../../base/common/comparers.js.compareFileNames
+- sym: ../../../../base/common/errors.js.onUnexpectedError
+- sym: ../../../../base/common/event.js.Emitter
+- sym: ../../../../base/common/event.js.Event
+- sym: ../../../../base/common/filters.js.createMatches
+- sym: ../../../../base/common/filters.js.FuzzyScore
+- sym: ../../../../base/common/glob.js.glob
+- sym: ../../../../base/common/lifecycle.js.IDisposable
+- sym: ../../../../base/common/lifecycle.js.DisposableStore
+- sym: ../../../../base/common/lifecycle.js.MutableDisposable
+- sym: ../../../../base/common/lifecycle.js.Disposable
+- sym: ../../../../base/common/path.js.posix
+- sym: ../../../../base/common/path.js.relative
+- sym: ../../../../base/common/resources.js.basename
+- sym: ../../../../base/common/resources.js.dirname
+- sym: ../../../../base/common/resources.js.isEqual
+- sym: ../../../../base/common/uri.js.URI
+- sym: ../../../../platform/configuration/common/configuration.js.IConfigurationService
+- sym: ../../../../platform/files/common/files.js.FileKind
+- sym: ../../../../platform/files/common/files.js.IFileService
+- sym: ../../../../platform/files/common/files.js.IFileStat
+- sym: ../../../../platform/instantiation/common/instantiation.js.IInstantiationService
+- sym: ../../../../platform/list/browser/listService.js.WorkbenchDataTree
+- sym: ../../../../platform/list/browser/listService.js.WorkbenchAsyncDataTree
+- sym: ../../../../platform/theme/common/colorRegistry.js.breadcrumbsPickerBackground
+- sym: ../../../../platform/theme/common/colorRegistry.js.widgetBorder
+- sym: ../../../../platform/theme/common/colorRegistry.js.widgetShadow
+- sym: ../../../../platform/workspace/common/workspace.js.isWorkspace
+- sym: ../../../../platform/workspace/common/workspace.js.isWorkspaceFolder
+- sym: ../../../../platform/workspace/common/workspace.js.IWorkspace
+- sym: ../../../../platform/workspace/common/workspace.js.IWorkspaceContextService
+- sym: ../../../../platform/workspace/common/workspace.js.IWorkspaceFolder
+- sym: ../../labels.js.ResourceLabels
+- sym: ../../labels.js.IResourceLabel
+- sym: ../../labels.js.DEFAULT_LABELS_CONTAINER
+- sym: ./breadcrumbs.js.BreadcrumbsConfig
+- sym: ./breadcrumbsModel.js.OutlineElement2
+- sym: ./breadcrumbsModel.js.FileElement
+- sym: ../../../../base/browser/ui/tree/tree.js.IAsyncDataSource
+- sym: ../../../../base/browser/ui/tree/tree.js.ITreeRenderer
+- sym: ../../../../base/browser/ui/tree/tree.js.ITreeNode
+- sym: ../../../../base/browser/ui/tree/tree.js.ITreeFilter
+- sym: ../../../../base/browser/ui/tree/tree.js.TreeVisibility
+- sym: ../../../../base/browser/ui/tree/tree.js.ITreeSorter
+- sym: ../../../../base/browser/ui/list/list.js.IIdentityProvider
+- sym: ../../../../base/browser/ui/list/list.js.IListVirtualDelegate
+- sym: ../../../../base/browser/ui/list/list.js.IKeyboardNavigationLabelProvider
+- sym: ../../../../platform/theme/common/themeService.js.IFileIconTheme
+- sym: ../../../../platform/theme/common/themeService.js.IThemeService
+- sym: ../../../../base/browser/ui/list/listWidget.js.IListAccessibilityProvider
+- sym: ../../../../nls.js.localize
+- sym: ../../../services/outline/browser/outline.js.IOutline
+- sym: ../../../services/outline/browser/outline.js.IOutlineComparator
+- sym: ../../../../platform/editor/common/editor.js.IEditorOptions
+- sym: ../../../services/editor/common/editorService.js.IEditorService
+- sym: ../../../services/editor/common/editorService.js.SIDE_GROUP
+- sym: ../../../../editor/common/services/textResourceConfiguration.js.ITextResourceConfigurationService
+types:
+- name: ILayoutInfo
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: maxHeight
+    type: number
+  - name: width
+    type: number
+  - name: arrowSize
+    type: number
+  - name: arrowOffset
+    type: number
+  - name: inputHeight
+    type: number
+  lines:
+  - 35
+  - 41
+- name: Tree
+  kind: enum
+  decorators:
+  - type
+  variants:
+  - name: WorkbenchDataTree<I, E, FuzzyScore>
+  - name: WorkbenchAsyncDataTree<I, E, FuzzyScore>
+  lines:
+  - 43
+  - 43
+- name: SelectEvent
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: target
+    type: any
+  - name: browserEvent
+    type: UIEvent
+  lines:
+  - 45
+  - 48
+- name: BreadcrumbsPicker
+  kind: trait
+  decorators:
+  - abstract
+  fields:
+  - name: _disposables
+    type: any
+    default: new DisposableStore()
+  - name: _domNode
+    type: HTMLDivElement
+  - name: _arrow
+    type: HTMLDivElement
+  - name: _treeContainer
+    type: HTMLDivElement
+  - name: _tree
+    type: Tree<any, any>
+  - name: _fakeEvent
+    type: any
+    default: new UIEvent('fakeEvent')
+  - name: _layoutInfo
+    type: ILayoutInfo
+  - name: _onWillPickElement
+    type: any
+    default: new Emitter<void>()
+  - name: onWillPickElement
+    type: Event<void>
+    default: this._onWillPickElement.event
+  - name: _previewDispoables
+    type: any
+    default: new MutableDisposable()
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tparent: HTMLElement,\n\t\tprotected resource: URI,\n\t\t@IInstantiationService protected readonly _instantiationService: IInstantiationService,\n\t\t@IThemeService protected readonly _themeService: IThemeService,\n\t\t@IConfigurationService protected readonly _configurationService: IConfigurationService,\n\t)"
+    lines:
+    - 65
+    - 75
+    detail:
+      calls:
+      - document.createElement
+      - parent.appendChild
+  - name: dispose
+    sig: 'dispose(): void'
+    lines:
+    - 77
+    - 83
+    detail:
+      calls:
+      - setTimeout
+      - this._disposables.dispose
+      - this._domNode.remove
+      - this._onWillPickElement.dispose
+      - this._previewDispoables.dispose
+  - name: show
+    sig: 'show(input: any, maxHeight: number, width: number, arrowSize: number, arrowOffset: number): Promise<void>'
+    is_async: true
+    lines:
+    - 85
+    - 127
+    detail:
+      calls:
+      - color.toString
+      - document.createElement
+      - onUnexpectedError
+      - theme.getColor
+      - this._createTree
+      - this._disposables.add
+      - this._domNode.appendChild
+      - this._domNode.focus
+      - this._layout
+      - this._setInput
+      - this._themeService.getColorTheme
+      - this._themeService.getColorTheme().getColor
+      - this._tree.onDidChangeContentHeight
+      - this._tree.onDidChangeFocus
+      - this._tree.onDidOpen
+  - name: restoreViewState
+    sig: 'restoreViewState(): void'
+    lines:
+    - 145
+    - 145
+    detail: {}
+  lines:
+  - 50
+  - 152
+- name: FileVirtualDelegate
+  kind: struct
+  bases:
+  - IListVirtualDelegate<IFileStat | IWorkspaceFolder>
+  methods:
+  - name: getHeight
+    sig: 'getHeight(_element: IFileStat | IWorkspaceFolder)'
+    lines:
+    - 157
+    - 159
+    detail: {}
+  - name: getTemplateId
+    sig: 'getTemplateId(_element: IFileStat | IWorkspaceFolder): string'
+    lines:
+    - 160
+    - 162
+    detail: {}
+  lines:
+  - 156
+  - 163
+- name: FileIdentityProvider
+  kind: struct
+  bases:
+  - IIdentityProvider<IWorkspace | IWorkspaceFolder | IFileStat | URI>
+  methods:
+  - name: getId
+    sig: 'getId(element: IWorkspace | IWorkspaceFolder | IFileStat | URI): { toString(): string }'
+    lines:
+    - 166
+    - 176
+    detail:
+      calls:
+      - URI.isUri
+      - element.resource.toString
+      - element.toString
+      - element.uri.toString
+      - isWorkspace
+      - isWorkspaceFolder
+  lines:
+  - 165
+  - 177
+- name: FileDataSource
+  kind: struct
+  bases:
+  - IAsyncDataSource<IWorkspace | URI, IWorkspaceFolder | IFileStat>
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\t@IFileService private readonly _fileService: IFileService,\n\t)"
+    lines:
+    - 182
+    - 184
+    detail: {}
+  - name: hasChildren
+    sig: 'hasChildren(element: IWorkspace | URI | IWorkspaceFolder | IFileStat): boolean'
+    lines:
+    - 186
+    - 191
+    detail:
+      calls:
+      - URI.isUri
+      - isWorkspace
+      - isWorkspaceFolder
+  - name: getChildren
+    sig: 'getChildren(element: IWorkspace | URI | IWorkspaceFolder | IFileStat): Promise<(IWorkspaceFolder | IFileStat)[]>'
+    is_async: true
+    lines:
+    - 193
+    - 207
+    detail:
+      calls:
+      - URI.isUri
+      - isWorkspace
+      - isWorkspaceFolder
+      - this._fileService.resolve
+  lines:
+  - 180
+  - 208
+- name: FileRenderer
+  kind: struct
+  bases:
+  - ITreeRenderer<IFileStat | IWorkspaceFolder, FuzzyScore, IResourceLabel>
+  fields:
+  - name: templateId
+    type: string
+    default: '''FileStat'''
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tprivate readonly _labels: ResourceLabels,\n\t\t@IConfigurationService private readonly _configService: IConfigurationService,\n\t)"
+    lines:
+    - 214
+    - 217
+    detail: {}
+  - name: renderTemplate
+    sig: 'renderTemplate(container: HTMLElement): IResourceLabel'
+    lines:
+    - 220
+    - 222
+    detail:
+      calls:
+      - this._labels.create
+  - name: renderElement
+    sig: 'renderElement(node: ITreeNode<IWorkspaceFolder | IFileStat, [number, number, number]>, index: number, templateData: IResourceLabel): void'
+    lines:
+    - 224
+    - 243
+    detail:
+      calls:
+      - createMatches
+      - isWorkspaceFolder
+      - templateData.setFile
+      - this._configService.getValue
+  - name: disposeTemplate
+    sig: 'disposeTemplate(templateData: IResourceLabel): void'
+    lines:
+    - 245
+    - 247
+    detail:
+      calls:
+      - templateData.dispose
+  lines:
+  - 210
+  - 248
+- name: FileNavigationLabelProvider
+  kind: struct
+  bases:
+  - IKeyboardNavigationLabelProvider<IWorkspaceFolder | IFileStat>
+  methods:
+  - name: getKeyboardNavigationLabel
+    sig: 'getKeyboardNavigationLabel(element: IWorkspaceFolder | IFileStat): { toString(): string }'
+    lines:
+    - 252
+    - 254
+    detail: {}
+  lines:
+  - 250
+  - 255
+- name: FileAccessibilityProvider
+  kind: struct
+  bases:
+  - IListAccessibilityProvider<IWorkspaceFolder | IFileStat>
+  methods:
+  - name: getWidgetAriaLabel
+    sig: 'getWidgetAriaLabel(): string'
+    lines:
+    - 259
+    - 261
+    detail:
+      calls:
+      - localize
+  - name: getAriaLabel
+    sig: 'getAriaLabel(element: IWorkspaceFolder | IFileStat): string | null'
+    lines:
+    - 263
+    - 265
+    detail: {}
+  lines:
+  - 257
+  - 266
+- name: FileFilter
+  kind: struct
+  bases:
+  - ITreeFilter<IWorkspaceFolder | IFileStat>
+  fields:
+  - name: _cachedExpressions
+    type: any
+    default: new Map<string, glob.ParsedExpression>()
+  - name: _disposables
+    type: any
+    default: new DisposableStore()
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\t@IWorkspaceContextService private readonly _workspaceService: IWorkspaceContextService,\n\t\t@IConfigurationService configService: IConfigurationService,\n\t)"
+    lines:
+    - 273
+    - 304
+    detail:
+      calls:
+      - BreadcrumbsConfig.FileExcludes.bindTo
+      - _workspaceService.onDidChangeWorkspaceFolders
+      - config.onDidChange
+      - this._disposables.add
+      - update
+  - name: dispose
+    sig: 'dispose(): void'
+    lines:
+    - 306
+    - 308
+    detail:
+      calls:
+      - this._disposables.dispose
+  - name: filter
+    sig: 'filter(element: IWorkspaceFolder | IFileStat, _parentVisibility: TreeVisibility): boolean'
+    lines:
+    - 310
+    - 323
+    detail:
+      calls:
+      - basename
+      - expression
+      - folder.uri.toString
+      - isWorkspaceFolder
+      - relative
+      - this._cachedExpressions.get
+      - this._cachedExpressions.has
+      - this._workspaceService.getWorkspaceFolder
+  lines:
+  - 268
+  - 324
+- name: FileSorter
+  kind: struct
+  bases:
+  - ITreeSorter<IFileStat | IWorkspaceFolder>
+  methods:
+  - name: compare
+    sig: 'compare(a: IFileStat | IWorkspaceFolder, b: IFileStat | IWorkspaceFolder): number'
+    lines:
+    - 328
+    - 340
+    detail:
+      calls:
+      - compareFileNames
+      - isWorkspaceFolder
+  lines:
+  - 327
+  - 341
+- name: BreadcrumbsFilePicker
+  kind: struct
+  bases:
+  - BreadcrumbsPicker
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tparent: HTMLElement,\n\t\tresource: URI,\n\t\t@IInstantiationService instantiationService: IInstantiationService,\n\t\t@IThemeService themeService: IThemeService,\n\t\t@IConfigurationService configService: IConfigurationService,\n\t\t@IWorkspaceContextService private readonly _workspaceService: IWorkspaceContextService,\n\t\t@IEditorService private readonly _editorService: IEditorService,\n\t)"
+    lines:
+    - 345
+    - 355
+    detail:
+      calls:
+      - super
+  - name: _createTree
+    sig: '_createTree(container: HTMLElement)'
+    vis: protected
+    lines:
+    - 357
+    - 391
+    detail:
+      calls:
+      - new FileIdentityProvider
+      - new FileNavigationLabelProvider
+      - new FileSorter
+      - new FileVirtualDelegate
+      - onFileIconThemeChange
+      - this._disposables.add
+      - this._instantiationService.createInstance
+      - this._themeService.getFileIconTheme
+      - this._themeService.onDidFileIconThemeChange
+      - this._treeContainer.classList.add
+  - name: _setInput
+    sig: '_setInput(element: FileElement | OutlineElement2): Promise<void>'
+    is_async: true
+    vis: protected
+    lines:
+    - 393
+    - 419
+    detail:
+      calls:
+      - dirname
+      - isEqual
+      - isWorkspaceFolder
+      - this._workspaceService.getWorkspace
+      - tree.domFocus
+      - tree.getNode
+      - tree.reveal
+      - tree.setFocus
+      - tree.setInput
+  - name: _revealElement
+    sig: '_revealElement(element: IFileStat | IWorkspaceFolder, options: IEditorOptions, sideBySide: boolean): Promise<boolean>'
+    is_async: true
+    vis: protected
+    lines:
+    - 425
+    - 432
+    detail:
+      calls:
+      - isWorkspaceFolder
+      - this._editorService.openEditor
+      - this._onWillPickElement.fire
+  lines:
+  - 343
+  - 433
+- name: OutlineTreeSorter
+  kind: struct
+  bases:
+  - ITreeSorter<E>
+  fields:
+  - name: _order
+    type: '''name'' | ''type'' | ''position'''
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tprivate comparator: IOutlineComparator<E>,\n\t\turi: URI | undefined,\n\t\t@ITextResourceConfigurationService configService: ITextResourceConfigurationService,\n\t)"
+    lines:
+    - 442
+    - 448
+    detail:
+      calls:
+      - configService.getValue
+  - name: compare
+    sig: 'compare(a: E, b: E): number'
+    lines:
+    - 450
+    - 458
+    detail:
+      calls:
+      - this.comparator.compareByName
+      - this.comparator.compareByPosition
+      - this.comparator.compareByType
+  lines:
+  - 438
+  - 459
+- name: BreadcrumbsOutlinePicker
+  kind: struct
+  bases:
+  - BreadcrumbsPicker
+  methods:
+  - name: _setInput
+    sig: '_setInput(input: OutlineElement2): Promise<void>'
+    vis: protected
+    lines:
+    - 485
+    - 500
+    detail:
+      calls:
+      - Promise.resolve
+      - input.outline.captureViewState
+      - tree.domFocus
+      - tree.reveal
+      - tree.setFocus
+      - tree.setInput
+  - name: _revealElement
+    sig: '_revealElement(element: any, options: IEditorOptions, sideBySide: boolean): Promise<boolean>'
+    is_async: true
+    vis: protected
+    lines:
+    - 507
+    - 512
+    detail:
+      calls:
+      - outline.reveal
+      - this._onWillPickElement.fire
+      - this._tree.getInput
+  lines:
+  - 461
+  - 513
+exports:
+- name: ILayoutInfo
+  kind: type
+- name: Tree
+  kind: type
+- name: SelectEvent
+  kind: type
+- name: BreadcrumbsPicker
+  kind: type
+- name: FileVirtualDelegate
+  kind: type
+- name: FileIdentityProvider
+  kind: type
+- name: FileDataSource
+  kind: type
+- name: FileRenderer
+  kind: type
+- name: FileNavigationLabelProvider
+  kind: type
+- name: FileAccessibilityProvider
+  kind: type
+- name: FileFilter
+  kind: type
+- name: FileSorter
+  kind: type
+- name: BreadcrumbsFilePicker
+  kind: type
+- name: OutlineTreeSorter
+  kind: type
+- name: BreadcrumbsOutlinePicker
+  kind: type

@@ -1,0 +1,601 @@
+## Roska File Descriptor — view/mergeEditor.ts
+file: view/mergeEditor.ts
+lines: 790
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: ../../../../../base/browser/dom.js.Dimension
+- sym: ../../../../../base/browser/dom.js.reset
+- sym: ../../../../../base/browser/ui/grid/grid.js.Grid
+- sym: ../../../../../base/browser/ui/grid/grid.js.GridNodeDescriptor
+- sym: ../../../../../base/browser/ui/grid/grid.js.IView
+- sym: ../../../../../base/browser/ui/grid/grid.js.SerializableGrid
+- sym: ../../../../../base/browser/ui/splitview/splitview.js.Orientation
+- sym: ../../../../../base/common/cancellation.js.CancellationToken
+- sym: ../../../../../base/common/color.js.Color
+- sym: ../../../../../base/common/errors.js.BugIndicatingError
+- sym: ../../../../../base/common/errors.js.onUnexpectedError
+- sym: ../../../../../base/common/event.js.Emitter
+- sym: ../../../../../base/common/event.js.Event
+- sym: ../../../../../base/common/lifecycle.js.Disposable
+- sym: ../../../../../base/common/lifecycle.js.DisposableStore
+- sym: ../../../../../base/common/lifecycle.js.IDisposable
+- sym: ../../../../../base/common/lifecycle.js.MutableDisposable
+- sym: ../../../../../base/common/lifecycle.js.thenIfNotDisposed
+- sym: ../../../../../base/common/lifecycle.js.toDisposable
+- sym: ../../../../../base/common/observable.js.autorun
+- sym: ../../../../../base/common/observable.js.autorunWithStore
+- sym: ../../../../../base/common/observable.js.IObservable
+- sym: ../../../../../base/common/observable.js.IReader
+- sym: ../../../../../base/common/observable.js.observableValue
+- sym: ../../../../../base/common/observable.js.transaction
+- sym: ../../../../../base/common/resources.js.basename
+- sym: ../../../../../base/common/resources.js.isEqual
+- sym: ../../../../../base/common/types.js.isDefined
+- sym: ../../../../../base/common/uri.js.URI
+- sym: ../../../../../editor/browser/editorBrowser.js.ICodeEditor
+- sym: ../../../../../editor/browser/editorBrowser.js.IViewZoneChangeAccessor
+- sym: ../../../../../editor/browser/services/codeEditorService.js.ICodeEditorService
+- sym: ../../../../../editor/common/config/editorOptions.js.IEditorOptions as ICodeEditorOptions
+- sym: ../../../../../editor/common/editorCommon.js.ICodeEditorViewState
+- sym: ../../../../../editor/common/editorCommon.js.ScrollType
+- sym: ../../../../../editor/common/model.js.ITextModel
+- sym: ../../../../../editor/common/services/textResourceConfiguration.js.ITextResourceConfigurationService
+- sym: ../../../../../nls.js.localize
+- sym: ../../../../../platform/contextkey/common/contextkey.js.IContextKey
+- sym: ../../../../../platform/contextkey/common/contextkey.js.IContextKeyService
+- sym: ../../../../../platform/editor/common/editor.js.IEditorOptions
+- sym: ../../../../../platform/editor/common/editor.js.ITextEditorOptions
+- sym: ../../../../../platform/editor/common/editor.js.ITextResourceEditorInput
+- sym: ../../../../../platform/files/common/files.js.IFileService
+- sym: ../../../../../platform/instantiation/common/instantiation.js.IInstantiationService
+- sym: ../../../../../platform/storage/common/storage.js.IStorageService
+- sym: ../../../../../platform/storage/common/storage.js.StorageScope
+- sym: ../../../../../platform/storage/common/storage.js.StorageTarget
+- sym: ../../../../../platform/telemetry/common/telemetry.js.ITelemetryService
+- sym: ../../../../../platform/theme/common/themeService.js.IThemeService
+- sym: ../../../../browser/parts/editor/textEditor.js.AbstractTextEditor
+- sym: ../../../../common/editor.js.DEFAULT_EDITOR_ASSOCIATION
+- sym: ../../../../common/editor.js.EditorInputWithOptions
+- sym: ../../../../common/editor.js.IEditorOpenContext
+- sym: ../../../../common/editor.js.IResourceMergeEditorInput
+- sym: ../../../../common/editor/editorInput.js.EditorInput
+- sym: ../../../../common/editor/editorOptions.js.applyTextEditorOptions
+- sym: ../../../codeEditor/browser/toggleWordWrap.js.readTransientState
+- sym: ../../../codeEditor/browser/toggleWordWrap.js.writeTransientState
+- sym: ../mergeEditorInput.js.MergeEditorInput
+- sym: ../mergeEditorInputModel.js.IMergeEditorInputModel
+- sym: ../model/mergeEditorModel.js.MergeEditorModel
+- sym: ../utils.js.deepMerge
+- sym: ../utils.js.PersistentStore
+- sym: ./editors/baseCodeEditorView.js.BaseCodeEditorView
+- sym: ./scrollSynchronizer.js.ScrollSynchronizer
+- sym: ./viewModel.js.MergeEditorViewModel
+- sym: ./viewZones.js.ViewZoneComputer
+- sym: ../../common/mergeEditor.js.ctxIsMergeEditor
+- sym: ../../common/mergeEditor.js.ctxMergeBaseUri
+- sym: ../../common/mergeEditor.js.ctxMergeEditorLayout
+- sym: ../../common/mergeEditor.js.ctxMergeEditorShowBase
+- sym: ../../common/mergeEditor.js.ctxMergeEditorShowBaseAtTop
+- sym: ../../common/mergeEditor.js.ctxMergeEditorShowNonConflictingChanges
+- sym: ../../common/mergeEditor.js.ctxMergeResultUri
+- sym: ../../common/mergeEditor.js.MergeEditorLayoutKind
+- sym: ../../../preferences/common/settingsEditorColorRegistry.js.settingsSashBorder
+- sym: ../../../../services/editor/common/editorGroupsService.js.IEditorGroup
+- sym: ../../../../services/editor/common/editorGroupsService.js.IEditorGroupsService
+- sym: ../../../../services/editor/common/editorResolverService.js.IEditorResolverService
+- sym: ../../../../services/editor/common/editorResolverService.js.MergeEditorInputFactoryFunction
+- sym: ../../../../services/editor/common/editorResolverService.js.RegisteredEditorPriority
+- sym: ../../../../services/editor/common/editorService.js.IEditorService
+- sym: ./editors/inputCodeEditorView.js.InputCodeEditorView
+- sym: ./editors/resultCodeEditorView.js.ResultCodeEditorView
+types:
+- name: MergeEditor
+  kind: struct
+  ctx: '#region layout constraints'
+  bases:
+  - AbstractTextEditor
+  fields:
+  - name: ID
+    type: any
+    default: '''mergeEditor'''
+  - name: _sessionDisposables
+    type: any
+    default: new DisposableStore()
+  - name: _viewModel
+    type: any
+    default: observableValue<MergeEditorViewModel | undefined>(this, undefined)
+  - name: rootHtmlElement
+    type: HTMLElement | undefined
+  - name: _grid
+    type: any
+    default: this._register(new MutableDisposable<Grid<IView>>())
+  - name: input1View
+    type: any
+    default: this._register(this.instantiationService.createInstance(InputCodeEditorView, 1, ...
+  - name: baseView
+    type: any
+    default: observableValue<BaseCodeEditorView | undefined>(this, undefined)
+  - name: baseViewOptions
+    type: any
+    default: observableValue<Readonly<ICodeEditorOptions> | undefined>(this, undefined)
+  - name: input2View
+    type: any
+    default: this._register(this.instantiationService.createInstance(InputCodeEditorView, 2, ...
+  - name: inputResultView
+    type: any
+    default: this._register(this.instantiationService.createInstance(ResultCodeEditorView, th...
+  - name: _layoutMode
+    type: any
+    default: this.instantiationService.createInstance(MergeEditorLayoutStore)
+  - name: _layoutModeObs
+    type: any
+    default: observableValue(this, this._layoutMode.value)
+  - name: _ctxIsMergeEditor
+    type: IContextKey<boolean>
+    default: ctxIsMergeEditor.bindTo(this.contextKeyService)
+  - name: _ctxUsesColumnLayout
+    type: IContextKey<string>
+    default: ctxMergeEditorLayout.bindTo(this.contextKeyService)
+  - name: _ctxShowBase
+    type: IContextKey<boolean>
+    default: ctxMergeEditorShowBase.bindTo(this.contextKeyService)
+  - name: _ctxShowBaseAtTop
+    type: any
+    default: ctxMergeEditorShowBaseAtTop.bindTo(this.contextKeyService)
+  - name: _ctxResultUri
+    type: IContextKey<string>
+    default: ctxMergeResultUri.bindTo(this.contextKeyService)
+  - name: _ctxBaseUri
+    type: IContextKey<string>
+    default: ctxMergeBaseUri.bindTo(this.contextKeyService)
+  - name: _ctxShowNonConflictingChanges
+    type: IContextKey<boolean>
+    default: ctxMergeEditorShowNonConflictingChanges.bindTo(this.contextKeyService)
+  - name: _inputModel
+    type: any
+    default: observableValue<IMergeEditorInputModel | undefined>(this, undefined)
+  - name: viewZoneComputer
+    type: any
+    default: "new ViewZoneComputer(\n\t\tthis.input1View.editor,\n\t\tthis.input2View.editor,\n\t\tthis..."
+  - name: scrollSynchronizer
+    type: any
+    default: this._register(new ScrollSynchronizer(this._viewModel, this.input1View, this.inp...
+  - name: _onDidChangeSizeConstraints
+    type: any
+    default: new Emitter<void>()
+  - name: onDidChangeSizeConstraints
+    type: Event<void>
+    default: this._onDidChangeSizeConstraints.event
+  - name: baseViewDisposables
+    type: any
+    default: this._register(new DisposableStore())
+  - name: showNonConflictingChangesStore
+    type: any
+    default: this.instantiationService.createInstance(PersistentStore<boolean>, 'mergeEditor/...
+  - name: showNonConflictingChanges
+    type: any
+    default: observableValue(this, this.showNonConflictingChangesStore.get() ?? false)
+  methods:
+  - name: viewModel
+    sig: 'viewModel(): IObservable<MergeEditorViewModel | undefined>'
+    lines:
+    - 62
+    - 64
+    detail: {}
+  - name: inputModel
+    sig: 'inputModel(): IObservable<IMergeEditorInputModel | undefined>'
+    lines:
+    - 84
+    - 86
+    detail: {}
+  - name: model
+    sig: 'model(): MergeEditorModel | undefined'
+    lines:
+    - 87
+    - 89
+    detail:
+      calls:
+      - this.inputModel.get
+  - name: constructor
+    sig: "constructor(\n\t\tgroup: IEditorGroup,\n\t\t@IInstantiationService instantiation: IInstantiationService,\n\t\t@IContextKeyService private readonly contextKeyService: IContextKeyService,\n\t\t@ITelemetryService telemetryService: ITelemetryService,\n\t\t@IStorageService storageService: IStorageService,\n\t\t@IThemeService themeService: IThemeService,\n\t\t@ITextResourceConfigurationService textResourceConfigurationService: ITextResourceConfigurationService,\n\t\t@IEditorService editorService: IEditorService,\n\t\t@IEditorGroupsService editorGroupService: IEditorGroupsService,\n\t\t@IFileService fileService: IFileService,\n\t\t@ICodeEditorService private readonly _codeEditorService: ICodeEditorService\n\t)"
+    lines:
+    - 99
+    - 113
+    detail:
+      calls:
+      - super
+  - name: dispose
+    sig: 'dispose(): void'
+    lines:
+    - 115
+    - 121
+    detail:
+      calls:
+      - super.dispose
+      - this._ctxIsMergeEditor.reset
+      - this._ctxShowNonConflictingChanges.reset
+      - this._ctxUsesColumnLayout.reset
+      - this._sessionDisposables.dispose
+  - name: minimumWidth
+    sig: minimumWidth()
+    lines:
+    - 128
+    - 132
+    detail: {}
+  - name: getTitle
+    sig: 'getTitle(): string'
+    lines:
+    - 136
+    - 142
+    detail:
+      calls:
+      - localize
+      - this.input.getName
+  - name: createEditorControl
+    sig: 'createEditorControl(parent: HTMLElement, initialOptions: ICodeEditorOptions): void'
+    vis: protected
+    lines:
+    - 144
+    - 149
+    detail:
+      calls:
+      - parent.classList.add
+      - this.applyLayout
+      - this.applyOptions
+  - name: applyOptions
+    sig: 'applyOptions(options: ICodeEditorOptions): void'
+    vis: private
+    lines:
+    - 155
+    - 171
+    detail:
+      calls:
+      - deepMerge
+      - this.baseViewOptions.set
+      - this.input1View.updateOptions
+      - this.input2View.editor.getRawOptions
+      - this.input2View.updateOptions
+      - this.inputResultView.updateOptions
+  - name: layout
+    sig: 'layout(dimension: Dimension): void'
+    lines:
+    - 177
+    - 179
+    detail:
+      calls:
+      - this._grid.value?.layout
+  - name: setInput
+    sig: 'setInput(input: EditorInput, options: IEditorOptions | undefined, context: IEditorOpenContext, token: CancellationToken): Promise<void>'
+    is_async: true
+    lines:
+    - 181
+    - 352
+    detail:
+      calls:
+      - autorunWithStore
+      - input.resolve
+      - inputModel.resultUri.toString
+      - mirrorWordWrapTransientState
+      - model.base.uri.toString
+      - model.getValueLength
+      - model.onDidChangeContent
+      - model.telemetry.reportMergeEditorOpened
+      - new BugIndicatingError
+      - new DisposableStore
+      - "new class {\n\n\t\t\tprivate readonly _disposable = new DisposableStore();\n\n\t\t\tconstructor() {\n\t\t\t\tfor (const model of this.baseInput1Input2()) {\n\t\t\t\t\tthis._disposable.add(model.onDidChangeContent(() => this._checkBaseInput1Input2AllEmpty()));\n\t\t\t\t}\n\t\t\t}\n\n\t\t\tdispose() {\n\t\t\t\tthis._disposable.dispose();\n\t\t\t}\n\n\t\t\tprivate *baseInput1Input2() {\n\t\t\t\tyield model.base;\n\t\t\t\tyield model.input1.textModel;\n\t\t\t\tyield model.input2.textModel;\n\t\t\t}\n\n\t\t\tprivate _checkBaseInput1Input2AllEmpty() {\n\t\t\t\tfor (const model of this.baseInput1Input2()) {\n\t\t\t\t\tif (model.getValueLength() > 0) {\n\t\t\t\t\t\treturn;\n\t\t\t\t\t}\n\t\t\t\t}\n\t\t\t\t// all empty -> replace this editor with a normal editor for result\n\t\t\t\tthat.editorService.replaceEditors(\n\t\t\t\t\t[{ editor: input, replacement: { resource: input.result, options: { preserveFocus: true } }, forceReplaceDirty: true }],\n\t\t\t\t\tthat.group\n\t\t\t\t);\n\t\t\t}\n\t\t}"
+      - super.setInput
+      - that.editorService.replaceEditors
+      - thenIfNotDisposed
+      - this._applyViewState
+      - this._codeEditorService.onDidChangeTransientModelProperty
+      - this._ctxBaseUri.set
+      - this._ctxResultUri.set
+      - this._disposable.add
+      - this._disposable.dispose
+      - this._layoutModeObs.get
+      - this._sessionDisposables.add
+      - this._sessionDisposables.clear
+      - this.baseInput1Input2
+      - this.inputResultView.editor.getModel
+      - this.instantiationService.createInstance
+      - this.loadEditorViewState
+      - toDisposable
+      - transaction
+  - name: setViewZones
+    sig: "setViewZones(\n\t\treader: IReader,\n\t\tviewModel: MergeEditorViewModel,\n\t\tinput1Editor: ICodeEditor,\n\t\tinput1ViewZoneAccessor: IViewZoneChangeAccessor,\n\t\tinput2Editor: ICodeEditor,\n\t\tinput2ViewZoneAccessor: IViewZoneChangeAccessor,\n\t\tbaseEditor: ICodeEditor | undefined,\n\t\tbaseViewZoneAccessor: IViewZoneChangeAccessor | undefined,\n\t\tshouldAlignBase: boolean,\n\t\tresultEditor: ICodeEditor,\n\t\tresultViewZoneAccessor: IViewZoneChangeAccessor,\n\t\tshouldAlignResult: boolean,\n\t): IDisposable"
+    vis: private
+    lines:
+    - 354
+    - 426
+    detail:
+      calls:
+      - disposableStore.add
+      - new DisposableStore
+      - this.showNonConflictingChanges.read
+      - this.viewZoneComputer.computeViewZones
+      - v.create
+  - name: setOptions
+    sig: 'setOptions(options: ITextEditorOptions | undefined): void'
+    lines:
+    - 428
+    - 434
+    detail:
+      calls:
+      - applyTextEditorOptions
+      - super.setOptions
+  - name: clearInput
+    sig: 'clearInput(): void'
+    lines:
+    - 436
+    - 444
+    detail:
+      calls:
+      - editor.setModel
+      - super.clearInput
+      - this._sessionDisposables.clear
+  - name: focus
+    sig: 'focus(): void'
+    lines:
+    - 446
+    - 450
+    detail:
+      calls:
+      - (this.getControl() ?? this.inputResultView.editor).focus
+      - super.focus
+      - this.getControl
+  - name: hasFocus
+    sig: 'hasFocus(): boolean'
+    lines:
+    - 452
+    - 459
+    detail:
+      calls:
+      - editor.hasTextFocus
+      - super.hasFocus
+  - name: setEditorVisible
+    sig: 'setEditorVisible(visible: boolean): void'
+    vis: protected
+    lines:
+    - 461
+    - 473
+    detail:
+      calls:
+      - editor.onHide
+      - editor.onVisible
+      - super.setEditorVisible
+      - this._ctxIsMergeEditor.set
+  - name: getControl
+    sig: 'getControl(): ICodeEditor | undefined'
+    lines:
+    - 477
+    - 479
+    detail: {}
+  - name: scopedContextKeyService
+    sig: 'scopedContextKeyService(): IContextKeyService | undefined'
+    lines:
+    - 481
+    - 484
+    detail:
+      calls:
+      - control?.invokeWithinContext
+      - this.getControl
+  - name: toggleBase
+    sig: 'toggleBase(): void'
+    lines:
+    - 488
+    - 493
+    detail:
+      calls:
+      - this.setLayout
+  - name: toggleShowBaseTop
+    sig: 'toggleShowBaseTop(): void'
+    lines:
+    - 495
+    - 502
+    detail:
+      calls:
+      - this.setLayout
+  - name: toggleShowBaseCenter
+    sig: 'toggleShowBaseCenter(): void'
+    lines:
+    - 504
+    - 511
+    detail:
+      calls:
+      - this.setLayout
+  - name: setLayoutKind
+    sig: 'setLayoutKind(kind: MergeEditorLayoutKind): void'
+    lines:
+    - 513
+    - 518
+    detail:
+      calls:
+      - this.setLayout
+  - name: setLayout
+    sig: 'setLayout(newLayout: IMergeEditorLayout): void'
+    lines:
+    - 520
+    - 531
+    detail:
+      calls:
+      - JSON.stringify
+      - this.applyLayout
+      - this.model?.telemetry.reportLayoutChange
+  - name: setGrid
+    sig: 'setGrid(descriptor: GridNodeDescriptor<any>[])'
+    vis: private
+    lines:
+    - 601
+    - 623
+    detail:
+      calls:
+      - SerializableGrid.from
+      - reset
+      - this._grid.value.layout
+      - this.theme.getColor
+  - name: _applyViewState
+    sig: '_applyViewState(state: IMergeEditorViewState | undefined)'
+    vis: private
+    lines:
+    - 625
+    - 639
+    detail:
+      calls:
+      - '[this.input1View.editor, this.input2View.editor, this.inputResultView.editor][state.focusIndex].focu...'
+      - this.input1View.editor.restoreViewState
+      - this.input2View.editor.restoreViewState
+      - this.inputResultView.editor.restoreViewState
+  - name: computeEditorViewState
+    sig: 'computeEditorViewState(resource: URI): IMergeEditorViewState | undefined'
+    vis: protected
+    lines:
+    - 641
+    - 653
+    detail:
+      calls:
+      - '[this.input1View.editor, this.input2View.editor, this.inputResultView.editor].findIndex'
+      - isEqual
+      - this.input1View.editor.saveViewState
+      - this.input2View.editor.saveViewState
+      - this.inputModel.get
+      - this.inputResultView.editor.saveViewState
+  - name: toggleShowNonConflictingChanges
+    sig: 'toggleShowNonConflictingChanges(): void'
+    lines:
+    - 663
+    - 667
+    detail:
+      calls:
+      - this._ctxShowNonConflictingChanges.set
+      - this.showNonConflictingChanges.get
+      - this.showNonConflictingChanges.set
+      - this.showNonConflictingChangesStore.set
+  lines:
+  - 55
+  - 668
+- name: IMergeEditorLayout
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: readonly
+    type: MergeEditorLayoutKind
+  - name: readonly
+    type: boolean
+  - name: readonly
+    type: boolean
+  lines:
+  - 670
+  - 674
+- name: MergeEditorLayoutStore
+  kind: struct
+  fields:
+  - name: _key
+    type: any
+    default: '''mergeEditor/layout'''
+  - name: _value
+    type: IMergeEditorLayout
+    default: '{ kind: ''mixed'', showBase: false, showBaseAtTop: true }'
+  methods:
+  - name: constructor
+    sig: 'constructor(@IStorageService private _storageService: IStorageService)'
+    lines:
+    - 681
+    - 693
+    detail:
+      calls:
+      - JSON.parse
+      - _storageService.get
+      - onUnexpectedError
+  - name: value
+    sig: value()
+    lines:
+    - 695
+    - 697
+    detail: {}
+  - name: value
+    sig: 'value(value: IMergeEditorLayout)'
+    lines:
+    - 699
+    - 704
+    detail:
+      calls:
+      - JSON.stringify
+      - this._storageService.store
+  lines:
+  - 677
+  - 705
+- name: MergeEditorOpenHandlerContribution
+  kind: struct
+  bases:
+  - Disposable
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\t@IEditorService private readonly _editorService: IEditorService,\n\t\t@ICodeEditorService codeEditorService: ICodeEditorService,\n\t)"
+    lines:
+    - 709
+    - 715
+    detail:
+      calls:
+      - codeEditorService.registerCodeEditorOpenHandler
+      - super
+      - this._store.add
+      - this.openCodeEditorFromMergeEditor.bind
+  - name: openCodeEditorFromMergeEditor
+    sig: 'openCodeEditorFromMergeEditor(input: ITextResourceEditorInput, _source: ICodeEditor | null, sideBySide?: boolean | undefined): Promise<ICodeEditor | null>'
+    is_async: true
+    vis: private
+    lines:
+    - 717
+    - 735
+    detail:
+      calls:
+      - activePane.getControl
+      - applyTextEditorOptions
+      - isEqual
+  lines:
+  - 707
+  - 736
+- name: MergeEditorResolverContribution
+  kind: struct
+  bases:
+  - Disposable
+  fields:
+  - name: ID
+    type: any
+    default: '''workbench.contrib.mergeEditorResolver'''
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\t@IEditorResolverService editorResolverService: IEditorResolverService,\n\t\t@IInstantiationService instantiationService: IInstantiationService,\n\t)"
+    lines:
+    - 742
+    - 783
+    detail:
+      calls:
+      - editorResolverService.registerEditor
+      - super
+      - this._register
+  lines:
+  - 738
+  - 784
+- name: IMergeEditorViewState
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 786
+  - 790
+exports:
+- name: MergeEditor
+  kind: type
+- name: IMergeEditorLayout
+  kind: type
+- name: MergeEditorLayoutStore
+  kind: type
+- name: MergeEditorOpenHandlerContribution
+  kind: type
+- name: MergeEditorResolverContribution
+  kind: type
+- name: IMergeEditorViewState
+  kind: type

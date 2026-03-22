@@ -1,0 +1,430 @@
+## Roska File Descriptor — browser/storageService.ts
+file: browser/storageService.ts
+lines: 457
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: ../../../../base/browser/broadcast.js.BroadcastDataChannel
+- sym: ../../../../base/browser/browser.js.isSafari
+- sym: ../../../../base/browser/dom.js.getActiveWindow
+- sym: ../../../../base/browser/indexedDB.js.IndexedDB
+- sym: ../../../../base/common/async.js.DeferredPromise
+- sym: ../../../../base/common/async.js.Promises
+- sym: ../../../../base/common/errorMessage.js.toErrorMessage
+- sym: ../../../../base/common/event.js.Emitter
+- sym: ../../../../base/common/lifecycle.js.Disposable
+- sym: ../../../../base/common/lifecycle.js.DisposableStore
+- sym: ../../../../base/common/lifecycle.js.IDisposable
+- sym: ../../../../base/common/types.js.assertIsDefined
+- sym: ../../../../base/parts/storage/common/storage.js.InMemoryStorageDatabase
+- sym: ../../../../base/parts/storage/common/storage.js.isStorageItemsChangeEvent
+- sym: ../../../../base/parts/storage/common/storage.js.IStorage
+- sym: ../../../../base/parts/storage/common/storage.js.IStorageDatabase
+- sym: ../../../../base/parts/storage/common/storage.js.IStorageItemsChangeEvent
+- sym: ../../../../base/parts/storage/common/storage.js.IUpdateRequest
+- sym: ../../../../base/parts/storage/common/storage.js.Storage
+- sym: ../../../../platform/log/common/log.js.ILogService
+- sym: ../../../../platform/storage/common/storage.js.AbstractStorageService
+- sym: ../../../../platform/storage/common/storage.js.isProfileUsingDefaultStorage
+- sym: ../../../../platform/storage/common/storage.js.IS_NEW_KEY
+- sym: ../../../../platform/storage/common/storage.js.StorageScope
+- sym: ../../../../platform/storage/common/storage.js.StorageTarget
+- sym: ../../../../platform/userDataProfile/common/userDataProfile.js.isUserDataProfile
+- sym: ../../../../platform/userDataProfile/common/userDataProfile.js.IUserDataProfile
+- sym: ../../../../platform/workspace/common/workspace.js.IAnyWorkspaceIdentifier
+- sym: ../../userDataProfile/common/userDataProfile.js.IUserDataProfileService
+types:
+- name: BrowserStorageService
+  kind: struct
+  ctx: every 5s because async operations are not permitted on shutdown
+  bases:
+  - AbstractStorageService
+  fields:
+  - name: BROWSER_DEFAULT_FLUSH_INTERVAL
+    type: any
+    default: 5 * 1000
+  - name: applicationStorage
+    type: IStorage | undefined
+  - name: applicationStorageDatabase
+    type: IIndexedDBStorageDatabase | undefined
+  - name: applicationStoragePromise
+    type: any
+    default: 'new DeferredPromise<{ indexedDb: IIndexedDBStorageDatabase; storage: IStorage }>...'
+  - name: profileStorage
+    type: IStorage | undefined
+  - name: profileStorageDatabase
+    type: IIndexedDBStorageDatabase | undefined
+  - name: profileStorageProfile
+    type: IUserDataProfile
+  - name: profileStorageDisposables
+    type: any
+    default: this._register(new DisposableStore())
+  - name: workspaceStorage
+    type: IStorage | undefined
+  - name: workspaceStorageDatabase
+    type: IIndexedDBStorageDatabase | undefined
+  methods:
+  - name: hasPendingUpdate
+    sig: 'hasPendingUpdate(): boolean'
+    lines:
+    - 38
+    - 44
+    detail:
+      calls:
+      - Boolean
+  - name: constructor
+    sig: "constructor(\n\t\tprivate readonly workspace: IAnyWorkspaceIdentifier,\n\t\tprivate readonly userDataProfileService: IUserDataProfileService,\n\t\t@ILogService private readonly logService: ILogService,\n\t)"
+    lines:
+    - 46
+    - 56
+    detail:
+      calls:
+      - super
+      - this.registerListeners
+  - name: doInitialize
+    sig: 'doInitialize(): Promise<void>'
+    is_async: true
+    vis: protected
+    lines:
+    - 62
+    - 70
+    detail:
+      calls:
+      - Promises.settled
+      - this.createApplicationStorage
+      - this.createProfileStorage
+      - this.createWorkspaceStorage
+  - name: createApplicationStorage
+    sig: 'createApplicationStorage(): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 72
+    - 85
+    detail:
+      calls:
+      - IndexedDBStorageDatabase.createApplicationStorage
+      - new Storage
+      - this._register
+      - this.applicationStorage.init
+      - this.applicationStorage.onDidChangeStorage
+      - this.applicationStoragePromise.complete
+      - this.updateIsNew
+  - name: createProfileStorage
+    sig: 'createProfileStorage(profile: IUserDataProfile): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 87
+    - 120
+    detail:
+      calls:
+      - IndexedDBStorageDatabase.createProfileStorage
+      - isProfileUsingDefaultStorage
+      - new Storage
+      - this.profileStorage.init
+      - this.profileStorage.onDidChangeStorage
+      - this.profileStorageDisposables.add
+      - this.profileStorageDisposables.clear
+      - this.updateIsNew
+  - name: createWorkspaceStorage
+    sig: 'createWorkspaceStorage(): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 122
+    - 133
+    detail:
+      calls:
+      - IndexedDBStorageDatabase.createWorkspaceStorage
+      - new Storage
+      - this._register
+      - this.updateIsNew
+      - this.workspaceStorage.init
+      - this.workspaceStorage.onDidChangeStorage
+  - name: switchToProfile
+    sig: 'switchToProfile(toProfile: IUserDataProfile): Promise<void>'
+    is_async: true
+    vis: protected
+    lines:
+    - 166
+    - 185
+    detail:
+      calls:
+      - assertIsDefined
+      - oldProfileStorage.close
+      - this.canSwitchProfile
+      - this.createProfileStorage
+      - this.switchData
+  - name: close
+    sig: 'close(): void'
+    lines:
+    - 204
+    - 222
+    detail:
+      calls:
+      - this.applicationStorage?.close
+      - this.dispose
+      - this.profileStorageDatabase?.close
+      - this.workspaceStorageDatabase?.close
+  - name: clear
+    sig: 'clear(): Promise<void>'
+    is_async: true
+    lines:
+    - 224
+    - 243
+    detail:
+      calls:
+      - Promise.resolve
+      - Promises.settled
+      - this.applicationStorageDatabase?.clear
+      - this.getStorage
+      - this.getStorage(scope)?.whenFlushed
+      - this.keys
+      - this.profileStorageDatabase?.clear
+      - this.remove
+      - this.workspaceStorageDatabase?.clear
+  - name: hasScope
+    sig: 'hasScope(scope: IAnyWorkspaceIdentifier | IUserDataProfile): boolean'
+    lines:
+    - 245
+    - 251
+    detail:
+      calls:
+      - isUserDataProfile
+  lines:
+  - 22
+  - 252
+- name: IIndexedDBStorageDatabase
+  kind: trait
+  bases:
+  - IStorageDatabase
+  - IDisposable
+  decorators:
+  - interface
+  fields:
+  - name: readonly
+    type: string
+  - name: readonly
+    type: boolean
+  - name: clear
+    type: 'method: clear(): Promise<void>'
+  lines:
+  - 254
+  - 271
+- name: InMemoryIndexedDBStorageDatabase
+  kind: struct
+  bases:
+  - InMemoryStorageDatabase
+  - IIndexedDBStorageDatabase
+  fields:
+  - name: hasPendingUpdate
+    type: any
+    default: 'false'
+  - name: name
+    type: any
+    default: '''in-memory-indexedb-storage'''
+  methods:
+  - name: clear
+    sig: 'clear(): Promise<void>'
+    is_async: true
+    lines:
+    - 278
+    - 280
+    detail:
+      calls:
+      - (await this.getItems()).clear
+      - this.getItems
+  - name: dispose
+    sig: 'dispose(): void'
+    lines:
+    - 282
+    - 284
+    detail: {}
+  lines:
+  - 273
+  - 285
+- name: IndexedDBStorageDatabaseOptions
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: id
+    type: string
+  - name: broadcastChanges
+    type: boolean
+  lines:
+  - 287
+  - 290
+- name: IndexedDBStorageDatabase
+  kind: struct
+  bases:
+  - Disposable
+  - IIndexedDBStorageDatabase
+  fields:
+  - name: STORAGE_DATABASE_PREFIX
+    type: any
+    default: '''vscode-web-state-db-'''
+  - name: STORAGE_OBJECT_STORE
+    type: any
+    default: '''ItemTable'''
+  - name: _onDidChangeItemsExternal
+    type: any
+    default: this._register(new Emitter<IStorageItemsChangeEvent>())
+  - name: onDidChangeItemsExternal
+    type: any
+    default: this._onDidChangeItemsExternal.event
+  - name: broadcastChannel
+    type: BroadcastDataChannel<IStorageItemsChangeEvent> | undefined
+  - name: pendingUpdate
+    type: Promise<boolean> | undefined
+    default: undefined
+  - name: whenConnected
+    type: Promise<IndexedDB>
+  methods:
+  - name: createApplicationStorage
+    sig: 'createApplicationStorage(logService: ILogService): Promise<IIndexedDBStorageDatabase>'
+    is_async: true
+    decorators:
+    - static
+    lines:
+    - 294
+    - 296
+    detail:
+      calls:
+      - IndexedDBStorageDatabase.create
+  - name: createProfileStorage
+    sig: 'createProfileStorage(profile: IUserDataProfile, logService: ILogService): Promise<IIndexedDBStorageDatabase>'
+    is_async: true
+    decorators:
+    - static
+    lines:
+    - 298
+    - 300
+    detail:
+      calls:
+      - IndexedDBStorageDatabase.create
+  - name: createWorkspaceStorage
+    sig: 'createWorkspaceStorage(workspaceId: string, logService: ILogService): Promise<IIndexedDBStorageDatabase>'
+    is_async: true
+    decorators:
+    - static
+    lines:
+    - 302
+    - 304
+    detail:
+      calls:
+      - IndexedDBStorageDatabase.create
+  - name: create
+    sig: 'create(options: IndexedDBStorageDatabaseOptions, logService: ILogService): Promise<IIndexedDBStorageDatabase>'
+    is_async: true
+    decorators:
+    - static
+    lines:
+    - 306
+    - 317
+    detail:
+      calls:
+      - logService.error
+      - new InMemoryIndexedDBStorageDatabase
+      - new IndexedDBStorageDatabase
+      - toErrorMessage
+  - name: hasPendingUpdate
+    sig: 'hasPendingUpdate(): boolean'
+    lines:
+    - 328
+    - 328
+    detail: {}
+  - name: constructor
+    sig: "constructor(\n\t\toptions: IndexedDBStorageDatabaseOptions,\n\t\tprivate readonly logService: ILogService\n\t)"
+    vis: private
+    lines:
+    - 333
+    - 345
+    detail:
+      calls:
+      - new BroadcastDataChannel
+      - super
+      - this._register
+      - this.connect
+      - this.registerListeners
+  - name: connect
+    sig: 'connect(): Promise<IndexedDB>'
+    is_async: true
+    vis: private
+    lines:
+    - 360
+    - 368
+    detail:
+      calls:
+      - IndexedDB.create
+      - this.logService.error
+      - toErrorMessage
+  - name: getItems
+    sig: 'getItems(): Promise<Map<string, string>>'
+    is_async: true
+    lines:
+    - 370
+    - 378
+    detail:
+      calls:
+      - db.getKeyValues
+  - name: updateItems
+    sig: 'updateItems(request: IUpdateRequest): Promise<void>'
+    is_async: true
+    lines:
+    - 380
+    - 401
+    detail:
+      calls:
+      - this.broadcastChannel.postData
+      - this.doUpdateItems
+  - name: doUpdateItems
+    sig: 'doUpdateItems(request: IUpdateRequest): Promise<boolean>'
+    is_async: true
+    vis: private
+    lines:
+    - 403
+    - 436
+    detail:
+      calls:
+      - db.runInTransaction
+  - name: optimize
+    sig: 'optimize(): Promise<void>'
+    is_async: true
+    lines:
+    - 438
+    - 440
+    detail: {}
+  - name: close
+    sig: 'close(): Promise<void>'
+    is_async: true
+    lines:
+    - 442
+    - 450
+    detail:
+      calls:
+      - db.close
+  - name: clear
+    sig: 'clear(): Promise<void>'
+    is_async: true
+    lines:
+    - 452
+    - 456
+    detail:
+      calls:
+      - db.runInTransaction
+  lines:
+  - 292
+  - 457
+exports:
+- name: BrowserStorageService
+  kind: type
+- name: IIndexedDBStorageDatabase
+  kind: type
+- name: InMemoryIndexedDBStorageDatabase
+  kind: type
+- name: IndexedDBStorageDatabaseOptions
+  kind: type
+- name: IndexedDBStorageDatabase
+  kind: type

@@ -1,0 +1,1478 @@
+## Roska File Descriptor — browser/quickInput.ts
+file: browser/quickInput.ts
+lines: 1322
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: ../../../base/browser/dom.js.dom
+- sym: ../../../base/browser/keyboardEvent.js.StandardKeyboardEvent
+- sym: ../../../base/browser/ui/actionbar/actionbar.js.ActionBar
+- sym: ../../../base/browser/ui/button/button.js.Button
+- sym: ../../../base/browser/ui/button/button.js.IButtonStyles
+- sym: ../../../base/browser/ui/countBadge/countBadge.js.CountBadge
+- sym: ../../../base/browser/ui/countBadge/countBadge.js.ICountBadgeStyles
+- sym: ../../../base/browser/ui/hover/hoverDelegate.js.IHoverDelegate
+- sym: ../../../base/browser/ui/hover/hoverDelegate.js.IHoverDelegateOptions
+- sym: ../../../base/browser/ui/inputbox/inputBox.js.IInputBoxStyles
+- sym: ../../../base/browser/ui/keybindingLabel/keybindingLabel.js.IKeybindingLabelStyles
+- sym: ../../../base/browser/ui/list/listWidget.js.IListStyles
+- sym: ../../../base/browser/ui/progressbar/progressbar.js.IProgressBarStyles
+- sym: ../../../base/browser/ui/progressbar/progressbar.js.ProgressBar
+- sym: ../../../base/browser/ui/toggle/toggle.js.IToggleStyles
+- sym: ../../../base/browser/ui/toggle/toggle.js.Toggle
+- sym: ../../../base/common/arrays.js.equals
+- sym: ../../../base/common/async.js.TimeoutTimer
+- sym: ../../../base/common/codicons.js.Codicon
+- sym: ../../../base/common/event.js.Emitter
+- sym: ../../../base/common/event.js.Event
+- sym: ../../../base/common/event.js.EventBufferer
+- sym: ../../../base/common/keyCodes.js.KeyCode
+- sym: ../../../base/common/lifecycle.js.Disposable
+- sym: ../../../base/common/lifecycle.js.DisposableStore
+- sym: ../../../base/common/platform.js.isIOS
+- sym: ../../../base/common/severity.js.Severity
+- sym: ../../../base/common/themables.js.ThemeIcon
+- sym: ../../../nls.js.localize
+- sym: ../common/quickInput.js.IInputBox
+- sym: ../common/quickInput.js.IKeyMods
+- sym: ../common/quickInput.js.IQuickInput
+- sym: ../common/quickInput.js.IQuickInputButton
+- sym: ../common/quickInput.js.IQuickInputHideEvent
+- sym: ../common/quickInput.js.IQuickInputToggle
+- sym: ../common/quickInput.js.IQuickNavigateConfiguration
+- sym: ../common/quickInput.js.IQuickPick
+- sym: ../common/quickInput.js.IQuickPickDidAcceptEvent
+- sym: ../common/quickInput.js.IQuickPickItem
+- sym: ../common/quickInput.js.IQuickPickItemButtonEvent
+- sym: ../common/quickInput.js.IQuickPickSeparator
+- sym: ../common/quickInput.js.IQuickPickSeparatorButtonEvent
+- sym: ../common/quickInput.js.IQuickPickWillAcceptEvent
+- sym: ../common/quickInput.js.IQuickWidget
+- sym: ../common/quickInput.js.ItemActivation
+- sym: ../common/quickInput.js.NO_KEY_MODS
+- sym: ../common/quickInput.js.QuickInputButtonLocation
+- sym: ../common/quickInput.js.QuickInputHideReason
+- sym: ../common/quickInput.js.QuickInputType
+- sym: ../common/quickInput.js.QuickPickFocus
+- sym: ./quickInputBox.js.QuickInputBox
+- sym: ./quickInputUtils.js.quickInputButtonToAction
+- sym: ./quickInputUtils.js.renderQuickInputDescription
+- sym: ../../configuration/common/configuration.js.IConfigurationService
+- sym: ../../hover/browser/hover.js.IHoverService
+- sym: ../../hover/browser/hover.js.WorkbenchHoverDelegate
+- sym: ./quickInputTree.js.QuickInputTree
+- sym: ../../../base/browser/ui/hover/hover.js.IHoverOptions
+  kind: typing
+- sym: ../../contextkey/common/contextkey.js.ContextKeyExpr
+- sym: ../../contextkey/common/contextkey.js.RawContextKey
+data:
+- name: inQuickInputContextKeyValue
+  type: string
+  val: '''inQuickInput'''
+- name: InQuickInputContextKey
+  type: any
+  val: new RawContextKey<boolean>(inQuickInputContextKeyValue, false, localize('inQuickInput', "Whether keyboard focus is insid...
+- name: inQuickInputContext
+  type: any
+  val: ContextKeyExpr.has(inQuickInputContextKeyValue)
+- name: quickInputAlignmentContextKeyValue
+  type: string
+  val: '''quickInputAlignment'''
+- name: QuickInputAlignmentContextKey
+  type: any
+  val: new RawContextKey<'top' | 'center' | undefined>(quickInputAlignmentContextKeyValue, 'top', localize('quickInputAlignment...
+- name: quickInputTypeContextKeyValue
+  type: string
+  val: '''quickInputType'''
+- name: QuickInputTypeContextKey
+  type: any
+  val: new RawContextKey<QuickInputType>(quickInputTypeContextKeyValue, undefined, localize('quickInputType', "The type of the ...
+- name: endOfQuickInputBoxContextKeyValue
+  type: string
+  val: '''cursorAtEndOfQuickInputBox'''
+- name: EndOfQuickInputBoxContextKey
+  type: any
+  val: new RawContextKey<boolean>(endOfQuickInputBoxContextKeyValue, false, localize('cursorAtEndOfQuickInputBox', "Whether the...
+- name: endOfQuickInputBoxContext
+  type: any
+  val: ContextKeyExpr.has(endOfQuickInputBoxContextKeyValue)
+- name: backButton
+  type: object
+  val: "{\n\ticonClass: ThemeIcon.asClassName(Codicon.quickInputBack),\n\ttooltip: localize('quickInput.back', \"Back\"),\n\thandle: -1 ..."
+types:
+- name: IQuickInputOptions
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: idPrefix
+    type: string
+  - name: container
+    type: HTMLElement
+  - name: ignoreFocusOut
+    type: 'method: ignoreFocusOut(): boolean'
+  - name: backKeybindingLabel
+    type: 'method: backKeybindingLabel(): string | undefined'
+  - name: setContextKey
+    type: 'method: setContextKey(id?: string): void'
+  - name: linkOpenerDelegate
+    type: 'method: linkOpenerDelegate(content: string): void'
+  - name: returnFocus
+    type: 'method: returnFocus(): void'
+  - name: hoverDelegate
+    type: IHoverDelegate
+  - name: styles
+    type: IQuickInputStyles
+  lines:
+  - 51
+  - 65
+- name: IQuickInputStyles
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: readonly
+    type: IQuickInputWidgetStyles
+  - name: readonly
+    type: IInputBoxStyles
+  - name: readonly
+    type: IToggleStyles
+  - name: readonly
+    type: ICountBadgeStyles
+  - name: readonly
+    type: IButtonStyles
+  - name: readonly
+    type: IProgressBarStyles
+  - name: readonly
+    type: IKeybindingLabelStyles
+  - name: readonly
+    type: IListStyles
+  - name: readonly
+    type: '{ pickerGroupBorder: string | undefined; pickerGroupForeground: string | undefined }'
+  lines:
+  - 67
+  - 77
+- name: IQuickInputWidgetStyles
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: readonly
+    type: string | undefined
+  - name: readonly
+    type: string | undefined
+  - name: readonly
+    type: string | undefined
+  - name: readonly
+    type: string | undefined
+  - name: readonly
+    type: string | undefined
+  lines:
+  - 79
+  - 85
+- name: Writeable
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 87
+  - 87
+- name: QuickInputUI
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: container
+    type: HTMLElement
+  - name: styleSheet
+    type: HTMLStyleElement
+  - name: leftActionBar
+    type: ActionBar
+  - name: titleBar
+    type: HTMLElement
+  - name: title
+    type: HTMLElement
+  - name: description1
+    type: HTMLElement
+  - name: description2
+    type: HTMLElement
+  - name: widget
+    type: HTMLElement
+  - name: rightActionBar
+    type: ActionBar
+  - name: inlineActionBar
+    type: ActionBar
+  - name: checkAll
+    type: HTMLInputElement
+  - name: inputContainer
+    type: HTMLElement
+  - name: filterContainer
+    type: HTMLElement
+  - name: inputBox
+    type: QuickInputBox
+  - name: visibleCountContainer
+    type: HTMLElement
+  - name: visibleCount
+    type: CountBadge
+  - name: countContainer
+    type: HTMLElement
+  - name: count
+    type: CountBadge
+  - name: okContainer
+    type: HTMLElement
+  - name: ok
+    type: Button
+  - name: message
+    type: HTMLElement
+  - name: customButtonContainer
+    type: HTMLElement
+  - name: customButton
+    type: Button
+  - name: progressBar
+    type: ProgressBar
+  - name: list
+    type: QuickInputTree
+  - name: onDidAccept
+    type: Event<void>
+  - name: onDidCustom
+    type: Event<void>
+  - name: onDidTriggerButton
+    type: Event<IQuickInputButton>
+  - name: ignoreFocusOut
+    type: boolean
+  - name: keyMods
+    type: Writeable<IKeyMods>
+  - name: show
+    type: 'method: show(controller: QuickInput): void'
+  - name: setVisibilities
+    type: 'method: setVisibilities(visibilities: Visibilities): void'
+  - name: setEnabled
+    type: 'method: setEnabled(enabled: boolean): void'
+  - name: setContextKey
+    type: 'method: setContextKey(contextKey?: string): void'
+  - name: linkOpenerDelegate
+    type: 'method: linkOpenerDelegate(content: string): void'
+  - name: hide
+    type: 'method: hide(): void'
+  lines:
+  - 95
+  - 132
+- name: Visibilities
+  kind: typealias
+  decorators:
+  - type
+  fields:
+  - name: title
+    type: boolean
+  - name: description
+    type: boolean
+  - name: checkAll
+    type: boolean
+  - name: inputBox
+    type: boolean
+  - name: checkBox
+    type: boolean
+  - name: visibleCount
+    type: boolean
+  - name: count
+    type: boolean
+  - name: message
+    type: boolean
+  - name: list
+    type: boolean
+  - name: ok
+    type: boolean
+  - name: customButton
+    type: boolean
+  - name: progressBar
+    type: boolean
+  lines:
+  - 134
+  - 147
+- name: QuickInput
+  kind: trait
+  bases:
+  - Disposable
+  - IQuickInput
+  decorators:
+  - abstract
+  fields:
+  - name: noPromptMessage
+    type: any
+    default: localize('inputModeEntry', "Press 'Enter' to confirm your input or 'Escape' to c...
+  - name: _title
+    type: string | undefined
+  - name: _description
+    type: string | undefined
+  - name: _widget
+    type: HTMLElement | undefined
+  - name: _widgetUpdated
+    type: any
+    default: 'false'
+  - name: _steps
+    type: number | undefined
+  - name: _totalSteps
+    type: number | undefined
+  - name: visible
+    type: any
+    default: 'false'
+  - name: _enabled
+    type: any
+    default: 'true'
+  - name: _contextKey
+    type: string | undefined
+  - name: _busy
+    type: any
+    default: 'false'
+  - name: _ignoreFocusOut
+    type: any
+    default: 'false'
+  - name: _leftButtons
+    type: IQuickInputButton[]
+    default: '[]'
+  - name: _rightButtons
+    type: IQuickInputButton[]
+    default: '[]'
+  - name: _inlineButtons
+    type: IQuickInputButton[]
+    default: '[]'
+  - name: buttonsUpdated
+    type: any
+    default: 'false'
+  - name: _toggles
+    type: IQuickInputToggle[]
+    default: '[]'
+  - name: togglesUpdated
+    type: any
+    default: 'false'
+  - name: noValidationMessage
+    type: any
+    default: QuickInput.noPromptMessage
+  - name: _validationMessage
+    type: string | undefined
+  - name: _lastValidationMessage
+    type: string | undefined
+  - name: _severity
+    type: Severity
+    default: Severity.Ignore
+  - name: _lastSeverity
+    type: Severity | undefined
+  - name: onDidTriggerButtonEmitter
+    type: any
+    default: this._register(new Emitter<IQuickInputButton>())
+  - name: onDidHideEmitter
+    type: any
+    default: this._register(new Emitter<IQuickInputHideEvent>())
+  - name: onWillHideEmitter
+    type: any
+    default: this._register(new Emitter<IQuickInputHideEvent>())
+  - name: onDisposeEmitter
+    type: any
+    default: this._register(new Emitter<void>())
+  - name: visibleDisposables
+    type: any
+    default: this._register(new DisposableStore())
+  - name: busyDelay
+    type: TimeoutTimer | undefined
+  - name: type
+    type: QuickInputType
+  - name: onDidTriggerButton
+    type: any
+    default: this.onDidTriggerButtonEmitter.event
+  - name: onDidHide
+    type: any
+    default: this.onDidHideEmitter.event
+  - name: onWillHide
+    type: any
+    default: this.onWillHideEmitter.event
+  - name: onDispose
+    type: any
+    default: this.onDisposeEmitter.event
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tprotected ui: QuickInputUI\n\t)"
+    lines:
+    - 185
+    - 189
+    detail:
+      calls:
+      - super
+  - name: title
+    sig: title()
+    lines:
+    - 191
+    - 193
+    detail: {}
+  - name: title
+    sig: 'title(title: string | undefined)'
+    lines:
+    - 195
+    - 198
+    detail:
+      calls:
+      - this.update
+  - name: description
+    sig: description()
+    lines:
+    - 200
+    - 202
+    detail: {}
+  - name: description
+    sig: 'description(description: string | undefined)'
+    lines:
+    - 204
+    - 207
+    detail:
+      calls:
+      - this.update
+  - name: widget
+    sig: widget()
+    lines:
+    - 209
+    - 211
+    detail: {}
+  - name: widget
+    sig: 'widget(widget: unknown | undefined)'
+    lines:
+    - 213
+    - 222
+    detail:
+      calls:
+      - dom.isHTMLElement
+      - this.update
+  - name: step
+    sig: step()
+    lines:
+    - 224
+    - 226
+    detail: {}
+  - name: step
+    sig: 'step(step: number | undefined)'
+    lines:
+    - 228
+    - 231
+    detail:
+      calls:
+      - this.update
+  - name: totalSteps
+    sig: totalSteps()
+    lines:
+    - 233
+    - 235
+    detail: {}
+  - name: totalSteps
+    sig: 'totalSteps(totalSteps: number | undefined)'
+    lines:
+    - 237
+    - 240
+    detail:
+      calls:
+      - this.update
+  - name: enabled
+    sig: enabled()
+    lines:
+    - 242
+    - 244
+    detail: {}
+  - name: enabled
+    sig: 'enabled(enabled: boolean)'
+    lines:
+    - 246
+    - 249
+    detail:
+      calls:
+      - this.update
+  - name: contextKey
+    sig: contextKey()
+    lines:
+    - 251
+    - 253
+    detail: {}
+  - name: contextKey
+    sig: 'contextKey(contextKey: string | undefined)'
+    lines:
+    - 255
+    - 258
+    detail:
+      calls:
+      - this.update
+  - name: busy
+    sig: busy()
+    lines:
+    - 260
+    - 262
+    detail: {}
+  - name: busy
+    sig: 'busy(busy: boolean)'
+    lines:
+    - 264
+    - 267
+    detail:
+      calls:
+      - this.update
+  - name: ignoreFocusOut
+    sig: ignoreFocusOut()
+    lines:
+    - 269
+    - 271
+    detail: {}
+  - name: ignoreFocusOut
+    sig: 'ignoreFocusOut(ignoreFocusOut: boolean)'
+    lines:
+    - 273
+    - 279
+    detail:
+      calls:
+      - this.update
+  - name: buttons
+    sig: buttons()
+    lines:
+    - 287
+    - 293
+    detail: {}
+  - name: buttons
+    sig: 'buttons(buttons: IQuickInputButton[])'
+    lines:
+    - 295
+    - 301
+    detail:
+      calls:
+      - buttons.filter
+      - this.update
+  - name: toggles
+    sig: toggles()
+    lines:
+    - 303
+    - 305
+    detail: {}
+  - name: toggles
+    sig: 'toggles(toggles: IQuickInputToggle[])'
+    lines:
+    - 307
+    - 311
+    detail:
+      calls:
+      - this.update
+  - name: validationMessage
+    sig: validationMessage()
+    lines:
+    - 313
+    - 315
+    detail: {}
+  - name: validationMessage
+    sig: 'validationMessage(validationMessage: string | undefined)'
+    lines:
+    - 317
+    - 320
+    detail:
+      calls:
+      - this.update
+  - name: severity
+    sig: severity()
+    lines:
+    - 322
+    - 324
+    detail: {}
+  - name: severity
+    sig: 'severity(severity: Severity)'
+    lines:
+    - 326
+    - 329
+    detail:
+      calls:
+      - this.update
+  - name: show
+    sig: 'show(): void'
+    lines:
+    - 333
+    - 364
+    detail:
+      calls:
+      - this.ui.onDidTriggerButton
+      - this.ui.show
+      - this.update
+      - this.visibleDisposables.add
+  - name: hide
+    sig: 'hide(): void'
+    lines:
+    - 366
+    - 371
+    detail:
+      calls:
+      - this.ui.hide
+  - name: didHide
+    sig: 'didHide(reason = QuickInputHideReason.Other): void'
+    lines:
+    - 373
+    - 377
+    detail:
+      calls:
+      - this.onDidHideEmitter.fire
+      - this.visibleDisposables.clear
+  - name: willHide
+    sig: 'willHide(reason = QuickInputHideReason.Other): void'
+    lines:
+    - 381
+    - 383
+    detail:
+      calls:
+      - this.onWillHideEmitter.fire
+  - name: update
+    sig: update()
+    vis: protected
+    lines:
+    - 386
+    - 478
+    detail:
+      calls:
+      - dom.reset
+      - new TimeoutTimer
+      - renderQuickInputDescription
+      - "this._inlineButtons\n\t\t\t\t.map"
+      - "this._leftButtons\n\t\t\t\t.map"
+      - "this._rightButtons\n\t\t\t\t.map"
+      - this.busyDelay.cancel
+      - this.busyDelay.setIfNotSet
+      - this.getDescription
+      - this.getTitle
+      - this.showMessageDecoration
+      - this.toggles?.filter
+      - this.ui.inlineActionBar.clear
+      - this.ui.inlineActionBar.push
+      - this.ui.leftActionBar.clear
+      - this.ui.leftActionBar.push
+      - this.ui.progressBar.stop
+      - this.ui.rightActionBar.clear
+      - this.ui.rightActionBar.push
+      - this.ui.setContextKey
+      - this.ui.setEnabled
+  - name: dispose
+    sig: 'dispose(): void'
+    lines:
+    - 525
+    - 530
+    detail:
+      calls:
+      - super.dispose
+      - this.hide
+      - this.onDisposeEmitter.fire
+  lines:
+  - 149
+  - 531
+- name: QuickPick
+  kind: struct
+  bases:
+  - QuickInput
+  - IQuickPick<T, O>
+  fields:
+  - name: DEFAULT_ARIA_LABEL
+    type: any
+    default: localize('quickInputBox.ariaLabel', "Type to narrow down results.")
+  - name: _value
+    type: any
+    default: ''''''
+  - name: _ariaLabel
+    type: string | undefined
+  - name: _placeholder
+    type: string | undefined
+  - name: onDidChangeValueEmitter
+    type: any
+    default: this._register(new Emitter<string>())
+  - name: onWillAcceptEmitter
+    type: any
+    default: this._register(new Emitter<IQuickPickWillAcceptEvent>())
+  - name: onDidAcceptEmitter
+    type: any
+    default: this._register(new Emitter<IQuickPickDidAcceptEvent>())
+  - name: onDidCustomEmitter
+    type: any
+    default: this._register(new Emitter<void>())
+  - name: _items
+    type: 'O extends { useSeparators: true } ? Array<T | IQuickPickSeparator> : Array<T>'
+    default: '[]'
+  - name: itemsUpdated
+    type: any
+    default: 'false'
+  - name: _canSelectMany
+    type: any
+    default: 'false'
+  - name: _canAcceptInBackground
+    type: any
+    default: 'false'
+  - name: _matchOnDescription
+    type: any
+    default: 'false'
+  - name: _matchOnDetail
+    type: any
+    default: 'false'
+  - name: _matchOnLabel
+    type: any
+    default: 'true'
+  - name: _matchOnLabelMode
+    type: '''fuzzy'' | ''contiguous'''
+    default: '''fuzzy'''
+  - name: _sortByLabel
+    type: any
+    default: 'true'
+  - name: _keepScrollPosition
+    type: any
+    default: 'false'
+  - name: _itemActivation
+    type: any
+    default: ItemActivation.FIRST
+  - name: _activeItems
+    type: T[]
+    default: '[]'
+  - name: activeItemsUpdated
+    type: any
+    default: 'false'
+  - name: activeItemsToConfirm
+    type: T[] | null
+    default: '[]'
+  - name: onDidChangeActiveEmitter
+    type: any
+    default: this._register(new Emitter<T[]>())
+  - name: _selectedItems
+    type: T[]
+    default: '[]'
+  - name: selectedItemsUpdated
+    type: any
+    default: 'false'
+  - name: selectedItemsToConfirm
+    type: T[] | null
+    default: '[]'
+  - name: onDidChangeSelectionEmitter
+    type: any
+    default: this._register(new Emitter<T[]>())
+  - name: onDidTriggerItemButtonEmitter
+    type: any
+    default: this._register(new Emitter<IQuickPickItemButtonEvent<T>>())
+  - name: onDidTriggerSeparatorButtonEmitter
+    type: any
+    default: this._register(new Emitter<IQuickPickSeparatorButtonEvent>())
+  - name: _valueSelection
+    type: Readonly<[number, number]> | undefined
+  - name: valueSelectionUpdated
+    type: any
+    default: 'true'
+  - name: _ok
+    type: boolean | 'default'
+    default: '''default'''
+  - name: _okLabel
+    type: string | undefined
+  - name: _customButton
+    type: any
+    default: 'false'
+  - name: _customButtonLabel
+    type: string | undefined
+  - name: _customButtonHover
+    type: string | undefined
+  - name: _quickNavigate
+    type: IQuickNavigateConfiguration | undefined
+  - name: _hideInput
+    type: boolean | undefined
+  - name: _hideCountBadge
+    type: boolean | undefined
+  - name: _hideCheckAll
+    type: boolean | undefined
+  - name: _focusEventBufferer
+    type: any
+    default: new EventBufferer()
+  - name: type
+    type: any
+    default: QuickInputType.QuickPick
+  - name: filterValue
+    type: any
+    default: '(value: string) => value'
+  - name: onDidChangeValue
+    type: any
+    default: this.onDidChangeValueEmitter.event
+  - name: onWillAccept
+    type: any
+    default: this.onWillAcceptEmitter.event
+  - name: onDidAccept
+    type: any
+    default: this.onDidAcceptEmitter.event
+  - name: onDidCustom
+    type: any
+    default: this.onDidCustomEmitter.event
+  - name: onDidChangeActive
+    type: any
+    default: this.onDidChangeActiveEmitter.event
+  - name: onDidChangeSelection
+    type: any
+    default: this.onDidChangeSelectionEmitter.event
+  - name: onDidTriggerItemButton
+    type: any
+    default: this.onDidTriggerItemButtonEmitter.event
+  - name: onDidTriggerSeparatorButton
+    type: any
+    default: this.onDidTriggerSeparatorButtonEmitter.event
+  methods:
+  - name: quickNavigate
+    sig: quickNavigate()
+    lines:
+    - 580
+    - 582
+    detail: {}
+  - name: quickNavigate
+    sig: 'quickNavigate(quickNavigate: IQuickNavigateConfiguration | undefined)'
+    lines:
+    - 584
+    - 587
+    detail:
+      calls:
+      - this.update
+  - name: value
+    sig: value()
+    lines:
+    - 589
+    - 591
+    detail: {}
+  - name: value
+    sig: 'value(value: string)'
+    lines:
+    - 593
+    - 595
+    detail:
+      calls:
+      - this.doSetValue
+  - name: doSetValue
+    sig: 'doSetValue(value: string, skipUpdate?: boolean): void'
+    vis: private
+    lines:
+    - 597
+    - 611
+    detail:
+      calls:
+      - this.filterValue
+      - this.onDidChangeValueEmitter.fire
+      - this.trySelectFirst
+      - this.ui.list.filter
+      - this.update
+  - name: ariaLabel
+    sig: 'ariaLabel(ariaLabel: string | undefined)'
+    lines:
+    - 615
+    - 618
+    detail:
+      calls:
+      - this.update
+  - name: ariaLabel
+    sig: ariaLabel()
+    lines:
+    - 620
+    - 622
+    detail: {}
+  - name: placeholder
+    sig: placeholder()
+    lines:
+    - 624
+    - 626
+    detail: {}
+  - name: placeholder
+    sig: 'placeholder(placeholder: string | undefined)'
+    lines:
+    - 628
+    - 631
+    detail:
+      calls:
+      - this.update
+  - name: items
+    sig: items()
+    lines:
+    - 640
+    - 642
+    detail: {}
+  - name: scrollTop
+    sig: scrollTop()
+    lines:
+    - 644
+    - 646
+    detail: {}
+  - name: items
+    sig: 'items(items: O extends { useSeparators: true } ? Array<T | IQuickPickSeparator> : Array<T>)'
+    lines:
+    - 652
+    - 656
+    detail:
+      calls:
+      - this.update
+  - name: canSelectMany
+    sig: canSelectMany()
+    lines:
+    - 658
+    - 660
+    detail: {}
+  - name: canSelectMany
+    sig: 'canSelectMany(canSelectMany: boolean)'
+    lines:
+    - 662
+    - 665
+    detail:
+      calls:
+      - this.update
+  - name: canAcceptInBackground
+    sig: canAcceptInBackground()
+    lines:
+    - 667
+    - 669
+    detail: {}
+  - name: canAcceptInBackground
+    sig: 'canAcceptInBackground(canAcceptInBackground: boolean)'
+    lines:
+    - 671
+    - 673
+    detail: {}
+  - name: matchOnDescription
+    sig: matchOnDescription()
+    lines:
+    - 675
+    - 677
+    detail: {}
+  - name: matchOnDescription
+    sig: 'matchOnDescription(matchOnDescription: boolean)'
+    lines:
+    - 679
+    - 682
+    detail:
+      calls:
+      - this.update
+  - name: matchOnDetail
+    sig: matchOnDetail()
+    lines:
+    - 684
+    - 686
+    detail: {}
+  - name: matchOnDetail
+    sig: 'matchOnDetail(matchOnDetail: boolean)'
+    lines:
+    - 688
+    - 691
+    detail:
+      calls:
+      - this.update
+  - name: matchOnLabel
+    sig: matchOnLabel()
+    lines:
+    - 693
+    - 695
+    detail: {}
+  - name: matchOnLabel
+    sig: 'matchOnLabel(matchOnLabel: boolean)'
+    lines:
+    - 697
+    - 700
+    detail:
+      calls:
+      - this.update
+  - name: matchOnLabelMode
+    sig: matchOnLabelMode()
+    lines:
+    - 702
+    - 704
+    detail: {}
+  - name: matchOnLabelMode
+    sig: 'matchOnLabelMode(matchOnLabelMode: ''fuzzy'' | ''contiguous'')'
+    lines:
+    - 706
+    - 709
+    detail:
+      calls:
+      - this.update
+  - name: sortByLabel
+    sig: sortByLabel()
+    lines:
+    - 711
+    - 713
+    detail: {}
+  - name: sortByLabel
+    sig: 'sortByLabel(sortByLabel: boolean)'
+    lines:
+    - 715
+    - 718
+    detail:
+      calls:
+      - this.update
+  - name: keepScrollPosition
+    sig: keepScrollPosition()
+    lines:
+    - 720
+    - 722
+    detail: {}
+  - name: keepScrollPosition
+    sig: 'keepScrollPosition(keepScrollPosition: boolean)'
+    lines:
+    - 724
+    - 726
+    detail: {}
+  - name: itemActivation
+    sig: itemActivation()
+    lines:
+    - 728
+    - 730
+    detail: {}
+  - name: itemActivation
+    sig: 'itemActivation(itemActivation: ItemActivation)'
+    lines:
+    - 732
+    - 734
+    detail: {}
+  - name: activeItems
+    sig: activeItems()
+    lines:
+    - 736
+    - 738
+    detail: {}
+  - name: activeItems
+    sig: 'activeItems(activeItems: T[])'
+    lines:
+    - 740
+    - 744
+    detail:
+      calls:
+      - this.update
+  - name: selectedItems
+    sig: selectedItems()
+    lines:
+    - 748
+    - 750
+    detail: {}
+  - name: selectedItems
+    sig: 'selectedItems(selectedItems: T[])'
+    lines:
+    - 752
+    - 756
+    detail:
+      calls:
+      - this.update
+  - name: keyMods
+    sig: keyMods()
+    lines:
+    - 758
+    - 767
+    detail: {}
+  - name: valueSelection
+    sig: valueSelection()
+    lines:
+    - 769
+    - 775
+    detail:
+      calls:
+      - this.ui.inputBox.getSelection
+  - name: valueSelection
+    sig: 'valueSelection(valueSelection: Readonly<[number, number]> | undefined)'
+    lines:
+    - 777
+    - 781
+    detail:
+      calls:
+      - this.update
+  - name: customButton
+    sig: customButton()
+    lines:
+    - 783
+    - 785
+    detail: {}
+  - name: customButton
+    sig: 'customButton(showCustomButton: boolean)'
+    lines:
+    - 787
+    - 790
+    detail:
+      calls:
+      - this.update
+  - name: customLabel
+    sig: customLabel()
+    lines:
+    - 792
+    - 794
+    detail: {}
+  - name: customLabel
+    sig: 'customLabel(label: string | undefined)'
+    lines:
+    - 796
+    - 799
+    detail:
+      calls:
+      - this.update
+  - name: customHover
+    sig: customHover()
+    lines:
+    - 801
+    - 803
+    detail: {}
+  - name: customHover
+    sig: 'customHover(hover: string | undefined)'
+    lines:
+    - 805
+    - 808
+    detail:
+      calls:
+      - this.update
+  - name: ok
+    sig: ok()
+    lines:
+    - 810
+    - 812
+    detail: {}
+  - name: ok
+    sig: 'ok(showOkButton: boolean | ''default'')'
+    lines:
+    - 814
+    - 817
+    detail:
+      calls:
+      - this.update
+  - name: okLabel
+    sig: okLabel()
+    lines:
+    - 819
+    - 821
+    detail:
+      calls:
+      - localize
+  - name: okLabel
+    sig: 'okLabel(okLabel: string | undefined)'
+    lines:
+    - 823
+    - 826
+    detail:
+      calls:
+      - this.update
+  - name: inputHasFocus
+    sig: 'inputHasFocus(): boolean'
+    lines:
+    - 828
+    - 830
+    detail:
+      calls:
+      - this.ui.inputBox.hasFocus
+  - name: focusOnInput
+    sig: focusOnInput()
+    lines:
+    - 832
+    - 834
+    detail:
+      calls:
+      - this.ui.inputBox.setFocus
+  - name: hideInput
+    sig: hideInput()
+    lines:
+    - 836
+    - 838
+    detail: {}
+  - name: hideInput
+    sig: 'hideInput(hideInput: boolean)'
+    lines:
+    - 840
+    - 843
+    detail:
+      calls:
+      - this.update
+  - name: hideCountBadge
+    sig: hideCountBadge()
+    lines:
+    - 845
+    - 847
+    detail: {}
+  - name: hideCountBadge
+    sig: 'hideCountBadge(hideCountBadge: boolean)'
+    lines:
+    - 849
+    - 852
+    detail:
+      calls:
+      - this.update
+  - name: hideCheckAll
+    sig: hideCheckAll()
+    lines:
+    - 854
+    - 856
+    detail: {}
+  - name: hideCheckAll
+    sig: 'hideCheckAll(hideCheckAll: boolean)'
+    lines:
+    - 858
+    - 861
+    detail:
+      calls:
+      - this.update
+  - name: show
+    sig: show()
+    lines:
+    - 875
+    - 946
+    detail:
+      calls:
+      - super.show
+      - this._focusEventBufferer.wrapEvent
+      - "this._focusEventBufferer.wrapEvent(\n\t\t\t\tthis.ui.list.onDidChangeFocus,\n\t\t\t\t// Only fire the last eve..."
+      - this.registerQuickNavigation
+      - this.ui.inputBox.onDidChange
+      - this.ui.list.onButtonTriggered
+      - this.ui.list.onChangedCheckedElements
+      - this.ui.list.onDidChangeSelection
+      - this.ui.list.onSeparatorButtonTriggered
+      - this.ui.onDidAccept
+      - this.ui.onDidCustom
+      - this.visibleDisposables.add
+  - name: registerQuickNavigation
+    sig: registerQuickNavigation()
+    vis: private
+    lines:
+    - 960
+    - 1012
+    detail:
+      calls:
+      - dom.addDisposableListener
+  - name: update
+    sig: update()
+    vis: protected
+    lines:
+    - 1014
+    - 1135
+    detail:
+      calls:
+      - super.update
+      - this._focusEventBufferer.bufferEvents
+      - this.trySelectFirst
+      - this.ui.container.classList.contains
+      - this.ui.inputBox.select
+      - this.ui.list.clearFocus
+      - this.ui.list.domFocus
+      - this.ui.list.focus
+      - this.ui.list.setCheckedElements
+      - this.ui.list.setFocusedElements
+      - this.ui.list.setSelectedElements
+      - this.ui.setVisibilities
+  - name: focus
+    sig: 'focus(focus: QuickPickFocus): void'
+    lines:
+    - 1137
+    - 1143
+    detail:
+      calls:
+      - this.ui.list.domFocus
+      - this.ui.list.focus
+  - name: accept
+    sig: 'accept(inBackground?: boolean | undefined): void'
+    lines:
+    - 1145
+    - 1155
+    detail:
+      calls:
+      - this.handleAccept
+      - this.onDidChangeSelectionEmitter.fire
+  lines:
+  - 533
+  - 1156
+- name: InputBox
+  kind: struct
+  bases:
+  - QuickInput
+  - IInputBox
+  fields:
+  - name: _value
+    type: any
+    default: ''''''
+  - name: _valueSelection
+    type: Readonly<[number, number]> | undefined
+  - name: valueSelectionUpdated
+    type: any
+    default: 'true'
+  - name: _placeholder
+    type: string | undefined
+  - name: _password
+    type: any
+    default: 'false'
+  - name: _prompt
+    type: string | undefined
+  - name: onDidValueChangeEmitter
+    type: any
+    default: this._register(new Emitter<string>())
+  - name: onDidAcceptEmitter
+    type: any
+    default: this._register(new Emitter<void>())
+  - name: type
+    type: any
+    default: QuickInputType.InputBox
+  - name: onDidChangeValue
+    type: any
+    default: this.onDidValueChangeEmitter.event
+  - name: onDidAccept
+    type: any
+    default: this.onDidAcceptEmitter.event
+  methods:
+  - name: value
+    sig: value()
+    lines:
+    - 1170
+    - 1172
+    detail: {}
+  - name: value
+    sig: 'value(value: string)'
+    lines:
+    - 1174
+    - 1177
+    detail:
+      calls:
+      - this.update
+  - name: valueSelection
+    sig: valueSelection()
+    lines:
+    - 1179
+    - 1185
+    detail:
+      calls:
+      - this.ui.inputBox.getSelection
+  - name: valueSelection
+    sig: 'valueSelection(valueSelection: Readonly<[number, number]> | undefined)'
+    lines:
+    - 1187
+    - 1191
+    detail:
+      calls:
+      - this.update
+  - name: placeholder
+    sig: placeholder()
+    lines:
+    - 1193
+    - 1195
+    detail: {}
+  - name: placeholder
+    sig: 'placeholder(placeholder: string | undefined)'
+    lines:
+    - 1197
+    - 1200
+    detail:
+      calls:
+      - this.update
+  - name: password
+    sig: password()
+    lines:
+    - 1202
+    - 1204
+    detail: {}
+  - name: password
+    sig: 'password(password: boolean)'
+    lines:
+    - 1206
+    - 1209
+    detail:
+      calls:
+      - this.update
+  - name: prompt
+    sig: prompt()
+    lines:
+    - 1211
+    - 1213
+    detail: {}
+  - name: prompt
+    sig: 'prompt(prompt: string | undefined)'
+    lines:
+    - 1215
+    - 1221
+    detail:
+      calls:
+      - localize
+      - this.update
+  - name: show
+    sig: show()
+    lines:
+    - 1227
+    - 1241
+    detail:
+      calls:
+      - super.show
+      - this.ui.inputBox.onDidChange
+      - this.ui.onDidAccept
+      - this.visibleDisposables.add
+  - name: update
+    sig: update()
+    vis: protected
+    lines:
+    - 1243
+    - 1272
+    detail:
+      calls:
+      - super.update
+      - this.ui.container.classList.remove
+      - this.ui.inputBox.select
+      - this.ui.setVisibilities
+  lines:
+  - 1158
+  - 1273
+- name: QuickWidget
+  kind: struct
+  bases:
+  - QuickInput
+  - IQuickWidget
+  fields:
+  - name: type
+    type: any
+    default: QuickInputType.QuickWidget
+  lines:
+  - 1275
+  - 1291
+- name: QuickInputHoverDelegate
+  kind: struct
+  bases:
+  - WorkbenchHoverDelegate
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\t@IConfigurationService configurationService: IConfigurationService,\n\t\t@IHoverService hoverService: IHoverService\n\t)"
+    lines:
+    - 1295
+    - 1300
+    detail:
+      calls:
+      - super
+  lines:
+  - 1293
+  - 1322
+exports:
+- name: IQuickInputOptions
+  kind: type
+- name: IQuickInputStyles
+  kind: type
+- name: IQuickInputWidgetStyles
+  kind: type
+- name: Writeable
+  kind: type
+- name: QuickInputUI
+  kind: type
+- name: Visibilities
+  kind: type
+- name: QuickInput
+  kind: type
+- name: QuickPick
+  kind: type
+- name: InputBox
+  kind: type
+- name: QuickWidget
+  kind: type
+- name: QuickInputHoverDelegate
+  kind: type
+- name: inQuickInputContextKeyValue
+  kind: data
+- name: InQuickInputContextKey
+  kind: data
+- name: inQuickInputContext
+  kind: data
+- name: quickInputAlignmentContextKeyValue
+  kind: data
+- name: QuickInputAlignmentContextKey
+  kind: data
+- name: quickInputTypeContextKeyValue
+  kind: data
+- name: QuickInputTypeContextKey
+  kind: data
+- name: endOfQuickInputBoxContextKeyValue
+  kind: data
+- name: EndOfQuickInputBoxContextKey
+  kind: data
+- name: endOfQuickInputBoxContext
+  kind: data
+- name: backButton
+  kind: data

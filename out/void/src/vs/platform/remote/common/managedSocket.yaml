@@ -1,0 +1,150 @@
+## Roska File Descriptor — common/managedSocket.ts
+file: common/managedSocket.ts
+lines: 145
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: ../../../base/common/buffer.js.VSBuffer
+- sym: ../../../base/common/buffer.js.encodeBase64
+- sym: ../../../base/common/event.js.Emitter
+- sym: ../../../base/common/event.js.Event
+- sym: ../../../base/common/event.js.PauseableEmitter
+- sym: ../../../base/common/lifecycle.js.Disposable
+- sym: ../../../base/common/lifecycle.js.DisposableStore
+- sym: ../../../base/parts/ipc/common/ipc.net.js.ISocket
+- sym: ../../../base/parts/ipc/common/ipc.net.js.SocketCloseEvent
+- sym: ../../../base/parts/ipc/common/ipc.net.js.SocketDiagnostics
+- sym: ../../../base/parts/ipc/common/ipc.net.js.SocketDiagnosticsEventType
+data:
+- name: socketRawEndHeaderSequence
+  type: any
+  val: VSBuffer.fromString('\r\n\r\n')
+types:
+- name: RemoteSocketHalf
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: onData
+    type: Emitter<VSBuffer>
+  - name: onClose
+    type: Emitter<SocketCloseEvent>
+  - name: onEnd
+    type: Emitter<void>
+  lines:
+  - 31
+  - 35
+- name: ManagedSocket
+  kind: trait
+  ctx: Pauses data events until a new listener comes in onData()
+  bases:
+  - Disposable
+  - ISocket
+  decorators:
+  - abstract
+  fields:
+  - name: pausableDataEmitter
+    type: any
+    default: this._register(new PauseableEmitter<VSBuffer>())
+  - name: onData
+    type: Event<VSBuffer>
+    default: "(...args) => {\n\t\tif (this.pausableDataEmitter.isPaused) {\n\t\t\tqueueMicrotask(() =..."
+  - name: onClose
+    type: Event<SocketCloseEvent>
+  - name: onEnd
+    type: Event<void>
+  - name: didDisposeEmitter
+    type: any
+    default: this._register(new Emitter<void>())
+  - name: onDidDispose
+    type: any
+    default: this.didDisposeEmitter.event
+  - name: ended
+    type: any
+    default: 'false'
+  methods:
+  - name: pauseData
+    sig: pauseData()
+    lines:
+    - 115
+    - 117
+    detail:
+      calls:
+      - this.pausableDataEmitter.pause
+  - name: drain
+    sig: 'drain(): Promise<void>'
+    lines:
+    - 120
+    - 122
+    detail:
+      calls:
+      - Promise.resolve
+  - name: end
+    sig: 'end(): void'
+    lines:
+    - 125
+    - 128
+    detail:
+      calls:
+      - this.closeRemote
+  - name: traceSocketEvent
+    sig: 'traceSocketEvent(type: SocketDiagnosticsEventType, data?: any): void'
+    lines:
+    - 133
+    - 135
+    detail:
+      calls:
+      - SocketDiagnostics.traceSocketEvent
+  - name: dispose
+    sig: 'dispose(): void'
+    lines:
+    - 137
+    - 144
+    detail:
+      calls:
+      - super.dispose
+      - this.closeRemote
+      - this.didDisposeEmitter.fire
+  lines:
+  - 84
+  - 145
+functions:
+- name: makeRawSocketHeaders
+  sig: 'makeRawSocketHeaders(path: string, query: string, deubgLabel: string)'
+  lines:
+  - 11
+  - 27
+  detail:
+    calls:
+    - Math.random
+    - Math.round
+    - VSBuffer.wrap
+    - encodeBase64
+    - headers.join
+    - new Uint8Array
+- name: connectManagedSocket
+  sig: "connectManagedSocket(\n\tsocket: T,\n\tpath: string, query: string, debugLabel: string,\n\thalf: RemoteSocketHalf\n): Promise<T>"
+  is_async: true
+  lines:
+  - 38
+  - 82
+  detail:
+    calls:
+    - VSBuffer.fromString
+    - d.dispose
+    - makeRawSocketHeaders
+    - new DisposableStore
+    - new Promise
+    - socket.dispose
+    - socket.write
+exports:
+- name: RemoteSocketHalf
+  kind: type
+- name: ManagedSocket
+  kind: type
+- name: makeRawSocketHeaders
+  kind: func
+- name: connectManagedSocket
+  kind: func
+- name: socketRawEndHeaderSequence
+  kind: data

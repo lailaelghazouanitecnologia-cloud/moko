@@ -1,0 +1,295 @@
+## Roska File Descriptor — common/storageIpc.ts
+file: common/storageIpc.ts
+lines: 176
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: ../../../base/common/event.js.Emitter
+- sym: ../../../base/common/event.js.Event
+- sym: ../../../base/common/lifecycle.js.Disposable
+- sym: ../../../base/common/uri.js.UriDto
+- sym: ../../../base/parts/ipc/common/ipc.js.IChannel
+- sym: ../../../base/parts/storage/common/storage.js.IStorageDatabase
+- sym: ../../../base/parts/storage/common/storage.js.IStorageItemsChangeEvent
+- sym: ../../../base/parts/storage/common/storage.js.IUpdateRequest
+- sym: ../../userDataProfile/common/userDataProfile.js.IUserDataProfile
+- sym: ../../workspace/common/workspace.js.ISerializedSingleFolderWorkspaceIdentifier
+- sym: ../../workspace/common/workspace.js.ISerializedWorkspaceIdentifier
+- sym: ../../workspace/common/workspace.js.IEmptyWorkspaceIdentifier
+- sym: ../../workspace/common/workspace.js.IAnyWorkspaceIdentifier
+types:
+- name: Key
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 14
+  - 14
+- name: Value
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 15
+  - 15
+- name: Item
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 16
+  - 16
+- name: IBaseSerializableStorageRequest
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: readonly
+    type: UriDto<IUserDataProfile> | undefined
+  - name: readonly
+    type: ISerializedWorkspaceIdentifier | ISerializedSingleFolderWorkspaceIdentifier | IEmptyWorkspaceIdentifier | undefined
+  - name: readonly
+    type: unknown
+  lines:
+  - 18
+  - 37
+- name: ISerializableUpdateRequest
+  kind: trait
+  bases:
+  - IBaseSerializableStorageRequest
+  decorators:
+  - interface
+  fields:
+  - name: insert
+    type: Item[]
+  - name: delete
+    type: Key[]
+  lines:
+  - 39
+  - 42
+- name: ISerializableItemsChangeEvent
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: readonly
+    type: Item[]
+  - name: readonly
+    type: Key[]
+  lines:
+  - 44
+  - 47
+- name: BaseStorageDatabaseClient
+  kind: trait
+  bases:
+  - Disposable
+  - IStorageDatabase
+  decorators:
+  - abstract
+  fields:
+  - name: onDidChangeItemsExternal
+    type: Event<IStorageItemsChangeEvent>
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tprotected channel: IChannel,\n\t\tprotected profile: UriDto<IUserDataProfile> | undefined,\n\t\tprotected workspace: IAnyWorkspaceIdentifier | undefined\n\t)"
+    lines:
+    - 53
+    - 59
+    detail:
+      calls:
+      - super
+  - name: getItems
+    sig: 'getItems(): Promise<Map<string, string>>'
+    is_async: true
+    lines:
+    - 61
+    - 66
+    detail:
+      calls:
+      - new Map
+      - this.channel.call
+  - name: updateItems
+    sig: 'updateItems(request: IUpdateRequest): Promise<void>'
+    lines:
+    - 68
+    - 80
+    detail:
+      calls:
+      - Array.from
+      - request.delete.values
+      - request.insert.entries
+      - this.channel.call
+  - name: optimize
+    sig: 'optimize(): Promise<void>'
+    lines:
+    - 82
+    - 86
+    detail:
+      calls:
+      - this.channel.call
+  lines:
+  - 49
+  - 89
+- name: BaseProfileAwareStorageDatabaseClient
+  kind: trait
+  bases:
+  - BaseStorageDatabaseClient
+  decorators:
+  - abstract
+  fields:
+  - name: _onDidChangeItemsExternal
+    type: any
+    default: this._register(new Emitter<IStorageItemsChangeEvent>())
+  - name: onDidChangeItemsExternal
+    type: any
+    default: this._onDidChangeItemsExternal.event
+  methods:
+  - name: constructor
+    sig: 'constructor(channel: IChannel, profile: UriDto<IUserDataProfile> | undefined)'
+    lines:
+    - 96
+    - 100
+    detail:
+      calls:
+      - super
+      - this.registerListeners
+  - name: registerListeners
+    sig: 'registerListeners(): void'
+    vis: private
+    lines:
+    - 102
+    - 104
+    detail:
+      calls:
+      - this._register
+      - this.channel.listen
+      - 'this.channel.listen<ISerializableItemsChangeEvent>(''onDidChangeStorage'', { profile: this.profile })'
+  lines:
+  - 91
+  - 114
+- name: ApplicationStorageDatabaseClient
+  kind: struct
+  bases:
+  - BaseProfileAwareStorageDatabaseClient
+  methods:
+  - name: constructor
+    sig: 'constructor(channel: IChannel)'
+    lines:
+    - 118
+    - 120
+    detail:
+      calls:
+      - super
+  - name: close
+    sig: 'close(): Promise<void>'
+    is_async: true
+    lines:
+    - 122
+    - 129
+    detail:
+      calls:
+      - this.dispose
+  lines:
+  - 116
+  - 130
+- name: ProfileStorageDatabaseClient
+  kind: struct
+  bases:
+  - BaseProfileAwareStorageDatabaseClient
+  methods:
+  - name: constructor
+    sig: 'constructor(channel: IChannel, profile: UriDto<IUserDataProfile>)'
+    lines:
+    - 134
+    - 136
+    detail:
+      calls:
+      - super
+  - name: close
+    sig: 'close(): Promise<void>'
+    is_async: true
+    lines:
+    - 138
+    - 146
+    detail:
+      calls:
+      - this.dispose
+  lines:
+  - 132
+  - 147
+- name: WorkspaceStorageDatabaseClient
+  kind: struct
+  ctx: unsupported for workspace storage because we only ever write from one window
+  bases:
+  - BaseStorageDatabaseClient
+  - IStorageDatabase
+  fields:
+  - name: onDidChangeItemsExternal
+    type: any
+    default: Event.None
+  methods:
+  - name: constructor
+    sig: 'constructor(channel: IChannel, workspace: IAnyWorkspaceIdentifier)'
+    lines:
+    - 153
+    - 155
+    detail:
+      calls:
+      - super
+  - name: close
+    sig: 'close(): Promise<void>'
+    is_async: true
+    lines:
+    - 157
+    - 164
+    detail:
+      calls:
+      - this.dispose
+  lines:
+  - 149
+  - 165
+- name: StorageClient
+  kind: struct
+  methods:
+  - name: constructor
+    sig: 'constructor(private readonly channel: IChannel)'
+    lines:
+    - 169
+    - 169
+    detail: {}
+  - name: isUsed
+    sig: 'isUsed(path: string): Promise<boolean>'
+    lines:
+    - 171
+    - 175
+    detail:
+      calls:
+      - this.channel.call
+  lines:
+  - 167
+  - 176
+exports:
+- name: Key
+  kind: type
+- name: Value
+  kind: type
+- name: Item
+  kind: type
+- name: IBaseSerializableStorageRequest
+  kind: type
+- name: ISerializableUpdateRequest
+  kind: type
+- name: ISerializableItemsChangeEvent
+  kind: type
+- name: BaseStorageDatabaseClient
+  kind: type
+- name: BaseProfileAwareStorageDatabaseClient
+  kind: type
+- name: ApplicationStorageDatabaseClient
+  kind: type
+- name: ProfileStorageDatabaseClient
+  kind: type
+- name: WorkspaceStorageDatabaseClient
+  kind: type
+- name: StorageClient
+  kind: type

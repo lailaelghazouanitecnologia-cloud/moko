@@ -1,0 +1,577 @@
+## Roska File Descriptor — browser/web.api.ts
+file: browser/web.api.ts
+lines: 871
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: ../../base/common/performance.js.PerformanceMark
+  kind: typing
+- sym: ../../base/common/uri.js.UriComponents
+  kind: typing
+- sym: ../../base/common/uri.js.URI
+  kind: typing
+- sym: ../../platform/remote/browser/browserSocketFactory.js.IWebSocketFactory
+  kind: typing
+- sym: ../services/url/browser/urlService.js.IURLCallbackProvider
+  kind: typing
+- sym: ../../platform/log/common/log.js.LogLevel
+  kind: typing
+- sym: ../services/update/browser/updateService.js.IUpdateProvider
+  kind: typing
+- sym: ../../base/common/event.js.Event
+  kind: typing
+- sym: ../../base/common/product.js.IProductConfiguration
+  kind: typing
+- sym: ../../platform/secrets/common/secrets.js.ISecretStorageProvider
+  kind: typing
+- sym: ../../platform/tunnel/common/tunnel.js.TunnelProviderFeatures
+  kind: typing
+- sym: ../../platform/progress/common/progress.js.IProgress
+  kind: typing
+- sym: ../../platform/progress/common/progress.js.IProgressCompositeOptions
+  kind: typing
+- sym: ../../platform/progress/common/progress.js.IProgressDialogOptions
+  kind: typing
+- sym: ../../platform/progress/common/progress.js.IProgressNotificationOptions
+  kind: typing
+- sym: ../../platform/progress/common/progress.js.IProgressOptions
+  kind: typing
+- sym: ../../platform/progress/common/progress.js.IProgressStep
+  kind: typing
+- sym: ../../platform/progress/common/progress.js.IProgressWindowOptions
+  kind: typing
+- sym: ../../platform/editor/common/editor.js.ITextEditorOptions
+  kind: typing
+- sym: ../../platform/window/common/window.js.IFolderToOpen
+  kind: typing
+- sym: ../../platform/window/common/window.js.IWorkspaceToOpen
+  kind: typing
+- sym: ../services/editor/common/editorGroupsService.js.EditorGroupLayout
+  kind: typing
+- sym: ../services/terminal/common/embedderTerminalService.js.IEmbedderTerminalOptions
+  kind: typing
+- sym: ../services/authentication/common/authentication.js.IAuthenticationProvider
+  kind: typing
+types:
+- name: IWorkbench
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: commands
+    type: "{\n\n\t\t/**\n\t\t * Allows to execute any command if known with the provided arguments.\n\t\t *\n\t\t * @param command Identifier of the command to execute.\n\t\t * @param rest Parameters passed to the command function.\n\t\t * @return A promise that resolves to the returned value of the given command.\n\t\t */\n\t\texecuteCommand(command: string, ...args: any[]): Promise<unknown>;\n\t}"
+  - name: logger
+    type: "{\n\n\t\t/**\n\t\t * Logging for embedder.\n\t\t *\n\t\t * @param level The log level of the message to be printed.\n\t\t * @param message Message to be printed.\n\t\t */\n\t\tlog(level: LogLevel, message: string): void;\n\t}"
+  - name: env
+    type: "{\n\n\t\t/**\n\t\t * @returns the scheme to use for opening the associated desktop\n\t\t * experience via protocol handler.\n\t\t */\n\t\tgetUriScheme(): Promise<string>;\n\n\t\t/**\n\t\t * Retrieve performance marks that have been collected during startup. This function\n\t\t * returns tuples of source and marks. A source is a dedicated context, like\n\t\t * the renderer or an extension host.\n\t\t *\n\t\t * *Note* that marks can be collected on different machines and in different processes\n\t\t * and that therefore \"different clocks\" are used. So, comparing `startTime`-properties\n\t\t * across contexts should be taken with a grain of salt.\n\t\t *\n\t\t * @returns A promise that resolves to tuples of source and marks.\n\t\t */\n\t\tretrievePerformanceMarks(): Promise<[string, readonly PerformanceMark[]][]>;\n\n\t\t/**\n\t\t * Allows to open a `URI` with the standard opener service of the\n\t\t * workbench.\n\t\t */\n\t\topenUri(target: URI): Promise<boolean>;\n\t}"
+  - name: window
+    type: "{\n\n\t\t/**\n\t\t * Show progress in the editor. Progress is shown while running the given callback\n\t\t * and while the promise it returned isn't resolved nor rejected.\n\t\t *\n\t\t * @param task A callback returning a promise.\n\t\t * @return A promise that resolves to the returned value of the given task result.\n\t\t */\n\t\twithProgress<R>(\n\t\t\toptions: IProgressOptions | IProgressDialogOptions | IProgressNotificationOptions | IProgressWindowOptions | IProgressCompositeOptions,\n\t\t\ttask: (progress: IProgress<IProgressStep>) => Promise<R>\n\t\t): Promise<R>;\n\n\t\t/**\n\t\t * Creates a terminal with limited capabilities that is intended for\n\t\t * writing output from the embedder before the workbench has finished\n\t\t * loading. When an embedder terminal is created it will automatically\n\t\t * show to the user.\n\t\t *\n\t\t * @param options The definition of the terminal, this is similar to\n\t\t * `ExtensionTerminalOptions` in the extension API.\n\t\t */\n\t\tcreateTerminal(options: IEmbedderTerminalOptions): Promise<void>;\n\n\t\t/**\n\t\t * Show an information message to users. Optionally provide an array of items which will be presented as\n\t\t * clickable buttons.\n\t\t *\n\t\t * @param message The message to show.\n\t\t * @param items A set of items that will be rendered as actions in the message.\n\t\t * @returns A thenable that resolves to the selected item or `undefined` when being dismissed.\n\t\t */\n\t\tshowInformationMessage<T extends string>(message: string, ...items: T[]): Promise<T | undefined>;\n\t}"
+  - name: workspace
+    type: "{\n\t\t/**\n\t\t * Resolves once the remote authority has been resolved.\n\t\t */\n\t\tdidResolveRemoteAuthority(): Promise<void>;\n\n\t\t/**\n\t\t * Forwards a port. If the current embedder implements a tunnelFactory then that will be used to make the tunnel.\n\t\t * By default, openTunnel only support localhost; however, a tunnelFactory can be used to support other ips.\n\t\t *\n\t\t * @throws When run in an environment without a remote.\n\t\t *\n\t\t * @param tunnelOptions The `localPort` is a suggestion only. If that port is not available another will be chosen.\n\t\t */\n\t\topenTunnel(tunnelOptions: ITunnelOptions): Promise<ITunnel>;\n\t}"
+  - name: shutdown
+    type: () => Promise<void>
+  lines:
+  - 29
+  - 147
+- name: IWorkbenchConstructionOptions
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: readonly
+    type: string
+  - name: readonly
+    type: string
+  - name: readonly
+    type: string | Promise<string>
+  - name: readonly
+    type: string
+  - name: readonly
+    type: IWebSocketFactory
+  - name: readonly
+    type: IResourceUriProvider
+  - name: readonly
+    type: IExternalUriResolver
+  - name: readonly
+    type: ITunnelProvider
+  - name: readonly
+    type: '{ [providerId: string]: string }'
+  - name: readonly
+    type: string
+  - name: readonly
+    type: IRemoteResourceProvider
+  - name: readonly
+    type: IWorkspaceProvider
+  - name: readonly
+    type: ISettingsSyncOptions
+  - name: readonly
+    type: ISecretStorageProvider
+  - name: readonly
+    type: readonly (MarketplaceExtension | UriComponents)[]
+  - name: readonly
+    type: readonly ExtensionId[]
+  - name: readonly
+    type: string[]
+  - name: readonly
+    type: boolean
+  - name: readonly
+    type: string[]
+  - name: readonly
+    type: IURLCallbackProvider
+  - name: readonly
+    type: ICommonTelemetryPropertiesResolver
+  - name: readonly
+    type: readonly ICommand[]
+  - name: readonly
+    type: IDefaultLayout
+  - name: readonly
+    type: Record<string, any>
+  - name: readonly
+    type: '{ readonly name: string; readonly contents?: string | UriComponents }'
+  - name: readonly
+    type: UriComponents
+  - name: readonly
+    type: IUpdateProvider
+  - name: readonly
+    type: IProductQualityChangeHandler
+  - name: readonly
+    type: IWelcomeBanner
+  - name: readonly
+    type: Partial<IProductConfiguration>
+  - name: readonly
+    type: IWindowIndicator
+  - name: readonly
+    type: IInitialColorTheme
+  - name: readonly
+    type: IWelcomeDialog
+  - name: readonly
+    type: ReadonlyMap<ExtensionId, MessagePort>
+  - name: readonly
+    type: readonly IAuthenticationProvider[]
+  - name: readonly
+    type: IDevelopmentOptions
+  lines:
+  - 149
+  - 390
+- name: IWorkspace
+  kind: enum
+  decorators:
+  - type
+  variants:
+  - name: undefined
+  lines:
+  - 399
+  - 399
+- name: IWorkspaceProvider
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: readonly
+    type: IWorkspace
+  - name: readonly
+    type: object
+  - name: readonly
+    type: boolean | undefined
+  - name: open
+    type: 'method: open(workspace: IWorkspace, options?: { reuse?: boolean; payload?: object }): Promise<boolean>'
+  lines:
+  - 401
+  - 431
+- name: IResourceUriProvider
+  kind: trait
+  decorators:
+  - interface
+  lines:
+  - 433
+  - 435
+- name: ExtensionId
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 440
+  - 440
+- name: MarketplaceExtension
+  kind: enum
+  decorators:
+  - type
+  variants:
+  - name: ExtensionId
+  lines:
+  - 442
+  - 442
+- name: ICommonTelemetryPropertiesResolver
+  kind: trait
+  decorators:
+  - interface
+  lines:
+  - 444
+  - 446
+- name: IExternalUriResolver
+  kind: trait
+  decorators:
+  - interface
+  lines:
+  - 448
+  - 450
+- name: IExternalURLOpener
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: openExternal
+    type: 'method: openExternal(href: string): boolean | Promise<boolean>'
+  lines:
+  - 452
+  - 462
+- name: ITunnelProvider
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: tunnelFactory
+    type: ITunnelFactory
+  - name: showPortCandidate
+    type: IShowPortCandidate
+  - name: features
+    type: TunnelProviderFeatures
+  lines:
+  - 464
+  - 480
+- name: ITunnelFactory
+  kind: trait
+  decorators:
+  - interface
+  lines:
+  - 482
+  - 484
+- name: ITunnelOptions
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: remoteAddress
+    type: '{ port: number; host: string }'
+  - name: localAddressPort
+    type: number
+  - name: privacy
+    type: string
+  - name: protocol
+    type: string
+  lines:
+  - 486
+  - 500
+- name: TunnelCreationOptions
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: elevationRequired
+    type: boolean
+  lines:
+  - 502
+  - 508
+- name: ITunnel
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: remoteAddress
+    type: '{ port: number; host: string }'
+  - name: localAddress
+    type: string
+  - name: privacy
+    type: string
+  - name: protocol
+    type: string
+  - name: onDidDispose
+    type: Event<void>
+  - name: dispose
+    type: 'method: dispose(): Promise<void> | void'
+  lines:
+  - 510
+  - 532
+- name: IShowPortCandidate
+  kind: trait
+  decorators:
+  - interface
+  lines:
+  - 534
+  - 536
+- name: Menu
+  kind: enum
+  variants:
+  - name: CommandPalette
+  - name: StatusBarWindowIndicatorMenu
+  lines:
+  - 538
+  - 541
+- name: ICommand
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: id
+    type: string
+  - name: menu
+    type: Menu | Menu[]
+  - name: handler
+    type: '(...args: any[]) => unknown'
+  lines:
+  - 543
+  - 572
+- name: IWelcomeBanner
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: message
+    type: string
+  - name: icon
+    type: string | UriComponents
+  - name: actions
+    type: IWelcomeLinkAction[]
+  lines:
+  - 574
+  - 593
+- name: IWelcomeLinkAction
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: href
+    type: string
+  lines:
+  - 595
+  - 612
+- name: IWindowIndicator
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: readonly
+    type: Event<void>
+  - name: tooltip
+    type: string
+  - name: command
+    type: string
+  lines:
+  - 614
+  - 638
+- name: ColorScheme
+  kind: enum
+  variants:
+  - name: DARK
+    val: '''dark'''
+  - name: LIGHT
+    val: '''light'''
+  - name: HIGH_CONTRAST_LIGHT
+    val: '''hcLight'''
+  - name: HIGH_CONTRAST_DARK
+    val: '''hcDark'''
+  lines:
+  - 640
+  - 645
+- name: IInitialColorTheme
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: readonly
+    type: ColorScheme
+  - name: readonly
+    type: '{ [colorId: string]: string }'
+  lines:
+  - 647
+  - 658
+- name: IWelcomeDialog
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: id
+    type: string
+  - name: buttonText
+    type: string
+  - name: buttonCommand
+    type: string
+  - name: message
+    type: string
+  - name: media
+    type: '{ altText: string; path: string }'
+  lines:
+  - 660
+  - 692
+- name: IDefaultView
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: readonly
+    type: string
+  lines:
+  - 694
+  - 700
+- name: IDefaultEditor
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: readonly
+    type: number
+  - name: readonly
+    type: UriComponents
+  - name: readonly
+    type: ITextEditorOptions
+  - name: readonly
+    type: boolean
+  lines:
+  - 702
+  - 731
+- name: IDefaultLayout
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: readonly
+    type: IDefaultView[]
+  - name: readonly
+    type: IDefaultEditor[]
+  - name: readonly
+    type: "{\n\n\t\t/**\n\t\t * The layout of the editor area.\n\t\t */\n\t\treadonly editors?: EditorGroupLayout;\n\t}"
+  - name: readonly
+    type: boolean
+  lines:
+  - 733
+  - 761
+- name: IProductQualityChangeHandler
+  kind: trait
+  decorators:
+  - interface
+  lines:
+  - 763
+  - 770
+- name: ISettingsSyncOptions
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: readonly
+    type: boolean
+  - name: readonly
+    type: string
+  - name: enablementHandler
+    type: 'method: enablementHandler?(enablement: boolean, authenticationProvider: string): void'
+  - name: readonly
+    type: "{\n\t\t/**\n\t\t * Unique identifier of the authentication provider.\n\t\t */\n\t\treadonly id: string;\n\n\t\t/**\n\t\t * Called when the user wants to signin to Settings Sync using the given authentication provider.\n\t\t * The returned promise should resolve to the authentication session id.\n\t\t */\n\t\tsignIn(): Promise<string>;\n\t}"
+  lines:
+  - 775
+  - 808
+- name: IDevelopmentOptions
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: readonly
+    type: LogLevel
+  - name: readonly
+    type: '[string, LogLevel][]'
+  - name: readonly
+    type: UriComponents
+  - name: readonly
+    type: readonly UriComponents[]
+  - name: readonly
+    type: boolean
+  lines:
+  - 810
+  - 836
+- name: IRemoteResourceProvider
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: readonly
+    type: string
+  - name: readonly
+    type: Event<IRemoteResourceRequest>
+  lines:
+  - 842
+  - 854
+- name: IRemoteResourceRequest
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: uri
+    type: URI
+  - name: respondWith
+    type: 'method: respondWith(statusCode: number, body: Uint8Array, headers: Record<string, string>): void'
+  lines:
+  - 860
+  - 871
+exports:
+- name: IWorkbench
+  kind: type
+- name: IWorkbenchConstructionOptions
+  kind: type
+- name: IWorkspace
+  kind: type
+- name: IWorkspaceProvider
+  kind: type
+- name: IResourceUriProvider
+  kind: type
+- name: ExtensionId
+  kind: type
+- name: MarketplaceExtension
+  kind: type
+- name: ICommonTelemetryPropertiesResolver
+  kind: type
+- name: IExternalUriResolver
+  kind: type
+- name: IExternalURLOpener
+  kind: type
+- name: ITunnelProvider
+  kind: type
+- name: ITunnelFactory
+  kind: type
+- name: ITunnelOptions
+  kind: type
+- name: TunnelCreationOptions
+  kind: type
+- name: ITunnel
+  kind: type
+- name: IShowPortCandidate
+  kind: type
+- name: Menu
+  kind: type
+- name: ICommand
+  kind: type
+- name: IWelcomeBanner
+  kind: type
+- name: IWelcomeLinkAction
+  kind: type
+- name: IWindowIndicator
+  kind: type
+- name: ColorScheme
+  kind: type
+- name: IInitialColorTheme
+  kind: type
+- name: IWelcomeDialog
+  kind: type
+- name: IDefaultView
+  kind: type
+- name: IDefaultEditor
+  kind: type
+- name: IDefaultLayout
+  kind: type
+- name: IProductQualityChangeHandler
+  kind: type
+- name: ISettingsSyncOptions
+  kind: type
+- name: IDevelopmentOptions
+  kind: type
+- name: IRemoteResourceProvider
+  kind: type
+- name: IRemoteResourceRequest
+  kind: type

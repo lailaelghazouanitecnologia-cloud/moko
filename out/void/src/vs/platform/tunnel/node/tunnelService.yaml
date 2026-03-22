@@ -1,0 +1,270 @@
+## Roska File Descriptor — node/tunnelService.ts
+file: node/tunnelService.ts
+lines: 265
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: net.net
+- sym: ../../../base/node/ports.js.BROWSER_RESTRICTED_PORTS
+- sym: ../../../base/node/ports.js.findFreePortFaster
+- sym: ../../../base/parts/ipc/node/ipc.net.js.NodeSocket
+- sym: ../../../base/common/async.js.Barrier
+- sym: ../../../base/common/lifecycle.js.Disposable
+- sym: ../../../base/common/platform.js.OS
+- sym: ../../../base/parts/ipc/common/ipc.net.js.ISocket
+- sym: ../../configuration/common/configuration.js.IConfigurationService
+- sym: ../../log/common/log.js.ILogService
+- sym: ../../product/common/productService.js.IProductService
+- sym: ../../remote/common/remoteAgentConnection.js.IAddressProvider
+- sym: ../../remote/common/remoteAgentConnection.js.IConnectionOptions
+- sym: ../../remote/common/remoteAgentConnection.js.connectRemoteAgentTunnel
+- sym: ../../remote/common/remoteSocketFactoryService.js.IRemoteSocketFactoryService
+- sym: ../../sign/common/sign.js.ISignService
+- sym: ../common/tunnel.js.AbstractTunnelService
+- sym: ../common/tunnel.js.ISharedTunnelsService
+- sym: ../common/tunnel.js.ITunnelProvider
+- sym: ../common/tunnel.js.ITunnelService
+- sym: ../common/tunnel.js.RemoteTunnel
+- sym: ../common/tunnel.js.TunnelPrivacyId
+- sym: ../common/tunnel.js.isAllInterfaces
+- sym: ../common/tunnel.js.isLocalhost
+- sym: ../common/tunnel.js.isPortPrivileged
+- sym: ../common/tunnel.js.isTunnelProvider
+- sym: ../../../base/common/buffer.js.VSBuffer
+types:
+- name: NodeRemoteTunnel
+  kind: struct
+  bases:
+  - Disposable
+  - RemoteTunnel
+  fields:
+  - name: tunnelRemotePort
+    type: number
+  - name: tunnelLocalPort
+    type: number
+  - name: tunnelRemoteHost
+    type: string
+  - name: localAddress
+    type: string
+  - name: privacy
+    type: any
+    default: TunnelPrivacyId.Private
+  - name: _options
+    type: IConnectionOptions
+  - name: _server
+    type: net.Server
+  - name: _barrier
+    type: Barrier
+  - name: _listeningListener
+    type: () => void
+  - name: _connectionListener
+    type: '(socket: net.Socket) => void'
+  - name: _errorListener
+    type: () => void
+  - name: _socketsDispose
+    type: Map<string, () => void>
+    default: new Map()
+  methods:
+  - name: constructor
+    sig: 'constructor(options: IConnectionOptions, private readonly defaultTunnelHost: string, tunnelRemoteHost: string, tunnelRemotePort: number, private readonly suggestedLocalPort?: number)'
+    lines:
+    - 55
+    - 73
+    detail:
+      calls:
+      - net.createServer
+      - new Barrier
+      - super
+      - this._server.on
+  - name: dispose
+    sig: 'dispose(): Promise<void>'
+    is_async: true
+    lines:
+    - 75
+    - 85
+    detail:
+      calls:
+      - Array.from
+      - disposers.forEach
+      - super.dispose
+      - this._server.close
+      - this._server.removeListener
+      - this._socketsDispose.values
+  - name: waitForReady
+    sig: 'waitForReady(): Promise<this>'
+    is_async: true
+    lines:
+    - 87
+    - 110
+    detail:
+      calls:
+      - findFreePortFaster
+      - isAllInterfaces
+      - this._barrier.wait
+      - this._server.address
+      - this._server.listen
+  - name: _onConnection
+    sig: '_onConnection(localSocket: net.Socket): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 112
+    - 157
+    detail:
+      calls:
+      - connectRemoteAgentTunnel
+      - isAllInterfaces
+      - isLocalhost
+      - localSocket.on
+      - localSocket.pause
+      - localSocket.write
+      - protocol.dispose
+      - protocol.getSocket
+      - protocol.readEntireBuffer
+      - this._mirrorGenericSocket
+      - this._mirrorNodeSocket
+      - this._socketsDispose.set
+  - name: _mirrorGenericSocket
+    sig: '_mirrorGenericSocket(localSocket: net.Socket, remoteSocket: ISocket)'
+    vis: private
+    lines:
+    - 159
+    - 165
+    detail:
+      calls:
+      - localSocket.on
+      - localSocket.resume
+      - remoteSocket.onClose
+      - remoteSocket.onData
+      - remoteSocket.onEnd
+  - name: _mirrorNodeSocket
+    sig: '_mirrorNodeSocket(localSocket: net.Socket, remoteNodeSocket: NodeSocket)'
+    vis: private
+    lines:
+    - 167
+    - 177
+    detail:
+      calls:
+      - localSocket.pipe
+      - remoteSocket.on
+      - remoteSocket.pipe
+  lines:
+  - 37
+  - 178
+- name: BaseTunnelService
+  kind: struct
+  bases:
+  - AbstractTunnelService
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\t@IRemoteSocketFactoryService private readonly remoteSocketFactoryService: IRemoteSocketFactoryService,\n\t\t@ILogService logService: ILogService,\n\t\t@ISignService private readonly signService: ISignService,\n\t\t@IProductService private readonly productService: IProductService,\n\t\t@IConfigurationService configurationService: IConfigurationService\n\t)"
+    lines:
+    - 181
+    - 189
+    detail:
+      calls:
+      - super
+  - name: isPortPrivileged
+    sig: 'isPortPrivileged(port: number): boolean'
+    lines:
+    - 191
+    - 193
+    detail:
+      calls:
+      - isPortPrivileged
+      - os.release
+  - name: retainOrCreateTunnel
+    sig: 'retainOrCreateTunnel(addressOrTunnelProvider: IAddressProvider | ITunnelProvider, remoteHost: string, remotePort: number, localHost: string, localPort: number | undefined, elevateIfNeeded: boolean, privacy?: string, protocol?: string): Promise<RemoteTunnel | string | undefined> | undefined'
+    vis: protected
+    lines:
+    - 195
+    - 221
+    detail:
+      calls:
+      - createRemoteTunnel
+      - isTunnelProvider
+      - this.addTunnelToMap
+      - this.createWithProvider
+      - this.getTunnelFromMap
+      - this.logService.trace
+  lines:
+  - 180
+  - 222
+- name: TunnelService
+  kind: struct
+  bases:
+  - BaseTunnelService
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\t@IRemoteSocketFactoryService remoteSocketFactoryService: IRemoteSocketFactoryService,\n\t\t@ILogService logService: ILogService,\n\t\t@ISignService signService: ISignService,\n\t\t@IProductService productService: IProductService,\n\t\t@IConfigurationService configurationService: IConfigurationService\n\t)"
+    lines:
+    - 225
+    - 233
+    detail:
+      calls:
+      - super
+  lines:
+  - 224
+  - 234
+- name: SharedTunnelsService
+  kind: struct
+  bases:
+  - Disposable
+  - ISharedTunnelsService
+  fields:
+  - name: _serviceBrand
+    type: undefined
+  - name: _tunnelServices
+    type: Map<string, ITunnelService>
+    default: new Map()
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\t@IRemoteSocketFactoryService protected readonly remoteSocketFactoryService: IRemoteSocketFactoryService,\n\t\t@ILogService protected readonly logService: ILogService,\n\t\t@IProductService private readonly productService: IProductService,\n\t\t@ISignService private readonly signService: ISignService,\n\t\t@IConfigurationService private readonly configurationService: IConfigurationService,\n\t)"
+    lines:
+    - 240
+    - 248
+    detail:
+      calls:
+      - super
+  - name: openTunnel
+    sig: 'openTunnel(authority: string, addressProvider: IAddressProvider | undefined, remoteHost: string | undefined, remotePort: number, localHost: string, localPort?: number, elevateIfNeeded?: boolean, privacy?: string, protocol?: string): Promise<RemoteTunnel | string | undefined>'
+    is_async: true
+    lines:
+    - 250
+    - 264
+    detail:
+      calls:
+      - new TunnelService
+      - this._register
+      - this._tunnelServices.get
+      - this._tunnelServices.get(authority)!.openTunnel
+      - this._tunnelServices.has
+      - this._tunnelServices.set
+      - this.logService.trace
+      - tunnelService.onTunnelClosed
+  lines:
+  - 236
+  - 265
+functions:
+- name: createRemoteTunnel
+  sig: 'createRemoteTunnel(options: IConnectionOptions, defaultTunnelHost: string, tunnelRemoteHost: string, tunnelRemotePort: number, tunnelLocalPort?: number): Promise<RemoteTunnel>'
+  is_async: true
+  lines:
+  - 24
+  - 35
+  detail:
+    calls:
+    - new NodeRemoteTunnel
+    - readyTunnel?.dispose
+    - tunnel.waitForReady
+exports:
+- name: NodeRemoteTunnel
+  kind: type
+- name: BaseTunnelService
+  kind: type
+- name: TunnelService
+  kind: type
+- name: SharedTunnelsService
+  kind: type
+- name: createRemoteTunnel
+  kind: func

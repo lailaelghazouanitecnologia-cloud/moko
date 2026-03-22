@@ -1,0 +1,567 @@
+## Roska File Descriptor — viewLayout/viewLayout.ts
+file: viewLayout/viewLayout.ts
+lines: 480
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: ../../../base/common/event.js.Event
+- sym: ../../../base/common/event.js.Emitter
+- sym: ../../../base/common/lifecycle.js.Disposable
+- sym: ../../../base/common/lifecycle.js.IDisposable
+- sym: ../../../base/common/scrollable.js.IScrollPosition
+- sym: ../../../base/common/scrollable.js.ScrollEvent
+- sym: ../../../base/common/scrollable.js.Scrollable
+- sym: ../../../base/common/scrollable.js.ScrollbarVisibility
+- sym: ../../../base/common/scrollable.js.INewScrollPosition
+- sym: ../config/editorOptions.js.ConfigurationChangedEvent
+- sym: ../config/editorOptions.js.EditorOption
+- sym: ../editorCommon.js.ScrollType
+- sym: ../config/editorConfiguration.js.IEditorConfiguration
+- sym: ./linesLayout.js.LinesLayout
+- sym: ../viewModel.js.IEditorWhitespace
+- sym: ../viewModel.js.IPartialViewLinesViewportData
+- sym: ../viewModel.js.IViewLayout
+- sym: ../viewModel.js.IViewWhitespaceViewportData
+- sym: ../viewModel.js.IWhitespaceChangeAccessor
+- sym: ../viewModel.js.Viewport
+- sym: ../viewModelEventDispatcher.js.ContentSizeChangedEvent
+data:
+- name: SMOOTH_SCROLLING_TIME
+  type: number
+  val: '125'
+types:
+- name: EditorScrollDimensions
+  kind: struct
+  fields:
+  - name: width
+    type: number
+  - name: contentWidth
+    type: number
+  - name: scrollWidth
+    type: number
+  - name: height
+    type: number
+  - name: contentHeight
+    type: number
+  - name: scrollHeight
+    type: number
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\twidth: number,\n\t\tcontentWidth: number,\n\t\theight: number,\n\t\tcontentHeight: number,\n\t)"
+    lines:
+    - 28
+    - 60
+    detail:
+      calls:
+      - Math.max
+  - name: equals
+    sig: 'equals(other: EditorScrollDimensions): boolean'
+    lines:
+    - 62
+    - 69
+    detail: {}
+  lines:
+  - 18
+  - 70
+- name: EditorScrollable
+  kind: struct
+  bases:
+  - Disposable
+  fields:
+  - name: _scrollable
+    type: Scrollable
+  - name: _dimensions
+    type: EditorScrollDimensions
+  - name: onDidScroll
+    type: Event<ScrollEvent>
+  - name: _onDidContentSizeChange
+    type: any
+    default: this._register(new Emitter<ContentSizeChangedEvent>())
+  - name: onDidContentSizeChange
+    type: Event<ContentSizeChangedEvent>
+    default: this._onDidContentSizeChange.event
+  methods:
+  - name: constructor
+    sig: 'constructor(smoothScrollDuration: number, scheduleAtNextAnimationFrame: (callback: () => void) => IDisposable)'
+    lines:
+    - 82
+    - 91
+    detail:
+      calls:
+      - new EditorScrollDimensions
+      - new Scrollable
+      - super
+      - this._register
+  - name: getScrollable
+    sig: 'getScrollable(): Scrollable'
+    lines:
+    - 93
+    - 95
+    detail: {}
+  - name: setSmoothScrollDuration
+    sig: 'setSmoothScrollDuration(smoothScrollDuration: number): void'
+    lines:
+    - 97
+    - 99
+    detail:
+      calls:
+      - this._scrollable.setSmoothScrollDuration
+  - name: validateScrollPosition
+    sig: 'validateScrollPosition(scrollPosition: INewScrollPosition): IScrollPosition'
+    lines:
+    - 101
+    - 103
+    detail:
+      calls:
+      - this._scrollable.validateScrollPosition
+  - name: getScrollDimensions
+    sig: 'getScrollDimensions(): EditorScrollDimensions'
+    lines:
+    - 105
+    - 107
+    detail: {}
+  - name: setScrollDimensions
+    sig: 'setScrollDimensions(dimensions: EditorScrollDimensions): void'
+    lines:
+    - 109
+    - 132
+    detail:
+      calls:
+      - new ContentSizeChangedEvent
+      - this._dimensions.equals
+      - this._onDidContentSizeChange.fire
+      - this._scrollable.setScrollDimensions
+  - name: getFutureScrollPosition
+    sig: 'getFutureScrollPosition(): IScrollPosition'
+    lines:
+    - 134
+    - 136
+    detail:
+      calls:
+      - this._scrollable.getFutureScrollPosition
+  - name: getCurrentScrollPosition
+    sig: 'getCurrentScrollPosition(): IScrollPosition'
+    lines:
+    - 138
+    - 140
+    detail:
+      calls:
+      - this._scrollable.getCurrentScrollPosition
+  - name: setScrollPositionNow
+    sig: 'setScrollPositionNow(update: INewScrollPosition): void'
+    lines:
+    - 142
+    - 144
+    detail:
+      calls:
+      - this._scrollable.setScrollPositionNow
+  - name: setScrollPositionSmooth
+    sig: 'setScrollPositionSmooth(update: INewScrollPosition): void'
+    lines:
+    - 146
+    - 148
+    detail:
+      calls:
+      - this._scrollable.setScrollPositionSmooth
+  - name: hasPendingScrollAnimation
+    sig: 'hasPendingScrollAnimation(): boolean'
+    lines:
+    - 150
+    - 152
+    detail:
+      calls:
+      - this._scrollable.hasPendingScrollAnimation
+  lines:
+  - 72
+  - 153
+- name: ViewLayout
+  kind: struct
+  ctx: '---- begin view event handlers'
+  bases:
+  - Disposable
+  - IViewLayout
+  fields:
+  - name: _configuration
+    type: IEditorConfiguration
+  - name: _linesLayout
+    type: LinesLayout
+  - name: _maxLineWidth
+    type: number
+  - name: _overlayWidgetsMinWidth
+    type: number
+  - name: _scrollable
+    type: EditorScrollable
+  - name: onDidScroll
+    type: Event<ScrollEvent>
+  - name: onDidContentSizeChange
+    type: Event<ContentSizeChangedEvent>
+  methods:
+  - name: constructor
+    sig: 'constructor(configuration: IEditorConfiguration, lineCount: number, scheduleAtNextAnimationFrame: (callback: () => void) => IDisposable)'
+    lines:
+    - 166
+    - 191
+    detail:
+      calls:
+      - new EditorScrollDimensions
+      - new EditorScrollable
+      - new LinesLayout
+      - options.get
+      - super
+      - this._configureSmoothScrollDuration
+      - this._register
+      - this._scrollable.setScrollDimensions
+      - this._updateHeight
+  - name: dispose
+    sig: 'dispose(): void'
+    lines:
+    - 193
+    - 195
+    detail:
+      calls:
+      - super.dispose
+  - name: getScrollable
+    sig: 'getScrollable(): Scrollable'
+    lines:
+    - 197
+    - 199
+    detail:
+      calls:
+      - this._scrollable.getScrollable
+  - name: onHeightMaybeChanged
+    sig: 'onHeightMaybeChanged(): void'
+    lines:
+    - 201
+    - 203
+    detail:
+      calls:
+      - this._updateHeight
+  - name: onConfigurationChanged
+    sig: 'onConfigurationChanged(e: ConfigurationChangedEvent): void'
+    lines:
+    - 211
+    - 238
+    detail:
+      calls:
+      - e.hasChanged
+      - new EditorScrollDimensions
+      - options.get
+      - this._configureSmoothScrollDuration
+      - this._getContentHeight
+      - this._linesLayout.setLineHeight
+      - this._linesLayout.setPadding
+      - this._scrollable.getScrollDimensions
+      - this._scrollable.setScrollDimensions
+      - this._updateHeight
+  - name: onFlushed
+    sig: 'onFlushed(lineCount: number): void'
+    lines:
+    - 239
+    - 241
+    detail:
+      calls:
+      - this._linesLayout.onFlushed
+  - name: onLinesDeleted
+    sig: 'onLinesDeleted(fromLineNumber: number, toLineNumber: number): void'
+    lines:
+    - 242
+    - 244
+    detail:
+      calls:
+      - this._linesLayout.onLinesDeleted
+  - name: onLinesInserted
+    sig: 'onLinesInserted(fromLineNumber: number, toLineNumber: number): void'
+    lines:
+    - 245
+    - 247
+    detail:
+      calls:
+      - this._linesLayout.onLinesInserted
+  - name: _getContentHeight
+    sig: '_getContentHeight(width: number, height: number, contentWidth: number): number'
+    vis: private
+    lines:
+    - 265
+    - 276
+    detail:
+      calls:
+      - Math.max
+      - options.get
+      - this._getHorizontalScrollbarHeight
+      - this._linesLayout.getLinesTotalHeight
+  - name: _updateHeight
+    sig: '_updateHeight(): void'
+    vis: private
+    lines:
+    - 278
+    - 289
+    detail:
+      calls:
+      - new EditorScrollDimensions
+      - this._getContentHeight
+      - this._scrollable.getScrollDimensions
+      - this._scrollable.setScrollDimensions
+  - name: getCurrentViewport
+    sig: 'getCurrentViewport(): Viewport'
+    lines:
+    - 293
+    - 302
+    detail:
+      calls:
+      - new Viewport
+      - this._scrollable.getCurrentScrollPosition
+      - this._scrollable.getScrollDimensions
+  - name: getFutureViewport
+    sig: 'getFutureViewport(): Viewport'
+    lines:
+    - 304
+    - 313
+    detail:
+      calls:
+      - new Viewport
+      - this._scrollable.getFutureScrollPosition
+      - this._scrollable.getScrollDimensions
+  - name: _computeContentWidth
+    sig: '_computeContentWidth(): number'
+    vis: private
+    lines:
+    - 315
+    - 336
+    detail:
+      calls:
+      - Math.max
+      - options.get
+      - this._linesLayout.getWhitespaceMinWidth
+  - name: setMaxLineWidth
+    sig: 'setMaxLineWidth(maxLineWidth: number): void'
+    lines:
+    - 338
+    - 341
+    detail:
+      calls:
+      - this._updateContentWidth
+  - name: setOverlayWidgetsMinWidth
+    sig: 'setOverlayWidgetsMinWidth(maxMinWidth: number): void'
+    lines:
+    - 343
+    - 346
+    detail:
+      calls:
+      - this._updateContentWidth
+  - name: _updateContentWidth
+    sig: '_updateContentWidth(): void'
+    vis: private
+    lines:
+    - 348
+    - 359
+    detail:
+      calls:
+      - new EditorScrollDimensions
+      - this._computeContentWidth
+      - this._scrollable.getScrollDimensions
+      - this._scrollable.setScrollDimensions
+      - this._updateHeight
+  - name: saveState
+    sig: 'saveState(): { scrollTop: number; scrollTopWithoutViewZones: number; scrollLeft: number }'
+    lines:
+    - 363
+    - 373
+    detail:
+      calls:
+      - this._linesLayout.getLineNumberAtOrAfterVerticalOffset
+      - this._linesLayout.getWhitespaceAccumulatedHeightBeforeLineNumber
+      - this._scrollable.getFutureScrollPosition
+  - name: changeWhitespace
+    sig: 'changeWhitespace(callback: (accessor: IWhitespaceChangeAccessor) => void): boolean'
+    lines:
+    - 376
+    - 382
+    detail:
+      calls:
+      - this._linesLayout.changeWhitespace
+      - this.onHeightMaybeChanged
+  - name: getVerticalOffsetForLineNumber
+    sig: 'getVerticalOffsetForLineNumber(lineNumber: number, includeViewZones: boolean = false): number'
+    lines:
+    - 383
+    - 385
+    detail:
+      calls:
+      - this._linesLayout.getVerticalOffsetForLineNumber
+  - name: getVerticalOffsetAfterLineNumber
+    sig: 'getVerticalOffsetAfterLineNumber(lineNumber: number, includeViewZones: boolean = false): number'
+    lines:
+    - 386
+    - 388
+    detail:
+      calls:
+      - this._linesLayout.getVerticalOffsetAfterLineNumber
+  - name: isAfterLines
+    sig: 'isAfterLines(verticalOffset: number): boolean'
+    lines:
+    - 389
+    - 391
+    detail:
+      calls:
+      - this._linesLayout.isAfterLines
+  - name: isInTopPadding
+    sig: 'isInTopPadding(verticalOffset: number): boolean'
+    lines:
+    - 392
+    - 394
+    detail:
+      calls:
+      - this._linesLayout.isInTopPadding
+  - name: isInBottomPadding
+    sig: 'isInBottomPadding(verticalOffset: number): boolean'
+    lines:
+    - 395
+    - 397
+    detail:
+      calls:
+      - this._linesLayout.isInBottomPadding
+  - name: getLineNumberAtVerticalOffset
+    sig: 'getLineNumberAtVerticalOffset(verticalOffset: number): number'
+    lines:
+    - 399
+    - 401
+    detail:
+      calls:
+      - this._linesLayout.getLineNumberAtOrAfterVerticalOffset
+  - name: getWhitespaceAtVerticalOffset
+    sig: 'getWhitespaceAtVerticalOffset(verticalOffset: number): IViewWhitespaceViewportData | null'
+    lines:
+    - 403
+    - 405
+    detail:
+      calls:
+      - this._linesLayout.getWhitespaceAtVerticalOffset
+  - name: getLinesViewportData
+    sig: 'getLinesViewportData(): IPartialViewLinesViewportData'
+    lines:
+    - 406
+    - 409
+    detail:
+      calls:
+      - this._linesLayout.getLinesViewportData
+      - this.getCurrentViewport
+  - name: getLinesViewportDataAtScrollTop
+    sig: 'getLinesViewportDataAtScrollTop(scrollTop: number): IPartialViewLinesViewportData'
+    lines:
+    - 410
+    - 420
+    detail:
+      calls:
+      - this._linesLayout.getLinesViewportData
+      - this._scrollable.getScrollDimensions
+  - name: getWhitespaceViewportData
+    sig: 'getWhitespaceViewportData(): IViewWhitespaceViewportData[]'
+    lines:
+    - 421
+    - 424
+    detail:
+      calls:
+      - this._linesLayout.getWhitespaceViewportData
+      - this.getCurrentViewport
+  - name: getWhitespaces
+    sig: 'getWhitespaces(): IEditorWhitespace[]'
+    lines:
+    - 425
+    - 427
+    detail:
+      calls:
+      - this._linesLayout.getWhitespaces
+  - name: getContentWidth
+    sig: 'getContentWidth(): number'
+    lines:
+    - 431
+    - 434
+    detail:
+      calls:
+      - this._scrollable.getScrollDimensions
+  - name: getScrollWidth
+    sig: 'getScrollWidth(): number'
+    lines:
+    - 435
+    - 438
+    detail:
+      calls:
+      - this._scrollable.getScrollDimensions
+  - name: getContentHeight
+    sig: 'getContentHeight(): number'
+    lines:
+    - 439
+    - 442
+    detail:
+      calls:
+      - this._scrollable.getScrollDimensions
+  - name: getScrollHeight
+    sig: 'getScrollHeight(): number'
+    lines:
+    - 443
+    - 446
+    detail:
+      calls:
+      - this._scrollable.getScrollDimensions
+  - name: getCurrentScrollLeft
+    sig: 'getCurrentScrollLeft(): number'
+    lines:
+    - 448
+    - 451
+    detail:
+      calls:
+      - this._scrollable.getCurrentScrollPosition
+  - name: getCurrentScrollTop
+    sig: 'getCurrentScrollTop(): number'
+    lines:
+    - 452
+    - 455
+    detail:
+      calls:
+      - this._scrollable.getCurrentScrollPosition
+  - name: validateScrollPosition
+    sig: 'validateScrollPosition(scrollPosition: INewScrollPosition): IScrollPosition'
+    lines:
+    - 457
+    - 459
+    detail:
+      calls:
+      - this._scrollable.validateScrollPosition
+  - name: setScrollPosition
+    sig: 'setScrollPosition(position: INewScrollPosition, type: ScrollType): void'
+    lines:
+    - 461
+    - 467
+    detail:
+      calls:
+      - this._scrollable.setScrollPositionNow
+      - this._scrollable.setScrollPositionSmooth
+  - name: hasPendingScrollAnimation
+    sig: 'hasPendingScrollAnimation(): boolean'
+    lines:
+    - 469
+    - 471
+    detail:
+      calls:
+      - this._scrollable.hasPendingScrollAnimation
+  - name: deltaScrollNow
+    sig: 'deltaScrollNow(deltaScrollLeft: number, deltaScrollTop: number): void'
+    lines:
+    - 473
+    - 479
+    detail:
+      calls:
+      - this._scrollable.getCurrentScrollPosition
+      - this._scrollable.setScrollPositionNow
+  lines:
+  - 155
+  - 480
+exports:
+- name: EditorScrollDimensions
+  kind: type
+- name: EditorScrollable
+  kind: type
+- name: ViewLayout
+  kind: type
+- name: SMOOTH_SCROLLING_TIME
+  kind: data

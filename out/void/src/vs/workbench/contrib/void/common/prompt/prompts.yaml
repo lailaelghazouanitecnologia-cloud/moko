@@ -1,0 +1,425 @@
+## Roska File Descriptor — prompt/prompts.ts
+file: prompt/prompts.ts
+lines: 1069
+layer: logic
+purpose: '-------------------------------------------------------------------------------------- Copyright 2025 Glass Devtools, Inc. All rights reserved. Licensed under the Apache License, Version 2.0. See LICENSE.txt for more information. --------------------------------------------------------------------------------------'
+imports:
+- sym: ../../../../../base/common/uri.js.URI
+- sym: ../../../../../platform/files/common/files.js.IFileService
+- sym: ../directoryStrService.js.IDirectoryStrService
+- sym: ../chatThreadServiceTypes.js.StagingSelectionItem
+- sym: ../helpers/systemInfo.js.os
+- sym: ../sendLLMMessageTypes.js.RawToolParamsObj
+- sym: ../toolsServiceTypes.js.approvalTypeOfBuiltinToolName
+- sym: ../toolsServiceTypes.js.BuiltinToolCallParams
+- sym: ../toolsServiceTypes.js.BuiltinToolName
+- sym: ../toolsServiceTypes.js.BuiltinToolResultType
+- sym: ../toolsServiceTypes.js.ToolName
+- sym: ../voidSettingsTypes.js.ChatMode
+data:
+- name: tripleTick
+  type: array
+  val: '[''```'', ''```'']'
+- name: MAX_DIRSTR_CHARS_TOTAL_BEGINNING
+  type: any
+  val: 20_000
+- name: MAX_DIRSTR_CHARS_TOTAL_TOOL
+  type: any
+  val: 20_000
+- name: MAX_DIRSTR_RESULTS_TOTAL_BEGINNING
+  type: number
+  val: '100'
+- name: MAX_DIRSTR_RESULTS_TOTAL_TOOL
+  type: number
+  val: '100'
+- name: MAX_FILE_CHARS_PAGE
+  type: any
+  val: 500_000
+- name: MAX_CHILDREN_URIs_PAGE
+  type: number
+  val: '500'
+- name: MAX_TERMINAL_CHARS
+  type: any
+  val: 100_000
+- name: MAX_TERMINAL_INACTIVE_TIME
+  type: number
+  val: '8'
+- name: MAX_TERMINAL_BG_COMMAND_TIME
+  type: number
+  val: '5'
+- name: MAX_PREFIX_SUFFIX_CHARS
+  type: any
+  val: 20_000
+- name: ORIGINAL
+  type: string
+  val: '`<<<<<<< ORIGINAL`'
+- name: DIVIDER
+  type: string
+  val: '`=======`'
+- name: FINAL
+  type: string
+  val: '`>>>>>>> UPDATED`'
+- name: searchReplaceBlockTemplate
+  type: string
+  val: |-
+    `\
+    ${ORIGINAL}
+    // ... original code goes here
+    ${DIVIDER}
+    // ... final code goes here
+    ${FINAL}
+
+    ${ORIGINAL}
+    // ... origin...
+- name: createSearchReplaceBlocks_systemMessage
+  type: string
+  val: |-
+    `\
+    You are a coding assistant that takes in a diff, and outputs SEARCH/REPLACE code blocks to implement the change(s) in...
+- name: replaceTool_description
+  type: string
+  val: |-
+    `\
+    A string of SEARCH/REPLACE block(s) which will be applied to the given file.
+    Your SEARCH/REPLACE blocks string must b...
+- name: chatSuggestionDiffExample
+  type: string
+  val: |-
+    `\
+    ${tripleTick[0]}typescript
+    /Users/username/Dekstop/my_project/app.ts
+    // ... existing code ...
+    // {{change 1}}
+    // ... ...
+- name: paginationParam
+  type: object
+  val: "{\n\tpage_number: { description: 'Optional. The page number of the result. Default is 1.' }\n} as const"
+- name: terminalDescHelper
+  type: string
+  val: '`You can use this tool to run any command: sed, grep, etc. Do not edit any files with this tool; use edit_file instead. ...'
+- name: cwdHelper
+  type: string
+  val: '''Optional. The directory in which to run the command. Defaults to the first workspace folder.'''
+- name: builtinTools
+  type: "{\n\t[T in keyof BuiltinToolCallParams]: {\n\t\tname: string;\n\t\tdescription: string;\n\t\t// more params can be generated than exist here, but these params must be a subset of them\n\t\tparams: Partial<{ [paramName in keyof SnakeCaseKeys<BuiltinToolCallParams[T]>]: { description: string } }>\n\t}\n}"
+  val: "{\n\t// --- context-gathering (read/search/list) ---\n\n\tread_file: {\n\t\tname: 'read_file',\n\t\tdescription: `Returns full cont..."
+- name: builtinToolNames
+  type: any
+  val: Object.keys(builtinTools) as BuiltinToolName[]
+- name: toolNamesSet
+  type: any
+  val: new Set<string>(builtinToolNames)
+- name: DEFAULT_FILE_SIZE_LIMIT
+  type: any
+  val: 2_000_000
+- name: rewriteCode_systemMessage
+  type: string
+  val: |-
+    `\
+    You are a coding assistant that re-writes an entire file to make a change. You are given the original file \`ORIGINAL...
+- name: searchReplaceGivenDescription_systemMessage
+  type: any
+  val: createSearchReplaceBlocks_systemMessage
+- name: defaultQuickEditFimTags
+  type: QuickEditFimTagsType
+  val: "{\n\tpreTag: 'ABOVE',\n\tsufTag: 'BELOW',\n\tmidTag: 'SELECTION',\n}"
+- name: gitCommitMessage_systemMessage
+  type: string
+  val: |-
+    `
+    You are an expert software engineer AI assistant responsible for writing clear and concise Git commit messages that su...
+types:
+- name: InternalToolInfo
+  kind: typealias
+  decorators:
+  - type
+  fields:
+  - name: description
+    type: string
+  - name: params
+    type: "{\n\t\t[paramName: string]: { description: string }\n\t}"
+  lines:
+  - 144
+  - 152
+- name: SnakeCase
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 170
+  - 178
+- name: SnakeCaseKeys
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 180
+  - 182
+- name: QuickEditFimTagsType
+  kind: typealias
+  decorators:
+  - type
+  fields:
+  - name: preTag
+    type: string
+  - name: sufTag
+    type: string
+  - name: midTag
+    type: string
+  lines:
+  - 747
+  - 751
+functions:
+- name: uriParam
+  sig: 'uriParam(object: string)'
+  lines:
+  - 156
+  - 158
+- name: isABuiltinToolName
+  sig: 'isABuiltinToolName(toolName: string)'
+  lines:
+  - 352
+  - 355
+  detail:
+    calls:
+    - toolNamesSet.has
+- name: availableTools
+  sig: 'availableTools(chatMode: ChatMode | null, mcpTools: InternalToolInfo[] | undefined)'
+  lines:
+  - 361
+  - 378
+  detail:
+    calls:
+    - (Object.keys(builtinTools) as BuiltinToolName[]).filter
+    - Object.keys
+    - builtinToolNames?.map
+- name: toolCallDefinitionsXMLString
+  sig: 'toolCallDefinitionsXMLString(tools: InternalToolInfo[])'
+  lines:
+  - 380
+  - 390
+  detail:
+    calls:
+    - tools.map
+    - "tools.map((t, i) => {\n\t\tconst params = Object.keys(t.params).map(paramName => `<${paramName}>${t.par..."
+- name: reParsedToolXMLString
+  sig: 'reParsedToolXMLString(toolName: ToolName, toolParams: RawToolParamsObj)'
+  lines:
+  - 392
+  - 398
+  detail:
+    calls:
+    - Object.keys
+    - Object.keys(toolParams).map
+    - Object.keys(toolParams).map(paramName => `<${paramName}>${toolParams[paramName]}</${paramName}>`).jo...
+    - "`\\\n    <${toolName}>${!params ? '' : `\\n${params}`}\n    </${toolName}>`\n\t\t.replace"
+- name: systemToolsXMLPrompt
+  sig: 'systemToolsXMLPrompt(chatMode: ChatMode, mcpTools: InternalToolInfo[] | undefined)'
+  lines:
+  - 402
+  - 423
+  detail:
+    calls:
+    - availableTools
+    - toolCallDefinitionsXMLString
+- name: chat_systemMessage
+  sig: 'chat_systemMessage({ workspaceFolders, openedURIs, activeURI, persistentTerminalIDs, directoryStr, chatMode: mode, mcpTools, includeXMLToolDefinitions }: { workspaceFolders: string[], directoryStr: string, openedURIs: string[], activeURI: string | undefined, persistentTerminalIDs: string[], chatMode: ChatMode, mcpTools: InternalToolInfo[] | undefined, includeXMLToolDefinitions: boolean })'
+  lines:
+  - 428
+  - 530
+  detail:
+    calls:
+    - "ansStrs\n\t\t.join"
+    - "ansStrs\n\t\t.join('\\n\\n\\n')\n\t\t.trim"
+    - "ansStrs\n\t\t.join('\\n\\n\\n')\n\t\t.trim()\n\t\t.replace"
+    - ansStrs.push
+    - details.map
+    - details.map((d, i) => `${i + 1}. ${d}`).join
+    - details.push
+    - new Date
+    - new Date().toDateString
+    - openedURIs.join
+    - persistentTerminalIDs.join
+    - systemToolsXMLPrompt
+    - workspaceFolders.join
+- name: readFile
+  sig: "readFile(fileService: IFileService, uri: URI, fileSizeLimit: number): Promise<{\n\tval: string,\n\ttruncated: boolean,\n\tfullFileLen: number,\n} | {\n\tval: null,\n\ttruncated?: undefined\n\tfullFileLen?: undefined,\n}>"
+  is_async: true
+  lines:
+  - 541
+  - 559
+  detail:
+    calls:
+    - fileContent.value.toString
+    - fileService.readFile
+    - val.substring
+- name: messageOfSelection
+  sig: "messageOfSelection(\n\ts: StagingSelectionItem,\n\topts: {\n\t\tdirectoryStrService: IDirectoryStrService,\n\t\tfileService: IFileService,\n\t\tfolderOpts: {\n\t\t\tmaxChildren: number,\n\t\t\tmaxCharsPerFile: number,\n\t\t}\n\t}\n)"
+  is_async: true
+  lines:
+  - 565
+  - 616
+  detail:
+    calls:
+    - Promise.all
+    - '[folderStructure, ...strOfFiles].join'
+    - lineNumAddition
+    - lines?.slice
+    - lines?.slice(s.range[0] - 1, s.range[1]).join
+    - opts.directoryStrService.getAllURIsInDirectory
+    - opts.directoryStrService.getDirectoryStrTool
+    - readFile
+    - uris.map
+    - val?.split
+- name: chat_userMessageContent
+  sig: "chat_userMessageContent(\n\tinstructions: string,\n\tcurrSelns: StagingSelectionItem[] | null,\n\topts: {\n\t\tdirectoryStrService: IDirectoryStrService,\n\t\tfileService: IFileService\n\t},\n)"
+  is_async: true
+  lines:
+  - 619
+  - 644
+  detail:
+    calls:
+    - (currSelns ?? []).map
+    - Promise.all
+    - selnsStrs.join
+- name: rewriteCode_userMessage
+  sig: 'rewriteCode_userMessage({ originalCode, applyStr, language }: { originalCode: string, applyStr: string, language: string })'
+  lines:
+  - 660
+  - 676
+  detail: {}
+- name: searchReplaceGivenDescription_userMessage
+  sig: 'searchReplaceGivenDescription_userMessage({ originalCode, applyStr }: { originalCode: string, applyStr: string })'
+  lines:
+  - 685
+  - 692
+  detail: {}
+- name: voidPrefixAndSuffix
+  sig: 'voidPrefixAndSuffix({ fullFileStr, startLine, endLine }: { fullFileStr: string, startLine: number, endLine: number })'
+  lines:
+  - 698
+  - 742
+  detail:
+    calls:
+    - fullFileStr.split
+- name: ctrlKStream_systemMessage
+  sig: 'ctrlKStream_systemMessage({ quickEditFIMTags: { preTag, midTag, sufTag } }: { quickEditFIMTags: QuickEditFimTagsType })'
+  lines:
+  - 759
+  - 772
+  detail: {}
+- name: ctrlKStream_userMessage
+  sig: "ctrlKStream_userMessage({\n\tselection,\n\tprefix,\n\tsuffix,\n\tinstructions,\n\t// isOllamaFIM: false, // Remove unused variable\n\tfimTags,\n\tlanguage }: {\n\t\tselection: string, prefix: string, suffix: string, instructions: string, fimTags: QuickEditFimTagsType, language: string,\n\t})"
+  lines:
+  - 774
+  - 806
+  detail: {}
+- name: gitCommitMessage_userMessage
+  sig: 'gitCommitMessage_userMessage(stat: string, sampledDiffs: string, branch: string, log: string)'
+  lines:
+  - 1046
+  - 1069
+  detail:
+    calls:
+    - |-
+      `
+      Based on the following Git changes, write a clear, concise commit message that accurately summariz...
+exports:
+- name: InternalToolInfo
+  kind: type
+- name: SnakeCase
+  kind: type
+- name: SnakeCaseKeys
+  kind: type
+- name: QuickEditFimTagsType
+  kind: type
+- name: uriParam
+  kind: func
+- name: isABuiltinToolName
+  kind: func
+- name: availableTools
+  kind: func
+- name: toolCallDefinitionsXMLString
+  kind: func
+- name: reParsedToolXMLString
+  kind: func
+- name: systemToolsXMLPrompt
+  kind: func
+- name: chat_systemMessage
+  kind: func
+- name: readFile
+  kind: func
+- name: messageOfSelection
+  kind: func
+- name: chat_userMessageContent
+  kind: func
+- name: rewriteCode_userMessage
+  kind: func
+- name: searchReplaceGivenDescription_userMessage
+  kind: func
+- name: voidPrefixAndSuffix
+  kind: func
+- name: ctrlKStream_systemMessage
+  kind: func
+- name: ctrlKStream_userMessage
+  kind: func
+- name: gitCommitMessage_userMessage
+  kind: func
+- name: tripleTick
+  kind: data
+- name: MAX_DIRSTR_CHARS_TOTAL_BEGINNING
+  kind: data
+- name: MAX_DIRSTR_CHARS_TOTAL_TOOL
+  kind: data
+- name: MAX_DIRSTR_RESULTS_TOTAL_BEGINNING
+  kind: data
+- name: MAX_DIRSTR_RESULTS_TOTAL_TOOL
+  kind: data
+- name: MAX_FILE_CHARS_PAGE
+  kind: data
+- name: MAX_CHILDREN_URIs_PAGE
+  kind: data
+- name: MAX_TERMINAL_CHARS
+  kind: data
+- name: MAX_TERMINAL_INACTIVE_TIME
+  kind: data
+- name: MAX_TERMINAL_BG_COMMAND_TIME
+  kind: data
+- name: MAX_PREFIX_SUFFIX_CHARS
+  kind: data
+- name: ORIGINAL
+  kind: data
+- name: DIVIDER
+  kind: data
+- name: FINAL
+  kind: data
+- name: searchReplaceBlockTemplate
+  kind: data
+- name: createSearchReplaceBlocks_systemMessage
+  kind: data
+- name: replaceTool_description
+  kind: data
+- name: chatSuggestionDiffExample
+  kind: data
+- name: paginationParam
+  kind: data
+- name: terminalDescHelper
+  kind: data
+- name: cwdHelper
+  kind: data
+- name: builtinTools
+  kind: data
+- name: builtinToolNames
+  kind: data
+- name: toolNamesSet
+  kind: data
+- name: DEFAULT_FILE_SIZE_LIMIT
+  kind: data
+- name: rewriteCode_systemMessage
+  kind: data
+- name: searchReplaceGivenDescription_systemMessage
+  kind: data
+- name: defaultQuickEditFimTags
+  kind: data
+- name: gitCommitMessage_systemMessage
+  kind: data

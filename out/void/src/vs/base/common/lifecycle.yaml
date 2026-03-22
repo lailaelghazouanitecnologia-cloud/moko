@@ -1,0 +1,862 @@
+## Roska File Descriptor — common/lifecycle.ts
+file: common/lifecycle.ts
+lines: 845
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: ./arrays.js.compareBy
+- sym: ./arrays.js.numberComparator
+- sym: ./collections.js.groupBy
+- sym: ./map.js.SetMap
+- sym: ./functional.js.createSingleCallFunction
+- sym: ./iterator.js.Iterable
+data:
+- name: TRACK_DISPOSABLES
+  type: boolean
+  val: 'false'
+- name: disposableTracker
+  type: IDisposableTracker | null
+  val: 'null'
+types:
+- name: IDisposableTracker
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: trackDisposable
+    type: 'method: trackDisposable(disposable: IDisposable): void'
+  - name: setParent
+    type: 'method: setParent(child: IDisposable, parent: IDisposable | null): void'
+  - name: markAsDisposed
+    type: 'method: markAsDisposed(disposable: IDisposable): void'
+  - name: markAsSingleton
+    type: 'method: markAsSingleton(disposable: IDisposable): void'
+  lines:
+  - 24
+  - 45
+- name: GCBasedDisposableTracker
+  kind: struct
+  bases:
+  - IDisposableTracker
+  fields:
+  - name: _registry
+    type: any
+    default: "new FinalizationRegistry<string>(heldValue => {\n\t\tconsole.warn(`[LEAKED DISPOSAB..."
+  methods:
+  - name: trackDisposable
+    sig: 'trackDisposable(disposable: IDisposable): void'
+    lines:
+    - 53
+    - 56
+    detail:
+      calls:
+      - new Error
+      - this._registry.register
+  - name: setParent
+    sig: 'setParent(child: IDisposable, parent: IDisposable | null): void'
+    lines:
+    - 58
+    - 64
+    detail:
+      calls:
+      - this._registry.unregister
+      - this.trackDisposable
+  - name: markAsDisposed
+    sig: 'markAsDisposed(disposable: IDisposable): void'
+    lines:
+    - 66
+    - 68
+    detail:
+      calls:
+      - this._registry.unregister
+  - name: markAsSingleton
+    sig: 'markAsSingleton(disposable: IDisposable): void'
+    lines:
+    - 70
+    - 72
+    detail:
+      calls:
+      - this._registry.unregister
+  lines:
+  - 47
+  - 73
+- name: DisposableInfo
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: value
+    type: IDisposable
+  - name: source
+    type: string | null
+  - name: parent
+    type: IDisposable | null
+  - name: isSingleton
+    type: boolean
+  - name: idx
+    type: number
+  lines:
+  - 75
+  - 81
+- name: DisposableTracker
+  kind: struct
+  bases:
+  - IDisposableTracker
+  fields:
+  - name: idx
+    type: any
+    default: '0'
+  - name: livingDisposables
+    type: any
+    default: new Map<IDisposable, DisposableInfo>()
+  methods:
+  - name: trackDisposable
+    sig: 'trackDisposable(d: IDisposable): void'
+    lines:
+    - 97
+    - 103
+    detail:
+      calls:
+      - new Error
+      - this.getDisposableData
+  - name: setParent
+    sig: 'setParent(child: IDisposable, parent: IDisposable | null): void'
+    lines:
+    - 105
+    - 108
+    detail:
+      calls:
+      - this.getDisposableData
+  - name: markAsDisposed
+    sig: 'markAsDisposed(x: IDisposable): void'
+    lines:
+    - 110
+    - 112
+    detail:
+      calls:
+      - this.livingDisposables.delete
+  - name: markAsSingleton
+    sig: 'markAsSingleton(disposable: IDisposable): void'
+    lines:
+    - 114
+    - 116
+    detail:
+      calls:
+      - this.getDisposableData
+  - name: getRootParent
+    sig: 'getRootParent(data: DisposableInfo, cache: Map<DisposableInfo, DisposableInfo>): DisposableInfo'
+    vis: private
+    lines:
+    - 118
+    - 127
+    detail:
+      calls:
+      - cache.get
+      - cache.set
+      - this.getDisposableData
+      - this.getRootParent
+  - name: getTrackedDisposables
+    sig: 'getTrackedDisposables(): IDisposable[]'
+    lines:
+    - 129
+    - 137
+    detail:
+      calls:
+      - "[...this.livingDisposables.entries()]\n\t\t\t.filter"
+      - "[...this.livingDisposables.entries()]\n\t\t\t.filter(([, v]) => v.source !== null && !this.getRootParent..."
+      - new Map
+      - this.livingDisposables.entries
+  - name: computeLeakingDisposables
+    sig: 'computeLeakingDisposables(maxReported = 10, preComputedLeaks?: DisposableInfo[]): { leaks: DisposableInfo[]; details: string } | undefined'
+    lines:
+    - 139
+    - 222
+    detail:
+      calls:
+      - Object.entries
+      - '[...prevStarts].map'
+      - "[...this.livingDisposables.values()]\n\t\t\t\t.filter"
+      - compareBy
+      - getStackTracePath
+      - groupBy
+      - leakingObjects.filter
+      - leakingObjects.map
+      - new Error
+      - new Map
+      - new Set
+      - new SetMap
+      - stackTraceFormattedLines.join
+      - stackTraceFormattedLines.unshift
+      - stackTracePath.slice
+      - stackTracePath.slice(0, i + 1).join
+      - stackTracePath.slice(0, i).join
+      - stackTraceStarts.add
+      - stackTraceStarts.get
+      - this.livingDisposables.values
+      - uncoveredLeakingObjs.slice
+      - uncoveredLeakingObjs.sort
+  lines:
+  - 83
+  - 223
+- name: IDisposable
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: dispose
+    type: 'method: dispose(): void'
+  lines:
+  - 305
+  - 307
+- name: DisposableStore
+  kind: struct
+  ctx: Dispose of all registered disposables and mark this object as disposed. Any future disposables added to this object will be disposed of on `add`.
+  bases:
+  - IDisposable
+  fields:
+  - name: DISABLE_DISPOSED_WARNING
+    type: any
+    default: 'false'
+  - name: _toDispose
+    type: any
+    default: new Set<IDisposable>()
+  - name: _isDisposed
+    type: any
+    default: 'false'
+  methods:
+  - name: constructor
+    sig: constructor()
+    lines:
+    - 398
+    - 400
+    detail:
+      calls:
+      - trackDisposable
+  - name: dispose
+    sig: 'dispose(): void'
+    lines:
+    - 407
+    - 415
+    detail:
+      calls:
+      - markAsDisposed
+      - this.clear
+  - name: isDisposed
+    sig: 'isDisposed(): boolean'
+    lines:
+    - 420
+    - 422
+    detail: {}
+  - name: clear
+    sig: 'clear(): void'
+    lines:
+    - 427
+    - 437
+    detail:
+      calls:
+      - dispose
+      - this._toDispose.clear
+  - name: add
+    sig: 'add(o: T): T'
+    lines:
+    - 442
+    - 460
+    detail:
+      calls:
+      - console.warn
+      - new Error
+      - setParentOfDisposable
+      - this._toDispose.add
+  - name: delete
+    sig: 'delete(o: T): void'
+    lines:
+    - 466
+    - 475
+    detail:
+      calls:
+      - new Error
+      - o.dispose
+      - this._toDispose.delete
+  - name: deleteAndLeak
+    sig: 'deleteAndLeak(o: T): void'
+    lines:
+    - 480
+    - 488
+    detail:
+      calls:
+      - setParentOfDisposable
+      - this._toDispose.delete
+      - this._toDispose.has
+  lines:
+  - 391
+  - 489
+- name: Disposable
+  kind: trait
+  ctx: 'A disposable that does nothing when it is disposed of. TODO: This should not be a static property.'
+  bases:
+  - IDisposable
+  decorators:
+  - abstract
+  fields:
+  - name: None
+    type: any
+    default: Object.freeze<IDisposable>({ dispose() { } })
+  - name: _store
+    type: any
+    default: new DisposableStore()
+  methods:
+  - name: constructor
+    sig: constructor()
+    lines:
+    - 507
+    - 510
+    detail:
+      calls:
+      - setParentOfDisposable
+      - trackDisposable
+  - name: dispose
+    sig: 'dispose(): void'
+    lines:
+    - 512
+    - 516
+    detail:
+      calls:
+      - markAsDisposed
+      - this._store.dispose
+  lines:
+  - 496
+  - 527
+- name: MutableDisposable
+  kind: struct
+  ctx: Resets the stored value and disposed of the previously stored value.
+  bases:
+  - IDisposable
+  fields:
+  - name: _value
+    type: T
+  - name: _isDisposed
+    type: any
+    default: 'false'
+  methods:
+  - name: constructor
+    sig: constructor()
+    lines:
+    - 539
+    - 541
+    detail:
+      calls:
+      - trackDisposable
+  - name: value
+    sig: 'value(): T | undefined'
+    lines:
+    - 543
+    - 545
+    detail: {}
+  - name: value
+    sig: 'value(value: T | undefined)'
+    lines:
+    - 547
+    - 557
+    detail:
+      calls:
+      - setParentOfDisposable
+      - this._value?.dispose
+  - name: clear
+    sig: 'clear(): void'
+    lines:
+    - 562
+    - 564
+    detail: {}
+  - name: dispose
+    sig: 'dispose(): void'
+    lines:
+    - 566
+    - 571
+    detail:
+      calls:
+      - markAsDisposed
+      - this._value?.dispose
+  - name: clearAndLeak
+    sig: 'clearAndLeak(): T | undefined'
+    lines:
+    - 577
+    - 584
+    detail:
+      calls:
+      - setParentOfDisposable
+  lines:
+  - 535
+  - 585
+- name: MandatoryMutableDisposable
+  kind: struct
+  bases:
+  - IDisposable
+  fields:
+  - name: _disposable
+    type: any
+    default: new MutableDisposable<T>()
+  - name: _isDisposed
+    type: any
+    default: 'false'
+  methods:
+  - name: constructor
+    sig: 'constructor(initialValue: T)'
+    lines:
+    - 595
+    - 597
+    detail: {}
+  - name: value
+    sig: 'value(): T'
+    lines:
+    - 599
+    - 601
+    detail: {}
+  - name: value
+    sig: 'value(value: T)'
+    lines:
+    - 603
+    - 608
+    detail: {}
+  - name: dispose
+    sig: dispose()
+    lines:
+    - 610
+    - 613
+    detail:
+      calls:
+      - this._disposable.dispose
+  lines:
+  - 591
+  - 614
+- name: RefCountedDisposable
+  kind: struct
+  fields:
+  - name: _counter
+    type: number
+    default: '1'
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tprivate readonly _disposable: IDisposable,\n\t)"
+    lines:
+    - 620
+    - 622
+    detail: {}
+  - name: acquire
+    sig: acquire()
+    lines:
+    - 624
+    - 627
+    detail: {}
+  - name: release
+    sig: release()
+    lines:
+    - 629
+    - 634
+    detail:
+      calls:
+      - this._disposable.dispose
+  lines:
+  - 616
+  - 635
+- name: SafeDisposable
+  kind: struct
+  bases:
+  - IDisposable
+  fields:
+  - name: dispose
+    type: () => void
+    default: () => { }
+  - name: unset
+    type: () => void
+    default: () => { }
+  - name: isset
+    type: () => boolean
+    default: () => false
+  methods:
+  - name: constructor
+    sig: constructor()
+    lines:
+    - 647
+    - 649
+    detail:
+      calls:
+      - trackDisposable
+  - name: set
+    sig: 'set(fn: Function)'
+    lines:
+    - 651
+    - 663
+    detail: {}
+  lines:
+  - 641
+  - 664
+- name: IReference
+  kind: trait
+  bases:
+  - IDisposable
+  decorators:
+  - interface
+  fields:
+  - name: readonly
+    type: T
+  lines:
+  - 666
+  - 668
+- name: ReferenceCollection
+  kind: trait
+  decorators:
+  - abstract
+  fields:
+  - name: references
+    type: 'Map<string, { readonly object: T; counter: number }>'
+    default: new Map()
+  methods:
+  - name: acquire
+    sig: 'acquire(key: string, ...args: any[]): IReference<T>'
+    lines:
+    - 674
+    - 693
+    detail:
+      calls:
+      - createSingleCallFunction
+      - this.createReferencedObject
+      - this.references.get
+      - this.references.set
+  lines:
+  - 670
+  - 697
+- name: AsyncReferenceCollection
+  kind: struct
+  methods:
+  - name: constructor
+    sig: 'constructor(private referenceCollection: ReferenceCollection<Promise<T>>)'
+    lines:
+    - 705
+    - 705
+    detail: {}
+  - name: acquire
+    sig: 'acquire(key: string, ...args: any[]): Promise<IReference<T>>'
+    is_async: true
+    lines:
+    - 707
+    - 721
+    detail:
+      calls:
+      - ref.dispose
+      - this.referenceCollection.acquire
+  lines:
+  - 703
+  - 722
+- name: ImmortalReference
+  kind: struct
+  bases:
+  - IReference<T>
+  methods:
+  - name: constructor
+    sig: 'constructor(public object: T)'
+    lines:
+    - 725
+    - 725
+    detail: {}
+  - name: dispose
+    sig: 'dispose(): void'
+    lines:
+    - 726
+    - 726
+    detail: {}
+  lines:
+  - 724
+  - 727
+- name: DisposableMap
+  kind: struct
+  ctx: Disposes of all stored values and mark this object as disposed. Trying to use this object after it has been disposed of is an error.
+  bases:
+  - IDisposable
+  fields:
+  - name: _store
+    type: any
+    default: new Map<K, V>()
+  - name: _isDisposed
+    type: any
+    default: 'false'
+  methods:
+  - name: constructor
+    sig: constructor()
+    lines:
+    - 746
+    - 748
+    detail:
+      calls:
+      - trackDisposable
+  - name: dispose
+    sig: 'dispose(): void'
+    lines:
+    - 755
+    - 759
+    detail:
+      calls:
+      - markAsDisposed
+      - this.clearAndDisposeAll
+  - name: clearAndDisposeAll
+    sig: 'clearAndDisposeAll(): void'
+    lines:
+    - 764
+    - 774
+    detail:
+      calls:
+      - dispose
+      - this._store.clear
+      - this._store.values
+  - name: has
+    sig: 'has(key: K): boolean'
+    lines:
+    - 776
+    - 778
+    detail:
+      calls:
+      - this._store.has
+  - name: size
+    sig: 'size(): number'
+    lines:
+    - 780
+    - 782
+    detail: {}
+  - name: get
+    sig: 'get(key: K): V | undefined'
+    lines:
+    - 784
+    - 786
+    detail:
+      calls:
+      - this._store.get
+  - name: set
+    sig: 'set(key: K, value: V, skipDisposeOnOverwrite = false): void'
+    lines:
+    - 788
+    - 798
+    detail:
+      calls:
+      - console.warn
+      - new Error
+      - this._store.get
+      - this._store.get(key)?.dispose
+      - this._store.set
+  - name: deleteAndDispose
+    sig: 'deleteAndDispose(key: K): void'
+    lines:
+    - 803
+    - 806
+    detail:
+      calls:
+      - this._store.delete
+      - this._store.get
+      - this._store.get(key)?.dispose
+  - name: deleteAndLeak
+    sig: 'deleteAndLeak(key: K): V | undefined'
+    lines:
+    - 812
+    - 816
+    detail:
+      calls:
+      - this._store.delete
+      - this._store.get
+  - name: keys
+    sig: 'keys(): IterableIterator<K>'
+    lines:
+    - 818
+    - 820
+    detail:
+      calls:
+      - this._store.keys
+  - name: values
+    sig: 'values(): IterableIterator<V>'
+    lines:
+    - 822
+    - 824
+    detail:
+      calls:
+      - this._store.values
+  - name: unknown
+    sig: 'unknown(): IterableIterator<[K, V]>'
+    lines:
+    - 826
+    - 828
+    detail:
+      calls:
+      - this._store[Symbol.iterator]
+  lines:
+  - 741
+  - 829
+functions:
+- name: setDisposableTracker
+  sig: 'setDisposableTracker(tracker: IDisposableTracker | null): void'
+  lines:
+  - 225
+  - 227
+- name: trackDisposable
+  sig: 'trackDisposable(x: T): T'
+  lines:
+  - 264
+  - 267
+  detail:
+    calls:
+    - disposableTracker?.trackDisposable
+- name: markAsDisposed
+  sig: 'markAsDisposed(disposable: IDisposable): void'
+  lines:
+  - 269
+  - 271
+  detail:
+    calls:
+    - disposableTracker?.markAsDisposed
+- name: setParentOfDisposable
+  sig: 'setParentOfDisposable(child: IDisposable, parent: IDisposable | null): void'
+  lines:
+  - 273
+  - 275
+  detail:
+    calls:
+    - disposableTracker?.setParent
+- name: setParentOfDisposables
+  sig: 'setParentOfDisposables(children: IDisposable[], parent: IDisposable | null): void'
+  lines:
+  - 277
+  - 284
+  detail:
+    calls:
+    - disposableTracker.setParent
+- name: markAsSingleton
+  sig: 'markAsSingleton(singleton: T): T'
+  lines:
+  - 289
+  - 292
+  detail:
+    calls:
+    - disposableTracker?.markAsSingleton
+- name: isDisposable
+  sig: 'isDisposable(thing: E)'
+  lines:
+  - 312
+  - 314
+- name: dispose
+  sig: 'dispose(arg: T | Iterable<T> | undefined): any'
+  lines:
+  - 324
+  - 349
+  detail:
+    calls:
+    - Array.isArray
+    - Iterable.is
+    - arg.dispose
+    - d.dispose
+    - errors.push
+    - new AggregateError
+- name: disposeIfDisposable
+  sig: 'disposeIfDisposable(disposables: Array<T>): Array<T>'
+  lines:
+  - 351
+  - 358
+  detail:
+    calls:
+    - d.dispose
+    - isDisposable
+- name: combinedDisposable
+  sig: 'combinedDisposable(...disposables: IDisposable[]): IDisposable'
+  lines:
+  - 363
+  - 367
+  detail:
+    calls:
+    - setParentOfDisposables
+    - toDisposable
+- name: toDisposable
+  sig: 'toDisposable(fn: () => void): IDisposable'
+  lines:
+  - 374
+  - 382
+  detail:
+    calls:
+    - createSingleCallFunction
+    - trackDisposable
+- name: disposeOnReturn
+  sig: 'disposeOnReturn(fn: (store: DisposableStore) => void): void'
+  lines:
+  - 729
+  - 736
+  detail:
+    calls:
+    - fn
+    - new DisposableStore
+    - store.dispose
+- name: thenIfNotDisposed
+  sig: 'thenIfNotDisposed(promise: Promise<T>, then: (result: T) => void): IDisposable'
+  lines:
+  - 834
+  - 845
+  detail:
+    calls:
+    - promise.then
+    - toDisposable
+exports:
+- name: IDisposableTracker
+  kind: type
+- name: GCBasedDisposableTracker
+  kind: type
+- name: DisposableInfo
+  kind: type
+- name: DisposableTracker
+  kind: type
+- name: IDisposable
+  kind: type
+- name: DisposableStore
+  kind: type
+- name: Disposable
+  kind: type
+- name: MutableDisposable
+  kind: type
+- name: MandatoryMutableDisposable
+  kind: type
+- name: RefCountedDisposable
+  kind: type
+- name: SafeDisposable
+  kind: type
+- name: IReference
+  kind: type
+- name: ReferenceCollection
+  kind: type
+- name: AsyncReferenceCollection
+  kind: type
+- name: ImmortalReference
+  kind: type
+- name: DisposableMap
+  kind: type
+- name: setDisposableTracker
+  kind: func
+- name: trackDisposable
+  kind: func
+- name: markAsDisposed
+  kind: func
+- name: setParentOfDisposable
+  kind: func
+- name: setParentOfDisposables
+  kind: func
+- name: markAsSingleton
+  kind: func
+- name: isDisposable
+  kind: func
+- name: dispose
+  kind: func
+- name: disposeIfDisposable
+  kind: func
+- name: combinedDisposable
+  kind: func
+- name: toDisposable
+  kind: func
+- name: disposeOnReturn
+  kind: func
+- name: thenIfNotDisposed
+  kind: func
+- name: TRACK_DISPOSABLES
+  kind: data
+- name: disposableTracker
+  kind: data

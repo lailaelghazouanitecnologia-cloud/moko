@@ -1,0 +1,376 @@
+## Roska File Descriptor — common/settingsSync.ts
+file: common/settingsSync.ts
+lines: 410
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: ../../../base/common/arrays.js.distinct
+- sym: ../../../base/common/buffer.js.VSBuffer
+- sym: ../../../base/common/cancellation.js.CancellationToken
+- sym: ../../../base/common/event.js.Event
+- sym: ../../../base/common/uri.js.URI
+- sym: ../../../nls.js.localize
+- sym: ../../configuration/common/configuration.js.ConfigurationTarget
+- sym: ../../configuration/common/configuration.js.IConfigurationService
+- sym: ../../configuration/common/configurationModels.js.ConfigurationModelParser
+- sym: ../../environment/common/environment.js.IEnvironmentService
+- sym: ../../extensionManagement/common/extensionManagement.js.IExtensionManagementService
+- sym: ../../extensions/common/extensions.js.ExtensionType
+- sym: ../../files/common/files.js.FileOperationError
+- sym: ../../files/common/files.js.FileOperationResult
+- sym: ../../files/common/files.js.IFileService
+- sym: ../../storage/common/storage.js.IStorageService
+- sym: ../../telemetry/common/telemetry.js.ITelemetryService
+- sym: ../../uriIdentity/common/uriIdentity.js.IUriIdentityService
+- sym: ../../userDataProfile/common/userDataProfile.js.IUserDataProfile
+- sym: ../../userDataProfile/common/userDataProfile.js.IUserDataProfilesService
+- sym: ./abstractSynchronizer.js.AbstractInitializer
+- sym: ./abstractSynchronizer.js.AbstractJsonFileSynchroniser
+- sym: ./abstractSynchronizer.js.IAcceptResult
+- sym: ./abstractSynchronizer.js.IFileResourcePreview
+- sym: ./abstractSynchronizer.js.IMergeResult
+- sym: ./settingsMerge.js.getIgnoredSettings
+- sym: ./settingsMerge.js.isEmpty
+- sym: ./settingsMerge.js.merge
+- sym: ./settingsMerge.js.updateIgnoredSettings
+- sym: ./userDataSync.js.Change
+- sym: ./userDataSync.js.IRemoteUserData
+- sym: ./userDataSync.js.IUserDataSyncLocalStoreService
+- sym: ./userDataSync.js.IUserDataSyncConfiguration
+- sym: ./userDataSync.js.IUserDataSynchroniser
+- sym: ./userDataSync.js.IUserDataSyncLogService
+- sym: ./userDataSync.js.IUserDataSyncEnablementService
+- sym: ./userDataSync.js.IUserDataSyncStoreService
+- sym: ./userDataSync.js.IUserDataSyncUtilService
+- sym: ./userDataSync.js.SyncResource
+- sym: ./userDataSync.js.UserDataSyncError
+- sym: ./userDataSync.js.UserDataSyncErrorCode
+- sym: ./userDataSync.js.USER_DATA_SYNC_CONFIGURATION_SCOPE
+- sym: ./userDataSync.js.USER_DATA_SYNC_SCHEME
+- sym: ./userDataSync.js.IUserDataResourceManifest
+- sym: ./userDataSync.js.getIgnoredSettingsForExtension
+types:
+- name: ISettingsResourcePreview
+  kind: trait
+  bases:
+  - IFileResourcePreview
+  decorators:
+  - interface
+  fields:
+  - name: previewResult
+    type: IMergeResult
+  lines:
+  - 26
+  - 28
+- name: ISettingsSyncContent
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: settings
+    type: string
+  lines:
+  - 30
+  - 32
+- name: SettingsSynchroniser
+  kind: struct
+  ctx: 'Version 2: Change settings from `sync.${setting}` to `settingsSync.{setting}`'
+  bases:
+  - AbstractJsonFileSynchroniser
+  - IUserDataSynchroniser
+  fields:
+  - name: version
+    type: number
+    default: '2'
+  - name: previewResource
+    type: URI
+    default: this.extUri.joinPath(this.syncPreviewFolder, 'settings.json')
+  - name: baseResource
+    type: URI
+    default: 'this.previewResource.with({ scheme: USER_DATA_SYNC_SCHEME, authority: ''base'' })'
+  - name: localResource
+    type: URI
+    default: 'this.previewResource.with({ scheme: USER_DATA_SYNC_SCHEME, authority: ''local'' })'
+  - name: remoteResource
+    type: URI
+    default: 'this.previewResource.with({ scheme: USER_DATA_SYNC_SCHEME, authority: ''remote'' }...'
+  - name: acceptedResource
+    type: URI
+    default: 'this.previewResource.with({ scheme: USER_DATA_SYNC_SCHEME, authority: ''accepted''...'
+  - name: coreIgnoredSettings
+    type: Promise<string[]> | undefined
+    default: undefined
+  - name: systemExtensionsIgnoredSettings
+    type: Promise<string[]> | undefined
+    default: undefined
+  - name: userExtensionsIgnoredSettings
+    type: Promise<string[]> | undefined
+    default: undefined
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tprivate readonly profile: IUserDataProfile,\n\t\tcollection: string | undefined,\n\t\t@IFileService fileService: IFileService,\n\t\t@IEnvironmentService environmentService: IEnvironmentService,\n\t\t@IStorageService storageService: IStorageService,\n\t\t@IUserDataSyncStoreService userDataSyncStoreService: IUserDataSyncStoreService,\n\t\t@IUserDataSyncLocalStoreService userDataSyncLocalStoreService: IUserDataSyncLocalStoreService,\n\t\t@IUserDataSyncLogService logService: IUserDataSyncLogService,\n\t\t@IUserDataSyncUtilService userDataSyncUtilService: IUserDataSyncUtilService,\n\t\t@IConfigurationService configurationService: IConfigurationService,\n\t\t@IUserDataSyncEnablementService userDataSyncEnablementService: IUserDataSyncEnablementService,\n\t\t@ITelemetryService telemetryService: ITelemetryService,\n\t\t@IExtensionManagementService private readonly extensionManagementService: IExtensionManagementService,\n\t\t@IUriIdentityService uriIdentityService: IUriIdentityService,\n\t)"
+    lines:
+    - 55
+    - 72
+    detail:
+      calls:
+      - super
+  - name: getRemoteUserDataSyncConfiguration
+    sig: 'getRemoteUserDataSyncConfiguration(manifest: IUserDataResourceManifest | null): Promise<IUserDataSyncConfiguration>'
+    is_async: true
+    lines:
+    - 74
+    - 83
+    detail:
+      calls:
+      - new ConfigurationModelParser
+      - parser.configurationModel.getValue
+      - parser.parse
+      - this.getLastSyncUserData
+      - this.getLatestRemoteUserData
+      - this.getSettingsSyncContent
+  - name: generateSyncPreview
+    sig: 'generateSyncPreview(remoteUserData: IRemoteUserData, lastSyncUserData: IRemoteUserData | null, isRemoteDataFromCurrentMachine: boolean): Promise<ISettingsResourcePreview[]>'
+    is_async: true
+    vis: protected
+    lines:
+    - 85
+    - 148
+    detail:
+      calls:
+      - fileContent.value.toString
+      - fileContent.value.toString().trim
+      - merge
+      - this.getFormattingOptions
+      - this.getIgnoredSettings
+      - this.getLocalFileContent
+      - this.getSettingsSyncContent
+      - this.logService.trace
+      - this.validateContent
+  - name: hasRemoteChanged
+    sig: 'hasRemoteChanged(lastSyncUserData: IRemoteUserData): Promise<boolean>'
+    is_async: true
+    vis: protected
+    lines:
+    - 150
+    - 162
+    detail:
+      calls:
+      - fileContent.value.toString
+      - fileContent.value.toString().trim
+      - merge
+      - this.getFormattingOptions
+      - this.getIgnoredSettings
+      - this.getLocalFileContent
+      - this.getSettingsSyncContent
+  - name: getMergeResult
+    sig: 'getMergeResult(resourcePreview: ISettingsResourcePreview, token: CancellationToken): Promise<IMergeResult>'
+    is_async: true
+    vis: protected
+    lines:
+    - 164
+    - 173
+    detail:
+      calls:
+      - this.getFormattingOptions
+      - this.getIgnoredSettings
+      - updateIgnoredSettings
+  - name: getAcceptResult
+    sig: 'getAcceptResult(resourcePreview: ISettingsResourcePreview, resource: URI, content: string | null | undefined, token: CancellationToken): Promise<IAcceptResult>'
+    is_async: true
+    vis: protected
+    lines:
+    - 175
+    - 219
+    detail:
+      calls:
+      - new Error
+      - resource.toString
+      - resourcePreview.fileContent.value.toString
+      - this.extUri.isEqual
+      - this.getFormattingOptions
+      - this.getIgnoredSettings
+      - updateIgnoredSettings
+  - name: applyResult
+    sig: 'applyResult(remoteUserData: IRemoteUserData, lastSyncUserData: IRemoteUserData | null, resourcePreviews: [ISettingsResourcePreview, IAcceptResult][], force: boolean): Promise<void>'
+    is_async: true
+    vis: protected
+    lines:
+    - 221
+    - 265
+    detail:
+      calls:
+      - JSON.stringify
+      - content.trim
+      - fileContent.value.toString
+      - this.backupLocal
+      - this.configurationService.reloadConfiguration
+      - this.fileService.del
+      - this.getFormattingOptions
+      - this.getIgnoredSettings
+      - this.getSettingsSyncContent
+      - this.logService.info
+      - this.logService.trace
+      - this.toSettingsSyncContent
+      - this.updateLastSyncUserData
+      - this.updateLocalFileContent
+      - this.updateRemoteUserData
+      - this.validateContent
+      - updateIgnoredSettings
+  - name: hasLocalData
+    sig: 'hasLocalData(): Promise<boolean>'
+    is_async: true
+    lines:
+    - 267
+    - 279
+    detail:
+      calls:
+      - isEmpty
+      - localFileContent.value.toString
+      - this.getLocalFileContent
+  - name: resolveContent
+    sig: 'resolveContent(uri: URI): Promise<string | null>'
+    is_async: true
+    lines:
+    - 281
+    - 290
+    detail:
+      calls:
+      - this.extUri.isEqual
+      - this.resolvePreviewContent
+  - name: resolvePreviewContent
+    sig: 'resolvePreviewContent(resource: URI): Promise<string | null>'
+    is_async: true
+    vis: protected
+    lines:
+    - 292
+    - 301
+    detail:
+      calls:
+      - super.resolvePreviewContent
+      - this.getFormattingOptions
+      - this.getIgnoredSettings
+      - updateIgnoredSettings
+  - name: getIgnoredSettings
+    sig: 'getIgnoredSettings(content?: string): Promise<string[]>'
+    is_async: true
+    vis: private
+    lines:
+    - 323
+    - 341
+    detail:
+      calls:
+      - (await Promise.all([this.coreIgnoredSettings, this.systemExtensionsIgnoredSettings, this.userExtensi...
+      - Event.any
+      - "Event.any<any>(\n\t\t\t\tEvent.filter(this.extensionManagementService.onDidInstallExtensions, (e => e.som..."
+      - Event.filter
+      - Promise.all
+      - getIgnoredSettings
+      - this._register
+      - this.getIgnoredSettingForSystemExtensions
+      - this.getIgnoredSettingForUserExtensions
+      - this.userDataSyncUtilService.resolveDefaultCoreIgnoredSettings
+  - name: getIgnoredSettingForSystemExtensions
+    sig: 'getIgnoredSettingForSystemExtensions(): Promise<string[]>'
+    is_async: true
+    vis: private
+    lines:
+    - 343
+    - 346
+    detail:
+      calls:
+      - distinct
+      - systemExtensions.map
+      - systemExtensions.map(e => getIgnoredSettingsForExtension(e.manifest)).flat
+      - this.extensionManagementService.getInstalled
+  - name: getIgnoredSettingForUserExtensions
+    sig: 'getIgnoredSettingForUserExtensions(): Promise<string[]>'
+    is_async: true
+    vis: private
+    lines:
+    - 348
+    - 351
+    detail:
+      calls:
+      - distinct
+      - this.extensionManagementService.getInstalled
+      - userExtensions.map
+      - userExtensions.map(e => getIgnoredSettingsForExtension(e.manifest)).flat
+  lines:
+  - 45
+  - 359
+- name: SettingsInitializer
+  kind: struct
+  bases:
+  - AbstractInitializer
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\t@IFileService fileService: IFileService,\n\t\t@IUserDataProfilesService userDataProfilesService: IUserDataProfilesService,\n\t\t@IEnvironmentService environmentService: IEnvironmentService,\n\t\t@IUserDataSyncLogService logService: IUserDataSyncLogService,\n\t\t@IStorageService storageService: IStorageService,\n\t\t@IUriIdentityService uriIdentityService: IUriIdentityService,\n\t)"
+    lines:
+    - 363
+    - 372
+    detail:
+      calls:
+      - super
+  - name: doInitialize
+    sig: 'doInitialize(remoteUserData: IRemoteUserData): Promise<void>'
+    is_async: true
+    vis: protected
+    lines:
+    - 374
+    - 390
+    detail:
+      calls:
+      - VSBuffer.fromString
+      - this.fileService.writeFile
+      - this.isEmpty
+      - this.logService.info
+      - this.parseSettingsSyncContent
+      - this.updateLastSyncUserData
+  - name: isEmpty
+    sig: 'isEmpty(): Promise<boolean>'
+    is_async: true
+    vis: private
+    lines:
+    - 392
+    - 399
+    detail:
+      calls:
+      - fileContent.value.toString
+      - fileContent.value.toString().trim
+      - isEmpty
+      - this.fileService.readFile
+  lines:
+  - 361
+  - 410
+functions:
+- name: isSettingsSyncContent
+  sig: 'isSettingsSyncContent(thing: any)'
+  lines:
+  - 34
+  - 38
+  detail:
+    calls:
+    - Object.keys
+- name: parseSettingsSyncContent
+  sig: 'parseSettingsSyncContent(syncContent: string): ISettingsSyncContent'
+  lines:
+  - 40
+  - 43
+  detail:
+    calls:
+    - JSON.parse
+    - isSettingsSyncContent
+exports:
+- name: ISettingsResourcePreview
+  kind: type
+- name: ISettingsSyncContent
+  kind: type
+- name: SettingsSynchroniser
+  kind: type
+- name: SettingsInitializer
+  kind: type
+- name: isSettingsSyncContent
+  kind: func
+- name: parseSettingsSyncContent
+  kind: func

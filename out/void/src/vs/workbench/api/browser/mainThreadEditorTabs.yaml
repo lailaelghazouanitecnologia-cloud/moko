@@ -1,0 +1,340 @@
+## Roska File Descriptor — browser/mainThreadEditorTabs.ts
+file: browser/mainThreadEditorTabs.ts
+lines: 701
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: ../../../base/common/event.js.Event
+- sym: ../../../base/common/lifecycle.js.DisposableMap
+- sym: ../../../base/common/lifecycle.js.DisposableStore
+- sym: ../../../base/common/resources.js.isEqual
+- sym: ../../../base/common/uri.js.URI
+- sym: ../../../platform/configuration/common/configuration.js.IConfigurationService
+- sym: ../../../platform/log/common/log.js.ILogService
+- sym: ../common/extHost.protocol.js.AnyInputDto
+- sym: ../common/extHost.protocol.js.ExtHostContext
+- sym: ../common/extHost.protocol.js.IEditorTabDto
+- sym: ../common/extHost.protocol.js.IEditorTabGroupDto
+- sym: ../common/extHost.protocol.js.IExtHostEditorTabsShape
+- sym: ../common/extHost.protocol.js.MainContext
+- sym: ../common/extHost.protocol.js.MainThreadEditorTabsShape
+- sym: ../common/extHost.protocol.js.TabInputKind
+- sym: ../common/extHost.protocol.js.TabModelOperationKind
+- sym: ../common/extHost.protocol.js.TextDiffInputDto
+- sym: ../../common/editor.js.EditorResourceAccessor
+- sym: ../../common/editor.js.GroupModelChangeKind
+- sym: ../../common/editor.js.SideBySideEditor
+- sym: ../../common/editor/diffEditorInput.js.DiffEditorInput
+- sym: ../../common/editor/editorGroupModel.js.isGroupEditorMoveEvent
+- sym: ../../common/editor/editorInput.js.EditorInput
+- sym: ../../common/editor/sideBySideEditorInput.js.SideBySideEditorInput
+- sym: ../../common/editor/textResourceEditorInput.js.AbstractTextResourceEditorInput
+- sym: ../../contrib/chat/browser/chatEditorInput.js.ChatEditorInput
+- sym: ../../contrib/customEditor/browser/customEditorInput.js.CustomEditorInput
+- sym: ../../contrib/interactive/browser/interactiveEditorInput.js.InteractiveEditorInput
+- sym: ../../contrib/mergeEditor/browser/mergeEditorInput.js.MergeEditorInput
+- sym: ../../contrib/multiDiffEditor/browser/multiDiffEditorInput.js.MultiDiffEditorInput
+- sym: ../../contrib/notebook/common/notebookEditorInput.js.NotebookEditorInput
+- sym: ../../contrib/terminal/browser/terminalEditorInput.js.TerminalEditorInput
+- sym: ../../contrib/webviewPanel/browser/webviewEditorInput.js.WebviewInput
+- sym: ../../services/editor/common/editorGroupColumn.js.columnToEditorGroup
+- sym: ../../services/editor/common/editorGroupColumn.js.EditorGroupColumn
+- sym: ../../services/editor/common/editorGroupColumn.js.editorGroupToColumn
+- sym: ../../services/editor/common/editorGroupsService.js.GroupDirection
+- sym: ../../services/editor/common/editorGroupsService.js.IEditorGroup
+- sym: ../../services/editor/common/editorGroupsService.js.IEditorGroupsService
+- sym: ../../services/editor/common/editorGroupsService.js.preferredSideBySideGroupDirection
+- sym: ../../services/editor/common/editorService.js.IEditorsChangeEvent
+- sym: ../../services/editor/common/editorService.js.IEditorService
+- sym: ../../services/editor/common/editorService.js.SIDE_GROUP
+- sym: ../../services/extensions/common/extHostCustomers.js.extHostNamedCustomer
+- sym: ../../services/extensions/common/extHostCustomers.js.IExtHostContext
+types:
+- name: TabInfo
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: tab
+    type: IEditorTabDto
+  - name: group
+    type: IEditorGroup
+  - name: editorInput
+    type: EditorInput
+  lines:
+  - 32
+  - 36
+- name: MainThreadEditorTabs
+  kind: struct
+  ctx: List of all groups and their corresponding tabs, this is **the** model
+  bases:
+  - MainThreadEditorTabsShape
+  fields:
+  - name: _dispoables
+    type: any
+    default: new DisposableStore()
+  - name: _proxy
+    type: IExtHostEditorTabsShape
+  - name: _tabGroupModel
+    type: IEditorTabGroupDto[]
+    default: '[]'
+  - name: _groupLookup
+    type: Map<number, IEditorTabGroupDto>
+    default: new Map()
+  - name: _tabInfoLookup
+    type: Map<string, TabInfo>
+    default: new Map()
+  - name: _multiDiffEditorInputListeners
+    type: DisposableMap<MultiDiffEditorInput>
+    default: new DisposableMap()
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\textHostContext: IExtHostContext,\n\t\t@IEditorGroupsService private readonly _editorGroupsService: IEditorGroupsService,\n\t\t@IConfigurationService private readonly _configurationService: IConfigurationService,\n\t\t@ILogService private readonly _logService: ILogService,\n\t\t@IEditorService editorService: IEditorService\n\t)"
+    lines:
+    - 51
+    - 80
+    detail:
+      calls:
+      - editorService.onDidEditorsChange
+      - extHostContext.getProxy
+      - this._dispoables.add
+      - this._editorGroupsService.onDidAddGroup
+      - this._editorGroupsService.onDidRemoveGroup
+      - this._editorGroupsService.whenReady.then
+  - name: dispose
+    sig: 'dispose(): void'
+    lines:
+    - 82
+    - 86
+    detail:
+      calls:
+      - this._dispoables.dispose
+      - this._groupLookup.clear
+      - this._tabInfoLookup.clear
+  - name: _buildTabObject
+    sig: '_buildTabObject(group: IEditorGroup, editor: EditorInput, editorIndex: number): IEditorTabDto'
+    vis: private
+    lines:
+    - 94
+    - 107
+    detail:
+      calls:
+      - editor.getName
+      - editor.isDirty
+      - group.isActive
+      - group.isPinned
+      - group.isSticky
+      - this._editorInputToDto
+      - this._generateTabId
+  - name: _editorInputToDto
+    sig: '_editorInputToDto(editor: EditorInput): AnyInputDto'
+    vis: private
+    lines:
+    - 109
+    - 226
+    detail:
+      calls:
+      - diffEditors.push
+      - editor?.resources.get
+      - isEqual
+  - name: _generateTabId
+    sig: '_generateTabId(editor: EditorInput, groupId: number)'
+    vis: private
+    lines:
+    - 234
+    - 244
+    detail:
+      calls:
+      - EditorResourceAccessor.getCanonicalUri
+      - resource.toString
+      - resource?.primary?.toString
+      - resource?.secondary?.toString
+  - name: _onDidTabLabelChange
+    sig: '_onDidTabLabelChange(groupId: number, editorInput: EditorInput, editorIndex: number)'
+    vis: private
+    lines:
+    - 264
+    - 280
+    detail:
+      calls:
+      - editorInput.getName
+      - this._createTabsModel
+      - this._generateTabId
+      - this._logService.error
+      - this._proxy.$acceptTabOperation
+      - this._tabInfoLookup.get
+  - name: _onDidTabOpen
+    sig: '_onDidTabOpen(groupId: number, editorInput: EditorInput, editorIndex: number)'
+    vis: private
+    lines:
+    - 288
+    - 330
+    detail:
+      calls:
+      - Event.fromObservableLight
+      - Event.fromObservableLight(editorInput.resources)
+      - tabs.splice
+      - this._buildTabObject
+      - this._createTabsModel
+      - this._editorGroupsService.getGroup
+      - this._generateTabId
+      - this._groupLookup.get
+      - this._multiDiffEditorInputListeners.set
+      - this._proxy.$acceptTabOperation
+      - this._tabInfoLookup.set
+  - name: _onDidTabClose
+    sig: '_onDidTabClose(groupId: number, editorIndex: number)'
+    vis: private
+    lines:
+    - 337
+    - 366
+    detail:
+      calls:
+      - tabs.splice
+      - this._createTabsModel
+      - this._editorGroupsService.getGroup
+      - this._groupLookup.get
+      - this._multiDiffEditorInputListeners.deleteAndDispose
+      - this._proxy.$acceptTabOperation
+      - this._tabInfoLookup.delete
+  - name: _onDidTabDirty
+    sig: '_onDidTabDirty(groupId: number, editorIndex: number, editor: EditorInput)'
+    vis: private
+    lines:
+    - 398
+    - 414
+    detail:
+      calls:
+      - editor.isDirty
+      - this._createTabsModel
+      - this._generateTabId
+      - this._logService.error
+      - this._proxy.$acceptTabOperation
+      - this._tabInfoLookup.get
+  - name: _onDidTabPinChange
+    sig: '_onDidTabPinChange(groupId: number, editorIndex: number, editor: EditorInput)'
+    vis: private
+    lines:
+    - 422
+    - 441
+    detail:
+      calls:
+      - group.isSticky
+      - this._createTabsModel
+      - this._generateTabId
+      - this._logService.error
+      - this._proxy.$acceptTabOperation
+      - this._tabInfoLookup.get
+  - name: _onDidTabPreviewChange
+    sig: '_onDidTabPreviewChange(groupId: number, editorIndex: number, editor: EditorInput)'
+    vis: private
+    lines:
+    - 449
+    - 468
+    detail:
+      calls:
+      - group.isPinned
+      - this._createTabsModel
+      - this._generateTabId
+      - this._logService.error
+      - this._proxy.$acceptTabOperation
+      - this._tabInfoLookup.get
+  - name: _onDidTabMove
+    sig: '_onDidTabMove(groupId: number, editorIndex: number, oldEditorIndex: number, editor: EditorInput)'
+    vis: private
+    lines:
+    - 470
+    - 494
+    detail:
+      calls:
+      - tabs.splice
+      - this._createTabsModel
+      - this._groupLookup.get
+      - this._logService.error
+      - this._proxy.$acceptTabOperation
+  - name: _createTabsModel
+    sig: '_createTabsModel(): void'
+    vis: private
+    lines:
+    - 499
+    - 532
+    detail:
+      calls:
+      - editorGroupToColumn
+      - group.editors.forEach
+      - this._groupLookup.clear
+      - this._groupLookup.set
+      - this._proxy.$acceptEditorTabModel
+      - this._tabGroupModel.push
+      - this._tabInfoLookup.clear
+  - name: _updateTabsModel
+    sig: '_updateTabsModel(changeEvent: IEditorsChangeEvent): void'
+    vis: private
+    lines:
+    - 558
+    - 616
+    detail:
+      calls:
+      - isGroupEditorMoveEvent
+      - this._createTabsModel
+      - this._onDidGroupActivate
+      - this._onDidTabActiveChange
+      - this._onDidTabClose
+      - this._onDidTabDirty
+      - this._onDidTabLabelChange
+      - this._onDidTabMove
+      - this._onDidTabOpen
+      - this._onDidTabPinChange
+      - this._onDidTabPreviewChange
+  - name: $moveTab
+    sig: '$moveTab(tabId: string, index: number, viewColumn: EditorGroupColumn, preserveFocus?: boolean): void'
+    lines:
+    - 618
+    - 657
+    detail:
+      calls:
+      - columnToEditorGroup
+      - new Error
+      - preferredSideBySideGroupDirection
+      - sourceGroup.moveEditor
+      - this._editorGroupsService.addGroup
+      - this._editorGroupsService.getGroup
+      - this._groupLookup.get
+      - this._tabInfoLookup.get
+  - name: $closeTab
+    sig: '$closeTab(tabIds: string[], preserveFocus?: boolean): Promise<boolean>'
+    is_async: true
+    lines:
+    - 659
+    - 684
+    detail:
+      calls:
+      - group.closeEditors
+      - groupEditors.push
+      - groups.get
+      - groups.set
+      - new Map
+      - results.every
+      - results.push
+      - this._tabInfoLookup.get
+  - name: $closeGroup
+    sig: '$closeGroup(groupIds: number[], preserveFocus?: boolean): Promise<boolean>'
+    is_async: true
+    lines:
+    - 686
+    - 699
+    detail:
+      calls:
+      - group.closeAllEditors
+      - groupCloseResults.every
+      - groupCloseResults.push
+      - this._editorGroupsService.getGroup
+      - this._editorGroupsService.removeGroup
+  lines:
+  - 38
+  - 701
+exports:
+- name: TabInfo
+  kind: type
+- name: MainThreadEditorTabs
+  kind: type

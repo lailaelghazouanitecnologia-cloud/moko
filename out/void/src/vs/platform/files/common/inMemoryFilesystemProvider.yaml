@@ -1,0 +1,341 @@
+## Roska File Descriptor — common/inMemoryFilesystemProvider.ts
+file: common/inMemoryFilesystemProvider.ts
+lines: 307
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: ../../../base/common/buffer.js.VSBuffer
+- sym: ../../../base/common/event.js.Emitter
+- sym: ../../../base/common/event.js.Event
+- sym: ../../../base/common/lifecycle.js.Disposable
+- sym: ../../../base/common/lifecycle.js.IDisposable
+- sym: ../../../base/common/resources.js.resources
+- sym: ../../../base/common/stream.js.ReadableStreamEvents
+- sym: ../../../base/common/stream.js.newWriteableStream
+- sym: ../../../base/common/uri.js.URI
+- sym: ./files.js.FileChangeType
+- sym: ./files.js.IFileDeleteOptions
+- sym: ./files.js.IFileOverwriteOptions
+- sym: ./files.js.FileSystemProviderCapabilities
+- sym: ./files.js.FileSystemProviderErrorCode
+- sym: ./files.js.FileType
+- sym: ./files.js.IFileWriteOptions
+- sym: ./files.js.IFileChange
+- sym: ./files.js.IFileSystemProviderWithFileReadWriteCapability
+- sym: ./files.js.IStat
+- sym: ./files.js.IWatchOptions
+- sym: ./files.js.createFileSystemProviderError
+- sym: ./files.js.IFileSystemProviderWithOpenReadWriteCloseCapability
+- sym: ./files.js.IFileOpenOptions
+- sym: ./files.js.IFileSystemProviderWithFileAtomicDeleteCapability
+- sym: ./files.js.IFileSystemProviderWithFileAtomicReadCapability
+- sym: ./files.js.IFileSystemProviderWithFileAtomicWriteCapability
+- sym: ./files.js.IFileSystemProviderWithFileReadStreamCapability
+types:
+- name: File
+  kind: struct
+  bases:
+  - IStat
+  fields:
+  - name: type
+    type: FileType.File
+  - name: ctime
+    type: number
+  - name: mtime
+    type: number
+  - name: size
+    type: number
+  - name: data
+    type: Uint8Array
+  methods:
+  - name: constructor
+    sig: 'constructor(name: string)'
+    lines:
+    - 24
+    - 30
+    detail:
+      calls:
+      - Date.now
+  lines:
+  - 14
+  - 31
+- name: Directory
+  kind: struct
+  bases:
+  - IStat
+  fields:
+  - name: type
+    type: FileType.Directory
+  - name: ctime
+    type: number
+  - name: mtime
+    type: number
+  - name: size
+    type: number
+  - name: entries
+    type: Map<string, File | Directory>
+  methods:
+  - name: constructor
+    sig: 'constructor(name: string)'
+    lines:
+    - 43
+    - 50
+    detail:
+      calls:
+      - Date.now
+      - new Map
+  lines:
+  - 33
+  - 51
+- name: Entry
+  kind: enum
+  decorators:
+  - type
+  variants:
+  - name: File
+  - name: Directory
+  lines:
+  - 53
+  - 53
+- name: InMemoryFileSystemProvider
+  kind: struct
+  ctx: '--- manage file metadata'
+  bases:
+  - Disposable
+  - IFileSystemProviderWithFileReadWriteCapability
+  - IFileSystemProviderWithOpenReadWriteCloseCapability
+  - IFileSystemProviderWithFileReadStreamCapability
+  - IFileSystemProviderWithFileAtomicReadCapability
+  - IFileSystemProviderWithFileAtomicWriteCapability
+  - IFileSystemProviderWithFileAtomicDeleteCapability
+  fields:
+  - name: memoryFdCounter
+    type: any
+    default: '0'
+  - name: fdMemory
+    type: any
+    default: new Map<number, Uint8Array>()
+  - name: _onDidChangeCapabilities
+    type: any
+    default: this._register(new Emitter<void>())
+  - name: onDidChangeCapabilities
+    type: any
+    default: this._onDidChangeCapabilities.event
+  - name: _capabilities
+    type: any
+    default: FileSystemProviderCapabilities.FileReadWrite | FileSystemProviderCapabilities.Pa...
+  - name: root
+    type: any
+    default: new Directory('')
+  - name: _onDidChangeFile
+    type: any
+    default: this._register(new Emitter<readonly IFileChange[]>())
+  - name: onDidChangeFile
+    type: Event<readonly IFileChange[]>
+    default: this._onDidChangeFile.event
+  - name: _bufferedChanges
+    type: IFileChange[]
+    default: '[]'
+  - name: _fireSoonHandle
+    type: any
+  methods:
+  - name: capabilities
+    sig: 'capabilities(): FileSystemProviderCapabilities'
+    lines:
+    - 69
+    - 69
+    detail: {}
+  - name: setReadOnly
+    sig: 'setReadOnly(readonly: boolean)'
+    lines:
+    - 71
+    - 78
+    detail:
+      calls:
+      - this._onDidChangeCapabilities.fire
+  - name: stat
+    sig: 'stat(resource: URI): Promise<IStat>'
+    is_async: true
+    lines:
+    - 84
+    - 86
+    detail:
+      calls:
+      - this._lookup
+  - name: readdir
+    sig: 'readdir(resource: URI): Promise<[string, FileType][]>'
+    is_async: true
+    lines:
+    - 88
+    - 93
+    detail:
+      calls:
+      - entry.entries.forEach
+      - this._lookupAsDirectory
+  - name: readFile
+    sig: 'readFile(resource: URI): Promise<Uint8Array>'
+    is_async: true
+    lines:
+    - 97
+    - 103
+    detail:
+      calls:
+      - createFileSystemProviderError
+      - this._lookupAsFile
+  - name: readFileStream
+    sig: 'readFileStream(resource: URI): ReadableStreamEvents<Uint8Array>'
+    lines:
+    - 105
+    - 112
+    detail:
+      calls:
+      - newWriteableStream
+      - stream.end
+      - this._lookupAsFile
+  - name: writeFile
+    sig: 'writeFile(resource: URI, content: Uint8Array, opts: IFileWriteOptions): Promise<void>'
+    is_async: true
+    lines:
+    - 114
+    - 137
+    detail:
+      calls:
+      - Date.now
+      - createFileSystemProviderError
+      - new File
+      - parent.entries.get
+      - parent.entries.set
+      - resources.basename
+      - this._fireSoon
+      - this._lookupParentDirectory
+  - name: open
+    sig: 'open(resource: URI, opts: IFileOpenOptions): Promise<number>'
+    lines:
+    - 140
+    - 148
+    detail:
+      calls:
+      - Promise.resolve
+      - createFileSystemProviderError
+      - this._lookupAsFile
+      - this.fdMemory.set
+  - name: close
+    sig: 'close(fd: number): Promise<void>'
+    lines:
+    - 150
+    - 153
+    detail:
+      calls:
+      - Promise.resolve
+      - this.fdMemory.delete
+  - name: read
+    sig: 'read(fd: number, pos: number, data: Uint8Array, offset: number, length: number): Promise<number>'
+    lines:
+    - 155
+    - 164
+    detail:
+      calls:
+      - Promise.resolve
+      - VSBuffer.wrap
+      - VSBuffer.wrap(memory).slice
+      - createFileSystemProviderError
+      - data.set
+      - this.fdMemory.get
+  - name: write
+    sig: 'write(fd: number, pos: number, data: Uint8Array, offset: number, length: number): Promise<number>'
+    lines:
+    - 166
+    - 175
+    detail:
+      calls:
+      - Promise.resolve
+      - VSBuffer.wrap
+      - VSBuffer.wrap(data).slice
+      - createFileSystemProviderError
+      - memory.set
+      - this.fdMemory.get
+  - name: rename
+    sig: 'rename(from: URI, to: URI, opts: IFileOverwriteOptions): Promise<void>'
+    is_async: true
+    lines:
+    - 179
+    - 198
+    detail:
+      calls:
+      - createFileSystemProviderError
+      - newParent.entries.set
+      - oldParent.entries.delete
+      - resources.basename
+      - this._fireSoon
+      - this._lookup
+      - this._lookupParentDirectory
+  - name: delete
+    sig: 'delete(resource: URI, opts: IFileDeleteOptions): Promise<void>'
+    is_async: true
+    lines:
+    - 200
+    - 210
+    detail:
+      calls:
+      - Date.now
+      - parent.entries.delete
+      - parent.entries.has
+      - resources.basename
+      - resources.dirname
+      - this._fireSoon
+      - this._lookupAsDirectory
+  - name: mkdir
+    sig: 'mkdir(resource: URI): Promise<void>'
+    is_async: true
+    lines:
+    - 212
+    - 226
+    detail:
+      calls:
+      - Date.now
+      - createFileSystemProviderError
+      - new Directory
+      - parent.entries.set
+      - resources.basename
+      - resources.dirname
+      - this._fireSoon
+      - this._lookup
+      - this._lookupAsDirectory
+  - name: _lookup
+    sig: '_lookup(uri: URI, silent: boolean): Entry | undefined'
+    vis: private
+    lines:
+    - 232
+    - 253
+    detail:
+      calls:
+      - createFileSystemProviderError
+      - entry.entries.get
+      - uri.path.split
+  - name: watch
+    sig: 'watch(resource: URI, opts: IWatchOptions): IDisposable'
+    lines:
+    - 284
+    - 287
+    detail: {}
+  - name: dispose
+    sig: 'dispose(): void'
+    lines:
+    - 302
+    - 306
+    detail:
+      calls:
+      - super.dispose
+      - this.fdMemory.clear
+  lines:
+  - 55
+  - 307
+exports:
+- name: File
+  kind: type
+- name: Directory
+  kind: type
+- name: Entry
+  kind: type
+- name: InMemoryFileSystemProvider
+  kind: type

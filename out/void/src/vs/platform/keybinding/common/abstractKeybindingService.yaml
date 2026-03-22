@@ -1,0 +1,327 @@
+## Roska File Descriptor — common/abstractKeybindingService.ts
+file: common/abstractKeybindingService.ts
+lines: 429
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: ../../../base/common/actions.js.WorkbenchActionExecutedClassification
+- sym: ../../../base/common/actions.js.WorkbenchActionExecutedEvent
+- sym: ../../../base/common/arrays.js.arrays
+- sym: ../../../base/common/async.js.IntervalTimer
+- sym: ../../../base/common/async.js.TimeoutTimer
+- sym: ../../../base/common/errors.js.illegalState
+- sym: ../../../base/common/event.js.Emitter
+- sym: ../../../base/common/event.js.Event
+- sym: ../../../base/common/ime.js.IME
+- sym: ../../../base/common/keyCodes.js.KeyCode
+- sym: ../../../base/common/keybindings.js.Keybinding
+- sym: ../../../base/common/keybindings.js.ResolvedChord
+- sym: ../../../base/common/keybindings.js.ResolvedKeybinding
+- sym: ../../../base/common/keybindings.js.SingleModifierChord
+- sym: ../../../base/common/lifecycle.js.Disposable
+- sym: ../../../base/common/lifecycle.js.IDisposable
+- sym: ../../../nls.js.nls
+- sym: ../../commands/common/commands.js.ICommandService
+- sym: ../../contextkey/common/contextkey.js.IContextKeyService
+- sym: ../../contextkey/common/contextkey.js.IContextKeyServiceTarget
+- sym: ./keybinding.js.IKeybindingService
+- sym: ./keybinding.js.IKeyboardEvent
+- sym: ./keybinding.js.KeybindingsSchemaContribution
+- sym: ./keybindingResolver.js.ResolutionResult
+- sym: ./keybindingResolver.js.KeybindingResolver
+- sym: ./keybindingResolver.js.ResultKind
+- sym: ./keybindingResolver.js.NoMatchingKb
+- sym: ./resolvedKeybindingItem.js.ResolvedKeybindingItem
+- sym: ../../log/common/log.js.ILogService
+- sym: ../../notification/common/notification.js.INotificationService
+- sym: ../../telemetry/common/telemetry.js.ITelemetryService
+data:
+- name: HIGH_FREQ_COMMANDS
+  type: any
+  val: /^(cursor|delete|undo|redo|tab|editor\.action\.clipboard)/
+types:
+- name: CurrentChord
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: keypress
+    type: string
+  - name: label
+    type: string | null
+  lines:
+  - 26
+  - 29
+- name: AbstractKeybindingService
+  kind: trait
+  ctx: 'recently recorded keypresses that can trigger a keybinding; example: say, there''s "cmd+k cmd+i" keybinding; the user pressed "cmd+k" (before they press "cmd+i") "cmd+k" would be stored in this array, when on pressing "cmd+i", the service would invoke the command bound by the keybinding'
+  bases:
+  - Disposable
+  - IKeybindingService
+  decorators:
+  - abstract
+  fields:
+  - name: _serviceBrand
+    type: undefined
+  - name: _onDidUpdateKeybindings
+    type: Emitter<void>
+    default: this._register(new Emitter<void>())
+  - name: _currentChords
+    type: CurrentChord[]
+  - name: _currentChordChecker
+    type: IntervalTimer
+  - name: _currentChordStatusMessage
+    type: IDisposable | null
+  - name: _ignoreSingleModifiers
+    type: KeybindingModifierSet
+  - name: _currentSingleModifier
+    type: SingleModifierChord | null
+  - name: _currentSingleModifierClearTimeout
+    type: TimeoutTimer
+  - name: _currentlyDispatchingCommandId
+    type: string | null
+  - name: _logging
+    type: boolean
+  methods:
+  - name: onDidUpdateKeybindings
+    sig: 'onDidUpdateKeybindings(): Event<void>'
+    lines:
+    - 38
+    - 40
+    detail: {}
+  - name: inChordMode
+    sig: 'inChordMode(): boolean'
+    lines:
+    - 60
+    - 62
+    detail: {}
+  - name: constructor
+    sig: "constructor(\n\t\tprivate _contextKeyService: IContextKeyService,\n\t\tprotected _commandService: ICommandService,\n\t\tprotected _telemetryService: ITelemetryService,\n\t\tprivate _notificationService: INotificationService,\n\t\tprotected _logService: ILogService,\n\t)"
+    lines:
+    - 64
+    - 81
+    detail:
+      calls:
+      - new IntervalTimer
+      - new TimeoutTimer
+      - super
+  - name: dispose
+    sig: 'dispose(): void'
+    lines:
+    - 83
+    - 85
+    detail:
+      calls:
+      - super.dispose
+  - name: getDefaultKeybindingsContent
+    sig: 'getDefaultKeybindingsContent(): string'
+    lines:
+    - 96
+    - 98
+    detail: {}
+  - name: toggleLogging
+    sig: 'toggleLogging(): boolean'
+    lines:
+    - 100
+    - 103
+    detail: {}
+  - name: getDefaultKeybindings
+    sig: 'getDefaultKeybindings(): readonly ResolvedKeybindingItem[]'
+    lines:
+    - 111
+    - 113
+    detail:
+      calls:
+      - this._getResolver
+      - this._getResolver().getDefaultKeybindings
+  - name: getKeybindings
+    sig: 'getKeybindings(): readonly ResolvedKeybindingItem[]'
+    lines:
+    - 115
+    - 117
+    detail:
+      calls:
+      - this._getResolver
+      - this._getResolver().getKeybindings
+  - name: customKeybindingsCount
+    sig: 'customKeybindingsCount(): number'
+    lines:
+    - 119
+    - 121
+    detail: {}
+  - name: lookupKeybindings
+    sig: 'lookupKeybindings(commandId: string): ResolvedKeybinding[]'
+    lines:
+    - 123
+    - 127
+    detail:
+      calls:
+      - arrays.coalesce
+      - this._getResolver
+      - this._getResolver().lookupKeybindings
+      - this._getResolver().lookupKeybindings(commandId).map
+  - name: lookupKeybinding
+    sig: 'lookupKeybinding(commandId: string, context?: IContextKeyService, enforceContextCheck = false): ResolvedKeybinding | undefined'
+    lines:
+    - 129
+    - 135
+    detail:
+      calls:
+      - this._getResolver
+      - this._getResolver().lookupPrimaryKeybinding
+  - name: dispatchEvent
+    sig: 'dispatchEvent(e: IKeyboardEvent, target: IContextKeyServiceTarget): boolean'
+    lines:
+    - 137
+    - 139
+    detail:
+      calls:
+      - this._dispatch
+  - name: softDispatch
+    sig: 'softDispatch(e: IKeyboardEvent, target: IContextKeyServiceTarget): ResolutionResult'
+    lines:
+    - 143
+    - 160
+    detail:
+      calls:
+      - console.warn
+      - keybinding.getDispatchChords
+      - keybinding.hasMultipleChords
+      - this._contextKeyService.getContext
+      - this._currentChords.map
+      - this._getResolver
+      - this._getResolver().resolve
+      - this._log
+      - this.resolveKeyboardEvent
+  - name: _expectAnotherChord
+    sig: '_expectAnotherChord(firstChord: string, keypressLabel: string | null): void'
+    vis: private
+    lines:
+    - 180
+    - 202
+    detail:
+      calls:
+      - IME.disable
+      - illegalState
+      - nls.localize
+      - this._currentChords.map
+      - this._currentChords.map(({ label }) => label).join
+      - this._currentChords.push
+      - this._notificationService.status
+      - this._scheduleLeaveChordMode
+  - name: _leaveChordMode
+    sig: '_leaveChordMode(): void'
+    vis: private
+    lines:
+    - 204
+    - 212
+    detail:
+      calls:
+      - IME.enable
+      - this._currentChordChecker.cancel
+      - this._currentChordStatusMessage.dispose
+  - name: dispatchByUserSettingsLabel
+    sig: 'dispatchByUserSettingsLabel(userSettingsLabel: string, target: IContextKeyServiceTarget): void'
+    lines:
+    - 214
+    - 222
+    detail:
+      calls:
+      - this._doDispatch
+      - this._log
+      - this.resolveUserBinding
+  - name: _singleModifierDispatch
+    sig: '_singleModifierDispatch(e: IKeyboardEvent, target: IContextKeyServiceTarget): boolean'
+    vis: protected
+    lines:
+    - 228
+    - 280
+    detail:
+      calls:
+      - keybinding.getChords
+      - keybinding.getSingleModifierDispatchChords
+      - new KeybindingModifierSet
+      - this._currentSingleModifierClearTimeout.cancel
+      - this._currentSingleModifierClearTimeout.cancelAndSet
+      - this._doDispatch
+      - this._ignoreSingleModifiers.has
+      - this._log
+      - this.resolveKeyboardEvent
+  - name: _doDispatch
+    sig: '_doDispatch(userKeypress: ResolvedKeybinding, target: IContextKeyServiceTarget, isSingleModiferChord = false): boolean'
+    vis: private
+    lines:
+    - 282
+    - 386
+    detail:
+      calls:
+      - HIGH_FREQ_COMMANDS.test
+      - console.warn
+      - nls.localize
+      - this._commandService.executeCommand
+      - this._commandService.executeCommand(resolveResult.commandId).then
+      - this._commandService.executeCommand(resolveResult.commandId, resolveResult.commandArgs).then
+      - this._contextKeyService.getContext
+      - this._currentChords.map
+      - this._currentChords.map(({ label }) => label).join
+      - this._expectAnotherChord
+      - this._getResolver
+      - this._getResolver().resolve
+      - this._leaveChordMode
+      - this._log
+      - this._logService.trace
+      - this._notificationService.status
+      - this._telemetryService.publicLog2
+      - userKeypress.getDispatchChords
+      - userKeypress.getLabel
+      - userKeypress.getSingleModifierDispatchChords
+      - userKeypress.getUserSettingsLabel
+      - userKeypress.hasMultipleChords
+  - name: mightProducePrintableCharacter
+    sig: 'mightProducePrintableCharacter(event: IKeyboardEvent): boolean'
+    lines:
+    - 390
+    - 402
+    detail: {}
+  lines:
+  - 33
+  - 403
+- name: KeybindingModifierSet
+  kind: struct
+  fields:
+  - name: EMPTY
+    type: any
+    default: new KeybindingModifierSet(null)
+  - name: _ctrlKey
+    type: boolean
+  - name: _shiftKey
+    type: boolean
+  - name: _altKey
+    type: boolean
+  - name: _metaKey
+    type: boolean
+  methods:
+  - name: constructor
+    sig: 'constructor(source: ResolvedChord | null)'
+    lines:
+    - 414
+    - 419
+    detail: {}
+  - name: has
+    sig: 'has(modifier: SingleModifierChord)'
+    lines:
+    - 421
+    - 428
+    detail: {}
+  lines:
+  - 405
+  - 429
+exports:
+- name: CurrentChord
+  kind: type
+- name: AbstractKeybindingService
+  kind: type
+- name: KeybindingModifierSet
+  kind: type
+- name: HIGH_FREQ_COMMANDS
+  kind: data

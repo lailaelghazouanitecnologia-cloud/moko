@@ -1,0 +1,380 @@
+## Roska File Descriptor — browser/inlineChatSessionServiceImpl.ts
+file: browser/inlineChatSessionServiceImpl.ts
+lines: 454
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: ../../../../base/common/cancellation.js.CancellationToken
+- sym: ../../../../base/common/event.js.Emitter
+- sym: ../../../../base/common/event.js.Event
+- sym: ../../../../base/common/lifecycle.js.DisposableStore
+- sym: ../../../../base/common/lifecycle.js.IDisposable
+- sym: ../../../../base/common/lifecycle.js.MutableDisposable
+- sym: ../../../../base/common/lifecycle.js.toDisposable
+- sym: ../../../../base/common/map.js.ResourceMap
+- sym: ../../../../base/common/network.js.Schemas
+- sym: ../../../../base/common/observable.js.autorun
+- sym: ../../../../base/common/resources.js.isEqual
+- sym: ../../../../base/common/types.js.assertType
+- sym: ../../../../base/common/uri.js.URI
+- sym: ../../../../base/common/uuid.js.generateUuid
+- sym: ../../../../editor/browser/editorBrowser.js.IActiveCodeEditor
+- sym: ../../../../editor/browser/editorBrowser.js.ICodeEditor
+- sym: ../../../../editor/browser/editorBrowser.js.isCodeEditor
+- sym: ../../../../editor/browser/editorBrowser.js.isCompositeEditor
+- sym: ../../../../editor/browser/editorBrowser.js.isDiffEditor
+- sym: ../../../../editor/common/core/range.js.Range
+- sym: ../../../../editor/common/languages/language.js.ILanguageService
+- sym: ../../../../editor/common/model.js.IValidEditOperation
+- sym: ../../../../editor/common/model/textModel.js.createTextBufferFactoryFromSnapshot
+- sym: ../../../../editor/common/services/editorWorker.js.IEditorWorkerService
+- sym: ../../../../editor/common/services/model.js.IModelService
+- sym: ../../../../editor/common/services/resolverService.js.ITextModelService
+- sym: ../../../../platform/contextkey/common/contextkey.js.IContextKey
+- sym: ../../../../platform/contextkey/common/contextkey.js.IContextKeyService
+- sym: ../../../../platform/instantiation/common/instantiation.js.IInstantiationService
+- sym: ../../../../platform/log/common/log.js.ILogService
+- sym: ../../../../platform/telemetry/common/telemetry.js.ITelemetryService
+- sym: ../../../common/editor.js.DEFAULT_EDITOR_ASSOCIATION
+- sym: ../../../services/editor/common/editorService.js.IEditorService
+- sym: ../../../services/textfile/common/textfiles.js.ITextFileService
+- sym: ../../../services/untitled/common/untitledTextEditorInput.js.UntitledTextEditorInput
+- sym: ../../chat/browser/chat.js.IChatWidgetService
+- sym: ../../chat/common/chatAgents.js.IChatAgentService
+- sym: ../../chat/common/chatEditingService.js.WorkingSetEntryState
+- sym: ../../chat/common/chatService.js.IChatService
+- sym: ../../chat/common/constants.js.ChatAgentLocation
+- sym: ../common/inlineChat.js.CTX_INLINE_CHAT_HAS_AGENT
+- sym: ../common/inlineChat.js.CTX_INLINE_CHAT_HAS_AGENT2
+- sym: ../common/inlineChat.js.CTX_INLINE_CHAT_POSSIBLE
+- sym: ./inlineChatSession.js.HunkData
+- sym: ./inlineChatSession.js.Session
+- sym: ./inlineChatSession.js.SessionWholeRange
+- sym: ./inlineChatSession.js.StashedSession
+- sym: ./inlineChatSession.js.TelemetryData
+- sym: ./inlineChatSession.js.TelemetryDataClassification
+- sym: ./inlineChatSessionService.js.IInlineChatSession2
+- sym: ./inlineChatSessionService.js.IInlineChatSessionEndEvent
+- sym: ./inlineChatSessionService.js.IInlineChatSessionEvent
+- sym: ./inlineChatSessionService.js.IInlineChatSessionService
+- sym: ./inlineChatSessionService.js.ISessionKeyComputer
+types:
+- name: SessionData
+  kind: typealias
+  decorators:
+  - type
+  fields:
+  - name: editor
+    type: ICodeEditor
+  - name: session
+    type: Session
+  - name: store
+    type: IDisposable
+  lines:
+  - 41
+  - 45
+- name: InlineChatError
+  kind: struct
+  bases:
+  - Error
+  fields:
+  - name: code
+    type: any
+    default: '''InlineChatError'''
+  methods:
+  - name: constructor
+    sig: 'constructor(message: string)'
+    lines:
+    - 49
+    - 52
+    detail:
+      calls:
+      - super
+  lines:
+  - 47
+  - 53
+- name: InlineChatSessionServiceImpl
+  kind: struct
+  ctx: '---- NEW'
+  bases:
+  - IInlineChatSessionService
+  fields:
+  - name: _serviceBrand
+    type: undefined
+  - name: _store
+    type: any
+    default: new DisposableStore()
+  - name: _onWillStartSession
+    type: any
+    default: this._store.add(new Emitter<IActiveCodeEditor>())
+  - name: onWillStartSession
+    type: Event<IActiveCodeEditor>
+    default: this._onWillStartSession.event
+  - name: _onDidMoveSession
+    type: any
+    default: this._store.add(new Emitter<IInlineChatSessionEvent>())
+  - name: onDidMoveSession
+    type: Event<IInlineChatSessionEvent>
+    default: this._onDidMoveSession.event
+  - name: _onDidEndSession
+    type: any
+    default: this._store.add(new Emitter<IInlineChatSessionEndEvent>())
+  - name: onDidEndSession
+    type: Event<IInlineChatSessionEndEvent>
+    default: this._onDidEndSession.event
+  - name: _onDidStashSession
+    type: any
+    default: this._store.add(new Emitter<IInlineChatSessionEvent>())
+  - name: onDidStashSession
+    type: Event<IInlineChatSessionEvent>
+    default: this._onDidStashSession.event
+  - name: _sessions
+    type: any
+    default: new Map<string, SessionData>()
+  - name: _keyComputers
+    type: any
+    default: new Map<string, ISessionKeyComputer>()
+  - name: _sessions2
+    type: any
+    default: new ResourceMap<IInlineChatSession2>()
+  - name: _onDidChangeSessions
+    type: any
+    default: this._store.add(new Emitter<this>())
+  - name: onDidChangeSessions
+    type: Event<this>
+    default: this._onDidChangeSessions.event
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\t@ITelemetryService private readonly _telemetryService: ITelemetryService,\n\t\t@IModelService private readonly _modelService: IModelService,\n\t\t@ITextModelService private readonly _textModelService: ITextModelService,\n\t\t@IEditorWorkerService private readonly _editorWorkerService: IEditorWorkerService,\n\t\t@ILogService private readonly _logService: ILogService,\n\t\t@IInstantiationService private readonly _instaService: IInstantiationService,\n\t\t@IEditorService private readonly _editorService: IEditorService,\n\t\t@ITextFileService private readonly _textFileService: ITextFileService,\n\t\t@ILanguageService private readonly _languageService: ILanguageService,\n\t\t@IChatService private readonly _chatService: IChatService,\n\t\t@IChatAgentService private readonly _chatAgentService: IChatAgentService,\n\t\t@IChatWidgetService private readonly _chatWidgetService: IChatWidgetService,\n\t)"
+    lines:
+    - 77
+    - 90
+    detail: {}
+  - name: dispose
+    sig: dispose()
+    lines:
+    - 92
+    - 96
+    detail:
+      calls:
+      - this._sessions.clear
+      - this._sessions.forEach
+      - this._store.dispose
+  - name: createSession
+    sig: 'createSession(editor: IActiveCodeEditor, options: { headless?: boolean; wholeRange?: Range; session?: Session }, token: CancellationToken): Promise<Session | undefined>'
+    is_async: true
+    lines:
+    - 98
+    - 226
+    detail:
+      calls:
+      - chatModel.onDidChange
+      - createTextBufferFactoryFromSnapshot
+      - editor.getId
+      - editor.getModel
+      - editor.getSelection
+      - generateUuid
+      - new DisposableStore
+      - new Error
+      - new HunkData
+      - new MutableDisposable
+      - new Range
+      - new Session
+      - new SessionWholeRange
+      - new URLSearchParams
+      - 'new URLSearchParams({ id, ''textModel0'': '''' }).toString'
+      - store.add
+      - store.dispose
+      - targetUri.with
+      - textModel.createSnapshot
+      - textModel.getLanguageId
+      - this._chatAgentService.getDefaultAgent
+      - this._chatAgentService.onDidChangeAgents
+      - this._chatService.startSession
+      - this._editorService.onDidCloseEditor
+      - this._key
+      - this._logService.trace
+      - this._modelService.createModel
+      - this._onWillStartSession.fire
+      - this._sessions.has
+      - this._sessions.set
+      - this._textModelService.createModelReference
+      - toDisposable
+  - name: moveSession
+    sig: 'moveSession(session: Session, target: ICodeEditor): void'
+    lines:
+    - 228
+    - 254
+    detail:
+      calls:
+      - data.editor.getId
+      - new Error
+      - target.getId
+      - this._key
+      - this._logService.trace
+      - this._onDidMoveSession.fire
+      - this._sessions.delete
+      - this._sessions.get
+      - this._sessions.set
+  - name: releaseSession
+    sig: 'releaseSession(session: Session): void'
+    lines:
+    - 256
+    - 258
+    detail:
+      calls:
+      - this._releaseSession
+  - name: _releaseSession
+    sig: '_releaseSession(session: Session, byServer: boolean): void'
+    vis: private
+    lines:
+    - 260
+    - 286
+    detail:
+      calls:
+      - session.asTelemetryData
+      - this._logService.trace
+      - this._onDidEndSession.fire
+      - this._sessions.delete
+      - this._telemetryService.publicLog2
+      - value.editor.getId
+      - value.store.dispose
+  - name: stashSession
+    sig: 'stashSession(session: Session, editor: ICodeEditor, undoCancelEdits: IValidEditOperation[]): StashedSession'
+    lines:
+    - 288
+    - 293
+    detail:
+      calls:
+      - editor.getId
+      - this._instaService.createInstance
+      - this._logService.trace
+      - this._onDidStashSession.fire
+  - name: getCodeEditor
+    sig: 'getCodeEditor(session: Session): ICodeEditor'
+    lines:
+    - 295
+    - 302
+    detail:
+      calls:
+      - new Error
+  - name: getSession
+    sig: 'getSession(editor: ICodeEditor, uri: URI): Session | undefined'
+    lines:
+    - 304
+    - 307
+    detail:
+      calls:
+      - this._key
+      - this._sessions.get
+  - name: _key
+    sig: '_key(editor: ICodeEditor, uri: URI): string'
+    vis: private
+    lines:
+    - 309
+    - 315
+    detail:
+      calls:
+      - editor.getId
+      - item.getComparisonKey
+      - this._keyComputers.get
+      - uri.toString
+  - name: registerSessionKeyComputer
+    sig: 'registerSessionKeyComputer(scheme: string, value: ISessionKeyComputer): IDisposable'
+    lines:
+    - 317
+    - 320
+    detail:
+      calls:
+      - this._keyComputers.set
+      - toDisposable
+  - name: createSession2
+    sig: 'createSession2(editor: ICodeEditor, uri: URI, token: CancellationToken): Promise<IInlineChatSession2>'
+    is_async: true
+    lines:
+    - 330
+    - 384
+    detail:
+      calls:
+      - assertType
+      - autorun
+      - editor.getPosition
+      - editor.getPosition().delta
+      - editor.hasModel
+      - new DisposableStore
+      - new Error
+      - store.add
+      - store.dispose.bind
+      - this._chatService.startSession
+      - this._chatWidgetService.getWidgetBySessionId
+      - this._onDidChangeSessions.fire
+      - this._onWillStartSession.fire
+      - this._sessions2.has
+      - this._sessions2.set
+      - toDisposable
+      - widget?.attachmentModel.addFile
+  - name: getSession2
+    sig: 'getSession2(uri: URI): IInlineChatSession2 | undefined'
+    lines:
+    - 386
+    - 400
+    detail:
+      calls:
+      - candidate.editingSession.getEntry
+      - this._sessions2.get
+  lines:
+  - 56
+  - 401
+- name: InlineChatEnabler
+  kind: struct
+  fields:
+  - name: Id
+    type: any
+    default: '''inlineChat.enabler'''
+  - name: _ctxHasProvider
+    type: IContextKey<boolean>
+  - name: _ctxHasProvider2
+    type: IContextKey<boolean>
+  - name: _ctxPossible
+    type: IContextKey<boolean>
+  - name: _store
+    type: any
+    default: new DisposableStore()
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\t@IContextKeyService contextKeyService: IContextKeyService,\n\t\t@IChatAgentService chatAgentService: IChatAgentService,\n\t\t@IEditorService editorService: IEditorService,\n\t)"
+    lines:
+    - 413
+    - 447
+    detail:
+      calls:
+      - CTX_INLINE_CHAT_HAS_AGENT.bindTo
+      - CTX_INLINE_CHAT_HAS_AGENT2.bindTo
+      - CTX_INLINE_CHAT_POSSIBLE.bindTo
+      - chatAgentService.onDidChangeAgents
+      - editorService.onDidActiveEditorChange
+      - this._store.add
+      - updateAgent
+      - updateEditor
+  - name: dispose
+    sig: dispose()
+    lines:
+    - 449
+    - 453
+    detail:
+      calls:
+      - this._ctxHasProvider.reset
+      - this._ctxPossible.reset
+      - this._store.dispose
+  lines:
+  - 403
+  - 454
+exports:
+- name: SessionData
+  kind: type
+- name: InlineChatError
+  kind: type
+- name: InlineChatSessionServiceImpl
+  kind: type
+- name: InlineChatEnabler
+  kind: type

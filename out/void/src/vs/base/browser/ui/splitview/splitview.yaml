@@ -1,0 +1,963 @@
+## Roska File Descriptor — splitview/splitview.ts
+file: splitview/splitview.ts
+lines: 1504
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: ../../dom.js.$
+- sym: ../../dom.js.addDisposableListener
+- sym: ../../dom.js.append
+- sym: ../../dom.js.getWindow
+- sym: ../../dom.js.scheduleAtNextAnimationFrame
+- sym: ../../event.js.DomEmitter
+- sym: ../sash/sash.js.ISashEvent as IBaseSashEvent
+- sym: ../sash/sash.js.Orientation
+- sym: ../sash/sash.js.Sash
+- sym: ../sash/sash.js.SashState
+- sym: ../scrollbar/scrollableElement.js.SmoothScrollableElement
+- sym: ../../../common/arrays.js.pushToEnd
+- sym: ../../../common/arrays.js.pushToStart
+- sym: ../../../common/arrays.js.range
+- sym: ../../../common/color.js.Color
+- sym: ../../../common/event.js.Emitter
+- sym: ../../../common/event.js.Event
+- sym: ../../../common/lifecycle.js.combinedDisposable
+- sym: ../../../common/lifecycle.js.Disposable
+- sym: ../../../common/lifecycle.js.dispose
+- sym: ../../../common/lifecycle.js.IDisposable
+- sym: ../../../common/lifecycle.js.toDisposable
+- sym: ../../../common/numbers.js.clamp
+- sym: ../../../common/scrollable.js.Scrollable
+- sym: ../../../common/scrollable.js.ScrollbarVisibility
+- sym: ../../../common/scrollable.js.ScrollEvent
+- sym: ../../../common/types.js.types
+data:
+- name: defaultStyles
+  type: ISplitViewStyles
+  val: "{\n\tseparatorBorder: Color.transparent\n}"
+types:
+- name: ISplitViewStyles
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: readonly
+    type: Color
+  lines:
+  - 20
+  - 22
+- name: LayoutPriority
+  kind: enum
+  variants:
+  - name: Normal
+  - name: Low
+  - name: High
+  lines:
+  - 28
+  - 32
+- name: IView
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: readonly
+    type: HTMLElement
+  - name: readonly
+    type: number
+  - name: readonly
+    type: number
+  - name: readonly
+    type: LayoutPriority
+  - name: readonly
+    type: boolean
+  - name: readonly
+    type: boolean
+  - name: readonly
+    type: Event<number | undefined>
+  - name: layout
+    type: 'method: layout(size: number, offset: number, context: TLayoutContext | undefined): void'
+  - name: setVisible
+    type: 'method: setVisible?(visible: boolean): void'
+  lines:
+  - 41
+  - 117
+- name: ISplitViewDescriptor
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: readonly
+    type: number
+  - name: readonly
+    type: "{\n\n\t\t/**\n\t\t * Whether the {@link IView view} is visible.\n\t\t *\n\t\t * @defaultValue `true`\n\t\t */\n\t\treadonly visible?: boolean;\n\n\t\t/**\n\t\t * The size of the {@link IView view}.\n\t\t *\n\t\t * @defaultValue `true`\n\t\t */\n\t\treadonly size: number;\n\n\t\t/**\n\t\t * The size of the {@link IView view}.\n\t\t *\n\t\t * @defaultValue `true`\n\t\t */\n\t\treadonly view: TView;\n\t}[]"
+  lines:
+  - 122
+  - 155
+- name: ISplitViewOptions
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: readonly
+    type: Orientation
+  - name: readonly
+    type: ISplitViewStyles
+  - name: readonly
+    type: boolean
+  - name: readonly
+    type: boolean
+  - name: readonly
+    type: ISplitViewDescriptor<TLayoutContext, TView>
+  - name: readonly
+    type: ScrollbarVisibility
+  - name: readonly
+    type: () => number
+  lines:
+  - 157
+  - 199
+- name: ISashEvent
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: readonly
+    type: Sash
+  - name: readonly
+    type: number
+  - name: readonly
+    type: number
+  - name: readonly
+    type: boolean
+  lines:
+  - 201
+  - 206
+- name: ViewItemSize
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 208
+  - 208
+- name: ViewItem
+  kind: trait
+  decorators:
+  - abstract
+  fields:
+  - name: _size
+    type: number
+  - name: _cachedVisibleSize
+    type: number | undefined
+    default: undefined
+  methods:
+  - name: size
+    sig: 'size(size: number)'
+    lines:
+    - 213
+    - 215
+    detail: {}
+  - name: size
+    sig: 'size(): number'
+    lines:
+    - 217
+    - 219
+    detail: {}
+  - name: cachedVisibleSize
+    sig: 'cachedVisibleSize(): number | undefined'
+    lines:
+    - 222
+    - 222
+    detail: {}
+  - name: visible
+    sig: 'visible(): boolean'
+    lines:
+    - 224
+    - 226
+    detail: {}
+  - name: setVisible
+    sig: 'setVisible(visible: boolean, size?: number): void'
+    lines:
+    - 228
+    - 249
+    detail:
+      calls:
+      - clamp
+      - console.error
+      - this.container.classList.toggle
+      - this.view.setVisible
+  - name: minimumSize
+    sig: 'minimumSize(): number'
+    lines:
+    - 251
+    - 251
+    detail: {}
+  - name: viewMinimumSize
+    sig: 'viewMinimumSize(): number'
+    lines:
+    - 252
+    - 252
+    detail: {}
+  - name: maximumSize
+    sig: 'maximumSize(): number'
+    lines:
+    - 254
+    - 254
+    detail: {}
+  - name: viewMaximumSize
+    sig: 'viewMaximumSize(): number'
+    lines:
+    - 255
+    - 255
+    detail: {}
+  - name: priority
+    sig: 'priority(): LayoutPriority | undefined'
+    lines:
+    - 257
+    - 257
+    detail: {}
+  - name: proportionalLayout
+    sig: 'proportionalLayout(): boolean'
+    lines:
+    - 258
+    - 258
+    detail: {}
+  - name: snap
+    sig: 'snap(): boolean'
+    lines:
+    - 259
+    - 259
+    detail: {}
+  - name: enabled
+    sig: 'enabled(enabled: boolean)'
+    lines:
+    - 261
+    - 263
+    detail: {}
+  - name: constructor
+    sig: "constructor(\n\t\tprotected container: HTMLElement,\n\t\treadonly view: TView,\n\t\tsize: ViewItemSize,\n\t\tprivate disposable: IDisposable\n\t)"
+    lines:
+    - 265
+    - 279
+    detail:
+      calls:
+      - container.classList.add
+  - name: layout
+    sig: 'layout(offset: number, layoutContext: TLayoutContext | undefined): void'
+    lines:
+    - 281
+    - 290
+    detail:
+      calls:
+      - console.error
+      - this.layoutContainer
+      - this.view.layout
+  - name: dispose
+    sig: 'dispose(): void'
+    lines:
+    - 294
+    - 296
+    detail:
+      calls:
+      - this.disposable.dispose
+  lines:
+  - 210
+  - 297
+- name: VerticalViewItem
+  kind: struct
+  bases:
+  - ViewItem
+  methods:
+  - name: layoutContainer
+    sig: 'layoutContainer(offset: number): void'
+    lines:
+    - 301
+    - 304
+    detail: {}
+  lines:
+  - 299
+  - 305
+- name: HorizontalViewItem
+  kind: struct
+  bases:
+  - ViewItem
+  methods:
+  - name: layoutContainer
+    sig: 'layoutContainer(offset: number): void'
+    lines:
+    - 309
+    - 312
+    detail: {}
+  lines:
+  - 307
+  - 313
+- name: ISashItem
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: sash
+    type: Sash
+  - name: disposable
+    type: IDisposable
+  lines:
+  - 315
+  - 318
+- name: ISashDragSnapState
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: readonly
+    type: number
+  - name: readonly
+    type: number
+  - name: readonly
+    type: number
+  lines:
+  - 320
+  - 324
+- name: ISashDragState
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: index
+    type: number
+  - name: start
+    type: number
+  - name: current
+    type: number
+  - name: sizes
+    type: number[]
+  - name: minDelta
+    type: number
+  - name: maxDelta
+    type: number
+  - name: alt
+    type: boolean
+  - name: snapBefore
+    type: ISashDragSnapState | undefined
+  - name: snapAfter
+    type: ISashDragSnapState | undefined
+  - name: disposable
+    type: IDisposable
+  lines:
+  - 326
+  - 337
+- name: State
+  kind: enum
+  variants:
+  - name: Idle
+  - name: Busy
+  lines:
+  - 339
+  - 342
+- name: DistributeSizing
+  kind: typealias
+  decorators:
+  - type
+  fields:
+  - name: type
+    type: '''distribute'''
+  lines:
+  - 348
+  - 348
+- name: SplitSizing
+  kind: typealias
+  decorators:
+  - type
+  fields:
+  - name: type
+    type: '''split'''
+  - name: index
+    type: number
+  lines:
+  - 354
+  - 354
+- name: AutoSizing
+  kind: typealias
+  decorators:
+  - type
+  fields:
+  - name: type
+    type: '''auto'''
+  - name: index
+    type: number
+  lines:
+  - 360
+  - 360
+- name: InvisibleSizing
+  kind: typealias
+  decorators:
+  - type
+  fields:
+  - name: type
+    type: '''invisible'''
+  - name: cachedVisibleSize
+    type: number
+  lines:
+  - 365
+  - 365
+- name: Sizing
+  kind: enum
+  decorators:
+  - type
+  variants:
+  - name: InvisibleSizing
+  lines:
+  - 371
+  - 371
+- name: SplitView
+  kind: struct
+  ctx: This {@link SplitView}'s orientation.
+  bases:
+  - Disposable
+  fields:
+  - name: orientation
+    type: Orientation
+  - name: el
+    type: HTMLElement
+  - name: sashContainer
+    type: HTMLElement
+  - name: viewContainer
+    type: HTMLElement
+  - name: scrollable
+    type: Scrollable
+  - name: scrollableElement
+    type: SmoothScrollableElement
+  - name: size
+    type: any
+    default: '0'
+  - name: layoutContext
+    type: TLayoutContext | undefined
+  - name: _contentSize
+    type: any
+    default: '0'
+  - name: proportions
+    type: (number | undefined)[] | undefined
+    default: undefined
+  - name: viewItems
+    type: ViewItem<TLayoutContext, TView>[]
+    default: '[]'
+  - name: sashItems
+    type: ISashItem[]
+    default: '[]'
+  - name: sashDragState
+    type: ISashDragState | undefined
+  - name: state
+    type: State
+    default: State.Idle
+  - name: inverseAltBehavior
+    type: boolean
+  - name: proportionalLayout
+    type: boolean
+  - name: getSashOrthogonalSize
+    type: '{ (): number } | undefined'
+  - name: _onDidSashChange
+    type: any
+    default: this._register(new Emitter<number>())
+  - name: _onDidSashReset
+    type: any
+    default: this._register(new Emitter<number>())
+  - name: _orthogonalStartSash
+    type: Sash | undefined
+  - name: _orthogonalEndSash
+    type: Sash | undefined
+  - name: _startSnappingEnabled
+    type: any
+    default: 'true'
+  - name: _endSnappingEnabled
+    type: any
+    default: 'true'
+  - name: onDidSashChange
+    type: any
+    default: this._onDidSashChange.event
+  - name: onDidSashReset
+    type: any
+    default: this._onDidSashReset.event
+  - name: onDidScroll
+    type: Event<ScrollEvent>
+  methods:
+  - name: contentSize
+    sig: 'contentSize(): number'
+    lines:
+    - 465
+    - 465
+    detail: {}
+  - name: length
+    sig: 'length(): number'
+    lines:
+    - 485
+    - 487
+    detail: {}
+  - name: minimumSize
+    sig: 'minimumSize(): number'
+    lines:
+    - 492
+    - 494
+    detail:
+      calls:
+      - this.viewItems.reduce
+  - name: maximumSize
+    sig: 'maximumSize(): number'
+    lines:
+    - 499
+    - 501
+    detail:
+      calls:
+      - this.viewItems.reduce
+  - name: orthogonalStartSash
+    sig: 'orthogonalStartSash(): Sash | undefined'
+    lines:
+    - 503
+    - 503
+    detail: {}
+  - name: orthogonalEndSash
+    sig: 'orthogonalEndSash(): Sash | undefined'
+    lines:
+    - 504
+    - 504
+    detail: {}
+  - name: startSnappingEnabled
+    sig: 'startSnappingEnabled(): boolean'
+    lines:
+    - 505
+    - 505
+    detail: {}
+  - name: endSnappingEnabled
+    sig: 'endSnappingEnabled(): boolean'
+    lines:
+    - 506
+    - 506
+    detail: {}
+  - name: orthogonalStartSash
+    sig: 'orthogonalStartSash(sash: Sash | undefined)'
+    lines:
+    - 513
+    - 519
+    detail: {}
+  - name: orthogonalEndSash
+    sig: 'orthogonalEndSash(sash: Sash | undefined)'
+    lines:
+    - 526
+    - 532
+    detail: {}
+  - name: sashes
+    sig: 'sashes(): readonly Sash[]'
+    lines:
+    - 537
+    - 539
+    detail:
+      calls:
+      - this.sashItems.map
+  - name: startSnappingEnabled
+    sig: 'startSnappingEnabled(startSnappingEnabled: boolean)'
+    lines:
+    - 544
+    - 551
+    detail:
+      calls:
+      - this.updateSashEnablement
+  - name: endSnappingEnabled
+    sig: 'endSnappingEnabled(endSnappingEnabled: boolean)'
+    lines:
+    - 556
+    - 563
+    detail:
+      calls:
+      - this.updateSashEnablement
+  - name: constructor
+    sig: 'constructor(container: HTMLElement, options: ISplitViewOptions<TLayoutContext, TView> = {})'
+    lines:
+    - 568
+    - 635
+    detail:
+      calls:
+      - $
+      - append
+      - container.appendChild
+      - document.createElement
+      - new DomEmitter
+      - new Scrollable
+      - new SmoothScrollableElement
+      - onDidScrollViewContainer
+      - options.descriptor.views.forEach
+      - super
+      - this._register
+      - this.el.classList.add
+      - this.onDidScroll
+      - this.saveProportions
+      - this.scrollableElement.getDomNode
+      - this.style
+      - this.viewItems.reduce
+  - name: style
+    sig: 'style(styles: ISplitViewStyles): void'
+    lines:
+    - 637
+    - 645
+    detail:
+      calls:
+      - styles.separatorBorder.isTransparent
+      - styles.separatorBorder.toString
+      - this.el.classList.add
+      - this.el.classList.remove
+      - this.el.style.removeProperty
+      - this.el.style.setProperty
+  - name: addView
+    sig: 'addView(view: TView, size: number | Sizing, index = this.viewItems.length, skipLayout?: boolean): void'
+    lines:
+    - 655
+    - 657
+    detail:
+      calls:
+      - this.doAddView
+  - name: removeView
+    sig: 'removeView(index: number, sizing?: Sizing): TView'
+    lines:
+    - 665
+    - 716
+    detail:
+      calls:
+      - Math.max
+      - new Error
+      - sashItem.disposable.dispose
+      - this.areViewsDistributed
+      - this.distributeViewSizes
+      - this.relayout
+      - this.sashItems.splice
+      - this.viewItems.splice
+      - viewItemToRemove.dispose
+  - name: removeAllViews
+    sig: 'removeAllViews(): TView[]'
+    lines:
+    - 718
+    - 744
+    detail:
+      calls:
+      - new Error
+      - sashItem.disposable.dispose
+      - this.relayout
+      - this.sashItems.splice
+      - this.viewItems.splice
+      - viewItem.dispose
+      - viewItems.map
+  - name: moveView
+    sig: 'moveView(from: number, to: number): void'
+    lines:
+    - 752
+    - 761
+    detail:
+      calls:
+      - Sizing.Invisible
+      - new Error
+      - this.addView
+      - this.getViewCachedVisibleSize
+      - this.getViewSize
+      - this.removeView
+  - name: swapViews
+    sig: 'swapViews(from: number, to: number): void'
+    lines:
+    - 770
+    - 786
+    detail:
+      calls:
+      - new Error
+      - this.addView
+      - this.getViewSize
+      - this.removeView
+      - this.swapViews
+  - name: isViewVisible
+    sig: 'isViewVisible(index: number): boolean'
+    lines:
+    - 793
+    - 800
+    detail:
+      calls:
+      - new Error
+  - name: setViewVisible
+    sig: 'setViewVisible(index: number, visible: boolean): void'
+    lines:
+    - 808
+    - 819
+    detail:
+      calls:
+      - new Error
+      - this.distributeEmptySpace
+      - this.layoutViews
+      - this.saveProportions
+      - viewItem.setVisible
+  - name: getViewCachedVisibleSize
+    sig: 'getViewCachedVisibleSize(index: number): number | undefined'
+    lines:
+    - 826
+    - 833
+    detail:
+      calls:
+      - new Error
+  - name: layout
+    sig: 'layout(size: number, layoutContext?: TLayoutContext): void'
+    lines:
+    - 841
+    - 878
+    detail:
+      calls:
+      - Math.max
+      - Math.round
+      - clamp
+      - indexes.filter
+      - range
+      - this.distributeEmptySpace
+      - this.layoutViews
+      - this.resize
+  - name: onSashStart
+    sig: 'onSashStart({ sash, start, alt }: ISashEvent): void'
+    vis: private
+    lines:
+    - 886
+    - 967
+    detail:
+      calls:
+      - addDisposableListener
+      - combinedDisposable
+      - resetSashDragState
+      - this.sashItems.findIndex
+  - name: onSashChange
+    sig: 'onSashChange({ current }: ISashEvent): void'
+    vis: private
+    lines:
+    - 969
+    - 990
+    detail:
+      calls:
+      - this.distributeEmptySpace
+      - this.layoutViews
+      - this.resize
+      - this.viewItems.map
+  - name: onSashEnd
+    sig: 'onSashEnd(index: number): void'
+    vis: private
+    lines:
+    - 992
+    - 1000
+    detail:
+      calls:
+      - this._onDidSashChange.fire
+      - this.sashDragState!.disposable.dispose
+      - this.saveProportions
+  - name: onViewChange
+    sig: 'onViewChange(item: ViewItem<TLayoutContext, TView>, size: number | undefined): void'
+    vis: private
+    lines:
+    - 1002
+    - 1022
+    detail:
+      calls:
+      - Math.floor
+      - clamp
+      - this.distributeEmptySpace
+      - this.layoutViews
+      - this.relayout
+      - this.resize
+      - this.viewItems.indexOf
+  - name: resizeView
+    sig: 'resizeView(index: number, size: number): void'
+    lines:
+    - 1030
+    - 1055
+    detail:
+      calls:
+      - Math.min
+      - Math.round
+      - clamp
+      - indexes.filter
+      - new Error
+      - range
+      - range(this.viewItems.length).filter
+      - this.relayout
+  - name: isViewExpanded
+    sig: 'isViewExpanded(index: number): boolean'
+    lines:
+    - 1060
+    - 1072
+    detail: {}
+  - name: distributeViewSizes
+    sig: 'distributeViewSizes(): void'
+    lines:
+    - 1077
+    - 1099
+    detail:
+      calls:
+      - Math.floor
+      - clamp
+      - flexibleViewItems.push
+      - indexes.filter
+      - range
+      - this.relayout
+  - name: getViewSize
+    sig: 'getViewSize(index: number): number'
+    lines:
+    - 1104
+    - 1110
+    detail: {}
+  - name: doAddView
+    sig: 'doAddView(view: TView, size: number | Sizing, index = this.viewItems.length, skipLayout?: boolean): void'
+    vis: private
+    lines:
+    - 1112
+    - 1224
+    detail:
+      calls:
+      - $
+      - Event.map
+      - combinedDisposable
+      - container.appendChild
+      - new Error
+      - new HorizontalViewItem
+      - new Sash
+      - new VerticalViewItem
+      - onChange
+      - onEnd
+      - onStart
+      - sash.onDidReset
+      - this.areViewsDistributed
+      - this.distributeViewSizes
+      - this.getViewSize
+      - this.relayout
+      - this.sashItems.splice
+      - this.viewContainer.appendChild
+      - this.viewContainer.children.item
+      - this.viewContainer.insertBefore
+      - this.viewItems.splice
+      - toDisposable
+      - view.onDidChange
+  - name: relayout
+    sig: 'relayout(lowPriorityIndexes?: number[], highPriorityIndexes?: number[]): void'
+    vis: private
+    lines:
+    - 1226
+    - 1233
+    detail:
+      calls:
+      - this.distributeEmptySpace
+      - this.layoutViews
+      - this.resize
+      - this.saveProportions
+      - this.viewItems.reduce
+  - name: resize
+    sig: "resize(\n\t\tindex: number,\n\t\tdelta: number,\n\t\tsizes = this.viewItems.map(i => i.size),\n\t\tlowPriorityIndexes?: number[],\n\t\thighPriorityIndexes?: number[],\n\t\toverloadMinDelta: number = Number.NEGATIVE_INFINITY,\n\t\toverloadMaxDelta: number = Number.POSITIVE_INFINITY,\n\t\tsnapBefore?: ISashDragSnapState,\n\t\tsnapAfter?: ISashDragSnapState\n\t): number"
+    vis: private
+    lines:
+    - 1235
+    - 1321
+    detail:
+      calls:
+      - Math.max
+      - Math.min
+      - clamp
+      - downIndexes.map
+      - downIndexes.reduce
+      - pushToEnd
+      - pushToStart
+      - range
+      - snapView.setVisible
+      - this.resize
+      - upIndexes.map
+      - upIndexes.reduce
+  - name: distributeEmptySpace
+    sig: 'distributeEmptySpace(lowPriorityIndex?: number): void'
+    vis: private
+    lines:
+    - 1323
+    - 1351
+    detail:
+      calls:
+      - clamp
+      - indexes.filter
+      - pushToEnd
+      - pushToStart
+      - range
+      - this.viewItems.reduce
+  - name: layoutViews
+    sig: 'layoutViews(): void'
+    vis: private
+    lines:
+    - 1353
+    - 1369
+    detail:
+      calls:
+      - this.sashItems.forEach
+      - this.updateSashEnablement
+      - this.updateScrollableElement
+      - this.viewItems.reduce
+      - viewItem.layout
+  - name: updateSashEnablement
+    sig: 'updateSashEnablement(): void'
+    vis: private
+    lines:
+    - 1385
+    - 1432
+    detail:
+      calls:
+      - '[...this.viewItems].reverse'
+      - range
+      - reverseViews.map
+      - reverseViews.map(i => previous = (i.maximumSize - i.size > 0) || previous).reverse
+      - reverseViews.map(i => previous = (i.size - i.minimumSize > 0) || previous).reverse
+      - this.findFirstSnapIndex
+      - this.viewItems.map
+  - name: dispose
+    sig: 'dispose(): void'
+    lines:
+    - 1493
+    - 1503
+    detail:
+      calls:
+      - dispose
+      - super.dispose
+      - this.sashDragState?.disposable.dispose
+      - this.sashItems.forEach
+  lines:
+  - 427
+  - 1504
+exports:
+- name: ISplitViewStyles
+  kind: type
+- name: LayoutPriority
+  kind: type
+- name: IView
+  kind: type
+- name: ISplitViewDescriptor
+  kind: type
+- name: ISplitViewOptions
+  kind: type
+- name: ISashEvent
+  kind: type
+- name: ViewItemSize
+  kind: type
+- name: ViewItem
+  kind: type
+- name: VerticalViewItem
+  kind: type
+- name: HorizontalViewItem
+  kind: type
+- name: ISashItem
+  kind: type
+- name: ISashDragSnapState
+  kind: type
+- name: ISashDragState
+  kind: type
+- name: State
+  kind: type
+- name: DistributeSizing
+  kind: type
+- name: SplitSizing
+  kind: type
+- name: AutoSizing
+  kind: type
+- name: InvisibleSizing
+  kind: type
+- name: Sizing
+  kind: type
+- name: SplitView
+  kind: type
+- name: defaultStyles
+  kind: data

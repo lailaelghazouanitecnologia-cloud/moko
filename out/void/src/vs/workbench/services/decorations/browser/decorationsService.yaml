@@ -1,0 +1,367 @@
+## Roska File Descriptor — browser/decorationsService.ts
+file: browser/decorationsService.ts
+lines: 416
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: ../../../../base/common/uri.js.URI
+- sym: ../../../../base/common/event.js.Emitter
+- sym: ../../../../base/common/event.js.DebounceEmitter
+- sym: ../../../../base/common/event.js.Event
+- sym: ../common/decorations.js.IDecorationsService
+- sym: ../common/decorations.js.IDecoration
+- sym: ../common/decorations.js.IResourceDecorationChangeEvent
+- sym: ../common/decorations.js.IDecorationsProvider
+- sym: ../common/decorations.js.IDecorationData
+- sym: ../../../../base/common/ternarySearchTree.js.TernarySearchTree
+- sym: ../../../../base/common/lifecycle.js.IDisposable
+- sym: ../../../../base/common/lifecycle.js.toDisposable
+- sym: ../../../../base/common/lifecycle.js.DisposableStore
+- sym: ../../../../base/common/async.js.isThenable
+- sym: ../../../../base/common/linkedList.js.LinkedList
+- sym: ../../../../base/browser/domStylesheets.js.createStyleSheet
+- sym: ../../../../base/browser/domStylesheets.js.createCSSRule
+- sym: ../../../../base/browser/domStylesheets.js.removeCSSRulesContainingSelector
+- sym: ../../../../base/browser/cssValue.js.cssValue
+- sym: ../../../../platform/theme/common/themeService.js.IThemeService
+- sym: ../../../../base/common/themables.js.ThemeIcon
+- sym: ../../../../base/common/strings.js.isFalsyOrWhitespace
+- sym: ../../../../nls.js.localize
+- sym: ../../../../base/common/errors.js.isCancellationError
+- sym: ../../../../base/common/cancellation.js.CancellationTokenSource
+- sym: ../../../../platform/instantiation/common/extensions.js.InstantiationType
+- sym: ../../../../platform/instantiation/common/extensions.js.registerSingleton
+- sym: ../../../../base/common/hash.js.hash
+- sym: ../../../../platform/uriIdentity/common/uriIdentity.js.IUriIdentityService
+- sym: ../../../../base/common/arrays.js.asArray
+- sym: ../../../../base/common/arrays.js.distinct
+- sym: ../../../../platform/theme/common/colorRegistry.js.asCssVariable
+- sym: ../../../../platform/theme/common/colorRegistry.js.ColorIdentifier
+- sym: ../../../../platform/theme/common/iconRegistry.js.getIconRegistry
+types:
+- name: DecorationRule
+  kind: struct
+  fields:
+  - name: _classNamesPrefix
+    type: any
+    default: '''monaco-decoration'''
+  - name: data
+    type: IDecorationData | IDecorationData[]
+  - name: _refCounter
+    type: number
+    default: '0'
+  methods:
+  - name: keyOf
+    sig: 'keyOf(data: IDecorationData | IDecorationData[]): string'
+    decorators:
+    - static
+    lines:
+    - 30
+    - 41
+    detail:
+      calls:
+      - Array.isArray
+      - ThemeIcon.isThemeIcon
+      - data.map
+      - data.map(DecorationRule.keyOf).join
+  - name: constructor
+    sig: 'constructor(readonly themeService: IThemeService, data: IDecorationData | IDecorationData[], key: string)'
+    lines:
+    - 53
+    - 60
+    detail:
+      calls:
+      - hash
+      - hash(key).toString
+  - name: acquire
+    sig: 'acquire(): void'
+    lines:
+    - 62
+    - 64
+    detail: {}
+  - name: release
+    sig: 'release(): boolean'
+    lines:
+    - 66
+    - 68
+    detail: {}
+  - name: appendCSSRules
+    sig: 'appendCSSRules(element: HTMLStyleElement): void'
+    lines:
+    - 70
+    - 76
+    detail:
+      calls:
+      - Array.isArray
+      - this._appendForMany
+      - this._appendForOne
+  - name: _appendForMany
+    sig: '_appendForMany(data: IDecorationData[], element: HTMLStyleElement): void'
+    vis: private
+    lines:
+    - 89
+    - 122
+    detail:
+      calls:
+      - ThemeIcon.isThemeIcon
+      - createCSSRule
+      - data.find
+      - getColor
+      - letters.join
+      - letters.push
+      - this._createIconCSSRule
+  - name: _createIconCSSRule
+    sig: '_createIconCSSRule(icon: ThemeIcon, color: string | undefined, element: HTMLStyleElement)'
+    vis: private
+    lines:
+    - 124
+    - 150
+    detail:
+      calls:
+      - ThemeIcon.getModifier
+      - ThemeIcon.modify
+      - createCSSRule
+      - cssValue.stringValue
+      - getColor
+      - getIconRegistry
+      - getIconRegistry().getIcon
+      - this.themeService.getProductIconTheme
+      - this.themeService.getProductIconTheme().getIcon
+  - name: removeCSSRules
+    sig: 'removeCSSRules(element: HTMLStyleElement): void'
+    lines:
+    - 152
+    - 157
+    detail:
+      calls:
+      - removeCSSRulesContainingSelector
+  lines:
+  - 28
+  - 158
+- name: DecorationStyles
+  kind: struct
+  fields:
+  - name: _dispoables
+    type: any
+    default: new DisposableStore()
+  - name: _styleElement
+    type: any
+    default: createStyleSheet(undefined, undefined, this._dispoables)
+  - name: _decorationRules
+    type: any
+    default: new Map<string, DecorationRule>()
+  methods:
+  - name: constructor
+    sig: 'constructor(private readonly _themeService: IThemeService)'
+    lines:
+    - 166
+    - 167
+    detail: {}
+  - name: dispose
+    sig: 'dispose(): void'
+    lines:
+    - 169
+    - 171
+    detail:
+      calls:
+      - this._dispoables.dispose
+  - name: asDecoration
+    sig: 'asDecoration(data: IDecorationData[], onlyChildren: boolean): IDecoration'
+    lines:
+    - 173
+    - 216
+    detail:
+      calls:
+      - DecorationRule.keyOf
+      - data.filter
+      - data.filter(d => !isFalsyOrWhitespace(d.tooltip)).map
+      - data.some
+      - data.sort
+      - distinct
+      - distinct(data.filter(d => !isFalsyOrWhitespace(d.tooltip)).map(d => d.tooltip)).join
+      - localize
+      - new DecorationRule
+      - rule.acquire
+      - rule.appendCSSRules
+      - this._decorationRules.get
+      - this._decorationRules.set
+  lines:
+  - 160
+  - 217
+- name: FileDecorationChangeEvent
+  kind: struct
+  ctx: events ignore all path casings
+  bases:
+  - IResourceDecorationChangeEvent
+  fields:
+  - name: _data
+    type: any
+    default: TernarySearchTree.forUris<true>(_uri => true)
+  methods:
+  - name: constructor
+    sig: 'constructor(all: URI | URI[])'
+    lines:
+    - 223
+    - 225
+    detail:
+      calls:
+      - asArray
+      - this._data.fill
+  - name: affectsResource
+    sig: 'affectsResource(uri: URI): boolean'
+    lines:
+    - 227
+    - 229
+    detail:
+      calls:
+      - this._data.hasElementOrSubtree
+  lines:
+  - 219
+  - 230
+- name: DecorationDataRequest
+  kind: struct
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\treadonly source: CancellationTokenSource,\n\t\treadonly thenable: Promise<void>,\n\t)"
+    lines:
+    - 233
+    - 236
+    detail: {}
+  lines:
+  - 232
+  - 237
+- name: DecorationEntry
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 243
+  - 243
+- name: DecorationsService
+  kind: struct
+  bases:
+  - IDecorationsService
+  fields:
+  - name: _serviceBrand
+    type: undefined
+  - name: _store
+    type: any
+    default: new DisposableStore()
+  - name: _onDidChangeDecorationsDelayed
+    type: any
+    default: 'this._store.add(new DebounceEmitter<URI | URI[]>({ merge: all => all.flat() }))'
+  - name: _onDidChangeDecorations
+    type: any
+    default: this._store.add(new Emitter<IResourceDecorationChangeEvent>())
+  - name: onDidChangeDecorations
+    type: Event<IResourceDecorationChangeEvent>
+    default: this._onDidChangeDecorations.event
+  - name: _provider
+    type: any
+    default: new LinkedList<IDecorationsProvider>()
+  - name: _decorationStyles
+    type: DecorationStyles
+  - name: _data
+    type: TernarySearchTree<URI, DecorationEntry>
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\t@IUriIdentityService uriIdentityService: IUriIdentityService,\n\t\t@IThemeService themeService: IThemeService,\n\t)"
+    lines:
+    - 259
+    - 267
+    detail:
+      calls:
+      - TernarySearchTree.forUris
+      - new DecorationStyles
+      - this._onDidChangeDecorationsDelayed.event
+      - this._store.add
+  - name: dispose
+    sig: 'dispose(): void'
+    lines:
+    - 269
+    - 272
+    detail:
+      calls:
+      - this._data.clear
+      - this._store.dispose
+  - name: registerDecorationsProvider
+    sig: 'registerDecorationsProvider(provider: IDecorationsProvider): IDisposable'
+    lines:
+    - 274
+    - 314
+    detail:
+      calls:
+      - provider.onDidChange
+      - this._onDidChangeDecorations.fire
+      - this._provider.unshift
+      - toDisposable
+  - name: getDecoration
+    sig: 'getDecoration(uri: URI, includeChildren: boolean): IDecoration | undefined'
+    lines:
+    - 326
+    - 367
+    detail:
+      calls:
+      - all.push
+      - map.get
+      - this._data.findSuperstr
+      - this._decorationStyles.asDecoration
+      - this._ensureEntry
+      - this._fetchData
+      - tuple[1].values
+  - name: _fetchData
+    sig: '_fetchData(map: DecorationEntry, uri: URI, provider: IDecorationsProvider): IDecorationData | null'
+    vis: private
+    lines:
+    - 369
+    - 402
+    detail:
+      calls:
+      - '!isThenable'
+      - Promise.resolve
+      - Promise.resolve(dataOrThenable).then
+      - "Promise.resolve(dataOrThenable).then(data => {\n\t\t\t\tif (map.get(provider) === request) {\n\t\t\t\t\tthis._k..."
+      - cts.dispose
+      - map.delete
+      - map.get
+      - map.set
+      - new CancellationTokenSource
+      - new DecorationDataRequest
+      - pendingRequest.source.cancel
+      - provider.provideDecorations
+      - this._keepItem
+  - name: _keepItem
+    sig: '_keepItem(map: DecorationEntry, provider: IDecorationsProvider, uri: URI, data: IDecorationData | undefined): IDecorationData | null'
+    vis: private
+    lines:
+    - 404
+    - 413
+    detail:
+      calls:
+      - map.get
+      - map.set
+      - this._onDidChangeDecorationsDelayed.fire
+  lines:
+  - 245
+  - 414
+functions:
+- name: getColor
+  sig: 'getColor(color: ColorIdentifier | undefined)'
+  lines:
+  - 239
+  - 241
+exports:
+- name: DecorationRule
+  kind: type
+- name: DecorationStyles
+  kind: type
+- name: FileDecorationChangeEvent
+  kind: type
+- name: DecorationDataRequest
+  kind: type
+- name: DecorationEntry
+  kind: type
+- name: DecorationsService
+  kind: type
+- name: getColor
+  kind: func

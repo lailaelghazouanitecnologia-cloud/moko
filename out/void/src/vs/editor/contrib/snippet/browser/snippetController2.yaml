@@ -1,0 +1,281 @@
+## Roska File Descriptor — browser/snippetController2.ts
+file: browser/snippetController2.ts
+lines: 369
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: ../../../../base/common/keyCodes.js.KeyCode
+- sym: ../../../../base/common/keyCodes.js.KeyMod
+- sym: ../../../../base/common/lifecycle.js.DisposableStore
+- sym: ../../../../base/common/lifecycle.js.IDisposable
+- sym: ../../../../base/common/types.js.assertType
+- sym: ../../../browser/editorBrowser.js.ICodeEditor
+- sym: ../../../browser/editorExtensions.js.EditorCommand
+- sym: ../../../browser/editorExtensions.js.EditorContributionInstantiation
+- sym: ../../../browser/editorExtensions.js.registerEditorCommand
+- sym: ../../../browser/editorExtensions.js.registerEditorContribution
+- sym: ../../../common/core/position.js.Position
+- sym: ../../../common/core/range.js.Range
+- sym: ../../../common/editorCommon.js.IEditorContribution
+- sym: ../../../common/editorContextKeys.js.EditorContextKeys
+- sym: ../../../common/languages.js.CompletionItem
+- sym: ../../../common/languages.js.CompletionItemKind
+- sym: ../../../common/languages.js.CompletionItemProvider
+- sym: ../../../common/languages/languageConfigurationRegistry.js.ILanguageConfigurationService
+- sym: ../../../common/model.js.ITextModel
+- sym: ../../../common/services/languageFeatures.js.ILanguageFeaturesService
+- sym: ./snippetParser.js.Choice
+- sym: ../../suggest/browser/suggest.js.showSimpleSuggestions
+- sym: ../../suggest/browser/suggestOvertypingCapturer.js.OvertypingCapturer
+- sym: ../../../../nls.js.localize
+- sym: ../../../../platform/contextkey/common/contextkey.js.ContextKeyExpr
+- sym: ../../../../platform/contextkey/common/contextkey.js.IContextKey
+- sym: ../../../../platform/contextkey/common/contextkey.js.IContextKeyService
+- sym: ../../../../platform/contextkey/common/contextkey.js.RawContextKey
+- sym: ../../../../platform/keybinding/common/keybindingsRegistry.js.KeybindingWeight
+- sym: ../../../../platform/log/common/log.js.ILogService
+- sym: ./snippetSession.js.ISnippetEdit
+- sym: ./snippetSession.js.SnippetSession
+data:
+- name: _defaultOptions
+  type: ISnippetInsertOptions
+  val: "{\n\toverwriteBefore: 0,\n\toverwriteAfter: 0,\n\tundoStopBefore: true,\n\tundoStopAfter: true,\n\tadjustWhitespace: true,\n\tclipbo..."
+- name: CommandCtor
+  type: any
+  val: EditorCommand.bindToContribution<SnippetController2>(SnippetController2.get)
+types:
+- name: ISnippetInsertOptions
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: overwriteBefore
+    type: number
+  - name: overwriteAfter
+    type: number
+  - name: adjustWhitespace
+    type: boolean
+  - name: undoStopBefore
+    type: boolean
+  - name: undoStopAfter
+    type: boolean
+  - name: clipboardText
+    type: string | undefined
+  - name: overtypingCapturer
+    type: OvertypingCapturer | undefined
+  lines:
+  - 28
+  - 36
+- name: SnippetController2
+  kind: struct
+  bases:
+  - IEditorContribution
+  fields:
+  - name: ID
+    type: any
+    default: '''snippetController2'''
+  - name: InSnippetMode
+    type: any
+    default: new RawContextKey('inSnippetMode', false, localize('inSnippetMode', "Whether the...
+  - name: HasNextTabstop
+    type: any
+    default: new RawContextKey('hasNextTabstop', false, localize('hasNextTabstop', "Whether t...
+  - name: HasPrevTabstop
+    type: any
+    default: new RawContextKey('hasPrevTabstop', false, localize('hasPrevTabstop', "Whether t...
+  - name: _inSnippet
+    type: IContextKey<boolean>
+  - name: _hasNextTabstop
+    type: IContextKey<boolean>
+  - name: _hasPrevTabstop
+    type: IContextKey<boolean>
+  - name: _session
+    type: SnippetSession
+  - name: _snippetListener
+    type: any
+    default: new DisposableStore()
+  - name: _modelVersionId
+    type: number
+    default: '-1'
+  - name: _currentChoice
+    type: Choice
+  - name: _choiceCompletions
+    type: '{ provider: CompletionItemProvider; enable(): void; disable(): void }'
+  methods:
+  - name: get
+    sig: 'get(editor: ICodeEditor): SnippetController2 | null'
+    decorators:
+    - static
+    lines:
+    - 52
+    - 54
+    detail:
+      calls:
+      - editor.getContribution
+  - name: constructor
+    sig: "constructor(\n\t\tprivate readonly _editor: ICodeEditor,\n\t\t@ILogService private readonly _logService: ILogService,\n\t\t@ILanguageFeaturesService private readonly _languageFeaturesService: ILanguageFeaturesService,\n\t\t@IContextKeyService contextKeyService: IContextKeyService,\n\t\t@ILanguageConfigurationService private readonly _languageConfigurationService: ILanguageConfigurationService,\n\t)"
+    lines:
+    - 71
+    - 81
+    detail:
+      calls:
+      - SnippetController2.HasNextTabstop.bindTo
+      - SnippetController2.HasPrevTabstop.bindTo
+      - SnippetController2.InSnippetMode.bindTo
+  - name: dispose
+    sig: 'dispose(): void'
+    lines:
+    - 83
+    - 89
+    detail:
+      calls:
+      - this._hasNextTabstop.reset
+      - this._hasPrevTabstop.reset
+      - this._inSnippet.reset
+      - this._session?.dispose
+      - this._snippetListener.dispose
+  - name: apply
+    sig: 'apply(edits: ISnippetEdit[], opts?: Partial<ISnippetInsertOptions>)'
+    lines:
+    - 91
+    - 102
+    detail:
+      calls:
+      - this._doInsert
+      - this._logService.error
+      - this._session._logInfo
+      - this.cancel
+  - name: insert
+    sig: "insert(\n\t\ttemplate: string,\n\t\topts?: Partial<ISnippetInsertOptions>\n\t): void"
+    lines:
+    - 104
+    - 121
+    detail:
+      calls:
+      - this._doInsert
+      - this._logService.error
+      - this._session._logInfo
+      - this.cancel
+  - name: _doInsert
+    sig: "_doInsert(\n\t\ttemplate: string | ISnippetEdit[],\n\t\topts: ISnippetInsertOptions\n\t): void"
+    vis: private
+    lines:
+    - 123
+    - 219
+    detail:
+      calls:
+      - assertType
+      - new SnippetSession
+      - this._editor.getModel
+      - this._editor.getModel().getAlternativeVersionId
+      - this._editor.getModel().pushStackElement
+      - this._editor.hasModel
+      - this._editor.onDidChangeCursorSelection
+      - this._editor.onDidChangeModel
+      - this._editor.onDidChangeModelContent
+      - this._session.insert
+      - this._session.merge
+      - this._snippetListener.add
+      - this._snippetListener.clear
+      - this._updateState
+      - this.cancel
+  - name: _updateState
+    sig: '_updateState(): void'
+    vis: private
+    lines:
+    - 221
+    - 249
+    detail:
+      calls:
+      - this._editor.getModel
+      - this._editor.getModel().getAlternativeVersionId
+      - this._editor.getModel().pushStackElement
+      - this._editor.hasModel
+      - this._handleChoice
+      - this._hasNextTabstop.set
+      - this._hasPrevTabstop.set
+      - this._inSnippet.set
+      - this._session.isSelectionWithinPlaceholders
+      - this.cancel
+  - name: _handleChoice
+    sig: '_handleChoice(): void'
+    vis: private
+    lines:
+    - 251
+    - 274
+    detail:
+      calls:
+      - queueMicrotask
+      - this._choiceCompletions.enable
+      - this._choiceCompletions?.disable
+      - this._editor.hasModel
+  - name: finish
+    sig: 'finish(): void'
+    lines:
+    - 276
+    - 280
+    detail:
+      calls:
+      - this._inSnippet.get
+      - this.next
+  - name: cancel
+    sig: 'cancel(resetSelection: boolean = false): void'
+    lines:
+    - 282
+    - 299
+    detail:
+      calls:
+      - this._editor.getSelection
+      - this._editor.setSelections
+      - this._hasNextTabstop.reset
+      - this._hasPrevTabstop.reset
+      - this._inSnippet.reset
+      - this._session?.dispose
+      - this._snippetListener.clear
+  - name: prev
+    sig: 'prev(): void'
+    lines:
+    - 301
+    - 304
+    detail:
+      calls:
+      - this._session?.prev
+      - this._updateState
+  - name: next
+    sig: 'next(): void'
+    lines:
+    - 306
+    - 309
+    detail:
+      calls:
+      - this._session?.next
+      - this._updateState
+  - name: isInSnippet
+    sig: 'isInSnippet(): boolean'
+    lines:
+    - 311
+    - 313
+    detail:
+      calls:
+      - Boolean
+      - this._inSnippet.get
+  - name: getSessionEnclosingRange
+    sig: 'getSessionEnclosingRange(): Range | undefined'
+    lines:
+    - 315
+    - 320
+    detail:
+      calls:
+      - this._session.getEnclosingRange
+  lines:
+  - 48
+  - 321
+exports:
+- name: ISnippetInsertOptions
+  kind: type
+- name: SnippetController2
+  kind: type
+- name: _defaultOptions
+  kind: data
+- name: CommandCtor
+  kind: data

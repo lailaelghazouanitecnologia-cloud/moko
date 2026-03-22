@@ -1,0 +1,415 @@
+## Roska File Descriptor — common/history.ts
+file: common/history.ts
+lines: 553
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: ../../../../../base/common/lifecycle.js.Disposable
+- sym: ../../../../../base/common/map.js.LRUCache
+- sym: ../../../../../base/common/network.js.Schemas
+- sym: ../../../../../base/common/path.js.join
+- sym: ../../../../../base/common/platform.js.isWindows
+- sym: ../../../../../base/common/platform.js.OperatingSystem
+- sym: ../../../../../base/common/process.js.env
+- sym: ../../../../../base/common/uri.js.URI
+- sym: ../../../../../platform/configuration/common/configuration.js.IConfigurationService
+- sym: ../../../../../platform/files/common/files.js.FileOperationError
+- sym: ../../../../../platform/files/common/files.js.FileOperationResult
+- sym: ../../../../../platform/files/common/files.js.IFileContent
+- sym: ../../../../../platform/files/common/files.js.IFileService
+- sym: ../../../../../platform/instantiation/common/instantiation.js.IInstantiationService
+- sym: ../../../../../platform/instantiation/common/instantiation.js.ServicesAccessor
+- sym: ../../../../../platform/storage/common/storage.js.IStorageService
+- sym: ../../../../../platform/storage/common/storage.js.StorageScope
+- sym: ../../../../../platform/storage/common/storage.js.StorageTarget
+- sym: ../../../../../platform/terminal/common/terminal.js.GeneralShellType
+- sym: ../../../../../platform/terminal/common/terminal.js.PosixShellType
+- sym: ../../../../../platform/terminal/common/terminal.js.TerminalShellType
+- sym: ../../../../services/remote/common/remoteAgentService.js.IRemoteAgentService
+- sym: ./terminal.history.js.TerminalHistorySettingId
+data:
+- name: directoryHistory
+  type: 'ITerminalPersistedHistory<{ remoteAuthority?: string }> | undefined'
+  val: undefined
+- name: commandHistory
+  type: 'ITerminalPersistedHistory<{ shellType: TerminalShellType }> | undefined'
+  val: undefined
+- name: shellFileHistory
+  type: Map<TerminalShellType | undefined, IShellFileHistoryEntry | null>
+  val: new Map()
+types:
+- name: ITerminalPersistedHistory
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: readonly
+    type: IterableIterator<[string, T]>
+  - name: add
+    type: 'method: add(key: string, value: T): void'
+  - name: remove
+    type: 'method: remove(key: string): void'
+  - name: clear
+    type: 'method: clear(): void'
+  lines:
+  - 24
+  - 41
+- name: ISerializedCache
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: entries
+    type: '{ key: string; value: T }[]'
+  lines:
+  - 43
+  - 45
+- name: Constants
+  kind: enum
+  variants:
+  - name: DefaultHistoryLimit
+    val: '100'
+  lines:
+  - 47
+  - 49
+- name: StorageKeys
+  kind: enum
+  variants:
+  - name: Entries
+    val: '''terminal.history.entries'''
+  - name: Timestamp
+    val: '''terminal.history.timestamp'''
+  lines:
+  - 51
+  - 54
+- name: TerminalPersistedHistory
+  kind: struct
+  bases:
+  - Disposable
+  - ITerminalPersistedHistory<T>
+  fields:
+  - name: _entries
+    type: LRUCache<string, T>
+  - name: _timestamp
+    type: number
+    default: '0'
+  - name: _isReady
+    type: any
+    default: 'false'
+  - name: _isStale
+    type: any
+    default: 'true'
+  methods:
+  - name: entries
+    sig: 'entries(): IterableIterator<[string, T]>'
+    lines:
+    - 78
+    - 81
+    detail:
+      calls:
+      - this._ensureUpToDate
+      - this._entries.entries
+  - name: constructor
+    sig: "constructor(\n\t\tprivate readonly _storageDataKey: string,\n\t\t@IConfigurationService private readonly _configurationService: IConfigurationService,\n\t\t@IStorageService private readonly _storageService: IStorageService,\n\t)"
+    lines:
+    - 83
+    - 106
+    detail:
+      calls:
+      - new LRUCache
+      - super
+      - this._configurationService.onDidChangeConfiguration
+      - this._getHistoryLimit
+      - this._getTimestampStorageKey
+      - this._register
+      - this._storageService.onDidChangeValue
+      - this._storageService.onDidChangeValue(StorageScope.APPLICATION, this._getTimestampStorageKey(), this...
+  - name: add
+    sig: 'add(key: string, value: T)'
+    lines:
+    - 108
+    - 112
+    detail:
+      calls:
+      - this._ensureUpToDate
+      - this._entries.set
+      - this._saveState
+  - name: remove
+    sig: 'remove(key: string)'
+    lines:
+    - 114
+    - 118
+    detail:
+      calls:
+      - this._ensureUpToDate
+      - this._entries.delete
+      - this._saveState
+  - name: clear
+    sig: clear()
+    lines:
+    - 120
+    - 124
+    detail:
+      calls:
+      - this._ensureUpToDate
+      - this._entries.clear
+      - this._saveState
+  - name: _loadState
+    sig: _loadState()
+    vis: private
+    lines:
+    - 143
+    - 153
+    detail:
+      calls:
+      - this._entries.set
+      - this._getTimestampStorageKey
+      - this._loadPersistedState
+      - this._storageService.getNumber
+  - name: _loadPersistedState
+    sig: '_loadPersistedState(): ISerializedCache<T> | undefined'
+    vis: private
+    lines:
+    - 155
+    - 168
+    detail:
+      calls:
+      - JSON.parse
+      - this._getEntriesStorageKey
+      - this._storageService.get
+  - name: _saveState
+    sig: _saveState()
+    vis: private
+    lines:
+    - 170
+    - 176
+    detail:
+      calls:
+      - Date.now
+      - JSON.stringify
+      - this._entries.forEach
+      - this._getEntriesStorageKey
+      - this._getTimestampStorageKey
+      - this._storageService.store
+  lines:
+  - 72
+  - 190
+- name: IShellFileHistoryEntry
+  kind: trait
+  ctx: Shell file history loads once per shell per window
+  decorators:
+  - interface
+  fields:
+  - name: sourceResource
+    type: URI
+  - name: commands
+    type: string[]
+  lines:
+  - 193
+  - 197
+functions:
+- name: getDirectoryHistory
+  sig: 'getDirectoryHistory(accessor: ServicesAccessor): ITerminalPersistedHistory<{ remoteAuthority?: string }>'
+  lines:
+  - 57
+  - 62
+  detail:
+    calls:
+    - accessor.get
+    - accessor.get(IInstantiationService).createInstance
+- name: getCommandHistory
+  sig: 'getCommandHistory(accessor: ServicesAccessor): ITerminalPersistedHistory<{ shellType: TerminalShellType | undefined }>'
+  lines:
+  - 65
+  - 70
+  detail:
+    calls:
+    - accessor.get
+    - accessor.get(IInstantiationService).createInstance
+- name: getShellFileHistory
+  sig: 'getShellFileHistory(accessor: ServicesAccessor, shellType: TerminalShellType | undefined): Promise<IShellFileHistoryEntry | undefined>'
+  is_async: true
+  lines:
+  - 199
+  - 232
+  detail:
+    calls:
+    - fetchBashHistory
+    - fetchFishHistory
+    - fetchPwshHistory
+    - fetchPythonHistory
+    - fetchZshHistory
+    - shellFileHistory.get
+    - shellFileHistory.set
+- name: clearShellFileHistory
+  sig: clearShellFileHistory()
+  lines:
+  - 233
+  - 235
+  detail:
+    calls:
+    - shellFileHistory.clear
+- name: fetchBashHistory
+  sig: 'fetchBashHistory(accessor: ServicesAccessor): Promise<IShellFileHistoryEntry | undefined>'
+  is_async: true
+  lines:
+  - 237
+  - 287
+  detail:
+    calls:
+    - Array.from
+    - accessor.get
+    - currentCommand.trim
+    - currentLine[c].match
+    - fetchFileContents
+    - new Set
+    - remoteAgentService.getEnvironment
+    - resolvedFile.content.split
+    - result.add
+    - result.values
+- name: fetchZshHistory
+  sig: 'fetchZshHistory(accessor: ServicesAccessor): Promise<IShellFileHistoryEntry | undefined>'
+  is_async: true
+  lines:
+  - 289
+  - 315
+  detail:
+    calls:
+    - Array.from
+    - accessor.get
+    - fetchFileContents
+    - fileLines[i].replace
+    - fileLines[i].replace(/\\\n/g, '\n').trim
+    - new Set
+    - remoteAgentService.getEnvironment
+    - resolvedFile.content.split
+    - result.add
+    - result.values
+- name: fetchPythonHistory
+  sig: 'fetchPythonHistory(accessor: ServicesAccessor): Promise<IShellFileHistoryEntry | undefined>'
+  is_async: true
+  lines:
+  - 318
+  - 344
+  detail:
+    calls:
+    - Array.from
+    - accessor.get
+    - fetchFileContents
+    - fileLines.forEach
+    - new Set
+    - resolvedFile.content.split
+    - result.values
+- name: fetchPwshHistory
+  sig: 'fetchPwshHistory(accessor: ServicesAccessor): Promise<IShellFileHistoryEntry | undefined>'
+  is_async: true
+  lines:
+  - 346
+  - 420
+  detail:
+    calls:
+    - Array.from
+    - accessor.get
+    - currentCommand.replace
+    - currentCommand.trim
+    - currentLine.endsWith
+    - currentLine[c].match
+    - fetchFileContents
+    - new Set
+    - remoteAgentService.getEnvironment
+    - resolvedFile.content.split
+    - result.add
+    - result.values
+- name: fetchFishHistory
+  sig: 'fetchFishHistory(accessor: ServicesAccessor): Promise<IShellFileHistoryEntry | undefined>'
+  is_async: true
+  lines:
+  - 422
+  - 489
+  detail:
+    calls:
+    - Array.from
+    - accessor.get
+    - fetchFileContents
+    - new Set
+    - remoteAgentService.getEnvironment
+    - resolvedFile.content.split
+    - "resolvedFile.content.split('\\n')\n\t\t.filter"
+    - "resolvedFile.content.split('\\n')\n\t\t.filter(x => x.startsWith('- cmd:'))\n\t\t.map"
+    - result.add
+    - result.values
+    - sanitizeFishHistoryCmd
+    - sanitizeFishHistoryCmd(cmds[i]).trim
+- name: sanitizeFishHistoryCmd
+  sig: 'sanitizeFishHistoryCmd(cmd: string): string'
+  lines:
+  - 491
+  - 505
+  detail:
+    calls:
+    - repeatedReplace
+- name: repeatedReplace
+  sig: 'repeatedReplace(pattern: RegExp, value: string, replaceValue: string): string'
+  lines:
+  - 507
+  - 517
+  detail:
+    calls:
+    - current.replace
+- name: fetchFileContents
+  sig: "fetchFileContents(\n\tfolderPrefix: string | undefined,\n\tfilePath: string,\n\tisFileWindows: boolean,\n\tfileService: Pick<IFileService, 'readFile'>,\n\tremoteAgentService: Pick<IRemoteAgentService, 'getConnection'>,\n): Promise<{ resource: URI; content: string } | undefined>"
+  is_async: true
+  lines:
+  - 519
+  - 553
+  detail:
+    calls:
+    - URI.file
+    - URI.from
+    - content.value.toString
+    - fileService.readFile
+    - join
+    - remoteAgentService.getConnection
+exports:
+- name: ITerminalPersistedHistory
+  kind: type
+- name: ISerializedCache
+  kind: type
+- name: Constants
+  kind: type
+- name: StorageKeys
+  kind: type
+- name: TerminalPersistedHistory
+  kind: type
+- name: IShellFileHistoryEntry
+  kind: type
+- name: getDirectoryHistory
+  kind: func
+- name: getCommandHistory
+  kind: func
+- name: getShellFileHistory
+  kind: func
+- name: clearShellFileHistory
+  kind: func
+- name: fetchBashHistory
+  kind: func
+- name: fetchZshHistory
+  kind: func
+- name: fetchPythonHistory
+  kind: func
+- name: fetchPwshHistory
+  kind: func
+- name: fetchFishHistory
+  kind: func
+- name: sanitizeFishHistoryCmd
+  kind: func
+- name: repeatedReplace
+  kind: func
+- name: fetchFileContents
+  kind: func
+- name: directoryHistory
+  kind: data
+- name: commandHistory
+  kind: data
+- name: shellFileHistory
+  kind: data

@@ -1,0 +1,1435 @@
+## Roska File Descriptor — browser/historyService.ts
+file: browser/historyService.ts
+lines: 2158
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: ../../../../nls.js.localize
+- sym: ../../../../base/common/uri.js.URI
+- sym: ../../../../platform/editor/common/editor.js.IResourceEditorInput
+- sym: ../../../../platform/editor/common/editor.js.IEditorOptions
+- sym: ../../../common/editor.js.IEditorPane
+- sym: ../../../common/editor.js.IEditorCloseEvent
+- sym: ../../../common/editor.js.EditorResourceAccessor
+- sym: ../../../common/editor.js.IEditorIdentifier
+- sym: ../../../common/editor.js.GroupIdentifier
+- sym: ../../../common/editor.js.EditorsOrder
+- sym: ../../../common/editor.js.SideBySideEditor
+- sym: ../../../common/editor.js.IUntypedEditorInput
+- sym: ../../../common/editor.js.isResourceEditorInput
+- sym: ../../../common/editor.js.isEditorInput
+- sym: ../../../common/editor.js.isSideBySideEditorInput
+- sym: ../../../common/editor.js.EditorCloseContext
+- sym: ../../../common/editor.js.IEditorPaneSelection
+- sym: ../../../common/editor.js.EditorPaneSelectionCompareResult
+- sym: ../../../common/editor.js.EditorPaneSelectionChangeReason
+- sym: ../../../common/editor.js.isEditorPaneWithSelection
+- sym: ../../../common/editor.js.IEditorPaneSelectionChangeEvent
+- sym: ../../../common/editor.js.IEditorPaneWithSelection
+- sym: ../../../common/editor.js.IEditorWillMoveEvent
+- sym: ../../../common/editor.js.GroupModelChangeKind
+- sym: ../../../common/editor/editorInput.js.EditorInput
+- sym: ../../editor/common/editorService.js.IEditorService
+- sym: ../common/history.js.GoFilter
+- sym: ../common/history.js.GoScope
+- sym: ../common/history.js.IHistoryService
+- sym: ../../../../platform/files/common/files.js.FileChangesEvent
+- sym: ../../../../platform/files/common/files.js.IFileService
+- sym: ../../../../platform/files/common/files.js.FileChangeType
+- sym: ../../../../platform/files/common/files.js.FILES_EXCLUDE_CONFIG
+- sym: ../../../../platform/files/common/files.js.FileOperationEvent
+- sym: ../../../../platform/files/common/files.js.FileOperation
+- sym: ../../../../platform/workspace/common/workspace.js.IWorkspaceContextService
+- sym: ../../../../base/common/lifecycle.js.dispose
+- sym: ../../../../base/common/lifecycle.js.Disposable
+- sym: ../../../../base/common/lifecycle.js.DisposableStore
+- sym: ../../../../base/common/lifecycle.js.IDisposable
+- sym: ../../../../platform/storage/common/storage.js.IStorageService
+- sym: ../../../../platform/storage/common/storage.js.StorageScope
+- sym: ../../../../platform/storage/common/storage.js.StorageTarget
+- sym: ../../../../base/common/event.js.Emitter
+- sym: ../../../../base/common/event.js.Event
+- sym: ../../../../platform/configuration/common/configuration.js.IConfigurationService
+- sym: ../../editor/common/editorGroupsService.js.IEditorGroup
+- sym: ../../editor/common/editorGroupsService.js.IEditorGroupsService
+- sym: ../../search/common/search.js.getExcludes
+- sym: ../../search/common/search.js.ISearchConfiguration
+- sym: ../../search/common/search.js.SEARCH_EXCLUDE_CONFIG
+- sym: ../../../../platform/instantiation/common/instantiation.js.IInstantiationService
+- sym: ../../../browser/parts/editor/editor.js.EditorServiceImpl
+- sym: ../../layout/browser/layoutService.js.IWorkbenchLayoutService
+- sym: ../../../../platform/contextkey/common/contextkey.js.IContextKey
+- sym: ../../../../platform/contextkey/common/contextkey.js.IContextKeyService
+- sym: ../../../../platform/contextkey/common/contextkey.js.RawContextKey
+- sym: ../../../../base/common/arrays.js.coalesce
+- sym: ../../../../base/common/arrays.js.remove
+- sym: ../../../../platform/instantiation/common/extensions.js.InstantiationType
+- sym: ../../../../platform/instantiation/common/extensions.js.registerSingleton
+- sym: ../../../../base/browser/dom.js.addDisposableListener
+- sym: ../../../../base/browser/dom.js.EventType
+- sym: ../../../../base/browser/dom.js.EventHelper
+- sym: ../../../../base/browser/dom.js.WindowIdleValue
+- sym: ../../../../platform/workspaces/common/workspaces.js.IWorkspacesService
+- sym: ../../../../base/common/network.js.Schemas
+- sym: ../../../../base/common/errors.js.onUnexpectedError
+- sym: ../../../common/resources.js.ResourceGlobMatcher
+- sym: ../../path/common/pathService.js.IPathService
+- sym: ../../../../platform/uriIdentity/common/uriIdentity.js.IUriIdentityService
+- sym: ../../lifecycle/common/lifecycle.js.ILifecycleService
+- sym: ../../lifecycle/common/lifecycle.js.LifecyclePhase
+- sym: ../../../../platform/log/common/log.js.ILogService
+- sym: ../../../../platform/log/common/log.js.LogLevel
+- sym: ../../../../base/browser/window.js.mainWindow
+types:
+- name: ISerializedEditorHistoryEntry
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: readonly
+    type: 'Omit<IResourceEditorInput, ''resource''> & { resource: string }'
+  lines:
+  - 38
+  - 40
+- name: IRecentlyClosedEditor
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: readonly
+    type: string | undefined
+  - name: readonly
+    type: IUntypedEditorInput
+  - name: readonly
+    type: URI | undefined
+  - name: readonly
+    type: URI[]
+  - name: readonly
+    type: number
+  - name: readonly
+    type: boolean
+  lines:
+  - 42
+  - 51
+- name: HistoryService
+  kind: struct
+  ctx: '#region History Context Keys'
+  bases:
+  - Disposable
+  - IHistoryService
+  fields:
+  - name: _serviceBrand
+    type: undefined
+  - name: MOUSE_NAVIGATION_SETTING
+    type: any
+    default: '''workbench.editor.mouseBackForwardToNavigate'''
+  - name: NAVIGATION_SCOPE_SETTING
+    type: any
+    default: '''workbench.editor.navigationScope'''
+  - name: activeEditorListeners
+    type: any
+    default: this._register(new DisposableStore())
+  - name: lastActiveEditor
+    type: IEditorIdentifier | undefined
+    default: undefined
+  - name: editorHelper
+    type: EditorHelper
+  - name: canNavigateBackContextKey
+    type: IContextKey<boolean>
+  - name: canNavigateForwardContextKey
+    type: IContextKey<boolean>
+  - name: canNavigateBackInNavigationsContextKey
+    type: IContextKey<boolean>
+  - name: canNavigateForwardInNavigationsContextKey
+    type: IContextKey<boolean>
+  - name: canNavigateToLastNavigationLocationContextKey
+    type: IContextKey<boolean>
+  - name: canNavigateBackInEditsContextKey
+    type: IContextKey<boolean>
+  - name: canNavigateForwardInEditsContextKey
+    type: IContextKey<boolean>
+  - name: canNavigateToLastEditLocationContextKey
+    type: IContextKey<boolean>
+  - name: canReopenClosedEditorContextKey
+    type: IContextKey<boolean>
+  - name: _onDidChangeEditorNavigationStack
+    type: any
+    default: this._register(new Emitter<void>())
+  - name: onDidChangeEditorNavigationStack
+    type: any
+    default: this._onDidChangeEditorNavigationStack.event
+  - name: defaultScopedEditorNavigationStack
+    type: IEditorNavigationStacks | undefined
+    default: undefined
+  - name: editorGroupScopedNavigationStacks
+    type: any
+    default: 'new Map<GroupIdentifier, { stack: IEditorNavigationStacks; disposable: IDisposab...'
+  - name: editorScopedNavigationStacks
+    type: any
+    default: 'new Map<GroupIdentifier, Map<EditorInput, { stack: IEditorNavigationStacks; disp...'
+  - name: editorNavigationScope
+    type: any
+    default: GoScope.DEFAULT
+  - name: recentlyUsedEditorsStack
+    type: readonly IEditorIdentifier[] | undefined
+    default: undefined
+  - name: recentlyUsedEditorsStackIndex
+    type: any
+    default: '0'
+  - name: recentlyUsedEditorsInGroupStack
+    type: readonly IEditorIdentifier[] | undefined
+    default: undefined
+  - name: recentlyUsedEditorsInGroupStackIndex
+    type: any
+    default: '0'
+  - name: navigatingInRecentlyUsedEditorsStack
+    type: any
+    default: 'false'
+  - name: navigatingInRecentlyUsedEditorsInGroupStack
+    type: any
+    default: 'false'
+  - name: MAX_RECENTLY_CLOSED_EDITORS
+    type: any
+    default: '20'
+  - name: recentlyClosedEditors
+    type: IRecentlyClosedEditor[]
+    default: '[]'
+  - name: ignoreEditorCloseEvent
+    type: any
+    default: 'false'
+  - name: MAX_HISTORY_ITEMS
+    type: any
+    default: '200'
+  - name: HISTORY_STORAGE_KEY
+    type: any
+    default: '''history.entries'''
+  - name: history
+    type: Array<EditorInput | IResourceEditorInput> | undefined
+    default: undefined
+  - name: editorHistoryListeners
+    type: any
+    default: new Map<EditorInput, DisposableStore>()
+  - name: resourceExcludeMatcher
+    type: any
+    default: "this._register(new WindowIdleValue(mainWindow, () => {\n\t\tconst matcher = this._r..."
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\t@IEditorService private readonly editorService: EditorServiceImpl,\n\t\t@IEditorGroupsService private readonly editorGroupService: IEditorGroupsService,\n\t\t@IWorkspaceContextService private readonly contextService: IWorkspaceContextService,\n\t\t@IStorageService private readonly storageService: IStorageService,\n\t\t@IConfigurationService private readonly configurationService: IConfigurationService,\n\t\t@IFileService private readonly fileService: IFileService,\n\t\t@IWorkspacesService private readonly workspacesService: IWorkspacesService,\n\t\t@IInstantiationService private readonly instantiationService: IInstantiationService,\n\t\t@IWorkbenchLayoutService private readonly layoutService: IWorkbenchLayoutService,\n\t\t@IContextKeyService private readonly contextKeyService: IContextKeyService,\n\t\t@ILogService private readonly logService: ILogService\n\t)"
+    lines:
+    - 65
+    - 103
+    detail:
+      calls:
+      - (new RawContextKey<boolean>('canNavigateBack', false, localize('canNavigateBack', "Whether it is pos...
+      - (new RawContextKey<boolean>('canNavigateBackInEditLocations', false, localize('canNavigateBackInEdit...
+      - (new RawContextKey<boolean>('canNavigateBackInNavigationLocations', false, localize('canNavigateBack...
+      - (new RawContextKey<boolean>('canNavigateForward', false, localize('canNavigateForward', "Whether it ...
+      - (new RawContextKey<boolean>('canNavigateForwardInEditLocations', false, localize('canNavigateForward...
+      - (new RawContextKey<boolean>('canNavigateForwardInNavigationLocations', false, localize('canNavigateF...
+      - (new RawContextKey<boolean>('canNavigateToLastEditLocation', false, localize('canNavigateToLastEditL...
+      - (new RawContextKey<boolean>('canNavigateToLastNavigationLocation', false, localize('canNavigateToLas...
+      - (new RawContextKey<boolean>('canReopenClosedEditor', false, localize('canReopenClosedEditor', "Wheth...
+      - localize
+      - new RawContextKey
+      - super
+      - this.instantiationService.createInstance
+      - this.onDidActiveEditorChange
+      - this.registerListeners
+  - name: registerListeners
+    sig: 'registerListeners(): void'
+    vis: private
+    lines:
+    - 105
+    - 132
+    detail:
+      calls:
+      - this._register
+      - this.editorGroupService.onDidChangeActiveGroup
+      - this.editorGroupService.onDidRemoveGroup
+      - this.editorService.onDidActiveEditorChange
+      - this.editorService.onDidCloseEditor
+      - this.editorService.onDidMostRecentlyActiveEditorsChange
+      - this.editorService.onDidOpenEditorFail
+      - this.fileService.onDidFilesChange
+      - this.fileService.onDidRunOperation
+      - this.onDidChangeEditorNavigationStack
+      - this.registerEditorNavigationScopeChangeListener
+      - this.registerMouseNavigationListener
+      - this.storageService.onWillSaveState
+  - name: registerMouseNavigationListener
+    sig: 'registerMouseNavigationListener(): void'
+    vis: private
+    lines:
+    - 139
+    - 162
+    detail:
+      calls:
+      - handleMouseBackForwardSupport
+      - new DisposableStore
+      - this._register
+      - this.configurationService.onDidChangeConfiguration
+  - name: onMouseDownOrUp
+    sig: 'onMouseDownOrUp(event: MouseEvent, isMouseDown: boolean): void'
+    vis: private
+    lines:
+    - 164
+    - 186
+    detail:
+      calls:
+      - EventHelper.stop
+      - this.goBack
+      - this.goForward
+  - name: onDidActiveEditorChange
+    sig: 'onDidActiveEditorChange(): void'
+    vis: private
+    lines:
+    - 192
+    - 238
+    detail:
+      calls:
+      - activeEditorGroup.onDidModelChange
+      - activeEditorPane.input?.resource?.toString
+      - activeEditorPane.onDidChangeSelection
+      - activeEditorPane?.group.isTransient
+      - isEditorPaneWithSelection
+      - this.activeEditorListeners.add
+      - this.activeEditorListeners.clear
+      - this.editorHelper.matchesEditorIdentifier
+      - this.handleActiveEditorChange
+      - this.logService.trace
+      - this.updateContextKeys
+  - name: onDidFilesChange
+    sig: 'onDidFilesChange(event: FileChangesEvent | FileOperationEvent): void'
+    vis: private
+    lines:
+    - 240
+    - 262
+    detail:
+      calls:
+      - event.gotDeleted
+      - event.isOperation
+      - this.move
+      - this.remove
+  - name: remove
+    sig: 'remove(arg1: EditorInput | FileChangesEvent | FileOperationEvent): void'
+    vis: private
+    lines:
+    - 281
+    - 286
+    detail:
+      calls:
+      - this.removeFromEditorNavigationStacks
+      - this.removeFromHistory
+      - this.removeFromRecentlyClosedEditors
+      - this.removeFromRecentlyOpened
+  - name: clear
+    sig: 'clear(): void'
+    lines:
+    - 303
+    - 316
+    detail:
+      calls:
+      - this.clearEditorNavigationStacks
+      - this.clearRecentlyOpened
+      - this.updateContextKeys
+  - name: updateContextKeys
+    sig: 'updateContextKeys(): void'
+    lines:
+    - 333
+    - 350
+    detail:
+      calls:
+      - this.contextKeyService.bufferChangeEvents
+  - name: registerEditorNavigationScopeChangeListener
+    sig: 'registerEditorNavigationScopeChangeListener(): void'
+    vis: private
+    lines:
+    - 365
+    - 389
+    detail:
+      calls:
+      - handleEditorNavigationScopeChange
+      - this._register
+      - this.configurationService.onDidChangeConfiguration
+  - name: getStack
+    sig: 'getStack(group = this.editorGroupService.activeGroup, editor = group.activeEditor): IEditorNavigationStacks'
+    vis: private
+    lines:
+    - 391
+    - 445
+    detail:
+      calls:
+      - disposable.add
+      - new DisposableStore
+      - new Map
+      - new NoOpEditorNavigationStacks
+      - stack.onDidChange
+      - stacksForGroup.get
+      - stacksForGroup.set
+      - this._register
+      - this.defaultScopedEditorNavigationStack.onDidChange
+      - this.editorGroupScopedNavigationStacks.get
+      - this.editorGroupScopedNavigationStacks.set
+      - this.editorScopedNavigationStacks.get
+      - this.editorScopedNavigationStacks.set
+      - this.instantiationService.createInstance
+  - name: goForward
+    sig: 'goForward(filter?: GoFilter): Promise<void>'
+    lines:
+    - 447
+    - 449
+    detail:
+      calls:
+      - this.getStack
+      - this.getStack().goForward
+  - name: goBack
+    sig: 'goBack(filter?: GoFilter): Promise<void>'
+    lines:
+    - 451
+    - 453
+    detail:
+      calls:
+      - this.getStack
+      - this.getStack().goBack
+  - name: goPrevious
+    sig: 'goPrevious(filter?: GoFilter): Promise<void>'
+    lines:
+    - 455
+    - 457
+    detail:
+      calls:
+      - this.getStack
+      - this.getStack().goPrevious
+  - name: goLast
+    sig: 'goLast(filter?: GoFilter): Promise<void>'
+    lines:
+    - 459
+    - 461
+    detail:
+      calls:
+      - this.getStack
+      - this.getStack().goLast
+  - name: handleEditorCloseEventInHistory
+    sig: 'handleEditorCloseEventInHistory(e: IEditorCloseEvent): void'
+    vis: private
+    lines:
+    - 471
+    - 484
+    detail:
+      calls:
+      - editorStack.disposable.dispose
+      - editors.delete
+      - editors.get
+      - this.editorScopedNavigationStacks.delete
+      - this.editorScopedNavigationStacks.get
+  - name: handleEditorGroupRemoveInNavigationStacks
+    sig: 'handleEditorGroupRemoveInNavigationStacks(group: IEditorGroup): void'
+    vis: private
+    lines:
+    - 486
+    - 497
+    detail:
+      calls:
+      - editorGroupStack.disposable.dispose
+      - this.defaultScopedEditorNavigationStack?.remove
+      - this.editorGroupScopedNavigationStacks.delete
+      - this.editorGroupScopedNavigationStacks.get
+  - name: disposeEditorNavigationStacks
+    sig: 'disposeEditorNavigationStacks(): void'
+    vis: private
+    lines:
+    - 531
+    - 550
+    detail:
+      calls:
+      - stack.disposable.dispose
+      - this.defaultScopedEditorNavigationStack?.dispose
+      - this.editorGroupScopedNavigationStacks.clear
+      - this.editorScopedNavigationStacks.clear
+  - name: openNextRecentlyUsedEditor
+    sig: 'openNextRecentlyUsedEditor(groupId?: GroupIdentifier): Promise<void>'
+    lines:
+    - 565
+    - 569
+    detail:
+      calls:
+      - this.doNavigateInRecentlyUsedEditorsStack
+      - this.ensureRecentlyUsedStack
+  - name: openPreviouslyUsedEditor
+    sig: 'openPreviouslyUsedEditor(groupId?: GroupIdentifier): Promise<void>'
+    lines:
+    - 571
+    - 575
+    detail:
+      calls:
+      - this.doNavigateInRecentlyUsedEditorsStack
+      - this.ensureRecentlyUsedStack
+  - name: doNavigateInRecentlyUsedEditorsStack
+    sig: 'doNavigateInRecentlyUsedEditorsStack(editorIdentifier: IEditorIdentifier | undefined, groupId?: GroupIdentifier): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 577
+    - 598
+    detail:
+      calls:
+      - group.openEditor
+      - this.editorGroupService.getGroup
+  - name: ensureRecentlyUsedStack
+    sig: 'ensureRecentlyUsedStack(indexModifier: (index: number) => number, groupId?: GroupIdentifier): [readonly IEditorIdentifier[], number]'
+    vis: private
+    lines:
+    - 600
+    - 636
+    detail:
+      calls:
+      - group.getEditors
+      - group.getEditors(EditorsOrder.MOST_RECENTLY_ACTIVE).map
+      - indexModifier
+      - this.editorGroupService.getGroup
+      - this.editorService.getEditors
+  - name: handleEditorCloseEventInReopen
+    sig: 'handleEditorCloseEventInReopen(event: IEditorCloseEvent): void'
+    vis: private
+    lines:
+    - 662
+    - 705
+    detail:
+      calls:
+      - EditorResourceAccessor.getOriginalUri
+      - URI.isUri
+      - associatedResources.push
+      - coalesce
+      - editor.toUntyped
+      - this.canReopenClosedEditorContextKey.set
+      - this.recentlyClosedEditors.push
+      - this.recentlyClosedEditors.shift
+      - this.removeFromRecentlyClosedEditors
+  - name: reopenLastClosedEditor
+    sig: 'reopenLastClosedEditor(): Promise<void>'
+    is_async: true
+    lines:
+    - 707
+    - 720
+    detail:
+      calls:
+      - this.canReopenClosedEditorContextKey.set
+      - this.doReopenLastClosedEditor
+      - this.recentlyClosedEditors.pop
+  - name: doReopenLastClosedEditor
+    sig: 'doReopenLastClosedEditor(lastClosedEditor: IRecentlyClosedEditor): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 722
+    - 771
+    detail:
+      calls:
+      - remove
+      - this.editorGroupService.activeGroup.contains
+      - this.editorGroupService.activeGroup.isSticky
+      - this.editorService.openEditor
+      - this.reopenLastClosedEditor
+  - name: handleActiveEditorChangeInHistory
+    sig: 'handleActiveEditorChangeInHistory(editorPane?: IEditorPane): void'
+    vis: private
+    lines:
+    - 817
+    - 828
+    detail:
+      calls:
+      - editor.isDisposed
+      - this.addToHistory
+      - this.includeInHistory
+      - this.removeFromHistory
+  - name: addToHistory
+    sig: 'addToHistory(editor: EditorInput | IResourceEditorInput, insertFirst = true): void'
+    vis: private
+    lines:
+    - 830
+    - 854
+    detail:
+      calls:
+      - isEditorInput
+      - this.editorHelper.clearOnEditorDispose
+      - this.editorHelper.onEditorDispose
+      - this.editorHelper.preferResourceEditorInput
+      - this.ensureHistoryLoaded
+      - this.history.pop
+      - this.history.push
+      - this.history.unshift
+  - name: updateHistoryOnEditorDispose
+    sig: 'updateHistoryOnEditorDispose(editor: EditorInput | IResourceEditorInput): void'
+    vis: private
+    lines:
+    - 856
+    - 889
+    detail:
+      calls:
+      - editor.primary.matches
+      - isEditorInput
+      - isResourceEditorInput
+      - isSideBySideEditorInput
+      - resourceInputs.push
+      - this.editorHelper.preferResourceEditorInput
+      - this.includeInHistory
+      - this.removeFromHistory
+      - this.replaceInHistory
+  - name: moveInHistory
+    sig: 'moveInHistory(event: FileOperationEvent): void'
+    vis: private
+    lines:
+    - 914
+    - 921
+    detail:
+      calls:
+      - event.isOperation
+      - this.addToHistory
+      - this.removeFromHistory
+  - name: removeFromHistory
+    sig: 'removeFromHistory(arg1: EditorInput | IResourceEditorInput | FileChangesEvent | FileOperationEvent): boolean'
+    lines:
+    - 923
+    - 941
+    detail:
+      calls:
+      - this.ensureHistoryLoaded
+      - this.history.filter
+  - name: replaceInHistory
+    sig: 'replaceInHistory(editor: EditorInput | IResourceEditorInput, ...replacements: ReadonlyArray<EditorInput | IResourceEditorInput>): void'
+    vis: private
+    lines:
+    - 943
+    - 978
+    detail:
+      calls:
+      - newHistory.push
+      - replacements.some
+      - this.editorHelper.clearOnEditorDispose
+      - this.editorHelper.matchesEditor
+      - this.ensureHistoryLoaded
+  - name: clearRecentlyOpened
+    sig: 'clearRecentlyOpened(): void'
+    lines:
+    - 980
+    - 987
+    detail:
+      calls:
+      - dispose
+      - this.editorHistoryListeners.clear
+  - name: getHistory
+    sig: 'getHistory(): readonly (EditorInput | IResourceEditorInput)[]'
+    lines:
+    - 989
+    - 993
+    detail:
+      calls:
+      - this.ensureHistoryLoaded
+  - name: loadHistory
+    sig: 'loadHistory(): void'
+    vis: private
+    lines:
+    - 1016
+    - 1073
+    detail:
+      calls:
+      - '[...this.editorService.getEditors(EditorsOrder.MOST_RECENTLY_ACTIVE)].reverse'
+      - editor.resource.toString
+      - handledEditors.add
+      - handledEditors.has
+      - new Set
+      - this.addToHistory
+      - this.editorService.getEditors
+      - this.includeInHistory
+      - this.loadHistoryFromStorage
+  - name: loadHistoryFromStorage
+    sig: 'loadHistoryFromStorage(): Array<IResourceEditorInput>'
+    vis: private
+    lines:
+    - 1075
+    - 1104
+    detail:
+      calls:
+      - JSON.parse
+      - URI.from
+      - URI.parse
+      - entries.push
+      - onUnexpectedError
+      - this.storageService.get
+  - name: saveState
+    sig: 'saveState(): void'
+    vis: private
+    lines:
+    - 1106
+    - 1126
+    detail:
+      calls:
+      - JSON.stringify
+      - editor.resource.toString
+      - entries.push
+      - isEditorInput
+      - isResourceEditorInput
+      - this.storageService.store
+  - name: getLastActiveWorkspaceRoot
+    sig: 'getLastActiveWorkspaceRoot(schemeFilter?: string, authorityFilter?: string): URI | undefined'
+    lines:
+    - 1132
+    - 1179
+    detail:
+      calls:
+      - isEditorInput
+      - this.contextService.getWorkspace
+      - this.contextService.getWorkspaceFolder
+      - this.getHistory
+  - name: getLastActiveFile
+    sig: 'getLastActiveFile(filterByScheme: string, filterByAuthority?: string): URI | undefined'
+    lines:
+    - 1181
+    - 1196
+    detail:
+      calls:
+      - EditorResourceAccessor.getOriginalUri
+      - isEditorInput
+      - this.getHistory
+  - name: dispose
+    sig: 'dispose(): void'
+    lines:
+    - 1200
+    - 1216
+    detail:
+      calls:
+      - listener.dispose
+      - stack.disposable.dispose
+      - super.dispose
+  lines:
+  - 53
+  - 1217
+- name: EditorSelectionState
+  kind: struct
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tprivate readonly editorIdentifier: IEditorIdentifier,\n\t\treadonly selection: IEditorPaneSelection | undefined,\n\t\tprivate readonly reason: EditorPaneSelectionChangeReason | undefined\n\t)"
+    lines:
+    - 1223
+    - 1227
+    detail: {}
+  - name: justifiesNewNavigationEntry
+    sig: 'justifiesNewNavigationEntry(other: EditorSelectionState): boolean'
+    lines:
+    - 1229
+    - 1251
+    detail:
+      calls:
+      - this.editorIdentifier.editor.matches
+      - this.selection.compare
+  lines:
+  - 1221
+  - 1252
+- name: IEditorNavigationStacks
+  kind: trait
+  bases:
+  - IDisposable
+  decorators:
+  - interface
+  fields:
+  - name: readonly
+    type: Event<void>
+  - name: canGoForward
+    type: 'method: canGoForward(filter?: GoFilter): boolean'
+  - name: goForward
+    type: 'method: goForward(filter?: GoFilter): Promise<void>'
+  - name: canGoBack
+    type: 'method: canGoBack(filter?: GoFilter): boolean'
+  - name: goBack
+    type: 'method: goBack(filter?: GoFilter): Promise<void>'
+  - name: goPrevious
+    type: 'method: goPrevious(filter?: GoFilter): Promise<void>'
+  - name: canGoLast
+    type: 'method: canGoLast(filter?: GoFilter): boolean'
+  - name: goLast
+    type: 'method: goLast(filter?: GoFilter): Promise<void>'
+  - name: handleActiveEditorChange
+    type: 'method: handleActiveEditorChange(editorPane?: IEditorPane): void'
+  - name: handleActiveEditorSelectionChange
+    type: 'method: handleActiveEditorSelectionChange(editorPane: IEditorPaneWithSelection, event: IEditorPaneSelectionChangeEvent): void'
+  - name: clear
+    type: 'method: clear(): void'
+  - name: remove
+    type: 'method: remove(arg1: EditorInput | FileChangesEvent | FileOperationEvent | GroupIdentifier): void'
+  - name: move
+    type: 'method: move(event: FileOperationEvent): void'
+  lines:
+  - 1254
+  - 1271
+- name: EditorNavigationStacks
+  kind: struct
+  bases:
+  - Disposable
+  - IEditorNavigationStacks
+  fields:
+  - name: selectionsStack
+    type: EditorNavigationStack
+  - name: editsStack
+    type: EditorNavigationStack
+  - name: navigationsStack
+    type: EditorNavigationStack
+  - name: stacks
+    type: EditorNavigationStack[]
+  - name: onDidChange
+    type: Event<void>
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tprivate readonly scope: GoScope,\n\t\t@IInstantiationService private readonly instantiationService: IInstantiationService\n\t)"
+    lines:
+    - 1283
+    - 1304
+    detail:
+      calls:
+      - Event.any
+      - super
+      - this._register
+      - this.instantiationService.createInstance
+  - name: canGoForward
+    sig: 'canGoForward(filter?: GoFilter): boolean'
+    lines:
+    - 1306
+    - 1308
+    detail:
+      calls:
+      - this.getStack
+      - this.getStack(filter).canGoForward
+  - name: goForward
+    sig: 'goForward(filter?: GoFilter): Promise<void>'
+    lines:
+    - 1310
+    - 1312
+    detail:
+      calls:
+      - this.getStack
+      - this.getStack(filter).goForward
+  - name: canGoBack
+    sig: 'canGoBack(filter?: GoFilter): boolean'
+    lines:
+    - 1314
+    - 1316
+    detail:
+      calls:
+      - this.getStack
+      - this.getStack(filter).canGoBack
+  - name: goBack
+    sig: 'goBack(filter?: GoFilter): Promise<void>'
+    lines:
+    - 1318
+    - 1320
+    detail:
+      calls:
+      - this.getStack
+      - this.getStack(filter).goBack
+  - name: goPrevious
+    sig: 'goPrevious(filter?: GoFilter): Promise<void>'
+    lines:
+    - 1322
+    - 1324
+    detail:
+      calls:
+      - this.getStack
+      - this.getStack(filter).goPrevious
+  - name: canGoLast
+    sig: 'canGoLast(filter?: GoFilter): boolean'
+    lines:
+    - 1326
+    - 1328
+    detail:
+      calls:
+      - this.getStack
+      - this.getStack(filter).canGoLast
+  - name: goLast
+    sig: 'goLast(filter?: GoFilter): Promise<void>'
+    lines:
+    - 1330
+    - 1332
+    detail:
+      calls:
+      - this.getStack
+      - this.getStack(filter).goLast
+  - name: handleActiveEditorChange
+    sig: 'handleActiveEditorChange(editorPane?: IEditorPane): void'
+    lines:
+    - 1342
+    - 1346
+    detail:
+      calls:
+      - this.selectionsStack.notifyNavigation
+  - name: handleActiveEditorSelectionChange
+    sig: 'handleActiveEditorSelectionChange(editorPane: IEditorPaneWithSelection, event: IEditorPaneSelectionChangeEvent): void'
+    lines:
+    - 1348
+    - 1382
+    detail:
+      calls:
+      - this.editsStack.notifyNavigation
+      - this.navigationsStack.addOrReplace
+      - this.navigationsStack.isNavigating
+      - this.navigationsStack.notifyNavigation
+      - this.selectionsStack.isNavigating
+      - this.selectionsStack.notifyNavigation
+  - name: clear
+    sig: 'clear(): void'
+    lines:
+    - 1384
+    - 1388
+    detail:
+      calls:
+      - stack.clear
+  - name: remove
+    sig: 'remove(arg1: EditorInput | FileChangesEvent | FileOperationEvent | GroupIdentifier): void'
+    lines:
+    - 1390
+    - 1394
+    detail:
+      calls:
+      - stack.remove
+  - name: move
+    sig: 'move(event: FileOperationEvent): void'
+    lines:
+    - 1396
+    - 1400
+    detail:
+      calls:
+      - stack.move
+  lines:
+  - 1273
+  - 1401
+- name: NoOpEditorNavigationStacks
+  kind: struct
+  bases:
+  - IEditorNavigationStacks
+  fields:
+  - name: onDidChange
+    type: any
+    default: Event.None
+  methods:
+  - name: canGoForward
+    sig: 'canGoForward(): boolean'
+    lines:
+    - 1406
+    - 1406
+    detail: {}
+  - name: goForward
+    sig: 'goForward(): Promise<void>'
+    is_async: true
+    lines:
+    - 1407
+    - 1407
+    detail: {}
+  - name: canGoBack
+    sig: 'canGoBack(): boolean'
+    lines:
+    - 1408
+    - 1408
+    detail: {}
+  - name: goBack
+    sig: 'goBack(): Promise<void>'
+    is_async: true
+    lines:
+    - 1409
+    - 1409
+    detail: {}
+  - name: goPrevious
+    sig: 'goPrevious(): Promise<void>'
+    is_async: true
+    lines:
+    - 1410
+    - 1410
+    detail: {}
+  - name: canGoLast
+    sig: 'canGoLast(): boolean'
+    lines:
+    - 1411
+    - 1411
+    detail: {}
+  - name: goLast
+    sig: 'goLast(): Promise<void>'
+    is_async: true
+    lines:
+    - 1412
+    - 1412
+    detail: {}
+  - name: handleActiveEditorChange
+    sig: 'handleActiveEditorChange(): void'
+    lines:
+    - 1414
+    - 1414
+    detail: {}
+  - name: handleActiveEditorSelectionChange
+    sig: 'handleActiveEditorSelectionChange(): void'
+    lines:
+    - 1415
+    - 1415
+    detail: {}
+  - name: clear
+    sig: 'clear(): void'
+    lines:
+    - 1417
+    - 1417
+    detail: {}
+  - name: remove
+    sig: 'remove(): void'
+    lines:
+    - 1418
+    - 1418
+    detail: {}
+  - name: move
+    sig: 'move(): void'
+    lines:
+    - 1419
+    - 1419
+    detail: {}
+  - name: dispose
+    sig: 'dispose(): void'
+    lines:
+    - 1421
+    - 1421
+    detail: {}
+  lines:
+  - 1403
+  - 1422
+- name: IEditorNavigationStackEntry
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: groupId
+    type: GroupIdentifier
+  - name: editor
+    type: EditorInput | IResourceEditorInput
+  - name: selection
+    type: IEditorPaneSelection
+  lines:
+  - 1424
+  - 1428
+- name: EditorNavigationStack
+  kind: struct
+  ctx: '#region Stack Mutation'
+  bases:
+  - Disposable
+  fields:
+  - name: MAX_STACK_SIZE
+    type: any
+    default: '50'
+  - name: _onDidChange
+    type: any
+    default: this._register(new Emitter<void>())
+  - name: onDidChange
+    type: any
+    default: this._onDidChange.event
+  - name: mapEditorToDisposable
+    type: any
+    default: new Map<EditorInput, DisposableStore>()
+  - name: mapGroupToDisposable
+    type: any
+    default: new Map<GroupIdentifier, IDisposable>()
+  - name: editorHelper
+    type: EditorHelper
+  - name: stack
+    type: IEditorNavigationStackEntry[]
+    default: '[]'
+  - name: index
+    type: any
+    default: '-1'
+  - name: previousIndex
+    type: any
+    default: '-1'
+  - name: navigating
+    type: boolean
+    default: 'false'
+  - name: currentSelectionState
+    type: EditorSelectionState | undefined
+    default: undefined
+  methods:
+  - name: current
+    sig: 'current(): IEditorNavigationStackEntry | undefined'
+    lines:
+    - 1451
+    - 1453
+    detail: {}
+  - name: constructor
+    sig: "constructor(\n\t\tprivate readonly filter: GoFilter,\n\t\tprivate readonly scope: GoScope,\n\t\t@IInstantiationService instantiationService: IInstantiationService,\n\t\t@IEditorService private readonly editorService: IEditorService,\n\t\t@IEditorGroupsService private readonly editorGroupService: IEditorGroupsService,\n\t\t@ILogService private readonly logService: ILogService\n\t)"
+    lines:
+    - 1461
+    - 1474
+    detail:
+      calls:
+      - instantiationService.createInstance
+      - super
+      - this.registerListeners
+  - name: registerListeners
+    sig: 'registerListeners(): void'
+    vis: private
+    lines:
+    - 1476
+    - 1479
+    detail:
+      calls:
+      - this._register
+      - this.logService.onDidChangeLogLevel
+      - this.onDidChange
+  - name: traceStack
+    sig: 'traceStack(): void'
+    vis: private
+    lines:
+    - 1481
+    - 1502
+    detail:
+      calls:
+      - entry.editor.resource?.toString
+      - entry.selection.log
+      - entryLabels.join
+      - entryLabels.push
+      - this.isNavigating
+      - this.logService.getLevel
+      - this.trace
+  - name: trace
+    sig: 'trace(msg: string, editor: EditorInput | IResourceEditorInput | undefined | null = null, event?: IEditorPaneSelectionChangeEvent): void'
+    vis: private
+    lines:
+    - 1504
+    - 1534
+    detail:
+      calls:
+      - editor?.resource?.toString
+      - this.logService.getLevel
+      - this.logService.trace
+      - this.traceEvent
+  - name: registerGroupListeners
+    sig: 'registerGroupListeners(groupId: GroupIdentifier): void'
+    vis: private
+    lines:
+    - 1550
+    - 1557
+    detail:
+      calls:
+      - group.onWillMoveEditor
+      - this.editorGroupService.getGroup
+      - this.mapGroupToDisposable.has
+      - this.mapGroupToDisposable.set
+  - name: notifyNavigation
+    sig: 'notifyNavigation(editorPane: IEditorPane | undefined, event?: IEditorPaneSelectionChangeEvent): void'
+    lines:
+    - 1582
+    - 1624
+    detail:
+      calls:
+      - editorPane.getSelection
+      - editorPane.input.isDisposed
+      - isEditorPaneWithSelection
+      - new EditorSelectionState
+      - this.onNonSelectionAwareEditorNavigation
+      - this.onSelectionAwareEditorNavigation
+      - this.trace
+  - name: onSelectionAwareEditorNavigation
+    sig: 'onSelectionAwareEditorNavigation(groupId: GroupIdentifier, editor: EditorInput, selection: IEditorPaneSelection | undefined, event?: IEditorPaneSelectionChangeEvent): void'
+    vis: private
+    lines:
+    - 1626
+    - 1647
+    detail:
+      calls:
+      - new EditorSelectionState
+      - this.currentSelectionState.justifiesNewNavigationEntry
+      - this.doAdd
+      - this.doReplace
+      - this.editorHelper.matchesEditor
+      - this.trace
+  - name: onNonSelectionAwareEditorNavigation
+    sig: 'onNonSelectionAwareEditorNavigation(groupId: GroupIdentifier, editor: EditorInput): void'
+    vis: private
+    lines:
+    - 1649
+    - 1657
+    detail:
+      calls:
+      - this.doAdd
+      - this.editorHelper.matchesEditor
+      - this.trace
+  - name: addOrReplace
+    sig: 'addOrReplace(groupId: GroupIdentifier, editorCandidate: EditorInput | IResourceEditorInput, selection?: IEditorPaneSelection, forceReplace?: boolean): void'
+    lines:
+    - 1671
+    - 1747
+    detail:
+      calls:
+      - isEditorInput
+      - removedEntries.push
+      - this._onDidChange.fire
+      - this.editorHelper.clearOnEditorDispose
+      - this.editorHelper.onEditorDispose
+      - this.editorHelper.preferResourceEditorInput
+      - this.registerGroupListeners
+      - this.setIndex
+      - this.shouldReplaceStackEntry
+      - this.stack.shift
+      - this.stack.slice
+      - this.stack.splice
+      - this.trace
+  - name: move
+    sig: 'move(event: FileOperationEvent): void'
+    lines:
+    - 1770
+    - 1778
+    detail:
+      calls:
+      - event.isOperation
+      - this.editorHelper.matchesEditor
+  - name: remove
+    sig: 'remove(arg1: EditorInput | FileChangesEvent | FileOperationEvent | GroupIdentifier): void'
+    lines:
+    - 1780
+    - 1816
+    detail:
+      calls:
+      - this._onDidChange.fire
+      - this.flatten
+      - this.mapGroupToDisposable.delete
+      - this.mapGroupToDisposable.get
+      - this.mapGroupToDisposable.get(arg1)?.dispose
+      - this.stack.filter
+  - name: clear
+    sig: 'clear(): void'
+    lines:
+    - 1834
+    - 1848
+    detail:
+      calls:
+      - dispose
+      - this.mapEditorToDisposable.clear
+      - this.mapGroupToDisposable.clear
+      - this.stack.splice
+  - name: dispose
+    sig: 'dispose(): void'
+    lines:
+    - 1850
+    - 1854
+    detail:
+      calls:
+      - super.dispose
+      - this.clear
+  - name: canGoForward
+    sig: 'canGoForward(): boolean'
+    lines:
+    - 1860
+    - 1862
+    detail: {}
+  - name: goForward
+    sig: 'goForward(): Promise<void>'
+    is_async: true
+    lines:
+    - 1864
+    - 1876
+    detail:
+      calls:
+      - this.canGoForward
+      - this.maybeGoCurrent
+      - this.navigate
+      - this.setIndex
+  - name: canGoBack
+    sig: 'canGoBack(): boolean'
+    lines:
+    - 1878
+    - 1880
+    detail: {}
+  - name: goBack
+    sig: 'goBack(): Promise<void>'
+    is_async: true
+    lines:
+    - 1882
+    - 1894
+    detail:
+      calls:
+      - this.canGoBack
+      - this.maybeGoCurrent
+      - this.navigate
+      - this.setIndex
+  - name: goPrevious
+    sig: 'goPrevious(): Promise<void>'
+    is_async: true
+    lines:
+    - 1896
+    - 1910
+    detail:
+      calls:
+      - this.goBack
+      - this.maybeGoCurrent
+      - this.navigate
+      - this.setIndex
+  - name: canGoLast
+    sig: 'canGoLast(): boolean'
+    lines:
+    - 1912
+    - 1914
+    detail: {}
+  - name: goLast
+    sig: 'goLast(): Promise<void>'
+    is_async: true
+    lines:
+    - 1916
+    - 1923
+    detail:
+      calls:
+      - this.canGoLast
+      - this.navigate
+      - this.setIndex
+  - name: maybeGoCurrent
+    sig: 'maybeGoCurrent(): Promise<boolean>'
+    is_async: true
+    vis: private
+    lines:
+    - 1925
+    - 1945
+    detail:
+      calls:
+      - this.isCurrentSelectionActive
+      - this.navigate
+  - name: isCurrentSelectionActive
+    sig: 'isCurrentSelectionActive(): boolean'
+    vis: private
+    lines:
+    - 1947
+    - 1971
+    detail:
+      calls:
+      - isEditorPaneWithSelection
+      - pane.getSelection
+      - paneSelection.compare
+      - this.editorHelper.matchesEditor
+  - name: navigate
+    sig: 'navigate(): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 1983
+    - 1993
+    detail:
+      calls:
+      - this.doNavigate
+  - name: doNavigate
+    sig: 'doNavigate(location: IEditorNavigationStackEntry): Promise<IEditorPane | undefined>'
+    vis: private
+    lines:
+    - 1995
+    - 2014
+    detail:
+      calls:
+      - Object.create
+      - isEditorInput
+      - location.selection.restore
+      - this.editorService.openEditor
+  - name: isNavigating
+    sig: 'isNavigating(): boolean'
+    lines:
+    - 2016
+    - 2018
+    detail: {}
+  lines:
+  - 1430
+  - 2021
+- name: EditorHelper
+  kind: struct
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\t@IUriIdentityService private readonly uriIdentityService: IUriIdentityService,\n\t\t@ILifecycleService private readonly lifecycleService: ILifecycleService,\n\t\t@IFileService private readonly fileService: IFileService,\n\t\t@IPathService private readonly pathService: IPathService\n\t)"
+    lines:
+    - 2025
+    - 2030
+    detail: {}
+  - name: preferResourceEditorInput
+    sig: 'preferResourceEditorInput(editor: EditorInput | IResourceEditorInput): EditorInput | IResourceEditorInput | undefined'
+    lines:
+    - 2035
+    - 2068
+    detail:
+      calls:
+      - EditorResourceAccessor.getOriginalUri
+      - editor.toUntyped
+      - isEditorInput
+      - isResourceEditorInput
+  - name: matchesEditor
+    sig: 'matchesEditor(arg1: EditorInput | IResourceEditorInput | FileChangesEvent | FileOperationEvent, inputB: EditorInput | IResourceEditorInput): boolean'
+    lines:
+    - 2070
+    - 2096
+    detail:
+      calls:
+      - arg1.contains
+      - arg1.matches
+      - isEditorInput
+      - this.matchesFile
+      - this.uriIdentityService.extUri.isEqual
+  - name: matchesFile
+    sig: 'matchesFile(resource: URI, arg2: EditorInput | IResourceEditorInput | FileChangesEvent | FileOperationEvent): boolean'
+    lines:
+    - 2098
+    - 2121
+    detail:
+      calls:
+      - arg2.contains
+      - isEditorInput
+      - this.fileService.hasProvider
+      - this.uriIdentityService.extUri.isEqual
+      - this.uriIdentityService.extUri.isEqualOrParent
+  - name: matchesEditorIdentifier
+    sig: 'matchesEditorIdentifier(identifier: IEditorIdentifier, editorPane?: IEditorPane): boolean'
+    lines:
+    - 2123
+    - 2133
+    detail:
+      calls:
+      - identifier.editor.matches
+  - name: onEditorDispose
+    sig: 'onEditorDispose(editor: EditorInput, listener: Function, mapEditorToDispose: Map<EditorInput, DisposableStore>): void'
+    lines:
+    - 2135
+    - 2145
+    detail:
+      calls:
+      - Event.once
+      - Event.once(editor.onWillDispose)
+      - disposables.add
+      - mapEditorToDispose.get
+      - mapEditorToDispose.set
+      - new DisposableStore
+  - name: clearOnEditorDispose
+    sig: 'clearOnEditorDispose(editor: EditorInput | IResourceEditorInput | FileChangesEvent | FileOperationEvent, mapEditorToDispose: Map<EditorInput, DisposableStore>): void'
+    lines:
+    - 2147
+    - 2157
+    detail:
+      calls:
+      - dispose
+      - isEditorInput
+      - mapEditorToDispose.delete
+      - mapEditorToDispose.get
+  lines:
+  - 2023
+  - 2158
+exports:
+- name: ISerializedEditorHistoryEntry
+  kind: type
+- name: IRecentlyClosedEditor
+  kind: type
+- name: HistoryService
+  kind: type
+- name: EditorSelectionState
+  kind: type
+- name: IEditorNavigationStacks
+  kind: type
+- name: EditorNavigationStacks
+  kind: type
+- name: NoOpEditorNavigationStacks
+  kind: type
+- name: IEditorNavigationStackEntry
+  kind: type
+- name: EditorNavigationStack
+  kind: type
+- name: EditorHelper
+  kind: type

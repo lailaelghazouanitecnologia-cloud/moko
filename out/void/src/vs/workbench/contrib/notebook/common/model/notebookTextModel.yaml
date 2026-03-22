@@ -1,0 +1,810 @@
+## Roska File Descriptor — model/notebookTextModel.ts
+file: model/notebookTextModel.ts
+lines: 1374
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: ../../../../../base/common/diff/diff.js.ISequence
+- sym: ../../../../../base/common/diff/diff.js.LcsDiff
+- sym: ../../../../../base/common/event.js.Emitter
+- sym: ../../../../../base/common/event.js.Event
+- sym: ../../../../../base/common/event.js.PauseableEmitter
+- sym: ../../../../../base/common/hash.js.hash
+- sym: ../../../../../base/common/lifecycle.js.Disposable
+- sym: ../../../../../base/common/lifecycle.js.dispose
+- sym: ../../../../../base/common/lifecycle.js.IDisposable
+- sym: ../../../../../base/common/network.js.Schemas
+- sym: ../../../../../base/common/objects.js.filter
+- sym: ../../../../../base/common/resources.js.isEqual
+- sym: ../../../../../base/common/types.js.isDefined
+- sym: ../../../../../base/common/uri.js.URI
+- sym: ../../../../../editor/common/core/position.js.Position
+- sym: ../../../../../editor/common/core/range.js.Range
+- sym: ../../../../../editor/common/languages/language.js.ILanguageService
+- sym: ../../../../../editor/common/model.js.FindMatch
+- sym: ../../../../../editor/common/model.js.ITextModel
+- sym: ../../../../../editor/common/model/textModel.js.TextModel
+- sym: ../../../../../editor/common/model/textModelSearch.js.SearchParams
+- sym: ../../../../../editor/common/services/model.js.IModelService
+- sym: ../../../../../editor/common/textModelEvents.js.IModelContentChangedEvent
+- sym: ../../../../../platform/undoRedo/common/undoRedo.js.IResourceUndoRedoElement
+- sym: ../../../../../platform/undoRedo/common/undoRedo.js.IUndoRedoElement
+- sym: ../../../../../platform/undoRedo/common/undoRedo.js.IUndoRedoService
+- sym: ../../../../../platform/undoRedo/common/undoRedo.js.IWorkspaceUndoRedoElement
+- sym: ../../../../../platform/undoRedo/common/undoRedo.js.UndoRedoElementType
+- sym: ../../../../../platform/undoRedo/common/undoRedo.js.UndoRedoGroup
+- sym: ../../../../services/languageDetection/common/languageDetectionWorkerService.js.ILanguageDetectionService
+- sym: ../../../../services/workingCopy/common/fileWorkingCopy.js.SnapshotContext
+- sym: ../notebookCommon.js.CellEditType
+- sym: ../notebookCommon.js.CellKind
+- sym: ../notebookCommon.js.CellUri
+- sym: ../notebookCommon.js.diff
+- sym: ../notebookCommon.js.ICell
+- sym: ../notebookCommon.js.ICellDto2
+- sym: ../notebookCommon.js.ICellEditOperation
+- sym: ../notebookCommon.js.ICellOutput
+- sym: ../notebookCommon.js.INotebookSnapshotOptions
+- sym: ../notebookCommon.js.INotebookTextModel
+- sym: ../notebookCommon.js.IOutputDto
+- sym: ../notebookCommon.js.IOutputItemDto
+- sym: ../notebookCommon.js.ISelectionState
+- sym: ../notebookCommon.js.NotebookCellCollapseState
+- sym: ../notebookCommon.js.NotebookCellDefaultCollapseConfig
+- sym: ../notebookCommon.js.NotebookCellExecutionState
+- sym: ../notebookCommon.js.NotebookCellInternalMetadata
+- sym: ../notebookCommon.js.NotebookCellMetadata
+- sym: ../notebookCommon.js.NotebookCellOutputsSplice
+- sym: ../notebookCommon.js.NotebookCellsChangeType
+- sym: ../notebookCommon.js.NotebookCellTextModelSplice
+- sym: ../notebookCommon.js.NotebookData
+- sym: ../notebookCommon.js.NotebookDocumentMetadata
+- sym: ../notebookCommon.js.NotebookTextModelChangedEvent
+- sym: ../notebookCommon.js.NotebookTextModelWillAddRemoveEvent
+- sym: ../notebookCommon.js.NullablePartialNotebookCellInternalMetadata
+- sym: ../notebookCommon.js.NullablePartialNotebookCellMetadata
+- sym: ../notebookCommon.js.TransientOptions
+- sym: ../notebookExecutionStateService.js.INotebookExecutionStateService
+- sym: ./cellEdit.js.CellMetadataEdit
+- sym: ./cellEdit.js.MoveCellEdit
+- sym: ./cellEdit.js.SpliceCellsEdit
+- sym: ./notebookCellOutputTextModel.js.NotebookCellOutputTextModel
+- sym: ./notebookCellTextModel.js.NotebookCellTextModel
+types:
+- name: StackOperation
+  kind: struct
+  bases:
+  - IWorkspaceUndoRedoElement
+  fields:
+  - name: type
+    type: UndoRedoElementType.Workspace
+  - name: tag
+    type: any
+    default: '''notebookUndoRedoElement'''
+  - name: _operations
+    type: IUndoRedoElement[]
+    default: '[]'
+  - name: _beginSelectionState
+    type: ISelectionState | undefined
+    default: undefined
+  - name: _resultSelectionState
+    type: ISelectionState | undefined
+    default: undefined
+  - name: _beginAlternativeVersionId
+    type: string
+  - name: _resultAlternativeVersionId
+    type: string
+  methods:
+  - name: code
+    sig: code()
+    lines:
+    - 36
+    - 38
+    detail: {}
+  - name: label
+    sig: label()
+    lines:
+    - 45
+    - 47
+    detail: {}
+  - name: constructor
+    sig: "constructor(\n\t\treadonly textModel: NotebookTextModel,\n\t\treadonly undoRedoGroup: UndoRedoGroup | undefined,\n\t\tprivate _pauseableEmitter: PauseableEmitter<NotebookTextModelChangedEvent>,\n\t\tprivate _postUndoRedo: (alternativeVersionId: string) => void,\n\t\tselectionState: ISelectionState | undefined,\n\t\tbeginAlternativeVersionId: string\n\t)"
+    lines:
+    - 49
+    - 61
+    detail: {}
+  - name: resources
+    sig: 'resources(): readonly URI[]'
+    lines:
+    - 62
+    - 64
+    detail: {}
+  - name: isEmpty
+    sig: 'isEmpty(): boolean'
+    lines:
+    - 66
+    - 68
+    detail: {}
+  - name: pushEndState
+    sig: 'pushEndState(alternativeVersionId: string, selectionState: ISelectionState | undefined)'
+    lines:
+    - 70
+    - 74
+    detail: {}
+  - name: pushEditOperation
+    sig: 'pushEditOperation(element: IUndoRedoElement, beginSelectionState: ISelectionState | undefined, resultSelectionState: ISelectionState | undefined, alternativeVersionId: string)'
+    lines:
+    - 76
+    - 83
+    detail:
+      calls:
+      - this._operations.push
+  - name: undo
+    sig: 'undo(): Promise<void>'
+    is_async: true
+    lines:
+    - 85
+    - 101
+    detail:
+      calls:
+      - this._operations[i].undo
+      - this._pauseableEmitter.fire
+      - this._pauseableEmitter.pause
+      - this._pauseableEmitter.resume
+      - this._postUndoRedo
+  - name: redo
+    sig: 'redo(): Promise<void>'
+    is_async: true
+    lines:
+    - 103
+    - 120
+    detail:
+      calls:
+      - this._operations[i].redo
+      - this._pauseableEmitter.fire
+      - this._pauseableEmitter.pause
+      - this._pauseableEmitter.resume
+      - this._postUndoRedo
+  lines:
+  - 32
+  - 121
+- name: NotebookOperationManager
+  kind: struct
+  fields:
+  - name: _pendingStackOperation
+    type: StackOperation | null
+    default: 'null'
+  - name: _isAppending
+    type: boolean
+    default: 'false'
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tprivate readonly _textModel: NotebookTextModel,\n\t\tprivate _undoService: IUndoRedoService,\n\t\tprivate _pauseableEmitter: PauseableEmitter<NotebookTextModelChangedEvent>,\n\t\tprivate _postUndoRedo: (alternativeVersionId: string) => void\n\t)"
+    lines:
+    - 126
+    - 132
+    detail: {}
+  - name: isUndoStackEmpty
+    sig: 'isUndoStackEmpty(): boolean'
+    lines:
+    - 134
+    - 136
+    detail: {}
+  - name: pushStackElement
+    sig: 'pushStackElement(alternativeVersionId: string, selectionState: ISelectionState | undefined)'
+    lines:
+    - 138
+    - 147
+    detail:
+      calls:
+      - this._pendingStackOperation.pushEndState
+      - this._undoService.pushElement
+  - name: appendPreviousOperation
+    sig: 'appendPreviousOperation(): boolean'
+    lines:
+    - 153
+    - 161
+    detail:
+      calls:
+      - this._undoService.getLastElement
+  - name: pushEditOperation
+    sig: 'pushEditOperation(element: IUndoRedoElement, beginSelectionState: ISelectionState | undefined, resultSelectionState: ISelectionState | undefined, alternativeVersionId: string, undoRedoGroup: UndoRedoGroup | undefined)'
+    lines:
+    - 163
+    - 166
+    detail:
+      calls:
+      - pendingStackOperation.pushEditOperation
+      - this._getOrCreateEditStackElement
+  lines:
+  - 123
+  - 167
+- name: TransformedEdit
+  kind: typealias
+  decorators:
+  - type
+  fields:
+  - name: edit
+    type: ICellEditOperation
+  - name: cellIndex
+    type: number
+  - name: end
+    type: number | undefined
+  - name: originalIndex
+    type: number
+  lines:
+  - 169
+  - 174
+- name: NotebookEventEmitter
+  kind: struct
+  bases:
+  - PauseableEmitter
+  methods:
+  - name: isEmpty
+    sig: isEmpty()
+    lines:
+    - 177
+    - 179
+    detail:
+      calls:
+      - this._eventQueue.isEmpty
+  - name: isDirtyEvent
+    sig: isDirtyEvent()
+    lines:
+    - 181
+    - 191
+    detail: {}
+  lines:
+  - 176
+  - 192
+- name: NotebookTextModel
+  kind: model
+  ctx: This alternative id is only for non-cell-content changes.
+  bases:
+  - Disposable
+  - INotebookTextModel
+  fields:
+  - name: _isDisposed
+    type: any
+    default: 'false'
+  - name: _onWillDispose
+    type: Emitter<void>
+    default: this._register(new Emitter<void>())
+  - name: _onWillAddRemoveCells
+    type: any
+    default: this._register(new Emitter<NotebookTextModelWillAddRemoveEvent>())
+  - name: _onDidChangeContent
+    type: any
+    default: this._register(new Emitter<NotebookTextModelChangedEvent>())
+  - name: onWillDispose
+    type: Event<void>
+    default: this._onWillDispose.event
+  - name: onWillAddRemoveCells
+    type: any
+    default: this._onWillAddRemoveCells.event
+  - name: onDidChangeContent
+    type: any
+    default: this._onDidChangeContent.event
+  - name: _cellhandlePool
+    type: number
+    default: '0'
+  - name: _cellListeners
+    type: Map<number, IDisposable>
+    default: new Map()
+  - name: _cells
+    type: NotebookCellTextModel[]
+    default: '[]'
+  - name: _defaultCollapseConfig
+    type: NotebookCellDefaultCollapseConfig | undefined
+  - name: metadata
+    type: NotebookDocumentMetadata
+    default: '{}'
+  - name: transientOptions
+    type: TransientOptions
+    default: '{ transientCellMetadata: {}, transientDocumentMetadata: {}, transientOutputs: fa...'
+  - name: _versionId
+    type: any
+    default: '0'
+  - name: _notebookSpecificAlternativeId
+    type: any
+    default: '0'
+  - name: _alternativeVersionId
+    type: string
+    default: '''1'''
+  - name: _operationManager
+    type: NotebookOperationManager
+  - name: _pauseableEmitter
+    type: NotebookEventEmitter
+  - name: newCellsFromLastEdit
+    type: any
+    default: new Set<number>()
+  methods:
+  - name: length
+    sig: length()
+    lines:
+    - 224
+    - 226
+    detail: {}
+  - name: cells
+    sig: 'cells(): readonly NotebookCellTextModel[]'
+    lines:
+    - 228
+    - 230
+    detail: {}
+  - name: versionId
+    sig: versionId()
+    lines:
+    - 232
+    - 234
+    detail: {}
+  - name: alternativeVersionId
+    sig: 'alternativeVersionId(): string'
+    lines:
+    - 236
+    - 238
+    detail: {}
+  - name: notebookType
+    sig: notebookType()
+    lines:
+    - 240
+    - 242
+    detail: {}
+  - name: constructor
+    sig: "constructor(\n\t\treadonly viewType: string,\n\t\treadonly uri: URI,\n\t\tcells: ICellDto2[],\n\t\tmetadata: NotebookDocumentMetadata,\n\t\toptions: TransientOptions,\n\t\t@IUndoRedoService private readonly _undoService: IUndoRedoService,\n\t\t@IModelService private readonly _modelService: IModelService,\n\t\t@ILanguageService private readonly _languageService: ILanguageService,\n\t\t@ILanguageDetectionService private readonly _languageDetectionService: ILanguageDetectionService,\n\t\t@INotebookExecutionStateService private readonly _notebookExecutionStateService: INotebookExecutionStateService,\n\t)"
+    lines:
+    - 244
+    - 312
+    detail:
+      calls:
+      - _modelService.onModelAdded
+      - new NotebookEventEmitter
+      - new NotebookOperationManager
+      - super
+      - this._initialize
+      - this._pauseableEmitter.event
+      - this._register
+  - name: setCellCollapseDefault
+    sig: 'setCellCollapseDefault(collapseConfig: NotebookCellDefaultCollapseConfig | undefined)'
+    lines:
+    - 314
+    - 316
+    detail: {}
+  - name: _initialize
+    sig: '_initialize(cells: ICellDto2[], triggerDirty?: boolean)'
+    lines:
+    - 318
+    - 350
+    detail:
+      calls:
+      - cells.map
+      - mainCells[i].onDidChangeContent
+      - this._cellListeners.set
+      - this._cells.splice
+      - this._generateAlternativeId
+      - this._pauseableEmitter.fire
+      - this._register
+  - name: _bindCellContentHandler
+    sig: '_bindCellContentHandler(cell: NotebookCellTextModel, e: ''content'' | ''language'' | ''mime'' | { type: ''model''; event: IModelContentChangedEvent })'
+    vis: private
+    lines:
+    - 352
+    - 393
+    detail:
+      calls:
+      - this._getCellIndexByHandle
+      - this._increaseVersionId
+      - this._pauseableEmitter.fire
+  - name: dispose
+    sig: dispose()
+    lines:
+    - 399
+    - 415
+    detail:
+      calls:
+      - dispose
+      - super.dispose
+      - this._cellListeners.clear
+      - this._cellListeners.values
+      - this._onWillDispose.fire
+      - this._undoService.removeElements
+  - name: pushStackElement
+    sig: pushStackElement()
+    lines:
+    - 417
+    - 419
+    detail: {}
+  - name: _getCellIndexWithOutputIdHandleFromEdits
+    sig: '_getCellIndexWithOutputIdHandleFromEdits(outputId: string, rawEdits: ICellEditOperation[])'
+    vis: private
+    lines:
+    - 425
+    - 438
+    detail:
+      calls:
+      - rawEdits.find
+      - this._assertIndex
+      - this._getCellIndexByHandle
+  - name: reset
+    sig: 'reset(cells: ICellDto2[], metadata: NotebookDocumentMetadata, transientOptions: TransientOptions): void'
+    lines:
+    - 444
+    - 460
+    detail:
+      calls:
+      - NotebookTextModel.computeEdits
+      - executions.filter
+      - executions.filter(exe => exe.state === NotebookCellExecutionState.Executing).map
+      - this._notebookExecutionStateService.getCellExecutionsForNotebook
+      - this.applyEdits
+  - name: createSnapshot
+    sig: 'createSnapshot(options: INotebookSnapshotOptions): NotebookData'
+    lines:
+    - 462
+    - 498
+    detail:
+      calls:
+      - cell.getValue
+      - cell.outputs.forEach
+      - data.cells.push
+      - filter
+      - new Error
+  - name: restoreSnapshot
+    sig: 'restoreSnapshot(snapshot: NotebookData, transientOptions?: TransientOptions): void'
+    lines:
+    - 500
+    - 502
+    detail:
+      calls:
+      - this.reset
+  - name: computeEdits
+    sig: 'computeEdits(model: NotebookTextModel, cells: ICellDto2[], executingHandles: number[] = []): ICellEditOperation[]'
+    decorators:
+    - static
+    lines:
+    - 504
+    - 552
+    detail:
+      calls:
+      - cells.slice
+      - edits.push
+      - this._commonPrefix
+      - this._commonSuffix
+      - this._computeOutputEdit
+  - name: _computeOutputEdit
+    sig: '_computeOutputEdit(index: number, a: ICellOutput[], b: IOutputDto[]): ICellEditOperation[]'
+    vis: private
+    decorators:
+    - static
+    lines:
+    - 554
+    - 580
+    detail:
+      calls:
+      - b.map
+  - name: _commonPrefix
+    sig: '_commonPrefix(a: readonly NotebookCellTextModel[], aLen: number, aDelta: number, b: ICellDto2[], bLen: number, bDelta: number, isExecuting: (cell: NotebookCellTextModel) => boolean): number'
+    vis: private
+    decorators:
+    - static
+    lines:
+    - 582
+    - 590
+    detail:
+      calls:
+      - Math.min
+      - a[aDelta + i].fastEqual
+      - isExecuting
+  - name: _commonSuffix
+    sig: '_commonSuffix(a: readonly NotebookCellTextModel[], aLen: number, aDelta: number, b: ICellDto2[], bLen: number, bDelta: number, isExecuting: (cell: NotebookCellTextModel) => boolean): number'
+    vis: private
+    decorators:
+    - static
+    lines:
+    - 592
+    - 599
+    detail:
+      calls:
+      - Math.min
+      - a[aDelta + aLen - i - 1].fastEqual
+      - isExecuting
+  - name: applyEdits
+    sig: 'applyEdits(rawEdits: ICellEditOperation[], synchronous: boolean, beginSelectionState: ISelectionState | undefined, endSelectionsComputer: () => ISelectionState | undefined, undoRedoGroup: UndoRedoGroup | undefined, computeUndoRedo: boolean): boolean'
+    lines:
+    - 622
+    - 652
+    detail:
+      calls:
+      - endSelectionsComputer
+      - this._doApplyEdits
+      - this._increaseVersionId
+      - this._operationManager.appendPreviousOperation
+      - this._operationManager.isUndoStackEmpty
+      - this._operationManager.pushStackElement
+      - this._pauseableEmitter.fire
+      - this._pauseableEmitter.isDirtyEvent
+      - this._pauseableEmitter.pause
+      - this._pauseableEmitter.resume
+      - this.isOnlyEditingMetadataOnNewCells
+      - this.newCellsFromLastEdit.clear
+  - name: _doApplyEdits
+    sig: '_doApplyEdits(rawEdits: ICellEditOperation[], synchronous: boolean, computeUndoRedo: boolean, beginSelectionState: ISelectionState | undefined, undoRedoGroup: UndoRedoGroup | undefined): void'
+    vis: private
+    lines:
+    - 654
+    - 784
+    detail:
+      calls:
+      - edit.outputs.map
+      - edits.flat
+      - rawEdits.map
+      - "rawEdits.map((edit, index) => {\n\t\t\tlet cellIndex: number = -1;\n\t\t\tif ('index' in edit) {\n\t\t\t\tcellInd..."
+      - this._appendNotebookCellOutputItems
+      - this._assertIndex
+      - this._changeCellInternalMetadataPartial
+      - this._changeCellLanguage
+      - this._changeCellMetadata
+      - this._changeCellMetadataPartial
+      - this._mergeCellEdits
+      - "this._mergeCellEdits(editsWithDetails)\n\t\t\t.sort"
+      - "this._mergeCellEdits(editsWithDetails)\n\t\t\t.sort((a, b) => {\n\t\t\t\tif (a.end === undefined) {\n\t\t\t\t\tretu..."
+      - this._moveCellToIdx
+      - this._replaceCells
+      - this._replaceNotebookCellOutputItems
+      - this._spliceNotebookCellOutputs
+      - this._spliceNotebookCellOutputs2
+      - this._updateNotebookCellMetadata
+  - name: _mergeCellEdits
+    sig: '_mergeCellEdits(rawEdits: TransformedEdit[]): TransformedEdit[]'
+    vis: private
+    lines:
+    - 786
+    - 818
+    detail:
+      calls:
+      - rawEdits.forEach
+  - name: _replaceCells
+    sig: '_replaceCells(index: number, count: number, cellDtos: ICellDto2[], synchronous: boolean, computeUndoRedo: boolean, beginSelectionState: ISelectionState | undefined, undoRedoGroup: UndoRedoGroup | undefined): void'
+    vis: private
+    lines:
+    - 825
+    - 906
+    detail:
+      calls:
+      - Math.min
+      - cellDtos.map
+      - cellsCopy.splice
+      - diff
+      - "diff(this._cells, cellsCopy, cell => {\n\t\t\treturn oldSet.has(cell.handle);\n\t\t}).map"
+      - diffs.map
+      - new Set
+      - new SpliceCellsEdit
+      - oldViewCells.forEach
+      - this._cellListeners.delete
+      - this._cellListeners.get
+      - this._cellListeners.get(cell.handle)?.dispose
+      - this._cells.slice
+      - this._onWillAddRemoveCells.fire
+      - this._operationManager.pushEditOperation
+      - this._pauseableEmitter.fire
+  - name: _updateNotebookCellMetadata
+    sig: '_updateNotebookCellMetadata(metadata: NotebookDocumentMetadata, computeUndoRedo: boolean, beginSelectionState: ISelectionState | undefined, undoRedoGroup: UndoRedoGroup | undefined)'
+    vis: private
+    lines:
+    - 921
+    - 952
+    detail:
+      calls:
+      - "new class implements IResourceUndoRedoElement {\n\t\t\t\t\treadonly type: UndoRedoElementType.Resource = UndoRedoElementType.Resource;\n\t\t\t\t\tget resource() {\n\t\t\t\t\t\treturn that.uri;\n\t\t\t\t\t}\n\t\t\t\t\treadonly label = 'Update Cell Metadata';\n\t\t\t\t\treadonly code = 'undoredo.textBufferEdit';\n\t\t\t\t\tundo() {\n\t\t\t\t\t\tthat._updateNotebookCellMetadata(oldMetadata, false, beginSelectionState, undoRedoGroup);\n\t\t\t\t\t}\n\t\t\t\t\tredo() {\n\t\t\t\t\t\tthat._updateNotebookCellMetadata(metadata, false, beginSelectionState, undoRedoGroup);\n\t\t\t\t\t}\n\t\t\t\t}"
+      - that._updateNotebookCellMetadata
+      - this._isDocumentMetadataChanged
+      - this._operationManager.pushEditOperation
+      - this._pauseableEmitter.fire
+  - name: _insertNewCell
+    sig: '_insertNewCell(index: number, cells: NotebookCellTextModel[], synchronous: boolean, endSelections: ISelectionState | undefined): void'
+    vis: private
+    lines:
+    - 954
+    - 974
+    detail:
+      calls:
+      - cells[i].onDidChangeContent
+      - this._cellListeners.set
+      - this._cells.splice
+      - this._onWillAddRemoveCells.fire
+      - this._pauseableEmitter.fire
+  - name: _removeCell
+    sig: '_removeCell(index: number, count: number, synchronous: boolean, endSelections: ISelectionState | undefined)'
+    vis: private
+    lines:
+    - 976
+    - 991
+    detail:
+      calls:
+      - this._cellListeners.delete
+      - this._cellListeners.get
+      - this._cellListeners.get(cell.handle)?.dispose
+      - this._cells.splice
+      - this._onWillAddRemoveCells.fire
+      - this._pauseableEmitter.fire
+  - name: _replaceNewCells
+    sig: '_replaceNewCells(index: number, count: number, cells: NotebookCellTextModel[], synchronous: boolean, endSelections: ISelectionState | undefined)'
+    vis: private
+    lines:
+    - 993
+    - 1017
+    detail:
+      calls:
+      - cells[i].onDidChangeContent
+      - this._cellListeners.delete
+      - this._cellListeners.get
+      - this._cellListeners.get(cell.handle)?.dispose
+      - this._cellListeners.set
+      - this._cells.splice
+      - this._onWillAddRemoveCells.fire
+      - this._pauseableEmitter.fire
+  - name: _customMetadataEqual
+    sig: '_customMetadataEqual(a: any, b: any)'
+    vis: private
+    lines:
+    - 1056
+    - 1081
+    detail:
+      calls:
+      - Object.getOwnPropertyNames
+  - name: _changeCellMetadata
+    sig: '_changeCellMetadata(cell: NotebookCellTextModel, metadata: NotebookCellMetadata, computeUndoRedo: boolean, beginSelectionState: ISelectionState | undefined, undoRedoGroup: UndoRedoGroup | undefined)'
+    vis: private
+    lines:
+    - 1096
+    - 1122
+    detail:
+      calls:
+      - Object.freeze
+      - new CellMetadataEdit
+      - this._cells.indexOf
+      - this._isCellMetadataChanged
+      - this._operationManager.pushEditOperation
+      - this._pauseableEmitter.fire
+  - name: _changeCellLanguage
+    sig: '_changeCellLanguage(cell: NotebookCellTextModel, languageId: string, computeUndoRedo: boolean, beginSelectionState: ISelectionState | undefined, undoRedoGroup: UndoRedoGroup | undefined)'
+    vis: private
+    lines:
+    - 1143
+    - 1175
+    detail:
+      calls:
+      - "new class implements IResourceUndoRedoElement {\n\t\t\t\treadonly type: UndoRedoElementType.Resource = UndoRedoElementType.Resource;\n\t\t\t\tget resource() {\n\t\t\t\t\treturn that.uri;\n\t\t\t\t}\n\t\t\t\treadonly label = 'Update Cell Language';\n\t\t\t\treadonly code = 'undoredo.textBufferEdit';\n\t\t\t\tundo() {\n\t\t\t\t\tthat._changeCellLanguage(cell, oldLanguage, false, beginSelectionState, undoRedoGroup);\n\t\t\t\t}\n\t\t\t\tredo() {\n\t\t\t\t\tthat._changeCellLanguage(cell, languageId, false, beginSelectionState, undoRedoGroup);\n\t\t\t\t}\n\t\t\t}"
+      - that._changeCellLanguage
+      - this._cells.indexOf
+      - this._operationManager.pushEditOperation
+      - this._pauseableEmitter.fire
+  - name: _spliceNotebookCellOutputs2
+    sig: '_spliceNotebookCellOutputs2(cell: NotebookCellTextModel, outputs: IOutputDto[], computeUndoRedo: boolean): void'
+    vis: private
+    lines:
+    - 1177
+    - 1198
+    detail:
+      calls:
+      - diff.ComputeDiff
+      - diffResult.changes.map
+      - new LcsDiff
+      - new OutputSequence
+      - outputs.map
+      - splices.reverse
+      - splices.reverse().forEach
+      - this._spliceNotebookCellOutputs
+  - name: _spliceNotebookCellOutputs
+    sig: '_spliceNotebookCellOutputs(cell: NotebookCellTextModel, splice: NotebookCellOutputsSplice, append: boolean, computeUndoRedo: boolean): void'
+    vis: private
+    lines:
+    - 1200
+    - 1214
+    detail:
+      calls:
+      - cell.outputs.map
+      - cell.spliceNotebookCellOutputs
+      - this._cells.indexOf
+      - this._pauseableEmitter.fire
+  - name: _appendNotebookCellOutputItems
+    sig: '_appendNotebookCellOutputItems(cell: NotebookCellTextModel, outputId: string, items: IOutputItemDto[])'
+    vis: private
+    lines:
+    - 1216
+    - 1233
+    detail:
+      calls:
+      - cell.changeOutputItems
+      - this._cells.indexOf
+      - this._pauseableEmitter.fire
+  - name: _replaceNotebookCellOutputItems
+    sig: '_replaceNotebookCellOutputItems(cell: NotebookCellTextModel, outputId: string, items: IOutputItemDto[])'
+    vis: private
+    lines:
+    - 1235
+    - 1252
+    detail:
+      calls:
+      - cell.changeOutputItems
+      - this._cells.indexOf
+      - this._pauseableEmitter.fire
+  - name: _moveCellToIdx
+    sig: '_moveCellToIdx(index: number, length: number, newIdx: number, synchronous: boolean, pushedToUndoStack: boolean, beforeSelections: ISelectionState | undefined, endSelections: ISelectionState | undefined, undoRedoGroup: UndoRedoGroup | undefined): boolean'
+    vis: private
+    lines:
+    - 1254
+    - 1276
+    detail:
+      calls:
+      - new MoveCellEdit
+      - this._assertIndex
+      - this._cells.splice
+      - this._operationManager.pushEditOperation
+      - this._pauseableEmitter.fire
+  - name: findNextMatch
+    sig: 'findNextMatch(searchString: string, searchStart: { cellIndex: number; position: Position }, isRegex: boolean, matchCase: boolean, wordSeparators: string | null, searchEnd?: { cellIndex: number; position: Position }): { cell: NotebookCellTextModel; match: FindMatch } | null'
+    lines:
+    - 1289
+    - 1336
+    detail:
+      calls:
+      - cell.textBuffer.findMatchesLineByLine
+      - cell.textBuffer.getLineCount
+      - cell.textBuffer.getLineMaxColumn
+      - new Position
+      - new Range
+      - new SearchParams
+      - searchParams.parseSearchRequest
+      - searchStartPosition.isBefore
+      - this._assertIndex
+  - name: findMatches
+    sig: 'findMatches(searchString: string, isRegex: boolean, matchCase: boolean, wordSeparators: string | null): { cell: NotebookCellTextModel; matches: FindMatch[] }[]'
+    lines:
+    - 1338
+    - 1357
+    detail:
+      calls:
+      - cell.textBuffer.findMatchesLineByLine
+      - cell.textBuffer.getLineCount
+      - cell.textBuffer.getLineMaxColumn
+      - new Range
+      - new SearchParams
+      - results.push
+      - searchParams.parseSearchRequest
+  lines:
+  - 194
+  - 1359
+- name: OutputSequence
+  kind: struct
+  bases:
+  - ISequence
+  methods:
+  - name: constructor
+    sig: 'constructor(readonly outputs: IOutputDto[])'
+    lines:
+    - 1362
+    - 1363
+    detail: {}
+  - name: getElements
+    sig: 'getElements(): Int32Array | number[] | string[]'
+    lines:
+    - 1365
+    - 1372
+    detail:
+      calls:
+      - this.outputs.map
+  lines:
+  - 1361
+  - 1374
+exports:
+- name: StackOperation
+  kind: type
+- name: NotebookOperationManager
+  kind: type
+- name: TransformedEdit
+  kind: type
+- name: NotebookEventEmitter
+  kind: type
+- name: NotebookTextModel
+  kind: type
+- name: OutputSequence
+  kind: type

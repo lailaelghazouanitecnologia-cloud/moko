@@ -1,0 +1,452 @@
+## Roska File Descriptor — src/extensionLinter.ts
+file: src/extensionLinter.ts
+lines: 599
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: path.path
+- sym: fs.fs
+- sym: url.URL
+- sym: jsonc-parser.parseTree
+- sym: jsonc-parser.findNodeAtLocation
+- sym: jsonc-parser.Node as JsonNode
+- sym: jsonc-parser.getNodeValue
+- sym: markdown-it.MarkdownItType
+- sym: vscode.commands
+- sym: vscode.languages
+- sym: vscode.workspace
+- sym: vscode.Disposable
+- sym: vscode.TextDocument
+- sym: vscode.Uri
+- sym: vscode.Diagnostic
+- sym: vscode.Range
+- sym: vscode.DiagnosticSeverity
+- sym: vscode.Position
+- sym: vscode.env
+- sym: vscode.l10n
+- sym: ./extensionEngineValidation.INormalizedVersion
+- sym: ./extensionEngineValidation.normalizeVersion
+- sym: ./extensionEngineValidation.parseVersion
+- sym: ./jsonReconstruct.JsonStringScanner
+- sym: ./constants.implicitActivationEvent
+- sym: ./constants.redundantImplicitActivationEvent
+data:
+- name: product
+  type: any
+  val: 'JSON.parse(fs.readFileSync(path.join(env.appRoot, ''product.json''), { encoding: ''utf-8'' }))'
+- name: allowedBadgeProviders
+  type: string[]
+  val: '(product.extensionAllowedBadgeProviders || []).map((s: string) => s.toLowerCase())'
+- name: allowedBadgeProvidersRegex
+  type: RegExp[]
+  val: '(product.extensionAllowedBadgeProvidersRegex || []).map((r: string) => new RegExp(r))'
+- name: extensionEnabledApiProposals
+  type: Record<string, string[]>
+  val: product.extensionEnabledApiProposals ?? {}
+- name: reservedImplicitActivationEventPrefixes
+  type: array
+  val: '[''onNotebookSerializer:'']'
+- name: redundantImplicitActivationEventPrefixes
+  type: array
+  val: '[''onLanguage:'', ''onView:'', ''onAuthenticationRequest:'', ''onCommand:'', ''onCustomEditor:'', ''onTerminalProfile:'', ''onRendere...'
+- name: httpsRequired
+  type: any
+  val: l10n.t("Images must use the HTTPS protocol.")
+- name: svgsNotValid
+  type: any
+  val: l10n.t("SVGs are not a valid image source.")
+- name: embeddedSvgsNotValid
+  type: any
+  val: l10n.t("Embedded SVGs are not a valid image source.")
+- name: dataUrlsNotValid
+  type: any
+  val: l10n.t("Data URLs are not a valid image source.")
+- name: relativeUrlRequiresHttpsRepository
+  type: any
+  val: l10n.t("Relative image URLs require a repository with HTTPS protocol to be specified in the package.json.")
+- name: relativeBadgeUrlRequiresHttpsRepository
+  type: any
+  val: l10n.t("Relative badge URLs require a repository with HTTPS protocol to be specified in this package.json.")
+- name: apiProposalNotListed
+  type: any
+  val: l10n.t("This proposal cannot be used because for this extension the product defines a fixed set of API proposals. You ca...
+- name: bumpEngineForImplicitActivationEvents
+  type: any
+  val: l10n.t("This activation event can be removed for extensions targeting engine version ^1.75 as VS Code will generate thes...
+- name: starActivation
+  type: any
+  val: l10n.t("Using '*' activation is usually a bad idea as it impacts performance.")
+- name: parsingErrorHeader
+  type: any
+  val: l10n.t("Error parsing the when-clause:")
+types:
+- name: Context
+  kind: enum
+  variants:
+  - name: ICON
+  - name: BADGE
+  - name: MARKDOWN
+  lines:
+  - 40
+  - 44
+- name: TokenAndPosition
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: token
+    type: MarkdownItType.Token
+  - name: begin
+    type: number
+  - name: end
+    type: number
+  lines:
+  - 46
+  - 50
+- name: PackageJsonInfo
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: isExtension
+    type: boolean
+  - name: hasHttpsRepository
+    type: boolean
+  - name: repository
+    type: Uri
+  - name: implicitActivationEvents
+    type: Set<string> | undefined
+  - name: engineVersion
+    type: INormalizedVersion | null
+  lines:
+  - 52
+  - 58
+- name: ExtensionLinter
+  kind: struct
+  ctx: lints `when` and `enablement` clauses
+  fields:
+  - name: diagnosticsCollection
+    type: any
+    default: languages.createDiagnosticCollection('extension-editing')
+  - name: fileWatcher
+    type: any
+    default: workspace.createFileSystemWatcher('**/package.json')
+  - name: disposables
+    type: Disposable[]
+    default: '[this.diagnosticsCollection, this.fileWatcher]'
+  - name: folderToPackageJsonInfo
+    type: Record<string, PackageJsonInfo>
+    default: '{}'
+  - name: packageJsonQ
+    type: any
+    default: new Set<TextDocument>()
+  - name: readmeQ
+    type: any
+    default: new Set<TextDocument>()
+  - name: timer
+    type: NodeJS.Timeout | undefined
+  - name: markdownIt
+    type: MarkdownItType.MarkdownIt | undefined
+  - name: parse5
+    type: typeof import('parse5') | undefined
+  methods:
+  - name: constructor
+    sig: constructor()
+    lines:
+    - 73
+    - 83
+    detail:
+      calls:
+      - this.disposables.push
+      - this.fileWatcher.onDidChange
+      - this.fileWatcher.onDidCreate
+      - this.fileWatcher.onDidDelete
+      - workspace.onDidChangeTextDocument
+      - workspace.onDidCloseTextDocument
+      - workspace.onDidOpenTextDocument
+      - workspace.textDocuments.forEach
+  - name: queue
+    sig: 'queue(document: TextDocument)'
+    vis: private
+    lines:
+    - 85
+    - 92
+    detail:
+      calls:
+      - p.endsWith
+      - this.packageJsonQ.add
+      - this.queueReadme
+      - this.startTimer
+  - name: queueReadme
+    sig: 'queueReadme(document: TextDocument)'
+    vis: private
+    lines:
+    - 94
+    - 100
+    detail:
+      calls:
+      - p.toLowerCase
+      - p.toLowerCase().endsWith
+      - this.readmeQ.add
+      - this.startTimer
+  - name: lint
+    sig: lint()
+    is_async: true
+    vis: private
+    lines:
+    - 112
+    - 117
+    detail:
+      calls:
+      - Promise.all
+      - this.lintPackageJson
+      - this.lintReadme
+  - name: lintPackageJson
+    sig: lintPackageJson()
+    is_async: true
+    vis: private
+    lines:
+    - 119
+    - 202
+    detail:
+      calls:
+      - Array.from
+      - Array.isArray
+      - Uri.parse
+      - activationEvent.startsWith
+      - badges.children.map
+      - "badges.children.map(child => findNodeAtLocation(child, ['url']))\n\t\t\t\t\t\t.filter"
+      - "badges.children.map(child => findNodeAtLocation(child, ['url']))\n\t\t\t\t\t\t.filter(url => url && url.typ..."
+      - diagnostics.push
+      - document.getText
+      - document.positionAt
+      - effectiveProposalNames.includes
+      - findNodeAtLocation
+      - getNodeValue
+      - info.implicitActivationEvents?.has
+      - new Diagnostic
+      - new Range
+      - parseTree
+      - proposalName.split
+      - redundantImplicitActivationEventPrefixes.some
+      - this.addDiagnostics
+      - this.diagnosticsCollection.set
+      - this.getUriFolder
+      - this.lintWhenClauses
+      - this.packageJsonQ.delete
+      - this.readPackageJsonInfo
+  - name: lintWhenClauses
+    sig: 'lintWhenClauses(contributesNode: JsonNode | undefined, document: TextDocument): Promise<Diagnostic[]>'
+    is_async: true
+    vis: private
+    lines:
+    - 205
+    - 271
+    detail:
+      calls:
+      - Uri.parse
+      - "[\n\t\t\tfindNodeAtLocation(contributesNode, ['menus']),\n\t\t\tfindNodeAtLocation(contributesNode, ['views'..."
+      - await commands.executeCommand
+      - diagnostics.push
+      - document.getText
+      - document.positionAt
+      - findNodeAtLocation
+      - findWhens
+      - jsonStringScanner.getOffsetInEncoded
+      - new Diagnostic
+      - new JsonStringScanner
+      - new Range
+      - whenClauses.map
+  - name: lintReadme
+    sig: lintReadme()
+    is_async: true
+    vis: private
+    lines:
+    - 273
+    - 375
+    detail:
+      calls:
+      - '(function toTokensAndPositions(this: ExtensionLinter, tokens: MarkdownItType.Token[], begin = 0, end...'
+      - document.getText
+      - folder.toString
+      - import
+      - new ((await import('markdown-it')).default)
+      - new this.parse5.SAXParser
+      - parser.end
+      - parser.on
+      - parser.write
+      - this.diagnosticsCollection.set
+      - this.getUriFolder
+      - this.loadPackageJson
+      - this.markdownIt.parse
+      - this.readPackageJsonInfo
+      - this.readmeQ.delete
+      - tokens.map
+      - tokensAndPositions.concat
+      - tokensAndPositions.filter
+      - "tokensAndPositions.filter(tnp => tnp.token.children && tnp.token.children.length)\n\t\t\t\t\t\t.map"
+      - "tokensAndPositions.filter(tnp => tnp.token.type === 'image' && tnp.token.attrGet('src'))\n\t\t\t\t.map"
+  - name: readPackageJsonInfo
+    sig: 'readPackageJsonInfo(folder: Uri, tree: JsonNode | undefined)'
+    vis: private
+    lines:
+    - 395
+    - 416
+    detail:
+      calls:
+      - findNodeAtLocation
+      - folder.toString
+      - normalizeVersion
+      - parseImplicitActivationEvents
+      - parseUri
+      - parseVersion
+      - this.packageJsonChanged
+      - uri.scheme.toLowerCase
+  - name: loadPackageJson
+    sig: 'loadPackageJson(folder: Uri)'
+    is_async: true
+    vis: private
+    lines:
+    - 418
+    - 429
+    detail:
+      calls:
+      - Buffer.from
+      - Buffer.from(fileContents).toString
+      - folder.with
+      - parseTree
+      - path.posix.join
+      - workspace.fs.readFile
+  - name: packageJsonChanged
+    sig: 'packageJsonChanged(folder: Uri)'
+    vis: private
+    lines:
+    - 431
+    - 436
+    detail:
+      calls:
+      - folder.toString
+      - folder.toString().toLowerCase
+      - workspace.textDocuments.filter
+      - workspace.textDocuments.filter(document => this.getUriFolder(document.uri).toString().toLowerCase() ...
+  - name: addDiagnostics
+    sig: 'addDiagnostics(diagnostics: Diagnostic[], document: TextDocument, begin: number, end: number, src: string, context: Context, info: PackageJsonInfo)'
+    vis: private
+    lines:
+    - 442
+    - 475
+    detail:
+      calls:
+      - "(() => {\n\t\t\t\tswitch (context) {\n\t\t\t\t\tcase Context.BADGE: return relativeBadgeUrlRequiresHttpsReposit..."
+      - /^\w[\w\d+.-]*:/.test
+      - diagnostics.push
+      - document.positionAt
+      - document.uri.toString
+      - info.repository.toString
+      - isTrustedSVGSource
+      - new Diagnostic
+      - new Range
+      - parseUri
+      - uri.path.toLowerCase
+      - uri.path.toLowerCase().endsWith
+      - uri.scheme.toLowerCase
+  - name: dispose
+    sig: dispose()
+    lines:
+    - 482
+    - 485
+    detail:
+      calls:
+      - this.disposables.forEach
+  lines:
+  - 60
+  - 486
+functions:
+- name: isTrustedSVGSource
+  sig: 'isTrustedSVGSource(uri: Uri): boolean'
+  lines:
+  - 25
+  - 27
+  detail:
+    calls:
+    - allowedBadgeProviders.includes
+    - allowedBadgeProvidersRegex.some
+    - uri.authority.toLowerCase
+- name: parseUri
+  sig: 'parseUri(src: string, base?: string, retry: boolean = true): Uri | null'
+  lines:
+  - 488
+  - 499
+  detail:
+    calls:
+    - Uri.parse
+    - encodeURI
+    - new URL
+    - parseUri
+    - url.toString
+- name: parseImplicitActivationEvents
+  sig: 'parseImplicitActivationEvents(tree: JsonNode): Set<string>'
+  lines:
+  - 501
+  - 599
+  detail:
+    calls:
+    - authenticationProviders?.children?.forEach
+    - commands?.children?.forEach
+    - customEditors?.children?.forEach
+    - findNodeAtLocation
+    - languageContributions?.children?.forEach
+    - new Set
+    - notebookRenderers?.children?.forEach
+    - tasks?.children?.forEach
+    - terminalProfiles?.children?.forEach
+    - terminalQuickFixes?.children?.forEach
+    - viewContributions?.children?.forEach
+    - walkthroughs?.children?.forEach
+exports:
+- name: Context
+  kind: type
+- name: TokenAndPosition
+  kind: type
+- name: PackageJsonInfo
+  kind: type
+- name: ExtensionLinter
+  kind: type
+- name: isTrustedSVGSource
+  kind: func
+- name: parseUri
+  kind: func
+- name: parseImplicitActivationEvents
+  kind: func
+- name: product
+  kind: data
+- name: allowedBadgeProviders
+  kind: data
+- name: allowedBadgeProvidersRegex
+  kind: data
+- name: extensionEnabledApiProposals
+  kind: data
+- name: reservedImplicitActivationEventPrefixes
+  kind: data
+- name: redundantImplicitActivationEventPrefixes
+  kind: data
+- name: httpsRequired
+  kind: data
+- name: svgsNotValid
+  kind: data
+- name: embeddedSvgsNotValid
+  kind: data
+- name: dataUrlsNotValid
+  kind: data
+- name: relativeUrlRequiresHttpsRepository
+  kind: data
+- name: relativeBadgeUrlRequiresHttpsRepository
+  kind: data
+- name: apiProposalNotListed
+  kind: data
+- name: bumpEngineForImplicitActivationEvents
+  kind: data
+- name: starActivation
+  kind: data
+- name: parsingErrorHeader
+  kind: data

@@ -1,0 +1,1125 @@
+## Roska File Descriptor — browser/folding.ts
+file: browser/folding.ts
+lines: 1329
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: ../../../../base/common/async.js.CancelablePromise
+- sym: ../../../../base/common/async.js.createCancelablePromise
+- sym: ../../../../base/common/async.js.Delayer
+- sym: ../../../../base/common/async.js.RunOnceScheduler
+- sym: ../../../../base/common/cancellation.js.CancellationToken
+- sym: ../../../../base/common/errors.js.illegalArgument
+- sym: ../../../../base/common/errors.js.onUnexpectedError
+- sym: ../../../../base/common/keyCodes.js.KeyChord
+- sym: ../../../../base/common/keyCodes.js.KeyCode
+- sym: ../../../../base/common/keyCodes.js.KeyMod
+- sym: ../../../../base/common/lifecycle.js.Disposable
+- sym: ../../../../base/common/lifecycle.js.DisposableStore
+- sym: ../../../../base/common/lifecycle.js.IDisposable
+- sym: ../../../../base/common/strings.js.escapeRegExpCharacters
+- sym: ../../../../base/common/types.js.types
+- sym: ../../../browser/stableEditorScroll.js.StableEditorScrollState
+- sym: ../../../browser/editorBrowser.js.ICodeEditor
+- sym: ../../../browser/editorBrowser.js.IEditorMouseEvent
+- sym: ../../../browser/editorBrowser.js.MouseTargetType
+- sym: ../../../browser/editorExtensions.js.EditorAction
+- sym: ../../../browser/editorExtensions.js.EditorContributionInstantiation
+- sym: ../../../browser/editorExtensions.js.registerEditorAction
+- sym: ../../../browser/editorExtensions.js.registerEditorContribution
+- sym: ../../../browser/editorExtensions.js.registerInstantiatedEditorAction
+- sym: ../../../browser/editorExtensions.js.ServicesAccessor
+- sym: ../../../common/config/editorOptions.js.ConfigurationChangedEvent
+- sym: ../../../common/config/editorOptions.js.EditorOption
+- sym: ../../../common/core/position.js.IPosition
+- sym: ../../../common/core/range.js.IRange
+- sym: ../../../common/core/selection.js.Selection
+- sym: ../../../common/editorCommon.js.IEditorContribution
+- sym: ../../../common/editorCommon.js.ScrollType
+- sym: ../../../common/editorContextKeys.js.EditorContextKeys
+- sym: ../../../common/model.js.ITextModel
+- sym: ../../../common/textModelEvents.js.IModelContentChangedEvent
+- sym: ../../../common/languages.js.FoldingRange
+- sym: ../../../common/languages.js.FoldingRangeKind
+- sym: ../../../common/languages.js.FoldingRangeProvider
+- sym: ../../../common/languages/languageConfigurationRegistry.js.ILanguageConfigurationService
+- sym: ./foldingModel.js.CollapseMemento
+- sym: ./foldingModel.js.FoldingModel
+- sym: ./foldingModel.js.getNextFoldLine
+- sym: ./foldingModel.js.getParentFoldLine as getParentFoldLine
+- sym: ./foldingModel.js.getPreviousFoldLine
+- sym: ./foldingModel.js.setCollapseStateAtLevel
+- sym: ./foldingModel.js.setCollapseStateForMatchingLines
+- sym: ./foldingModel.js.setCollapseStateForRest
+- sym: ./foldingModel.js.setCollapseStateForType
+- sym: ./foldingModel.js.setCollapseStateLevelsDown
+- sym: ./foldingModel.js.setCollapseStateLevelsUp
+- sym: ./foldingModel.js.setCollapseStateUp
+- sym: ./foldingModel.js.toggleCollapseState
+- sym: ./hiddenRangeModel.js.HiddenRangeModel
+- sym: ./indentRangeProvider.js.IndentRangeProvider
+- sym: ../../../../nls.js.nls
+- sym: ../../../../platform/contextkey/common/contextkey.js.IContextKey
+- sym: ../../../../platform/contextkey/common/contextkey.js.IContextKeyService
+- sym: ../../../../platform/contextkey/common/contextkey.js.RawContextKey
+- sym: ../../../../platform/keybinding/common/keybindingsRegistry.js.KeybindingWeight
+- sym: ./foldingDecorations.js.FoldingDecorationProvider
+- sym: ./foldingRanges.js.FoldingRegion
+- sym: ./foldingRanges.js.FoldingRegions
+- sym: ./foldingRanges.js.FoldRange
+- sym: ./foldingRanges.js.FoldSource
+- sym: ./foldingRanges.js.ILineRange
+- sym: ./syntaxRangeProvider.js.SyntaxRangeProvider
+- sym: ../../../../platform/notification/common/notification.js.INotificationService
+- sym: ../../../common/services/languageFeatureDebounce.js.IFeatureDebounceInformation
+- sym: ../../../common/services/languageFeatureDebounce.js.ILanguageFeatureDebounceService
+- sym: ../../../../base/common/stopwatch.js.StopWatch
+- sym: ../../../common/services/languageFeatures.js.ILanguageFeaturesService
+- sym: ../../../../base/common/event.js.Emitter
+- sym: ../../../../base/common/event.js.Event
+- sym: ../../../../platform/commands/common/commands.js.CommandsRegistry
+- sym: ../../../../base/common/uri.js.URI
+- sym: ../../../common/services/model.js.IModelService
+- sym: ../../../../platform/configuration/common/configuration.js.IConfigurationService
+data:
+- name: CONTEXT_FOLDING_ENABLED
+  type: any
+  val: new RawContextKey<boolean>('foldingEnabled', false)
+types:
+- name: RangeProvider
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: readonly
+    type: string
+  - name: compute
+    type: 'method: compute(cancelationToken: CancellationToken): Promise<FoldingRegions | null>'
+  - name: dispose
+    type: 'method: dispose(): void'
+  lines:
+  - 48
+  - 52
+- name: FoldingStateMemento
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: collapsedRegions
+    type: CollapseMemento
+  - name: lineCount
+    type: number
+  - name: provider
+    type: string
+  - name: foldedImports
+    type: boolean
+  lines:
+  - 54
+  - 59
+- name: FoldingLimitReporter
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: readonly
+    type: number
+  - name: update
+    type: 'method: update(computed: number, limited: number | false): void'
+  lines:
+  - 61
+  - 64
+- name: FoldingRangeProviderSelector
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 66
+  - 66
+- name: FoldingController
+  kind: struct
+  ctx: Store view state.
+  bases:
+  - Disposable
+  - IEditorContribution
+  fields:
+  - name: ID
+    type: any
+    default: '''editor.contrib.folding'''
+  - name: _foldingRangeSelector
+    type: FoldingRangeProviderSelector | undefined
+  - name: editor
+    type: ICodeEditor
+  - name: _isEnabled
+    type: boolean
+  - name: _useFoldingProviders
+    type: boolean
+  - name: _unfoldOnClickAfterEndOfLine
+    type: boolean
+  - name: _restoringViewState
+    type: boolean
+  - name: _foldingImportsByDefault
+    type: boolean
+  - name: _currentModelHasFoldedImports
+    type: boolean
+  - name: foldingDecorationProvider
+    type: FoldingDecorationProvider
+  - name: foldingModel
+    type: FoldingModel | null
+  - name: hiddenRangeModel
+    type: HiddenRangeModel | null
+  - name: rangeProvider
+    type: RangeProvider | null
+  - name: foldingRegionPromise
+    type: CancelablePromise<FoldingRegions | null> | null
+  - name: foldingModelPromise
+    type: Promise<FoldingModel | null> | null
+  - name: updateScheduler
+    type: Delayer<FoldingModel | null> | null
+  - name: updateDebounceInfo
+    type: IFeatureDebounceInformation
+  - name: foldingEnabled
+    type: IContextKey<boolean>
+  - name: cursorChangedScheduler
+    type: RunOnceScheduler | null
+  - name: localToDispose
+    type: any
+    default: this._register(new DisposableStore())
+  - name: mouseDownInfo
+    type: '{ lineNumber: number; iconClicked: boolean } | null'
+  - name: _foldingLimitReporter
+    type: RangesLimitReporter
+  methods:
+  - name: get
+    sig: 'get(editor: ICodeEditor): FoldingController | null'
+    decorators:
+    - static
+    lines:
+    - 72
+    - 74
+    detail:
+      calls:
+      - editor.getContribution
+  - name: getFoldingRangeProviders
+    sig: 'getFoldingRangeProviders(languageFeaturesService: ILanguageFeaturesService, model: ITextModel): FoldingRangeProvider[]'
+    decorators:
+    - static
+    lines:
+    - 78
+    - 81
+    detail:
+      calls:
+      - FoldingController._foldingRangeSelector
+      - languageFeaturesService.foldingRangeProvider.ordered
+  - name: setFoldingRangeProviderSelector
+    sig: 'setFoldingRangeProviderSelector(foldingRangeSelector: FoldingRangeProviderSelector): IDisposable'
+    decorators:
+    - static
+    lines:
+    - 83
+    - 86
+    detail: {}
+  - name: constructor
+    sig: "constructor(\n\t\teditor: ICodeEditor,\n\t\t@IContextKeyService private readonly contextKeyService: IContextKeyService,\n\t\t@ILanguageConfigurationService private readonly languageConfigurationService: ILanguageConfigurationService,\n\t\t@INotificationService notificationService: INotificationService,\n\t\t@ILanguageFeatureDebounceService languageFeatureDebounceService: ILanguageFeatureDebounceService,\n\t\t@ILanguageFeaturesService private readonly languageFeaturesService: ILanguageFeaturesService,\n\t)"
+    lines:
+    - 116
+    - 182
+    detail:
+      calls:
+      - CONTEXT_FOLDING_ENABLED.bindTo
+      - languageFeatureDebounceService.for
+      - new FoldingDecorationProvider
+      - new RangesLimitReporter
+      - options.get
+      - super
+      - this._register
+      - this.editor.getOptions
+      - this.editor.onDidChangeConfiguration
+      - this.editor.onDidChangeModel
+      - this.foldingEnabled.set
+      - this.onModelChanged
+  - name: limitReporter
+    sig: limitReporter()
+    lines:
+    - 184
+    - 186
+    detail: {}
+  - name: saveViewState
+    sig: 'saveViewState(): FoldingStateMemento | undefined'
+    lines:
+    - 191
+    - 202
+    detail:
+      calls:
+      - model.getLineCount
+      - model.isTooLargeForTokenization
+      - this.editor.getModel
+      - this.foldingModel.getMemento
+  - name: restoreViewState
+    sig: 'restoreViewState(state: FoldingStateMemento): void'
+    lines:
+    - 207
+    - 225
+    detail:
+      calls:
+      - model.isTooLargeForTokenization
+      - this.editor.getModel
+      - this.foldingModel.applyMemento
+  - name: onModelChanged
+    sig: 'onModelChanged(): void'
+    vis: private
+    lines:
+    - 227
+    - 271
+    detail:
+      calls:
+      - model.isTooLargeForTokenization
+      - new Delayer
+      - new FoldingModel
+      - new HiddenRangeModel
+      - new RunOnceScheduler
+      - this.editor.getModel
+      - this.editor.onDidChangeCursorPosition
+      - this.editor.onDidChangeModelContent
+      - this.editor.onDidChangeModelLanguageConfiguration
+      - this.editor.onMouseDown
+      - this.editor.onMouseUp
+      - this.hiddenRangeModel.onDidChange
+      - this.languageFeaturesService.foldingRangeProvider.onDidChange
+      - this.localToDispose.add
+      - this.localToDispose.clear
+      - this.triggerFoldingModelChanged
+      - this.updateDebounceInfo.get
+  - name: getFoldingModel
+    sig: 'getFoldingModel(): Promise<FoldingModel | null> | null'
+    lines:
+    - 294
+    - 296
+    detail: {}
+  - name: triggerFoldingModelChanged
+    sig: triggerFoldingModelChanged()
+    lines:
+    - 304
+    - 349
+    detail:
+      calls:
+      - this.foldingRegionPromise.cancel
+      - this.updateScheduler.trigger
+      - "this.updateScheduler.trigger(() => {\n\t\t\t\tconst foldingModel = this.foldingModel;\n\t\t\t\tif (!foldingMod..."
+  - name: onHiddenRangesChanges
+    sig: 'onHiddenRangesChanges(hiddenRanges: IRange[])'
+    vis: private
+    lines:
+    - 351
+    - 361
+    detail:
+      calls:
+      - this.editor.getSelections
+      - this.editor.setHiddenAreas
+      - this.editor.setSelections
+      - this.hiddenRangeModel.adjustSelections
+  - name: revealCursor
+    sig: revealCursor()
+    vis: private
+    lines:
+    - 369
+    - 393
+    detail:
+      calls:
+      - foldingModel.then
+      - "foldingModel.then(foldingModel => { // null is returned if folding got disabled in the meantime\n\t\t\ti..."
+      - this.getFoldingModel
+  - name: onEditorMouseDown
+    sig: 'onEditorMouseDown(e: IEditorMouseEvent): void'
+    vis: private
+    lines:
+    - 395
+    - 446
+    detail:
+      calls:
+      - model.getLineMaxColumn
+      - this.editor.getModel
+      - this.hiddenRangeModel.hasRanges
+  - name: onEditorMouseUp
+    sig: 'onEditorMouseUp(e: IEditorMouseEvent): void'
+    vis: private
+    lines:
+    - 448
+    - 509
+    detail:
+      calls:
+      - foldingModel.getRegionAtLine
+      - foldingModel.getRegionsInside
+      - foldingModel.toggleCollapseState
+      - model.getLineMaxColumn
+      - this.editor.getModel
+      - this.reveal
+      - toToggle.push
+  - name: reveal
+    sig: 'reveal(position: IPosition): void'
+    lines:
+    - 511
+    - 513
+    detail:
+      calls:
+      - this.editor.revealPositionInCenterIfOutsideViewport
+  lines:
+  - 68
+  - 514
+- name: RangesLimitReporter
+  kind: struct
+  bases:
+  - FoldingLimitReporter
+  fields:
+  - name: _onDidChange
+    type: any
+    default: new Emitter<void>()
+  - name: onDidChange
+    type: Event<void>
+    default: this._onDidChange.event
+  - name: _computed
+    type: number
+    default: '0'
+  - name: _limited
+    type: number | false
+    default: 'false'
+  methods:
+  - name: constructor
+    sig: 'constructor(private readonly editor: ICodeEditor)'
+    lines:
+    - 517
+    - 518
+    detail: {}
+  - name: limit
+    sig: limit()
+    lines:
+    - 520
+    - 522
+    detail:
+      calls:
+      - this.editor.getOptions
+      - this.editor.getOptions().get
+  - name: computed
+    sig: 'computed(): number'
+    lines:
+    - 529
+    - 531
+    detail: {}
+  - name: limited
+    sig: 'limited(): number | false'
+    lines:
+    - 532
+    - 534
+    detail: {}
+  - name: update
+    sig: 'update(computed: number, limited: number | false)'
+    lines:
+    - 535
+    - 541
+    detail:
+      calls:
+      - this._onDidChange.fire
+  lines:
+  - 516
+  - 542
+- name: FoldingAction
+  kind: trait
+  bases:
+  - EditorAction
+  decorators:
+  - abstract
+  methods:
+  - name: runEditorCommand
+    sig: 'runEditorCommand(accessor: ServicesAccessor, editor: ICodeEditor, args: T): void | Promise<void>'
+    lines:
+    - 548
+    - 567
+    detail:
+      calls:
+      - FoldingController.get
+      - accessor.get
+      - foldingController.getFoldingModel
+      - foldingModelPromise.then
+      - this.reportTelemetry
+  - name: run
+    sig: 'run(_accessor: ServicesAccessor, _editor: ICodeEditor): void'
+    lines:
+    - 581
+    - 582
+    detail: {}
+  lines:
+  - 544
+  - 583
+- name: SelectedLines
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: startsInside
+    type: 'method: startsInside(startLine: number, endLine: number): boolean'
+  lines:
+  - 585
+  - 587
+- name: FoldingArguments
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: levels
+    type: number
+  - name: direction
+    type: '''up'' | ''down'''
+  - name: selectionLines
+    type: number[]
+  lines:
+  - 608
+  - 612
+- name: UnfoldAction
+  kind: struct
+  bases:
+  - FoldingAction
+  methods:
+  - name: constructor
+    sig: constructor()
+    lines:
+    - 635
+    - 683
+    detail:
+      calls:
+      - nls.localize2
+      - super
+  - name: invoke
+    sig: 'invoke(_foldingController: FoldingController, foldingModel: FoldingModel, editor: ICodeEditor, args: FoldingArguments): void'
+    lines:
+    - 685
+    - 693
+    detail:
+      calls:
+      - setCollapseStateLevelsDown
+      - setCollapseStateLevelsUp
+      - this.getLineNumbers
+  lines:
+  - 633
+  - 694
+- name: UnFoldRecursivelyAction
+  kind: struct
+  bases:
+  - FoldingAction
+  methods:
+  - name: constructor
+    sig: constructor()
+    lines:
+    - 698
+    - 709
+    detail:
+      calls:
+      - KeyChord
+      - nls.localize2
+      - super
+  - name: invoke
+    sig: 'invoke(_foldingController: FoldingController, foldingModel: FoldingModel, editor: ICodeEditor, _args: any): void'
+    lines:
+    - 711
+    - 713
+    detail:
+      calls:
+      - setCollapseStateLevelsDown
+      - this.getSelectedLines
+  lines:
+  - 696
+  - 714
+- name: FoldAction
+  kind: struct
+  bases:
+  - FoldingAction
+  methods:
+  - name: constructor
+    sig: constructor()
+    lines:
+    - 718
+    - 765
+    detail:
+      calls:
+      - nls.localize2
+      - super
+  - name: invoke
+    sig: 'invoke(_foldingController: FoldingController, foldingModel: FoldingModel, editor: ICodeEditor, args: FoldingArguments): void'
+    lines:
+    - 767
+    - 783
+    detail:
+      calls:
+      - setCollapseStateLevelsDown
+      - setCollapseStateLevelsUp
+      - setCollapseStateUp
+      - this.getLineNumbers
+  lines:
+  - 716
+  - 784
+- name: ToggleFoldAction
+  kind: struct
+  bases:
+  - FoldingAction
+  methods:
+  - name: constructor
+    sig: constructor()
+    lines:
+    - 789
+    - 800
+    detail:
+      calls:
+      - KeyChord
+      - nls.localize2
+      - super
+  - name: invoke
+    sig: 'invoke(_foldingController: FoldingController, foldingModel: FoldingModel, editor: ICodeEditor): void'
+    lines:
+    - 802
+    - 805
+    detail:
+      calls:
+      - this.getSelectedLines
+      - toggleCollapseState
+  lines:
+  - 787
+  - 806
+- name: FoldRecursivelyAction
+  kind: struct
+  bases:
+  - FoldingAction
+  methods:
+  - name: constructor
+    sig: constructor()
+    lines:
+    - 811
+    - 822
+    detail:
+      calls:
+      - KeyChord
+      - nls.localize2
+      - super
+  - name: invoke
+    sig: 'invoke(_foldingController: FoldingController, foldingModel: FoldingModel, editor: ICodeEditor): void'
+    lines:
+    - 824
+    - 827
+    detail:
+      calls:
+      - setCollapseStateLevelsDown
+      - this.getSelectedLines
+  lines:
+  - 809
+  - 828
+- name: ToggleFoldRecursivelyAction
+  kind: struct
+  bases:
+  - FoldingAction
+  methods:
+  - name: constructor
+    sig: constructor()
+    lines:
+    - 833
+    - 844
+    detail:
+      calls:
+      - KeyChord
+      - nls.localize2
+      - super
+  - name: invoke
+    sig: 'invoke(_foldingController: FoldingController, foldingModel: FoldingModel, editor: ICodeEditor): void'
+    lines:
+    - 846
+    - 849
+    detail:
+      calls:
+      - this.getSelectedLines
+      - toggleCollapseState
+  lines:
+  - 831
+  - 850
+- name: FoldAllBlockCommentsAction
+  kind: struct
+  bases:
+  - FoldingAction
+  methods:
+  - name: constructor
+    sig: constructor()
+    lines:
+    - 855
+    - 866
+    detail:
+      calls:
+      - KeyChord
+      - nls.localize2
+      - super
+  - name: invoke
+    sig: 'invoke(_foldingController: FoldingController, foldingModel: FoldingModel, editor: ICodeEditor, args: void, languageConfigurationService: ILanguageConfigurationService): void'
+    lines:
+    - 868
+    - 882
+    detail:
+      calls:
+      - editor.getModel
+      - editorModel.getLanguageId
+      - escapeRegExpCharacters
+      - foldingModel.regions.hasTypes
+      - languageConfigurationService.getLanguageConfiguration
+      - new RegExp
+      - setCollapseStateForMatchingLines
+      - setCollapseStateForType
+  lines:
+  - 853
+  - 883
+- name: FoldAllRegionsAction
+  kind: struct
+  bases:
+  - FoldingAction
+  methods:
+  - name: constructor
+    sig: constructor()
+    lines:
+    - 887
+    - 898
+    detail:
+      calls:
+      - KeyChord
+      - nls.localize2
+      - super
+  - name: invoke
+    sig: 'invoke(_foldingController: FoldingController, foldingModel: FoldingModel, editor: ICodeEditor, args: void, languageConfigurationService: ILanguageConfigurationService): void'
+    lines:
+    - 900
+    - 914
+    detail:
+      calls:
+      - editor.getModel
+      - editorModel.getLanguageId
+      - foldingModel.regions.hasTypes
+      - languageConfigurationService.getLanguageConfiguration
+      - new RegExp
+      - setCollapseStateForMatchingLines
+      - setCollapseStateForType
+  lines:
+  - 885
+  - 915
+- name: UnfoldAllRegionsAction
+  kind: struct
+  bases:
+  - FoldingAction
+  methods:
+  - name: constructor
+    sig: constructor()
+    lines:
+    - 919
+    - 930
+    detail:
+      calls:
+      - KeyChord
+      - nls.localize2
+      - super
+  - name: invoke
+    sig: 'invoke(_foldingController: FoldingController, foldingModel: FoldingModel, editor: ICodeEditor, args: void, languageConfigurationService: ILanguageConfigurationService): void'
+    lines:
+    - 932
+    - 946
+    detail:
+      calls:
+      - editor.getModel
+      - editorModel.getLanguageId
+      - foldingModel.regions.hasTypes
+      - languageConfigurationService.getLanguageConfiguration
+      - new RegExp
+      - setCollapseStateForMatchingLines
+      - setCollapseStateForType
+  lines:
+  - 917
+  - 947
+- name: FoldAllExceptAction
+  kind: struct
+  bases:
+  - FoldingAction
+  methods:
+  - name: constructor
+    sig: constructor()
+    lines:
+    - 951
+    - 962
+    detail:
+      calls:
+      - KeyChord
+      - nls.localize2
+      - super
+  - name: invoke
+    sig: 'invoke(_foldingController: FoldingController, foldingModel: FoldingModel, editor: ICodeEditor): void'
+    lines:
+    - 964
+    - 967
+    detail:
+      calls:
+      - setCollapseStateForRest
+      - this.getSelectedLines
+  lines:
+  - 949
+  - 969
+- name: UnfoldAllExceptAction
+  kind: struct
+  bases:
+  - FoldingAction
+  methods:
+  - name: constructor
+    sig: constructor()
+    lines:
+    - 973
+    - 984
+    detail:
+      calls:
+      - KeyChord
+      - nls.localize2
+      - super
+  - name: invoke
+    sig: 'invoke(_foldingController: FoldingController, foldingModel: FoldingModel, editor: ICodeEditor): void'
+    lines:
+    - 986
+    - 989
+    detail:
+      calls:
+      - setCollapseStateForRest
+      - this.getSelectedLines
+  lines:
+  - 971
+  - 990
+- name: FoldAllAction
+  kind: struct
+  bases:
+  - FoldingAction
+  methods:
+  - name: constructor
+    sig: constructor()
+    lines:
+    - 994
+    - 1005
+    detail:
+      calls:
+      - KeyChord
+      - nls.localize2
+      - super
+  - name: invoke
+    sig: 'invoke(_foldingController: FoldingController, foldingModel: FoldingModel, _editor: ICodeEditor): void'
+    lines:
+    - 1007
+    - 1009
+    detail:
+      calls:
+      - setCollapseStateLevelsDown
+  lines:
+  - 992
+  - 1010
+- name: UnfoldAllAction
+  kind: struct
+  bases:
+  - FoldingAction
+  methods:
+  - name: constructor
+    sig: constructor()
+    lines:
+    - 1014
+    - 1025
+    detail:
+      calls:
+      - KeyChord
+      - nls.localize2
+      - super
+  - name: invoke
+    sig: 'invoke(_foldingController: FoldingController, foldingModel: FoldingModel, _editor: ICodeEditor): void'
+    lines:
+    - 1027
+    - 1029
+    detail:
+      calls:
+      - setCollapseStateLevelsDown
+  lines:
+  - 1012
+  - 1030
+- name: FoldLevelAction
+  kind: struct
+  bases:
+  - FoldingAction
+  fields:
+  - name: ID_PREFIX
+    type: any
+    default: '''editor.foldLevel'''
+  - name: ID
+    type: any
+    default: '(level: number) => FoldLevelAction.ID_PREFIX + level'
+  methods:
+  - name: invoke
+    sig: 'invoke(_foldingController: FoldingController, foldingModel: FoldingModel, editor: ICodeEditor): void'
+    lines:
+    - 1040
+    - 1042
+    detail:
+      calls:
+      - setCollapseStateAtLevel
+      - this.getFoldingLevel
+      - this.getSelectedLines
+  lines:
+  - 1032
+  - 1043
+- name: GotoParentFoldAction
+  kind: struct
+  bases:
+  - FoldingAction
+  methods:
+  - name: constructor
+    sig: constructor()
+    lines:
+    - 1047
+    - 1057
+    detail:
+      calls:
+      - nls.localize2
+      - super
+  - name: invoke
+    sig: 'invoke(_foldingController: FoldingController, foldingModel: FoldingModel, editor: ICodeEditor): void'
+    lines:
+    - 1059
+    - 1072
+    detail:
+      calls:
+      - editor.setSelection
+      - getParentFoldLine
+      - this.getSelectedLines
+  lines:
+  - 1046
+  - 1073
+- name: GotoPreviousFoldAction
+  kind: struct
+  bases:
+  - FoldingAction
+  methods:
+  - name: constructor
+    sig: constructor()
+    lines:
+    - 1077
+    - 1087
+    detail:
+      calls:
+      - nls.localize2
+      - super
+  - name: invoke
+    sig: 'invoke(_foldingController: FoldingController, foldingModel: FoldingModel, editor: ICodeEditor): void'
+    lines:
+    - 1089
+    - 1102
+    detail:
+      calls:
+      - editor.setSelection
+      - getPreviousFoldLine
+      - this.getSelectedLines
+  lines:
+  - 1076
+  - 1103
+- name: GotoNextFoldAction
+  kind: struct
+  bases:
+  - FoldingAction
+  methods:
+  - name: constructor
+    sig: constructor()
+    lines:
+    - 1107
+    - 1117
+    detail:
+      calls:
+      - nls.localize2
+      - super
+  - name: invoke
+    sig: 'invoke(_foldingController: FoldingController, foldingModel: FoldingModel, editor: ICodeEditor): void'
+    lines:
+    - 1119
+    - 1132
+    detail:
+      calls:
+      - editor.setSelection
+      - getNextFoldLine
+      - this.getSelectedLines
+  lines:
+  - 1106
+  - 1133
+- name: FoldRangeFromSelectionAction
+  kind: struct
+  bases:
+  - FoldingAction
+  methods:
+  - name: constructor
+    sig: constructor()
+    lines:
+    - 1137
+    - 1148
+    detail:
+      calls:
+      - KeyChord
+      - nls.localize2
+      - super
+  - name: invoke
+    sig: 'invoke(_foldingController: FoldingController, foldingModel: FoldingModel, editor: ICodeEditor): void'
+    lines:
+    - 1150
+    - 1183
+    detail:
+      calls:
+      - FoldingRegions.fromFoldRanges
+      - FoldingRegions.sanitizeAndMerge
+      - collapseRanges.push
+      - collapseRanges.sort
+      - editor.getModel
+      - editor.getModel()?.getLineCount
+      - editor.getSelections
+      - editor.setSelection
+      - foldingModel.updatePost
+  lines:
+  - 1135
+  - 1184
+- name: RemoveFoldRangeFromSelectionAction
+  kind: struct
+  bases:
+  - FoldingAction
+  methods:
+  - name: constructor
+    sig: constructor()
+    lines:
+    - 1188
+    - 1199
+    detail:
+      calls:
+      - KeyChord
+      - nls.localize2
+      - super
+  - name: invoke
+    sig: 'invoke(foldingController: FoldingController, foldingModel: FoldingModel, editor: ICodeEditor): void'
+    lines:
+    - 1201
+    - 1212
+    detail:
+      calls:
+      - editor.getSelections
+      - foldingController.triggerFoldingModelChanged
+      - foldingModel.removeManualRanges
+      - ranges.push
+  lines:
+  - 1186
+  - 1213
+- name: ToggleImportFoldAction
+  kind: struct
+  bases:
+  - FoldingAction
+  methods:
+  - name: constructor
+    sig: constructor()
+    lines:
+    - 1218
+    - 1228
+    detail:
+      calls:
+      - nls.localize2
+      - super
+  - name: invoke
+    sig: 'invoke(foldingController: FoldingController, foldingModel: FoldingModel): Promise<void>'
+    is_async: true
+    lines:
+    - 1230
+    - 1240
+    detail:
+      calls:
+      - foldingController.triggerFoldingModelChanged
+      - foldingModel.toggleCollapseState
+      - regions.getType
+      - regions.toRegion
+      - regionsToToggle.push
+  lines:
+  - 1216
+  - 1241
+functions:
+- name: toSelectedLines
+  sig: 'toSelectedLines(selections: Selection[] | null): SelectedLines'
+  lines:
+  - 589
+  - 606
+  detail: {}
+- name: foldingArgumentsConstraint
+  sig: 'foldingArgumentsConstraint(args: any)'
+  lines:
+  - 614
+  - 631
+  detail:
+    calls:
+    - Array.isArray
+    - foldingArgs.selectionLines.every
+    - types.isNumber
+    - types.isObject
+    - types.isString
+    - types.isUndefined
+exports:
+- name: RangeProvider
+  kind: type
+- name: FoldingStateMemento
+  kind: type
+- name: FoldingLimitReporter
+  kind: type
+- name: FoldingRangeProviderSelector
+  kind: type
+- name: FoldingController
+  kind: type
+- name: RangesLimitReporter
+  kind: type
+- name: FoldingAction
+  kind: type
+- name: SelectedLines
+  kind: type
+- name: FoldingArguments
+  kind: type
+- name: UnfoldAction
+  kind: type
+- name: UnFoldRecursivelyAction
+  kind: type
+- name: FoldAction
+  kind: type
+- name: ToggleFoldAction
+  kind: type
+- name: FoldRecursivelyAction
+  kind: type
+- name: ToggleFoldRecursivelyAction
+  kind: type
+- name: FoldAllBlockCommentsAction
+  kind: type
+- name: FoldAllRegionsAction
+  kind: type
+- name: UnfoldAllRegionsAction
+  kind: type
+- name: FoldAllExceptAction
+  kind: type
+- name: UnfoldAllExceptAction
+  kind: type
+- name: FoldAllAction
+  kind: type
+- name: UnfoldAllAction
+  kind: type
+- name: FoldLevelAction
+  kind: type
+- name: GotoParentFoldAction
+  kind: type
+- name: GotoPreviousFoldAction
+  kind: type
+- name: GotoNextFoldAction
+  kind: type
+- name: FoldRangeFromSelectionAction
+  kind: type
+- name: RemoveFoldRangeFromSelectionAction
+  kind: type
+- name: ToggleImportFoldAction
+  kind: type
+- name: toSelectedLines
+  kind: func
+- name: foldingArgumentsConstraint
+  kind: func
+- name: CONTEXT_FOLDING_ENABLED
+  kind: data

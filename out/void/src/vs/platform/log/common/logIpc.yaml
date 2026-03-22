@@ -1,0 +1,200 @@
+## Roska File Descriptor — common/logIpc.ts
+file: common/logIpc.ts
+lines: 175
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: ../../../base/common/uri.js.URI
+- sym: ../../../base/common/event.js.Event
+- sym: ../../../base/parts/ipc/common/ipc.js.IChannel
+- sym: ../../../base/parts/ipc/common/ipc.js.IServerChannel
+- sym: ./log.js.AbstractLoggerService
+- sym: ./log.js.AbstractMessageLogger
+- sym: ./log.js.AdapterLogger
+- sym: ./log.js.DidChangeLoggersEvent
+- sym: ./log.js.ILogger
+- sym: ./log.js.ILoggerOptions
+- sym: ./log.js.ILoggerResource
+- sym: ./log.js.ILoggerService
+- sym: ./log.js.isLogLevel
+- sym: ./log.js.LogLevel
+- sym: ../../../base/common/lifecycle.js.Disposable
+- sym: ../../../base/common/uriIpc.js.IURITransformer
+types:
+- name: LoggerChannelClient
+  kind: struct
+  bases:
+  - AbstractLoggerService
+  - ILoggerService
+  methods:
+  - name: constructor
+    sig: 'constructor(private readonly windowId: number | undefined, logLevel: LogLevel, logsHome: URI, loggers: ILoggerResource[], private readonly channel: IChannel)'
+    lines:
+    - 15
+    - 33
+    detail:
+      calls:
+      - channel.listen
+      - channel.listen<DidChangeLoggersEvent>('onDidChangeLoggers', windowId)
+      - channel.listen<LogLevel | [URI, LogLevel]>('onDidChangeLogLevel', windowId)
+      - channel.listen<[URI, boolean]>('onDidChangeVisibility', windowId)
+      - super
+      - this._register
+  - name: createConsoleMainLogger
+    sig: 'createConsoleMainLogger(): ILogger'
+    lines:
+    - 35
+    - 41
+    detail:
+      calls:
+      - new AdapterLogger
+  - name: registerLogger
+    sig: 'registerLogger(logger: ILoggerResource): void'
+    lines:
+    - 43
+    - 46
+    detail:
+      calls:
+      - super.registerLogger
+      - this.channel.call
+  - name: deregisterLogger
+    sig: 'deregisterLogger(resource: URI): void'
+    lines:
+    - 48
+    - 51
+    detail:
+      calls:
+      - super.deregisterLogger
+      - this.channel.call
+  - name: setLogLevel
+    sig: 'setLogLevel(arg1: any, arg2?: any): void'
+    lines:
+    - 55
+    - 58
+    detail:
+      calls:
+      - super.setLogLevel
+      - this.channel.call
+  - name: setVisibility
+    sig: 'setVisibility(resourceOrId: URI | string, visibility: boolean): void'
+    lines:
+    - 60
+    - 63
+    detail:
+      calls:
+      - super.setVisibility
+      - this.channel.call
+      - this.toResource
+  - name: setLogLevel
+    sig: 'setLogLevel(channel: IChannel, arg1: any, arg2?: any): Promise<void>'
+    decorators:
+    - static
+    lines:
+    - 71
+    - 73
+    detail:
+      calls:
+      - channel.call
+  lines:
+  - 13
+  - 75
+- name: Logger
+  kind: struct
+  bases:
+  - AbstractMessageLogger
+  fields:
+  - name: isLoggerCreated
+    type: boolean
+    default: 'false'
+  - name: buffer
+    type: '[LogLevel, string][]'
+    default: '[]'
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tprivate readonly channel: IChannel,\n\t\tprivate readonly file: URI,\n\t\tlogLevel: LogLevel,\n\t\tloggerOptions?: ILoggerOptions,\n\t\twindowId?: number | undefined\n\t)"
+    lines:
+    - 82
+    - 96
+    detail:
+      calls:
+      - super
+      - this.channel.call
+      - "this.channel.call('createLogger', [file, loggerOptions, windowId])\n\t\t\t.then"
+      - this.setLevel
+  lines:
+  - 77
+  - 110
+- name: LoggerChannel
+  kind: struct
+  bases:
+  - IServerChannel
+  methods:
+  - name: constructor
+    sig: 'constructor(private readonly loggerService: ILoggerService, private getUriTransformer: (requestContext: any) => IURITransformer)'
+    lines:
+    - 114
+    - 114
+    detail: {}
+  - name: listen
+    sig: 'listen(context: any, event: string): Event<any>'
+    lines:
+    - 116
+    - 128
+    detail:
+      calls:
+      - Event.map
+      - new Error
+      - this.getUriTransformer
+  - name: call
+    sig: 'call(context: any, command: string, arg?: any): Promise<any>'
+    is_async: true
+    lines:
+    - 130
+    - 138
+    detail:
+      calls:
+      - Promise.resolve
+      - URI.revive
+      - '[...this.loggerService.getRegisteredLoggers()].map'
+      - isLogLevel
+      - new Error
+      - this.getUriTransformer
+      - this.loggerService.getRegisteredLoggers
+      - this.loggerService.setLogLevel
+      - uriTransformer.transformIncoming
+  lines:
+  - 112
+  - 147
+- name: RemoteLoggerChannelClient
+  kind: struct
+  bases:
+  - Disposable
+  methods:
+  - name: constructor
+    sig: 'constructor(loggerService: ILoggerService, channel: IChannel)'
+    lines:
+    - 151
+    - 174
+    detail:
+      calls:
+      - channel.call
+      - channel.call<ILoggerResource[]>('getRegisteredLoggers').then
+      - channel.listen
+      - channel.listen<DidChangeLoggersEvent>('onDidChangeLoggers')
+      - channel.listen<[URI, boolean]>('onDidChangeVisibility')
+      - loggerService.getLogLevel
+      - loggerService.onDidChangeLogLevel
+      - super
+      - this._register
+  lines:
+  - 149
+  - 175
+exports:
+- name: LoggerChannelClient
+  kind: type
+- name: Logger
+  kind: type
+- name: LoggerChannel
+  kind: type
+- name: RemoteLoggerChannelClient
+  kind: type

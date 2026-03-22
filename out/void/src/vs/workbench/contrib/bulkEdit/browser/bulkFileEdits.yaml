@@ -1,0 +1,445 @@
+## Roska File Descriptor — browser/bulkFileEdits.ts
+file: browser/bulkFileEdits.ts
+lines: 409
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: ../../../../editor/common/languages.js.WorkspaceFileEditOptions
+- sym: ../../../../platform/files/common/files.js.IFileService
+- sym: ../../../../platform/files/common/files.js.FileSystemProviderCapabilities
+- sym: ../../../../platform/files/common/files.js.IFileContent
+- sym: ../../../../platform/files/common/files.js.IFileStatWithMetadata
+- sym: ../../../../platform/progress/common/progress.js.IProgress
+- sym: ../../../../platform/configuration/common/configuration.js.IConfigurationService
+- sym: ../../../services/workingCopy/common/workingCopyFileService.js.IWorkingCopyFileService
+- sym: ../../../services/workingCopy/common/workingCopyFileService.js.IFileOperationUndoRedoInfo
+- sym: ../../../services/workingCopy/common/workingCopyFileService.js.IMoveOperation
+- sym: ../../../services/workingCopy/common/workingCopyFileService.js.ICopyOperation
+- sym: ../../../services/workingCopy/common/workingCopyFileService.js.IDeleteOperation
+- sym: ../../../services/workingCopy/common/workingCopyFileService.js.ICreateOperation
+- sym: ../../../services/workingCopy/common/workingCopyFileService.js.ICreateFileOperation
+- sym: ../../../../platform/undoRedo/common/undoRedo.js.IWorkspaceUndoRedoElement
+- sym: ../../../../platform/undoRedo/common/undoRedo.js.UndoRedoElementType
+- sym: ../../../../platform/undoRedo/common/undoRedo.js.IUndoRedoService
+- sym: ../../../../platform/undoRedo/common/undoRedo.js.UndoRedoGroup
+- sym: ../../../../platform/undoRedo/common/undoRedo.js.UndoRedoSource
+- sym: ../../../../base/common/uri.js.URI
+- sym: ../../../../platform/instantiation/common/instantiation.js.IInstantiationService
+- sym: ../../../../platform/log/common/log.js.ILogService
+- sym: ../../../../base/common/buffer.js.VSBuffer
+- sym: ../../../../editor/browser/services/bulkEditService.js.ResourceFileEdit
+- sym: ../../../../base/common/cancellation.js.CancellationToken
+- sym: ../../../services/textfile/common/textfiles.js.ITextFileService
+- sym: ../../../../base/common/network.js.Schemas
+types:
+- name: IFileOperation
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: uris
+    type: URI[]
+  - name: perform
+    type: 'method: perform(token: CancellationToken): Promise<IFileOperation>'
+  lines:
+  - 22
+  - 25
+- name: Noop
+  kind: struct
+  bases:
+  - IFileOperation
+  fields:
+  - name: uris
+    type: any
+    default: '[]'
+  methods:
+  - name: perform
+    sig: perform()
+    is_async: true
+    lines:
+    - 29
+    - 29
+    detail: {}
+  - name: toString
+    sig: 'toString(): string'
+    lines:
+    - 30
+    - 32
+    detail: {}
+  lines:
+  - 27
+  - 33
+- name: RenameEdit
+  kind: struct
+  fields:
+  - name: type
+    type: any
+    default: '''rename'''
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\treadonly newUri: URI,\n\t\treadonly oldUri: URI,\n\t\treadonly options: WorkspaceFileEditOptions\n\t)"
+    lines:
+    - 37
+    - 41
+    detail: {}
+  lines:
+  - 35
+  - 42
+- name: RenameOperation
+  kind: struct
+  bases:
+  - IFileOperation
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tprivate readonly _edits: RenameEdit[],\n\t\tprivate readonly _undoRedoInfo: IFileOperationUndoRedoInfo,\n\t\t@IWorkingCopyFileService private readonly _workingCopyFileService: IWorkingCopyFileService,\n\t\t@IFileService private readonly _fileService: IFileService,\n\t)"
+    lines:
+    - 46
+    - 51
+    detail: {}
+  - name: uris
+    sig: uris()
+    lines:
+    - 53
+    - 55
+    detail:
+      calls:
+      - this._edits.flatMap
+  - name: perform
+    sig: 'perform(token: CancellationToken): Promise<IFileOperation>'
+    is_async: true
+    lines:
+    - 57
+    - 81
+    detail:
+      calls:
+      - moves.push
+      - new Noop
+      - new RenameEdit
+      - new RenameOperation
+      - this._fileService.exists
+      - this._workingCopyFileService.move
+      - undoes.push
+  - name: toString
+    sig: 'toString(): string'
+    lines:
+    - 83
+    - 85
+    detail:
+      calls:
+      - this._edits.map
+      - this._edits.map(edit => `${edit.oldUri} to ${edit.newUri}`).join
+  lines:
+  - 44
+  - 86
+- name: CopyEdit
+  kind: struct
+  fields:
+  - name: type
+    type: any
+    default: '''copy'''
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\treadonly newUri: URI,\n\t\treadonly oldUri: URI,\n\t\treadonly options: WorkspaceFileEditOptions\n\t)"
+    lines:
+    - 90
+    - 94
+    detail: {}
+  lines:
+  - 88
+  - 95
+- name: CopyOperation
+  kind: struct
+  bases:
+  - IFileOperation
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tprivate readonly _edits: CopyEdit[],\n\t\tprivate readonly _undoRedoInfo: IFileOperationUndoRedoInfo,\n\t\t@IWorkingCopyFileService private readonly _workingCopyFileService: IWorkingCopyFileService,\n\t\t@IFileService private readonly _fileService: IFileService,\n\t\t@IInstantiationService private readonly _instaService: IInstantiationService\n\t)"
+    lines:
+    - 99
+    - 105
+    detail: {}
+  - name: uris
+    sig: uris()
+    lines:
+    - 107
+    - 109
+    detail:
+      calls:
+      - this._edits.flatMap
+  - name: perform
+    sig: 'perform(token: CancellationToken): Promise<IFileOperation>'
+    is_async: true
+    lines:
+    - 111
+    - 138
+    detail:
+      calls:
+      - copies.push
+      - new DeleteEdit
+      - new Noop
+      - this._fileService.exists
+      - this._instaService.createInstance
+      - this._workingCopyFileService.copy
+      - undoes.push
+  - name: toString
+    sig: 'toString(): string'
+    lines:
+    - 140
+    - 142
+    detail:
+      calls:
+      - this._edits.map
+      - this._edits.map(edit => `${edit.oldUri} to ${edit.newUri}`).join
+  lines:
+  - 97
+  - 143
+- name: CreateEdit
+  kind: struct
+  fields:
+  - name: type
+    type: any
+    default: '''create'''
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\treadonly newUri: URI,\n\t\treadonly options: WorkspaceFileEditOptions,\n\t\treadonly contents: VSBuffer | undefined,\n\t)"
+    lines:
+    - 147
+    - 151
+    detail: {}
+  lines:
+  - 145
+  - 152
+- name: CreateOperation
+  kind: struct
+  bases:
+  - IFileOperation
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tprivate readonly _edits: CreateEdit[],\n\t\tprivate readonly _undoRedoInfo: IFileOperationUndoRedoInfo,\n\t\t@IFileService private readonly _fileService: IFileService,\n\t\t@IWorkingCopyFileService private readonly _workingCopyFileService: IWorkingCopyFileService,\n\t\t@IInstantiationService private readonly _instaService: IInstantiationService,\n\t\t@ITextFileService private readonly _textFileService: ITextFileService\n\t)"
+    lines:
+    - 156
+    - 163
+    detail: {}
+  - name: uris
+    sig: uris()
+    lines:
+    - 165
+    - 167
+    detail:
+      calls:
+      - this._edits.map
+  - name: perform
+    sig: 'perform(token: CancellationToken): Promise<IFileOperation>'
+    is_async: true
+    lines:
+    - 169
+    - 200
+    detail:
+      calls:
+      - fileCreates.push
+      - folderCreates.push
+      - new DeleteEdit
+      - new Noop
+      - this._fileService.exists
+      - this._instaService.createInstance
+      - this._textFileService.getEncodedReadable
+      - this._workingCopyFileService.create
+      - this._workingCopyFileService.createFolder
+      - undoes.push
+  - name: toString
+    sig: 'toString(): string'
+    lines:
+    - 202
+    - 204
+    detail:
+      calls:
+      - this._edits.map
+      - 'this._edits.map(edit => edit.options.folder ? `folder ${edit.newUri}` : `file ${edit.newUri} with ${...'
+  lines:
+  - 154
+  - 205
+- name: DeleteEdit
+  kind: struct
+  fields:
+  - name: type
+    type: any
+    default: '''delete'''
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\treadonly oldUri: URI,\n\t\treadonly options: WorkspaceFileEditOptions,\n\t\treadonly undoesCreate: boolean,\n\t)"
+    lines:
+    - 209
+    - 213
+    detail: {}
+  lines:
+  - 207
+  - 214
+- name: DeleteOperation
+  kind: struct
+  bases:
+  - IFileOperation
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tprivate _edits: DeleteEdit[],\n\t\tprivate readonly _undoRedoInfo: IFileOperationUndoRedoInfo,\n\t\t@IWorkingCopyFileService private readonly _workingCopyFileService: IWorkingCopyFileService,\n\t\t@IFileService private readonly _fileService: IFileService,\n\t\t@IConfigurationService private readonly _configurationService: IConfigurationService,\n\t\t@IInstantiationService private readonly _instaService: IInstantiationService,\n\t\t@ILogService private readonly _logService: ILogService\n\t)"
+    lines:
+    - 218
+    - 226
+    detail: {}
+  - name: uris
+    sig: uris()
+    lines:
+    - 228
+    - 230
+    detail:
+      calls:
+      - this._edits.map
+  - name: perform
+    sig: 'perform(token: CancellationToken): Promise<IFileOperation>'
+    is_async: true
+    lines:
+    - 232
+    - 284
+    detail:
+      calls:
+      - deletes.push
+      - new CreateEdit
+      - new Error
+      - new Noop
+      - this._configurationService.getValue
+      - this._fileService.hasCapability
+      - this._fileService.readFile
+      - this._fileService.resolve
+      - this._instaService.createInstance
+      - this._logService.error
+      - this._workingCopyFileService.delete
+      - undoes.push
+  - name: toString
+    sig: 'toString(): string'
+    lines:
+    - 286
+    - 288
+    detail:
+      calls:
+      - this._edits.map
+      - this._edits.map(edit => edit.oldUri).join
+  lines:
+  - 216
+  - 289
+- name: FileUndoRedoElement
+  kind: struct
+  bases:
+  - IWorkspaceUndoRedoElement
+  fields:
+  - name: type
+    type: any
+    default: UndoRedoElementType.Workspace
+  - name: resources
+    type: readonly URI[]
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\treadonly label: string,\n\t\treadonly code: string,\n\t\treadonly operations: IFileOperation[],\n\t\treadonly confirmBeforeUndo: boolean\n\t)"
+    lines:
+    - 297
+    - 304
+    detail:
+      calls:
+      - operations.flatMap
+  - name: undo
+    sig: 'undo(): Promise<void>'
+    is_async: true
+    lines:
+    - 306
+    - 308
+    detail:
+      calls:
+      - this._reverse
+  - name: redo
+    sig: 'redo(): Promise<void>'
+    is_async: true
+    lines:
+    - 310
+    - 312
+    detail:
+      calls:
+      - this._reverse
+  - name: _reverse
+    sig: _reverse()
+    is_async: true
+    vis: private
+    lines:
+    - 314
+    - 320
+    detail:
+      calls:
+      - op.perform
+  - name: toString
+    sig: 'toString(): string'
+    lines:
+    - 322
+    - 324
+    detail:
+      calls:
+      - this.operations.map
+      - this.operations.map(op => String(op)).join
+  lines:
+  - 291
+  - 325
+- name: BulkFileEdits
+  kind: struct
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tprivate readonly _label: string,\n\t\tprivate readonly _code: string,\n\t\tprivate readonly _undoRedoGroup: UndoRedoGroup,\n\t\tprivate readonly _undoRedoSource: UndoRedoSource | undefined,\n\t\tprivate readonly _confirmBeforeUndo: boolean,\n\t\tprivate readonly _progress: IProgress<void>,\n\t\tprivate readonly _token: CancellationToken,\n\t\tprivate readonly _edits: ResourceFileEdit[],\n\t\t@IInstantiationService private readonly _instaService: IInstantiationService,\n\t\t@IUndoRedoService private readonly _undoRedoService: IUndoRedoService,\n\t)"
+    lines:
+    - 329
+    - 340
+    detail: {}
+  - name: apply
+    sig: 'apply(): Promise<readonly URI[]>'
+    is_async: true
+    lines:
+    - 342
+    - 408
+    detail:
+      calls:
+      - edits.push
+      - groups.at
+      - groups.push
+      - lastGroup.push
+      - new CopyEdit
+      - new CreateEdit
+      - new DeleteEdit
+      - new FileUndoRedoElement
+      - new RenameEdit
+      - op.perform
+      - this._instaService.createInstance
+      - this._progress.report
+      - this._undoRedoService.pushElement
+      - undoOperations.push
+  lines:
+  - 327
+  - 409
+exports:
+- name: IFileOperation
+  kind: type
+- name: Noop
+  kind: type
+- name: RenameEdit
+  kind: type
+- name: RenameOperation
+  kind: type
+- name: CopyEdit
+  kind: type
+- name: CopyOperation
+  kind: type
+- name: CreateEdit
+  kind: type
+- name: CreateOperation
+  kind: type
+- name: DeleteEdit
+  kind: type
+- name: DeleteOperation
+  kind: type
+- name: FileUndoRedoElement
+  kind: type
+- name: BulkFileEdits
+  kind: type

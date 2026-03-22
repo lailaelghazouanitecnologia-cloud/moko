@@ -1,0 +1,362 @@
+## Roska File Descriptor — browser/chatStatus.ts
+file: browser/chatStatus.ts
+lines: 568
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: ../../../../base/common/date.js.safeIntl
+- sym: ../../../../base/common/lifecycle.js.Disposable
+- sym: ../../../../base/common/lifecycle.js.DisposableStore
+- sym: ../../../../base/common/lifecycle.js.MutableDisposable
+- sym: ../../../../base/common/platform.js.language
+- sym: ../../../../nls.js.localize
+- sym: ../../../common/contributions.js.IWorkbenchContribution
+- sym: ../../../services/statusbar/browser/statusbar.js.IStatusbarEntry
+- sym: ../../../services/statusbar/browser/statusbar.js.IStatusbarEntryAccessor
+- sym: ../../../services/statusbar/browser/statusbar.js.IStatusbarService
+- sym: ../../../services/statusbar/browser/statusbar.js.ShowTooltipCommand
+- sym: ../../../services/statusbar/browser/statusbar.js.StatusbarAlignment
+- sym: ../../../services/statusbar/browser/statusbar.js.StatusbarEntryKind
+- sym: ../../../../base/browser/dom.js.$
+- sym: ../../../../base/browser/dom.js.addDisposableListener
+- sym: ../../../../base/browser/dom.js.append
+- sym: ../../../../base/browser/dom.js.clearNode
+- sym: ../../../../base/browser/dom.js.EventHelper
+- sym: ../../../../base/browser/dom.js.EventType
+- sym: ../common/chatEntitlementService.js.ChatEntitlement
+- sym: ../common/chatEntitlementService.js.ChatEntitlementService
+- sym: ../common/chatEntitlementService.js.ChatSentiment
+- sym: ../common/chatEntitlementService.js.IChatEntitlementService
+- sym: ../../../../base/common/cancellation.js.CancellationToken
+- sym: ../../../../platform/theme/browser/defaultStyles.js.defaultButtonStyles
+- sym: ../../../../platform/theme/browser/defaultStyles.js.defaultCheckboxStyles
+- sym: ../../../../base/browser/ui/toggle/toggle.js.Checkbox
+- sym: ../../../../platform/configuration/common/configuration.js.IConfigurationService
+- sym: ../../../../platform/commands/common/commands.js.ICommandService
+- sym: ../../../../base/common/lazy.js.Lazy
+- sym: ../../../../platform/theme/common/colorRegistry.js.contrastBorder
+- sym: ../../../../platform/theme/common/colorRegistry.js.inputValidationErrorBorder
+- sym: ../../../../platform/theme/common/colorRegistry.js.inputValidationInfoBorder
+- sym: ../../../../platform/theme/common/colorRegistry.js.inputValidationWarningBorder
+- sym: ../../../../platform/theme/common/colorRegistry.js.registerColor
+- sym: ../../../../platform/theme/common/colorRegistry.js.transparent
+- sym: ../../../../platform/hover/browser/hover.js.IHoverService
+- sym: ../../../../base/common/color.js.Color
+- sym: ../../../../base/browser/touch.js.Gesture
+- sym: ../../../../base/browser/touch.js.EventType as TouchEventType
+- sym: ../../../services/editor/common/editorService.js.IEditorService
+- sym: ../../../../platform/product/common/product.js.product
+- sym: ../../../../base/common/types.js.isObject
+- sym: ../../../../editor/common/languages/language.js.ILanguageService
+- sym: ../../../../platform/instantiation/common/instantiation.js.IInstantiationService
+- sym: ../../../../base/browser/ui/button/button.js.Button
+- sym: ../../../../base/browser/ui/iconLabel/iconLabels.js.renderLabelWithIcons
+- sym: ../../../../base/common/actions.js.WorkbenchActionExecutedEvent
+- sym: ../../../../base/common/actions.js.WorkbenchActionExecutedClassification
+- sym: ../../../../base/common/linkedText.js.parseLinkedText
+- sym: ../../../../platform/opener/browser/link.js.Link
+- sym: ../../../../platform/opener/common/opener.js.IOpenerService
+- sym: ../../../../platform/telemetry/common/telemetry.js.ITelemetryService
+- sym: ./chatStatusItemService.js.IChatStatusItemService
+- sym: ./chatStatusItemService.js.ChatStatusEntry
+- sym: ../../../../editor/common/services/textResourceConfiguration.js.ITextResourceConfigurationService
+- sym: ../../../common/editor.js.EditorResourceAccessor
+- sym: ../../../common/editor.js.SideBySideEditor
+- sym: ../../../../editor/browser/editorBrowser.js.getCodeEditor
+data:
+- name: gaugeBackground
+  type: any
+  val: "registerColor('gauge.background', {\n\tdark: inputValidationInfoBorder,\n\tlight: inputValidationInfoBorder,\n\thcDark: contra..."
+- name: gaugeWarningBackground
+  type: any
+  val: "registerColor('gauge.warningBackground', {\n\tdark: inputValidationWarningBorder,\n\tlight: inputValidationWarningBorder,\n\th..."
+- name: gaugeErrorBackground
+  type: any
+  val: "registerColor('gauge.errorBackground', {\n\tdark: inputValidationErrorBorder,\n\tlight: inputValidationErrorBorder,\n\thcDark:..."
+- name: defaultChat
+  type: object
+  val: "{\n\textensionId: product.defaultChatAgent?.extensionId ?? '',\n\tcompletionsEnablementSetting: product.defaultChatAgent?.co..."
+types:
+- name: ChatStatusBarEntry
+  kind: struct
+  bases:
+  - Disposable
+  - IWorkbenchContribution
+  fields:
+  - name: ID
+    type: any
+    default: '''workbench.contrib.chatStatusBarEntry'''
+  - name: entry
+    type: IStatusbarEntryAccessor | undefined
+    default: undefined
+  - name: dashboard
+    type: any
+    default: new Lazy<ChatStatusDashboard>(() => this.instantiationService.createInstance(Cha...
+  - name: activeCodeEditorListener
+    type: any
+    default: this._register(new MutableDisposable())
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\t@IChatEntitlementService private readonly chatEntitlementService: ChatEntitlementService,\n\t\t@IInstantiationService private readonly instantiationService: IInstantiationService,\n\t\t@IStatusbarService private readonly statusbarService: IStatusbarService,\n\t\t@IEditorService private readonly editorService: IEditorService,\n\t\t@IConfigurationService private readonly configurationService: IConfigurationService,\n\t)"
+    lines:
+    - 109
+    - 120
+    detail:
+      calls:
+      - super
+      - this.create
+      - this.registerListeners
+  - name: create
+    sig: 'create(): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 122
+    - 136
+    detail:
+      calls:
+      - localize
+      - this.entry?.dispose
+      - this.getEntryProps
+      - this.statusbarService.addEntry
+      - this.statusbarService.overrideEntry
+      - this.statusbarService.updateEntryVisibility
+  - name: registerListeners
+    sig: 'registerListeners(): void'
+    vis: private
+    lines:
+    - 138
+    - 150
+    detail:
+      calls:
+      - this._register
+      - this.chatEntitlementService.onDidChangeEntitlement
+      - this.chatEntitlementService.onDidChangeQuotaExceeded
+      - this.chatEntitlementService.onDidChangeSentiment
+      - this.configurationService.onDidChangeConfiguration
+      - this.editorService.onDidActiveEditorChange
+  - name: onDidActiveEditorChange
+    sig: 'onDidActiveEditorChange(): void'
+    vis: private
+    lines:
+    - 152
+    - 164
+    detail:
+      calls:
+      - activeCodeEditor.onDidChangeModelLanguage
+      - getCodeEditor
+      - this.activeCodeEditorListener.clear
+      - this.entry?.update
+      - this.getEntryProps
+  - name: dispose
+    sig: 'dispose(): void'
+    lines:
+    - 217
+    - 222
+    detail:
+      calls:
+      - super.dispose
+      - this.entry?.dispose
+  lines:
+  - 99
+  - 223
+- name: ISettingsAccessor
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: readSetting
+    type: () => boolean
+  - name: writeSetting
+    type: '(value: boolean) => Promise<void>'
+  lines:
+  - 251
+  - 254
+- name: ChatStatusDashboard
+  kind: struct
+  bases:
+  - Disposable
+  fields:
+  - name: element
+    type: any
+    default: $('div.chat-status-bar-entry-tooltip')
+  - name: dateFormatter
+    type: any
+    default: 'new Lazy(() => safeIntl.DateTimeFormat(language, { year: ''numeric'', month: ''long...'
+  - name: entryDisposables
+    type: any
+    default: this._register(new MutableDisposable())
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\t@IChatEntitlementService private readonly chatEntitlementService: ChatEntitlementService,\n\t\t@IChatStatusItemService private readonly chatStatusItemService: IChatStatusItemService,\n\t\t@ICommandService private readonly commandService: ICommandService,\n\t\t@IConfigurationService private readonly configurationService: IConfigurationService,\n\t\t@IEditorService private readonly editorService: IEditorService,\n\t\t@IHoverService private readonly hoverService: IHoverService,\n\t\t@ILanguageService private readonly languageService: ILanguageService,\n\t\t@IOpenerService private readonly openerService: IOpenerService,\n\t\t@ITelemetryService private readonly telemetryService: ITelemetryService,\n\t\t@ITextResourceConfigurationService private readonly textResourceConfigurationService: ITextResourceConfigurationService,\n\t)"
+    lines:
+    - 263
+    - 276
+    detail:
+      calls:
+      - super
+  - name: show
+    sig: 'show(token: CancellationToken): HTMLElement'
+    lines:
+    - 278
+    - 374
+    detail:
+      calls:
+      - $
+      - "(async () => {\n\t\t\t\tawait this.chatEntitlementService.update(token);\n\t\t\t\tif (token.isCancellationRequ..."
+      - addSeparator
+      - button.onDidClick
+      - canUseCopilot
+      - clearNode
+      - disposables.add
+      - isNewUser
+      - localize
+      - new Button
+      - new DisposableStore
+      - new MutableDisposable
+      - this.chatStatusItemService.getEntries
+      - this.chatStatusItemService.onDidChange
+      - this.createQuotaIndicator
+      - this.createSettings
+      - this.dateFormatter.value.format
+      - this.element.appendChild
+      - this.renderContributedChatStatusItem
+      - token.onCancellationRequested
+      - upgradePlanButton.onDidClick
+  - name: renderContributedChatStatusItem
+    sig: 'renderContributedChatStatusItem(item: ChatStatusEntry): { element: HTMLElement; disposables: DisposableStore }'
+    vis: private
+    lines:
+    - 376
+    - 394
+    detail:
+      calls:
+      - $
+      - bodyEl.appendChild
+      - entryEl.appendChild
+      - new DisposableStore
+      - this.renderTextPlus
+  - name: runCommandAndClose
+    sig: 'runCommandAndClose(commandOrFn: string | Function): void'
+    vis: private
+    lines:
+    - 407
+    - 416
+    detail:
+      calls:
+      - commandOrFn
+      - this.commandService.executeCommand
+      - this.hoverService.hideHover
+      - this.telemetryService.publicLog2
+  - name: createQuotaIndicator
+    sig: 'createQuotaIndicator(container: HTMLElement, total: number | undefined, remaining: number | undefined, label: string): (total: number | undefined, remaining: number | undefined) => void'
+    vis: private
+    lines:
+    - 418
+    - 456
+    detail:
+      calls:
+      - $
+      - container.appendChild
+      - update
+  - name: createSettings
+    sig: 'createSettings(container: HTMLElement, disposables: DisposableStore): HTMLElement'
+    vis: private
+    lines:
+    - 458
+    - 480
+    detail:
+      calls:
+      - $
+      - append
+      - container.appendChild
+      - localize
+      - this.createCodeCompletionsSetting
+      - this.createNextEditSuggestionsSetting
+      - this.getCompletionsSettingAccessor
+      - this.languageService.getLanguageName
+  - name: createSetting
+    sig: 'createSetting(container: HTMLElement, settingId: string, label: string, accessor: ISettingsAccessor, disposables: DisposableStore): Checkbox'
+    vis: private
+    lines:
+    - 482
+    - 516
+    detail:
+      calls:
+      - $
+      - Boolean
+      - Gesture.addTarget
+      - '[EventType.CLICK, TouchEventType.Tap].forEach'
+      - accessor.readSetting
+      - append
+      - canUseCopilot
+      - checkbox.disable
+      - checkbox.onChange
+      - container.appendChild
+      - container.classList.add
+      - disposables.add
+      - new Checkbox
+      - this.configurationService.onDidChangeConfiguration
+  - name: createNextEditSuggestionsSetting
+    sig: 'createNextEditSuggestionsSetting(container: HTMLElement, label: string, modeId: string | undefined, completionsSettingAccessor: ISettingsAccessor, disposables: DisposableStore): void'
+    vis: private
+    lines:
+    - 538
+    - 567
+    detail:
+      calls:
+      - EditorResourceAccessor.getOriginalUri
+      - checkbox.disable
+      - completionsSettingAccessor.readSetting
+      - container.classList.add
+      - disposables.add
+      - this.configurationService.onDidChangeConfiguration
+      - this.createSetting
+  lines:
+  - 256
+  - 568
+functions:
+- name: isNewUser
+  sig: 'isNewUser(chatEntitlementService: IChatEntitlementService): boolean'
+  lines:
+  - 225
+  - 228
+- name: canUseCopilot
+  sig: 'canUseCopilot(chatEntitlementService: IChatEntitlementService): boolean'
+  lines:
+  - 230
+  - 236
+  detail:
+    calls:
+    - isNewUser
+- name: isCompletionsEnabled
+  sig: 'isCompletionsEnabled(configurationService: IConfigurationService, modeId: string = ''*''): boolean'
+  lines:
+  - 238
+  - 249
+  detail:
+    calls:
+    - Boolean
+    - configurationService.getValue
+    - isObject
+exports:
+- name: ChatStatusBarEntry
+  kind: type
+- name: ISettingsAccessor
+  kind: type
+- name: ChatStatusDashboard
+  kind: type
+- name: isNewUser
+  kind: func
+- name: canUseCopilot
+  kind: func
+- name: isCompletionsEnabled
+  kind: func
+- name: gaugeBackground
+  kind: data
+- name: gaugeWarningBackground
+  kind: data
+- name: gaugeErrorBackground
+  kind: data
+- name: defaultChat
+  kind: data

@@ -1,0 +1,246 @@
+## Roska File Descriptor — helperServices/consistentItemService.ts
+file: helperServices/consistentItemService.ts
+lines: 422
+layer: logic
+purpose: '-------------------------------------------------------------------------------------- Copyright 2025 Glass Devtools, Inc. All rights reserved. Licensed under the Apache License, Version 2.0. See LICENSE.txt for more information. --------------------------------------------------------------------------------------'
+imports:
+- sym: ../../../../../base/common/lifecycle.js.Disposable
+- sym: ../../../../../base/common/uri.js.URI
+- sym: ../../../../../base/common/uuid.js.generateUuid
+- sym: ../../../../../editor/browser/editorBrowser.js.ICodeEditor
+- sym: ../../../../../editor/browser/services/codeEditorService.js.ICodeEditorService
+- sym: ../../../../../platform/instantiation/common/extensions.js.InstantiationType
+- sym: ../../../../../platform/instantiation/common/extensions.js.registerSingleton
+- sym: ../../../../../platform/instantiation/common/instantiation.js.createDecorator
+data:
+- name: IConsistentItemService
+  type: any
+  val: createDecorator<IConsistentItemService>('ConsistentItemService')
+- name: IConsistentEditorItemService
+  type: any
+  val: createDecorator<IConsistentEditorItemService>('ConsistentEditorItemService')
+types:
+- name: AddItemInputs
+  kind: typealias
+  decorators:
+  - type
+  fields:
+  - name: uri
+    type: URI
+  - name: fn
+    type: '(editor: ICodeEditor) => (() => void)'
+  lines:
+  - 17
+  - 17
+- name: IConsistentItemService
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: readonly
+    type: undefined
+  - name: getEditorsOnURI
+    type: 'method: getEditorsOnURI(uri: URI): ICodeEditor[]'
+  - name: addConsistentItemToURI
+    type: 'method: addConsistentItemToURI(inputs: AddItemInputs): string'
+  - name: removeConsistentItemFromURI
+    type: 'method: removeConsistentItemFromURI(consistentItemId: string): void'
+  lines:
+  - 19
+  - 24
+- name: ConsistentItemService
+  kind: struct
+  ctx: the items that are attached to each URI, completely independent from current state of editors
+  bases:
+  - Disposable
+  - IConsistentItemService
+  fields:
+  - name: _serviceBrand
+    type: undefined
+  - name: consistentItemIdsOfURI
+    type: Record<string, Set<string> | undefined>
+    default: '{}'
+  - name: infoOfConsistentItemId
+    type: Record<string, AddItemInputs>
+    default: '{}'
+  - name: itemIdsOfEditorId
+    type: Record<string, Set<string> | undefined>
+    default: '{}'
+  - name: consistentItemIdOfItemId
+    type: Record<string, string>
+    default: '{}'
+  - name: disposeFnOfItemId
+    type: Record<string, () => void>
+    default: '{}'
+  - name: consistentItemIdPool
+    type: any
+    default: '0'
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\t@ICodeEditorService private readonly _editorService: ICodeEditorService,\n\t)"
+    lines:
+    - 43
+    - 95
+    detail:
+      calls:
+      - initializeEditor
+      - super
+      - this._editorService.listCodeEditors
+      - this._editorService.onCodeEditorAdd
+      - this._editorService.onCodeEditorRemove
+      - this._register
+  - name: _putItemOnEditor
+    sig: '_putItemOnEditor(editor: ICodeEditor, consistentItemId: string)'
+    lines:
+    - 99
+    - 120
+    detail:
+      calls:
+      - editor.getId
+      - fn
+      - generateUuid
+      - new Set
+      - this.itemIdsOfEditorId[editorId]!.add
+  - name: _removeItemFromEditor
+    sig: '_removeItemFromEditor(editor: ICodeEditor, itemId: string)'
+    lines:
+    - 123
+    - 132
+    detail:
+      calls:
+      - editor.getId
+      - this.disposeFnOfItemId[itemId]
+      - this.itemIdsOfEditorId[editorId]?.delete
+  - name: getEditorsOnURI
+    sig: 'getEditorsOnURI(uri: URI)'
+    lines:
+    - 134
+    - 137
+    detail:
+      calls:
+      - this._editorService.listCodeEditors
+      - this._editorService.listCodeEditors().filter
+  - name: addConsistentItemToURI
+    sig: 'addConsistentItemToURI({ uri, fn }: AddItemInputs)'
+    lines:
+    - 140
+    - 154
+    detail:
+      calls:
+      - new Set
+      - this._putItemOnEditor
+      - this.consistentItemIdsOfURI[uri.fsPath]!.add
+      - this.getEditorsOnURI
+  - name: removeConsistentItemFromURI
+    sig: 'removeConsistentItemFromURI(consistentItemId: string)'
+    lines:
+    - 157
+    - 176
+    detail:
+      calls:
+      - editor.getId
+      - this._removeItemFromEditor
+      - this.consistentItemIdsOfURI[uri.fsPath]?.delete
+      - this.getEditorsOnURI
+  lines:
+  - 28
+  - 178
+- name: IConsistentEditorItemService
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: readonly
+    type: undefined
+  - name: addToEditor
+    type: 'method: addToEditor(editor: ICodeEditor, fn: () => () => void): string'
+  - name: removeFromEditor
+    type: 'method: removeFromEditor(itemId: string): void'
+  lines:
+  - 199
+  - 203
+- name: ConsistentEditorItemService
+  kind: struct
+  ctx: For each editorId, we track the set of itemIds that have been "added" to that editor. This does *not* necessarily mean they're currently mounted (the user may have switched models).
+  bases:
+  - Disposable
+  fields:
+  - name: _serviceBrand
+    type: undefined
+  - name: itemIdsByEditorId
+    type: Record<string, Set<string>>
+    default: '{}'
+  - name: itemInfoById
+    type: "Record<\n\t\tstring,\n\t\t{\n\t\t\teditorId: string;\n\t\t\turiFsPath: string;\n\t\t\tfn: (editor: ICodeEditor) => () => void;\n\t\t\tdisposeFn?: () => void;\n\t\t}\n\t>"
+    default: '{}'
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\t@ICodeEditorService private readonly _editorService: ICodeEditorService,\n\t)"
+    lines:
+    - 229
+    - 256
+    detail:
+      calls:
+      - super
+      - this._editorService.listCodeEditors
+      - this._editorService.onCodeEditorAdd
+      - this._editorService.onCodeEditorRemove
+      - this._initializeEditor
+      - this._register
+  - name: _initializeEditor
+    sig: '_initializeEditor(editor: ICodeEditor)'
+    vis: private
+    lines:
+    - 263
+    - 314
+    detail:
+      calls:
+      - editor.getId
+      - editor.getModel
+      - editor.onDidChangeModel
+      - editor.onDidDispose
+      - this._mountItemOnEditor
+      - this._register
+  - name: addToEditor
+    sig: 'addToEditor(editor: ICodeEditor, fn: () => () => void): string'
+    lines:
+    - 360
+    - 390
+    detail:
+      calls:
+      - editor.getId
+      - editor.getModel
+      - generateUuid
+      - new Error
+      - new Set
+      - this._mountItemOnEditor
+      - this.itemIdsByEditorId[editorId].add
+  - name: removeFromEditor
+    sig: 'removeFromEditor(itemId: string): void'
+    lines:
+    - 396
+    - 417
+    detail:
+      calls:
+      - this._editorService.listCodeEditors
+      - this._editorService.listCodeEditors().find
+      - this._removeItemFromEditor
+      - this.itemIdsByEditorId[editorId]?.delete
+  lines:
+  - 207
+  - 418
+exports:
+- name: AddItemInputs
+  kind: type
+- name: IConsistentItemService
+  kind: type
+- name: ConsistentItemService
+  kind: type
+- name: IConsistentEditorItemService
+  kind: type
+- name: ConsistentEditorItemService
+  kind: type
+- name: IConsistentItemService
+  kind: data
+- name: IConsistentEditorItemService
+  kind: data

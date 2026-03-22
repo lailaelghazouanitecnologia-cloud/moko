@@ -1,0 +1,679 @@
+## Roska File Descriptor — browser/terminalProcessManager.ts
+file: browser/terminalProcessManager.ts
+lines: 845
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: ../../../../base/common/event.js.Emitter
+- sym: ../../../../base/common/event.js.Event
+- sym: ../../../../base/common/lifecycle.js.Disposable
+- sym: ../../../../base/common/lifecycle.js.dispose
+- sym: ../../../../base/common/lifecycle.js.IDisposable
+- sym: ../../../../base/common/lifecycle.js.toDisposable
+- sym: ../../../../base/common/network.js.Schemas
+- sym: ../../../../base/common/platform.js.IProcessEnvironment
+- sym: ../../../../base/common/platform.js.isMacintosh
+- sym: ../../../../base/common/platform.js.isWindows
+- sym: ../../../../base/common/platform.js.OperatingSystem
+- sym: ../../../../base/common/platform.js.OS
+- sym: ../../../../base/common/uri.js.URI
+- sym: ../../../../nls.js.localize
+- sym: ../../../../platform/terminal/common/terminalStrings.js.formatMessageForTerminal
+- sym: ../../../../platform/configuration/common/configuration.js.IConfigurationService
+- sym: ../../../../platform/instantiation/common/instantiation.js.IInstantiationService
+- sym: ../../../../platform/product/common/productService.js.IProductService
+- sym: ../../../../platform/remote/common/remoteHosts.js.getRemoteAuthority
+- sym: ../../../../platform/telemetry/common/telemetry.js.ITelemetryService
+- sym: ../../../../platform/terminal/common/capabilities/capabilities.js.ISerializedCommandDetectionCapability
+- sym: ../../../../platform/terminal/common/capabilities/capabilities.js.TerminalCapability
+- sym: ../../../../platform/terminal/common/capabilities/naiveCwdDetectionCapability.js.NaiveCwdDetectionCapability
+- sym: ../../../../platform/terminal/common/capabilities/terminalCapabilityStore.js.TerminalCapabilityStore
+- sym: ../../../../platform/terminal/common/terminal.js.FlowControlConstants
+- sym: ../../../../platform/terminal/common/terminal.js.IProcessDataEvent
+- sym: ../../../../platform/terminal/common/terminal.js.IProcessProperty
+- sym: ../../../../platform/terminal/common/terminal.js.IProcessPropertyMap
+- sym: ../../../../platform/terminal/common/terminal.js.IProcessReadyEvent
+- sym: ../../../../platform/terminal/common/terminal.js.IReconnectionProperties
+- sym: ../../../../platform/terminal/common/terminal.js.IShellLaunchConfig
+- sym: ../../../../platform/terminal/common/terminal.js.ITerminalBackend
+- sym: ../../../../platform/terminal/common/terminal.js.ITerminalChildProcess
+- sym: ../../../../platform/terminal/common/terminal.js.ITerminalDimensions
+- sym: ../../../../platform/terminal/common/terminal.js.ITerminalEnvironment
+- sym: ../../../../platform/terminal/common/terminal.js.ITerminalLaunchError
+- sym: ../../../../platform/terminal/common/terminal.js.ITerminalLogService
+- sym: ../../../../platform/terminal/common/terminal.js.ITerminalProcessOptions
+- sym: ../../../../platform/terminal/common/terminal.js.ProcessPropertyType
+- sym: ../../../../platform/terminal/common/terminal.js.TerminalSettingId
+- sym: ../../../../platform/terminal/common/terminalRecorder.js.TerminalRecorder
+- sym: ../../../../platform/workspace/common/workspace.js.IWorkspaceContextService
+- sym: ../../../../platform/workspace/common/workspace.js.IWorkspaceFolder
+- sym: ./environmentVariableInfo.js.EnvironmentVariableInfoChangesActive
+- sym: ./environmentVariableInfo.js.EnvironmentVariableInfoStale
+- sym: ./terminal.js.ITerminalConfigurationService
+- sym: ./terminal.js.ITerminalInstanceService
+- sym: ../common/environmentVariable.js.IEnvironmentVariableInfo
+- sym: ../common/environmentVariable.js.IEnvironmentVariableService
+- sym: ../../../../platform/terminal/common/environmentVariableCollection.js.MergedEnvironmentVariableCollection
+- sym: ../../../../platform/terminal/common/environmentVariableShared.js.serializeEnvironmentVariableCollections
+- sym: ../common/terminal.js.IBeforeProcessDataEvent
+- sym: ../common/terminal.js.ITerminalProcessManager
+- sym: ../common/terminal.js.ITerminalProfileResolverService
+- sym: ../common/terminal.js.ProcessState
+- sym: ../common/terminalEnvironment.js.terminalEnvironment
+- sym: ../../../services/configurationResolver/common/configurationResolver.js.IConfigurationResolverService
+- sym: ../../../services/environment/common/environmentService.js.IWorkbenchEnvironmentService
+- sym: ../../../services/history/common/history.js.IHistoryService
+- sym: ../../../services/path/common/pathService.js.IPathService
+- sym: ../../../services/remote/common/remoteAgentService.js.IRemoteAgentService
+- sym: ../../tasks/common/tasks.js.TaskSettingId
+- sym: ../../../../base/common/severity.js.Severity
+- sym: ../../../../platform/notification/common/notification.js.INotificationService
+- sym: ../../../../platform/terminal/common/environmentVariable.js.IEnvironmentVariableCollection
+- sym: ../../../../platform/terminal/common/environmentVariable.js.IMergedEnvironmentVariableCollection
+- sym: ../../../../base/common/uuid.js.generateUuid
+- sym: ../../../../base/browser/dom.js.getActiveWindow
+- sym: ../../../../base/browser/dom.js.runWhenWindowIdle
+- sym: ../../../../base/browser/window.js.mainWindow
+- sym: ../../../../platform/terminal/common/terminalEnvironment.js.shouldUseEnvironmentVariableCollection
+- sym: ../terminalContribExports.js.TerminalContribSettingId
+types:
+- name: ProcessConstants
+  kind: enum
+  variants:
+  - name: ErrorLaunchThresholdDuration
+    val: '500'
+  - name: LatencyMeasuringInterval
+    val: '1000'
+  lines:
+  - 46
+  - 55
+- name: ProcessType
+  kind: enum
+  variants:
+  - name: Process
+  - name: PsuedoTerminal
+  lines:
+  - 57
+  - 60
+- name: TerminalProcessManager
+  kind: struct
+  ctx: Fetch any extension environment additions and apply them
+  bases:
+  - Disposable
+  - ITerminalProcessManager
+  fields:
+  - name: processState
+    type: ProcessState
+    default: ProcessState.Uninitialized
+  - name: ptyProcessReady
+    type: Promise<void>
+  - name: shellProcessId
+    type: number | undefined
+  - name: remoteAuthority
+    type: string | undefined
+  - name: os
+    type: OperatingSystem | undefined
+  - name: userHome
+    type: string | undefined
+  - name: environmentVariableInfo
+    type: IEnvironmentVariableInfo | undefined
+  - name: backend
+    type: ITerminalBackend | undefined
+  - name: capabilities
+    type: any
+    default: this._register(new TerminalCapabilityStore())
+  - name: shellIntegrationNonce
+    type: string
+  - name: _isDisposed
+    type: boolean
+    default: 'false'
+  - name: _process
+    type: ITerminalChildProcess | null
+    default: 'null'
+  - name: _processType
+    type: ProcessType
+    default: ProcessType.Process
+  - name: _preLaunchInputQueue
+    type: string[]
+    default: '[]'
+  - name: _initialCwd
+    type: string | undefined
+  - name: _extEnvironmentVariableCollection
+    type: IMergedEnvironmentVariableCollection | undefined
+  - name: _ackDataBufferer
+    type: AckDataBufferer
+  - name: _hasWrittenData
+    type: boolean
+    default: 'false'
+  - name: _hasChildProcesses
+    type: boolean
+    default: 'false'
+  - name: _ptyResponsiveListener
+    type: IDisposable | undefined
+  - name: _ptyListenersAttached
+    type: boolean
+    default: 'false'
+  - name: _dataFilter
+    type: SeamlessRelaunchDataFilter
+  - name: _processListeners
+    type: IDisposable[]
+  - name: _isDisconnected
+    type: boolean
+    default: 'false'
+  - name: _processTraits
+    type: IProcessReadyEvent | undefined
+  - name: _shellLaunchConfig
+    type: IShellLaunchConfig
+  - name: _dimensions
+    type: ITerminalDimensions
+    default: '{ cols: 0, rows: 0 }'
+  - name: _onPtyDisconnect
+    type: any
+    default: this._register(new Emitter<void>())
+  - name: onPtyDisconnect
+    type: any
+    default: this._onPtyDisconnect.event
+  - name: _onPtyReconnect
+    type: any
+    default: this._register(new Emitter<void>())
+  - name: onPtyReconnect
+    type: any
+    default: this._onPtyReconnect.event
+  - name: _onProcessReady
+    type: any
+    default: this._register(new Emitter<IProcessReadyEvent>())
+  - name: onProcessReady
+    type: any
+    default: this._onProcessReady.event
+  - name: _onProcessStateChange
+    type: any
+    default: this._register(new Emitter<void>())
+  - name: onProcessStateChange
+    type: any
+    default: this._onProcessStateChange.event
+  - name: _onBeforeProcessData
+    type: any
+    default: this._register(new Emitter<IBeforeProcessDataEvent>())
+  - name: onBeforeProcessData
+    type: any
+    default: this._onBeforeProcessData.event
+  - name: _onProcessData
+    type: any
+    default: this._register(new Emitter<IProcessDataEvent>())
+  - name: onProcessData
+    type: any
+    default: this._onProcessData.event
+  - name: _onProcessReplayComplete
+    type: any
+    default: this._register(new Emitter<void>())
+  - name: onProcessReplayComplete
+    type: any
+    default: this._onProcessReplayComplete.event
+  - name: _onDidChangeProperty
+    type: any
+    default: this._register(new Emitter<IProcessProperty<any>>())
+  - name: onDidChangeProperty
+    type: any
+    default: this._onDidChangeProperty.event
+  - name: _onEnvironmentVariableInfoChange
+    type: any
+    default: this._register(new Emitter<IEnvironmentVariableInfo>())
+  - name: onEnvironmentVariableInfoChanged
+    type: any
+    default: this._onEnvironmentVariableInfoChange.event
+  - name: _onProcessExit
+    type: any
+    default: this._register(new Emitter<number | undefined>())
+  - name: onProcessExit
+    type: any
+    default: this._onProcessExit.event
+  - name: _onRestoreCommands
+    type: any
+    default: this._register(new Emitter<ISerializedCommandDetectionCapability>())
+  - name: onRestoreCommands
+    type: any
+    default: this._onRestoreCommands.event
+  - name: _cwdWorkspaceFolder
+    type: IWorkspaceFolder | undefined
+  methods:
+  - name: persistentProcessId
+    sig: 'persistentProcessId(): number | undefined'
+    lines:
+    - 126
+    - 126
+    detail: {}
+  - name: shouldPersist
+    sig: 'shouldPersist(): boolean'
+    lines:
+    - 127
+    - 127
+    detail: {}
+  - name: hasWrittenData
+    sig: 'hasWrittenData(): boolean'
+    lines:
+    - 128
+    - 128
+    detail: {}
+  - name: hasChildProcesses
+    sig: 'hasChildProcesses(): boolean'
+    lines:
+    - 129
+    - 129
+    detail: {}
+  - name: reconnectionProperties
+    sig: 'reconnectionProperties(): IReconnectionProperties | undefined'
+    lines:
+    - 130
+    - 130
+    detail: {}
+  - name: extEnvironmentVariableCollection
+    sig: 'extEnvironmentVariableCollection(): IMergedEnvironmentVariableCollection | undefined'
+    lines:
+    - 131
+    - 131
+    detail: {}
+  - name: processTraits
+    sig: 'processTraits(): IProcessReadyEvent | undefined'
+    lines:
+    - 132
+    - 132
+    detail: {}
+  - name: constructor
+    sig: "constructor(\n\t\tprivate readonly _instanceId: number,\n\t\tcwd: string | URI | undefined,\n\t\tenvironmentVariableCollections: ReadonlyMap<string, IEnvironmentVariableCollection> | undefined,\n\t\tshellIntegrationNonce: string | undefined,\n\t\t@IHistoryService private readonly _historyService: IHistoryService,\n\t\t@IInstantiationService private readonly _instantiationService: IInstantiationService,\n\t\t@ITerminalLogService private readonly _logService: ITerminalLogService,\n\t\t@IWorkspaceContextService private readonly _workspaceContextService: IWorkspaceContextService,\n\t\t@IConfigurationResolverService private readonly _configurationResolverService: IConfigurationResolverService,\n\t\t@IWorkbenchEnvironmentService private readonly _workbenchEnvironmentService: IWorkbenchEnvironmentService,\n\t\t@IProductService private readonly _productService: IProductService,\n\t\t@IRemoteAgentService private readonly _remoteAgentService: IRemoteAgentService,\n\t\t@IPathService private readonly _pathService: IPathService,\n\t\t@IEnvironmentVariableService private readonly _environmentVariableService: IEnvironmentVariableService,\n\t\t@ITerminalConfigurationService private readonly _terminalConfigurationService: ITerminalConfigurationService,\n\t\t@ITerminalProfileResolverService private readonly _terminalProfileResolverService: ITerminalProfileResolverService,\n\t\t@IConfigurationService private readonly _configurationService: IConfigurationService,\n\t\t@ITerminalInstanceService private readonly _terminalInstanceService: ITerminalInstanceService,\n\t\t@ITelemetryService private readonly _telemetryService: ITelemetryService,\n\t\t@INotificationService private readonly _notificationService: INotificationService\n\t)"
+    lines:
+    - 134
+    - 188
+    detail:
+      calls:
+      - generateUuid
+      - getRemoteAuthority
+      - new AckDataBufferer
+      - new MergedEnvironmentVariableCollection
+      - super
+      - terminalEnvironment.getWorkspaceForTerminal
+      - this._createPtyProcessReadyPromise
+      - this._dataFilter.onProcessData
+      - this._environmentVariableService.onDidChangeCollections
+      - this._instantiationService.createInstance
+      - this._onEnvironmentVariableInfoChange.fire
+      - this._register
+  - name: freePortKillProcess
+    sig: 'freePortKillProcess(port: string): Promise<void>'
+    is_async: true
+    lines:
+    - 190
+    - 198
+    detail:
+      calls:
+      - localize
+      - this._notificationService.notify
+      - this._process?.freePortKillProcess
+  - name: dispose
+    sig: 'dispose(immediate: boolean = false): void'
+    lines:
+    - 200
+    - 211
+    detail:
+      calls:
+      - super.dispose
+      - this._process.shutdown
+      - this._setProcessState
+  - name: detachFromProcess
+    sig: 'detachFromProcess(forcePersist?: boolean): Promise<void>'
+    is_async: true
+    lines:
+    - 225
+    - 228
+    detail:
+      calls:
+      - this._process?.detach
+  - name: createProcess
+    sig: "createProcess(\n\t\tshellLaunchConfig: IShellLaunchConfig,\n\t\tcols: number,\n\t\trows: number,\n\t\treset: boolean = true\n\t): Promise<ITerminalLaunchError | { injectedArgs: string[] } | undefined>"
+    is_async: true
+    lines:
+    - 230
+    - 413
+    detail:
+      calls:
+      - backend.attachToProcess
+      - backend.attachToRevivedProcess
+      - backend.createProcess
+      - dispose
+      - getActiveWindow
+      - new Error
+      - new NaiveCwdDetectionCapability
+      - newProcess.onDidChangeProperty
+      - newProcess.onProcessExit
+      - newProcess.onProcessReady
+      - newProcess.onProcessReplayComplete
+      - newProcess.onRestoreCommands
+      - newProcess.shutdown
+      - newProcess.start
+      - runWhenWindowIdle
+      - serializeEnvironmentVariableCollections
+      - setTimeout
+      - shellLaunchConfig.customPtyImplementation
+      - terminalEnvironment.createVariableResolver
+      - this._configurationService.getValue
+      - this._dataFilter.newProcess
+      - this._launchLocalProcess
+      - this._logService.trace
+      - this._logService.warn
+      - this._pathService.userHome
+      - this._processListeners.push
+      - this._remoteAgentService.getEnvironment
+      - this._resolveEnvironment
+      - this._setProcessState
+      - this._setupPtyHostListeners
+      - this._terminalInstanceService.getBackend
+      - this._terminalProfileResolverService.getEnvironment
+      - this._terminalProfileResolverService.resolveShellLaunchConfig
+      - this.capabilities.add
+  - name: relaunch
+    sig: 'relaunch(shellLaunchConfig: IShellLaunchConfig, cols: number, rows: number, reset: boolean): Promise<ITerminalLaunchError | { injectedArgs: string[] } | undefined>'
+    is_async: true
+    lines:
+    - 415
+    - 430
+    detail:
+      calls:
+      - this._createPtyProcessReadyPromise
+      - this._logService.trace
+      - this._onPtyReconnect.fire
+      - this.createProcess
+  - name: _resolveEnvironment
+    sig: '_resolveEnvironment(backend: ITerminalBackend, variableResolver: terminalEnvironment.VariableResolver | undefined, shellLaunchConfig: IShellLaunchConfig): Promise<IProcessEnvironment>'
+    is_async: true
+    vis: private
+    lines:
+    - 433
+    - 463
+    detail:
+      calls:
+      - backend.getShellEnvironment
+      - shouldUseEnvironmentVariableCollection
+      - terminalEnvironment.createTerminalEnvironment
+      - terminalEnvironment.getWorkspaceForTerminal
+      - this._configurationService.getValue
+      - this._environmentVariableService.onDidChangeCollections
+      - this._extEnvironmentVariableCollection.applyToProcessEnvironment
+      - this._extEnvironmentVariableCollection.getVariableMap
+      - this._instantiationService.createInstance
+      - this._onEnvironmentVariableInfoChange.fire
+      - this._register
+      - this._terminalProfileResolverService.getEnvironment
+  - name: _launchLocalProcess
+    sig: "_launchLocalProcess(\n\t\tbackend: ITerminalBackend,\n\t\tshellLaunchConfig: IShellLaunchConfig,\n\t\tcols: number,\n\t\trows: number,\n\t\tuserHome: string | undefined,\n\t\tvariableResolver: terminalEnvironment.VariableResolver | undefined\n\t): Promise<ITerminalChildProcess>"
+    is_async: true
+    vis: private
+    lines:
+    - 465
+    - 503
+    detail:
+      calls:
+      - backend.createProcess
+      - serializeEnvironmentVariableCollections
+      - terminalEnvironment.getCwd
+      - this._configurationService.getValue
+      - this._historyService.getLastActiveWorkspaceRoot
+      - this._resolveEnvironment
+      - this._terminalProfileResolverService.resolveShellLaunchConfig
+  - name: _setupPtyHostListeners
+    sig: '_setupPtyHostListeners(backend: ITerminalBackend)'
+    vis: private
+    lines:
+    - 505
+    - 550
+    detail:
+      calls:
+      - backend.onPtyHostResponsive
+      - backend.onPtyHostRestart
+      - backend.onPtyHostUnresponsive
+      - this._register
+      - toDisposable
+  - name: getBackendOS
+    sig: 'getBackendOS(): Promise<OperatingSystem>'
+    is_async: true
+    lines:
+    - 552
+    - 562
+    detail:
+      calls:
+      - new Error
+      - this._remoteAgentService.getEnvironment
+  - name: setDimensions
+    sig: 'setDimensions(cols: number, rows: number, sync?: boolean): Promise<void> | void'
+    lines:
+    - 567
+    - 574
+    detail:
+      calls:
+      - this._resize
+      - this.ptyProcessReady.then
+  - name: setUnicodeVersion
+    sig: 'setUnicodeVersion(version: ''6'' | ''11''): Promise<void>'
+    is_async: true
+    lines:
+    - 576
+    - 578
+    detail:
+      calls:
+      - this._process?.setUnicodeVersion
+  - name: write
+    sig: 'write(data: string): Promise<void>'
+    is_async: true
+    lines:
+    - 597
+    - 610
+    detail:
+      calls:
+      - this._dataFilter.disableSeamlessRelaunch
+      - this._preLaunchInputQueue.push
+      - this._process.input
+  - name: processBinary
+    sig: 'processBinary(data: string): Promise<void>'
+    is_async: true
+    lines:
+    - 612
+    - 617
+    detail:
+      calls:
+      - this._dataFilter.disableSeamlessRelaunch
+      - this._process?.processBinary
+  - name: initialCwd
+    sig: 'initialCwd(): string'
+    lines:
+    - 619
+    - 621
+    detail: {}
+  - name: refreshProperty
+    sig: 'refreshProperty(type: T): Promise<IProcessPropertyMap[T]>'
+    is_async: true
+    lines:
+    - 623
+    - 628
+    detail:
+      calls:
+      - new Error
+      - this._process.refreshProperty
+  - name: updateProperty
+    sig: 'updateProperty(type: T, value: IProcessPropertyMap[T]): Promise<void>'
+    is_async: true
+    lines:
+    - 630
+    - 632
+    detail:
+      calls:
+      - this._process?.updateProperty
+  - name: acknowledgeDataEvent
+    sig: 'acknowledgeDataEvent(charCount: number): void'
+    lines:
+    - 634
+    - 636
+    detail:
+      calls:
+      - this._ackDataBufferer.ack
+  - name: _onEnvironmentVariableCollectionChange
+    sig: '_onEnvironmentVariableCollectionChange(newCollection: IMergedEnvironmentVariableCollection): void'
+    vis: private
+    lines:
+    - 661
+    - 673
+    detail:
+      calls:
+      - this._extEnvironmentVariableCollection!.diff
+      - this._instantiationService.createInstance
+      - this._onEnvironmentVariableInfoChange.fire
+  - name: clearBuffer
+    sig: 'clearBuffer(): Promise<void>'
+    is_async: true
+    lines:
+    - 675
+    - 677
+    detail:
+      calls:
+      - this._process?.clearBuffer
+  lines:
+  - 70
+  - 678
+- name: AckDataBufferer
+  kind: struct
+  fields:
+  - name: _unsentCharCount
+    type: number
+    default: '0'
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tprivate readonly _callback: (charCount: number) => void\n\t)"
+    lines:
+    - 683
+    - 686
+    detail: {}
+  - name: ack
+    sig: 'ack(charCount: number)'
+    lines:
+    - 688
+    - 694
+    detail:
+      calls:
+      - this._callback
+  lines:
+  - 680
+  - 695
+- name: SeamlessRelaunchConstants
+  kind: enum
+  variants:
+  - name: RecordTerminalDuration
+    val: '10000'
+  - name: SwapWaitMaximumDuration
+    val: '3000'
+  lines:
+  - 697
+  - 706
+- name: SeamlessRelaunchDataFilter
+  kind: struct
+  ctx: Disables seamless relaunch for the active process
+  bases:
+  - Disposable
+  fields:
+  - name: _firstRecorder
+    type: TerminalRecorder
+  - name: _secondRecorder
+    type: TerminalRecorder
+  - name: _firstDisposable
+    type: IDisposable
+  - name: _secondDisposable
+    type: IDisposable
+  - name: _dataListener
+    type: IDisposable
+  - name: _activeProcess
+    type: ITerminalChildProcess
+  - name: _disableSeamlessRelaunch
+    type: boolean
+    default: 'false'
+  - name: _swapTimeout
+    type: number
+  - name: _onProcessData
+    type: any
+    default: this._register(new Emitter<string | IProcessDataEvent>())
+  methods:
+  - name: onProcessData
+    sig: 'onProcessData(): Event<string | IProcessDataEvent>'
+    lines:
+    - 725
+    - 725
+    detail: {}
+  - name: constructor
+    sig: "constructor(\n\t\t@ITerminalLogService private readonly _logService: ITerminalLogService\n\t)"
+    lines:
+    - 727
+    - 731
+    detail:
+      calls:
+      - super
+  - name: newProcess
+    sig: 'newProcess(process: ITerminalChildProcess, reset: boolean)'
+    lines:
+    - 733
+    - 768
+    detail:
+      calls:
+      - mainWindow.setTimeout
+      - process.onProcessData
+      - this._activeProcess?.shutdown
+      - this._createRecorder
+      - this._dataListener?.dispose
+      - this._firstDisposable?.dispose
+      - this._onProcessData.fire
+      - this.triggerSwap
+  - name: disableSeamlessRelaunch
+    sig: disableSeamlessRelaunch()
+    lines:
+    - 773
+    - 777
+    detail:
+      calls:
+      - this._stopRecording
+      - this.triggerSwap
+  - name: triggerSwap
+    sig: triggerSwap()
+    lines:
+    - 782
+    - 822
+    detail:
+      calls:
+      - mainWindow.clearTimeout
+      - this._activeProcess!.onProcessData
+      - this._dataListener?.dispose
+      - this._firstDisposable?.dispose
+      - this._getDataFromRecorder
+      - this._logService.trace
+      - this._onProcessData.fire
+  - name: _getDataFromRecorder
+    sig: '_getDataFromRecorder(recorder: TerminalRecorder): string'
+    vis: private
+    lines:
+    - 842
+    - 844
+    detail:
+      calls:
+      - recorder.generateReplayEventSync
+      - recorder.generateReplayEventSync().events.filter
+      - recorder.generateReplayEventSync().events.filter(e => !!e.data).map
+      - recorder.generateReplayEventSync().events.filter(e => !!e.data).map(e => e.data).join
+  lines:
+  - 713
+  - 845
+exports:
+- name: ProcessConstants
+  kind: type
+- name: ProcessType
+  kind: type
+- name: TerminalProcessManager
+  kind: type
+- name: AckDataBufferer
+  kind: type
+- name: SeamlessRelaunchConstants
+  kind: type
+- name: SeamlessRelaunchDataFilter
+  kind: type

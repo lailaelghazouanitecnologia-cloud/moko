@@ -1,0 +1,377 @@
+## Roska File Descriptor — browser/mainThreadDocumentsAndEditors.ts
+file: browser/mainThreadDocumentsAndEditors.ts
+lines: 436
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: ../../../base/common/event.js.Event
+- sym: ../../../base/common/lifecycle.js.combinedDisposable
+- sym: ../../../base/common/lifecycle.js.DisposableStore
+- sym: ../../../base/common/lifecycle.js.DisposableMap
+- sym: ../../../editor/browser/editorBrowser.js.ICodeEditor
+- sym: ../../../editor/browser/editorBrowser.js.isCodeEditor
+- sym: ../../../editor/browser/editorBrowser.js.isDiffEditor
+- sym: ../../../editor/browser/editorBrowser.js.IActiveCodeEditor
+- sym: ../../../editor/browser/services/codeEditorService.js.ICodeEditorService
+- sym: ../../../editor/common/editorCommon.js.IEditor
+- sym: ../../../editor/common/model.js.ITextModel
+- sym: ../../../editor/common/model.js.shouldSynchronizeModel
+- sym: ../../../editor/common/services/model.js.IModelService
+- sym: ../../../editor/common/services/resolverService.js.ITextModelService
+- sym: ../../../platform/files/common/files.js.IFileService
+- sym: ../../services/extensions/common/extHostCustomers.js.extHostCustomer
+- sym: ../../services/extensions/common/extHostCustomers.js.IExtHostContext
+- sym: ./mainThreadDocuments.js.MainThreadDocuments
+- sym: ./mainThreadEditor.js.MainThreadTextEditor
+- sym: ./mainThreadEditors.js.MainThreadTextEditors
+- sym: ../common/extHost.protocol.js.ExtHostContext
+- sym: ../common/extHost.protocol.js.ExtHostDocumentsAndEditorsShape
+- sym: ../common/extHost.protocol.js.IDocumentsAndEditorsDelta
+- sym: ../common/extHost.protocol.js.IModelAddedData
+- sym: ../common/extHost.protocol.js.ITextEditorAddData
+- sym: ../common/extHost.protocol.js.MainContext
+- sym: ../../browser/parts/editor/textEditor.js.AbstractTextEditor
+- sym: ../../common/editor.js.IEditorPane
+- sym: ../../services/editor/common/editorGroupColumn.js.EditorGroupColumn
+- sym: ../../services/editor/common/editorGroupColumn.js.editorGroupToColumn
+- sym: ../../services/editor/common/editorService.js.IEditorService
+- sym: ../../services/editor/common/editorGroupsService.js.IEditorGroupsService
+- sym: ../../services/textfile/common/textfiles.js.ITextFileService
+- sym: ../../services/environment/common/environmentService.js.IWorkbenchEnvironmentService
+- sym: ../../services/workingCopy/common/workingCopyFileService.js.IWorkingCopyFileService
+- sym: ../../../platform/uriIdentity/common/uriIdentity.js.IUriIdentityService
+- sym: ../../../platform/clipboard/common/clipboardService.js.IClipboardService
+- sym: ../../services/path/common/pathService.js.IPathService
+- sym: ../../../base/common/collections.js.diffSets
+- sym: ../../../base/common/collections.js.diffMaps
+- sym: ../../services/panecomposite/browser/panecomposite.js.IPaneCompositePartService
+- sym: ../../common/views.js.ViewContainerLocation
+- sym: ../../../platform/configuration/common/configuration.js.IConfigurationService
+- sym: ../../contrib/scm/browser/quickDiffModel.js.IQuickDiffModelService
+types:
+- name: TextEditorSnapshot
+  kind: struct
+  fields:
+  - name: id
+    type: string
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\treadonly editor: IActiveCodeEditor,\n\t)"
+    lines:
+    - 42
+    - 46
+    detail:
+      calls:
+      - editor.getId
+      - editor.getModel
+  lines:
+  - 38
+  - 47
+- name: DocumentAndEditorStateDelta
+  kind: struct
+  fields:
+  - name: isEmpty
+    type: boolean
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\treadonly removedDocuments: ITextModel[],\n\t\treadonly addedDocuments: ITextModel[],\n\t\treadonly removedEditors: TextEditorSnapshot[],\n\t\treadonly addedEditors: TextEditorSnapshot[],\n\t\treadonly oldActiveEditor: string | null | undefined,\n\t\treadonly newActiveEditor: string | null | undefined,\n\t)"
+    lines:
+    - 53
+    - 66
+    detail: {}
+  - name: toString
+    sig: 'toString(): string'
+    lines:
+    - 68
+    - 76
+    detail:
+      calls:
+      - this.addedDocuments.map
+      - this.addedDocuments.map(d => d.uri.toString(true)).join
+      - this.addedEditors.map
+      - this.addedEditors.map(e => e.id).join
+      - this.removedDocuments.map
+      - this.removedDocuments.map(d => d.uri.toString(true)).join
+      - this.removedEditors.map
+      - this.removedEditors.map(e => e.id).join
+  lines:
+  - 49
+  - 77
+- name: DocumentAndEditorState
+  kind: struct
+  methods:
+  - name: compute
+    sig: 'compute(before: DocumentAndEditorState | undefined, after: DocumentAndEditorState): DocumentAndEditorStateDelta'
+    decorators:
+    - static
+    lines:
+    - 81
+    - 99
+    detail:
+      calls:
+      - after.documents.values
+      - after.textEditors.values
+      - diffMaps
+      - diffSets
+      - new DocumentAndEditorStateDelta
+  - name: constructor
+    sig: "constructor(\n\t\treadonly documents: Set<ITextModel>,\n\t\treadonly textEditors: Map<string, TextEditorSnapshot>,\n\t\treadonly activeEditor: string | null | undefined,\n\t)"
+    lines:
+    - 101
+    - 107
+    detail: {}
+  lines:
+  - 79
+  - 108
+- name: ActiveEditorOrder
+  kind: enum
+  variants:
+  - name: Editor
+  - name: Panel
+  lines:
+  - 110
+  - 112
+- name: MainThreadDocumentAndEditorStateComputer
+  kind: struct
+  fields:
+  - name: _toDispose
+    type: any
+    default: new DisposableStore()
+  - name: _toDisposeOnEditorRemove
+    type: any
+    default: new DisposableMap<string>()
+  - name: _currentState
+    type: DocumentAndEditorState
+  - name: _activeEditorOrder
+    type: ActiveEditorOrder
+    default: ActiveEditorOrder.Editor
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tprivate readonly _onDidChangeState: (delta: DocumentAndEditorStateDelta) => void,\n\t\t@IModelService private readonly _modelService: IModelService,\n\t\t@ICodeEditorService private readonly _codeEditorService: ICodeEditorService,\n\t\t@IEditorService private readonly _editorService: IEditorService,\n\t\t@IPaneCompositePartService private readonly _paneCompositeService: IPaneCompositePartService,\n\t)"
+    lines:
+    - 121
+    - 141
+    detail:
+      calls:
+      - Event.filter
+      - Event.filter(this._paneCompositeService.onDidPaneCompositeClose, event => event.viewContainerLocatio...
+      - Event.filter(this._paneCompositeService.onDidPaneCompositeOpen, event => event.viewContainerLocation...
+      - this._codeEditorService.listCodeEditors
+      - this._codeEditorService.listCodeEditors().forEach
+      - this._codeEditorService.onCodeEditorAdd
+      - this._codeEditorService.onCodeEditorRemove
+      - this._editorService.onDidActiveEditorChange
+      - this._editorService.onDidVisibleEditorsChange
+      - this._modelService.onModelAdded
+      - this._modelService.onModelRemoved
+      - this._updateState
+  - name: dispose
+    sig: 'dispose(): void'
+    lines:
+    - 143
+    - 146
+    detail:
+      calls:
+      - this._toDispose.dispose
+      - this._toDisposeOnEditorRemove.dispose
+  - name: _onDidAddEditor
+    sig: '_onDidAddEditor(e: ICodeEditor): void'
+    vis: private
+    lines:
+    - 148
+    - 155
+    detail:
+      calls:
+      - combinedDisposable
+      - e.getId
+      - e.onDidChangeModel
+      - e.onDidFocusEditorText
+      - e.onDidFocusEditorWidget
+      - this._toDisposeOnEditorRemove.set
+      - this._updateState
+  - name: _onDidRemoveEditor
+    sig: '_onDidRemoveEditor(e: ICodeEditor): void'
+    vis: private
+    lines:
+    - 157
+    - 163
+    detail:
+      calls:
+      - e.getId
+      - this._toDisposeOnEditorRemove.deleteAndDispose
+      - this._toDisposeOnEditorRemove.has
+      - this._updateState
+  - name: _updateStateOnModelAdd
+    sig: '_updateStateOnModelAdd(model: ITextModel): void'
+    vis: private
+    lines:
+    - 165
+    - 189
+    detail:
+      calls:
+      - new DocumentAndEditorState
+      - new DocumentAndEditorStateDelta
+      - shouldSynchronizeModel
+      - this._currentState.documents.add
+      - this._onDidChangeState
+      - this._updateState
+  - name: _updateState
+    sig: '_updateState(widgetFocusCandidate?: ICodeEditor): void'
+    vis: private
+    lines:
+    - 191
+    - 253
+    detail:
+      calls:
+      - Boolean
+      - DocumentAndEditorState.compute
+      - editor.getModel
+      - editor.hasModel
+      - editor.hasTextFocus
+      - editor.hasWidgetFocus
+      - editors.set
+      - editors.values
+      - model.isDisposed
+      - models.add
+      - new DocumentAndEditorState
+      - new Map
+      - new Set
+      - new TextEditorSnapshot
+      - shouldSynchronizeModel
+      - this._codeEditorService.listCodeEditors
+      - this._getActiveEditorFromEditorPart
+      - this._getActiveEditorFromPanel
+      - this._modelService.getModel
+      - this._modelService.getModels
+      - this._onDidChangeState
+  lines:
+  - 114
+  - 274
+- name: MainThreadDocumentsAndEditors
+  kind: struct
+  fields:
+  - name: _toDispose
+    type: any
+    default: new DisposableStore()
+  - name: _proxy
+    type: ExtHostDocumentsAndEditorsShape
+  - name: _mainThreadDocuments
+    type: MainThreadDocuments
+  - name: _mainThreadEditors
+    type: MainThreadTextEditors
+  - name: _textEditors
+    type: any
+    default: new Map<string, MainThreadTextEditor>()
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\textHostContext: IExtHostContext,\n\t\t@IModelService private readonly _modelService: IModelService,\n\t\t@ITextFileService private readonly _textFileService: ITextFileService,\n\t\t@IEditorService private readonly _editorService: IEditorService,\n\t\t@ICodeEditorService codeEditorService: ICodeEditorService,\n\t\t@IFileService fileService: IFileService,\n\t\t@ITextModelService textModelResolverService: ITextModelService,\n\t\t@IEditorGroupsService private readonly _editorGroupService: IEditorGroupsService,\n\t\t@IPaneCompositePartService paneCompositeService: IPaneCompositePartService,\n\t\t@IWorkbenchEnvironmentService environmentService: IWorkbenchEnvironmentService,\n\t\t@IWorkingCopyFileService workingCopyFileService: IWorkingCopyFileService,\n\t\t@IUriIdentityService uriIdentityService: IUriIdentityService,\n\t\t@IClipboardService private readonly _clipboardService: IClipboardService,\n\t\t@IPathService pathService: IPathService,\n\t\t@IConfigurationService configurationService: IConfigurationService,\n\t\t@IQuickDiffModelService quickDiffModelService: IQuickDiffModelService\n\t)"
+    lines:
+    - 285
+    - 313
+    detail:
+      calls:
+      - extHostContext.getProxy
+      - extHostContext.set
+      - new MainThreadDocumentAndEditorStateComputer
+      - new MainThreadDocuments
+      - new MainThreadTextEditors
+      - this._toDispose.add
+  - name: dispose
+    sig: 'dispose(): void'
+    lines:
+    - 315
+    - 317
+    detail:
+      calls:
+      - this._toDispose.dispose
+  - name: _onDelta
+    sig: '_onDelta(delta: DocumentAndEditorStateDelta): void'
+    vis: private
+    lines:
+    - 319
+    - 380
+    detail:
+      calls:
+      - Object.create
+      - addedEditors.forEach
+      - addedEditors.map
+      - addedEditors.push
+      - apiEditor.editor.getModel
+      - delta.addedDocuments.forEach
+      - delta.addedDocuments.map
+      - delta.removedDocuments.map
+      - mainThreadEditor.dispose
+      - new MainThreadTextEditor
+      - removedDocuments.forEach
+      - removedEditors.forEach
+      - removedEditors.push
+      - this._proxy.$acceptDocumentsAndEditorsDelta
+      - this._textEditors.delete
+      - this._textEditors.get
+      - this._textEditors.set
+  - name: _toModelAddData
+    sig: '_toModelAddData(model: ITextModel): IModelAddedData'
+    vis: private
+    lines:
+    - 382
+    - 392
+    detail:
+      calls:
+      - model.getEOL
+      - model.getLanguageId
+      - model.getLinesContent
+      - model.getVersionId
+      - this._textFileService.getEncoding
+      - this._textFileService.isDirty
+  - name: _toTextEditorAddData
+    sig: '_toTextEditorAddData(textEditor: MainThreadTextEditor): ITextEditorAddData'
+    vis: private
+    lines:
+    - 394
+    - 404
+    detail:
+      calls:
+      - textEditor.getId
+      - textEditor.getModel
+      - textEditor.getProperties
+      - this._findEditorPosition
+  - name: findTextEditorIdFor
+    sig: 'findTextEditorIdFor(editorPane: IEditorPane): string | undefined'
+    lines:
+    - 415
+    - 422
+    detail:
+      calls:
+      - editor.matches
+  - name: getIdOfCodeEditor
+    sig: 'getIdOfCodeEditor(codeEditor: ICodeEditor): string | undefined'
+    lines:
+    - 424
+    - 431
+    detail:
+      calls:
+      - editor.getCodeEditor
+  - name: getEditor
+    sig: 'getEditor(id: string): MainThreadTextEditor | undefined'
+    lines:
+    - 433
+    - 435
+    detail:
+      calls:
+      - this._textEditors.get
+  lines:
+  - 277
+  - 436
+exports:
+- name: TextEditorSnapshot
+  kind: type
+- name: DocumentAndEditorStateDelta
+  kind: type
+- name: DocumentAndEditorState
+  kind: type
+- name: ActiveEditorOrder
+  kind: type
+- name: MainThreadDocumentAndEditorStateComputer
+  kind: type
+- name: MainThreadDocumentsAndEditors
+  kind: type

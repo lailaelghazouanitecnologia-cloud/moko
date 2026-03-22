@@ -1,0 +1,479 @@
+## Roska File Descriptor — browser/mainThreadDebugService.ts
+file: browser/mainThreadDebugService.ts
+lines: 519
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: ../../../base/common/lifecycle.js.DisposableMap
+- sym: ../../../base/common/lifecycle.js.DisposableStore
+- sym: ../../../base/common/lifecycle.js.IDisposable
+- sym: ../../../base/common/lifecycle.js.toDisposable
+- sym: ../../../base/common/uri.js.URI as uri
+- sym: ../../../base/common/uri.js.UriComponents
+- sym: ../../contrib/debug/common/debug.js.IDebugService
+- sym: ../../contrib/debug/common/debug.js.IConfig
+- sym: ../../contrib/debug/common/debug.js.IDebugConfigurationProvider
+- sym: ../../contrib/debug/common/debug.js.IBreakpoint
+- sym: ../../contrib/debug/common/debug.js.IFunctionBreakpoint
+- sym: ../../contrib/debug/common/debug.js.IBreakpointData
+- sym: ../../contrib/debug/common/debug.js.IDebugAdapter
+- sym: ../../contrib/debug/common/debug.js.IDebugAdapterDescriptorFactory
+- sym: ../../contrib/debug/common/debug.js.IDebugSession
+- sym: ../../contrib/debug/common/debug.js.IDebugAdapterFactory
+- sym: ../../contrib/debug/common/debug.js.IDataBreakpoint
+- sym: ../../contrib/debug/common/debug.js.IDebugSessionOptions
+- sym: ../../contrib/debug/common/debug.js.IInstructionBreakpoint
+- sym: ../../contrib/debug/common/debug.js.DebugConfigurationProviderTriggerKind
+- sym: ../../contrib/debug/common/debug.js.IDebugVisualization
+- sym: ../../contrib/debug/common/debug.js.DataBreakpointSetType
+- sym: ../common/extHost.protocol.js.ExtHostContext
+- sym: ../common/extHost.protocol.js.ExtHostDebugServiceShape
+- sym: ../common/extHost.protocol.js.MainThreadDebugServiceShape
+- sym: ../common/extHost.protocol.js.DebugSessionUUID
+- sym: ../common/extHost.protocol.js.MainContext
+- sym: ../common/extHost.protocol.js.IBreakpointsDeltaDto
+- sym: ../common/extHost.protocol.js.ISourceMultiBreakpointDto
+- sym: ../common/extHost.protocol.js.ISourceBreakpointDto
+- sym: ../common/extHost.protocol.js.IFunctionBreakpointDto
+- sym: ../common/extHost.protocol.js.IDebugSessionDto
+- sym: ../common/extHost.protocol.js.IDataBreakpointDto
+- sym: ../common/extHost.protocol.js.IStartDebuggingOptions
+- sym: ../common/extHost.protocol.js.IDebugConfiguration
+- sym: ../common/extHost.protocol.js.IThreadFocusDto
+- sym: ../common/extHost.protocol.js.IStackFrameFocusDto
+- sym: ../../services/extensions/common/extHostCustomers.js.extHostNamedCustomer
+- sym: ../../services/extensions/common/extHostCustomers.js.IExtHostContext
+- sym: ../../../base/common/severity.js.severity
+- sym: ../../contrib/debug/common/abstractDebugAdapter.js.AbstractDebugAdapter
+- sym: ../../../platform/workspace/common/workspace.js.IWorkspaceFolder
+- sym: ../../contrib/debug/common/debugUtils.js.convertToVSCPaths
+- sym: ../../contrib/debug/common/debugUtils.js.convertToDAPaths
+- sym: ../../contrib/debug/common/debugUtils.js.isSessionAttach
+- sym: ../../../base/common/errors.js.ErrorNoTelemetry
+- sym: ../../contrib/debug/common/debugVisualizers.js.IDebugVisualizerService
+- sym: ../../../platform/extensions/common/extensions.js.ExtensionIdentifier
+- sym: ../../../base/common/event.js.Event
+- sym: ../../../base/common/types.js.isDefined
+types:
+- name: MainThreadDebugService
+  kind: struct
+  ctx: interface IDebugAdapterProvider
+  bases:
+  - MainThreadDebugServiceShape
+  - IDebugAdapterFactory
+  fields:
+  - name: _proxy
+    type: ExtHostDebugServiceShape
+  - name: _toDispose
+    type: any
+    default: new DisposableStore()
+  - name: _debugAdapters
+    type: Map<number, ExtensionHostDebugAdapter>
+  - name: _debugAdaptersHandleCounter
+    type: any
+    default: '1'
+  - name: _debugConfigurationProviders
+    type: Map<number, IDebugConfigurationProvider>
+  - name: _debugAdapterDescriptorFactories
+    type: Map<number, IDebugAdapterDescriptorFactory>
+  - name: _extHostKnownSessions
+    type: Set<DebugSessionUUID>
+  - name: _visualizerHandles
+    type: any
+    default: new Map<string, IDisposable>()
+  - name: _visualizerTreeHandles
+    type: any
+    default: new Map<string, IDisposable>()
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\textHostContext: IExtHostContext,\n\t\t@IDebugService private readonly debugService: IDebugService,\n\t\t@IDebugVisualizerService private readonly visualizerService: IDebugVisualizerService,\n\t)"
+    lines:
+    - 37
+    - 116
+    detail:
+      calls:
+      - Event.any
+      - Event.any(viewModel.onDidFocusStackFrame, viewModel.onDidFocusThread)
+      - debugService.getViewModel
+      - debugService.getViewModel().onDidFocusSession
+      - debugService.onDidEndSession
+      - debugService.onDidNewSession
+      - debugService.onWillNewSession
+      - extHostContext.getProxy
+      - new DisposableMap
+      - new Map
+      - new Set
+      - this._toDispose.add
+      - this.debugService.getViewModel
+      - this.sendBreakpointsAndListen
+      - toDisposable
+  - name: $registerDebugVisualizerTree
+    sig: '$registerDebugVisualizerTree(treeId: string, canEdit: boolean): void'
+    lines:
+    - 118
+    - 125
+    detail:
+      calls:
+      - this._visualizerTreeHandles.set
+      - this.visualizerService.registerTree
+  - name: $unregisterDebugVisualizerTree
+    sig: '$unregisterDebugVisualizerTree(treeId: string): void'
+    lines:
+    - 127
+    - 130
+    detail:
+      calls:
+      - this._visualizerTreeHandles.delete
+      - this._visualizerTreeHandles.get
+      - this._visualizerTreeHandles.get(treeId)?.dispose
+  - name: $registerDebugVisualizer
+    sig: '$registerDebugVisualizer(extensionId: string, id: string): void'
+    lines:
+    - 132
+    - 142
+    detail:
+      calls:
+      - new ExtensionIdentifier
+      - this._visualizerHandles.set
+      - this.visualizerService.register
+  - name: $unregisterDebugVisualizer
+    sig: '$unregisterDebugVisualizer(extensionId: string, id: string): void'
+    lines:
+    - 144
+    - 148
+    detail:
+      calls:
+      - this._visualizerHandles.delete
+      - this._visualizerHandles.get
+      - this._visualizerHandles.get(key)?.dispose
+  - name: sendBreakpointsAndListen
+    sig: 'sendBreakpointsAndListen(): void'
+    vis: private
+    lines:
+    - 150
+    - 181
+    detail:
+      calls:
+      - this._proxy.$acceptBreakpointsDelta
+      - this._toDispose.add
+      - this.convertToDto
+      - this.convertToDto(bps).concat
+      - this.convertToDto(bps).concat(this.convertToDto(fbps)).concat
+      - this.debugService.getModel
+      - this.debugService.getModel().getBreakpoints
+      - this.debugService.getModel().getDataBreakpoints
+      - this.debugService.getModel().getFunctionBreakpoints
+      - this.debugService.getModel().onDidChangeBreakpoints
+  - name: dispose
+    sig: 'dispose(): void'
+    lines:
+    - 183
+    - 185
+    detail:
+      calls:
+      - this._toDispose.dispose
+  - name: createDebugAdapter
+    sig: 'createDebugAdapter(session: IDebugSession): IDebugAdapter'
+    lines:
+    - 189
+    - 194
+    detail:
+      calls:
+      - new ExtensionHostDebugAdapter
+      - this._debugAdapters.set
+  - name: substituteVariables
+    sig: 'substituteVariables(folder: IWorkspaceFolder | undefined, config: IConfig): Promise<IConfig>'
+    lines:
+    - 196
+    - 198
+    detail:
+      calls:
+      - Promise.resolve
+      - this._proxy.$substituteVariables
+  - name: runInTerminal
+    sig: 'runInTerminal(args: DebugProtocol.RunInTerminalRequestArguments, sessionId: string): Promise<number | undefined>'
+    lines:
+    - 200
+    - 202
+    detail:
+      calls:
+      - this._proxy.$runInTerminal
+  - name: $registerDebugTypes
+    sig: '$registerDebugTypes(debugTypes: string[])'
+    lines:
+    - 206
+    - 208
+    detail:
+      calls:
+      - this._toDispose.add
+      - this.debugService.getAdapterManager
+      - this.debugService.getAdapterManager().registerDebugAdapterFactory
+  - name: $registerBreakpoints
+    sig: '$registerBreakpoints(DTOs: Array<ISourceMultiBreakpointDto | IFunctionBreakpointDto | IDataBreakpointDto>): Promise<void>'
+    lines:
+    - 210
+    - 246
+    detail:
+      calls:
+      - Promise.resolve
+      - dto.lines.map
+      - this.debugService.addBreakpoints
+      - this.debugService.addDataBreakpoint
+      - this.debugService.addFunctionBreakpoint
+      - uri.revive
+  - name: $unregisterBreakpoints
+    sig: '$unregisterBreakpoints(breakpointIds: string[], functionBreakpointIds: string[], dataBreakpointIds: string[]): Promise<void>'
+    lines:
+    - 248
+    - 253
+    detail:
+      calls:
+      - Promise.resolve
+      - breakpointIds.forEach
+      - dataBreakpointIds.forEach
+      - functionBreakpointIds.forEach
+  - name: $registerDebugConfigurationProvider
+    sig: '$registerDebugConfigurationProvider(debugType: string, providerTriggerKind: DebugConfigurationProviderTriggerKind, hasProvide: boolean, hasResolve: boolean, hasResolve2: boolean, handle: number): Promise<void>'
+    lines:
+    - 255
+    - 280
+    detail:
+      calls:
+      - Promise.resolve
+      - this._debugConfigurationProviders.set
+      - this._toDispose.add
+      - this.debugService.getConfigurationManager
+      - this.debugService.getConfigurationManager().registerDebugConfigurationProvider
+  - name: $unregisterDebugConfigurationProvider
+    sig: '$unregisterDebugConfigurationProvider(handle: number): void'
+    lines:
+    - 282
+    - 288
+    detail:
+      calls:
+      - this._debugConfigurationProviders.delete
+      - this._debugConfigurationProviders.get
+      - this.debugService.getConfigurationManager
+      - this.debugService.getConfigurationManager().unregisterDebugConfigurationProvider
+  - name: $registerDebugAdapterDescriptorFactory
+    sig: '$registerDebugAdapterDescriptorFactory(debugType: string, handle: number): Promise<void>'
+    lines:
+    - 290
+    - 302
+    detail:
+      calls:
+      - Promise.resolve
+      - this._debugAdapterDescriptorFactories.set
+      - this._toDispose.add
+      - this.debugService.getAdapterManager
+      - this.debugService.getAdapterManager().registerDebugAdapterDescriptorFactory
+  - name: $unregisterDebugAdapterDescriptorFactory
+    sig: '$unregisterDebugAdapterDescriptorFactory(handle: number): void'
+    lines:
+    - 304
+    - 310
+    detail:
+      calls:
+      - this._debugAdapterDescriptorFactories.delete
+      - this._debugAdapterDescriptorFactories.get
+      - this.debugService.getAdapterManager
+      - this.debugService.getAdapterManager().unregisterDebugAdapterDescriptorFactory
+  - name: $startDebugging
+    sig: '$startDebugging(folder: UriComponents | undefined, nameOrConfig: string | IDebugConfiguration, options: IStartDebuggingOptions): Promise<boolean>'
+    is_async: true
+    lines:
+    - 319
+    - 343
+    detail:
+      calls:
+      - new ErrorNoTelemetry
+      - this.debugService.getConfigurationManager
+      - this.debugService.getConfigurationManager().getLaunch
+      - this.debugService.startDebugging
+      - this.getSession
+      - uri.revive
+  - name: $setDebugSessionName
+    sig: '$setDebugSessionName(sessionId: DebugSessionUUID, name: string): void'
+    lines:
+    - 345
+    - 348
+    detail:
+      calls:
+      - session?.setName
+      - this.debugService.getModel
+      - this.debugService.getModel().getSession
+  - name: $customDebugAdapterRequest
+    sig: '$customDebugAdapterRequest(sessionId: DebugSessionUUID, request: string, args: any): Promise<any>'
+    lines:
+    - 350
+    - 362
+    detail:
+      calls:
+      - Promise.reject
+      - new ErrorNoTelemetry
+      - session.customRequest
+      - session.customRequest(request, args).then
+      - this.debugService.getModel
+      - this.debugService.getModel().getSession
+  - name: $getDebugProtocolBreakpoint
+    sig: '$getDebugProtocolBreakpoint(sessionId: DebugSessionUUID, breakpoinId: string): Promise<DebugProtocol.Breakpoint | undefined>'
+    lines:
+    - 364
+    - 370
+    detail:
+      calls:
+      - Promise.reject
+      - Promise.resolve
+      - new ErrorNoTelemetry
+      - session.getDebugProtocolBreakpoint
+      - this.debugService.getModel
+      - this.debugService.getModel().getSession
+  - name: $stopDebugging
+    sig: '$stopDebugging(sessionId: DebugSessionUUID | undefined): Promise<void>'
+    lines:
+    - 372
+    - 382
+    detail:
+      calls:
+      - Promise.reject
+      - isSessionAttach
+      - new ErrorNoTelemetry
+      - this.debugService.getModel
+      - this.debugService.getModel().getSession
+      - this.debugService.stopSession
+  - name: $appendDebugConsole
+    sig: '$appendDebugConsole(value: string): void'
+    lines:
+    - 384
+    - 388
+    detail:
+      calls:
+      - session?.appendToRepl
+      - this.debugService.getViewModel
+  - name: $acceptDAMessage
+    sig: '$acceptDAMessage(handle: number, message: DebugProtocol.ProtocolMessage)'
+    lines:
+    - 390
+    - 392
+    detail:
+      calls:
+      - convertToVSCPaths
+      - this.getDebugAdapter
+      - this.getDebugAdapter(handle).acceptMessage
+  - name: $acceptDAError
+    sig: '$acceptDAError(handle: number, name: string, message: string, stack: string)'
+    lines:
+    - 394
+    - 397
+    detail:
+      calls:
+      - new Error
+      - this._debugAdapters.get
+      - this._debugAdapters.get(handle)?.fireError
+  - name: $acceptDAExit
+    sig: '$acceptDAExit(handle: number, code: number, signal: string)'
+    lines:
+    - 399
+    - 402
+    detail:
+      calls:
+      - this._debugAdapters.get
+      - this._debugAdapters.get(handle)?.fireExit
+  - name: $sessionCached
+    sig: '$sessionCached(sessionID: string)'
+    lines:
+    - 414
+    - 417
+    detail:
+      calls:
+      - this._extHostKnownSessions.add
+  - name: getSessionDto
+    sig: 'getSessionDto(session: IDebugSession | undefined): IDebugSessionDto | undefined'
+    lines:
+    - 423
+    - 441
+    detail:
+      calls:
+      - session.getId
+      - session.parentSession?.getId
+      - this._extHostKnownSessions.has
+  - name: convertToDto
+    sig: 'convertToDto(bps: (ReadonlyArray<IBreakpoint | IFunctionBreakpoint | IDataBreakpoint | IInstructionBreakpoint>)): Array<ISourceBreakpointDto | IFunctionBreakpointDto | IDataBreakpointDto>'
+    vis: private
+    lines:
+    - 443
+    - 487
+    detail:
+      calls:
+      - bps.map
+      - "bps.map(bp => {\n\t\t\tif ('name' in bp) {\n\t\t\t\tconst fbp: IFunctionBreakpoint = bp;\n\t\t\t\treturn {\n\t\t\t\t\tty..."
+  lines:
+  - 25
+  - 488
+- name: ExtensionHostDebugAdapter
+  kind: struct
+  bases:
+  - AbstractDebugAdapter
+  methods:
+  - name: constructor
+    sig: 'constructor(private readonly _ds: MainThreadDebugService, private _handle: number, private _proxy: ExtHostDebugServiceShape, readonly session: IDebugSession)'
+    lines:
+    - 495
+    - 497
+    detail:
+      calls:
+      - super
+  - name: fireError
+    sig: 'fireError(handle: number, err: Error)'
+    lines:
+    - 499
+    - 501
+    detail:
+      calls:
+      - this._onError.fire
+  - name: fireExit
+    sig: 'fireExit(handle: number, code: number, signal: string)'
+    lines:
+    - 503
+    - 505
+    detail:
+      calls:
+      - this._onExit.fire
+  - name: startSession
+    sig: 'startSession(): Promise<void>'
+    lines:
+    - 507
+    - 509
+    detail:
+      calls:
+      - Promise.resolve
+      - this._ds.getSessionDto
+      - this._proxy.$startDASession
+  - name: sendMessage
+    sig: 'sendMessage(message: DebugProtocol.ProtocolMessage): void'
+    lines:
+    - 511
+    - 513
+    detail:
+      calls:
+      - convertToDAPaths
+      - this._proxy.$sendDAMessage
+  - name: stopSession
+    sig: 'stopSession(): Promise<void>'
+    is_async: true
+    lines:
+    - 515
+    - 518
+    detail:
+      calls:
+      - Promise.resolve
+      - this._proxy.$stopDASession
+      - this.cancelPendingRequests
+  lines:
+  - 493
+  - 519
+exports:
+- name: MainThreadDebugService
+  kind: type
+- name: ExtensionHostDebugAdapter
+  kind: type

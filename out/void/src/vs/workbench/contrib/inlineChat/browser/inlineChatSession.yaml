@@ -1,0 +1,571 @@
+## Roska File Descriptor — browser/inlineChatSession.ts
+file: browser/inlineChatSession.ts
+lines: 646
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: ../../../../base/common/uri.js.URI
+- sym: ../../../../base/common/event.js.Emitter
+- sym: ../../../../base/common/event.js.Event
+- sym: ../../../../editor/common/model.js.IIdentifiedSingleEditOperation
+- sym: ../../../../editor/common/model.js.IModelDecorationOptions
+- sym: ../../../../editor/common/model.js.IModelDeltaDecoration
+- sym: ../../../../editor/common/model.js.ITextModel
+- sym: ../../../../editor/common/model.js.IValidEditOperation
+- sym: ../../../../editor/common/model.js.TrackedRangeStickiness
+- sym: ../common/inlineChat.js.CTX_INLINE_CHAT_HAS_STASHED_SESSION
+- sym: ../../../../editor/common/core/range.js.IRange
+- sym: ../../../../editor/common/core/range.js.Range
+- sym: ../../../../editor/common/model/textModel.js.ModelDecorationOptions
+- sym: ../../../../editor/common/core/editOperation.js.EditOperation
+- sym: ../../../../editor/common/core/editOperation.js.ISingleEditOperation
+- sym: ../../../../editor/common/diff/rangeMapping.js.DetailedLineRangeMapping
+- sym: ../../../../editor/common/diff/rangeMapping.js.LineRangeMapping
+- sym: ../../../../editor/common/diff/rangeMapping.js.RangeMapping
+- sym: ./inlineChatSessionService.js.IInlineChatSessionService
+- sym: ../../../../editor/common/core/lineRange.js.LineRange
+- sym: ../../../../editor/common/services/editorWorker.js.IEditorWorkerService
+- sym: ../../../../base/common/arrays.js.coalesceInPlace
+- sym: ../../../../base/common/iterator.js.Iterable
+- sym: ../../../../editor/common/textModelEvents.js.IModelContentChangedEvent
+- sym: ../../../../base/common/lifecycle.js.DisposableStore
+- sym: ../../../../base/common/lifecycle.js.IDisposable
+- sym: ../../../../editor/browser/editorBrowser.js.ICodeEditor
+- sym: ../../../../platform/contextkey/common/contextkey.js.IContextKey
+- sym: ../../../../platform/contextkey/common/contextkey.js.IContextKeyService
+- sym: ../../../../platform/log/common/log.js.ILogService
+- sym: ../../chat/common/chatModel.js.ChatModel
+- sym: ../../chat/common/chatModel.js.IChatRequestModel
+- sym: ../../chat/common/chatModel.js.IChatTextEditGroupState
+- sym: ../../../../platform/extensions/common/extensions.js.ExtensionIdentifier
+- sym: ../../chat/common/chatAgents.js.IChatAgent
+- sym: ../../../../editor/common/diff/documentDiffProvider.js.IDocumentDiff
+types:
+- name: TelemetryData
+  kind: typealias
+  decorators:
+  - type
+  fields:
+  - name: extension
+    type: string
+  - name: rounds
+    type: string
+  - name: undos
+    type: string
+  - name: unstashed
+    type: number
+  - name: edits
+    type: number
+  - name: finishedByEdit
+    type: boolean
+  - name: startTime
+    type: string
+  - name: endTime
+    type: string
+  - name: acceptedHunks
+    type: number
+  - name: discardedHunks
+    type: number
+  - name: responseTypes
+    type: string
+  lines:
+  - 30
+  - 42
+- name: TelemetryDataClassification
+  kind: typealias
+  decorators:
+  - type
+  fields:
+  - name: owner
+    type: '''jrieken'''
+  - name: comment
+    type: '''Data about an interaction editor session'''
+  - name: extension
+    type: '{ classification: ''SystemMetaData''; purpose: ''FeatureInsight''; comment: ''The extension providing the data'' }'
+  - name: rounds
+    type: '{ classification: ''SystemMetaData''; purpose: ''FeatureInsight''; comment: ''Number of request that were made'' }'
+  - name: undos
+    type: '{ classification: ''SystemMetaData''; purpose: ''FeatureInsight''; comment: ''Requests that have been undone'' }'
+  - name: edits
+    type: '{ classification: ''SystemMetaData''; purpose: ''FeatureInsight''; comment: ''Did edits happen while the session was active'' }'
+  - name: unstashed
+    type: '{ classification: ''SystemMetaData''; purpose: ''FeatureInsight''; comment: ''How often did this session become stashed and resumed'' }'
+  - name: finishedByEdit
+    type: '{ classification: ''SystemMetaData''; purpose: ''FeatureInsight''; comment: ''Did edits cause the session to terminate'' }'
+  - name: startTime
+    type: '{ classification: ''SystemMetaData''; purpose: ''FeatureInsight''; comment: ''When the session started'' }'
+  - name: endTime
+    type: '{ classification: ''SystemMetaData''; purpose: ''FeatureInsight''; comment: ''When the session ended'' }'
+  - name: acceptedHunks
+    type: '{ classification: ''SystemMetaData''; purpose: ''FeatureInsight''; comment: ''Number of accepted hunks'' }'
+  - name: discardedHunks
+    type: '{ classification: ''SystemMetaData''; purpose: ''FeatureInsight''; comment: ''Number of discarded hunks'' }'
+  - name: responseTypes
+    type: '{ classification: ''SystemMetaData''; purpose: ''FeatureInsight''; comment: ''Comma separated list of response types like edits, message, mixed'' }'
+  lines:
+  - 44
+  - 58
+- name: SessionWholeRange
+  kind: struct
+  fields:
+  - name: _options
+    type: IModelDecorationOptions
+    default: 'ModelDecorationOptions.register({ description: ''inlineChat/session/wholeRange'' }...'
+  - name: _onDidChange
+    type: any
+    default: new Emitter<this>()
+  - name: onDidChange
+    type: Event<this>
+    default: this._onDidChange.event
+  - name: _decorationIds
+    type: string[]
+    default: '[]'
+  methods:
+  - name: constructor
+    sig: 'constructor(private readonly _textModel: ITextModel, wholeRange: IRange)'
+    lines:
+    - 70
+    - 72
+    detail:
+      calls:
+      - _textModel.deltaDecorations
+  - name: dispose
+    sig: dispose()
+    lines:
+    - 74
+    - 79
+    detail:
+      calls:
+      - this._onDidChange.dispose
+      - this._textModel.deltaDecorations
+      - this._textModel.isDisposed
+  - name: fixup
+    sig: 'fixup(changes: readonly DetailedLineRangeMapping[]): void'
+    lines:
+    - 81
+    - 94
+    detail:
+      calls:
+      - '[first].concat'
+      - new Range
+      - newDeco.push
+      - this._onDidChange.fire
+      - this._textModel.deltaDecorations
+      - this._textModel.validateRange
+  - name: trackedInitialRange
+    sig: 'trackedInitialRange(): Range'
+    lines:
+    - 96
+    - 99
+    detail:
+      calls:
+      - new Range
+      - this._textModel.getDecorationRange
+  - name: value
+    sig: 'value(): Range'
+    lines:
+    - 101
+    - 114
+    detail:
+      calls:
+      - Range.plusRange
+      - this._textModel.getDecorationRange
+  lines:
+  - 61
+  - 115
+- name: Session
+  kind: struct
+  fields:
+  - name: _isUnstashed
+    type: boolean
+    default: 'false'
+  - name: _startTime
+    type: any
+    default: new Date()
+  - name: _teldata
+    type: TelemetryData
+  - name: _versionByRequest
+    type: any
+    default: new Map<string, number>()
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\treadonly headless: boolean,\n\t\t/**\n\t\t * The URI of the document which is being EditorEdit\n\t\t */\n\t\treadonly targetUri: URI,\n\t\t/**\n\t\t * A copy of the document at the time the session was started\n\t\t */\n\t\treadonly textModel0: ITextModel,\n\t\t/**\n\t\t * The model of the editor\n\t\t */\n\t\treadonly textModelN: ITextModel,\n\t\treadonly agent: IChatAgent,\n\t\treadonly wholeRange: SessionWholeRange,\n\t\treadonly hunkData: HunkData,\n\t\treadonly chatModel: ChatModel,\n\t\tversionsByRequest?: [string, number][], // DEBT? this is needed when a chat model is \"reused\" for a new chat session\n\t)"
+    lines:
+    - 125
+    - 162
+    detail:
+      calls:
+      - ExtensionIdentifier.toKey
+      - new Map
+      - this._startTime.toISOString
+  - name: isUnstashed
+    sig: 'isUnstashed(): boolean'
+    lines:
+    - 164
+    - 166
+    detail: {}
+  - name: markUnstashed
+    sig: markUnstashed()
+    lines:
+    - 168
+    - 171
+    detail: {}
+  - name: markModelVersion
+    sig: 'markModelVersion(request: IChatRequestModel)'
+    lines:
+    - 173
+    - 175
+    detail:
+      calls:
+      - this._versionByRequest.set
+      - this.textModelN.getAlternativeVersionId
+  - name: versionsByRequest
+    sig: versionsByRequest()
+    lines:
+    - 177
+    - 179
+    detail:
+      calls:
+      - Array.from
+  - name: undoChangesUntil
+    sig: 'undoChangesUntil(requestId: string): Promise<boolean>'
+    is_async: true
+    lines:
+    - 181
+    - 197
+    detail:
+      calls:
+      - this._versionByRequest.get
+      - this.textModelN.canUndo
+      - this.textModelN.getAlternativeVersionId
+      - this.textModelN.undo
+  - name: hasChangedText
+    sig: 'hasChangedText(): boolean'
+    lines:
+    - 199
+    - 201
+    detail:
+      calls:
+      - this.textModel0.equalsTextBuffer
+      - this.textModelN.getTextBuffer
+  - name: asChangedText
+    sig: 'asChangedText(changes: readonly LineRangeMapping[]): string | undefined'
+    lines:
+    - 203
+    - 216
+    detail:
+      calls:
+      - Math.max
+      - Math.min
+      - new Range
+      - this.textModelN.getValueInRange
+  - name: recordExternalEditOccurred
+    sig: 'recordExternalEditOccurred(didFinish: boolean)'
+    lines:
+    - 218
+    - 221
+    detail: {}
+  - name: asTelemetryData
+    sig: 'asTelemetryData(): TelemetryData'
+    lines:
+    - 223
+    - 238
+    detail:
+      calls:
+      - item.getState
+      - new Date
+      - new Date().toISOString
+      - this.hunkData.getInfo
+  lines:
+  - 117
+  - 239
+- name: StashedSession
+  kind: struct
+  fields:
+  - name: _listener
+    type: IDisposable
+  - name: _ctxHasStashedSession
+    type: IContextKey<boolean>
+  - name: _session
+    type: Session | undefined
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\teditor: ICodeEditor,\n\t\tsession: Session,\n\t\tprivate readonly _undoCancelEdits: IValidEditOperation[],\n\t\t@IContextKeyService contextKeyService: IContextKeyService,\n\t\t@IInlineChatSessionService private readonly _sessionService: IInlineChatSessionService,\n\t\t@ILogService private readonly _logService: ILogService\n\t)"
+    lines:
+    - 248
+    - 266
+    detail:
+      calls:
+      - CTX_INLINE_CHAT_HAS_STASHED_SESSION.bindTo
+      - Event.any
+      - Event.once
+      - Event.once(Event.any(editor.onDidChangeCursorSelection, editor.onDidChangeModelContent, editor.onDid...
+      - this._ctxHasStashedSession.set
+  - name: dispose
+    sig: dispose()
+    lines:
+    - 268
+    - 274
+    detail:
+      calls:
+      - this._ctxHasStashedSession.reset
+      - this._listener.dispose
+      - this._sessionService.releaseSession
+  - name: unstash
+    sig: 'unstash(): Session | undefined'
+    lines:
+    - 276
+    - 289
+    detail:
+      calls:
+      - result.markUnstashed
+      - result.textModelN.pushEditOperations
+      - this._listener.dispose
+      - this._logService.debug
+  lines:
+  - 242
+  - 290
+- name: HunkData
+  kind: struct
+  fields:
+  - name: _HUNK_TRACKED_RANGE
+    type: any
+    default: "ModelDecorationOptions.register({\n\t\tdescription: 'inline-chat-hunk-tracked-range..."
+  - name: _HUNK_THRESHOLD
+    type: any
+    default: '8'
+  - name: _store
+    type: any
+    default: new DisposableStore()
+  - name: _data
+    type: any
+    default: new Map<RawHunk, RawHunkData>()
+  - name: _ignoreChanges
+    type: boolean
+    default: 'false'
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\t@IEditorWorkerService private readonly _editorWorkerService: IEditorWorkerService,\n\t\tprivate readonly _textModel0: ITextModel,\n\t\tprivate readonly _textModelN: ITextModel,\n\t)"
+    lines:
+    - 313
+    - 324
+    detail:
+      calls:
+      - _textModelN.onDidChangeContent
+      - this._store.add
+  - name: dispose
+    sig: 'dispose(): void'
+    lines:
+    - 326
+    - 343
+    detail:
+      calls:
+      - this._data.clear
+      - this._store.dispose
+      - this._textModel0.changeDecorations
+      - this._textModel0.isDisposed
+      - this._textModelN.changeDecorations
+      - this._textModelN.isDisposed
+  - name: ignoreTextModelNChanges
+    sig: 'ignoreTextModelNChanges(value: boolean)'
+    lines:
+    - 345
+    - 347
+    detail: {}
+  - name: ignoreTextModelNChanges
+    sig: 'ignoreTextModelNChanges(): boolean'
+    lines:
+    - 349
+    - 351
+    detail: {}
+  - name: _mirrorChanges
+    sig: '_mirrorChanges(event: IModelContentChangedEvent)'
+    vis: private
+    lines:
+    - 353
+    - 446
+    detail:
+      calls:
+      - EditOperation.replace
+      - Range.areIntersectingOrTouching
+      - Range.fromPositions
+      - Range.getStartPosition
+      - edits.push
+      - entry.markAccepted
+      - entry.rangeN.getEndPosition
+      - entry.rangeN.getEndPosition().isBefore
+      - hunkRanges.push
+      - hunkRanges.sort
+      - range.getEndPosition
+      - range.getEndPosition().isBefore
+      - ranges0.push
+      - ranges0.sort
+      - this._data.values
+      - this._textModel0.getDecorationRange
+      - this._textModel0.getPositionAt
+      - this._textModel0.getValueLengthInRange
+      - this._textModel0.pushEditOperations
+      - this._textModelN.getDecorationRange
+      - this._textModelN.getValueLengthInRange
+  - name: recompute
+    sig: 'recompute(editState: IChatTextEditGroupState, diff?: IDocumentDiff | null)'
+    is_async: true
+    lines:
+    - 448
+    - 511
+    detail:
+      calls:
+      - (lastChange.innerChanges ?? []).concat
+      - lastChange.modified.join
+      - lastChange.original.join
+      - mergedChanges.map
+      - mergedChanges.push
+      - new DetailedLineRangeMapping
+      - this._editorWorkerService.computeDiff
+      - this._textModelN.changeDecorations
+  - name: size
+    sig: 'size(): number'
+    lines:
+    - 513
+    - 515
+    detail: {}
+  - name: pending
+    sig: 'pending(): number'
+    lines:
+    - 517
+    - 519
+    detail:
+      calls:
+      - Iterable.reduce
+      - this._data.values
+  - name: _discardEdits
+    sig: '_discardEdits(item: HunkInformation): ISingleEditOperation[]'
+    vis: private
+    lines:
+    - 521
+    - 532
+    detail:
+      calls:
+      - EditOperation.replace
+      - edits.push
+      - item.getRanges0
+      - item.getRangesN
+      - this._textModel0.getValueInRange
+  - name: discardAll
+    sig: discardAll()
+    lines:
+    - 534
+    - 547
+    detail:
+      calls:
+      - edits.flat
+      - edits.push
+      - item.getState
+      - this._discardEdits
+      - this._textModelN.pushEditOperations
+      - this.getInfo
+      - undoEdits.flat
+  - name: getInfo
+    sig: 'getInfo(): HunkInformation[]'
+    lines:
+    - 549
+    - 604
+    detail:
+      calls:
+      - result.push
+      - this._data.entries
+  lines:
+  - 300
+  - 605
+- name: RawHunk
+  kind: struct
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\treadonly original: LineRange,\n\t\treadonly modified: LineRange,\n\t\treadonly changes: RangeMapping[]\n\t)"
+    lines:
+    - 608
+    - 612
+    detail: {}
+  lines:
+  - 607
+  - 613
+- name: RawHunkData
+  kind: typealias
+  decorators:
+  - type
+  fields:
+  - name: textModelNDecorations
+    type: string[]
+  - name: textModel0Decorations
+    type: string[]
+  - name: state
+    type: HunkState
+  - name: editState
+    type: IChatTextEditGroupState
+  lines:
+  - 615
+  - 620
+- name: HunkState
+  kind: enum
+  variants:
+  - name: Pending
+    val: '0'
+  - name: Accepted
+    val: '1'
+  - name: Rejected
+    val: '2'
+  lines:
+  - 622
+  - 626
+- name: HunkInformation
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: getRangesN
+    type: 'method: getRangesN(): Range[]'
+  - name: getRanges0
+    type: 'method: getRanges0(): Range[]'
+  - name: isInsertion
+    type: 'method: isInsertion(): boolean'
+  - name: discardChanges
+    type: 'method: discardChanges(): void'
+  - name: acceptChanges
+    type: 'method: acceptChanges(): void'
+  - name: getState
+    type: 'method: getState(): HunkState'
+  lines:
+  - 628
+  - 646
+functions:
+- name: lineRangeAsRange
+  sig: 'lineRangeAsRange(lineRange: LineRange, model: ITextModel): Range'
+  lines:
+  - 294
+  - 298
+  detail:
+    calls:
+    - new Range
+exports:
+- name: TelemetryData
+  kind: type
+- name: TelemetryDataClassification
+  kind: type
+- name: SessionWholeRange
+  kind: type
+- name: Session
+  kind: type
+- name: StashedSession
+  kind: type
+- name: HunkData
+  kind: type
+- name: RawHunk
+  kind: type
+- name: RawHunkData
+  kind: type
+- name: HunkState
+  kind: type
+- name: HunkInformation
+  kind: type
+- name: lineRangeAsRange
+  kind: func

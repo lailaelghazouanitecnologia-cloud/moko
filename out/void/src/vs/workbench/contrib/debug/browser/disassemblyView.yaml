@@ -1,0 +1,681 @@
+## Roska File Descriptor — browser/disassemblyView.ts
+file: browser/disassemblyView.ts
+lines: 1008
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: ../../../../base/browser/pixelRatio.js.PixelRatio
+- sym: ../../../../base/browser/dom.js.$
+- sym: ../../../../base/browser/dom.js.Dimension
+- sym: ../../../../base/browser/dom.js.addStandardDisposableListener
+- sym: ../../../../base/browser/dom.js.append
+- sym: ../../../../base/browser/ui/list/listWidget.js.IListAccessibilityProvider
+- sym: ../../../../base/browser/ui/table/table.js.ITableRenderer
+- sym: ../../../../base/browser/ui/table/table.js.ITableVirtualDelegate
+- sym: ../../../../base/common/arrays.js.binarySearch2
+- sym: ../../../../base/common/color.js.Color
+- sym: ../../../../base/common/event.js.Emitter
+- sym: ../../../../base/common/lifecycle.js.Disposable
+- sym: ../../../../base/common/lifecycle.js.IDisposable
+- sym: ../../../../base/common/lifecycle.js.dispose
+- sym: ../../../../base/common/path.js.isAbsolute
+- sym: ../../../../base/common/uint.js.Constants
+- sym: ../../../../base/common/uri.js.URI
+- sym: ../../../../editor/browser/config/domFontInfo.js.applyFontInfo
+- sym: ../../../../editor/browser/editorBrowser.js.isCodeEditor
+- sym: ../../../../editor/common/config/fontInfo.js.BareFontInfo
+- sym: ../../../../editor/common/core/range.js.IRange
+- sym: ../../../../editor/common/core/range.js.Range
+- sym: ../../../../editor/common/core/stringBuilder.js.StringBuilder
+- sym: ../../../../editor/common/model.js.ITextModel
+- sym: ../../../../editor/common/services/resolverService.js.ITextModelService
+- sym: ../../../../nls.js.localize
+- sym: ../../../../platform/configuration/common/configuration.js.IConfigurationService
+- sym: ../../../../platform/contextkey/common/contextkey.js.IContextKey
+- sym: ../../../../platform/contextkey/common/contextkey.js.IContextKeyService
+- sym: ../../../../platform/editor/common/editor.js.TextEditorSelectionRevealType
+- sym: ../../../../platform/instantiation/common/instantiation.js.IInstantiationService
+- sym: ../../../../platform/list/browser/listService.js.WorkbenchTable
+- sym: ../../../../platform/log/common/log.js.ILogService
+- sym: ../../../../platform/storage/common/storage.js.IStorageService
+- sym: ../../../../platform/telemetry/common/telemetry.js.ITelemetryService
+- sym: ../../../../platform/theme/common/colorRegistry.js.editorBackground
+- sym: ../../../../platform/theme/common/themeService.js.IThemeService
+- sym: ../../../../platform/uriIdentity/common/uriIdentity.js.IUriIdentityService
+- sym: ../../../browser/parts/editor/editorPane.js.EditorPane
+- sym: ../../../common/contributions.js.IWorkbenchContribution
+- sym: ./callStackEditorContribution.js.focusedStackFrameColor
+- sym: ./callStackEditorContribution.js.topStackFrameColor
+- sym: ./debugIcons.js.icons
+- sym: ../common/debug.js.CONTEXT_LANGUAGE_SUPPORTS_DISASSEMBLE_REQUEST
+- sym: ../common/debug.js.DISASSEMBLY_VIEW_ID
+- sym: ../common/debug.js.IDebugConfiguration
+- sym: ../common/debug.js.IDebugService
+- sym: ../common/debug.js.IDebugSession
+- sym: ../common/debug.js.IInstructionBreakpoint
+- sym: ../common/debug.js.State
+- sym: ../common/debugModel.js.InstructionBreakpoint
+- sym: ../common/debugSource.js.getUriFromSource
+- sym: ../common/debugUtils.js.isUri
+- sym: ../common/debugUtils.js.sourcesEqual
+- sym: ../../../services/editor/common/editorService.js.IEditorService
+- sym: ../../../services/editor/common/editorGroupsService.js.IEditorGroup
+data:
+- name: disassemblyNotAvailable
+  type: IDisassembledInstructionEntry
+  val: "{\n\tallowBreakpoint: false,\n\tisBreakpointSet: false,\n\tisBreakpointEnabled: false,\n\tinstructionReference: '',\n\tinstruction..."
+types:
+- name: IDisassembledInstructionEntry
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: allowBreakpoint
+    type: boolean
+  - name: isBreakpointSet
+    type: boolean
+  - name: isBreakpointEnabled
+    type: boolean
+  - name: instructionReference
+    type: string
+  - name: instructionReferenceOffset
+    type: number
+  - name: instructionOffset
+    type: number
+  - name: showSourceLocation
+    type: boolean
+  - name: instruction
+    type: DebugProtocol.DisassembledInstruction
+  - name: address
+    type: bigint
+  lines:
+  - 47
+  - 63
+- name: DisassemblyView
+  kind: struct
+  ctx: Used in instruction renderer
+  bases:
+  - EditorPane
+  fields:
+  - name: NUM_INSTRUCTIONS_TO_LOAD
+    type: any
+    default: '50'
+  - name: _fontInfo
+    type: BareFontInfo | undefined
+  - name: _disassembledInstructions
+    type: WorkbenchTable<IDisassembledInstructionEntry> | undefined
+  - name: _onDidChangeStackFrame
+    type: Emitter<void>
+  - name: _previousDebuggingState
+    type: State
+  - name: _instructionBpList
+    type: readonly IInstructionBreakpoint[]
+    default: '[]'
+  - name: _enableSourceCodeRender
+    type: boolean
+    default: 'true'
+  - name: _loadingLock
+    type: boolean
+    default: 'false'
+  - name: _referenceToMemoryAddress
+    type: any
+    default: new Map<string, bigint>()
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tgroup: IEditorGroup,\n\t\t@ITelemetryService telemetryService: ITelemetryService,\n\t\t@IThemeService themeService: IThemeService,\n\t\t@IStorageService storageService: IStorageService,\n\t\t@IConfigurationService private readonly _configurationService: IConfigurationService,\n\t\t@IInstantiationService private readonly _instantiationService: IInstantiationService,\n\t\t@IDebugService private readonly _debugService: IDebugService,\n\t)"
+    lines:
+    - 95
+    - 121
+    detail:
+      calls:
+      - _configurationService.onDidChangeConfiguration
+      - new Emitter
+      - super
+      - this._register
+  - name: fontInfo
+    sig: fontInfo()
+    lines:
+    - 123
+    - 135
+    detail:
+      calls:
+      - this._configurationService.onDidChangeConfiguration
+      - this._register
+      - this.createFontInfo
+  - name: createFontInfo
+    sig: createFontInfo()
+    vis: private
+    lines:
+    - 137
+    - 139
+    detail:
+      calls:
+      - BareFontInfo.createFromRawSettings
+      - PixelRatio.getInstance
+      - this._configurationService.getValue
+  - name: currentInstructionAddresses
+    sig: currentInstructionAddresses()
+    lines:
+    - 141
+    - 148
+    detail:
+      calls:
+      - this._debugService.getModel
+      - this._debugService.getModel().getSessions
+      - "this._debugService.getModel().getSessions(false).\n\t\t\tmap"
+      - "this._debugService.getModel().getSessions(false).\n\t\t\tmap(session => session.getAllThreads()).\n\t\t\tred..."
+  - name: focusedCurrentInstructionReference
+    sig: focusedCurrentInstructionReference()
+    lines:
+    - 151
+    - 153
+    detail:
+      calls:
+      - this._debugService.getViewModel
+      - this._debugService.getViewModel().focusedStackFrame?.thread.getTopStackFrame
+  - name: focusedCurrentInstructionAddress
+    sig: focusedCurrentInstructionAddress()
+    lines:
+    - 155
+    - 158
+    detail:
+      calls:
+      - this.getReferenceAddress
+  - name: focusedInstructionReference
+    sig: focusedInstructionReference()
+    lines:
+    - 160
+    - 162
+    detail:
+      calls:
+      - this._debugService.getViewModel
+  - name: focusedInstructionAddress
+    sig: focusedInstructionAddress()
+    lines:
+    - 164
+    - 167
+    detail:
+      calls:
+      - this.getReferenceAddress
+  - name: isSourceCodeRender
+    sig: isSourceCodeRender()
+    lines:
+    - 169
+    - 169
+    detail: {}
+  - name: debugSession
+    sig: 'debugSession(): IDebugSession | undefined'
+    lines:
+    - 171
+    - 173
+    detail:
+      calls:
+      - this._debugService.getViewModel
+  - name: onDidChangeStackFrame
+    sig: onDidChangeStackFrame()
+    lines:
+    - 175
+    - 175
+    detail: {}
+  - name: focusedAddressAndOffset
+    sig: focusedAddressAndOffset()
+    lines:
+    - 177
+    - 186
+    detail:
+      calls:
+      - Number
+      - this._disassembledInstructions?.getFocusedElements
+      - this.getReferenceAddress
+  - name: createEditor
+    sig: 'createEditor(parent: HTMLElement): void'
+    vis: protected
+    lines:
+    - 188
+    - 348
+    detail:
+      calls:
+      - localize
+      - new AccessibilityProvider
+      - "new class implements ITableVirtualDelegate<IDisassembledInstructionEntry> {\n\t\t\theaderRowHeight: number = 0; // No header\n\t\t\tgetHeight(row: IDisassembledInstructionEntry): number {\n\t\t\t\tif (thisOM.isSourceCodeRender && row.showSourceLocation && row.instruction.location?.path && row.instruction.line) {\n\t\t\t\t\t// instruction line + source lines\n\t\t\t\t\tif (row.instruction.endLine) {\n\t\t\t\t\t\treturn lineHeight * (row.instruction.endLine - row.instruction.line + 2);\n\t\t\t\t\t} else {\n\t\t\t\t\t\t// source is only a single line.\n\t\t\t\t\t\treturn lineHeight * 2;\n\t\t\t\t\t}\n\t\t\t\t}\n\n\t\t\t\t// just instruction line\n\t\t\t\treturn lineHeight;\n\t\t\t}\n\t\t}"
+      - this._configurationService.getValue
+      - this._debugService.getModel
+      - this._debugService.getModel().onDidChangeBreakpoints
+      - this._debugService.getViewModel
+      - this._debugService.getViewModel().onDidFocusStackFrame
+      - this._debugService.onDidChangeState
+      - this._disassembledInstructions.domNode.classList.add
+      - this._disassembledInstructions.onDidScroll
+      - this._instantiationService.createInstance
+      - this._register
+      - this.reloadDisassembly
+  - name: layout
+    sig: 'layout(dimension: Dimension): void'
+    lines:
+    - 350
+    - 352
+    detail:
+      calls:
+      - this._disassembledInstructions?.layout
+  - name: goToInstructionAndOffset
+    sig: 'goToInstructionAndOffset(instructionReference: string, offset: number, focus?: boolean)'
+    is_async: true
+    lines:
+    - 354
+    - 364
+    detail:
+      calls:
+      - BigInt
+      - this._referenceToMemoryAddress.get
+      - this.goToAddress
+      - this.loadDisassembledInstructions
+  - name: getReferenceAddress
+    sig: 'getReferenceAddress(instructionReference: string)'
+    lines:
+    - 367
+    - 369
+    detail:
+      calls:
+      - this._referenceToMemoryAddress.get
+  - name: goToAddress
+    sig: 'goToAddress(address: bigint, focus?: boolean): boolean'
+    vis: private
+    lines:
+    - 374
+    - 395
+    detail:
+      calls:
+      - this._disassembledInstructions.domFocus
+      - this._disassembledInstructions.reveal
+      - this._disassembledInstructions.setFocus
+      - this.getIndexFromAddress
+  - name: scrollUp_LoadDisassembledInstructions
+    sig: 'scrollUp_LoadDisassembledInstructions(instructionCount: number): Promise<number>'
+    is_async: true
+    vis: private
+    lines:
+    - 397
+    - 409
+    detail:
+      calls:
+      - this._disassembledInstructions?.row
+      - this.loadDisassembledInstructions
+  - name: scrollDown_LoadDisassembledInstructions
+    sig: 'scrollDown_LoadDisassembledInstructions(instructionCount: number): Promise<number>'
+    is_async: true
+    vis: private
+    lines:
+    - 411
+    - 423
+    detail:
+      calls:
+      - this._disassembledInstructions?.row
+      - this.loadDisassembledInstructions
+  - name: primeMemoryReference
+    sig: 'primeMemoryReference(instructionReference: string)'
+    is_async: true
+    vis: private
+    lines:
+    - 431
+    - 447
+    detail:
+      calls:
+      - BigInt
+      - this._referenceToMemoryAddress.has
+      - this._referenceToMemoryAddress.set
+      - this.debugSession?.disassemble
+  - name: loadDisassembledInstructions
+    sig: 'loadDisassembledInstructions(instructionReference: string, offset: number, instructionOffset: number, instructionCount: number): Promise<number>'
+    is_async: true
+    vis: private
+    lines:
+    - 450
+    - 584
+    detail:
+      calls:
+      - BigInt
+      - JSON.stringify
+      - Range.equalsRange
+      - binarySearch2
+      - bps.find
+      - console.error
+      - da.row
+      - da.splice
+      - newEntries.push
+      - session?.disassemble
+      - shouldShowLocation
+      - this._disassembledInstructions.row
+      - this._instructionBpList.map
+      - this._referenceToMemoryAddress.get
+      - this._referenceToMemoryAddress.has
+      - this._referenceToMemoryAddress.set
+      - this.loadDisassembledInstructions
+  - name: reloadDisassembly
+    sig: 'reloadDisassembly(instructionReference: string, offset: number)'
+    vis: private
+    lines:
+    - 610
+    - 630
+    detail:
+      calls:
+      - this._debugService.getModel
+      - this._debugService.getModel().getInstructionBreakpoints
+      - this.clear
+      - this.loadDisassembledInstructions
+      - this.loadDisassembledInstructions(instructionReference, offset, -DisassemblyView.NUM_INSTRUCTIONS_TO...
+  lines:
+  - 81
+  - 636
+- name: IBreakpointColumnTemplateData
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: currentElement
+    type: '{ element?: IDisassembledInstructionEntry }'
+  - name: icon
+    type: HTMLElement
+  - name: disposables
+    type: IDisposable[]
+  lines:
+  - 638
+  - 642
+- name: BreakpointRenderer
+  kind: struct
+  bases:
+  - ITableRenderer<IDisassembledInstructionEntry, IBreakpointColumnTemplateData>
+  fields:
+  - name: TEMPLATE_ID
+    type: any
+    default: '''breakpoint'''
+  - name: templateId
+    type: string
+    default: BreakpointRenderer.TEMPLATE_ID
+  - name: _breakpointIcon
+    type: any
+    default: '''codicon-'' + icons.breakpoint.regular.id'
+  - name: _breakpointDisabledIcon
+    type: any
+    default: '''codicon-'' + icons.breakpoint.disabled.id'
+  - name: _breakpointHintIcon
+    type: any
+    default: '''codicon-'' + icons.debugBreakpointHint.id'
+  - name: _debugStackframe
+    type: any
+    default: '''codicon-'' + icons.debugStackframe.id'
+  - name: _debugStackframeFocused
+    type: any
+    default: '''codicon-'' + icons.debugStackframeFocused.id'
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tprivate readonly _disassemblyView: DisassemblyView,\n\t\t@IDebugService private readonly _debugService: IDebugService\n\t)"
+    lines:
+    - 656
+    - 660
+    detail: {}
+  - name: renderTemplate
+    sig: 'renderTemplate(container: HTMLElement): IBreakpointColumnTemplateData'
+    lines:
+    - 662
+    - 702
+    detail:
+      calls:
+      - $
+      - addStandardDisposableListener
+      - append
+      - this._disassemblyView.onDidChangeStackFrame
+  - name: renderElement
+    sig: 'renderElement(element: IDisassembledInstructionEntry, index: number, templateData: IBreakpointColumnTemplateData, height: number | undefined): void'
+    lines:
+    - 704
+    - 707
+    detail:
+      calls:
+      - this.rerenderDebugStackframe
+  - name: disposeTemplate
+    sig: 'disposeTemplate(templateData: IBreakpointColumnTemplateData): void'
+    lines:
+    - 709
+    - 712
+    detail:
+      calls:
+      - dispose
+  - name: rerenderDebugStackframe
+    sig: 'rerenderDebugStackframe(icon: HTMLElement, element?: IDisassembledInstructionEntry)'
+    vis: private
+    lines:
+    - 714
+    - 738
+    detail:
+      calls:
+      - icon.classList.add
+      - icon.classList.remove
+  lines:
+  - 644
+  - 739
+- name: IInstructionColumnTemplateData
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: currentElement
+    type: '{ element?: IDisassembledInstructionEntry }'
+  - name: instruction
+    type: HTMLElement
+  - name: sourcecode
+    type: HTMLElement
+  - name: cellDisposable
+    type: IDisposable[]
+  - name: disposables
+    type: IDisposable[]
+  lines:
+  - 741
+  - 750
+- name: InstructionRenderer
+  kind: struct
+  bases:
+  - Disposable
+  - ITableRenderer<IDisassembledInstructionEntry, IInstructionColumnTemplateData>
+  fields:
+  - name: TEMPLATE_ID
+    type: any
+    default: '''instruction'''
+  - name: INSTRUCTION_ADDR_MIN_LENGTH
+    type: any
+    default: '25'
+  - name: INSTRUCTION_BYTES_MIN_LENGTH
+    type: any
+    default: '30'
+  - name: templateId
+    type: string
+    default: InstructionRenderer.TEMPLATE_ID
+  - name: _topStackFrameColor
+    type: Color | undefined
+  - name: _focusedStackFrameColor
+    type: Color | undefined
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tprivate readonly _disassemblyView: DisassemblyView,\n\t\t@IThemeService themeService: IThemeService,\n\t\t@IEditorService private readonly editorService: IEditorService,\n\t\t@ITextModelService private readonly textModelService: ITextModelService,\n\t\t@IUriIdentityService private readonly uriService: IUriIdentityService,\n\t\t@ILogService private readonly logService: ILogService,\n\t)"
+    lines:
+    - 764
+    - 781
+    detail:
+      calls:
+      - super
+      - themeService.getColorTheme
+      - themeService.getColorTheme().getColor
+      - themeService.onDidColorThemeChange
+      - this._register
+  - name: renderTemplate
+    sig: 'renderTemplate(container: HTMLElement): IInstructionColumnTemplateData'
+    lines:
+    - 783
+    - 797
+    detail:
+      calls:
+      - $
+      - addStandardDisposableListener
+      - append
+      - this._disassemblyView.onDidChangeStackFrame
+      - this.applyFontInfo
+  - name: renderElement
+    sig: 'renderElement(element: IDisassembledInstructionEntry, index: number, templateData: IInstructionColumnTemplateData, height: number | undefined): void'
+    lines:
+    - 799
+    - 801
+    detail:
+      calls:
+      - this.renderElementInner
+  - name: renderElementInner
+    sig: 'renderElementInner(element: IDisassembledInstructionEntry, index: number, templateData: IInstructionColumnTemplateData, height: number | undefined): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 803
+    - 871
+    detail:
+      calls:
+      - new StringBuilder
+      - sb.appendString
+      - sb.build
+      - sourceSB.appendString
+      - sourceSB.build
+      - templateData.cellDisposable.push
+      - textModel.getLineContent
+      - textModel.getLineCount
+      - this.getUriFromSource
+      - this.rerenderBackground
+      - this.textModelService.createModelReference
+  - name: disposeElement
+    sig: 'disposeElement(element: IDisassembledInstructionEntry, index: number, templateData: IInstructionColumnTemplateData, height: number | undefined): void'
+    lines:
+    - 873
+    - 876
+    detail:
+      calls:
+      - dispose
+  - name: disposeTemplate
+    sig: 'disposeTemplate(templateData: IInstructionColumnTemplateData): void'
+    lines:
+    - 878
+    - 881
+    detail:
+      calls:
+      - dispose
+  - name: rerenderBackground
+    sig: 'rerenderBackground(instruction: HTMLElement, sourceCode: HTMLElement, element?: IDisassembledInstructionEntry)'
+    vis: private
+    lines:
+    - 883
+    - 891
+    detail:
+      calls:
+      - this._disassemblyView.currentInstructionAddresses.includes
+      - this._focusedStackFrameColor?.toString
+      - this._topStackFrameColor?.toString
+  - name: openSourceCode
+    sig: 'openSourceCode(instruction: DebugProtocol.DisassembledInstruction | undefined)'
+    vis: private
+    lines:
+    - 893
+    - 920
+    detail:
+      calls:
+      - localize
+      - this.editorService.openEditor
+      - this.getUriFromSource
+  - name: getUriFromSource
+    sig: 'getUriFromSource(instruction: DebugProtocol.DisassembledInstruction): URI'
+    vis: private
+    lines:
+    - 922
+    - 934
+    detail:
+      calls:
+      - URI.file
+      - URI.parse
+      - getUriFromSource
+      - isAbsolute
+      - isUri
+      - this._disassemblyView.debugSession!.getId
+      - this.uriService.asCanonicalUri
+  lines:
+  - 752
+  - 940
+- name: AccessibilityProvider
+  kind: struct
+  bases:
+  - IListAccessibilityProvider<IDisassembledInstructionEntry>
+  methods:
+  - name: getWidgetAriaLabel
+    sig: 'getWidgetAriaLabel(): string'
+    lines:
+    - 944
+    - 946
+    detail:
+      calls:
+      - localize
+  - name: getAriaLabel
+    sig: 'getAriaLabel(element: IDisassembledInstructionEntry): string | null'
+    lines:
+    - 948
+    - 961
+    detail:
+      calls:
+      - localize
+  lines:
+  - 942
+  - 962
+- name: DisassemblyViewContribution
+  kind: struct
+  bases:
+  - IWorkbenchContribution
+  fields:
+  - name: _onDidActiveEditorChangeListener
+    type: IDisposable
+  - name: _onDidChangeModelLanguage
+    type: IDisposable | undefined
+  - name: _languageSupportsDisassembleRequest
+    type: IContextKey<boolean> | undefined
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\t@IEditorService editorService: IEditorService,\n\t\t@IDebugService debugService: IDebugService,\n\t\t@IContextKeyService contextKeyService: IContextKeyService\n\t)"
+    lines:
+    - 970
+    - 1002
+    detail:
+      calls:
+      - contextKeyService.bufferChangeEvents
+      - editorService.onDidActiveEditorChange
+      - onDidActiveEditorChangeListener
+  - name: dispose
+    sig: 'dispose(): void'
+    lines:
+    - 1004
+    - 1007
+    detail:
+      calls:
+      - this._onDidActiveEditorChangeListener.dispose
+      - this._onDidChangeModelLanguage?.dispose
+  lines:
+  - 964
+  - 1008
+exports:
+- name: IDisassembledInstructionEntry
+  kind: type
+- name: DisassemblyView
+  kind: type
+- name: IBreakpointColumnTemplateData
+  kind: type
+- name: BreakpointRenderer
+  kind: type
+- name: IInstructionColumnTemplateData
+  kind: type
+- name: InstructionRenderer
+  kind: type
+- name: AccessibilityProvider
+  kind: type
+- name: DisassemblyViewContribution
+  kind: type
+- name: disassemblyNotAvailable
+  kind: data

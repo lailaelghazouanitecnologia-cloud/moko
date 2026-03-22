@@ -1,0 +1,448 @@
+## Roska File Descriptor — preview/bulkEditPreview.ts
+file: preview/bulkEditPreview.ts
+lines: 458
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: ../../../../../editor/common/services/resolverService.js.ITextModelContentProvider
+- sym: ../../../../../editor/common/services/resolverService.js.ITextModelService
+- sym: ../../../../../base/common/uri.js.URI
+- sym: ../../../../../editor/common/languages/language.js.ILanguageService
+- sym: ../../../../../editor/common/services/model.js.IModelService
+- sym: ../../../../../editor/common/model/textModel.js.createTextBufferFactoryFromSnapshot
+- sym: ../../../../../editor/common/languages.js.WorkspaceEditMetadata
+- sym: ../../../../../base/common/lifecycle.js.DisposableStore
+- sym: ../../../../../base/common/arrays.js.coalesceInPlace
+- sym: ../../../../../editor/common/core/range.js.Range
+- sym: ../../../../../editor/common/core/editOperation.js.EditOperation
+- sym: ../../../../../editor/common/core/editOperation.js.ISingleEditOperation
+- sym: ../../../../../platform/instantiation/common/instantiation.js.ServicesAccessor
+- sym: ../../../../../platform/instantiation/common/instantiation.js.IInstantiationService
+- sym: ../../../../../platform/files/common/files.js.IFileService
+- sym: ../../../../../base/common/event.js.Emitter
+- sym: ../../../../../base/common/event.js.Event
+- sym: ../conflicts.js.ConflictDetector
+- sym: ../../../../../base/common/map.js.ResourceMap
+- sym: ../../../../../nls.js.localize
+- sym: ../../../../../base/common/resources.js.extUri
+- sym: ../../../../../editor/browser/services/bulkEditService.js.ResourceEdit
+- sym: ../../../../../editor/browser/services/bulkEditService.js.ResourceFileEdit
+- sym: ../../../../../editor/browser/services/bulkEditService.js.ResourceTextEdit
+- sym: ../../../../../base/common/codicons.js.Codicon
+- sym: ../../../../../base/common/uuid.js.generateUuid
+- sym: ../../../../../editor/contrib/snippet/browser/snippetParser.js.SnippetParser
+- sym: ../../../../../base/common/symbols.js.MicrotaskDelay
+types:
+- name: CheckedStates
+  kind: struct
+  fields:
+  - name: _states
+    type: any
+    default: new WeakMap<T, boolean>()
+  - name: _checkedCount
+    type: number
+    default: '0'
+  - name: _onDidChange
+    type: any
+    default: new Emitter<T>()
+  - name: onDidChange
+    type: Event<T>
+    default: this._onDidChange.event
+  methods:
+  - name: dispose
+    sig: 'dispose(): void'
+    lines:
+    - 37
+    - 39
+    detail:
+      calls:
+      - this._onDidChange.dispose
+  - name: checkedCount
+    sig: checkedCount()
+    lines:
+    - 41
+    - 43
+    detail: {}
+  - name: isChecked
+    sig: 'isChecked(obj: T): boolean'
+    lines:
+    - 45
+    - 47
+    detail:
+      calls:
+      - this._states.get
+  - name: updateChecked
+    sig: 'updateChecked(obj: T, value: boolean): void'
+    lines:
+    - 49
+    - 67
+    detail:
+      calls:
+      - this._onDidChange.fire
+      - this._states.get
+      - this._states.set
+  lines:
+  - 29
+  - 68
+- name: BulkTextEdit
+  kind: struct
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\treadonly parent: BulkFileOperation,\n\t\treadonly textEdit: ResourceTextEdit\n\t)"
+    lines:
+    - 72
+    - 75
+    detail: {}
+  lines:
+  - 70
+  - 76
+- name: BulkFileOperationType
+  kind: enum
+  variants:
+  - name: TextEdit
+    val: '1'
+  - name: Create
+    val: '2'
+  - name: Delete
+    val: '4'
+  - name: Rename
+    val: '8'
+  lines:
+  - 78
+  - 83
+- name: BulkFileOperation
+  kind: struct
+  fields:
+  - name: type
+    type: any
+    default: '0'
+  - name: textEdits
+    type: BulkTextEdit[]
+    default: '[]'
+  - name: originalEdits
+    type: any
+    default: new Map<number, ResourceTextEdit | ResourceFileEdit>()
+  - name: newUri
+    type: URI
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\treadonly uri: URI,\n\t\treadonly parent: BulkFileOperations\n\t)"
+    lines:
+    - 92
+    - 95
+    detail: {}
+  - name: addEdit
+    sig: 'addEdit(index: number, type: BulkFileOperationType, edit: ResourceTextEdit | ResourceFileEdit)'
+    lines:
+    - 97
+    - 106
+    detail:
+      calls:
+      - new BulkTextEdit
+      - this.originalEdits.set
+      - this.textEdits.push
+  - name: needsConfirmation
+    sig: 'needsConfirmation(): boolean'
+    lines:
+    - 108
+    - 115
+    detail:
+      calls:
+      - this.parent.checked.isChecked
+  lines:
+  - 85
+  - 116
+- name: BulkCategory
+  kind: struct
+  fields:
+  - name: _defaultMetadata
+    type: any
+    default: "Object.freeze({\n\t\tlabel: localize('default', \"Other\"),\n\t\ticon: Codicon.symbolFil..."
+  - name: operationByResource
+    type: any
+    default: new Map<string, BulkFileOperation>()
+  methods:
+  - name: keyOf
+    sig: 'keyOf(metadata?: WorkspaceEditMetadata)'
+    decorators:
+    - static
+    lines:
+    - 126
+    - 128
+    detail: {}
+  - name: constructor
+    sig: 'constructor(readonly metadata: WorkspaceEditMetadata = BulkCategory._defaultMetadata)'
+    lines:
+    - 132
+    - 132
+    detail: {}
+  - name: fileOperations
+    sig: 'fileOperations(): IterableIterator<BulkFileOperation>'
+    lines:
+    - 134
+    - 136
+    detail:
+      calls:
+      - this.operationByResource.values
+  lines:
+  - 118
+  - 137
+- name: BulkFileOperations
+  kind: struct
+  fields:
+  - name: checked
+    type: any
+    default: new CheckedStates<ResourceEdit>()
+  - name: fileOperations
+    type: BulkFileOperation[]
+    default: '[]'
+  - name: categories
+    type: BulkCategory[]
+    default: '[]'
+  - name: conflicts
+    type: ConflictDetector
+  methods:
+  - name: create
+    sig: 'create(accessor: ServicesAccessor, bulkEdit: ResourceEdit[]): Promise<BulkFileOperations>'
+    is_async: true
+    decorators:
+    - static
+    lines:
+    - 141
+    - 144
+    detail:
+      calls:
+      - accessor.get
+      - accessor.get(IInstantiationService).createInstance
+      - result._init
+  - name: constructor
+    sig: "constructor(\n\t\tprivate readonly _bulkEdit: ResourceEdit[],\n\t\t@IFileService private readonly _fileService: IFileService,\n\t\t@IInstantiationService instaService: IInstantiationService,\n\t)"
+    lines:
+    - 152
+    - 158
+    detail:
+      calls:
+      - instaService.createInstance
+  - name: dispose
+    sig: 'dispose(): void'
+    lines:
+    - 160
+    - 163
+    detail:
+      calls:
+      - this.checked.dispose
+      - this.conflicts.dispose
+  - name: _init
+    sig: _init()
+    is_async: true
+    lines:
+    - 165
+    - 286
+    detail:
+      calls:
+      - BulkCategory.keyOf
+      - file.originalEdits.values
+      - insert
+      - new BulkCategory
+      - new Map
+      - new ResourceMap
+      - newToOldUri.set
+      - operationByCategory.forEach
+      - operationByCategory.get
+      - operationByCategory.set
+      - operationByResource.forEach
+      - this._fileService.exists
+      - this.categories.sort
+      - this.checked.isChecked
+      - this.checked.updateChecked
+  - name: getWorkspaceEdit
+    sig: 'getWorkspaceEdit(): ResourceEdit[]'
+    lines:
+    - 288
+    - 308
+    detail:
+      calls:
+      - coalesceInPlace
+      - this.checked.isChecked
+  - name: getFileEditOperation
+    sig: 'getFileEditOperation(edit: ResourceFileEdit): Promise<ISingleEditOperation | undefined>'
+    is_async: true
+    vis: private
+    lines:
+    - 310
+    - 314
+    detail:
+      calls:
+      - EditOperation.replaceMove
+      - Range.lift
+      - content.toString
+  - name: getFileEdits
+    sig: 'getFileEdits(uri: URI): Promise<ISingleEditOperation[]>'
+    is_async: true
+    lines:
+    - 316
+    - 346
+    detail:
+      calls:
+      - (await Promise.all(result)).filter
+      - (await Promise.all(result)).filter(r => r !== undefined).sort
+      - EditOperation.replaceMove
+      - Promise.all
+      - Promise.resolve
+      - Range.lift
+      - SnippetParser.asInsertText
+      - file.originalEdits.values
+      - file.uri.toString
+      - result.push
+      - this.checked.isChecked
+      - this.getFileEditOperation
+      - uri.toString
+  - name: getUriOfEdit
+    sig: 'getUriOfEdit(edit: ResourceEdit): URI'
+    lines:
+    - 348
+    - 357
+    detail:
+      calls:
+      - file.originalEdits.values
+      - new Error
+  lines:
+  - 139
+  - 358
+- name: BulkEditPreviewProvider
+  kind: model
+  bases:
+  - ITextModelContentProvider
+  fields:
+  - name: Schema
+    type: any
+    default: '''vscode-bulkeditpreview-editor'''
+  - name: emptyPreview
+    type: any
+    default: 'URI.from({ scheme: this.Schema, fragment: ''empty'' })'
+  - name: _disposables
+    type: any
+    default: new DisposableStore()
+  - name: _ready
+    type: Promise<any>
+  - name: _modelPreviewEdits
+    type: any
+    default: new Map<string, ISingleEditOperation[]>()
+  - name: _instanceId
+    type: any
+    default: generateUuid()
+  methods:
+  - name: fromPreviewUri
+    sig: 'fromPreviewUri(uri: URI): URI'
+    decorators:
+    - static
+    lines:
+    - 367
+    - 369
+    detail:
+      calls:
+      - URI.parse
+  - name: constructor
+    sig: "constructor(\n\t\tprivate readonly _operations: BulkFileOperations,\n\t\t@ILanguageService private readonly _languageService: ILanguageService,\n\t\t@IModelService private readonly _modelService: IModelService,\n\t\t@ITextModelService private readonly _textModelResolverService: ITextModelService\n\t)"
+    lines:
+    - 376
+    - 384
+    detail:
+      calls:
+      - this._disposables.add
+      - this._init
+      - this._textModelResolverService.registerTextModelContentProvider
+  - name: dispose
+    sig: 'dispose(): void'
+    lines:
+    - 386
+    - 388
+    detail:
+      calls:
+      - this._disposables.dispose
+  - name: asPreviewUri
+    sig: 'asPreviewUri(uri: URI): URI'
+    lines:
+    - 390
+    - 392
+    detail:
+      calls:
+      - URI.from
+      - uri.toString
+  - name: _init
+    sig: _init()
+    is_async: true
+    vis: private
+    lines:
+    - 394
+    - 402
+    detail:
+      calls:
+      - Event.debounce
+      - Event.debounce(this._operations.checked.onDidChange, (_last, e) => e, MicrotaskDelay)
+      - this._applyTextEditsToPreviewModel
+      - this._disposables.add
+  - name: _applyTextEditsToPreviewModel
+    sig: '_applyTextEditsToPreviewModel(uri: URI)'
+    is_async: true
+    vis: private
+    lines:
+    - 404
+    - 416
+    detail:
+      calls:
+      - model.applyEdits
+      - this._getOrCreatePreviewModel
+      - this._modelPreviewEdits.get
+      - this._modelPreviewEdits.set
+      - this._operations.getFileEdits
+  - name: _getOrCreatePreviewModel
+    sig: '_getOrCreatePreviewModel(uri: URI)'
+    is_async: true
+    vis: private
+    lines:
+    - 418
+    - 449
+    detail:
+      calls:
+      - createTextBufferFactoryFromSnapshot
+      - queueMicrotask
+      - ref.dispose
+      - sourceModel.createSnapshot
+      - sourceModel.getLanguageId
+      - this._languageService.createByFilepathOrFirstLine
+      - this._languageService.createById
+      - this._modelService.createModel
+      - this._modelService.getModel
+      - this._textModelResolverService.createModelReference
+      - this.asPreviewUri
+  - name: provideTextContent
+    sig: 'provideTextContent(previewUri: URI)'
+    is_async: true
+    lines:
+    - 451
+    - 457
+    detail:
+      calls:
+      - BulkEditPreviewProvider.emptyPreview.toString
+      - previewUri.toString
+      - this._modelService.createModel
+      - this._modelService.getModel
+  lines:
+  - 360
+  - 458
+exports:
+- name: CheckedStates
+  kind: type
+- name: BulkTextEdit
+  kind: type
+- name: BulkFileOperationType
+  kind: type
+- name: BulkFileOperation
+  kind: type
+- name: BulkCategory
+  kind: type
+- name: BulkFileOperations
+  kind: type
+- name: BulkEditPreviewProvider
+  kind: type

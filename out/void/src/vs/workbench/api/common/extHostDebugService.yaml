@@ -1,0 +1,1061 @@
+## Roska File Descriptor — common/extHostDebugService.ts
+file: common/extHostDebugService.ts
+lines: 1299
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: vscode.vscode
+- sym: ../../../base/common/arrays.js.coalesce
+- sym: ../../../base/common/async.js.asPromise
+- sym: ../../../base/common/cancellation.js.CancellationToken
+- sym: ../../../base/common/event.js.Emitter
+- sym: ../../../base/common/event.js.Event
+- sym: ../../../base/common/lifecycle.js.Disposable as DisposableCls
+- sym: ../../../base/common/lifecycle.js.toDisposable
+- sym: ../../../base/common/themables.js.ThemeIcon as ThemeIconUtils
+- sym: ../../../base/common/uri.js.URI
+- sym: ../../../base/common/uri.js.UriComponents
+- sym: ../../../platform/extensions/common/extensions.js.ExtensionIdentifier
+- sym: ../../../platform/extensions/common/extensions.js.IExtensionDescription
+- sym: ../../../platform/instantiation/common/instantiation.js.createDecorator
+- sym: ../../../platform/sign/common/sign.js.ISignService
+- sym: ../../../platform/workspace/common/workspace.js.IWorkspaceFolder
+- sym: ../../contrib/debug/common/abstractDebugAdapter.js.AbstractDebugAdapter
+- sym: ../../contrib/debug/common/debug.js.DebugVisualizationType
+- sym: ../../contrib/debug/common/debug.js.IAdapterDescriptor
+- sym: ../../contrib/debug/common/debug.js.IConfig
+- sym: ../../contrib/debug/common/debug.js.IDebugAdapter
+- sym: ../../contrib/debug/common/debug.js.IDebugAdapterExecutable
+- sym: ../../contrib/debug/common/debug.js.IDebugAdapterImpl
+- sym: ../../contrib/debug/common/debug.js.IDebugAdapterNamedPipeServer
+- sym: ../../contrib/debug/common/debug.js.IDebugAdapterServer
+- sym: ../../contrib/debug/common/debug.js.IDebuggerContribution
+- sym: ../../contrib/debug/common/debug.js.IDebugVisualization
+- sym: ../../contrib/debug/common/debug.js.IDebugVisualizationContext
+- sym: ../../contrib/debug/common/debug.js.IDebugVisualizationTreeItem
+- sym: ../../contrib/debug/common/debug.js.MainThreadDebugVisualization
+- sym: ../../contrib/debug/common/debugUtils.js.convertToDAPaths
+- sym: ../../contrib/debug/common/debugUtils.js.convertToVSCPaths
+- sym: ../../contrib/debug/common/debugUtils.js.isDebuggerMainContribution
+- sym: ../../services/extensions/common/extensionDescriptionRegistry.js.ExtensionDescriptionRegistry
+- sym: ../../services/extensions/common/proxyIdentifier.js.Dto
+- sym: ./extHost.protocol.js.DebugSessionUUID
+- sym: ./extHost.protocol.js.ExtHostDebugServiceShape
+- sym: ./extHost.protocol.js.IBreakpointsDeltaDto
+- sym: ./extHost.protocol.js.IDebugSessionDto
+- sym: ./extHost.protocol.js.IFunctionBreakpointDto
+- sym: ./extHost.protocol.js.ISourceMultiBreakpointDto
+- sym: ./extHost.protocol.js.IStackFrameFocusDto
+- sym: ./extHost.protocol.js.IThreadFocusDto
+- sym: ./extHost.protocol.js.MainContext
+- sym: ./extHost.protocol.js.MainThreadDebugServiceShape
+- sym: ./extHost.protocol.js.MainThreadTelemetryShape
+- sym: ./extHostCommands.js.IExtHostCommands
+- sym: ./extHostConfiguration.js.IExtHostConfiguration
+- sym: ./extHostEditorTabs.js.IExtHostEditorTabs
+- sym: ./extHostExtensionService.js.IExtHostExtensionService
+- sym: ./extHostRpcService.js.IExtHostRpcService
+- sym: ./extHostTesting.js.IExtHostTesting
+- sym: ./extHostTypeConverters.js.Convert
+- sym: ./extHostTypes.js.Breakpoint
+- sym: ./extHostTypes.js.DataBreakpoint
+- sym: ./extHostTypes.js.DebugAdapterExecutable
+- sym: ./extHostTypes.js.DebugAdapterInlineImplementation
+- sym: ./extHostTypes.js.DebugAdapterNamedPipeServer
+- sym: ./extHostTypes.js.DebugAdapterServer
+- sym: ./extHostTypes.js.DebugConsoleMode
+- sym: ./extHostTypes.js.DebugStackFrame
+- sym: ./extHostTypes.js.DebugThread
+- sym: ./extHostTypes.js.Disposable
+- sym: ./extHostTypes.js.FunctionBreakpoint
+- sym: ./extHostTypes.js.Location
+- sym: ./extHostTypes.js.Position
+- sym: ./extHostTypes.js.setBreakpointId
+- sym: ./extHostTypes.js.SourceBreakpoint
+- sym: ./extHostTypes.js.ThemeIcon
+- sym: ./extHostVariableResolverService.js.IExtHostVariableResolverProvider
+- sym: ./extHostWorkspace.js.IExtHostWorkspace
+data:
+- name: IExtHostDebugService
+  type: any
+  val: createDecorator<IExtHostDebugService>('IExtHostDebugService')
+types:
+- name: IExtHostDebugService
+  kind: trait
+  bases:
+  - ExtHostDebugServiceShape
+  decorators:
+  - interface
+  fields:
+  - name: readonly
+    type: undefined
+  - name: onDidStartDebugSession
+    type: Event<vscode.DebugSession>
+  - name: onDidTerminateDebugSession
+    type: Event<vscode.DebugSession>
+  - name: onDidChangeActiveDebugSession
+    type: Event<vscode.DebugSession | undefined>
+  - name: activeDebugSession
+    type: vscode.DebugSession | undefined
+  - name: activeDebugConsole
+    type: vscode.DebugConsole
+  - name: onDidReceiveDebugSessionCustomEvent
+    type: Event<vscode.DebugSessionCustomEvent>
+  - name: onDidChangeBreakpoints
+    type: Event<vscode.BreakpointsChangeEvent>
+  - name: breakpoints
+    type: vscode.Breakpoint[]
+  - name: onDidChangeActiveStackItem
+    type: Event<vscode.DebugThread | vscode.DebugStackFrame | undefined>
+  - name: activeStackItem
+    type: vscode.DebugThread | vscode.DebugStackFrame | undefined
+  - name: addBreakpoints
+    type: 'method: addBreakpoints(breakpoints0: readonly vscode.Breakpoint[]): Promise<void>'
+  - name: removeBreakpoints
+    type: 'method: removeBreakpoints(breakpoints0: readonly vscode.Breakpoint[]): Promise<void>'
+  - name: startDebugging
+    type: 'method: startDebugging(folder: vscode.WorkspaceFolder | undefined, nameOrConfig: string | vscode.DebugConfiguration, options: vscode.DebugSessionOptions): Promise<boolean>'
+  - name: stopDebugging
+    type: 'method: stopDebugging(session?: vscode.DebugSession): Promise<void>'
+  - name: registerDebugConfigurationProvider
+    type: 'method: registerDebugConfigurationProvider(type: string, provider: vscode.DebugConfigurationProvider, trigger: vscode.DebugConfigurationProviderTriggerKind): vscode.Disposable'
+  - name: registerDebugAdapterDescriptorFactory
+    type: 'method: registerDebugAdapterDescriptorFactory(extension: IExtensionDescription, type: string, factory: vscode.DebugAdapterDescriptorFactory): vscode.Disposable'
+  - name: registerDebugAdapterTrackerFactory
+    type: 'method: registerDebugAdapterTrackerFactory(type: string, factory: vscode.DebugAdapterTrackerFactory): vscode.Disposable'
+  - name: registerDebugVisualizationProvider
+    type: 'method: registerDebugVisualizationProvider<T extends vscode.DebugVisualization>(extension: IExtensionDescription, id: string, provider: vscode.DebugVisualizationProvider<T>): vscode.Disposable'
+  - name: registerDebugVisualizationTree
+    type: 'method: registerDebugVisualizationTree<T extends vscode.DebugTreeItem>(extension: IExtensionDescription, id: string, provider: vscode.DebugVisualizationTree<T>): vscode.Disposable'
+  - name: asDebugSourceUri
+    type: 'method: asDebugSourceUri(source: vscode.DebugProtocolSource, session?: vscode.DebugSession): vscode.Uri'
+  lines:
+  - 37
+  - 62
+- name: ExtHostDebugServiceBase
+  kind: trait
+  ctx: extension debug API
+  bases:
+  - DisposableCls
+  - IExtHostDebugService
+  - ExtHostDebugServiceShape
+  decorators:
+  - abstract
+  fields:
+  - name: _serviceBrand
+    type: undefined
+  - name: _configProviderHandleCounter
+    type: number
+  - name: _configProviders
+    type: ConfigProviderTuple[]
+  - name: _adapterFactoryHandleCounter
+    type: number
+  - name: _adapterFactories
+    type: DescriptorFactoryTuple[]
+  - name: _trackerFactoryHandleCounter
+    type: number
+  - name: _trackerFactories
+    type: TrackerFactoryTuple[]
+  - name: _debugServiceProxy
+    type: MainThreadDebugServiceShape
+  - name: _debugSessions
+    type: Map<DebugSessionUUID, ExtHostDebugSession>
+    default: new Map<DebugSessionUUID, ExtHostDebugSession>()
+  - name: _onDidStartDebugSession
+    type: Emitter<vscode.DebugSession>
+  - name: _onDidTerminateDebugSession
+    type: Emitter<vscode.DebugSession>
+  - name: _onDidChangeActiveDebugSession
+    type: Emitter<vscode.DebugSession | undefined>
+  - name: _activeDebugSession
+    type: ExtHostDebugSession | undefined
+  - name: _onDidReceiveDebugSessionCustomEvent
+    type: Emitter<vscode.DebugSessionCustomEvent>
+  - name: _activeDebugConsole
+    type: ExtHostDebugConsole
+  - name: _breakpoints
+    type: Map<string, vscode.Breakpoint>
+  - name: _onDidChangeBreakpoints
+    type: Emitter<vscode.BreakpointsChangeEvent>
+  - name: _activeStackItem
+    type: vscode.DebugThread | vscode.DebugStackFrame | undefined
+  - name: _onDidChangeActiveStackItem
+    type: Emitter<vscode.DebugThread | vscode.DebugStackFrame | undefined>
+  - name: _debugAdapters
+    type: Map<number, IDebugAdapter>
+  - name: _debugAdaptersTrackers
+    type: Map<number, vscode.DebugAdapterTracker>
+  - name: _debugVisualizationTreeItemIdsCounter
+    type: any
+    default: '0'
+  - name: _debugVisualizationProviders
+    type: any
+    default: new Map<string, vscode.DebugVisualizationProvider>()
+  - name: _debugVisualizationTrees
+    type: any
+    default: new Map<string, vscode.DebugVisualizationTree>()
+  - name: _debugVisualizationTreeItemIds
+    type: any
+    default: new WeakMap<vscode.DebugTreeItem, number>()
+  - name: _debugVisualizationElements
+    type: any
+    default: 'new Map<number, { provider: string; item: vscode.DebugTreeItem; children?: numbe...'
+  - name: _signService
+    type: ISignService | undefined
+  - name: _visualizers
+    type: any
+    default: 'new Map<number, { v: vscode.DebugVisualization; provider: vscode.DebugVisualizat...'
+  - name: _visualizerIdCounter
+    type: any
+    default: '0'
+  - name: _telemetryProxy
+    type: MainThreadTelemetryShape
+  methods:
+  - name: onDidStartDebugSession
+    sig: 'onDidStartDebugSession(): Event<vscode.DebugSession>'
+    lines:
+    - 81
+    - 81
+    detail: {}
+  - name: onDidTerminateDebugSession
+    sig: 'onDidTerminateDebugSession(): Event<vscode.DebugSession>'
+    lines:
+    - 84
+    - 84
+    detail: {}
+  - name: onDidChangeActiveDebugSession
+    sig: 'onDidChangeActiveDebugSession(): Event<vscode.DebugSession | undefined>'
+    lines:
+    - 87
+    - 87
+    detail: {}
+  - name: activeDebugSession
+    sig: 'activeDebugSession(): vscode.DebugSession | undefined'
+    lines:
+    - 90
+    - 90
+    detail: {}
+  - name: onDidReceiveDebugSessionCustomEvent
+    sig: 'onDidReceiveDebugSessionCustomEvent(): Event<vscode.DebugSessionCustomEvent>'
+    lines:
+    - 93
+    - 93
+    detail: {}
+  - name: activeDebugConsole
+    sig: 'activeDebugConsole(): vscode.DebugConsole'
+    lines:
+    - 96
+    - 96
+    detail: {}
+  - name: constructor
+    sig: "constructor(\n\t\t@IExtHostRpcService extHostRpcService: IExtHostRpcService,\n\t\t@IExtHostWorkspace protected readonly _workspaceService: IExtHostWorkspace,\n\t\t@IExtHostExtensionService private readonly _extensionService: IExtHostExtensionService,\n\t\t@IExtHostConfiguration protected readonly _configurationService: IExtHostConfiguration,\n\t\t@IExtHostEditorTabs protected readonly _editorTabs: IExtHostEditorTabs,\n\t\t@IExtHostVariableResolverProvider private readonly _variableResolver: IExtHostVariableResolverProvider,\n\t\t@IExtHostCommands private readonly _commands: IExtHostCommands,\n\t\t@IExtHostTesting private readonly _testing: IExtHostTesting,\n\t)"
+    lines:
+    - 121
+    - 168
+    detail:
+      calls:
+      - extHostRpcService.getProxy
+      - new Emitter
+      - new ExtHostDebugConsole
+      - new Map
+      - super
+      - this._extensionService.getExtensionRegistry
+      - this._extensionService.getExtensionRegistry().then
+      - this._register
+  - name: $getVisualizerTreeItem
+    sig: '$getVisualizerTreeItem(treeId: string, element: IDebugVisualizationContext): Promise<IDebugVisualizationTreeItem | undefined>'
+    is_async: true
+    lines:
+    - 170
+    - 178
+    detail:
+      calls:
+      - this._debugVisualizationTrees.get
+      - this._debugVisualizationTrees.get(treeId)?.getTreeItem
+      - this.convertVisualizerTreeItem
+      - this.hydrateVisualizationContext
+  - name: registerDebugVisualizationTree
+    sig: 'registerDebugVisualizationTree(manifest: IExtensionDescription, id: string, provider: vscode.DebugVisualizationTree<T>): vscode.Disposable'
+    lines:
+    - 180
+    - 193
+    detail:
+      calls:
+      - ExtensionIdentifier.toKey
+      - new Error
+      - this._debugServiceProxy.$registerDebugVisualizerTree
+      - this._debugVisualizationProviders.has
+      - this._debugVisualizationTrees.set
+      - this.extensionVisKey
+      - toDisposable
+  - name: $getVisualizerTreeItemChildren
+    sig: '$getVisualizerTreeItemChildren(treeId: string, element: number): Promise<IDebugVisualizationTreeItem[]>'
+    is_async: true
+    lines:
+    - 195
+    - 203
+    detail:
+      calls:
+      - children?.map
+      - this._debugVisualizationElements.get
+      - this._debugVisualizationTrees.get
+      - this._debugVisualizationTrees.get(treeId)?.getChildren
+  - name: $editVisualizerTreeItem
+    sig: '$editVisualizerTreeItem(element: number, value: string): Promise<IDebugVisualizationTreeItem | undefined>'
+    is_async: true
+    lines:
+    - 205
+    - 211
+    detail:
+      calls:
+      - this._debugVisualizationElements.get
+      - this._debugVisualizationTrees.get
+      - this._debugVisualizationTrees.get(e.provider)?.editItem
+      - this.convertVisualizerTreeItem
+  - name: $disposeVisualizedTree
+    sig: '$disposeVisualizedTree(element: number): void'
+    lines:
+    - 213
+    - 228
+    detail:
+      calls:
+      - queue.push
+      - this._debugVisualizationElements.delete
+      - this._debugVisualizationElements.get
+  - name: convertVisualizerTreeItem
+    sig: 'convertVisualizerTreeItem(treeId: string, item: vscode.DebugTreeItem): IDebugVisualizationTreeItem'
+    vis: private
+    lines:
+    - 230
+    - 239
+    detail:
+      calls:
+      - Convert.DebugTreeItem.from
+      - this._debugVisualizationElements.set
+      - this._debugVisualizationTreeItemIds.get
+      - this._debugVisualizationTreeItemIds.set
+  - name: asDebugSourceUri
+    sig: 'asDebugSourceUri(src: vscode.DebugProtocolSource, session?: vscode.DebugSession): URI'
+    lines:
+    - 241
+    - 265
+    detail:
+      calls:
+      - URI.file
+      - URI.parse
+      - encodeURIComponent
+      - new Error
+  - name: registerAllDebugTypes
+    sig: 'registerAllDebugTypes(extensionRegistry: ExtensionDescriptionRegistry)'
+    vis: private
+    lines:
+    - 267
+    - 285
+    detail:
+      calls:
+      - debugTypes.push
+      - extensionRegistry.getAllExtensionDescriptions
+      - isDebuggerMainContribution
+      - this._debugServiceProxy.$registerDebugTypes
+  - name: activeStackItem
+    sig: 'activeStackItem(): vscode.DebugThread | vscode.DebugStackFrame | undefined'
+    lines:
+    - 290
+    - 292
+    detail: {}
+  - name: onDidChangeActiveStackItem
+    sig: 'onDidChangeActiveStackItem(): Event<vscode.DebugThread | vscode.DebugStackFrame | undefined>'
+    lines:
+    - 294
+    - 296
+    detail: {}
+  - name: onDidChangeBreakpoints
+    sig: 'onDidChangeBreakpoints(): Event<vscode.BreakpointsChangeEvent>'
+    lines:
+    - 298
+    - 300
+    detail: {}
+  - name: breakpoints
+    sig: 'breakpoints(): vscode.Breakpoint[]'
+    lines:
+    - 302
+    - 306
+    detail:
+      calls:
+      - this._breakpoints.forEach
+  - name: $resolveDebugVisualizer
+    sig: '$resolveDebugVisualizer(id: number, token: CancellationToken): Promise<MainThreadDebugVisualization>'
+    is_async: true
+    lines:
+    - 308
+    - 325
+    detail:
+      calls:
+      - new Error
+      - provider.resolveDebugVisualization
+      - this._visualizers.get
+      - this.serializeVisualization
+  - name: $executeDebugVisualizerCommand
+    sig: '$executeDebugVisualizerCommand(id: number): Promise<void>'
+    is_async: true
+    lines:
+    - 327
+    - 337
+    detail:
+      calls:
+      - new Error
+      - this._commands.executeCommand
+      - this._visualizers.get
+  - name: $provideDebugVisualizers
+    sig: '$provideDebugVisualizers(extensionId: string, id: string, context: IDebugVisualizationContext, token: CancellationToken): Promise<IDebugVisualization.Serialized[]>'
+    is_async: true
+    lines:
+    - 350
+    - 376
+    detail:
+      calls:
+      - provider.provideDebugVisualization
+      - this._debugVisualizationProviders.get
+      - this.extensionVisKey
+      - this.hydrateVisualizationContext
+      - visualizations.map
+  - name: $disposeDebugVisualizers
+    sig: '$disposeDebugVisualizers(ids: number[]): void'
+    lines:
+    - 378
+    - 382
+    detail:
+      calls:
+      - this._visualizers.delete
+  - name: registerDebugVisualizationProvider
+    sig: 'registerDebugVisualizationProvider(manifest: IExtensionDescription, id: string, provider: vscode.DebugVisualizationProvider<T>): vscode.Disposable'
+    lines:
+    - 384
+    - 401
+    detail:
+      calls:
+      - ExtensionIdentifier.toKey
+      - manifest.contributes?.debugVisualizers?.some
+      - new Error
+      - this._debugServiceProxy.$registerDebugVisualizer
+      - this._debugVisualizationProviders.has
+      - this._debugVisualizationProviders.set
+      - this.extensionVisKey
+      - toDisposable
+  - name: addBreakpoints
+    sig: 'addBreakpoints(breakpoints0: vscode.Breakpoint[]): Promise<void>'
+    lines:
+    - 403
+    - 458
+    detail:
+      calls:
+      - bp.location.uri.toString
+      - breakpoints0.filter
+      - dto.lines.push
+      - dtos.push
+      - map.get
+      - map.set
+      - new Map
+      - this._debugServiceProxy.$registerBreakpoints
+      - this.fireBreakpointChanges
+  - name: removeBreakpoints
+    sig: 'removeBreakpoints(breakpoints0: vscode.Breakpoint[]): Promise<void>'
+    lines:
+    - 460
+    - 472
+    detail:
+      calls:
+      - breakpoints.filter
+      - breakpoints.filter(bp => bp instanceof DataBreakpoint).map
+      - breakpoints.filter(bp => bp instanceof FunctionBreakpoint).map
+      - breakpoints.filter(bp => bp instanceof SourceBreakpoint).map
+      - breakpoints0.filter
+      - this._debugServiceProxy.$unregisterBreakpoints
+      - this.fireBreakpointChanges
+  - name: startDebugging
+    sig: 'startDebugging(folder: vscode.WorkspaceFolder | undefined, nameOrConfig: string | vscode.DebugConfiguration, options: vscode.DebugSessionOptions): Promise<boolean>'
+    lines:
+    - 474
+    - 494
+    detail:
+      calls:
+      - this._debugServiceProxy.$startDebugging
+      - this._testing.getMetadataForRun
+  - name: stopDebugging
+    sig: 'stopDebugging(session?: vscode.DebugSession): Promise<void>'
+    lines:
+    - 496
+    - 498
+    detail:
+      calls:
+      - this._debugServiceProxy.$stopDebugging
+  - name: registerDebugConfigurationProvider
+    sig: 'registerDebugConfigurationProvider(type: string, provider: vscode.DebugConfigurationProvider, trigger: vscode.DebugConfigurationProviderTriggerKind): vscode.Disposable'
+    lines:
+    - 500
+    - 519
+    detail:
+      calls:
+      - new Disposable
+      - this._configProviders.push
+      - this._debugServiceProxy.$registerDebugConfigurationProvider
+  - name: registerDebugAdapterDescriptorFactory
+    sig: 'registerDebugAdapterDescriptorFactory(extension: IExtensionDescription, type: string, factory: vscode.DebugAdapterDescriptorFactory): vscode.Disposable'
+    lines:
+    - 521
+    - 546
+    detail:
+      calls:
+      - new Disposable
+      - new Error
+      - this._adapterFactories.push
+      - this._debugServiceProxy.$registerDebugAdapterDescriptorFactory
+      - this.definesDebugType
+      - this.getAdapterDescriptorFactoryByType
+  - name: registerDebugAdapterTrackerFactory
+    sig: 'registerDebugAdapterTrackerFactory(type: string, factory: vscode.DebugAdapterTrackerFactory): vscode.Disposable'
+    lines:
+    - 548
+    - 560
+    detail:
+      calls:
+      - new Disposable
+      - this._trackerFactories.push
+  - name: $runInTerminal
+    sig: '$runInTerminal(args: DebugProtocol.RunInTerminalRequestArguments, sessionId: string): Promise<number | undefined>'
+    is_async: true
+    lines:
+    - 564
+    - 566
+    detail:
+      calls:
+      - Promise.resolve
+  - name: $substituteVariables
+    sig: '$substituteVariables(folderUri: UriComponents | undefined, config: IConfig): Promise<IConfig>'
+    is_async: true
+    lines:
+    - 568
+    - 583
+    detail:
+      calls:
+      - this._variableResolver.getResolver
+      - this.getFolder
+      - variableResolver.resolveAsync
+  - name: $startDASession
+    sig: '$startDASession(debugAdapterHandle: number, sessionDto: IDebugSessionDto): Promise<void>'
+    is_async: true
+    lines:
+    - 596
+    - 693
+    detail:
+      calls:
+      - this.getAdapterDescriptor
+      - this.getAdapterDescriptor(this.getAdapterDescriptorFactoryByType(session.type), session).then
+      - this.getAdapterDescriptorFactoryByType
+      - this.getSession
+  - name: $sendDAMessage
+    sig: '$sendDAMessage(debugAdapterHandle: number, message: DebugProtocol.ProtocolMessage): void'
+    lines:
+    - 695
+    - 707
+    detail:
+      calls:
+      - convertToDAPaths
+      - da?.sendMessage
+      - this._debugAdapters.get
+      - this._debugAdaptersTrackers.get
+      - tracker.onWillReceiveMessage
+  - name: $stopDASession
+    sig: '$stopDASession(debugAdapterHandle: number): Promise<void>'
+    lines:
+    - 709
+    - 724
+    detail:
+      calls:
+      - Promise.resolve
+      - da.stopSession
+      - this._debugAdapters.delete
+      - this._debugAdapters.get
+      - this._debugAdaptersTrackers.delete
+      - this._debugAdaptersTrackers.get
+      - tracker.onWillStopSession
+  - name: $acceptBreakpointsDelta
+    sig: '$acceptBreakpointsDelta(delta: IBreakpointsDeltaDto): void'
+    lines:
+    - 726
+    - 789
+    detail:
+      calls:
+      - URI.revive
+      - a.push
+      - c.push
+      - new DataBreakpoint
+      - new FunctionBreakpoint
+      - new Location
+      - new Position
+      - new SourceBreakpoint
+      - r.push
+      - setBreakpointId
+      - this._breakpoints.delete
+      - this._breakpoints.get
+      - this._breakpoints.has
+      - this._breakpoints.set
+      - this.fireBreakpointChanges
+  - name: $acceptStackFrameFocus
+    sig: '$acceptStackFrameFocus(focusDto: IThreadFocusDto | IStackFrameFocusDto | undefined): Promise<void>'
+    is_async: true
+    lines:
+    - 791
+    - 804
+    detail:
+      calls:
+      - new DebugStackFrame
+      - new DebugThread
+      - this._onDidChangeActiveStackItem.fire
+      - this.getSession
+  - name: $provideDebugConfigurations
+    sig: '$provideDebugConfigurations(configProviderHandle: number, folderUri: UriComponents | undefined, token: CancellationToken): Promise<vscode.DebugConfiguration[]>'
+    lines:
+    - 806
+    - 823
+    detail:
+      calls:
+      - asPromise
+      - "asPromise(async () => {\n\t\t\tconst provider = this.getConfigProviderByHandle(configProviderHandle);\n\t\t..."
+  - name: $resolveDebugConfiguration
+    sig: '$resolveDebugConfiguration(configProviderHandle: number, folderUri: UriComponents | undefined, debugConfiguration: vscode.DebugConfiguration, token: CancellationToken): Promise<vscode.DebugConfiguration | null | undefined>'
+    lines:
+    - 825
+    - 837
+    detail:
+      calls:
+      - asPromise
+  - name: $resolveDebugConfigurationWithSubstitutedVariables
+    sig: '$resolveDebugConfigurationWithSubstitutedVariables(configProviderHandle: number, folderUri: UriComponents | undefined, debugConfiguration: vscode.DebugConfiguration, token: CancellationToken): Promise<vscode.DebugConfiguration | null | undefined>'
+    lines:
+    - 839
+    - 851
+    detail:
+      calls:
+      - asPromise
+  - name: $provideDebugAdapter
+    sig: '$provideDebugAdapter(adapterFactoryHandle: number, sessionDto: IDebugSessionDto): Promise<Dto<IAdapterDescriptor>>'
+    is_async: true
+    lines:
+    - 853
+    - 865
+    detail:
+      calls:
+      - Promise.reject
+      - new Error
+      - this.getAdapterDescriptor
+      - this.getAdapterDescriptor(adapterDescriptorFactory, session).then
+      - this.getAdapterDescriptorFactoryByHandle
+      - this.getSession
+  - name: $acceptDebugSessionStarted
+    sig: '$acceptDebugSessionStarted(sessionDto: IDebugSessionDto): Promise<void>'
+    is_async: true
+    lines:
+    - 867
+    - 870
+    detail:
+      calls:
+      - this._onDidStartDebugSession.fire
+      - this.getSession
+  - name: $acceptDebugSessionTerminated
+    sig: '$acceptDebugSessionTerminated(sessionDto: IDebugSessionDto): Promise<void>'
+    is_async: true
+    lines:
+    - 872
+    - 878
+    detail:
+      calls:
+      - this._debugSessions.delete
+      - this._onDidTerminateDebugSession.fire
+      - this.getSession
+  - name: $acceptDebugSessionActiveChanged
+    sig: '$acceptDebugSessionActiveChanged(sessionDto: IDebugSessionDto | undefined): Promise<void>'
+    is_async: true
+    lines:
+    - 880
+    - 883
+    detail:
+      calls:
+      - this._onDidChangeActiveDebugSession.fire
+      - this.getSession
+  - name: $acceptDebugSessionNameChanged
+    sig: '$acceptDebugSessionNameChanged(sessionDto: IDebugSessionDto, name: string): Promise<void>'
+    is_async: true
+    lines:
+    - 885
+    - 888
+    detail:
+      calls:
+      - session?._acceptNameChanged
+      - this.getSession
+  - name: $acceptDebugSessionCustomEvent
+    sig: '$acceptDebugSessionCustomEvent(sessionDto: IDebugSessionDto, event: any): Promise<void>'
+    is_async: true
+    lines:
+    - 890
+    - 898
+    detail:
+      calls:
+      - this._onDidReceiveDebugSessionCustomEvent.fire
+      - this.getSession
+  - name: convertToDto
+    sig: 'convertToDto(x: vscode.DebugAdapterDescriptor): Dto<IAdapterDescriptor>'
+    vis: private
+    lines:
+    - 902
+    - 914
+    detail:
+      calls:
+      - new Error
+      - this.convertExecutableToDto
+      - this.convertImplementationToDto
+      - this.convertPipeServerToDto
+      - this.convertServerToDto
+  - name: getDebugAdapterTrackers
+    sig: 'getDebugAdapterTrackers(session: ExtHostDebugSession): Promise<vscode.DebugAdapterTracker | undefined>'
+    vis: private
+    lines:
+    - 987
+    - 1009
+    detail:
+      calls:
+      - Promise.all
+      - Promise.all(promises).then
+      - Promise.race
+      - "Promise.race([\n\t\t\tPromise.all(promises).then(result => {\n\t\t\t\tconst trackers = coalesce(result);\t// f..."
+      - new Promise
+      - "this._trackerFactories\n\t\t\t.filter"
+      - "this._trackerFactories\n\t\t\t.filter(tuple => tuple.type === type || tuple.type === '*')\n\t\t\t.map"
+  - name: getAdapterDescriptor
+    sig: 'getAdapterDescriptor(adapterDescriptorFactory: vscode.DebugAdapterDescriptorFactory | undefined, session: ExtHostDebugSession): Promise<vscode.DebugAdapterDescriptor | undefined>'
+    is_async: true
+    vis: private
+    lines:
+    - 1011
+    - 1032
+    detail:
+      calls:
+      - Promise.resolve
+      - asPromise
+      - asPromise(() => adapterDescriptorFactory.createDebugAdapterDescriptor(session.api, this.daExecutable...
+      - new DebugAdapterServer
+      - this._extensionService.getExtensionRegistry
+      - this.daExecutableFromPackage
+  - name: getSession
+    sig: 'getSession(dto: IDebugSessionDto): Promise<ExtHostDebugSession>'
+    is_async: true
+    vis: private
+    lines:
+    - 1048
+    - 1068
+    detail:
+      calls:
+      - new Error
+      - new ExtHostDebugSession
+      - this._debugServiceProxy.$sessionCached
+      - this._debugSessions.get
+      - this._debugSessions.set
+      - this.getFolder
+  - name: getFolder
+    sig: 'getFolder(_folderUri: UriComponents | undefined): Promise<vscode.WorkspaceFolder | undefined>'
+    vis: private
+    lines:
+    - 1070
+    - 1076
+    detail:
+      calls:
+      - Promise.resolve
+      - URI.revive
+      - this._workspaceService.resolveWorkspaceFolder
+  lines:
+  - 64
+  - 1125
+- name: ExtHostDebugSession
+  kind: struct
+  fields:
+  - name: apiSession
+    type: vscode.DebugSession
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tprivate _debugServiceProxy: MainThreadDebugServiceShape,\n\t\tprivate _id: DebugSessionUUID,\n\t\tprivate _type: string,\n\t\tprivate _name: string,\n\t\tprivate _workspaceFolder: vscode.WorkspaceFolder | undefined,\n\t\tprivate _configuration: vscode.DebugConfiguration,\n\t\tprivate _parentSession: vscode.DebugSession | undefined)"
+    lines:
+    - 1129
+    - 1137
+    detail: {}
+  - name: api
+    sig: 'api(): vscode.DebugSession'
+    lines:
+    - 1139
+    - 1161
+    detail:
+      calls:
+      - Object.freeze
+      - that._debugServiceProxy.$customDebugAdapterRequest
+      - that._debugServiceProxy.$getDebugProtocolBreakpoint
+      - that._debugServiceProxy.$setDebugSessionName
+  - name: id
+    sig: 'id(): string'
+    lines:
+    - 1163
+    - 1165
+    detail: {}
+  - name: type
+    sig: 'type(): string'
+    lines:
+    - 1167
+    - 1169
+    detail: {}
+  - name: _acceptNameChanged
+    sig: '_acceptNameChanged(name: string)'
+    lines:
+    - 1171
+    - 1173
+    detail: {}
+  - name: configuration
+    sig: 'configuration(): vscode.DebugConfiguration'
+    lines:
+    - 1175
+    - 1177
+    detail: {}
+  lines:
+  - 1127
+  - 1178
+- name: ExtHostDebugConsole
+  kind: struct
+  fields:
+  - name: value
+    type: vscode.DebugConsole
+  methods:
+  - name: constructor
+    sig: 'constructor(proxy: MainThreadDebugServiceShape)'
+    lines:
+    - 1184
+    - 1194
+    detail:
+      calls:
+      - Object.freeze
+      - proxy.$appendDebugConsole
+      - this.append
+  lines:
+  - 1180
+  - 1195
+- name: ConfigProviderTuple
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: type
+    type: string
+  - name: handle
+    type: number
+  - name: provider
+    type: vscode.DebugConfigurationProvider
+  lines:
+  - 1197
+  - 1201
+- name: DescriptorFactoryTuple
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: type
+    type: string
+  - name: handle
+    type: number
+  - name: factory
+    type: vscode.DebugAdapterDescriptorFactory
+  lines:
+  - 1203
+  - 1207
+- name: TrackerFactoryTuple
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: type
+    type: string
+  - name: handle
+    type: number
+  - name: factory
+    type: vscode.DebugAdapterTrackerFactory
+  lines:
+  - 1209
+  - 1213
+- name: MultiTracker
+  kind: struct
+  methods:
+  - name: constructor
+    sig: 'constructor(private trackers: vscode.DebugAdapterTracker[])'
+    lines:
+    - 1217
+    - 1218
+    detail: {}
+  - name: onWillStartSession
+    sig: 'onWillStartSession(): void'
+    lines:
+    - 1220
+    - 1222
+    detail:
+      calls:
+      - this.trackers.forEach
+  - name: onWillReceiveMessage
+    sig: 'onWillReceiveMessage(message: any): void'
+    lines:
+    - 1224
+    - 1226
+    detail:
+      calls:
+      - this.trackers.forEach
+  - name: onDidSendMessage
+    sig: 'onDidSendMessage(message: any): void'
+    lines:
+    - 1228
+    - 1230
+    detail:
+      calls:
+      - this.trackers.forEach
+  - name: onWillStopSession
+    sig: 'onWillStopSession(): void'
+    lines:
+    - 1232
+    - 1234
+    detail:
+      calls:
+      - this.trackers.forEach
+  - name: onError
+    sig: 'onError(error: Error): void'
+    lines:
+    - 1236
+    - 1238
+    detail:
+      calls:
+      - this.trackers.forEach
+  - name: onExit
+    sig: 'onExit(code: number, signal: string): void'
+    lines:
+    - 1240
+    - 1242
+    detail:
+      calls:
+      - this.trackers.forEach
+  lines:
+  - 1215
+  - 1243
+- name: DirectDebugAdapter
+  kind: struct
+  bases:
+  - AbstractDebugAdapter
+  methods:
+  - name: constructor
+    sig: 'constructor(private implementation: vscode.DebugAdapter)'
+    lines:
+    - 1250
+    - 1256
+    detail:
+      calls:
+      - implementation.onDidSendMessage
+      - super
+  - name: startSession
+    sig: 'startSession(): Promise<void>'
+    lines:
+    - 1258
+    - 1260
+    detail:
+      calls:
+      - Promise.resolve
+  - name: sendMessage
+    sig: 'sendMessage(message: DebugProtocol.ProtocolMessage): void'
+    lines:
+    - 1262
+    - 1264
+    detail:
+      calls:
+      - this.implementation.handleMessage
+  - name: stopSession
+    sig: 'stopSession(): Promise<void>'
+    lines:
+    - 1266
+    - 1269
+    detail:
+      calls:
+      - Promise.resolve
+      - this.implementation.dispose
+  lines:
+  - 1248
+  - 1270
+- name: WorkerExtHostDebugService
+  kind: struct
+  bases:
+  - ExtHostDebugServiceBase
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\t@IExtHostRpcService extHostRpcService: IExtHostRpcService,\n\t\t@IExtHostWorkspace workspaceService: IExtHostWorkspace,\n\t\t@IExtHostExtensionService extensionService: IExtHostExtensionService,\n\t\t@IExtHostConfiguration configurationService: IExtHostConfiguration,\n\t\t@IExtHostEditorTabs editorTabs: IExtHostEditorTabs,\n\t\t@IExtHostVariableResolverProvider variableResolver: IExtHostVariableResolverProvider,\n\t\t@IExtHostCommands commands: IExtHostCommands,\n\t\t@IExtHostTesting testing: IExtHostTesting,\n\t)"
+    lines:
+    - 1274
+    - 1285
+    detail:
+      calls:
+      - super
+  lines:
+  - 1273
+  - 1286
+- name: DebugProtocolMessageErrorClassification
+  kind: typealias
+  decorators:
+  - type
+  fields:
+  - name: from
+    type: '{ classification: ''SystemMetaData''; purpose: ''PerformanceAndHealth''; comment: ''The type of the debug adapter that the event is from.'' }'
+  - name: type
+    type: '{ classification: ''SystemMetaData''; purpose: ''PerformanceAndHealth''; comment: ''The type of the event that was malformed.'' }'
+  - name: owner
+    type: '''roblourens'''
+  - name: comment
+    type: '''Sent to collect details about misbehaving debug extensions.'''
+  lines:
+  - 1289
+  - 1294
+- name: DebugProtocolMessageErrorEvent
+  kind: typealias
+  decorators:
+  - type
+  fields:
+  - name: from
+    type: string
+  - name: type
+    type: string
+  lines:
+  - 1296
+  - 1299
+exports:
+- name: IExtHostDebugService
+  kind: type
+- name: ExtHostDebugServiceBase
+  kind: type
+- name: ExtHostDebugSession
+  kind: type
+- name: ExtHostDebugConsole
+  kind: type
+- name: ConfigProviderTuple
+  kind: type
+- name: DescriptorFactoryTuple
+  kind: type
+- name: TrackerFactoryTuple
+  kind: type
+- name: MultiTracker
+  kind: type
+- name: DirectDebugAdapter
+  kind: type
+- name: WorkerExtHostDebugService
+  kind: type
+- name: DebugProtocolMessageErrorClassification
+  kind: type
+- name: DebugProtocolMessageErrorEvent
+  kind: type
+- name: IExtHostDebugService
+  kind: data

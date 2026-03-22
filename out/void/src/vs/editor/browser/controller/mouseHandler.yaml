@@ -1,0 +1,626 @@
+## Roska File Descriptor — controller/mouseHandler.ts
+file: controller/mouseHandler.ts
+lines: 853
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: ../../../base/browser/dom.js.dom
+- sym: ../../../base/browser/mouseEvent.js.StandardWheelEvent
+- sym: ../../../base/browser/mouseEvent.js.IMouseWheelEvent
+- sym: ../../../base/common/lifecycle.js.Disposable
+- sym: ../../../base/common/lifecycle.js.IDisposable
+- sym: ../../../base/common/platform.js.platform
+- sym: ./mouseTarget.js.HitTestContext
+- sym: ./mouseTarget.js.MouseTarget
+- sym: ./mouseTarget.js.MouseTargetFactory
+- sym: ./mouseTarget.js.PointerHandlerLastRenderData
+- sym: ../editorBrowser.js.IMouseTarget
+- sym: ../editorBrowser.js.IMouseTargetOutsideEditor
+- sym: ../editorBrowser.js.IMouseTargetViewZoneData
+- sym: ../editorBrowser.js.MouseTargetType
+- sym: ../editorDom.js.ClientCoordinates
+- sym: ../editorDom.js.EditorMouseEvent
+- sym: ../editorDom.js.EditorMouseEventFactory
+- sym: ../editorDom.js.GlobalEditorPointerMoveMonitor
+- sym: ../editorDom.js.createEditorPagePosition
+- sym: ../editorDom.js.createCoordinatesRelativeToEditor
+- sym: ../editorDom.js.PageCoordinates
+- sym: ../view/viewController.js.ViewController
+- sym: ../../common/config/editorZoom.js.EditorZoom
+- sym: ../../common/core/position.js.Position
+- sym: ../../common/core/selection.js.Selection
+- sym: ../view/renderingContext.js.HorizontalPosition
+- sym: ../../common/viewModel/viewContext.js.ViewContext
+- sym: ../../common/viewEvents.js.viewEvents
+- sym: ../../common/viewEventHandler.js.ViewEventHandler
+- sym: ../../common/config/editorOptions.js.EditorOption
+- sym: ../coreCommands.js.NavigationCommandRevealType
+- sym: ../../../base/browser/ui/scrollbar/scrollableElement.js.MouseWheelClassifier
+- sym: ../viewParts/viewLinesGpu/viewLinesGpu.js.ViewLinesGpu
+  kind: typing
+types:
+- name: IPointerHandlerHelper
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: viewDomNode
+    type: HTMLElement
+  - name: linesContentDomNode
+    type: HTMLElement
+  - name: viewLinesDomNode
+    type: HTMLElement
+  - name: viewLinesGpu
+    type: ViewLinesGpu | undefined
+  - name: focusTextArea
+    type: 'method: focusTextArea(): void'
+  - name: dispatchTextAreaEvent
+    type: 'method: dispatchTextAreaEvent(event: CustomEvent): void'
+  - name: getLastRenderData
+    type: 'method: getLastRenderData(): PointerHandlerLastRenderData'
+  - name: renderNow
+    type: 'method: renderNow(): void'
+  - name: shouldSuppressMouseDownOnViewZone
+    type: 'method: shouldSuppressMouseDownOnViewZone(viewZoneId: string): boolean'
+  - name: shouldSuppressMouseDownOnWidget
+    type: 'method: shouldSuppressMouseDownOnWidget(widgetId: string): boolean'
+  - name: getPositionFromDOMInfo
+    type: 'method: getPositionFromDOMInfo(spanNode: HTMLElement, offset: number): Position | null'
+  - name: visibleRangeForPosition
+    type: 'method: visibleRangeForPosition(lineNumber: number, column: number): HorizontalPosition | null'
+  - name: getLineWidth
+    type: 'method: getLineWidth(lineNumber: number): number'
+  lines:
+  - 26
+  - 55
+- name: MouseHandler
+  kind: struct
+  ctx: '--- begin event handlers'
+  bases:
+  - ViewEventHandler
+  fields:
+  - name: _context
+    type: ViewContext
+  - name: viewController
+    type: ViewController
+  - name: viewHelper
+    type: IPointerHandlerHelper
+  - name: mouseTargetFactory
+    type: MouseTargetFactory
+  - name: _mouseDownOperation
+    type: MouseDownOperation
+  - name: lastMouseLeaveTime
+    type: number
+  - name: _height
+    type: number
+  - name: _mouseLeaveMonitor
+    type: IDisposable | null
+    default: 'null'
+  methods:
+  - name: constructor
+    sig: 'constructor(context: ViewContext, viewController: ViewController, viewHelper: IPointerHandlerHelper)'
+    lines:
+    - 68
+    - 136
+    detail:
+      calls:
+      - dom.addDisposableListener
+      - mouseEvents.onContextMenu
+      - mouseEvents.onMouseDown
+      - mouseEvents.onMouseLeave
+      - mouseEvents.onMouseMove
+      - mouseEvents.onMouseUp
+      - mouseEvents.onPointerDown
+      - new EditorMouseEventFactory
+      - new MouseDownOperation
+      - new MouseTargetFactory
+      - super
+      - this._context.addEventHandler
+      - this._context.configuration.options.get
+      - this._register
+      - this._setupMouseWheelZoomListener
+  - name: _setupMouseWheelZoomListener
+    sig: '_setupMouseWheelZoomListener(): void'
+    vis: private
+    lines:
+    - 138
+    - 197
+    detail:
+      calls:
+      - EditorZoom.getZoomLevel
+      - dom.addDisposableListener
+      - this._register
+  - name: dispose
+    sig: 'dispose(): void'
+    lines:
+    - 199
+    - 206
+    detail:
+      calls:
+      - super.dispose
+      - this._context.removeEventHandler
+      - this._mouseLeaveMonitor.dispose
+  - name: onConfigurationChanged
+    sig: 'onConfigurationChanged(e: viewEvents.ViewConfigurationChangedEvent): boolean'
+    lines:
+    - 209
+    - 219
+    detail:
+      calls:
+      - e.hasChanged
+      - this._context.configuration.options.get
+      - this._mouseDownOperation.onHeightChanged
+  - name: onCursorStateChanged
+    sig: 'onCursorStateChanged(e: viewEvents.ViewCursorStateChangedEvent): boolean'
+    lines:
+    - 220
+    - 223
+    detail:
+      calls:
+      - this._mouseDownOperation.onCursorStateChanged
+  - name: onFocusChanged
+    sig: 'onFocusChanged(e: viewEvents.ViewFocusChangedEvent): boolean'
+    lines:
+    - 224
+    - 226
+    detail: {}
+  - name: getTargetAtClientPoint
+    sig: 'getTargetAtClientPoint(clientX: number, clientY: number): IMouseTarget | null'
+    lines:
+    - 229
+    - 240
+    detail:
+      calls:
+      - clientPos.toPageCoordinates
+      - createCoordinatesRelativeToEditor
+      - createEditorPagePosition
+      - dom.getWindow
+      - new ClientCoordinates
+      - this.mouseTargetFactory.createMouseTarget
+      - this.viewHelper.getLastRenderData
+  - name: _createMouseTarget
+    sig: '_createMouseTarget(e: EditorMouseEvent, testEventTarget: boolean): IMouseTarget'
+    vis: protected
+    lines:
+    - 242
+    - 253
+    detail:
+      calls:
+      - (<any>shadowRoot).elementsFromPoint
+      - (<any>shadowRoot).elementsFromPoint(e.posx, e.posy).find
+      - dom.getShadowRoot
+      - this.mouseTargetFactory.createMouseTarget
+      - this.viewHelper.getLastRenderData
+      - this.viewHelper.viewDomNode.contains
+  - name: _onMouseMove
+    sig: '_onMouseMove(e: EditorMouseEvent): void'
+    vis: protected
+    lines:
+    - 266
+    - 286
+    detail:
+      calls:
+      - e.preventDefault
+      - this._createMouseTarget
+      - this._mouseDownOperation.isActive
+      - this.mouseTargetFactory.mouseTargetIsWidget
+      - this.viewController.emitMouseMove
+  - name: _onMouseLeave
+    sig: '_onMouseLeave(e: EditorMouseEvent): void'
+    vis: protected
+    lines:
+    - 288
+    - 298
+    detail:
+      calls:
+      - (new Date()).getTime
+      - new Date
+      - this._mouseLeaveMonitor.dispose
+      - this.viewController.emitMouseLeave
+  - name: _onMouseDown
+    sig: '_onMouseDown(e: EditorMouseEvent, pointerId: number): void'
+    vis: protected
+    lines:
+    - 307
+    - 350
+    detail:
+      calls:
+      - e.preventDefault
+      - focus
+      - this._context.configuration.options.get
+      - this._createMouseTarget
+      - this._mouseDownOperation.start
+      - this.viewController.emitMouseDown
+      - this.viewHelper.shouldSuppressMouseDownOnViewZone
+      - this.viewHelper.shouldSuppressMouseDownOnWidget
+  lines:
+  - 57
+  - 355
+- name: MouseDownOperation
+  kind: struct
+  bases:
+  - Disposable
+  fields:
+  - name: _createMouseTarget
+    type: '(e: EditorMouseEvent, testEventTarget: boolean) => IMouseTarget'
+  - name: _getMouseColumn
+    type: '(e: EditorMouseEvent) => number'
+  - name: _mouseMoveMonitor
+    type: GlobalEditorPointerMoveMonitor
+  - name: _topBottomDragScrolling
+    type: TopBottomDragScrolling
+  - name: _mouseState
+    type: MouseDownState
+  - name: _currentSelection
+    type: Selection
+  - name: _isActive
+    type: boolean
+  - name: _lastMouseEvent
+    type: EditorMouseEvent | null
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tprivate readonly _context: ViewContext,\n\t\tprivate readonly _viewController: ViewController,\n\t\tprivate readonly _viewHelper: IPointerHandlerHelper,\n\t\tprivate readonly _mouseTargetFactory: MouseTargetFactory,\n\t\tcreateMouseTarget: (e: EditorMouseEvent, testEventTarget: boolean) => IMouseTarget,\n\t\tgetMouseColumn: (e: EditorMouseEvent) => number\n\t)"
+    lines:
+    - 370
+    - 394
+    detail:
+      calls:
+      - new GlobalEditorPointerMoveMonitor
+      - new MouseDownState
+      - new Selection
+      - new TopBottomDragScrolling
+      - super
+      - this._register
+  - name: dispose
+    sig: 'dispose(): void'
+    lines:
+    - 396
+    - 398
+    detail:
+      calls:
+      - super.dispose
+  - name: isActive
+    sig: 'isActive(): boolean'
+    lines:
+    - 400
+    - 402
+    detail: {}
+  - name: _onMouseDownThenMove
+    sig: '_onMouseDownThenMove(e: EditorMouseEvent): void'
+    vis: private
+    lines:
+    - 404
+    - 427
+    detail:
+      calls:
+      - this._dispatchMouse
+      - this._findMousePosition
+      - this._mouseState.setModifiers
+      - this._topBottomDragScrolling.start
+      - this._topBottomDragScrolling.stop
+      - this._viewController.emitMouseDrag
+  - name: start
+    sig: 'start(targetType: MouseTargetType, e: EditorMouseEvent, pointerId: number): void'
+    lines:
+    - 429
+    - 499
+    detail:
+      calls:
+      - options.get
+      - this._currentSelection.containsPosition
+      - this._currentSelection.isEmpty
+      - this._dispatchMouse
+      - this._findMousePosition
+      - this._mouseMoveMonitor.startMonitoring
+      - this._mouseState.setModifiers
+      - this._mouseState.setStartButtons
+      - this._mouseState.setStartedOnLineNumbers
+      - this._mouseState.trySetCount
+  - name: onHeightChanged
+    sig: 'onHeightChanged(): void'
+    lines:
+    - 506
+    - 508
+    detail:
+      calls:
+      - this._mouseMoveMonitor.stopMonitoring
+  - name: onPointerUp
+    sig: 'onPointerUp(): void'
+    lines:
+    - 510
+    - 512
+    detail:
+      calls:
+      - this._mouseMoveMonitor.stopMonitoring
+  - name: onCursorStateChanged
+    sig: 'onCursorStateChanged(e: viewEvents.ViewCursorStateChangedEvent): void'
+    lines:
+    - 514
+    - 516
+    detail: {}
+  - name: _getPositionOutsideEditor
+    sig: '_getPositionOutsideEditor(e: EditorMouseEvent): IMouseTarget | null'
+    vis: private
+    lines:
+    - 518
+    - 568
+    detail:
+      calls:
+      - HitTestContext.getZoneAtCoord
+      - Math.max
+      - MouseTarget.createOutsideEditor
+      - model.getLineMaxColumn
+      - new Position
+      - this._getMouseColumn
+      - this._helpPositionJumpOverViewZone
+      - viewLayout.getCurrentScrollTop
+      - viewLayout.getLineNumberAtVerticalOffset
+  - name: _findMousePosition
+    sig: '_findMousePosition(e: EditorMouseEvent, testEventTarget: boolean): IMouseTarget | null'
+    vis: private
+    lines:
+    - 570
+    - 590
+    detail:
+      calls:
+      - MouseTarget.createViewZone
+      - this._createMouseTarget
+      - this._getPositionOutsideEditor
+      - this._helpPositionJumpOverViewZone
+  - name: _dispatchMouse
+    sig: '_dispatchMouse(position: IMouseTarget, inSelectionMode: boolean, revealType: NavigationCommandRevealType): void'
+    vis: private
+    lines:
+    - 608
+    - 630
+    detail:
+      calls:
+      - this._viewController.dispatchMouse
+  lines:
+  - 357
+  - 631
+- name: TopBottomDragScrolling
+  kind: struct
+  bases:
+  - Disposable
+  fields:
+  - name: _operation
+    type: TopBottomDragScrollingOperation | null
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tprivate readonly _context: ViewContext,\n\t\tprivate readonly _viewHelper: IPointerHandlerHelper,\n\t\tprivate readonly _mouseTargetFactory: MouseTargetFactory,\n\t\tprivate readonly _dispatchMouse: (position: IMouseTarget, inSelectionMode: boolean, revealType: NavigationCommandRevealType) => void,\n\t)"
+    lines:
+    - 637
+    - 645
+    detail:
+      calls:
+      - super
+  - name: dispose
+    sig: 'dispose(): void'
+    lines:
+    - 647
+    - 650
+    detail:
+      calls:
+      - super.dispose
+      - this.stop
+  - name: start
+    sig: 'start(position: IMouseTargetOutsideEditor, mouseEvent: EditorMouseEvent): void'
+    lines:
+    - 652
+    - 658
+    detail:
+      calls:
+      - new TopBottomDragScrollingOperation
+      - this._operation.setPosition
+  - name: stop
+    sig: 'stop(): void'
+    lines:
+    - 660
+    - 665
+    detail:
+      calls:
+      - this._operation.dispose
+  lines:
+  - 633
+  - 666
+- name: TopBottomDragScrollingOperation
+  kind: struct
+  ctx: update internal state and return elapsed ms since last time
+  bases:
+  - Disposable
+  fields:
+  - name: _position
+    type: IMouseTargetOutsideEditor
+  - name: _mouseEvent
+    type: EditorMouseEvent
+  - name: _lastTime
+    type: number
+  - name: _animationFrameDisposable
+    type: IDisposable
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tprivate readonly _context: ViewContext,\n\t\tprivate readonly _viewHelper: IPointerHandlerHelper,\n\t\tprivate readonly _mouseTargetFactory: MouseTargetFactory,\n\t\tprivate readonly _dispatchMouse: (position: IMouseTarget, inSelectionMode: boolean, revealType: NavigationCommandRevealType) => void,\n\t\tposition: IMouseTargetOutsideEditor,\n\t\tmouseEvent: EditorMouseEvent\n\t)"
+    lines:
+    - 675
+    - 688
+    detail:
+      calls:
+      - Date.now
+      - dom.getWindow
+      - dom.scheduleAtNextAnimationFrame
+      - super
+  - name: dispose
+    sig: 'dispose(): void'
+    lines:
+    - 690
+    - 693
+    detail:
+      calls:
+      - super.dispose
+      - this._animationFrameDisposable.dispose
+  - name: setPosition
+    sig: 'setPosition(position: IMouseTargetOutsideEditor, mouseEvent: EditorMouseEvent): void'
+    lines:
+    - 695
+    - 698
+    detail: {}
+  - name: _execute
+    sig: '_execute(): void'
+    vis: private
+    lines:
+    - 727
+    - 759
+    detail:
+      calls:
+      - MouseTarget.createOutsideEditor
+      - createCoordinatesRelativeToEditor
+      - createEditorPagePosition
+      - dom.getWindow
+      - dom.scheduleAtNextAnimationFrame
+      - new PageCoordinates
+      - new Position
+      - this._context.configuration.options.get
+      - this._context.viewLayout.getLinesViewportData
+      - this._context.viewModel.getLineMaxColumn
+      - this._context.viewModel.viewLayout.deltaScrollNow
+      - this._dispatchMouse
+      - this._getScrollSpeed
+      - this._mouseTargetFactory.createMouseTarget
+      - this._tick
+      - this._viewHelper.getLastRenderData
+      - this._viewHelper.renderNow
+  lines:
+  - 668
+  - 760
+- name: MouseDownState
+  kind: struct
+  ctx: ms
+  fields:
+  - name: CLEAR_MOUSE_DOWN_COUNT_TIME
+    type: any
+    default: '400'
+  - name: _altKey
+    type: boolean
+  - name: _ctrlKey
+    type: boolean
+  - name: _metaKey
+    type: boolean
+  - name: _shiftKey
+    type: boolean
+  - name: _leftButton
+    type: boolean
+  - name: _middleButton
+    type: boolean
+  - name: _startedOnLineNumbers
+    type: boolean
+  - name: _lastMouseDownPosition
+    type: Position | null
+  - name: _lastMouseDownPositionEqualCount
+    type: number
+  - name: _lastMouseDownCount
+    type: number
+  - name: _lastSetMouseDownCountTime
+    type: number
+  - name: isDragAndDrop
+    type: boolean
+  methods:
+  - name: altKey
+    sig: 'altKey(): boolean'
+    lines:
+    - 767
+    - 767
+    detail: {}
+  - name: ctrlKey
+    sig: 'ctrlKey(): boolean'
+    lines:
+    - 770
+    - 770
+    detail: {}
+  - name: metaKey
+    sig: 'metaKey(): boolean'
+    lines:
+    - 773
+    - 773
+    detail: {}
+  - name: shiftKey
+    sig: 'shiftKey(): boolean'
+    lines:
+    - 776
+    - 776
+    detail: {}
+  - name: leftButton
+    sig: 'leftButton(): boolean'
+    lines:
+    - 779
+    - 779
+    detail: {}
+  - name: middleButton
+    sig: 'middleButton(): boolean'
+    lines:
+    - 782
+    - 782
+    detail: {}
+  - name: startedOnLineNumbers
+    sig: 'startedOnLineNumbers(): boolean'
+    lines:
+    - 785
+    - 785
+    detail: {}
+  - name: constructor
+    sig: constructor()
+    lines:
+    - 793
+    - 806
+    detail: {}
+  - name: count
+    sig: 'count(): number'
+    lines:
+    - 808
+    - 810
+    detail: {}
+  - name: setModifiers
+    sig: 'setModifiers(source: EditorMouseEvent)'
+    lines:
+    - 812
+    - 817
+    detail: {}
+  - name: setStartButtons
+    sig: 'setStartButtons(source: EditorMouseEvent)'
+    lines:
+    - 819
+    - 822
+    detail: {}
+  - name: setStartedOnLineNumbers
+    sig: 'setStartedOnLineNumbers(startedOnLineNumbers: boolean): void'
+    lines:
+    - 824
+    - 826
+    detail: {}
+  - name: trySetCount
+    sig: 'trySetCount(setMouseDownCount: number, newMouseDownPosition: Position): void'
+    lines:
+    - 828
+    - 851
+    detail:
+      calls:
+      - (new Date()).getTime
+      - Math.min
+      - new Date
+      - this._lastMouseDownPosition.equals
+  lines:
+  - 762
+  - 853
+exports:
+- name: IPointerHandlerHelper
+  kind: type
+- name: MouseHandler
+  kind: type
+- name: MouseDownOperation
+  kind: type
+- name: TopBottomDragScrolling
+  kind: type
+- name: TopBottomDragScrollingOperation
+  kind: type
+- name: MouseDownState
+  kind: type

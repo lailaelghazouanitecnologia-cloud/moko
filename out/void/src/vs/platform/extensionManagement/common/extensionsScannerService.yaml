@@ -1,0 +1,934 @@
+## Roska File Descriptor — common/extensionsScannerService.ts
+file: common/extensionsScannerService.ts
+lines: 1068
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: ../../../base/common/arrays.js.coalesce
+- sym: ../../../base/common/async.js.ThrottledDelayer
+- sym: ../../../base/common/objects.js.objects
+- sym: ../../../base/common/buffer.js.VSBuffer
+- sym: ../../../base/common/errors.js.getErrorMessage
+- sym: ../../../base/common/json.js.getNodeType
+- sym: ../../../base/common/json.js.parse
+- sym: ../../../base/common/json.js.ParseError
+- sym: ../../../base/common/jsonErrorMessages.js.getParseErrorMessage
+- sym: ../../../base/common/lifecycle.js.Disposable
+- sym: ../../../base/common/network.js.FileAccess
+- sym: ../../../base/common/network.js.Schemas
+- sym: ../../../base/common/path.js.path
+- sym: ../../../base/common/platform.js.platform
+- sym: ../../../base/common/resources.js.basename
+- sym: ../../../base/common/resources.js.isEqual
+- sym: ../../../base/common/resources.js.joinPath
+- sym: ../../../base/common/semver/semver.js.semver
+- sym: ../../../base/common/severity.js.Severity
+- sym: ../../../base/common/uri.js.URI
+- sym: ../../../nls.js.localize
+- sym: ../../environment/common/environment.js.IEnvironmentService
+- sym: ./extensionManagement.js.IProductVersion
+- sym: ./extensionManagement.js.Metadata
+- sym: ./extensionManagementUtil.js.areSameExtensions
+- sym: ./extensionManagementUtil.js.computeTargetPlatform
+- sym: ./extensionManagementUtil.js.getExtensionId
+- sym: ./extensionManagementUtil.js.getGalleryExtensionId
+- sym: ../../extensions/common/extensions.js.ExtensionType
+- sym: ../../extensions/common/extensions.js.ExtensionIdentifier
+- sym: ../../extensions/common/extensions.js.IExtensionManifest
+- sym: ../../extensions/common/extensions.js.TargetPlatform
+- sym: ../../extensions/common/extensions.js.IExtensionIdentifier
+- sym: ../../extensions/common/extensions.js.IRelaxedExtensionManifest
+- sym: ../../extensions/common/extensions.js.UNDEFINED_PUBLISHER
+- sym: ../../extensions/common/extensions.js.IExtensionDescription
+- sym: ../../extensions/common/extensions.js.BUILTIN_MANIFEST_CACHE_FILE
+- sym: ../../extensions/common/extensions.js.USER_MANIFEST_CACHE_FILE
+- sym: ../../extensions/common/extensions.js.ExtensionIdentifierMap
+- sym: ../../extensions/common/extensions.js.parseEnabledApiProposalNames
+- sym: ../../extensions/common/extensionValidator.js.validateExtensionManifest
+- sym: ../../files/common/files.js.FileOperationResult
+- sym: ../../files/common/files.js.IFileService
+- sym: ../../files/common/files.js.toFileOperationResult
+- sym: ../../instantiation/common/instantiation.js.createDecorator
+- sym: ../../instantiation/common/instantiation.js.IInstantiationService
+- sym: ../../log/common/log.js.ILogService
+- sym: ../../product/common/productService.js.IProductService
+- sym: ../../../base/common/event.js.Emitter
+- sym: ../../../base/common/event.js.Event
+- sym: ../../../base/common/marshalling.js.revive
+- sym: ./extensionsProfileScannerService.js.ExtensionsProfileScanningError
+- sym: ./extensionsProfileScannerService.js.ExtensionsProfileScanningErrorCode
+- sym: ./extensionsProfileScannerService.js.IExtensionsProfileScannerService
+- sym: ./extensionsProfileScannerService.js.IProfileExtensionsScanOptions
+- sym: ./extensionsProfileScannerService.js.IScannedProfileExtension
+- sym: ../../userDataProfile/common/userDataProfile.js.IUserDataProfile
+- sym: ../../userDataProfile/common/userDataProfile.js.IUserDataProfilesService
+- sym: ../../uriIdentity/common/uriIdentity.js.IUriIdentityService
+- sym: ./extensionNls.js.localizeManifest
+data:
+- name: IExtensionsScannerService
+  type: any
+  val: createDecorator<IExtensionsScannerService>('IExtensionsScannerService')
+types:
+- name: ManifestMetadata
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 38
+  - 42
+- name: IScannedExtensionManifest
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 44
+  - 44
+- name: IRelaxedScannedExtension
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: type
+    type: ExtensionType
+  - name: isBuiltin
+    type: boolean
+  - name: identifier
+    type: IExtensionIdentifier
+  - name: manifest
+    type: IRelaxedExtensionManifest
+  - name: location
+    type: URI
+  - name: targetPlatform
+    type: TargetPlatform
+  - name: metadata
+    type: Metadata | undefined
+  - name: isValid
+    type: boolean
+  - name: validations
+    type: readonly [Severity, string][]
+  - name: preRelease
+    type: boolean
+  lines:
+  - 46
+  - 58
+- name: IScannedExtension
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 60
+  - 60
+- name: Translations
+  kind: trait
+  decorators:
+  - interface
+  lines:
+  - 62
+  - 64
+- name: MessageBag
+  kind: trait
+  decorators:
+  - interface
+  lines:
+  - 90
+  - 92
+- name: TranslationBundle
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: contents
+    type: "{\n\t\tpackage: MessageBag;\n\t}"
+  lines:
+  - 94
+  - 98
+- name: LocalizedMessages
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: values
+    type: MessageBag | undefined
+  - name: default
+    type: URI | null
+  lines:
+  - 100
+  - 103
+- name: IBuiltInExtensionControl
+  kind: trait
+  decorators:
+  - interface
+  lines:
+  - 105
+  - 107
+- name: SystemExtensionsScanOptions
+  kind: typealias
+  decorators:
+  - type
+  fields:
+  - name: readonly
+    type: boolean
+  - name: readonly
+    type: string
+  lines:
+  - 109
+  - 112
+- name: UserExtensionsScanOptions
+  kind: typealias
+  decorators:
+  - type
+  fields:
+  - name: readonly
+    type: URI
+  - name: readonly
+    type: boolean
+  - name: readonly
+    type: string
+  - name: readonly
+    type: boolean
+  - name: readonly
+    type: IProductVersion
+  lines:
+  - 114
+  - 120
+- name: ScanOptions
+  kind: typealias
+  decorators:
+  - type
+  fields:
+  - name: readonly
+    type: boolean
+  - name: readonly
+    type: string
+  lines:
+  - 122
+  - 125
+- name: IExtensionsScannerService
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: readonly
+    type: undefined
+  - name: readonly
+    type: URI
+  - name: readonly
+    type: URI
+  - name: readonly
+    type: Event<ExtensionType>
+  - name: scanAllExtensions
+    type: 'method: scanAllExtensions(systemScanOptions: SystemExtensionsScanOptions, userScanOptions: UserExtensionsScanOptions): Promise<IScannedExtension[]>'
+  - name: scanSystemExtensions
+    type: 'method: scanSystemExtensions(scanOptions: SystemExtensionsScanOptions): Promise<IScannedExtension[]>'
+  - name: scanUserExtensions
+    type: 'method: scanUserExtensions(scanOptions: UserExtensionsScanOptions): Promise<IScannedExtension[]>'
+  - name: scanAllUserExtensions
+    type: 'method: scanAllUserExtensions(): Promise<IScannedExtension[]>'
+  - name: scanExtensionsUnderDevelopment
+    type: 'method: scanExtensionsUnderDevelopment(existingExtensions: IScannedExtension[], scanOptions: ScanOptions): Promise<IScannedExtension[]>'
+  - name: scanExistingExtension
+    type: 'method: scanExistingExtension(extensionLocation: URI, extensionType: ExtensionType, scanOptions: ScanOptions): Promise<IScannedExtension | null>'
+  - name: scanMultipleExtensions
+    type: 'method: scanMultipleExtensions(extensionLocations: URI[], extensionType: ExtensionType, scanOptions: ScanOptions): Promise<IScannedExtension[]>'
+  - name: scanOneOrMultipleExtensions
+    type: 'method: scanOneOrMultipleExtensions(extensionLocation: URI, extensionType: ExtensionType, scanOptions: ScanOptions): Promise<IScannedExtension[]>'
+  - name: updateManifestMetadata
+    type: 'method: updateManifestMetadata(extensionLocation: URI, metadata: ManifestMetadata): Promise<void>'
+  - name: initializeDefaultProfileExtensions
+    type: 'method: initializeDefaultProfileExtensions(): Promise<void>'
+  lines:
+  - 128
+  - 147
+- name: AbstractExtensionsScannerService
+  kind: trait
+  bases:
+  - Disposable
+  - IExtensionsScannerService
+  decorators:
+  - abstract
+  fields:
+  - name: _serviceBrand
+    type: undefined
+  - name: _onDidChangeCache
+    type: any
+    default: this._register(new Emitter<ExtensionType>())
+  - name: onDidChangeCache
+    type: any
+    default: this._onDidChangeCache.event
+  - name: systemExtensionsCachedScanner
+    type: any
+    default: this._register(this.instantiationService.createInstance(CachedExtensionsScanner,...
+  - name: userExtensionsCachedScanner
+    type: any
+    default: this._register(this.instantiationService.createInstance(CachedExtensionsScanner,...
+  - name: extensionsScanner
+    type: any
+    default: this._register(this.instantiationService.createInstance(ExtensionsScanner))
+  - name: _targetPlatformPromise
+    type: Promise<TargetPlatform> | undefined
+  - name: initializeDefaultProfileExtensionsPromise
+    type: Promise<void> | undefined
+    default: undefined
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\treadonly systemExtensionsLocation: URI,\n\t\treadonly userExtensionsLocation: URI,\n\t\tprivate readonly extensionsControlLocation: URI,\n\t\tprivate readonly currentProfile: IUserDataProfile,\n\t\t@IUserDataProfilesService private readonly userDataProfilesService: IUserDataProfilesService,\n\t\t@IExtensionsProfileScannerService protected readonly extensionsProfileScannerService: IExtensionsProfileScannerService,\n\t\t@IFileService protected readonly fileService: IFileService,\n\t\t@ILogService protected readonly logService: ILogService,\n\t\t@IEnvironmentService private readonly environmentService: IEnvironmentService,\n\t\t@IProductService private readonly productService: IProductService,\n\t\t@IUriIdentityService private readonly uriIdentityService: IUriIdentityService,\n\t\t@IInstantiationService private readonly instantiationService: IInstantiationService,\n\t)"
+    lines:
+    - 162
+    - 180
+    detail:
+      calls:
+      - super
+      - this._register
+      - this.systemExtensionsCachedScanner.onDidChangeCache
+      - this.userExtensionsCachedScanner.onDidChangeCache
+  - name: scanAllExtensions
+    sig: 'scanAllExtensions(systemScanOptions: SystemExtensionsScanOptions, userScanOptions: UserExtensionsScanOptions): Promise<IScannedExtension[]>'
+    is_async: true
+    lines:
+    - 190
+    - 196
+    detail:
+      calls:
+      - Promise.all
+      - this.dedupExtensions
+      - this.getTargetPlatform
+      - this.scanSystemExtensions
+      - this.scanUserExtensions
+  - name: scanSystemExtensions
+    sig: 'scanSystemExtensions(scanOptions: SystemExtensionsScanOptions): Promise<IScannedExtension[]>'
+    is_async: true
+    lines:
+    - 198
+    - 204
+    detail:
+      calls:
+      - Promise.all
+      - promises.push
+      - this.applyScanOptions
+      - this.scanDefaultSystemExtensions
+      - this.scanDevSystemExtensions
+  - name: scanUserExtensions
+    sig: 'scanUserExtensions(scanOptions: UserExtensionsScanOptions): Promise<IScannedExtension[]>'
+    is_async: true
+    lines:
+    - 206
+    - 225
+    detail:
+      calls:
+      - extensionsScanner.scanExtensions
+      - this.applyScanOptions
+      - this.createExtensionScannerInput
+      - this.doInitializeDefaultProfileExtensions
+      - this.getProductVersion
+      - this.logService.trace
+      - this.uriIdentityService.extUri.isEqual
+  - name: scanAllUserExtensions
+    sig: 'scanAllUserExtensions(scanOptions: { includeAllVersions?: boolean; includeInvalid: boolean } = { includeInvalid: true, includeAllVersions: true }): Promise<IScannedExtension[]>'
+    is_async: true
+    lines:
+    - 227
+    - 231
+    detail:
+      calls:
+      - this.applyScanOptions
+      - this.createExtensionScannerInput
+      - this.extensionsScanner.scanExtensions
+      - this.getProductVersion
+  - name: scanExtensionsUnderDevelopment
+    sig: 'scanExtensionsUnderDevelopment(existingExtensions: IScannedExtension[], scanOptions: ScanOptions): Promise<IScannedExtension[]>'
+    is_async: true
+    lines:
+    - 233
+    - 250
+    detail:
+      calls:
+      - (await Promise.all(this.environmentService.extensionDevelopmentLocationURI.filter(extLoc => extLoc.s...
+      - Promise.all
+      - this.applyScanOptions
+      - this.environmentService.extensionDevelopmentLocationURI.filter
+      - this.environmentService.extensionDevelopmentLocationURI.filter(extLoc => extLoc.scheme === Schemas.f...
+  - name: scanExistingExtension
+    sig: 'scanExistingExtension(extensionLocation: URI, extensionType: ExtensionType, scanOptions: ScanOptions): Promise<IScannedExtension | null>'
+    is_async: true
+    lines:
+    - 252
+    - 262
+    detail:
+      calls:
+      - this.createExtensionScannerInput
+      - this.extensionsScanner.scanExtension
+      - this.getProductVersion
+  - name: scanOneOrMultipleExtensions
+    sig: 'scanOneOrMultipleExtensions(extensionLocation: URI, extensionType: ExtensionType, scanOptions: ScanOptions): Promise<IScannedExtension[]>'
+    is_async: true
+    lines:
+    - 264
+    - 268
+    detail:
+      calls:
+      - this.applyScanOptions
+      - this.createExtensionScannerInput
+      - this.extensionsScanner.scanOneOrMultipleExtensions
+      - this.getProductVersion
+  - name: scanMultipleExtensions
+    sig: 'scanMultipleExtensions(extensionLocations: URI[], extensionType: ExtensionType, scanOptions: ScanOptions): Promise<IScannedExtension[]>'
+    is_async: true
+    lines:
+    - 270
+    - 277
+    detail:
+      calls:
+      - Promise.all
+      - extensionLocations.map
+      - this.applyScanOptions
+  - name: updateManifestMetadata
+    sig: 'updateManifestMetadata(extensionLocation: URI, metaData: ManifestMetadata): Promise<void>'
+    is_async: true
+    lines:
+    - 279
+    - 286
+    detail:
+      calls:
+      - (await this.fileService.readFile(manifestLocation)).value.toString
+      - JSON.parse
+      - JSON.stringify
+      - VSBuffer.fromString
+      - joinPath
+      - this.fileService.readFile
+      - this.fileService.writeFile
+  - name: initializeDefaultProfileExtensions
+    sig: 'initializeDefaultProfileExtensions(): Promise<void>'
+    is_async: true
+    lines:
+    - 288
+    - 298
+    detail:
+      calls:
+      - this.doInitializeDefaultProfileExtensions
+      - this.extensionsProfileScannerService.scanProfileExtensions
+  - name: doInitializeDefaultProfileExtensions
+    sig: 'doInitializeDefaultProfileExtensions(): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 301
+    - 327
+    detail:
+      calls:
+      - "(async () => {\n\t\t\t\ttry {\n\t\t\t\t\tthis.logService.info('Started initializing default profile extensions ..."
+  - name: applyScanOptions
+    sig: 'applyScanOptions(extensions: IRelaxedScannedExtension[], type: ExtensionType | ''development'', scanOptions: { includeAllVersions?: boolean; includeInvalid?: boolean; pickLatest?: boolean } = {}): Promise<IRelaxedScannedExtension[]>'
+    is_async: true
+    vis: private
+    lines:
+    - 329
+    - 347
+    detail:
+      calls:
+      - extensions.filter
+      - extensions.sort
+      - this.dedupExtensions
+      - this.getTargetPlatform
+  - name: dedupExtensions
+    sig: 'dedupExtensions(system: IScannedExtension[] | undefined, user: IScannedExtension[] | undefined, development: IScannedExtension[] | undefined, targetPlatform: TargetPlatform, pickLatest: boolean): IScannedExtension[]'
+    vis: private
+    lines:
+    - 349
+    - 402
+    detail:
+      calls:
+      - development?.forEach
+      - new ExtensionIdentifierMap
+      - result.values
+      - system?.forEach
+      - user?.forEach
+  - name: scanDefaultSystemExtensions
+    sig: 'scanDefaultSystemExtensions(language: string | undefined): Promise<IRelaxedScannedExtension[]>'
+    is_async: true
+    vis: private
+    lines:
+    - 404
+    - 411
+    detail:
+      calls:
+      - extensionsScanner.scanExtensions
+      - this.createExtensionScannerInput
+      - this.getProductVersion
+      - this.logService.trace
+  - name: scanDevSystemExtensions
+    sig: 'scanDevSystemExtensions(language: string | undefined, checkControlFile: boolean): Promise<IRelaxedScannedExtension[]>'
+    is_async: true
+    vis: private
+    lines:
+    - 413
+    - 439
+    detail:
+      calls:
+      - FileAccess.asFileUri
+      - Promise.all
+      - URI.file
+      - coalesce
+      - devSystemExtensionsLocations.map
+      - devSystemExtensionsLocations.push
+      - joinPath
+      - path.join
+      - path.normalize
+      - this.getBuiltInExtensionControl
+      - this.logService.trace
+  - name: getBuiltInExtensionControl
+    sig: 'getBuiltInExtensionControl(): Promise<IBuiltInExtensionControl>'
+    is_async: true
+    vis: private
+    lines:
+    - 441
+    - 448
+    detail:
+      calls:
+      - JSON.parse
+      - content.value.toString
+      - this.fileService.readFile
+  - name: createExtensionScannerInput
+    sig: 'createExtensionScannerInput(location: URI, profile: boolean, type: ExtensionType, language: string | undefined, validate: boolean, profileScanOptions: IProfileExtensionsScanOptions | undefined, productVersion: IProductVersion): Promise<ExtensionScannerInput>'
+    is_async: true
+    vis: private
+    lines:
+    - 450
+    - 471
+    detail:
+      calls:
+      - new ExtensionScannerInput
+      - this.getMtime
+      - this.getTranslations
+      - this.uriIdentityService.extUri.isEqual
+  - name: getMtime
+    sig: 'getMtime(location: URI): Promise<number | undefined>'
+    is_async: true
+    vis: private
+    lines:
+    - 473
+    - 483
+    detail:
+      calls:
+      - this.fileService.stat
+  lines:
+  - 149
+  - 492
+- name: ExtensionScannerInput
+  kind: struct
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tpublic readonly location: URI,\n\t\tpublic readonly mtime: number | undefined,\n\t\tpublic readonly applicationExtensionslocation: URI | undefined,\n\t\tpublic readonly applicationExtensionslocationMtime: number | undefined,\n\t\tpublic readonly profile: boolean,\n\t\tpublic readonly profileScanOptions: IProfileExtensionsScanOptions | undefined,\n\t\tpublic readonly type: ExtensionType,\n\t\tpublic readonly validate: boolean,\n\t\tpublic readonly productVersion: string,\n\t\tpublic readonly productDate: string | undefined,\n\t\tpublic readonly productCommit: string | undefined,\n\t\tpublic readonly devMode: boolean,\n\t\tpublic readonly language: string | undefined,\n\t\tpublic readonly translations: Translations\n\t)"
+    lines:
+    - 496
+    - 513
+    detail: {}
+  - name: createNlsConfiguration
+    sig: 'createNlsConfiguration(input: ExtensionScannerInput): NlsConfiguration'
+    decorators:
+    - static
+    lines:
+    - 515
+    - 522
+    detail: {}
+  - name: equals
+    sig: 'equals(a: ExtensionScannerInput, b: ExtensionScannerInput): boolean'
+    decorators:
+    - static
+    lines:
+    - 524
+    - 541
+    detail:
+      calls:
+      - Translations.equals
+      - isEqual
+      - objects.equals
+  lines:
+  - 494
+  - 542
+- name: NlsConfiguration
+  kind: typealias
+  decorators:
+  - type
+  fields:
+  - name: language
+    type: string | undefined
+  - name: pseudo
+    type: boolean
+  - name: devMode
+    type: boolean
+  - name: translations
+    type: Translations
+  lines:
+  - 544
+  - 549
+- name: ExtensionsScanner
+  kind: struct
+  ctx: Parses original message bundle, returns null if the original message bundle is null.
+  bases:
+  - Disposable
+  fields:
+  - name: extensionsEnabledWithApiProposalVersion
+    type: string[]
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\t@IExtensionsProfileScannerService protected readonly extensionsProfileScannerService: IExtensionsProfileScannerService,\n\t\t@IUriIdentityService protected readonly uriIdentityService: IUriIdentityService,\n\t\t@IFileService protected readonly fileService: IFileService,\n\t\t@IProductService productService: IProductService,\n\t\t@IEnvironmentService private readonly environmentService: IEnvironmentService,\n\t\t@ILogService protected readonly logService: ILogService\n\t)"
+    lines:
+    - 555
+    - 565
+    detail:
+      calls:
+      - productService.extensionsEnabledWithApiProposalVersion?.map
+      - super
+  - name: scanExtensions
+    sig: 'scanExtensions(input: ExtensionScannerInput): Promise<IRelaxedScannedExtension[]>'
+    is_async: true
+    lines:
+    - 567
+    - 571
+    detail:
+      calls:
+      - this.scanExtensionsFromLocation
+      - this.scanExtensionsFromProfile
+  - name: scanExtensionsFromLocation
+    sig: 'scanExtensionsFromLocation(input: ExtensionScannerInput): Promise<IRelaxedScannedExtension[]>'
+    is_async: true
+    vis: private
+    lines:
+    - 573
+    - 593
+    detail:
+      calls:
+      - await Promise.all
+      - coalesce
+      - "coalesce(extensions)\n\t\t\t// Sort: Make sure extensions are in the same order always. Helps cache inva..."
+      - stat.children.map
+      - this.fileService.resolve
+  - name: scanExtensionsFromProfile
+    sig: 'scanExtensionsFromProfile(input: ExtensionScannerInput): Promise<IRelaxedScannedExtension[]>'
+    is_async: true
+    vis: private
+    lines:
+    - 595
+    - 603
+    detail:
+      calls:
+      - profileExtensions.filter
+      - profileExtensions.push
+      - this.scanExtensionsFromProfileResource
+      - this.uriIdentityService.extUri.isEqual
+  - name: scanExtensionsFromProfileResource
+    sig: 'scanExtensionsFromProfileResource(profileResource: URI, filter: (extensionInfo: IScannedProfileExtension) => boolean, input: ExtensionScannerInput): Promise<IRelaxedScannedExtension[]>'
+    is_async: true
+    vis: private
+    lines:
+    - 605
+    - 619
+    detail:
+      calls:
+      - await Promise.all
+      - coalesce
+      - scannedProfileExtensions.map
+      - this.extensionsProfileScannerService.scanProfileExtensions
+  - name: scanOneOrMultipleExtensions
+    sig: 'scanOneOrMultipleExtensions(input: ExtensionScannerInput): Promise<IRelaxedScannedExtension[]>'
+    is_async: true
+    lines:
+    - 621
+    - 633
+    detail:
+      calls:
+      - getErrorMessage
+      - joinPath
+      - this.fileService.exists
+      - this.logService.error
+      - this.scanExtension
+      - this.scanExtensions
+  - name: scanExtension
+    sig: 'scanExtension(input: ExtensionScannerInput, scannedProfileExtension?: IScannedProfileExtension): Promise<IRelaxedScannedExtension | null>'
+    is_async: true
+    lines:
+    - 637
+    - 712
+    detail:
+      calls:
+      - ExtensionScannerInput.createNlsConfiguration
+      - getErrorMessage
+      - getGalleryExtensionId
+      - id.toLowerCase
+      - parseEnabledApiProposalNames
+      - scannedProfileExtension.identifier.id.split
+      - this.extensionsEnabledWithApiProposalVersion.includes
+      - this.logService.error
+      - this.logService.warn
+      - this.scanExtensionManifest
+      - this.translateManifest
+      - this.validate
+      - validations.push
+  - name: validate
+    sig: 'validate(extension: IRelaxedScannedExtension, input: ExtensionScannerInput): IRelaxedScannedExtension'
+    lines:
+    - 714
+    - 727
+    detail:
+      calls:
+      - extension.identifier.id.toLowerCase
+      - this.extensionsEnabledWithApiProposalVersion.includes
+      - this.formatMessage
+      - this.logService.error
+      - validateExtensionManifest
+  - name: scanExtensionManifest
+    sig: 'scanExtensionManifest(extensionLocation: URI): Promise<IScannedExtensionManifest>'
+    is_async: true
+    vis: private
+    lines:
+    - 729
+    - 758
+    detail:
+      calls:
+      - (await this.fileService.readFile(manifestLocation)).value.toString
+      - JSON.parse
+      - getNodeType
+      - getParseErrorMessage
+      - joinPath
+      - localize
+      - new Error
+      - parse
+      - this.fileService.readFile
+      - this.formatMessage
+      - this.logService.error
+      - toFileOperationResult
+  - name: translateManifest
+    sig: 'translateManifest(extensionLocation: URI, extensionManifest: IExtensionManifest, nlsConfiguration: NlsConfiguration): Promise<IExtensionManifest>'
+    is_async: true
+    vis: private
+    lines:
+    - 760
+    - 783
+    detail:
+      calls:
+      - Object.create
+      - errors.forEach
+      - getNodeType
+      - localize
+      - localizeManifest
+      - this.formatMessage
+      - this.getLocalizedMessages
+      - this.logService.error
+      - this.resolveOriginalMessageBundle
+  - name: getLocalizedMessages
+    sig: 'getLocalizedMessages(extensionLocation: URI, extensionManifest: IExtensionManifest, nlsConfiguration: NlsConfiguration): Promise<LocalizedMessages | undefined>'
+    is_async: true
+    vis: private
+    lines:
+    - 785
+    - 848
+    detail:
+      calls:
+      - (await this.fileService.readFile(messageBundle.localized)).value.toString
+      - (await this.fileService.readFile(translationResource)).value.toString
+      - URI.file
+      - getNodeType
+      - joinPath
+      - parse
+      - reportErrors
+      - reportInvalidFormat
+      - this.fileService.exists
+      - this.fileService.readFile
+      - this.findMessageBundles
+  - name: resolveOriginalMessageBundle
+    sig: 'resolveOriginalMessageBundle(originalMessageBundle: URI | null, errors: ParseError[]): Promise<{ [key: string]: string } | undefined>'
+    is_async: true
+    vis: private
+    lines:
+    - 853
+    - 863
+    detail:
+      calls:
+      - (await this.fileService.readFile(originalMessageBundle)).value.toString
+      - parse
+      - this.fileService.readFile
+  lines:
+  - 551
+  - 897
+- name: IExtensionCacheData
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: input
+    type: ExtensionScannerInput
+  - name: result
+    type: IRelaxedScannedExtension[]
+  lines:
+  - 899
+  - 902
+- name: CachedExtensionsScanner
+  kind: struct
+  bases:
+  - ExtensionsScanner
+  fields:
+  - name: input
+    type: ExtensionScannerInput | undefined
+  - name: cacheValidatorThrottler
+    type: ThrottledDelayer<void>
+    default: this._register(new ThrottledDelayer(3000))
+  - name: _onDidChangeCache
+    type: any
+    default: this._register(new Emitter<void>())
+  - name: onDidChangeCache
+    type: any
+    default: this._onDidChangeCache.event
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tprivate readonly currentProfile: IUserDataProfile,\n\t\t@IUserDataProfilesService private readonly userDataProfilesService: IUserDataProfilesService,\n\t\t@IExtensionsProfileScannerService extensionsProfileScannerService: IExtensionsProfileScannerService,\n\t\t@IUriIdentityService uriIdentityService: IUriIdentityService,\n\t\t@IFileService fileService: IFileService,\n\t\t@IProductService productService: IProductService,\n\t\t@IEnvironmentService environmentService: IEnvironmentService,\n\t\t@ILogService logService: ILogService\n\t)"
+    lines:
+    - 912
+    - 923
+    detail:
+      calls:
+      - super
+  - name: scanExtensions
+    sig: 'scanExtensions(input: ExtensionScannerInput): Promise<IRelaxedScannedExtension[]>'
+    is_async: true
+    lines:
+    - 925
+    - 941
+    detail:
+      calls:
+      - ExtensionScannerInput.equals
+      - cacheContents.result.map
+      - input.location.toString
+      - super.scanExtensions
+      - this.cacheValidatorThrottler.trigger
+      - this.getCacheFile
+      - this.logService.debug
+      - this.readExtensionCache
+      - this.writeExtensionCache
+  - name: readExtensionCache
+    sig: 'readExtensionCache(cacheFile: URI): Promise<IExtensionCacheData | null>'
+    is_async: true
+    vis: private
+    lines:
+    - 943
+    - 952
+    detail:
+      calls:
+      - JSON.parse
+      - cacheRawContents.value.toString
+      - getErrorMessage
+      - revive
+      - this.fileService.readFile
+      - this.logService.debug
+  - name: writeExtensionCache
+    sig: 'writeExtensionCache(cacheFile: URI, cacheContents: IExtensionCacheData): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 954
+    - 960
+    detail:
+      calls:
+      - JSON.stringify
+      - VSBuffer.fromString
+      - getErrorMessage
+      - this.fileService.writeFile
+      - this.logService.debug
+  - name: validateCache
+    sig: 'validateCache(): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 962
+    - 990
+    detail:
+      calls:
+      - JSON.parse
+      - JSON.stringify
+      - objects.equals
+      - super.scanExtensions
+      - this._onDidChangeCache.fire
+      - this.fileService.del
+      - this.getCacheFile
+      - this.logService.error
+      - this.logService.info
+      - this.readExtensionCache
+  lines:
+  - 904
+  - 1010
+- name: NativeExtensionsScannerService
+  kind: struct
+  bases:
+  - AbstractExtensionsScannerService
+  - IExtensionsScannerService
+  fields:
+  - name: translationsPromise
+    type: Promise<Translations>
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tsystemExtensionsLocation: URI,\n\t\tuserExtensionsLocation: URI,\n\t\tuserHome: URI,\n\t\tcurrentProfile: IUserDataProfile,\n\t\tuserDataProfilesService: IUserDataProfilesService,\n\t\textensionsProfileScannerService: IExtensionsProfileScannerService,\n\t\tfileService: IFileService,\n\t\tlogService: ILogService,\n\t\tenvironmentService: IEnvironmentService,\n\t\tproductService: IProductService,\n\t\turiIdentityService: IUriIdentityService,\n\t\tinstantiationService: IInstantiationService,\n\t)"
+    lines:
+    - 1033
+    - 1062
+    detail:
+      calls:
+      - "(async () => {\n\t\t\tif (platform.translationsConfigFile) {\n\t\t\t\ttry {\n\t\t\t\t\tconst content = await this.f..."
+      - joinPath
+      - super
+  lines:
+  - 1029
+  - 1068
+functions:
+- name: toExtensionDescription
+  sig: 'toExtensionDescription(extension: IScannedExtension, isUnderDevelopment: boolean): IExtensionDescription'
+  lines:
+  - 1012
+  - 1027
+  detail:
+    calls:
+    - getExtensionId
+    - new ExtensionIdentifier
+exports:
+- name: ManifestMetadata
+  kind: type
+- name: IScannedExtensionManifest
+  kind: type
+- name: IRelaxedScannedExtension
+  kind: type
+- name: IScannedExtension
+  kind: type
+- name: Translations
+  kind: type
+- name: MessageBag
+  kind: type
+- name: TranslationBundle
+  kind: type
+- name: LocalizedMessages
+  kind: type
+- name: IBuiltInExtensionControl
+  kind: type
+- name: SystemExtensionsScanOptions
+  kind: type
+- name: UserExtensionsScanOptions
+  kind: type
+- name: ScanOptions
+  kind: type
+- name: IExtensionsScannerService
+  kind: type
+- name: AbstractExtensionsScannerService
+  kind: type
+- name: ExtensionScannerInput
+  kind: type
+- name: NlsConfiguration
+  kind: type
+- name: ExtensionsScanner
+  kind: type
+- name: IExtensionCacheData
+  kind: type
+- name: CachedExtensionsScanner
+  kind: type
+- name: NativeExtensionsScannerService
+  kind: type
+- name: toExtensionDescription
+  kind: func
+- name: IExtensionsScannerService
+  kind: data

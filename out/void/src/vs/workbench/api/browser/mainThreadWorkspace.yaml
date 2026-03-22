@@ -1,0 +1,302 @@
+## Roska File Descriptor — browser/mainThreadWorkspace.ts
+file: browser/mainThreadWorkspace.ts
+lines: 318
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: ../../../base/common/cancellation.js.CancellationToken
+- sym: ../../../base/common/cancellation.js.CancellationTokenSource
+- sym: ../../../base/common/errors.js.isCancellationError
+- sym: ../../../base/common/lifecycle.js.DisposableStore
+- sym: ../../../base/common/lifecycle.js.IDisposable
+- sym: ../../../base/common/platform.js.isNative
+- sym: ../../../base/common/uri.js.URI
+- sym: ../../../base/common/uri.js.UriComponents
+- sym: ../../../nls.js.localize
+- sym: ../../../platform/environment/common/environment.js.IEnvironmentService
+- sym: ../../../platform/files/common/files.js.IFileService
+- sym: ../../../platform/instantiation/common/instantiation.js.IInstantiationService
+- sym: ../../../platform/label/common/label.js.ILabelService
+- sym: ../../../platform/notification/common/notification.js.INotificationService
+- sym: ../../../platform/request/common/request.js.AuthInfo
+- sym: ../../../platform/request/common/request.js.Credentials
+- sym: ../../../platform/request/common/request.js.IRequestService
+- sym: ../../../platform/workspace/common/workspaceTrust.js.WorkspaceTrustRequestOptions
+- sym: ../../../platform/workspace/common/workspaceTrust.js.IWorkspaceTrustManagementService
+- sym: ../../../platform/workspace/common/workspaceTrust.js.IWorkspaceTrustRequestService
+- sym: ../../../platform/workspace/common/workspace.js.IWorkspace
+- sym: ../../../platform/workspace/common/workspace.js.IWorkspaceContextService
+- sym: ../../../platform/workspace/common/workspace.js.WorkbenchState
+- sym: ../../../platform/workspace/common/workspace.js.isUntitledWorkspace
+- sym: ../../../platform/workspace/common/workspace.js.WorkspaceFolder
+- sym: ../../services/extensions/common/extHostCustomers.js.extHostNamedCustomer
+- sym: ../../services/extensions/common/extHostCustomers.js.IExtHostContext
+- sym: ../../services/extensions/common/workspaceContains.js.checkGlobFileExists
+- sym: ../../services/search/common/queryBuilder.js.IFileQueryBuilderOptions
+- sym: ../../services/search/common/queryBuilder.js.ITextQueryBuilderOptions
+- sym: ../../services/search/common/queryBuilder.js.QueryBuilder
+- sym: ../../services/editor/common/editorService.js.IEditorService
+- sym: ../../services/editor/common/editorService.js.ISaveEditorsResult
+- sym: ../../services/search/common/search.js.IFileMatch
+- sym: ../../services/search/common/search.js.IPatternInfo
+- sym: ../../services/search/common/search.js.ISearchProgressItem
+- sym: ../../services/search/common/search.js.ISearchService
+- sym: ../../services/workspaces/common/workspaceEditing.js.IWorkspaceEditingService
+- sym: ../common/extHost.protocol.js.ExtHostContext
+- sym: ../common/extHost.protocol.js.ExtHostWorkspaceShape
+- sym: ../common/extHost.protocol.js.ITextSearchComplete
+- sym: ../common/extHost.protocol.js.IWorkspaceData
+- sym: ../common/extHost.protocol.js.MainContext
+- sym: ../common/extHost.protocol.js.MainThreadWorkspaceShape
+- sym: ../../../platform/workspace/common/editSessions.js.IEditSessionIdentityService
+- sym: ../../common/editor.js.EditorResourceAccessor
+- sym: ../../common/editor.js.SaveReason
+- sym: ../../common/editor.js.SideBySideEditor
+- sym: ../../../base/common/arrays.js.coalesce
+- sym: ../../../platform/workspace/common/canonicalUri.js.ICanonicalUriService
+- sym: ../../../base/common/marshalling.js.revive
+- sym: ../../../base/common/buffer.js.bufferToStream
+- sym: ../../../base/common/buffer.js.readableToBuffer
+- sym: ../../../base/common/buffer.js.VSBuffer
+- sym: ../../services/textfile/common/textfiles.js.ITextFileService
+- sym: ../../../base/common/stream.js.consumeStream
+types:
+- name: MainThreadWorkspace
+  kind: struct
+  ctx: '--- workspace ---'
+  bases:
+  - MainThreadWorkspaceShape
+  fields:
+  - name: _toDispose
+    type: any
+    default: new DisposableStore()
+  - name: _activeCancelTokens
+    type: '{ [id: number]: CancellationTokenSource }'
+    default: Object.create(null)
+  - name: _proxy
+    type: ExtHostWorkspaceShape
+  - name: _queryBuilder
+    type: QueryBuilder
+  - name: registeredEditSessionProviders
+    type: any
+    default: new Map<number, IDisposable>()
+  - name: registeredCanonicalUriProviders
+    type: any
+    default: new Map<number, IDisposable>()
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\textHostContext: IExtHostContext,\n\t\t@ISearchService private readonly _searchService: ISearchService,\n\t\t@IWorkspaceContextService private readonly _contextService: IWorkspaceContextService,\n\t\t@IEditSessionIdentityService private readonly _editSessionIdentityService: IEditSessionIdentityService,\n\t\t@ICanonicalUriService private readonly _canonicalUriService: ICanonicalUriService,\n\t\t@IEditorService private readonly _editorService: IEditorService,\n\t\t@IWorkspaceEditingService private readonly _workspaceEditingService: IWorkspaceEditingService,\n\t\t@INotificationService private readonly _notificationService: INotificationService,\n\t\t@IRequestService private readonly _requestService: IRequestService,\n\t\t@IInstantiationService private readonly _instantiationService: IInstantiationService,\n\t\t@ILabelService private readonly _labelService: ILabelService,\n\t\t@IEnvironmentService private readonly _environmentService: IEnvironmentService,\n\t\t@IFileService fileService: IFileService,\n\t\t@IWorkspaceTrustManagementService private readonly _workspaceTrustManagementService: IWorkspaceTrustManagementService,\n\t\t@IWorkspaceTrustRequestService private readonly _workspaceTrustRequestService: IWorkspaceTrustRequestService,\n\t\t@ITextFileService private readonly _textFileService: ITextFileService,\n\t)"
+    lines:
+    - 44
+    - 75
+    detail:
+      calls:
+      - extHostContext.getProxy
+      - fileService.hasProvider
+      - this._contextService.getCompleteWorkspace
+      - this._contextService.getCompleteWorkspace().then
+      - this._contextService.getWorkspace
+      - this._contextService.onDidChangeWorkbenchState
+      - this._contextService.onDidChangeWorkspaceFolders
+      - this._instantiationService.createInstance
+      - this._proxy.$initializeWorkspace
+      - this._workspaceTrustManagementService.onDidChangeTrust
+      - this.getWorkspaceData
+      - this.isWorkspaceTrusted
+  - name: dispose
+    sig: 'dispose(): void'
+    lines:
+    - 77
+    - 84
+    detail:
+      calls:
+      - this._toDispose.dispose
+      - tokenSource.cancel
+  - name: $updateWorkspaceFolders
+    sig: '$updateWorkspaceFolders(extensionName: string, index: number, deleteCount: number, foldersToAdd: { uri: UriComponents; name?: string }[]): Promise<void>'
+    lines:
+    - 88
+    - 95
+    detail:
+      calls:
+      - foldersToAdd.map
+      - this._notificationService.status
+      - this._workspaceEditingService.updateFolders
+      - this.getStatusMessage
+  - name: _onDidChangeWorkspace
+    sig: '_onDidChangeWorkspace(): void'
+    vis: private
+    lines:
+    - 129
+    - 131
+    detail:
+      calls:
+      - this._contextService.getWorkspace
+      - this._proxy.$acceptWorkspaceData
+      - this.getWorkspaceData
+  - name: $startFileSearch
+    sig: '$startFileSearch(_includeFolder: UriComponents | null, options: IFileQueryBuilderOptions<UriComponents>, token: CancellationToken): Promise<UriComponents[] | null>'
+    lines:
+    - 149
+    - 166
+    detail:
+      calls:
+      - URI.revive
+      - revive
+      - this._contextService.getWorkspace
+      - this._queryBuilder.file
+      - this._searchService.fileSearch
+      - this._searchService.fileSearch(query, token).then
+  - name: $startTextSearch
+    sig: '$startTextSearch(pattern: IPatternInfo, _folder: UriComponents | null, options: ITextQueryBuilderOptions<UriComponents>, requestId: number, token: CancellationToken): Promise<ITextSearchComplete | null>'
+    lines:
+    - 168
+    - 195
+    detail:
+      calls:
+      - URI.revive
+      - revive
+      - this._contextService.getWorkspace
+      - this._queryBuilder.text
+      - this._searchService.textSearch
+      - this._searchService.textSearch(query, token, onProgress).then
+      - workspace.folders.map
+  - name: $checkExists
+    sig: '$checkExists(folders: readonly UriComponents[], includes: string[], token: CancellationToken): Promise<boolean>'
+    lines:
+    - 197
+    - 199
+    detail:
+      calls:
+      - this._instantiationService.invokeFunction
+  - name: $save
+    sig: '$save(uriComponents: UriComponents, options: { saveAs: boolean }): Promise<UriComponents | undefined>'
+    is_async: true
+    lines:
+    - 203
+    - 214
+    detail:
+      calls:
+      - URI.revive
+      - this._editorService.findEditors
+      - this._editorService.save
+      - this._saveResultToUris
+      - this._saveResultToUris(result).at
+  - name: $saveAll
+    sig: '$saveAll(includeUntitled?: boolean): Promise<boolean>'
+    lines:
+    - 224
+    - 226
+    detail:
+      calls:
+      - this._editorService.saveAll
+      - this._editorService.saveAll({ includeUntitled }).then
+  - name: $resolveProxy
+    sig: '$resolveProxy(url: string): Promise<string | undefined>'
+    lines:
+    - 228
+    - 230
+    detail:
+      calls:
+      - this._requestService.resolveProxy
+  - name: $lookupAuthorization
+    sig: '$lookupAuthorization(authInfo: AuthInfo): Promise<Credentials | undefined>'
+    lines:
+    - 232
+    - 234
+    detail:
+      calls:
+      - this._requestService.lookupAuthorization
+  - name: $lookupKerberosAuthorization
+    sig: '$lookupKerberosAuthorization(url: string): Promise<string | undefined>'
+    lines:
+    - 236
+    - 238
+    detail:
+      calls:
+      - this._requestService.lookupKerberosAuthorization
+  - name: $loadCertificates
+    sig: '$loadCertificates(): Promise<string[]>'
+    lines:
+    - 240
+    - 242
+    detail:
+      calls:
+      - this._requestService.loadCertificates
+  - name: $requestWorkspaceTrust
+    sig: '$requestWorkspaceTrust(options?: WorkspaceTrustRequestOptions): Promise<boolean | undefined>'
+    lines:
+    - 246
+    - 248
+    detail:
+      calls:
+      - this._workspaceTrustRequestService.requestWorkspaceTrust
+  - name: $registerEditSessionIdentityProvider
+    sig: '$registerEditSessionIdentityProvider(handle: number, scheme: string)'
+    lines:
+    - 261
+    - 274
+    detail:
+      calls:
+      - this._editSessionIdentityService.registerEditSessionIdentityProvider
+      - this._toDispose.add
+      - this.registeredEditSessionProviders.set
+  - name: $unregisterEditSessionIdentityProvider
+    sig: '$unregisterEditSessionIdentityProvider(handle: number)'
+    lines:
+    - 276
+    - 280
+    detail:
+      calls:
+      - disposable?.dispose
+      - this.registeredEditSessionProviders.delete
+      - this.registeredEditSessionProviders.get
+  - name: $registerCanonicalUriProvider
+    sig: '$registerCanonicalUriProvider(handle: number, scheme: string)'
+    lines:
+    - 285
+    - 299
+    detail:
+      calls:
+      - this._canonicalUriService.registerCanonicalUriProvider
+      - this._toDispose.add
+      - this.registeredCanonicalUriProviders.set
+  - name: $unregisterCanonicalUriProvider
+    sig: '$unregisterCanonicalUriProvider(handle: number)'
+    lines:
+    - 301
+    - 305
+    detail:
+      calls:
+      - disposable?.dispose
+      - this.registeredCanonicalUriProviders.delete
+      - this.registeredCanonicalUriProviders.get
+  - name: $decode
+    sig: '$decode(content: VSBuffer, resource: UriComponents | undefined, options?: { encoding: string }): Promise<string>'
+    is_async: true
+    lines:
+    - 309
+    - 312
+    detail:
+      calls:
+      - URI.revive
+      - bufferToStream
+      - consumeStream
+      - this._textFileService.getDecodedStream
+  - name: $encode
+    sig: '$encode(content: string, resource: UriComponents | undefined, options?: { encoding: string }): Promise<VSBuffer>'
+    is_async: true
+    lines:
+    - 314
+    - 317
+    detail:
+      calls:
+      - URI.revive
+      - readableToBuffer
+      - this._textFileService.getEncodedReadable
+  lines:
+  - 37
+  - 318
+exports:
+- name: MainThreadWorkspace
+  kind: type

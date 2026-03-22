@@ -1,0 +1,375 @@
+## Roska File Descriptor — common/uri.ts
+file: common/uri.ts
+lines: 750
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: ./charCode.js.CharCode
+- sym: ./marshallingIds.js.MarshalledId
+- sym: ./path.js.paths
+- sym: ./platform.js.isWindows
+data:
+- name: _schemePattern
+  type: any
+  val: /^\w[\w\d+.-]*$/
+- name: _singleSlashStart
+  type: any
+  val: /^\//
+- name: _doubleSlashStart
+  type: any
+  val: /^\/\//
+- name: _empty
+  type: string
+  val: ''''''
+- name: _slash
+  type: string
+  val: '''/'''
+- name: _regexp
+  type: any
+  val: /^(([^:/?#]+?):)?(\/\/([^/?#]*))?([^?#]*)(\?([^#]*))?(#(.*))?/
+- name: _pathSepMarker
+  type: any
+  val: 'isWindows ? 1 : undefined'
+- name: encodeTable
+  type: '{ [ch: number]: string }'
+  val: "{\n\t[CharCode.Colon]: '%3A', // gen-delims\n\t[CharCode.Slash]: '%2F',\n\t[CharCode.QuestionMark]: '%3F',\n\t[CharCode.Hash]: '..."
+- name: _rEncodedAsHex
+  type: any
+  val: /(%[0-9A-Za-z][0-9A-Za-z])+/g
+types:
+- name: URI
+  kind: struct
+  ctx: scheme is the 'http' part of 'http://www.example.com/some/path?query#fragment'. The part before the first colon.
+  bases:
+  - UriComponents
+  fields:
+  - name: scheme
+    type: string
+  - name: authority
+    type: string
+  - name: path
+    type: string
+  - name: query
+    type: string
+  - name: fragment
+    type: string
+  methods:
+  - name: isUri
+    sig: 'isUri(thing: any)'
+    decorators:
+    - static
+    lines:
+    - 100
+    - 115
+    detail: {}
+  - name: fsPath
+    sig: 'fsPath(): string'
+    lines:
+    - 205
+    - 210
+    detail:
+      calls:
+      - uriToFsPath
+  - name: with
+    sig: 'with(change: { scheme?: string; authority?: string | null; path?: string | null; query?: string | null; fragment?: string | null }): URI'
+    lines:
+    - 214
+    - 257
+    detail:
+      calls:
+      - new Uri
+  - name: parse
+    sig: 'parse(value: string, _strict: boolean = false): URI'
+    decorators:
+    - static
+    lines:
+    - 267
+    - 280
+    detail:
+      calls:
+      - _regexp.exec
+      - new Uri
+      - percentDecode
+  - name: file
+    sig: 'file(path: string): URI'
+    decorators:
+    - static
+    lines:
+    - 303
+    - 328
+    detail:
+      calls:
+      - new Uri
+      - path.indexOf
+      - path.replace
+      - path.substring
+  - name: from
+    sig: 'from(components: UriComponents, strict?: boolean): URI'
+    decorators:
+    - static
+    lines:
+    - 337
+    - 347
+    detail:
+      calls:
+      - new Uri
+  - name: joinPath
+    sig: 'joinPath(uri: URI, ...pathFragment: string[]): URI'
+    decorators:
+    - static
+    lines:
+    - 356
+    - 367
+    detail:
+      calls:
+      - URI.file
+      - new Error
+      - paths.posix.join
+      - paths.win32.join
+      - uri.with
+      - uriToFsPath
+  - name: toString
+    sig: 'toString(skipEncoding: boolean = false): string'
+    lines:
+    - 382
+    - 384
+    detail:
+      calls:
+      - _asFormatted
+  - name: toJSON
+    sig: 'toJSON(): UriComponents'
+    lines:
+    - 386
+    - 388
+    detail: {}
+  - name: revive
+    sig: 'revive(data: UriComponents | URI | undefined | null): URI | undefined | null'
+    decorators:
+    - static
+    lines:
+    - 404
+    - 415
+    detail:
+      calls:
+      - new Uri
+  - name: unknown
+    sig: unknown()
+    lines:
+    - 417
+    - 419
+    detail:
+      calls:
+      - this.toString
+  lines:
+  - 98
+  - 420
+- name: UriComponents
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: scheme
+    type: string
+  - name: authority
+    type: string
+  - name: path
+    type: string
+  - name: query
+    type: string
+  - name: fragment
+    type: string
+  lines:
+  - 422
+  - 428
+- name: UriState
+  kind: trait
+  bases:
+  - UriComponents
+  decorators:
+  - interface
+  fields:
+  - name: $mid
+    type: MarshalledId.Uri
+  - name: external
+    type: string
+  - name: fsPath
+    type: string
+  - name: _sep
+    type: '1'
+  lines:
+  - 441
+  - 446
+- name: Uri
+  kind: struct
+  bases:
+  - URI
+  fields:
+  - name: _formatted
+    type: string | null
+    default: 'null'
+  - name: _fsPath
+    type: string | null
+    default: 'null'
+  methods:
+  - name: fsPath
+    sig: 'fsPath(): string'
+    lines:
+    - 456
+    - 461
+    detail:
+      calls:
+      - uriToFsPath
+  - name: toString
+    sig: 'toString(skipEncoding: boolean = false): string'
+    lines:
+    - 463
+    - 473
+    detail:
+      calls:
+      - _asFormatted
+  - name: toJSON
+    sig: 'toJSON(): UriComponents'
+    lines:
+    - 475
+    - 509
+    detail: {}
+  lines:
+  - 451
+  - 510
+- name: UriDto
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 748
+  - 750
+functions:
+- name: _validateUri
+  sig: '_validateUri(ret: URI, _strict?: boolean): void'
+  vis: private
+  lines:
+  - 15
+  - 44
+  detail:
+    calls:
+    - _doubleSlashStart.test
+    - _schemePattern.test
+    - _singleSlashStart.test
+    - new Error
+- name: isUriComponents
+  sig: 'isUriComponents(thing: any)'
+  lines:
+  - 430
+  - 439
+  detail: {}
+- name: encodeURIComponentFast
+  sig: 'encodeURIComponentFast(uriComponent: string, isPath: boolean, isAuthority: boolean): string'
+  lines:
+  - 537
+  - 599
+  detail:
+    calls:
+    - encodeURIComponent
+    - uriComponent.charAt
+    - uriComponent.charCodeAt
+    - uriComponent.substr
+    - uriComponent.substring
+- name: encodeURIComponentMinimal
+  sig: 'encodeURIComponentMinimal(path: string): string'
+  lines:
+  - 601
+  - 617
+  detail:
+    calls:
+    - path.charCodeAt
+    - path.substr
+- name: uriToFsPath
+  sig: 'uriToFsPath(uri: URI, keepDriveLetterCasing: boolean): string'
+  lines:
+  - 622
+  - 647
+  detail:
+    calls:
+    - uri.path.charCodeAt
+    - uri.path.substr
+    - uri.path[1].toLowerCase
+    - value.replace
+- name: _asFormatted
+  sig: '_asFormatted(uri: URI, skipEncoding: boolean): string'
+  vis: private
+  lines:
+  - 652
+  - 720
+  detail:
+    calls:
+    - String.fromCharCode
+    - authority.indexOf
+    - authority.lastIndexOf
+    - authority.substr
+    - authority.toLowerCase
+    - encodeURIComponentFast
+    - encoder
+    - path.charCodeAt
+    - path.substr
+    - userinfo.lastIndexOf
+    - userinfo.substr
+- name: decodeURIComponentGraceful
+  sig: 'decodeURIComponentGraceful(str: string): string'
+  lines:
+  - 724
+  - 734
+  detail:
+    calls:
+    - decodeURIComponent
+    - decodeURIComponentGraceful
+    - str.substr
+- name: percentDecode
+  sig: 'percentDecode(str: string): string'
+  lines:
+  - 738
+  - 743
+  detail:
+    calls:
+    - str.match
+    - str.replace
+exports:
+- name: URI
+  kind: type
+- name: UriComponents
+  kind: type
+- name: UriState
+  kind: type
+- name: Uri
+  kind: type
+- name: UriDto
+  kind: type
+- name: isUriComponents
+  kind: func
+- name: encodeURIComponentFast
+  kind: func
+- name: encodeURIComponentMinimal
+  kind: func
+- name: uriToFsPath
+  kind: func
+- name: decodeURIComponentGraceful
+  kind: func
+- name: percentDecode
+  kind: func
+- name: _schemePattern
+  kind: data
+- name: _singleSlashStart
+  kind: data
+- name: _doubleSlashStart
+  kind: data
+- name: _empty
+  kind: data
+- name: _slash
+  kind: data
+- name: _regexp
+  kind: data
+- name: _pathSepMarker
+  kind: data
+- name: encodeTable
+  kind: data
+- name: _rEncodedAsHex
+  kind: data

@@ -1,0 +1,434 @@
+## Roska File Descriptor — node/ripgrepTextSearchEngine.ts
+file: node/ripgrepTextSearchEngine.ts
+lines: 779
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: child_process.cp
+- sym: events.EventEmitter
+- sym: string_decoder.StringDecoder
+- sym: ../../../../base/common/arrays.js.coalesce
+- sym: ../../../../base/common/arrays.js.mapArrayOrNot
+- sym: ../../../../base/common/cancellation.js.CancellationToken
+- sym: ../../../../base/common/collections.js.groupBy
+- sym: ../../../../base/common/glob.js.splitGlobAware
+- sym: ../../../../base/common/strings.js.createRegExp
+- sym: ../../../../base/common/strings.js.escapeRegExpCharacters
+- sym: ../../../../base/common/uri.js.URI
+- sym: ../../../../platform/progress/common/progress.js.Progress
+- sym: ../common/search.js.DEFAULT_MAX_SEARCH_RESULTS
+- sym: ../common/search.js.IExtendedExtensionSearchOptions
+- sym: ../common/search.js.ITextSearchPreviewOptions
+- sym: ../common/search.js.SearchError
+- sym: ../common/search.js.SearchErrorCode
+- sym: ../common/search.js.serializeSearchError
+- sym: ../common/search.js.TextSearchMatch
+- sym: ../common/searchExtTypes.js.Range
+- sym: ../common/searchExtTypes.js.TextSearchComplete2
+- sym: ../common/searchExtTypes.js.TextSearchContext2
+- sym: ../common/searchExtTypes.js.TextSearchMatch2
+- sym: ../common/searchExtTypes.js.TextSearchProviderOptions
+- sym: ../common/searchExtTypes.js.TextSearchQuery2
+- sym: ../common/searchExtTypes.js.TextSearchResult2
+- sym: vscode-regexpp.AST as ReAST
+- sym: vscode-regexpp.RegExpParser
+- sym: vscode-regexpp.RegExpVisitor
+- sym: '@vscode/ripgrep.rgPath'
+- sym: ./ripgrepSearchUtils.js.anchorGlob
+- sym: ./ripgrepSearchUtils.js.IOutputChannel
+- sym: ./ripgrepSearchUtils.js.Maybe
+- sym: ./ripgrepSearchUtils.js.rangeToSearchRange
+- sym: ./ripgrepSearchUtils.js.searchRangeToRange
+- sym: ../common/searchExtTypesInternal.js.RipgrepTextSearchOptions
+  kind: typing
+- sym: ../common/searchExtConversionTypes.js.newToOldPreviewOptions
+data:
+- name: rgDiskPath
+  type: any
+  val: rgPath.replace(/\bnode_modules\.asar\b/, 'node_modules.asar.unpacked')
+types:
+- name: RipgrepTextSearchEngine
+  kind: struct
+  methods:
+  - name: constructor
+    sig: 'constructor(private outputChannel: IOutputChannel, private readonly _numThreads?: number | undefined)'
+    lines:
+    - 29
+    - 29
+    detail: {}
+  - name: provideTextSearchResults
+    sig: 'provideTextSearchResults(query: TextSearchQuery2, options: TextSearchProviderOptions, progress: Progress<TextSearchResult2>, token: CancellationToken): Promise<TextSearchComplete2>'
+    lines:
+    - 31
+    - 49
+    detail:
+      calls:
+      - Promise.all
+      - "Promise.all(options.folderOptions.map(folderOption => {\n\t\t\tconst extendedOptions: RipgrepTextSearchO..."
+      - options.folderOptions.map
+  - name: provideTextSearchResultsWithRgOptions
+    sig: 'provideTextSearchResultsWithRgOptions(query: TextSearchQuery2, options: RipgrepTextSearchOptions, progress: Progress<TextSearchResult2>, token: CancellationToken): Promise<TextSearchComplete2>'
+    lines:
+    - 51
+    - 150
+    detail:
+      calls:
+      - JSON.stringify
+      - new Promise
+      - options.folderOptions.folder.toString
+      - this.outputChannel.appendLine
+  lines:
+  - 27
+  - 151
+- name: RipgrepParser
+  kind: struct
+  bases:
+  - EventEmitter
+  fields:
+  - name: remainder
+    type: any
+    default: ''''''
+  - name: isDone
+    type: any
+    default: 'false'
+  - name: hitLimit
+    type: any
+    default: 'false'
+  - name: stringDecoder
+    type: StringDecoder
+  - name: numResults
+    type: any
+    default: '0'
+  methods:
+  - name: constructor
+    sig: 'constructor(private maxResults: number, private root: URI, private previewOptions: ITextSearchPreviewOptions)'
+    lines:
+    - 212
+    - 215
+    detail:
+      calls:
+      - new StringDecoder
+      - super
+  - name: cancel
+    sig: 'cancel(): void'
+    lines:
+    - 217
+    - 219
+    detail: {}
+  - name: flush
+    sig: 'flush(): void'
+    lines:
+    - 221
+    - 223
+    detail:
+      calls:
+      - this.handleDecodedData
+      - this.stringDecoder.end
+  - name: on
+    sig: 'on(event: string, listener: (...args: any[]) => void): this'
+    lines:
+    - 228
+    - 231
+    detail:
+      calls:
+      - super.on
+  - name: handleData
+    sig: 'handleData(data: Buffer | string): void'
+    lines:
+    - 233
+    - 240
+    detail:
+      calls:
+      - this.handleDecodedData
+      - this.stringDecoder.write
+  - name: handleDecodedData
+    sig: 'handleDecodedData(decodedData: string): void'
+    vis: private
+    lines:
+    - 242
+    - 265
+    detail:
+      calls:
+      - dataStr.indexOf
+      - dataStr.substring
+      - dataStr.substring(prevIdx, newlineIdx).trim
+      - decodedData.indexOf
+      - this.handleLine
+  - name: handleLine
+    sig: 'handleLine(outputLine: string): void'
+    vis: private
+    lines:
+    - 268
+    - 296
+    detail:
+      calls:
+      - JSON.parse
+      - URI.joinPath
+      - bytesOrTextToString
+      - new Error
+      - result.forEach
+      - this.cancel
+      - this.createTextSearchContexts
+      - this.createTextSearchMatch
+      - this.emit
+      - this.onResult
+  - name: createTextSearchMatch
+    sig: 'createTextSearchMatch(data: IRgMatch, uri: URI): TextSearchMatch2'
+    vis: private
+    lines:
+    - 298
+    - 363
+    detail:
+      calls:
+      - Buffer.from
+      - bytesOrTextToString
+      - coalesce
+      - data.submatches.map
+      - data.submatches.push
+      - internalResult.rangeLocations.map
+      - mapArrayOrNot
+      - new TextSearchMatch
+      - new TextSearchMatch2
+  - name: createTextSearchContexts
+    sig: 'createTextSearchContexts(data: IRgMatch, uri: URI): TextSearchContext2[]'
+    vis: private
+    lines:
+    - 365
+    - 372
+    detail:
+      calls:
+      - bytesOrTextToString
+      - "text\n\t\t\t.replace"
+      - "text\n\t\t\t.replace(/\\r?\\n$/, '')\n\t\t\t.split"
+      - "text\n\t\t\t.replace(/\\r?\\n$/, '')\n\t\t\t.split('\\n')\n\t\t\t.map"
+  lines:
+  - 204
+  - 377
+- name: IRgMessage
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: type
+    type: '''match'' | ''context'' | string'
+  - name: data
+    type: IRgMatch
+  lines:
+  - 559
+  - 562
+- name: IRgMatch
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: path
+    type: IRgBytesOrText
+  - name: lines
+    type: IRgBytesOrText
+  - name: line_number
+    type: number
+  - name: absolute_offset
+    type: number
+  - name: submatches
+    type: IRgSubmatch[]
+  lines:
+  - 564
+  - 570
+- name: IRgSubmatch
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: match
+    type: IRgBytesOrText
+  - name: start
+    type: number
+  - name: end
+    type: number
+  lines:
+  - 572
+  - 576
+- name: IRgBytesOrText
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 578
+  - 578
+functions:
+- name: rgErrorMsgForDisplay
+  sig: 'rgErrorMsgForDisplay(msg: string): Maybe<SearchError>'
+  lines:
+  - 159
+  - 187
+  detail:
+    calls:
+    - buildRegexParseError
+    - firstLine.charAt
+    - firstLine.charAt(0).toUpperCase
+    - firstLine.match
+    - firstLine.startsWith
+    - firstLine.substr
+    - lines.some
+    - lines[0].trim
+    - msg.split
+    - new SearchError
+- name: buildRegexParseError
+  sig: 'buildRegexParseError(lines: string[]): string'
+  lines:
+  - 189
+  - 201
+  detail:
+    calls:
+    - errorMessage.join
+    - errorMessage.push
+    - lines.filter
+    - pcre2ErrorLine[0].replace
+    - pcre2ErrorMessage.indexOf
+    - pcre2ErrorMessage.split
+- name: bytesOrTextToString
+  sig: 'bytesOrTextToString(obj: any): string'
+  lines:
+  - 379
+  - 383
+  detail:
+    calls:
+    - Buffer.from
+    - Buffer.from(obj.bytes, 'base64').toString
+- name: getNumLinesAndLastNewlineLength
+  sig: 'getNumLinesAndLastNewlineLength(text: string): { numLines: number; lastLineLength: number }'
+  lines:
+  - 385
+  - 400
+  detail:
+    calls:
+    - re.exec
+- name: getRgArgs
+  sig: 'getRgArgs(query: TextSearchQuery2, options: RipgrepTextSearchOptions): string[]'
+  lines:
+  - 403
+  - 526
+  detail:
+    calls:
+    - args.push
+    - createRegExp
+    - doubleStarIncludes.forEach
+    - escapeRegExpCharacters
+    - fixNewline
+    - fixRegexNewline
+    - groupBy
+    - new Set
+    - options.folderOptions.excludes.map
+    - "options.folderOptions.excludes.map(e => typeof (e) === 'string' ? e : e.pattern)\n\t\t.map"
+    - "options.folderOptions.excludes.map(e => typeof (e) === 'string' ? e : e.pattern)\n\t\t.map(anchorGlob)\n..."
+    - otherIncludes.forEach
+    - regexp.source.replace
+    - unicodeEscapesToPCRE2
+    - "uniqueOthers\n\t\t\t.forEach"
+- name: spreadGlobComponents
+  sig: 'spreadGlobComponents(globComponent: string): string[]'
+  lines:
+  - 531
+  - 539
+  detail:
+    calls:
+    - globComponentWithBraceExpansion.flatMap
+    - performBraceExpansionForRipgrep
+- name: unicodeEscapesToPCRE2
+  sig: 'unicodeEscapesToPCRE2(pattern: string): string'
+  lines:
+  - 541
+  - 557
+  detail:
+    calls:
+    - pattern.match
+    - pattern.replace
+- name: isLookBehind
+  sig: 'isLookBehind(node: ReAST.Node)'
+  lines:
+  - 580
+  - 580
+- name: fixRegexNewline
+  sig: 'fixRegexNewline(pattern: string): string'
+  lines:
+  - 582
+  - 665
+  detail:
+    calls:
+    - context.push
+    - context.shift
+    - context.some
+    - context.unshift
+    - isLookBehind
+    - new RegExpParser
+    - new RegExpParser().parsePattern
+    - new RegExpVisitor
+    - pattern.slice
+    - replace
+    - visitor.visit
+- name: fixNewline
+  sig: 'fixNewline(pattern: string): string'
+  lines:
+  - 667
+  - 669
+  detail:
+    calls:
+    - pattern.replace
+- name: getEscapeAwareSplitStringForRipgrep
+  sig: 'getEscapeAwareSplitStringForRipgrep(pattern: string): { fixedStart?: string; strInBraces: string; fixedEnd?: string }'
+  lines:
+  - 679
+  - 752
+  detail:
+    calls:
+    - pattern.substring
+- name: performBraceExpansionForRipgrep
+  sig: 'performBraceExpansionForRipgrep(pattern: string): string[]'
+  lines:
+  - 758
+  - 779
+  detail:
+    calls:
+    - arr.flatMap
+    - getEscapeAwareSplitStringForRipgrep
+    - performBraceExpansionForRipgrep
+    - splitGlobAware
+exports:
+- name: RipgrepTextSearchEngine
+  kind: type
+- name: RipgrepParser
+  kind: type
+- name: IRgMessage
+  kind: type
+- name: IRgMatch
+  kind: type
+- name: IRgSubmatch
+  kind: type
+- name: IRgBytesOrText
+  kind: type
+- name: rgErrorMsgForDisplay
+  kind: func
+- name: buildRegexParseError
+  kind: func
+- name: bytesOrTextToString
+  kind: func
+- name: getNumLinesAndLastNewlineLength
+  kind: func
+- name: getRgArgs
+  kind: func
+- name: spreadGlobComponents
+  kind: func
+- name: unicodeEscapesToPCRE2
+  kind: func
+- name: isLookBehind
+  kind: func
+- name: fixRegexNewline
+  kind: func
+- name: fixNewline
+  kind: func
+- name: getEscapeAwareSplitStringForRipgrep
+  kind: func
+- name: performBraceExpansionForRipgrep
+  kind: func
+- name: rgDiskPath
+  kind: data

@@ -1,0 +1,266 @@
+## Roska File Descriptor — browser/bulkTextEdits.ts
+file: browser/bulkTextEdits.ts
+lines: 338
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: ../../../../base/common/lifecycle.js.dispose
+- sym: ../../../../base/common/lifecycle.js.IDisposable
+- sym: ../../../../base/common/lifecycle.js.IReference
+- sym: ../../../../base/common/uri.js.URI
+- sym: ../../../../editor/browser/editorBrowser.js.ICodeEditor
+- sym: ../../../../editor/common/core/editOperation.js.EditOperation
+- sym: ../../../../editor/common/core/editOperation.js.ISingleEditOperation
+- sym: ../../../../editor/common/core/range.js.Range
+- sym: ../../../../editor/common/core/selection.js.Selection
+- sym: ../../../../editor/common/model.js.EndOfLineSequence
+- sym: ../../../../editor/common/model.js.ITextModel
+- sym: ../../../../editor/common/services/resolverService.js.ITextModelService
+- sym: ../../../../editor/common/services/resolverService.js.IResolvedTextEditorModel
+- sym: ../../../../platform/progress/common/progress.js.IProgress
+- sym: ../../../../editor/common/services/editorWorker.js.IEditorWorkerService
+- sym: ../../../../platform/undoRedo/common/undoRedo.js.IUndoRedoService
+- sym: ../../../../platform/undoRedo/common/undoRedo.js.UndoRedoGroup
+- sym: ../../../../platform/undoRedo/common/undoRedo.js.UndoRedoSource
+- sym: ../../../../editor/common/model/editStack.js.SingleModelEditStackElement
+- sym: ../../../../editor/common/model/editStack.js.MultiModelEditStackElement
+- sym: ../../../../base/common/map.js.ResourceMap
+- sym: ../../../../editor/common/services/model.js.IModelService
+- sym: ../../../../editor/browser/services/bulkEditService.js.ResourceTextEdit
+- sym: ../../../../base/common/cancellation.js.CancellationToken
+- sym: ../../../../editor/contrib/snippet/browser/snippetController2.js.SnippetController2
+- sym: ../../../../editor/contrib/snippet/browser/snippetParser.js.SnippetParser
+- sym: ../../../../editor/contrib/snippet/browser/snippetSession.js.ISnippetEdit
+types:
+- name: ValidationResult
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 26
+  - 26
+- name: ISingleSnippetEditOperation
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 28
+  - 28
+- name: ModelEditTask
+  kind: struct
+  bases:
+  - IDisposable
+  fields:
+  - name: model
+    type: ITextModel
+  - name: _expectedModelVersionId
+    type: number | undefined
+  - name: _edits
+    type: ISingleSnippetEditOperation[]
+  - name: _newEol
+    type: EndOfLineSequence | undefined
+  methods:
+  - name: constructor
+    sig: 'constructor(private readonly _modelReference: IReference<IResolvedTextEditorModel>)'
+    lines:
+    - 38
+    - 41
+    detail: {}
+  - name: dispose
+    sig: dispose()
+    lines:
+    - 43
+    - 45
+    detail:
+      calls:
+      - this._modelReference.dispose
+  - name: isNoOp
+    sig: isNoOp()
+    lines:
+    - 47
+    - 57
+    detail:
+      calls:
+      - this.model.getEndOfLineSequence
+  - name: addEdit
+    sig: 'addEdit(resourceEdit: ResourceTextEdit): void'
+    lines:
+    - 59
+    - 84
+    detail:
+      calls:
+      - EditOperation.replaceMove
+      - Range.isEmpty
+      - Range.lift
+      - this._edits.push
+      - this.model.getFullModelRange
+  - name: validate
+    sig: 'validate(): ValidationResult'
+    lines:
+    - 86
+    - 91
+    detail:
+      calls:
+      - this.model.getVersionId
+  - name: getBeforeCursorState
+    sig: 'getBeforeCursorState(): Selection[] | null'
+    lines:
+    - 93
+    - 95
+    detail: {}
+  - name: apply
+    sig: 'apply(): void'
+    lines:
+    - 97
+    - 107
+    detail:
+      calls:
+      - "this._edits\n\t\t\t\t.map"
+      - "this._edits\n\t\t\t\t.map(this._transformSnippetStringToInsertText, this) // no editor -> no snippet mode..."
+      - this.model.pushEOL
+      - this.model.pushEditOperations
+  lines:
+  - 30
+  - 122
+- name: EditorEditTask
+  kind: model
+  bases:
+  - ModelEditTask
+  fields:
+  - name: _editor
+    type: ICodeEditor
+  methods:
+  - name: constructor
+    sig: 'constructor(modelReference: IReference<IResolvedTextEditorModel>, editor: ICodeEditor)'
+    lines:
+    - 128
+    - 131
+    detail:
+      calls:
+      - super
+  - name: getBeforeCursorState
+    sig: 'getBeforeCursorState(): Selection[] | null'
+    lines:
+    - 133
+    - 135
+    detail:
+      calls:
+      - this._canUseEditor
+      - this._editor.getSelections
+  - name: apply
+    sig: 'apply(): void'
+    lines:
+    - 137
+    - 175
+    detail:
+      calls:
+      - Range.lift
+      - SnippetController2.get
+      - SnippetParser.escape
+      - snippetCtrl.apply
+      - snippetEdits.push
+      - super.apply
+      - this._canUseEditor
+      - this._editor.executeEdits
+      - this._editor.getModel
+      - this._editor.getModel().pushEOL
+      - this._editor.hasModel
+      - "this._edits\n\t\t\t\t\t.map"
+      - "this._edits\n\t\t\t\t\t.map(this._transformSnippetStringToInsertText, this) // mixed edits (snippet and no..."
+      - this._edits.some
+  - name: _canUseEditor
+    sig: '_canUseEditor(): boolean'
+    vis: private
+    lines:
+    - 177
+    - 179
+    detail:
+      calls:
+      - this._editor?.getModel
+      - this._editor?.getModel()?.uri.toString
+      - this.model.uri.toString
+  lines:
+  - 124
+  - 180
+- name: BulkTextEdits
+  kind: struct
+  fields:
+  - name: _edits
+    type: any
+    default: new ResourceMap<ResourceTextEdit[]>()
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tprivate readonly _label: string,\n\t\tprivate readonly _code: string,\n\t\tprivate readonly _editor: ICodeEditor | undefined,\n\t\tprivate readonly _undoRedoGroup: UndoRedoGroup,\n\t\tprivate readonly _undoRedoSource: UndoRedoSource | undefined,\n\t\tprivate readonly _progress: IProgress<void>,\n\t\tprivate readonly _token: CancellationToken,\n\t\tedits: ResourceTextEdit[],\n\t\t@IEditorWorkerService private readonly _editorWorker: IEditorWorkerService,\n\t\t@IModelService private readonly _modelService: IModelService,\n\t\t@ITextModelService private readonly _textModelResolverService: ITextModelService,\n\t\t@IUndoRedoService private readonly _undoRedoService: IUndoRedoService\n\t)"
+    lines:
+    - 186
+    - 209
+    detail:
+      calls:
+      - array.push
+      - this._edits.get
+      - this._edits.set
+  - name: _validateBeforePrepare
+    sig: '_validateBeforePrepare(): void'
+    vis: private
+    lines:
+    - 211
+    - 224
+    detail:
+      calls:
+      - model.getVersionId
+      - model.uri.toString
+      - new Error
+      - this._edits.values
+      - this._modelService.getModel
+  - name: _createEditsTasks
+    sig: '_createEditsTasks(): Promise<ModelEditTask[]>'
+    is_async: true
+    vis: private
+    lines:
+    - 226
+    - 278
+    detail:
+      calls:
+      - Promise.all
+      - promises.push
+      - this._textModelResolverService.createModelReference
+      - this._textModelResolverService.createModelReference(key).then
+  - name: apply
+    sig: 'apply(): Promise<readonly URI[]>'
+    is_async: true
+    lines:
+    - 290
+    - 337
+    detail:
+      calls:
+      - dispose
+      - multiModelEditStackElement.close
+      - new Error
+      - new MultiModelEditStackElement
+      - new SingleModelEditStackElement
+      - resources.push
+      - singleModelEditStackElement.close
+      - task.apply
+      - task.getBeforeCursorState
+      - task.isNoOp
+      - tasks.map
+      - this._createEditsTasks
+      - this._progress.report
+      - this._undoRedoService.pushElement
+      - this._validateBeforePrepare
+      - this._validateTasks
+      - validation.reason.toString
+  lines:
+  - 182
+  - 338
+exports:
+- name: ValidationResult
+  kind: type
+- name: ISingleSnippetEditOperation
+  kind: type
+- name: ModelEditTask
+  kind: type
+- name: EditorEditTask
+  kind: type
+- name: BulkTextEdits
+  kind: type

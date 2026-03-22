@@ -1,0 +1,566 @@
+## Roska File Descriptor — browser/gettingStartedService.ts
+file: browser/gettingStartedService.ts
+lines: 771
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: ../../../../platform/instantiation/common/instantiation.js.createDecorator
+- sym: ../../../../platform/instantiation/common/instantiation.js.IInstantiationService
+- sym: ../../../../platform/instantiation/common/instantiation.js.ServicesAccessor
+- sym: ../../../../base/common/event.js.Emitter
+- sym: ../../../../base/common/event.js.Event
+- sym: ../../../../platform/storage/common/storage.js.IStorageService
+- sym: ../../../../platform/storage/common/storage.js.StorageScope
+- sym: ../../../../platform/storage/common/storage.js.StorageTarget
+- sym: ../../../common/memento.js.Memento
+- sym: ../../../../platform/actions/common/actions.js.Action2
+- sym: ../../../../platform/actions/common/actions.js.registerAction2
+- sym: ../../../../platform/commands/common/commands.js.ICommandService
+- sym: ../../../../platform/contextkey/common/contextkey.js.ContextKeyExpr
+- sym: ../../../../platform/contextkey/common/contextkey.js.ContextKeyExpression
+- sym: ../../../../platform/contextkey/common/contextkey.js.IContextKeyService
+- sym: ../../../../platform/contextkey/common/contextkey.js.RawContextKey
+- sym: ../../../../base/common/lifecycle.js.Disposable
+- sym: ../../../../platform/userDataSync/common/userDataSync.js.IUserDataSyncEnablementService
+- sym: ../../../../platform/extensions/common/extensions.js.ExtensionIdentifier
+- sym: ../../../../platform/extensions/common/extensions.js.IExtensionDescription
+- sym: ../../../../base/common/uri.js.URI
+- sym: ../../../../base/common/resources.js.joinPath
+- sym: ../../../../base/common/network.js.FileAccess
+- sym: ../../../../platform/extensionManagement/common/extensionManagement.js.EXTENSION_INSTALL_DEP_PACK_CONTEXT
+- sym: ../../../../platform/extensionManagement/common/extensionManagement.js.EXTENSION_INSTALL_SKIP_WALKTHROUGH_CONTEXT
+- sym: ../../../../platform/extensionManagement/common/extensionManagement.js.IExtensionManagementService
+- sym: ../../../../base/common/themables.js.ThemeIcon
+- sym: ../common/gettingStartedContent.js.walkthroughs
+- sym: ../../../services/assignment/common/assignmentService.js.IWorkbenchAssignmentService
+- sym: ../../../services/host/browser/host.js.IHostService
+- sym: ../../../../platform/configuration/common/configuration.js.IConfigurationService
+- sym: ../../../../base/common/linkedText.js.ILink
+- sym: ../../../../base/common/linkedText.js.LinkedText
+- sym: ../../../../base/common/linkedText.js.parseLinkedText
+- sym: ./gettingStartedExtensionPoint.js.walkthroughsExtensionPoint
+- sym: ../../../../platform/instantiation/common/extensions.js.InstantiationType
+- sym: ../../../../platform/instantiation/common/extensions.js.registerSingleton
+- sym: ../../../../base/common/path.js.dirname
+- sym: ../../../../base/common/arrays.js.coalesce
+- sym: ../../../services/views/common/viewsService.js.IViewsService
+- sym: ../../../../nls.js.localize
+- sym: ../../../../nls.js.localize2
+- sym: ../../../../platform/telemetry/common/telemetry.js.ITelemetryService
+- sym: ../../../services/extensions/common/workspaceContains.js.checkGlobFileExists
+- sym: ../../../../platform/workspace/common/workspace.js.IWorkspaceContextService
+- sym: ../../../../base/common/cancellation.js.CancellationTokenSource
+- sym: ../../../services/extensionManagement/common/extensionManagement.js.DefaultIconPath
+- sym: ../../../../platform/product/common/productService.js.IProductService
+- sym: ../../webview/common/webview.js.asWebviewUri
+- sym: ../../../services/layout/browser/layoutService.js.IWorkbenchLayoutService
+- sym: ../../../services/layout/browser/layoutService.js.Parts
+data:
+- name: HasMultipleNewFileEntries
+  type: any
+  val: new RawContextKey<boolean>('hasMultipleNewFileEntries', false)
+- name: IWalkthroughsService
+  type: any
+  val: createDecorator<IWalkthroughsService>('walkthroughsService')
+- name: hiddenEntriesConfigurationKey
+  type: string
+  val: '''workbench.welcomePage.hiddenCategories'''
+- name: walkthroughMetadataConfigurationKey
+  type: string
+  val: '''workbench.welcomePage.walkthroughMetadata'''
+- name: BUILT_IN_SOURCE
+  type: any
+  val: localize('builtin', "Built-In")
+- name: DAYS
+  type: any
+  val: 24 * 60 * 60 * 1000
+- name: NEW_WALKTHROUGH_TIME
+  type: any
+  val: 7 * DAYS
+types:
+- name: WalkthroughMetaDataType
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 48
+  - 48
+- name: IWalkthrough
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: id
+    type: string
+  - name: description
+    type: string
+  - name: order
+    type: number
+  - name: source
+    type: string
+  - name: isFeatured
+    type: boolean
+  - name: next
+    type: string
+  - name: when
+    type: ContextKeyExpression
+  - name: steps
+    type: IWalkthroughStep[]
+  - name: icon
+    type: "| { type: 'icon'; icon: ThemeIcon }\n\t| { type: 'image'; path: string }"
+  lines:
+  - 52
+  - 66
+- name: IWalkthroughLoose
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 68
+  - 68
+- name: IResolvedWalkthrough
+  kind: trait
+  bases:
+  - IWalkthrough
+  decorators:
+  - interface
+  fields:
+  - name: steps
+    type: IResolvedWalkthroughStep[]
+  - name: newItems
+    type: boolean
+  - name: recencyBonus
+    type: number
+  - name: newEntry
+    type: boolean
+  lines:
+  - 70
+  - 75
+- name: IWalkthroughStep
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: id
+    type: string
+  - name: description
+    type: LinkedText[]
+  - name: category
+    type: string
+  - name: when
+    type: ContextKeyExpression
+  - name: order
+    type: number
+  - name: completionEvents
+    type: string[]
+  - name: media
+    type: "| { type: 'image'; path: { hcDark: URI; hcLight: URI; light: URI; dark: URI }; altText: string }\n\t| { type: 'svg'; path: URI; altText: string }\n\t| { type: 'markdown'; path: URI; base: URI; root: URI }\n\t| { type: 'video'; path: { hcDark: URI; hcLight: URI; light: URI; dark: URI }; poster?: { hcDark: URI; hcLight: URI; light: URI; dark: URI }; root: URI; altText: string }"
+  lines:
+  - 77
+  - 90
+- name: StepProgress
+  kind: typealias
+  decorators:
+  - type
+  fields:
+  - name: done
+    type: boolean
+  lines:
+  - 92
+  - 92
+- name: IResolvedWalkthroughStep
+  kind: trait
+  bases:
+  - IWalkthroughStep
+  - StepProgress
+  decorators:
+  - interface
+  lines:
+  - 94
+  - 94
+- name: IWalkthroughsService
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: _serviceBrand
+    type: undefined
+  - name: readonly
+    type: Event<IResolvedWalkthrough>
+  - name: readonly
+    type: Event<string>
+  - name: readonly
+    type: Event<IResolvedWalkthrough>
+  - name: readonly
+    type: Event<IResolvedWalkthroughStep>
+  - name: getWalkthroughs
+    type: 'method: getWalkthroughs(): IResolvedWalkthrough[]'
+  - name: getWalkthrough
+    type: 'method: getWalkthrough(id: string): IResolvedWalkthrough'
+  - name: registerWalkthrough
+    type: 'method: registerWalkthrough(descriptor: IWalkthroughLoose): void'
+  - name: progressByEvent
+    type: 'method: progressByEvent(eventName: string): void'
+  - name: progressStep
+    type: 'method: progressStep(id: string): void'
+  - name: deprogressStep
+    type: 'method: deprogressStep(id: string): void'
+  - name: markWalkthroughOpened
+    type: 'method: markWalkthroughOpened(id: string): void'
+  lines:
+  - 96
+  - 114
+- name: WalkthroughsService
+  kind: struct
+  bases:
+  - Disposable
+  - IWalkthroughsService
+  fields:
+  - name: _serviceBrand
+    type: undefined
+  - name: _onDidAddWalkthrough
+    type: any
+    default: new Emitter<IResolvedWalkthrough>()
+  - name: onDidAddWalkthrough
+    type: Event<IResolvedWalkthrough>
+    default: this._onDidAddWalkthrough.event
+  - name: _onDidRemoveWalkthrough
+    type: any
+    default: new Emitter<string>()
+  - name: onDidRemoveWalkthrough
+    type: Event<string>
+    default: this._onDidRemoveWalkthrough.event
+  - name: _onDidChangeWalkthrough
+    type: any
+    default: new Emitter<IResolvedWalkthrough>()
+  - name: onDidChangeWalkthrough
+    type: Event<IResolvedWalkthrough>
+    default: this._onDidChangeWalkthrough.event
+  - name: _onDidProgressStep
+    type: any
+    default: new Emitter<IResolvedWalkthroughStep>()
+  - name: onDidProgressStep
+    type: Event<IResolvedWalkthroughStep>
+    default: this._onDidProgressStep.event
+  - name: memento
+    type: Memento
+  - name: stepProgress
+    type: Record<string, StepProgress | undefined>
+  - name: sessionEvents
+    type: any
+    default: new Set<string>()
+  - name: completionListeners
+    type: any
+    default: new Map<string, Set<string>>()
+  - name: gettingStartedContributions
+    type: any
+    default: new Map<string, IWalkthrough>()
+  - name: steps
+    type: any
+    default: new Map<string, IWalkthroughStep>()
+  - name: sessionInstalledExtensions
+    type: Set<string>
+    default: new Set<string>()
+  - name: categoryVisibilityContextKeys
+    type: any
+    default: new Set<string>()
+  - name: stepCompletionContextKeyExpressions
+    type: any
+    default: new Set<ContextKeyExpression>()
+  - name: stepCompletionContextKeys
+    type: any
+    default: new Set<string>()
+  - name: metadata
+    type: WalkthroughMetaDataType
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\t@IStorageService private readonly storageService: IStorageService,\n\t\t@ICommandService private readonly commandService: ICommandService,\n\t\t@IInstantiationService private readonly instantiationService: IInstantiationService,\n\t\t@IWorkspaceContextService private readonly workspaceContextService: IWorkspaceContextService,\n\t\t@IContextKeyService private readonly contextService: IContextKeyService,\n\t\t@IUserDataSyncEnablementService private readonly userDataSyncEnablementService: IUserDataSyncEnablementService,\n\t\t@IConfigurationService private readonly configurationService: IConfigurationService,\n\t\t@IExtensionManagementService private readonly extensionManagementService: IExtensionManagementService,\n\t\t@IHostService private readonly hostService: IHostService,\n\t\t@IViewsService private readonly viewsService: IViewsService,\n\t\t@ITelemetryService private readonly telemetryService: ITelemetryService,\n\t\t@IWorkbenchAssignmentService private readonly tasExperimentService: IWorkbenchAssignmentService,\n\t\t@IProductService private readonly productService: IProductService,\n\t\t@IWorkbenchLayoutService private readonly layoutService: IWorkbenchLayoutService,\n\t)"
+    lines:
+    - 149
+    - 179
+    detail:
+      calls:
+      - HasMultipleNewFileEntries.bindTo
+      - HasMultipleNewFileEntries.bindTo(this.contextService).set
+      - JSON.parse
+      - new Map
+      - new Memento
+      - super
+      - this.initCompletionEventListeners
+      - this.memento.getMemento
+      - this.registerWalkthroughs
+      - this.storageService.get
+  - name: registerWalkthroughs
+    sig: registerWalkthroughs()
+    vis: private
+    lines:
+    - 181
+    - 235
+    detail:
+      calls:
+      - walkthroughs.forEach
+      - walkthroughsExtensionPoint.setHandler
+  - name: initCompletionEventListeners
+    sig: initCompletionEventListeners()
+    vis: private
+    lines:
+    - 237
+    - 287
+    detail:
+      calls:
+      - this._register
+      - this.commandService.onDidExecuteCommand
+      - this.configurationService.onDidChangeConfiguration
+      - this.contextService.onDidChangeContext
+      - this.extensionManagementService.getInstalled
+      - this.extensionManagementService.getInstalled().then
+      - this.extensionManagementService.onDidInstallExtensions
+      - this.progressByEvent
+      - this.userDataSyncEnablementService.isEnabled
+      - this.userDataSyncEnablementService.onDidChangeEnablement
+      - this.viewsService.onDidChangeViewVisibility
+  - name: markWalkthroughOpened
+    sig: 'markWalkthroughOpened(id: string)'
+    lines:
+    - 289
+    - 297
+    detail:
+      calls:
+      - JSON.stringify
+      - this.gettingStartedContributions.get
+      - this.metadata.entries
+      - this.metadata.get
+      - this.metadata.set
+      - this.storageService.store
+      - walkthrough.steps.map
+  - name: registerExtensionWalkthroughContributions
+    sig: 'registerExtensionWalkthroughContributions(extension: IExtensionDescription)'
+    is_async: true
+    vis: private
+    lines:
+    - 299
+    - 464
+    detail:
+      calls:
+      - JSON.stringify
+      - Math.min
+      - Promise.all
+      - extension.contributes?.walkthroughs?.map
+      - this.commandService.executeCommand
+      - this.configurationService.getValue
+      - this.hostService.hadLastFocus
+      - this.layoutService.hasFocus
+      - this.metadata.entries
+      - this.storageService.store
+      - this.telemetryService.publicLog2
+  - name: getWalkthrough
+    sig: 'getWalkthrough(id: string): IResolvedWalkthrough'
+    lines:
+    - 482
+    - 487
+    detail:
+      calls:
+      - Error
+      - this.gettingStartedContributions.get
+      - this.resolveWalkthrough
+  - name: getWalkthroughs
+    sig: 'getWalkthroughs(): IResolvedWalkthrough[]'
+    lines:
+    - 489
+    - 506
+    detail:
+      calls:
+      - "registeredCategories\n\t\t\t.map"
+      - "registeredCategories\n\t\t\t.map(category => {\n\t\t\t\treturn {\n\t\t\t\t\t...category,\n\t\t\t\t\tcontent: {\n\t\t\t\t\t\ttype..."
+      - this.gettingStartedContributions.values
+  - name: resolveWalkthrough
+    sig: 'resolveWalkthrough(category: IWalkthrough): IResolvedWalkthrough'
+    vis: private
+    lines:
+    - 508
+    - 538
+    detail:
+      calls:
+      - Error
+      - Math.max
+      - category.steps.map
+      - currentStepIds.some
+      - new Date
+      - rawCategory.steps.map
+      - this.gettingStartedContributions.get
+      - this.metadata.get
+  - name: progressStep
+    sig: 'progressStep(id: string)'
+    lines:
+    - 548
+    - 558
+    detail:
+      calls:
+      - Error
+      - this._onDidProgressStep.fire
+      - this.getStep
+      - this.getStepProgress
+      - this.memento.saveMemento
+  - name: deprogressStep
+    sig: 'deprogressStep(id: string)'
+    lines:
+    - 560
+    - 565
+    detail:
+      calls:
+      - this._onDidProgressStep.fire
+      - this.getStep
+      - this.getStepProgress
+      - this.memento.saveMemento
+  - name: progressByEvent
+    sig: 'progressByEvent(event: string): void'
+    lines:
+    - 567
+    - 572
+    detail:
+      calls:
+      - this.completionListeners.get
+      - this.completionListeners.get(event)?.forEach
+      - this.sessionEvents.add
+      - this.sessionEvents.has
+  - name: registerWalkthrough
+    sig: 'registerWalkthrough(walkthoughDescriptor: IWalkthroughLoose)'
+    lines:
+    - 574
+    - 579
+    detail:
+      calls:
+      - this._registerWalkthrough
+      - walkthoughDescriptor.steps.map
+  - name: _registerWalkthrough
+    sig: '_registerWalkthrough(walkthroughDescriptor: IWalkthrough): void'
+    lines:
+    - 581
+    - 598
+    detail:
+      calls:
+      - console.error
+      - this.gettingStartedContributions.get
+      - this.gettingStartedContributions.set
+      - walkthroughDescriptor.steps.forEach
+      - walkthroughDescriptor.when.keys
+      - walkthroughDescriptor.when.keys().forEach
+  - name: registerDoneListeners
+    sig: 'registerDoneListeners(step: IWalkthroughStep)'
+    vis: private
+    lines:
+    - 600
+    - 669
+    detail:
+      calls:
+      - /^([^:]*):?(.*)$/.exec
+      - ContextKeyExpr.deserialize
+      - argument.replace
+      - argument.toLowerCase
+      - coalesce
+      - console.error
+      - expression.keys
+      - expression.keys().forEach
+      - expression.serialize
+      - step.completionEvents.push
+      - "step.description\n\t\t\t\t\t.filter"
+      - "step.description\n\t\t\t\t\t.filter(linkedText => linkedText.nodes.length === 1) // only buttons\n\t\t\t\t\t.fla..."
+      - this.contextService.contextMatchesRules
+      - this.registerCompletionListener
+      - this.sessionEvents.add
+      - this.stepCompletionContextKeyExpressions.add
+  - name: registerCompletionListener
+    sig: 'registerCompletionListener(event: string, step: IWalkthroughStep)'
+    vis: private
+    lines:
+    - 671
+    - 676
+    detail:
+      calls:
+      - new Set
+      - this.completionListeners.get
+      - this.completionListeners.get(event)?.add
+      - this.completionListeners.has
+      - this.completionListeners.set
+  lines:
+  - 120
+  - 683
+functions:
+- name: parseDescription
+  sig: 'parseDescription(desc: string): LinkedText[]'
+  lines:
+  - 685
+  - 685
+  detail:
+    calls:
+    - desc.split
+    - desc.split('\n').filter
+- name: convertInternalMediaPathToFileURI
+  sig: 'convertInternalMediaPathToFileURI(path: string)'
+  lines:
+  - 687
+  - 689
+- name: convertInternalMediaPathToBrowserURI
+  sig: 'convertInternalMediaPathToBrowserURI(path: string)'
+  lines:
+  - 691
+  - 693
+- name: convertInternalMediaPathsToBrowserURIs
+  sig: 'convertInternalMediaPathsToBrowserURIs(path: string | { hc: string; hcLight?: string; dark: string; light: string }): { hcDark: URI; hcLight: URI; dark: URI; light: URI }'
+  lines:
+  - 694
+  - 706
+  detail:
+    calls:
+    - convertInternalMediaPathToBrowserURI
+- name: convertRelativeMediaPathsToWebviewURIs
+  sig: 'convertRelativeMediaPathsToWebviewURIs(basePath: URI, path: string | { hc: string; hcLight?: string; dark: string; light: string }): { hcDark: URI; hcLight: URI; dark: URI; light: URI }'
+  lines:
+  - 708
+  - 724
+  detail:
+    calls:
+    - convertPath
+exports:
+- name: WalkthroughMetaDataType
+  kind: type
+- name: IWalkthrough
+  kind: type
+- name: IWalkthroughLoose
+  kind: type
+- name: IResolvedWalkthrough
+  kind: type
+- name: IWalkthroughStep
+  kind: type
+- name: StepProgress
+  kind: type
+- name: IResolvedWalkthroughStep
+  kind: type
+- name: IWalkthroughsService
+  kind: type
+- name: WalkthroughsService
+  kind: type
+- name: parseDescription
+  kind: func
+- name: convertInternalMediaPathToFileURI
+  kind: func
+- name: convertInternalMediaPathToBrowserURI
+  kind: func
+- name: convertInternalMediaPathsToBrowserURIs
+  kind: func
+- name: convertRelativeMediaPathsToWebviewURIs
+  kind: func
+- name: HasMultipleNewFileEntries
+  kind: data
+- name: IWalkthroughsService
+  kind: data
+- name: hiddenEntriesConfigurationKey
+  kind: data
+- name: walkthroughMetadataConfigurationKey
+  kind: data
+- name: BUILT_IN_SOURCE
+  kind: data
+- name: DAYS
+  kind: data
+- name: NEW_WALKTHROUGH_TIME
+  kind: data

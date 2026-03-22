@@ -1,0 +1,199 @@
+## Roska File Descriptor — common/externalUriOpenerService.ts
+file: common/externalUriOpenerService.ts
+lines: 239
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: ../../../../base/common/cancellation.js.CancellationToken
+- sym: ../../../../base/common/iterator.js.Iterable
+- sym: ../../../../base/common/lifecycle.js.Disposable
+- sym: ../../../../base/common/lifecycle.js.IDisposable
+- sym: ../../../../base/common/linkedList.js.LinkedList
+- sym: ../../../../base/common/platform.js.isWeb
+- sym: ../../../../base/common/uri.js.URI
+- sym: ../../../../editor/common/languages.js.languages
+- sym: ../../../../nls.js.nls
+- sym: ../../../../platform/configuration/common/configuration.js.IConfigurationService
+- sym: ../../../../platform/instantiation/common/instantiation.js.createDecorator
+- sym: ../../../../platform/log/common/log.js.ILogService
+- sym: ../../../../platform/opener/common/opener.js.IExternalOpener
+- sym: ../../../../platform/opener/common/opener.js.IOpenerService
+- sym: ../../../../platform/quickinput/common/quickInput.js.IQuickInputService
+- sym: ../../../../platform/quickinput/common/quickInput.js.IQuickPickItem
+- sym: ../../../../platform/quickinput/common/quickInput.js.IQuickPickSeparator
+- sym: ./configuration.js.defaultExternalUriOpenerId
+- sym: ./configuration.js.ExternalUriOpenersConfiguration
+- sym: ./configuration.js.externalUriOpenersSettingId
+- sym: ../../url/common/urlGlob.js.testUrlMatchesGlob
+- sym: ../../../services/preferences/common/preferences.js.IPreferencesService
+data:
+- name: IExternalUriOpenerService
+  type: any
+  val: createDecorator<IExternalUriOpenerService>('externalUriOpenerService')
+types:
+- name: IExternalOpenerProvider
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: getOpeners
+    type: 'method: getOpeners(targetUri: URI): AsyncIterable<IExternalUriOpener>'
+  lines:
+  - 27
+  - 29
+- name: IExternalUriOpener
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: readonly
+    type: string
+  - name: readonly
+    type: string
+  - name: canOpen
+    type: 'method: canOpen(uri: URI, token: CancellationToken): Promise<languages.ExternalUriOpenerPriority>'
+  - name: openExternalUri
+    type: 'method: openExternalUri(uri: URI, ctx: { sourceUri: URI }, token: CancellationToken): Promise<boolean>'
+  lines:
+  - 31
+  - 37
+- name: IExternalUriOpenerService
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: readonly
+    type: undefined
+  - name: registerExternalOpenerProvider
+    type: 'method: registerExternalOpenerProvider(provider: IExternalOpenerProvider): IDisposable'
+  - name: getOpener
+    type: 'method: getOpener(uri: URI, ctx: { sourceUri: URI; preferredOpenerId?: string }, token: CancellationToken): Promise<IExternalUriOpener | undefined>'
+  lines:
+  - 39
+  - 52
+- name: ExternalUriOpenerService
+  kind: struct
+  bases:
+  - Disposable
+  - IExternalUriOpenerService
+  - IExternalOpener
+  fields:
+  - name: _serviceBrand
+    type: undefined
+  - name: _providers
+    type: any
+    default: new LinkedList<IExternalOpenerProvider>()
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\t@IOpenerService openerService: IOpenerService,\n\t\t@IConfigurationService private readonly configurationService: IConfigurationService,\n\t\t@ILogService private readonly logService: ILogService,\n\t\t@IPreferencesService private readonly preferencesService: IPreferencesService,\n\t\t@IQuickInputService private readonly quickInputService: IQuickInputService,\n\t)"
+    lines:
+    - 60
+    - 69
+    detail:
+      calls:
+      - openerService.registerExternalOpener
+      - super
+      - this._register
+  - name: registerExternalOpenerProvider
+    sig: 'registerExternalOpenerProvider(provider: IExternalOpenerProvider): IDisposable'
+    lines:
+    - 71
+    - 74
+    detail:
+      calls:
+      - this._providers.push
+  - name: getOpeners
+    sig: 'getOpeners(targetUri: URI, allowOptional: boolean, ctx: { sourceUri: URI; preferredOpenerId?: string }, token: CancellationToken): Promise<IExternalUriOpener[]>'
+    is_async: true
+    vis: private
+    lines:
+    - 76
+    - 139
+    detail:
+      calls:
+      - Array.from
+      - Array.from(allOpeners.values()).map
+      - Promise.all
+      - allOpeners.get
+      - allOpeners.values
+      - this.getAllOpenersForUri
+      - this.getConfiguredOpenerForUri
+      - validOpeners.every
+      - validOpeners.filter
+      - validOpeners.filter(x => x.priority === languages.ExternalUriOpenerPriority.Preferred).at
+      - validOpeners.map
+  - name: openExternal
+    sig: 'openExternal(href: string, ctx: { sourceUri: URI; preferredOpenerId?: string }, token: CancellationToken): Promise<boolean>'
+    is_async: true
+    lines:
+    - 141
+    - 154
+    detail:
+      calls:
+      - URI.parse
+      - allOpeners[0].openExternalUri
+      - this.getOpeners
+      - this.showOpenerPrompt
+  - name: getOpener
+    sig: 'getOpener(targetUri: URI, ctx: { sourceUri: URI; preferredOpenerId?: string }, token: CancellationToken): Promise<IExternalUriOpener | undefined>'
+    is_async: true
+    lines:
+    - 156
+    - 162
+    detail:
+      calls:
+      - this.getOpeners
+  - name: getAllOpenersForUri
+    sig: 'getAllOpenersForUri(targetUri: URI): Promise<Map<string, IExternalUriOpener>>'
+    is_async: true
+    vis: private
+    lines:
+    - 164
+    - 172
+    detail:
+      calls:
+      - Iterable.map
+      - Promise.all
+      - new Map
+  - name: getConfiguredOpenerForUri
+    sig: 'getConfiguredOpenerForUri(openers: Map<string, IExternalUriOpener>, targetUri: URI): IExternalUriOpener | ''default'' | undefined'
+    vis: private
+    lines:
+    - 174
+    - 189
+    detail:
+      calls:
+      - Object.entries
+      - openers.get
+      - testUrlMatchesGlob
+      - this.configurationService.getValue
+  - name: showOpenerPrompt
+    sig: "showOpenerPrompt(\n\t\topeners: ReadonlyArray<IExternalUriOpener>,\n\t\ttargetUri: URI,\n\t\tctx: { sourceUri: URI },\n\t\ttoken: CancellationToken\n\t): Promise<boolean>"
+    is_async: true
+    vis: private
+    lines:
+    - 191
+    - 238
+    detail:
+      calls:
+      - items.push
+      - nls.localize
+      - openers.map
+      - picked.opener.openExternalUri
+      - targetUri.toString
+      - this.preferencesService.openUserSettings
+      - this.quickInputService.pick
+  lines:
+  - 54
+  - 239
+exports:
+- name: IExternalOpenerProvider
+  kind: type
+- name: IExternalUriOpener
+  kind: type
+- name: IExternalUriOpenerService
+  kind: type
+- name: ExternalUriOpenerService
+  kind: type
+- name: IExternalUriOpenerService
+  kind: data

@@ -1,0 +1,238 @@
+## Roska File Descriptor — browser/hoverOperation.ts
+file: browser/hoverOperation.ts
+lines: 230
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: ../../../../base/common/async.js.AsyncIterableObject
+- sym: ../../../../base/common/async.js.CancelableAsyncIterableObject
+- sym: ../../../../base/common/async.js.createCancelableAsyncIterable
+- sym: ../../../../base/common/async.js.RunOnceScheduler
+- sym: ../../../../base/common/cancellation.js.CancellationToken
+- sym: ../../../../base/common/errors.js.onUnexpectedError
+- sym: ../../../../base/common/event.js.Emitter
+- sym: ../../../../base/common/lifecycle.js.Disposable
+- sym: ../../../browser/editorBrowser.js.ICodeEditor
+- sym: ../../../common/config/editorOptions.js.EditorOption
+types:
+- name: IHoverComputer
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: computeAsync
+    type: '(args: TArgs, token: CancellationToken) => AsyncIterableObject<TResult>'
+  - name: computeSync
+    type: '(args: TArgs) => TResult[]'
+  lines:
+  - 14
+  - 23
+- name: HoverOperationState
+  kind: enum
+  variants:
+  - name: Idle
+  - name: FirstWait
+  - name: SecondWait
+  - name: WaitingForAsync
+    val: '3'
+  - name: WaitingForAsyncShowingLoading
+    val: '4'
+  lines:
+  - 25
+  - 31
+- name: HoverStartMode
+  kind: enum
+  variants:
+  - name: Delayed
+    val: '0'
+  - name: Immediate
+    val: '1'
+  lines:
+  - 33
+  - 36
+- name: HoverStartSource
+  kind: enum
+  variants:
+  - name: Mouse
+    val: '0'
+  - name: Click
+    val: '1'
+  - name: Keyboard
+    val: '2'
+  lines:
+  - 38
+  - 42
+- name: HoverResult
+  kind: struct
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tpublic readonly value: TResult[],\n\t\tpublic readonly isComplete: boolean,\n\t\tpublic readonly hasLoadingMessage: boolean,\n\t\tpublic readonly options: TArgs\n\t)"
+    lines:
+    - 45
+    - 50
+    detail: {}
+  lines:
+  - 44
+  - 51
+- name: HoverOperation
+  kind: struct
+  bases:
+  - Disposable
+  fields:
+  - name: _onResult
+    type: any
+    default: this._register(new Emitter<HoverResult<TArgs, TResult>>())
+  - name: onResult
+    type: any
+    default: this._onResult.event
+  - name: _asyncComputationScheduler
+    type: any
+    default: 'this._register(new Debouncer((options: TArgs) => this._triggerAsyncComputation(o...'
+  - name: _syncComputationScheduler
+    type: any
+    default: 'this._register(new Debouncer((options: TArgs) => this._triggerSyncComputation(op...'
+  - name: _loadingMessageScheduler
+    type: any
+    default: 'this._register(new Debouncer((options: TArgs) => this._triggerLoadingMessage(opt...'
+  - name: _state
+    type: any
+    default: HoverOperationState.Idle
+  - name: _asyncIterable
+    type: CancelableAsyncIterableObject<TResult> | null
+    default: 'null'
+  - name: _asyncIterableDone
+    type: boolean
+    default: 'false'
+  - name: _result
+    type: TResult[]
+    default: '[]'
+  - name: _options
+    type: TArgs | undefined
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tprivate readonly _editor: ICodeEditor,\n\t\tprivate readonly _computer: IHoverComputer<TArgs, TResult>\n\t)"
+    lines:
+    - 78
+    - 83
+    detail:
+      calls:
+      - super
+  - name: dispose
+    sig: 'dispose(): void'
+    lines:
+    - 85
+    - 92
+    detail:
+      calls:
+      - super.dispose
+      - this._asyncIterable.cancel
+  - name: _triggerAsyncComputation
+    sig: '_triggerAsyncComputation(options: TArgs): void'
+    vis: private
+    lines:
+    - 116
+    - 146
+    detail:
+      calls:
+      - "(async () => {\n\t\t\t\ttry {\n\t\t\t\t\tfor await (const item of this._asyncIterable!) {\n\t\t\t\t\t\tif (item) {\n\t\t\t..."
+      - createCancelableAsyncIterable
+      - this._setState
+      - this._syncComputationScheduler.schedule
+  - name: _triggerSyncComputation
+    sig: '_triggerSyncComputation(options: TArgs): void'
+    vis: private
+    lines:
+    - 148
+    - 153
+    detail:
+      calls:
+      - this._computer.computeSync
+      - this._result.concat
+      - this._setState
+  - name: start
+    sig: 'start(mode: HoverStartMode, options: TArgs): void'
+    lines:
+    - 171
+    - 191
+    detail:
+      calls:
+      - this._asyncComputationScheduler.schedule
+      - this._loadingMessageScheduler.schedule
+      - this._setState
+      - this._syncComputationScheduler.cancel
+      - this._triggerAsyncComputation
+      - this._triggerSyncComputation
+  - name: cancel
+    sig: 'cancel(): void'
+    lines:
+    - 193
+    - 204
+    detail:
+      calls:
+      - this._asyncComputationScheduler.cancel
+      - this._asyncIterable.cancel
+      - this._loadingMessageScheduler.cancel
+      - this._syncComputationScheduler.cancel
+  - name: options
+    sig: 'options(): TArgs | undefined'
+    lines:
+    - 206
+    - 208
+    detail: {}
+  lines:
+  - 63
+  - 209
+- name: Debouncer
+  kind: struct
+  bases:
+  - Disposable
+  fields:
+  - name: _scheduler
+    type: RunOnceScheduler
+  - name: _options
+    type: TArgs | undefined
+  methods:
+  - name: constructor
+    sig: 'constructor(runner: (options: TArgs) => void, debounceTimeMs: number)'
+    lines:
+    - 217
+    - 220
+    detail:
+      calls:
+      - new RunOnceScheduler
+      - super
+      - this._register
+  - name: schedule
+    sig: 'schedule(options: TArgs, debounceTimeMs: number): void'
+    lines:
+    - 222
+    - 225
+    detail:
+      calls:
+      - this._scheduler.schedule
+  - name: cancel
+    sig: 'cancel(): void'
+    lines:
+    - 227
+    - 229
+    detail:
+      calls:
+      - this._scheduler.cancel
+  lines:
+  - 211
+  - 230
+exports:
+- name: IHoverComputer
+  kind: type
+- name: HoverOperationState
+  kind: type
+- name: HoverStartMode
+  kind: type
+- name: HoverStartSource
+  kind: type
+- name: HoverResult
+  kind: type
+- name: HoverOperation
+  kind: type
+- name: Debouncer
+  kind: type

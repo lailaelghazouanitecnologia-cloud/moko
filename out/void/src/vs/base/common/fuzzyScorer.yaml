@@ -1,0 +1,443 @@
+## Roska File Descriptor — common/fuzzyScorer.ts
+file: common/fuzzyScorer.ts
+lines: 921
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: ./charCode.js.CharCode
+- sym: ./comparers.js.compareAnything
+- sym: ./filters.js.createMatches as createFuzzyMatches
+- sym: ./filters.js.fuzzyScore
+- sym: ./filters.js.IMatch
+- sym: ./filters.js.isUpper
+- sym: ./filters.js.matchesPrefix
+- sym: ./hash.js.hash
+- sym: ./path.js.sep
+- sym: ./platform.js.isLinux
+- sym: ./platform.js.isWindows
+- sym: ./strings.js.equalsIgnoreCase
+- sym: ./strings.js.stripWildcards
+data:
+- name: NO_MATCH
+  type: number
+  val: '0'
+- name: NO_SCORE
+  type: FuzzyScore
+  val: '[NO_MATCH, []]'
+- name: NO_SCORE2
+  type: FuzzyScore2
+  val: '[undefined, []]'
+- name: NO_ITEM_SCORE
+  type: any
+  val: 'Object.freeze<IItemScore>({ score: 0 })'
+- name: PATH_IDENTITY_SCORE
+  type: any
+  val: 1 << 18
+- name: LABEL_PREFIX_SCORE_THRESHOLD
+  type: any
+  val: 1 << 17
+- name: LABEL_SCORE_THRESHOLD
+  type: any
+  val: 1 << 16
+- name: MULTIPLE_QUERY_VALUES_SEPARATOR
+  type: string
+  val: ''' '''
+types:
+- name: FuzzyScore
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 16
+  - 16
+- name: FuzzyScorerCache
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 17
+  - 17
+- name: FuzzyScore2
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 285
+  - 285
+- name: IItemScore
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: score
+    type: number
+  - name: labelMatch
+    type: IMatch[]
+  - name: descriptionMatch
+    type: IMatch[]
+  lines:
+  - 339
+  - 355
+- name: IItemAccessor
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: getItemLabel
+    type: 'method: getItemLabel(item: T): string | undefined'
+  - name: getItemDescription
+    type: 'method: getItemDescription(item: T): string | undefined'
+  - name: getItemPath
+    type: 'method: getItemPath(file: T): string | undefined'
+  lines:
+  - 359
+  - 375
+- name: IPreparedQueryPiece
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: original
+    type: string
+  - name: originalLowercase
+    type: string
+  - name: pathNormalized
+    type: string
+  - name: normalized
+    type: string
+  - name: normalizedLowercase
+    type: string
+  - name: expectContiguousMatch
+    type: boolean
+  lines:
+  - 795
+  - 823
+- name: IPreparedQuery
+  kind: trait
+  bases:
+  - IPreparedQueryPiece
+  decorators:
+  - interface
+  fields:
+  - name: values
+    type: IPreparedQueryPiece[] | undefined
+  - name: containsPathSeparator
+    type: boolean
+  lines:
+  - 825
+  - 836
+functions:
+- name: scoreFuzzy
+  sig: 'scoreFuzzy(target: string, query: string, queryLower: string, allowNonContiguousMatches: boolean): FuzzyScore'
+  lines:
+  - 25
+  - 50
+  detail:
+    calls:
+    - doScoreFuzzy
+    - target.toLowerCase
+- name: doScoreFuzzy
+  sig: 'doScoreFuzzy(query: string, queryLower: string, queryLength: number, target: string, targetLower: string, targetLength: number, allowNonContiguousMatches: boolean): FuzzyScore'
+  lines:
+  - 52
+  - 156
+  detail:
+    calls:
+    - computeCharScore
+    - positions.push
+    - positions.reverse
+    - targetLower.startsWith
+- name: computeCharScore
+  sig: 'computeCharScore(queryCharAtIndex: string, queryLowerCharAtIndex: string, target: string, targetLower: string, targetIndex: number, matchesSequenceLength: number): number'
+  lines:
+  - 158
+  - 234
+  detail:
+    calls:
+    - considerAsEqual
+    - isUpper
+    - scoreSeparatorAtPos
+    - target.charCodeAt
+- name: considerAsEqual
+  sig: 'considerAsEqual(a: string, b: string): boolean'
+  lines:
+  - 236
+  - 247
+  detail: {}
+- name: scoreSeparatorAtPos
+  sig: 'scoreSeparatorAtPos(charCode: number): number'
+  lines:
+  - 249
+  - 265
+  detail: {}
+- name: scoreFuzzy2
+  sig: 'scoreFuzzy2(target: string, query: IPreparedQuery | IPreparedQueryPiece, patternStart = 0, wordStart = 0): FuzzyScore2'
+  lines:
+  - 289
+  - 299
+  detail:
+    calls:
+    - doScoreFuzzy2Multiple
+    - doScoreFuzzy2Single
+- name: doScoreFuzzy2Multiple
+  sig: 'doScoreFuzzy2Multiple(target: string, query: IPreparedQueryPiece[], patternStart: number, wordStart: number): FuzzyScore2'
+  lines:
+  - 301
+  - 320
+  detail:
+    calls:
+    - doScoreFuzzy2Single
+    - normalizeMatches
+    - totalMatches.push
+- name: doScoreFuzzy2Single
+  sig: 'doScoreFuzzy2Single(target: string, query: IPreparedQueryPiece, patternStart: number, wordStart: number): FuzzyScore2'
+  lines:
+  - 322
+  - 329
+  detail:
+    calls:
+    - createFuzzyMatches
+    - fuzzyScore
+    - target.toLowerCase
+- name: getCacheHash
+  sig: 'getCacheHash(label: string, description: string | undefined, allowNonContiguousMatches: boolean, query: IPreparedQuery)'
+  lines:
+  - 381
+  - 392
+  detail:
+    calls:
+    - hash
+    - values.map
+- name: scoreItemFuzzy
+  sig: 'scoreItemFuzzy(item: T, query: IPreparedQuery, allowNonContiguousMatches: boolean, accessor: IItemAccessor<T>, cache: FuzzyScorerCache): IItemScore'
+  lines:
+  - 394
+  - 421
+  detail:
+    calls:
+    - accessor.getItemDescription
+    - accessor.getItemLabel
+    - accessor.getItemPath
+    - doScoreItemFuzzy
+    - getCacheHash
+- name: doScoreItemFuzzy
+  sig: 'doScoreItemFuzzy(label: string, description: string | undefined, path: string | undefined, query: IPreparedQuery, allowNonContiguousMatches: boolean): IItemScore'
+  lines:
+  - 423
+  - 438
+  detail:
+    calls:
+    - doScoreItemFuzzyMultiple
+    - doScoreItemFuzzySingle
+    - equalsIgnoreCase
+- name: doScoreItemFuzzyMultiple
+  sig: 'doScoreItemFuzzyMultiple(label: string, description: string | undefined, path: string | undefined, query: IPreparedQueryPiece[], preferLabelMatches: boolean, allowNonContiguousMatches: boolean): IItemScore'
+  lines:
+  - 440
+  - 470
+  detail:
+    calls:
+    - doScoreItemFuzzySingle
+    - normalizeMatches
+    - totalDescriptionMatches.push
+    - totalLabelMatches.push
+- name: doScoreItemFuzzySingle
+  sig: 'doScoreItemFuzzySingle(label: string, description: string | undefined, path: string | undefined, query: IPreparedQueryPiece, preferLabelMatches: boolean, allowNonContiguousMatches: boolean): IItemScore'
+  lines:
+  - 472
+  - 553
+  detail:
+    calls:
+    - Math.round
+    - createMatches
+    - labelDescriptionMatches.forEach
+    - matchesPrefix
+    - scoreFuzzy
+- name: createMatches
+  sig: 'createMatches(offsets: number[] | undefined): IMatch[]'
+  lines:
+  - 555
+  - 572
+  detail:
+    calls:
+    - ret.push
+- name: normalizeMatches
+  sig: 'normalizeMatches(matches: IMatch[]): IMatch[]'
+  lines:
+  - 574
+  - 602
+  detail:
+    calls:
+    - Math.max
+    - Math.min
+    - matchOverlaps
+    - matches.sort
+    - normalizedMatches.push
+- name: matchOverlaps
+  sig: 'matchOverlaps(matchA: IMatch, matchB: IMatch): boolean'
+  lines:
+  - 604
+  - 614
+  detail: {}
+- name: compareItemsByFuzzyScore
+  sig: 'compareItemsByFuzzyScore(itemA: T, itemB: T, query: IPreparedQuery, allowNonContiguousMatches: boolean, accessor: IItemAccessor<T>, cache: FuzzyScorerCache): number'
+  lines:
+  - 621
+  - 681
+  detail:
+    calls:
+    - Array.isArray
+    - accessor.getItemLabel
+    - compareByMatchLength
+    - computeLabelAndDescriptionMatchDistance
+    - fallbackCompare
+    - scoreItemFuzzy
+- name: computeLabelAndDescriptionMatchDistance
+  sig: 'computeLabelAndDescriptionMatchDistance(item: T, score: IItemScore, accessor: IItemAccessor<T>): number'
+  lines:
+  - 683
+  - 716
+  detail:
+    calls:
+    - accessor.getItemDescription
+- name: compareByMatchLength
+  sig: 'compareByMatchLength(matchesA?: IMatch[], matchesB?: IMatch[]): number'
+  lines:
+  - 718
+  - 743
+  detail: {}
+- name: fallbackCompare
+  sig: 'fallbackCompare(itemA: T, itemB: T, query: IPreparedQuery, accessor: IItemAccessor<T>): number'
+  lines:
+  - 745
+  - 788
+  detail:
+    calls:
+    - accessor.getItemDescription
+    - accessor.getItemLabel
+    - accessor.getItemPath
+    - compareAnything
+- name: queryExpectsExactMatch
+  sig: 'queryExpectsExactMatch(query: string)'
+  lines:
+  - 842
+  - 844
+  detail:
+    calls:
+    - query.endsWith
+    - query.startsWith
+- name: prepareQuery
+  sig: 'prepareQuery(original: string): IPreparedQuery'
+  lines:
+  - 851
+  - 891
+  detail:
+    calls:
+    - normalizeQuery
+    - original.split
+    - original.toLowerCase
+    - originalPiece.toLowerCase
+    - pathNormalized.indexOf
+    - queryExpectsExactMatch
+    - values.push
+- name: normalizeQuery
+  sig: 'normalizeQuery(original: string): { pathNormalized: string; normalized: string; normalizedLowercase: string }'
+  lines:
+  - 893
+  - 909
+  detail:
+    calls:
+    - normalized.toLowerCase
+    - original.replace
+    - stripWildcards
+    - stripWildcards(pathNormalized).replace
+- name: pieceToQuery
+  sig: 'pieceToQuery(arg1: IPreparedQueryPiece | IPreparedQueryPiece[]): IPreparedQuery'
+  lines:
+  - 913
+  - 919
+  detail:
+    calls:
+    - Array.isArray
+    - arg1.map
+    - arg1.map(piece => piece.original).join
+    - prepareQuery
+exports:
+- name: FuzzyScore
+  kind: type
+- name: FuzzyScorerCache
+  kind: type
+- name: FuzzyScore2
+  kind: type
+- name: IItemScore
+  kind: type
+- name: IItemAccessor
+  kind: type
+- name: IPreparedQueryPiece
+  kind: type
+- name: IPreparedQuery
+  kind: type
+- name: scoreFuzzy
+  kind: func
+- name: doScoreFuzzy
+  kind: func
+- name: computeCharScore
+  kind: func
+- name: considerAsEqual
+  kind: func
+- name: scoreSeparatorAtPos
+  kind: func
+- name: scoreFuzzy2
+  kind: func
+- name: doScoreFuzzy2Multiple
+  kind: func
+- name: doScoreFuzzy2Single
+  kind: func
+- name: getCacheHash
+  kind: func
+- name: scoreItemFuzzy
+  kind: func
+- name: doScoreItemFuzzy
+  kind: func
+- name: doScoreItemFuzzyMultiple
+  kind: func
+- name: doScoreItemFuzzySingle
+  kind: func
+- name: createMatches
+  kind: func
+- name: normalizeMatches
+  kind: func
+- name: matchOverlaps
+  kind: func
+- name: compareItemsByFuzzyScore
+  kind: func
+- name: computeLabelAndDescriptionMatchDistance
+  kind: func
+- name: compareByMatchLength
+  kind: func
+- name: fallbackCompare
+  kind: func
+- name: queryExpectsExactMatch
+  kind: func
+- name: prepareQuery
+  kind: func
+- name: normalizeQuery
+  kind: func
+- name: pieceToQuery
+  kind: func
+- name: NO_MATCH
+  kind: data
+- name: NO_SCORE
+  kind: data
+- name: NO_SCORE2
+  kind: data
+- name: NO_ITEM_SCORE
+  kind: data
+- name: PATH_IDENTITY_SCORE
+  kind: data
+- name: LABEL_PREFIX_SCORE_THRESHOLD
+  kind: data
+- name: LABEL_SCORE_THRESHOLD
+  kind: data
+- name: MULTIPLE_QUERY_VALUES_SEPARATOR
+  kind: data

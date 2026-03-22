@@ -1,0 +1,805 @@
+## Roska File Descriptor — common/abstractSynchronizer.ts
+file: common/abstractSynchronizer.ts
+lines: 952
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: ../../../base/common/arrays.js.equals
+- sym: ../../../base/common/async.js.CancelablePromise
+- sym: ../../../base/common/async.js.createCancelablePromise
+- sym: ../../../base/common/async.js.ThrottledDelayer
+- sym: ../../../base/common/buffer.js.VSBuffer
+- sym: ../../../base/common/cancellation.js.CancellationToken
+- sym: ../../../base/common/collections.js.IStringDictionary
+- sym: ../../../base/common/event.js.Emitter
+- sym: ../../../base/common/event.js.Event
+- sym: ../../../base/common/json.js.parse
+- sym: ../../../base/common/json.js.ParseError
+- sym: ../../../base/common/jsonFormatter.js.FormattingOptions
+- sym: ../../../base/common/lifecycle.js.Disposable
+- sym: ../../../base/common/resources.js.IExtUri
+- sym: ../../../base/common/strings.js.uppercaseFirstLetter
+- sym: ../../../base/common/types.js.isUndefined
+- sym: ../../../base/common/uri.js.URI
+- sym: ../../../base/parts/request/common/request.js.IHeaders
+- sym: ../../../nls.js.localize
+- sym: ../../configuration/common/configuration.js.IConfigurationService
+- sym: ../../environment/common/environment.js.IEnvironmentService
+- sym: ../../files/common/files.js.FileChangesEvent
+- sym: ../../files/common/files.js.FileOperationError
+- sym: ../../files/common/files.js.FileOperationResult
+- sym: ../../files/common/files.js.IFileContent
+- sym: ../../files/common/files.js.IFileService
+- sym: ../../files/common/files.js.toFileOperationResult
+- sym: ../../log/common/log.js.ILogService
+- sym: ../../externalServices/common/serviceMachineId.js.getServiceMachineId
+- sym: ../../storage/common/storage.js.IStorageService
+- sym: ../../storage/common/storage.js.StorageScope
+- sym: ../../storage/common/storage.js.StorageTarget
+- sym: ../../telemetry/common/telemetry.js.ITelemetryService
+- sym: ../../uriIdentity/common/uriIdentity.js.IUriIdentityService
+- sym: ./userDataSync.js.Change
+- sym: ./userDataSync.js.getLastSyncResourceUri
+- sym: ./userDataSync.js.IRemoteUserData
+- sym: ./userDataSync.js.IResourcePreview as IBaseResourcePreview
+- sym: ./userDataSync.js.ISyncData
+- sym: ./userDataSync.js.IUserDataSyncResourcePreview as IBaseSyncResourcePreview
+- sym: ./userDataSync.js.IUserData
+- sym: ./userDataSync.js.IUserDataSyncResourceInitializer
+- sym: ./userDataSync.js.IUserDataSyncLocalStoreService
+- sym: ./userDataSync.js.IUserDataSyncConfiguration
+- sym: ./userDataSync.js.IUserDataSynchroniser
+- sym: ./userDataSync.js.IUserDataSyncLogService
+- sym: ./userDataSync.js.IUserDataSyncEnablementService
+- sym: ./userDataSync.js.IUserDataSyncStoreService
+- sym: ./userDataSync.js.IUserDataSyncUtilService
+- sym: ./userDataSync.js.MergeState
+- sym: ./userDataSync.js.PREVIEW_DIR_NAME
+- sym: ./userDataSync.js.SyncResource
+- sym: ./userDataSync.js.SyncStatus
+- sym: ./userDataSync.js.UserDataSyncError
+- sym: ./userDataSync.js.UserDataSyncErrorCode
+- sym: ./userDataSync.js.USER_DATA_SYNC_CONFIGURATION_SCOPE
+- sym: ./userDataSync.js.USER_DATA_SYNC_SCHEME
+- sym: ./userDataSync.js.IUserDataResourceManifest
+- sym: ./userDataSync.js.getPathSegments
+- sym: ./userDataSync.js.IUserDataSyncResourceConflicts
+- sym: ./userDataSync.js.IUserDataSyncResource
+- sym: ./userDataSync.js.IUserDataSyncResourcePreview
+- sym: ../../userDataProfile/common/userDataProfile.js.IUserDataProfile
+- sym: ../../userDataProfile/common/userDataProfile.js.IUserDataProfilesService
+types:
+- name: IResourcePreview
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: readonly
+    type: URI
+  - name: readonly
+    type: string | null
+  - name: readonly
+    type: URI
+  - name: readonly
+    type: string | null
+  - name: readonly
+    type: Change
+  - name: readonly
+    type: URI
+  - name: readonly
+    type: string | null
+  - name: readonly
+    type: Change
+  - name: readonly
+    type: URI
+  - name: readonly
+    type: URI
+  lines:
+  - 72
+  - 87
+- name: IAcceptResult
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: readonly
+    type: string | null
+  - name: readonly
+    type: Change
+  - name: readonly
+    type: Change
+  lines:
+  - 89
+  - 93
+- name: IMergeResult
+  kind: trait
+  bases:
+  - IAcceptResult
+  decorators:
+  - interface
+  fields:
+  - name: readonly
+    type: boolean
+  lines:
+  - 95
+  - 97
+- name: IEditableResourcePreview
+  kind: trait
+  bases:
+  - IBaseResourcePreview
+  - IResourcePreview
+  decorators:
+  - interface
+  fields:
+  - name: localChange
+    type: Change
+  - name: remoteChange
+    type: Change
+  - name: mergeState
+    type: MergeState
+  - name: acceptResult
+    type: IAcceptResult
+  lines:
+  - 99
+  - 104
+- name: ISyncResourcePreview
+  kind: trait
+  bases:
+  - IBaseSyncResourcePreview
+  decorators:
+  - interface
+  fields:
+  - name: readonly
+    type: IRemoteUserData
+  - name: readonly
+    type: IRemoteUserData | null
+  - name: readonly
+    type: IEditableResourcePreview[]
+  lines:
+  - 106
+  - 110
+- name: ILastSyncUserDataState
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: readonly
+    type: string
+  - name: readonly
+    type: string | undefined
+  lines:
+  - 112
+  - 116
+- name: SyncStrategy
+  kind: enum
+  variants:
+  - name: Preview
+    val: '''preview'''
+  - name: Merge
+    val: '''merge'''
+  - name: PullOrPush
+    val: '''pull-push'''
+  lines:
+  - 118
+  - 122
+- name: AbstractSynchroniser
+  kind: trait
+  bases:
+  - Disposable
+  - IUserDataSynchroniser
+  decorators:
+  - abstract
+  fields:
+  - name: syncPreviewPromise
+    type: CancelablePromise<ISyncResourcePreview> | null
+    default: 'null'
+  - name: syncFolder
+    type: URI
+  - name: syncPreviewFolder
+    type: URI
+  - name: extUri
+    type: IExtUri
+  - name: currentMachineIdPromise
+    type: Promise<string>
+  - name: _status
+    type: SyncStatus
+    default: SyncStatus.Idle
+  - name: _onDidChangStatus
+    type: Emitter<SyncStatus>
+    default: this._register(new Emitter<SyncStatus>())
+  - name: onDidChangeStatus
+    type: Event<SyncStatus>
+    default: this._onDidChangStatus.event
+  - name: _conflicts
+    type: IBaseResourcePreview[]
+    default: '[]'
+  - name: _onDidChangeConflicts
+    type: any
+    default: this._register(new Emitter<IUserDataSyncResourceConflicts>())
+  - name: onDidChangeConflicts
+    type: any
+    default: this._onDidChangeConflicts.event
+  - name: localChangeTriggerThrottler
+    type: any
+    default: this._register(new ThrottledDelayer<void>(50))
+  - name: _onDidChangeLocal
+    type: Emitter<void>
+    default: this._register(new Emitter<void>())
+  - name: onDidChangeLocal
+    type: Event<void>
+    default: this._onDidChangeLocal.event
+  - name: lastSyncResource
+    type: URI
+  - name: lastSyncUserDataStateKey
+    type: any
+    default: '`${this.collection ? `${this.collection}.` : ''''}${this.syncResource.syncResource...'
+  - name: hasSyncResourceStateVersionChanged
+    type: boolean
+    default: 'false'
+  - name: syncHeaders
+    type: IHeaders
+    default: '{}'
+  - name: resource
+    type: any
+    default: this.syncResource.syncResource
+  - name: version
+    type: number
+  methods:
+  - name: status
+    sig: 'status(): SyncStatus'
+    lines:
+    - 134
+    - 134
+    detail: {}
+  - name: conflicts
+    sig: 'conflicts(): IUserDataSyncResourceConflicts'
+    lines:
+    - 139
+    - 139
+    detail: {}
+  - name: constructor
+    sig: "constructor(\n\t\treadonly syncResource: IUserDataSyncResource,\n\t\treadonly collection: string | undefined,\n\t\t@IFileService protected readonly fileService: IFileService,\n\t\t@IEnvironmentService protected readonly environmentService: IEnvironmentService,\n\t\t@IStorageService protected readonly storageService: IStorageService,\n\t\t@IUserDataSyncStoreService protected readonly userDataSyncStoreService: IUserDataSyncStoreService,\n\t\t@IUserDataSyncLocalStoreService protected readonly userDataSyncLocalStoreService: IUserDataSyncLocalStoreService,\n\t\t@IUserDataSyncEnablementService protected readonly userDataSyncEnablementService: IUserDataSyncEnablementService,\n\t\t@ITelemetryService protected readonly telemetryService: ITelemetryService,\n\t\t@IUserDataSyncLogService protected readonly logService: IUserDataSyncLogService,\n\t\t@IConfigurationService protected readonly configurationService: IConfigurationService,\n\t\t@IUriIdentityService uriIdentityService: IUriIdentityService,\n\t)"
+    lines:
+    - 156
+    - 177
+    detail:
+      calls:
+      - getLastSyncResourceUri
+      - getPathSegments
+      - getServiceMachineId
+      - getSyncResourceLogLabel
+      - super
+      - this.extUri.joinPath
+  - name: doTriggerLocalChange
+    sig: 'doTriggerLocalChange(): Promise<void>'
+    is_async: true
+    vis: protected
+    lines:
+    - 183
+    - 203
+    detail:
+      calls:
+      - this._onDidChangeLocal.fire
+      - this.getLastSyncUserData
+      - this.getUserDataSyncConfiguration
+      - this.hasRemoteChanged
+      - this.logService.info
+      - this.logService.trace
+      - this.performSync
+      - this.setStatus
+  - name: sync
+    sig: 'sync(manifest: IUserDataResourceManifest | null, preview: boolean = false, userDataSyncConfiguration: IUserDataSyncConfiguration = this.getUserDataSyncConfiguration(), headers: IHeaders = {}): Promise<IUserDataSyncResourcePreview | null>'
+    is_async: true
+    lines:
+    - 212
+    - 246
+    detail:
+      calls:
+      - this.getLastSyncUserData
+      - this.getLatestRemoteUserData
+      - this.logService.info
+      - this.logService.trace
+      - this.performSync
+      - this.resource.toLowerCase
+      - this.setStatus
+  - name: apply
+    sig: 'apply(force: boolean, headers: IHeaders = {}): Promise<ISyncResourcePreview | null>'
+    is_async: true
+    lines:
+    - 248
+    - 259
+    detail:
+      calls:
+      - this.doApply
+      - this.setStatus
+  - name: replace
+    sig: 'replace(content: string): Promise<boolean>'
+    is_async: true
+    lines:
+    - 261
+    - 295
+    detail:
+      calls:
+      - resourcePreviews.push
+      - this.applyResult
+      - this.generateSyncPreview
+      - this.getAcceptResult
+      - this.getLastSyncUserData
+      - this.getLatestRemoteUserData
+      - this.getUserDataSyncConfiguration
+      - this.isRemoteDataFromCurrentMachine
+      - this.logService.info
+      - this.logService.trace
+      - this.parseSyncData
+      - this.resource.toLowerCase
+      - this.setStatus
+      - this.stop
+  - name: getLatestRemoteUserData
+    sig: 'getLatestRemoteUserData(manifest: IUserDataResourceManifest | null, lastSyncUserData: IRemoteUserData | null): Promise<IRemoteUserData>'
+    is_async: true
+    vis: protected
+    lines:
+    - 302
+    - 318
+    detail:
+      calls:
+      - this.getRemoteUserData
+  - name: performSync
+    sig: 'performSync(remoteUserData: IRemoteUserData, lastSyncUserData: IRemoteUserData | null, strategy: SyncStrategy, userDataSyncConfiguration: IUserDataSyncConfiguration): Promise<SyncStatus>'
+    is_async: true
+    vis: private
+    lines:
+    - 320
+    - 353
+    detail:
+      calls:
+      - localize
+      - new UserDataSyncError
+      - this.doSync
+      - this.getLastSyncUserData
+      - this.getRemoteUserData
+      - this.logService.info
+      - this.performSync
+  - name: doSync
+    sig: 'doSync(remoteUserData: IRemoteUserData, lastSyncUserData: IRemoteUserData | null, strategy: SyncStrategy, userDataSyncConfiguration: IUserDataSyncConfiguration): Promise<SyncStatus>'
+    is_async: true
+    vis: protected
+    lines:
+    - 355
+    - 408
+    detail:
+      calls:
+      - createCancelablePromise
+      - preview.resourcePreviews.some
+      - this.accept
+      - this.doApply
+      - this.getStoredLastSyncUserDataStateContent
+      - this.isRemoteDataFromCurrentMachine
+      - this.logService.info
+      - this.updateConflicts
+  - name: accept
+    sig: 'accept(resource: URI, content?: string | null): Promise<ISyncResourcePreview | null>'
+    is_async: true
+    lines:
+    - 410
+    - 420
+    detail:
+      calls:
+      - this.updateSyncResourcePreview
+  - name: discard
+    sig: 'discard(resource: URI): Promise<ISyncResourcePreview | null>'
+    is_async: true
+    lines:
+    - 422
+    - 433
+    detail:
+      calls:
+      - this.updateSyncResourcePreview
+  - name: updateSyncResourcePreview
+    sig: 'updateSyncResourcePreview(resource: URI, updateResourcePreview: (resourcePreview: IEditableResourcePreview) => Promise<IEditableResourcePreview>): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 435
+    - 463
+    detail:
+      calls:
+      - createCancelablePromise
+      - preview.resourcePreviews.findIndex
+      - preview.resourcePreviews.some
+      - this.setStatus
+      - this.updateConflicts
+  - name: doApply
+    sig: 'doApply(force: boolean): Promise<SyncStatus>'
+    is_async: true
+    vis: private
+    lines:
+    - 465
+    - 492
+    detail:
+      calls:
+      - preview.resourcePreviews.map
+      - preview.resourcePreviews.some
+      - this.applyResult
+      - this.clearPreviewFolder
+  - name: clearPreviewFolder
+    sig: 'clearPreviewFolder(): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 494
+    - 498
+    detail:
+      calls:
+      - this.fileService.del
+  - name: hasPreviouslySynced
+    sig: 'hasPreviouslySynced(): Promise<boolean>'
+    is_async: true
+    lines:
+    - 508
+    - 511
+    detail:
+      calls:
+      - this.getLastSyncUserData
+  - name: resolvePreviewContent
+    sig: 'resolvePreviewContent(uri: URI): Promise<string | null>'
+    is_async: true
+    vis: protected
+    lines:
+    - 513
+    - 532
+    detail:
+      calls:
+      - this.extUri.isEqual
+  - name: resetLocal
+    sig: 'resetLocal(): Promise<void>'
+    is_async: true
+    lines:
+    - 534
+    - 543
+    detail:
+      calls:
+      - this.fileService.del
+      - this.logService.error
+      - this.storageService.remove
+      - toFileOperationResult
+  - name: doGenerateSyncResourcePreview
+    sig: 'doGenerateSyncResourcePreview(remoteUserData: IRemoteUserData, lastSyncUserData: IRemoteUserData | null, isRemoteDataFromCurrentMachine: boolean, merge: boolean, userDataSyncConfiguration: IUserDataSyncConfiguration, token: CancellationToken): Promise<ISyncResourcePreview>'
+    is_async: true
+    vis: private
+    lines:
+    - 545
+    - 588
+    detail:
+      calls:
+      - VSBuffer.fromString
+      - resourcePreviewResult.previewResource.with
+      - resourcePreviews.push
+      - this.fileService.writeFile
+      - this.generateSyncPreview
+      - this.getAcceptResult
+      - this.getMergeResult
+  - name: getLastSyncUserData
+    sig: 'getLastSyncUserData(): Promise<IRemoteUserData | null>'
+    is_async: true
+    lines:
+    - 590
+    - 660
+    detail:
+      calls:
+      - JSON.parse
+      - this.getStoredLastSyncUserDataStateContent
+      - this.logService.error
+      - this.logService.info
+      - this.parseSyncData
+      - this.readLastSyncStoredRemoteUserData
+      - this.resetLocal
+      - this.userDataSyncEnablementService.getResourceSyncStateVersion
+      - this.userDataSyncStoreService.resolveResourceContent
+      - this.writeLastSyncStoredRemoteUserData
+  - name: updateLastSyncUserData
+    sig: 'updateLastSyncUserData(lastSyncRemoteUserData: IRemoteUserData, additionalProps: IStringDictionary<any> = {}): Promise<void>'
+    is_async: true
+    vis: protected
+    lines:
+    - 662
+    - 676
+    detail:
+      calls:
+      - JSON.stringify
+      - new Error
+      - this.storageService.store
+      - this.userDataSyncEnablementService.getResourceSyncStateVersion
+      - this.writeLastSyncStoredRemoteUserData
+  - name: readLastSyncStoredRemoteUserData
+    sig: 'readLastSyncStoredRemoteUserData(): Promise<IRemoteUserData | undefined>'
+    is_async: true
+    vis: private
+    lines:
+    - 682
+    - 693
+    detail:
+      calls:
+      - (await this.fileService.readFile(this.lastSyncResource)).value.toString
+      - JSON.parse
+      - isRemoteUserData
+      - this.fileService.readFile
+      - this.logService.error
+  - name: writeLastSyncStoredRemoteUserData
+    sig: 'writeLastSyncStoredRemoteUserData(lastSyncRemoteUserData: IRemoteUserData): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 695
+    - 697
+    detail:
+      calls:
+      - JSON.stringify
+      - VSBuffer.fromString
+      - this.fileService.writeFile
+  - name: getRemoteUserData
+    sig: 'getRemoteUserData(lastSyncData: IRemoteUserData | null): Promise<IRemoteUserData>'
+    is_async: true
+    lines:
+    - 699
+    - 706
+    detail:
+      calls:
+      - this.getUserData
+      - this.parseSyncData
+  - name: getUserData
+    sig: 'getUserData(lastSyncData: IRemoteUserData | null): Promise<IUserData>'
+    is_async: true
+    vis: private
+    lines:
+    - 720
+    - 723
+    detail:
+      calls:
+      - JSON.stringify
+      - this.userDataSyncStoreService.readResource
+  - name: updateRemoteUserData
+    sig: 'updateRemoteUserData(content: string, ref: string | null): Promise<IRemoteUserData>'
+    is_async: true
+    vis: protected
+    lines:
+    - 725
+    - 737
+    detail:
+      calls:
+      - JSON.stringify
+      - new UserDataSyncError
+      - this.userDataSyncStoreService.writeResource
+  - name: backupLocal
+    sig: 'backupLocal(content: string): Promise<void>'
+    is_async: true
+    vis: protected
+    lines:
+    - 739
+    - 742
+    detail:
+      calls:
+      - JSON.stringify
+      - new Date
+      - this.userDataSyncLocalStoreService.writeResource
+  - name: stop
+    sig: 'stop(): Promise<void>'
+    is_async: true
+    lines:
+    - 744
+    - 760
+    detail:
+      calls:
+      - this.clearPreviewFolder
+      - this.logService.info
+      - this.logService.trace
+      - this.resource.toLowerCase
+      - this.setStatus
+      - this.syncPreviewPromise.cancel
+      - this.updateConflicts
+  lines:
+  - 124
+  - 775
+- name: IFileResourcePreview
+  kind: trait
+  bases:
+  - IResourcePreview
+  decorators:
+  - interface
+  fields:
+  - name: readonly
+    type: IFileContent | null
+  lines:
+  - 777
+  - 779
+- name: AbstractFileSynchroniser
+  kind: trait
+  bases:
+  - AbstractSynchroniser
+  decorators:
+  - abstract
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tprotected readonly file: URI,\n\t\tsyncResource: IUserDataSyncResource,\n\t\tcollection: string | undefined,\n\t\t@IFileService fileService: IFileService,\n\t\t@IEnvironmentService environmentService: IEnvironmentService,\n\t\t@IStorageService storageService: IStorageService,\n\t\t@IUserDataSyncStoreService userDataSyncStoreService: IUserDataSyncStoreService,\n\t\t@IUserDataSyncLocalStoreService userDataSyncLocalStoreService: IUserDataSyncLocalStoreService,\n\t\t@IUserDataSyncEnablementService userDataSyncEnablementService: IUserDataSyncEnablementService,\n\t\t@ITelemetryService telemetryService: ITelemetryService,\n\t\t@IUserDataSyncLogService logService: IUserDataSyncLogService,\n\t\t@IConfigurationService configurationService: IConfigurationService,\n\t\t@IUriIdentityService uriIdentityService: IUriIdentityService,\n\t)"
+    lines:
+    - 783
+    - 801
+    detail:
+      calls:
+      - super
+      - this._register
+      - this.extUri.dirname
+      - this.fileService.onDidFilesChange
+      - this.fileService.watch
+  - name: getLocalFileContent
+    sig: 'getLocalFileContent(): Promise<IFileContent | null>'
+    is_async: true
+    vis: protected
+    lines:
+    - 803
+    - 809
+    detail:
+      calls:
+      - this.fileService.readFile
+  - name: updateLocalFileContent
+    sig: 'updateLocalFileContent(newContent: string, oldContent: IFileContent | null, force: boolean): Promise<void>'
+    is_async: true
+    vis: protected
+    lines:
+    - 811
+    - 828
+    detail:
+      calls:
+      - VSBuffer.fromString
+      - new UserDataSyncError
+      - this.fileService.createFile
+      - this.fileService.writeFile
+  - name: deleteLocalFile
+    sig: 'deleteLocalFile(): Promise<void>'
+    is_async: true
+    vis: protected
+    lines:
+    - 830
+    - 838
+    detail:
+      calls:
+      - this.fileService.del
+  lines:
+  - 781
+  - 847
+- name: AbstractJsonFileSynchroniser
+  kind: trait
+  bases:
+  - AbstractFileSynchroniser
+  decorators:
+  - abstract
+  fields:
+  - name: _formattingOptions
+    type: Promise<FormattingOptions> | undefined
+    default: undefined
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tfile: URI,\n\t\tsyncResource: IUserDataSyncResource,\n\t\tcollection: string | undefined,\n\t\t@IFileService fileService: IFileService,\n\t\t@IEnvironmentService environmentService: IEnvironmentService,\n\t\t@IStorageService storageService: IStorageService,\n\t\t@IUserDataSyncStoreService userDataSyncStoreService: IUserDataSyncStoreService,\n\t\t@IUserDataSyncLocalStoreService userDataSyncLocalStoreService: IUserDataSyncLocalStoreService,\n\t\t@IUserDataSyncEnablementService userDataSyncEnablementService: IUserDataSyncEnablementService,\n\t\t@ITelemetryService telemetryService: ITelemetryService,\n\t\t@IUserDataSyncLogService logService: IUserDataSyncLogService,\n\t\t@IUserDataSyncUtilService protected readonly userDataSyncUtilService: IUserDataSyncUtilService,\n\t\t@IConfigurationService configurationService: IConfigurationService,\n\t\t@IUriIdentityService uriIdentityService: IUriIdentityService,\n\t)"
+    lines:
+    - 851
+    - 868
+    detail:
+      calls:
+      - super
+  lines:
+  - 849
+  - 884
+- name: AbstractInitializer
+  kind: trait
+  bases:
+  - IUserDataSyncResourceInitializer
+  decorators:
+  - abstract
+  fields:
+  - name: extUri
+    type: IExtUri
+  - name: lastSyncResource
+    type: URI
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\treadonly resource: SyncResource,\n\t\t@IUserDataProfilesService protected readonly userDataProfilesService: IUserDataProfilesService,\n\t\t@IEnvironmentService protected readonly environmentService: IEnvironmentService,\n\t\t@ILogService protected readonly logService: ILogService,\n\t\t@IFileService protected readonly fileService: IFileService,\n\t\t@IStorageService protected readonly storageService: IStorageService,\n\t\t@IUriIdentityService uriIdentityService: IUriIdentityService,\n\t)"
+    lines:
+    - 891
+    - 902
+    detail:
+      calls:
+      - getLastSyncResourceUri
+  - name: initialize
+    sig: 'initialize({ ref, content }: IUserData): Promise<void>'
+    is_async: true
+    lines:
+    - 904
+    - 920
+    detail:
+      calls:
+      - this.doInitialize
+      - this.logService.error
+      - this.logService.info
+      - this.parseSyncData
+  - name: parseSyncData
+    sig: 'parseSyncData(content: string): ISyncData | undefined'
+    vis: private
+    lines:
+    - 922
+    - 933
+    detail:
+      calls:
+      - JSON.parse
+      - isSyncData
+      - this.logService.error
+      - this.logService.info
+  - name: updateLastSyncUserData
+    sig: 'updateLastSyncUserData(lastSyncRemoteUserData: IRemoteUserData, additionalProps: IStringDictionary<any> = {}): Promise<void>'
+    is_async: true
+    vis: protected
+    lines:
+    - 935
+    - 948
+    detail:
+      calls:
+      - JSON.stringify
+      - VSBuffer.fromString
+      - new Error
+      - this.fileService.writeFile
+      - this.storageService.store
+  lines:
+  - 886
+  - 952
+functions:
+- name: isRemoteUserData
+  sig: 'isRemoteUserData(thing: any)'
+  lines:
+  - 39
+  - 47
+  detail:
+    calls:
+    - isSyncData
+- name: isSyncData
+  sig: 'isSyncData(thing: any)'
+  lines:
+  - 49
+  - 66
+  detail:
+    calls:
+    - Object.keys
+- name: getSyncResourceLogLabel
+  sig: 'getSyncResourceLogLabel(syncResource: SyncResource, profile: IUserDataProfile): string'
+  lines:
+  - 68
+  - 70
+exports:
+- name: IResourcePreview
+  kind: type
+- name: IAcceptResult
+  kind: type
+- name: IMergeResult
+  kind: type
+- name: IEditableResourcePreview
+  kind: type
+- name: ISyncResourcePreview
+  kind: type
+- name: ILastSyncUserDataState
+  kind: type
+- name: SyncStrategy
+  kind: type
+- name: AbstractSynchroniser
+  kind: type
+- name: IFileResourcePreview
+  kind: type
+- name: AbstractFileSynchroniser
+  kind: type
+- name: AbstractJsonFileSynchroniser
+  kind: type
+- name: AbstractInitializer
+  kind: type
+- name: isRemoteUserData
+  kind: func
+- name: isSyncData
+  kind: func
+- name: getSyncResourceLogLabel
+  kind: func

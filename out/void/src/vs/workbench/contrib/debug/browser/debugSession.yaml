@@ -1,0 +1,1243 @@
+## Roska File Descriptor — browser/debugSession.ts
+file: browser/debugSession.ts
+lines: 1658
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: ../../../../base/browser/ui/aria/aria.js.aria
+- sym: ../../../../base/common/arrays.js.distinct
+- sym: ../../../../base/common/async.js.Queue
+- sym: ../../../../base/common/async.js.RunOnceScheduler
+- sym: ../../../../base/common/async.js.raceTimeout
+- sym: ../../../../base/common/cancellation.js.CancellationToken
+- sym: ../../../../base/common/cancellation.js.CancellationTokenSource
+- sym: ../../../../base/common/errors.js.canceled
+- sym: ../../../../base/common/event.js.Emitter
+- sym: ../../../../base/common/event.js.Event
+- sym: ../../../../base/common/labels.js.normalizeDriveLetter
+- sym: ../../../../base/common/lifecycle.js.Disposable
+- sym: ../../../../base/common/lifecycle.js.DisposableMap
+- sym: ../../../../base/common/lifecycle.js.DisposableStore
+- sym: ../../../../base/common/lifecycle.js.IDisposable
+- sym: ../../../../base/common/lifecycle.js.MutableDisposable
+- sym: ../../../../base/common/lifecycle.js.dispose
+- sym: ../../../../base/common/objects.js.mixin
+- sym: ../../../../base/common/platform.js.platform
+- sym: ../../../../base/common/resources.js.resources
+- sym: ../../../../base/common/severity.js.Severity
+- sym: ../../../../base/common/uri.js.URI
+- sym: ../../../../base/common/uuid.js.generateUuid
+- sym: ../../../../editor/common/core/position.js.IPosition
+- sym: ../../../../editor/common/core/position.js.Position
+- sym: ../../../../nls.js.localize
+- sym: ../../../../platform/configuration/common/configuration.js.IConfigurationService
+- sym: ../../../../platform/instantiation/common/instantiation.js.IInstantiationService
+- sym: ../../../../platform/log/common/log.js.ILogService
+- sym: ../../../../platform/notification/common/notification.js.INotificationService
+- sym: ../../../../platform/product/common/productService.js.IProductService
+- sym: ../../../../platform/telemetry/common/telemetry.js.ICustomEndpointTelemetryService
+- sym: ../../../../platform/telemetry/common/telemetry.js.ITelemetryService
+- sym: ../../../../platform/telemetry/common/telemetry.js.TelemetryLevel
+- sym: ../../../../platform/uriIdentity/common/uriIdentity.js.IUriIdentityService
+- sym: ../../../../platform/workspace/common/workspace.js.IWorkspaceContextService
+- sym: ../../../../platform/workspace/common/workspace.js.IWorkspaceFolder
+- sym: ../../../common/views.js.ViewContainerLocation
+- sym: ./rawDebugSession.js.RawDebugSession
+- sym: ../common/debug.js.AdapterEndEvent
+- sym: ../common/debug.js.IBreakpoint
+- sym: ../common/debug.js.IConfig
+- sym: ../common/debug.js.IDataBreakpoint
+- sym: ../common/debug.js.IDataBreakpointInfoResponse
+- sym: ../common/debug.js.IDebugConfiguration
+- sym: ../common/debug.js.IDebugLocationReferenced
+- sym: ../common/debug.js.IDebugService
+- sym: ../common/debug.js.IDebugSession
+- sym: ../common/debug.js.IDebugSessionOptions
+- sym: ../common/debug.js.IDebugger
+- sym: ../common/debug.js.IExceptionBreakpoint
+- sym: ../common/debug.js.IExceptionInfo
+- sym: ../common/debug.js.IFunctionBreakpoint
+- sym: ../common/debug.js.IInstructionBreakpoint
+- sym: ../common/debug.js.IMemoryRegion
+- sym: ../common/debug.js.IRawModelUpdate
+- sym: ../common/debug.js.IRawStoppedDetails
+- sym: ../common/debug.js.IReplElement
+- sym: ../common/debug.js.IStackFrame
+- sym: ../common/debug.js.IThread
+- sym: ../common/debug.js.LoadedSourceEvent
+- sym: ../common/debug.js.State
+- sym: ../common/debug.js.VIEWLET_ID
+- sym: ../common/debug.js.isFrameDeemphasized
+- sym: ../common/debugCompoundRoot.js.DebugCompoundRoot
+- sym: ../common/debugModel.js.DebugModel
+- sym: ../common/debugModel.js.ExpressionContainer
+- sym: ../common/debugModel.js.MemoryRegion
+- sym: ../common/debugModel.js.Thread
+- sym: ../common/debugSource.js.Source
+- sym: ../common/debugUtils.js.filterExceptionsFromTelemetry
+- sym: ../common/replModel.js.INewReplElementData
+- sym: ../common/replModel.js.ReplModel
+- sym: ../../../services/environment/common/environmentService.js.IWorkbenchEnvironmentService
+- sym: ../../../services/host/browser/host.js.IHostService
+- sym: ../../../services/lifecycle/common/lifecycle.js.ILifecycleService
+- sym: ../../../services/panecomposite/browser/panecomposite.js.IPaneCompositePartService
+- sym: ../../../../base/browser/dom.js.getActiveWindow
+- sym: ../../../../base/browser/window.js.mainWindow
+- sym: ../../../../base/common/types.js.isDefined
+- sym: ../../testing/common/testService.js.ITestService
+- sym: ../../testing/common/testResultService.js.ITestResultService
+- sym: ../../testing/common/testResult.js.LiveTestResult
+- sym: ../../../../platform/accessibility/common/accessibility.js.IAccessibilityService
+data:
+- name: TRIGGERED_BREAKPOINT_MAX_DELAY
+  type: number
+  val: '1500'
+types:
+- name: DebugSession
+  kind: struct
+  ctx: used in tests
+  bases:
+  - IDebugSession
+  - IDisposable
+  fields:
+  - name: parentSession
+    type: IDebugSession | undefined
+  - name: rememberedCapabilities
+    type: DebugProtocol.Capabilities
+  - name: _subId
+    type: string | undefined
+  - name: raw
+    type: RawDebugSession | undefined
+  - name: initialized
+    type: any
+    default: 'false'
+  - name: _options
+    type: IDebugSessionOptions
+  - name: sources
+    type: any
+    default: new Map<string, Source>()
+  - name: threads
+    type: any
+    default: new Map<number, Thread>()
+  - name: threadIds
+    type: number[]
+    default: '[]'
+  - name: cancellationMap
+    type: any
+    default: new Map<number, CancellationTokenSource[]>()
+  - name: rawListeners
+    type: any
+    default: new DisposableStore()
+  - name: globalDisposables
+    type: any
+    default: new DisposableStore()
+  - name: fetchThreadsScheduler
+    type: RunOnceScheduler | undefined
+  - name: passFocusScheduler
+    type: RunOnceScheduler
+  - name: lastContinuedThreadId
+    type: number | undefined
+  - name: repl
+    type: ReplModel
+  - name: stoppedDetails
+    type: IRawStoppedDetails[]
+    default: '[]'
+  - name: statusQueue
+    type: any
+    default: this.rawListeners.add(new ThreadStatusScheduler())
+  - name: correlatedTestRun
+    type: LiveTestResult
+  - name: didTerminateTestRun
+    type: boolean
+  - name: _onDidChangeState
+    type: any
+    default: new Emitter<void>()
+  - name: _onDidEndAdapter
+    type: any
+    default: new Emitter<AdapterEndEvent | undefined>()
+  - name: _onDidLoadedSource
+    type: any
+    default: new Emitter<LoadedSourceEvent>()
+  - name: _onDidCustomEvent
+    type: any
+    default: new Emitter<DebugProtocol.Event>()
+  - name: _onDidProgressStart
+    type: any
+    default: new Emitter<DebugProtocol.ProgressStartEvent>()
+  - name: _onDidProgressUpdate
+    type: any
+    default: new Emitter<DebugProtocol.ProgressUpdateEvent>()
+  - name: _onDidProgressEnd
+    type: any
+    default: new Emitter<DebugProtocol.ProgressEndEvent>()
+  - name: _onDidInvalidMemory
+    type: any
+    default: new Emitter<DebugProtocol.MemoryEvent>()
+  - name: _onDidChangeREPLElements
+    type: any
+    default: new Emitter<IReplElement | undefined>()
+  - name: _name
+    type: string | undefined
+  - name: _onDidChangeName
+    type: any
+    default: new Emitter<string>()
+  - name: _waitToResume
+    type: Promise<unknown>
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tprivate id: string,\n\t\tprivate _configuration: { resolved: IConfig; unresolved: IConfig | undefined },\n\t\tpublic root: IWorkspaceFolder | undefined,\n\t\tprivate model: DebugModel,\n\t\toptions: IDebugSessionOptions | undefined,\n\t\t@IDebugService private readonly debugService: IDebugService,\n\t\t@ITelemetryService private readonly telemetryService: ITelemetryService,\n\t\t@IHostService private readonly hostService: IHostService,\n\t\t@IConfigurationService private readonly configurationService: IConfigurationService,\n\t\t@IPaneCompositePartService private readonly paneCompositeService: IPaneCompositePartService,\n\t\t@IWorkspaceContextService private readonly workspaceContextService: IWorkspaceContextService,\n\t\t@IProductService private readonly productService: IProductService,\n\t\t@INotificationService private readonly notificationService: INotificationService,\n\t\t@ILifecycleService lifecycleService: ILifecycleService,\n\t\t@IUriIdentityService private readonly uriIdentityService: IUriIdentityService,\n\t\t@IInstantiationService private readonly instantiationService: IInstantiationService,\n\t\t@ICustomEndpointTelemetryService private readonly customEndpointTelemetryService: ICustomEndpointTelemetryService,\n\t\t@IWorkbenchEnvironmentService private readonly workbenchEnvironmentService: IWorkbenchEnvironmentService,\n\t\t@ILogService private readonly logService: ILogService,\n\t\t@ITestService private readonly testService: ITestService,\n\t\t@ITestResultService testResultService: ITestResultService,\n\t\t@IAccessibilityService private readonly accessibilityService: IAccessibilityService,\n\t)"
+    lines:
+    - 100
+    - 187
+    detail:
+      calls:
+      - compoundRoot.onDidSessionStop
+      - lifecycleService.onWillShutdown
+      - new MutableDisposable
+      - new ReplModel
+      - new RunOnceScheduler
+      - parent.onDidEndAdapter
+      - testResultService.getResult
+      - this.correlatedTestRun.onComplete
+      - this.hasSeparateRepl
+      - this.repl.onDidChangeElements
+      - toDispose.add
+  - name: getId
+    sig: 'getId(): string'
+    lines:
+    - 189
+    - 191
+    detail: {}
+  - name: setSubId
+    sig: 'setSubId(subId: string | undefined)'
+    lines:
+    - 193
+    - 195
+    detail: {}
+  - name: getMemory
+    sig: 'getMemory(memoryReference: string): IMemoryRegion'
+    lines:
+    - 197
+    - 199
+    detail:
+      calls:
+      - new MemoryRegion
+  - name: subId
+    sig: 'subId(): string | undefined'
+    lines:
+    - 201
+    - 203
+    detail: {}
+  - name: configuration
+    sig: 'configuration(): IConfig'
+    lines:
+    - 205
+    - 207
+    detail: {}
+  - name: unresolvedConfiguration
+    sig: 'unresolvedConfiguration(): IConfig | undefined'
+    lines:
+    - 209
+    - 211
+    detail: {}
+  - name: lifecycleManagedByParent
+    sig: 'lifecycleManagedByParent(): boolean'
+    lines:
+    - 213
+    - 215
+    detail: {}
+  - name: compact
+    sig: 'compact(): boolean'
+    lines:
+    - 217
+    - 219
+    detail: {}
+  - name: saveBeforeRestart
+    sig: 'saveBeforeRestart(): boolean'
+    lines:
+    - 221
+    - 223
+    detail: {}
+  - name: compoundRoot
+    sig: 'compoundRoot(): DebugCompoundRoot | undefined'
+    lines:
+    - 225
+    - 227
+    detail: {}
+  - name: suppressDebugStatusbar
+    sig: 'suppressDebugStatusbar(): boolean'
+    lines:
+    - 229
+    - 231
+    detail: {}
+  - name: suppressDebugToolbar
+    sig: 'suppressDebugToolbar(): boolean'
+    lines:
+    - 233
+    - 235
+    detail: {}
+  - name: suppressDebugView
+    sig: 'suppressDebugView(): boolean'
+    lines:
+    - 237
+    - 239
+    detail: {}
+  - name: autoExpandLazyVariables
+    sig: 'autoExpandLazyVariables(): boolean'
+    lines:
+    - 242
+    - 247
+    detail:
+      calls:
+      - this.accessibilityService.isScreenReaderOptimized
+      - this.configurationService.getValue
+  - name: setConfiguration
+    sig: 'setConfiguration(configuration: { resolved: IConfig; unresolved: IConfig | undefined })'
+    lines:
+    - 249
+    - 251
+    detail: {}
+  - name: getLabel
+    sig: 'getLabel(): string'
+    lines:
+    - 253
+    - 256
+    detail:
+      calls:
+      - resources.basenameOrAuthority
+      - this.workspaceContextService.getWorkspace
+  - name: setName
+    sig: 'setName(name: string): void'
+    lines:
+    - 258
+    - 261
+    detail:
+      calls:
+      - this._onDidChangeName.fire
+  - name: name
+    sig: 'name(): string'
+    lines:
+    - 263
+    - 265
+    detail: {}
+  - name: state
+    sig: 'state(): State'
+    lines:
+    - 267
+    - 284
+    detail:
+      calls:
+      - this.debugService.getViewModel
+      - this.getAllThreads
+      - this.getAllThreads().some
+  - name: capabilities
+    sig: 'capabilities(): DebugProtocol.Capabilities'
+    lines:
+    - 286
+    - 288
+    detail:
+      calls:
+      - Object.create
+  - name: onDidChangeState
+    sig: 'onDidChangeState(): Event<void>'
+    lines:
+    - 291
+    - 293
+    detail: {}
+  - name: onDidEndAdapter
+    sig: 'onDidEndAdapter(): Event<AdapterEndEvent | undefined>'
+    lines:
+    - 295
+    - 297
+    detail: {}
+  - name: onDidChangeReplElements
+    sig: 'onDidChangeReplElements(): Event<IReplElement | undefined>'
+    lines:
+    - 299
+    - 301
+    detail: {}
+  - name: onDidChangeName
+    sig: 'onDidChangeName(): Event<string>'
+    lines:
+    - 303
+    - 305
+    detail: {}
+  - name: onDidCustomEvent
+    sig: 'onDidCustomEvent(): Event<DebugProtocol.Event>'
+    lines:
+    - 309
+    - 311
+    detail: {}
+  - name: onDidLoadedSource
+    sig: 'onDidLoadedSource(): Event<LoadedSourceEvent>'
+    lines:
+    - 313
+    - 315
+    detail: {}
+  - name: onDidProgressStart
+    sig: 'onDidProgressStart(): Event<DebugProtocol.ProgressStartEvent>'
+    lines:
+    - 317
+    - 319
+    detail: {}
+  - name: onDidProgressUpdate
+    sig: 'onDidProgressUpdate(): Event<DebugProtocol.ProgressUpdateEvent>'
+    lines:
+    - 321
+    - 323
+    detail: {}
+  - name: onDidProgressEnd
+    sig: 'onDidProgressEnd(): Event<DebugProtocol.ProgressEndEvent>'
+    lines:
+    - 325
+    - 327
+    detail: {}
+  - name: onDidInvalidateMemory
+    sig: 'onDidInvalidateMemory(): Event<DebugProtocol.MemoryEvent>'
+    lines:
+    - 329
+    - 331
+    detail: {}
+  - name: initialize
+    sig: 'initialize(dbgr: IDebugger): Promise<void>'
+    is_async: true
+    lines:
+    - 338
+    - 382
+    detail:
+      calls:
+      - dbgr.createDebugAdapter
+      - this._onDidChangeState.fire
+      - this.debugService.getModel
+      - this.debugService.getModel().registerBreakpointModes
+      - this.debugService.setExceptionBreakpointsForSession
+      - this.instantiationService.createInstance
+      - this.raw.initialize
+      - this.raw.start
+      - this.registerListeners
+      - this.shutdown
+  - name: launchOrAttach
+    sig: 'launchOrAttach(config: IConfig): Promise<void>'
+    is_async: true
+    lines:
+    - 387
+    - 403
+    detail:
+      calls:
+      - canceled
+      - localize
+      - new Error
+      - this.getId
+      - this.raw.launchOrAttach
+      - this.shutdown
+  - name: cancelCorrelatedTestRun
+    sig: cancelCorrelatedTestRun()
+    lines:
+    - 408
+    - 413
+    detail:
+      calls:
+      - this.testService.cancelTestRun
+  - name: terminate
+    sig: 'terminate(restart = false): Promise<void>'
+    is_async: true
+    lines:
+    - 418
+    - 440
+    detail:
+      calls:
+      - this._options.compoundRoot?.sessionStopped
+      - this.cancelAllRequests
+      - this.cancelCorrelatedTestRun
+      - this.onDidExitAdapter
+      - this.parentSession.terminate
+      - this.raw.disconnect
+      - this.raw.terminate
+  - name: disconnect
+    sig: 'disconnect(restart = false, suspend = false): Promise<void>'
+    is_async: true
+    lines:
+    - 445
+    - 462
+    detail:
+      calls:
+      - this._options.compoundRoot?.sessionStopped
+      - this.cancelAllRequests
+      - this.onDidExitAdapter
+      - this.parentSession.disconnect
+      - this.raw.disconnect
+  - name: restart
+    sig: 'restart(): Promise<void>'
+    is_async: true
+    lines:
+    - 467
+    - 478
+    detail:
+      calls:
+      - localize
+      - new Error
+      - this.cancelAllRequests
+      - this.parentSession.restart
+      - this.raw.restart
+  - name: sendBreakpoints
+    sig: 'sendBreakpoints(modelUri: URI, breakpointsToSend: IBreakpoint[], sourceModified: boolean): Promise<void>'
+    is_async: true
+    lines:
+    - 480
+    - 512
+    detail:
+      calls:
+      - Promise.resolve
+      - breakpointsToSend.map
+      - breakpointsToSend[i].getId
+      - data.set
+      - localize
+      - new Error
+      - new Map
+      - normalizeDriveLetter
+      - this.getId
+      - this.getRawSource
+      - this.model.setBreakpointSessionData
+      - this.raw.setBreakpoints
+  - name: sendFunctionBreakpoints
+    sig: 'sendFunctionBreakpoints(fbpts: IFunctionBreakpoint[]): Promise<void>'
+    is_async: true
+    lines:
+    - 514
+    - 529
+    detail:
+      calls:
+      - data.set
+      - fbpts.map
+      - fbpts[i].getId
+      - localize
+      - new Error
+      - new Map
+      - this.getId
+      - this.model.setBreakpointSessionData
+      - this.raw.setFunctionBreakpoints
+  - name: sendExceptionBreakpoints
+    sig: 'sendExceptionBreakpoints(exbpts: IExceptionBreakpoint[]): Promise<void>'
+    is_async: true
+    lines:
+    - 531
+    - 558
+    detail:
+      calls:
+      - data.set
+      - exbpts.map
+      - exbpts[i].getId
+      - localize
+      - new Error
+      - new Map
+      - this.getId
+      - this.model.setBreakpointSessionData
+      - this.raw.setExceptionBreakpoints
+  - name: dataBytesBreakpointInfo
+    sig: 'dataBytesBreakpointInfo(address: string, bytes: number): Promise<IDataBreakpointInfoResponse | undefined>'
+    lines:
+    - 560
+    - 566
+    detail:
+      calls:
+      - localize
+      - new Error
+      - this._dataBreakpointInfo
+  - name: dataBreakpointInfo
+    sig: 'dataBreakpointInfo(name: string, variablesReference?: number): Promise<{ dataId: string | null; description: string; canPersist?: boolean } | undefined>'
+    lines:
+    - 568
+    - 570
+    detail:
+      calls:
+      - this._dataBreakpointInfo
+  - name: _dataBreakpointInfo
+    sig: '_dataBreakpointInfo(args: DebugProtocol.DataBreakpointInfoArguments): Promise<{ dataId: string | null; description: string; canPersist?: boolean } | undefined>'
+    is_async: true
+    vis: private
+    lines:
+    - 572
+    - 582
+    detail:
+      calls:
+      - localize
+      - new Error
+      - this.raw.dataBreakpointInfo
+  - name: sendDataBreakpoints
+    sig: 'sendDataBreakpoints(dataBreakpoints: IDataBreakpoint[]): Promise<void>'
+    is_async: true
+    lines:
+    - 584
+    - 612
+    detail:
+      calls:
+      - Promise.all
+      - converted.map
+      - converted.map(d => d.dap).filter
+      - dap.bp.getId
+      - data.set
+      - dataBreakpoints.map
+      - localize
+      - new Error
+      - new Map
+      - this.getId
+      - this.model.setBreakpointSessionData
+      - this.raw.setDataBreakpoints
+  - name: sendInstructionBreakpoints
+    sig: 'sendInstructionBreakpoints(instructionBreakpoints: IInstructionBreakpoint[]): Promise<void>'
+    is_async: true
+    lines:
+    - 614
+    - 629
+    detail:
+      calls:
+      - data.set
+      - instructionBreakpoints.map
+      - instructionBreakpoints[i].getId
+      - localize
+      - new Error
+      - new Map
+      - this.getId
+      - this.model.setBreakpointSessionData
+      - this.raw.setInstructionBreakpoints
+  - name: breakpointsLocations
+    sig: 'breakpointsLocations(uri: URI, lineNumber: number): Promise<IPosition[]>'
+    is_async: true
+    lines:
+    - 631
+    - 645
+    detail:
+      calls:
+      - distinct
+      - localize
+      - new Error
+      - response.body.breakpoints.map
+      - this.getRawSource
+      - this.raw.breakpointLocations
+  - name: getDebugProtocolBreakpoint
+    sig: 'getDebugProtocolBreakpoint(breakpointId: string): DebugProtocol.Breakpoint | undefined'
+    lines:
+    - 647
+    - 649
+    detail:
+      calls:
+      - this.getId
+      - this.model.getDebugProtocolBreakpoint
+  - name: customRequest
+    sig: 'customRequest(request: string, args: any): Promise<DebugProtocol.Response | undefined>'
+    lines:
+    - 651
+    - 657
+    detail:
+      calls:
+      - localize
+      - new Error
+      - this.raw.custom
+  - name: stackTrace
+    sig: 'stackTrace(threadId: number, startFrame: number, levels: number, token: CancellationToken): Promise<DebugProtocol.StackTraceResponse | undefined>'
+    lines:
+    - 659
+    - 666
+    detail:
+      calls:
+      - localize
+      - new Error
+      - this.getNewCancellationToken
+      - this.raw.stackTrace
+  - name: exceptionInfo
+    sig: 'exceptionInfo(threadId: number): Promise<IExceptionInfo | undefined>'
+    is_async: true
+    lines:
+    - 668
+    - 684
+    detail:
+      calls:
+      - localize
+      - new Error
+      - this.raw.exceptionInfo
+  - name: scopes
+    sig: 'scopes(frameId: number, threadId: number): Promise<DebugProtocol.ScopesResponse | undefined>'
+    lines:
+    - 686
+    - 693
+    detail:
+      calls:
+      - localize
+      - new Error
+      - this.getNewCancellationToken
+      - this.raw.scopes
+  - name: variables
+    sig: 'variables(variablesReference: number, threadId: number | undefined, filter: ''indexed'' | ''named'' | undefined, start: number | undefined, count: number | undefined): Promise<DebugProtocol.VariablesResponse | undefined>'
+    lines:
+    - 695
+    - 702
+    detail:
+      calls:
+      - localize
+      - new Error
+      - this.getNewCancellationToken
+      - this.raw.variables
+  - name: evaluate
+    sig: 'evaluate(expression: string, frameId: number, context?: string, location?: { line: number; column: number; source: DebugProtocol.Source }): Promise<DebugProtocol.EvaluateResponse | undefined>'
+    lines:
+    - 704
+    - 710
+    detail:
+      calls:
+      - localize
+      - new Error
+      - this.raw.evaluate
+  - name: restartFrame
+    sig: 'restartFrame(frameId: number, threadId: number): Promise<void>'
+    is_async: true
+    lines:
+    - 712
+    - 719
+    detail:
+      calls:
+      - localize
+      - new Error
+      - this.raw.restartFrame
+      - this.waitForTriggeredBreakpoints
+  - name: next
+    sig: 'next(threadId: number, granularity?: DebugProtocol.SteppingGranularity): Promise<void>'
+    is_async: true
+    lines:
+    - 728
+    - 736
+    detail:
+      calls:
+      - localize
+      - new Error
+      - this.raw.next
+      - this.setLastSteppingGranularity
+      - this.waitForTriggeredBreakpoints
+  - name: stepIn
+    sig: 'stepIn(threadId: number, targetId?: number, granularity?: DebugProtocol.SteppingGranularity): Promise<void>'
+    is_async: true
+    lines:
+    - 738
+    - 746
+    detail:
+      calls:
+      - localize
+      - new Error
+      - this.raw.stepIn
+      - this.setLastSteppingGranularity
+      - this.waitForTriggeredBreakpoints
+  - name: stepOut
+    sig: 'stepOut(threadId: number, granularity?: DebugProtocol.SteppingGranularity): Promise<void>'
+    is_async: true
+    lines:
+    - 748
+    - 756
+    detail:
+      calls:
+      - localize
+      - new Error
+      - this.raw.stepOut
+      - this.setLastSteppingGranularity
+      - this.waitForTriggeredBreakpoints
+  - name: stepBack
+    sig: 'stepBack(threadId: number, granularity?: DebugProtocol.SteppingGranularity): Promise<void>'
+    is_async: true
+    lines:
+    - 758
+    - 766
+    detail:
+      calls:
+      - localize
+      - new Error
+      - this.raw.stepBack
+      - this.setLastSteppingGranularity
+      - this.waitForTriggeredBreakpoints
+  - name: continue
+    sig: 'continue(threadId: number): Promise<void>'
+    is_async: true
+    lines:
+    - 768
+    - 775
+    detail:
+      calls:
+      - localize
+      - new Error
+      - this.raw.continue
+      - this.waitForTriggeredBreakpoints
+  - name: reverseContinue
+    sig: 'reverseContinue(threadId: number): Promise<void>'
+    is_async: true
+    lines:
+    - 777
+    - 784
+    detail:
+      calls:
+      - localize
+      - new Error
+      - this.raw.reverseContinue
+      - this.waitForTriggeredBreakpoints
+  - name: pause
+    sig: 'pause(threadId: number): Promise<void>'
+    is_async: true
+    lines:
+    - 786
+    - 792
+    detail:
+      calls:
+      - localize
+      - new Error
+      - this.raw.pause
+  - name: terminateThreads
+    sig: 'terminateThreads(threadIds?: number[]): Promise<void>'
+    is_async: true
+    lines:
+    - 794
+    - 800
+    detail:
+      calls:
+      - localize
+      - new Error
+      - this.raw.terminateThreads
+  - name: setVariable
+    sig: 'setVariable(variablesReference: number, name: string, value: string): Promise<DebugProtocol.SetVariableResponse | undefined>'
+    lines:
+    - 802
+    - 808
+    detail:
+      calls:
+      - localize
+      - new Error
+      - this.raw.setVariable
+  - name: setExpression
+    sig: 'setExpression(frameId: number, expression: string, value: string): Promise<DebugProtocol.SetExpressionResponse | undefined>'
+    lines:
+    - 810
+    - 816
+    detail:
+      calls:
+      - localize
+      - new Error
+      - this.raw.setExpression
+  - name: gotoTargets
+    sig: 'gotoTargets(source: DebugProtocol.Source, line: number, column?: number): Promise<DebugProtocol.GotoTargetsResponse | undefined>'
+    lines:
+    - 818
+    - 824
+    detail:
+      calls:
+      - localize
+      - new Error
+      - this.raw.gotoTargets
+  - name: goto
+    sig: 'goto(threadId: number, targetId: number): Promise<DebugProtocol.GotoResponse | undefined>'
+    lines:
+    - 826
+    - 832
+    detail:
+      calls:
+      - localize
+      - new Error
+      - this.raw.goto
+  - name: loadSource
+    sig: 'loadSource(resource: URI): Promise<DebugProtocol.SourceResponse | undefined>'
+    lines:
+    - 834
+    - 850
+    detail:
+      calls:
+      - Promise.reject
+      - Source.getEncodedDebugData
+      - localize
+      - new Error
+      - this.getSourceForUri
+      - this.raw.source
+  - name: getLoadedSources
+    sig: 'getLoadedSources(): Promise<Source[]>'
+    is_async: true
+    lines:
+    - 852
+    - 863
+    detail:
+      calls:
+      - Promise.reject
+      - localize
+      - new Error
+      - response.body.sources.map
+      - this.raw.loadedSources
+  - name: completions
+    sig: 'completions(frameId: number | undefined, threadId: number, text: string, position: Position, token: CancellationToken): Promise<DebugProtocol.CompletionsResponse | undefined>'
+    is_async: true
+    lines:
+    - 865
+    - 877
+    detail:
+      calls:
+      - Promise.reject
+      - localize
+      - new Error
+      - this.getNewCancellationToken
+      - this.raw.completions
+  - name: stepInTargets
+    sig: 'stepInTargets(frameId: number): Promise<{ id: number; label: string }[] | undefined>'
+    is_async: true
+    lines:
+    - 879
+    - 886
+    detail:
+      calls:
+      - Promise.reject
+      - localize
+      - new Error
+      - this.raw.stepInTargets
+  - name: cancel
+    sig: 'cancel(progressId: string): Promise<DebugProtocol.CancelResponse | undefined>'
+    is_async: true
+    lines:
+    - 888
+    - 894
+    detail:
+      calls:
+      - Promise.reject
+      - localize
+      - new Error
+      - this.raw.cancel
+  - name: disassemble
+    sig: 'disassemble(memoryReference: string, offset: number, instructionOffset: number, instructionCount: number): Promise<DebugProtocol.DisassembledInstruction[] | undefined>'
+    is_async: true
+    lines:
+    - 896
+    - 903
+    detail:
+      calls:
+      - Promise.reject
+      - localize
+      - new Error
+      - this.raw.disassemble
+  - name: readMemory
+    sig: 'readMemory(memoryReference: string, offset: number, count: number): Promise<DebugProtocol.ReadMemoryResponse | undefined>'
+    lines:
+    - 905
+    - 911
+    detail:
+      calls:
+      - Promise.reject
+      - localize
+      - new Error
+      - this.raw.readMemory
+  - name: writeMemory
+    sig: 'writeMemory(memoryReference: string, offset: number, data: string, allowPartial?: boolean): Promise<DebugProtocol.WriteMemoryResponse | undefined>'
+    lines:
+    - 913
+    - 919
+    detail:
+      calls:
+      - Promise.reject
+      - localize
+      - new Error
+      - this.raw.writeMemory
+  - name: resolveLocationReference
+    sig: 'resolveLocationReference(locationReference: number): Promise<IDebugLocationReferenced>'
+    is_async: true
+    lines:
+    - 921
+    - 933
+    detail:
+      calls:
+      - localize
+      - new Error
+      - this.getSource
+      - this.raw.locations
+  - name: getThread
+    sig: 'getThread(threadId: number): Thread | undefined'
+    lines:
+    - 937
+    - 939
+    detail:
+      calls:
+      - this.threads.get
+  - name: getAllThreads
+    sig: 'getAllThreads(): IThread[]'
+    lines:
+    - 941
+    - 950
+    detail:
+      calls:
+      - this.threadIds.forEach
+  - name: clearThreads
+    sig: 'clearThreads(removeThreads: boolean, reference: number | undefined = undefined): void'
+    lines:
+    - 952
+    - 977
+    detail:
+      calls:
+      - ExpressionContainer.allValues.clear
+      - this.threads.clear
+      - this.threads.delete
+      - this.threads.forEach
+      - this.threads.get
+      - thread.clearCallStack
+  - name: getStoppedDetails
+    sig: 'getStoppedDetails(): IRawStoppedDetails | undefined'
+    lines:
+    - 979
+    - 981
+    detail: {}
+  - name: rawUpdate
+    sig: 'rawUpdate(data: IRawModelUpdate): void'
+    lines:
+    - 983
+    - 1025
+    detail:
+      calls:
+      - data.threads.forEach
+      - this.threads.forEach
+      - this.threads.get
+      - thread.clearCallStack
+  - name: fetchThreads
+    sig: 'fetchThreads(stoppedDetails?: IRawStoppedDetails): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 1038
+    - 1049
+    detail:
+      calls:
+      - this.getId
+      - this.model.rawUpdate
+      - this.raw.threads
+  - name: initializeForTest
+    sig: 'initializeForTest(raw: RawDebugSession): void'
+    lines:
+    - 1051
+    - 1054
+    detail:
+      calls:
+      - this.registerListeners
+  - name: registerListeners
+    sig: 'registerListeners(): void'
+    vis: private
+    lines:
+    - 1058
+    - 1330
+    detail:
+      calls:
+      - new Queue
+      - this.raw.onDidBreakpoint
+      - this.raw.onDidContinued
+      - this.raw.onDidCustomEvent
+      - this.raw.onDidExitAdapter
+      - this.raw.onDidInitialize
+      - this.raw.onDidInvalidateMemory
+      - this.raw.onDidInvalidated
+      - this.raw.onDidLoadedSource
+      - this.raw.onDidOutput
+      - this.raw.onDidProgressEnd
+      - this.raw.onDidProgressStart
+      - this.raw.onDidProgressUpdate
+      - this.raw.onDidStop
+      - this.raw.onDidTerminateDebugee
+      - this.raw.onDidThread
+      - this.rawListeners.add
+  - name: handleStop
+    sig: 'handleStop(event: IRawStoppedDetails)'
+    is_async: true
+    vis: private
+    lines:
+    - 1332
+    - 1411
+    detail:
+      calls:
+      - this.enableDependentBreakpoints
+      - this.fetchThreads
+      - this.fetchThreads(event).then
+      - this.passFocusScheduler.cancel
+      - this.statusQueue.run
+      - this.stoppedDetails.push
+  - name: enableDependentBreakpoints
+    sig: 'enableDependentBreakpoints(hitBreakpointIdsOrThread: Thread | number[])'
+    is_async: true
+    vis: private
+    lines:
+    - 1413
+    - 1446
+    detail:
+      calls:
+      - Array.isArray
+      - Promise.all
+      - hitBreakpointIdsOrThread.getTopStackFrame
+      - new Set
+      - this.getBreakpointsAtPosition
+      - this.model.getBreakpoints
+      - this.model.getBreakpoints().filter
+      - 'this.model.getBreakpoints({ triggeredOnly: true, enabledOnly: true }).forEach'
+      - urisToResend.forEach
+  - name: onDidExitAdapter
+    sig: 'onDidExitAdapter(event?: AdapterEndEvent): void'
+    vis: private
+    lines:
+    - 1461
+    - 1466
+    detail:
+      calls:
+      - this._onDidEndAdapter.fire
+      - this.getId
+      - this.model.setBreakpointSessionData
+      - this.shutdown
+  - name: shutdown
+    sig: 'shutdown(): void'
+    vis: private
+    lines:
+    - 1469
+    - 1483
+    detail:
+      calls:
+      - this._onDidChangeState.fire
+      - this.fetchThreadsScheduler?.dispose
+      - this.getId
+      - this.model.clearThreads
+      - this.passFocusScheduler.cancel
+      - this.passFocusScheduler.dispose
+      - this.raw.disconnect
+      - this.raw.dispose
+      - this.rawListeners.clear
+  - name: dispose
+    sig: dispose()
+    lines:
+    - 1485
+    - 1489
+    detail:
+      calls:
+      - this.cancelAllRequests
+      - this.globalDisposables.dispose
+      - this.rawListeners.dispose
+  - name: getSourceForUri
+    sig: 'getSourceForUri(uri: URI): Source | undefined'
+    lines:
+    - 1493
+    - 1495
+    detail:
+      calls:
+      - this.sources.get
+      - this.uriIdentityService.asCanonicalUri
+      - this.uriIdentityService.asCanonicalUri(uri).toString
+  - name: getSource
+    sig: 'getSource(raw?: DebugProtocol.Source): Source'
+    lines:
+    - 1497
+    - 1514
+    detail:
+      calls:
+      - mixin
+      - new Source
+      - source.uri.toString
+      - this.getId
+      - this.sources.get
+      - this.sources.set
+  - name: getNewCancellationToken
+    sig: 'getNewCancellationToken(threadId: number, token?: CancellationToken): CancellationToken'
+    vis: private
+    lines:
+    - 1526
+    - 1533
+    detail:
+      calls:
+      - new CancellationTokenSource
+      - this.cancellationMap.get
+      - this.cancellationMap.set
+      - tokens.push
+  - name: getReplElements
+    sig: 'getReplElements(): IReplElement[]'
+    lines:
+    - 1542
+    - 1544
+    detail:
+      calls:
+      - this.repl.getReplElements
+  - name: hasSeparateRepl
+    sig: 'hasSeparateRepl(): boolean'
+    lines:
+    - 1546
+    - 1548
+    detail: {}
+  - name: removeReplExpressions
+    sig: 'removeReplExpressions(): void'
+    lines:
+    - 1550
+    - 1552
+    detail:
+      calls:
+      - this.repl.removeReplExpressions
+  - name: addReplExpression
+    sig: 'addReplExpression(stackFrame: IStackFrame | undefined, expression: string): Promise<void>'
+    is_async: true
+    lines:
+    - 1554
+    - 1558
+    detail:
+      calls:
+      - this.debugService.getViewModel
+      - this.debugService.getViewModel().updateViews
+      - this.repl.addReplExpression
+  - name: appendToRepl
+    sig: 'appendToRepl(data: INewReplElementData, isImportant?: boolean): void'
+    lines:
+    - 1560
+    - 1565
+    detail:
+      calls:
+      - data.output.toString
+      - this.notificationService.notify
+      - this.repl.appendToRepl
+  lines:
+  - 52
+  - 1566
+- name: ThreadStatusScheduler
+  kind: struct
+  ctx: An array of set of thread IDs. When a 'stopped' event is encountered, the editor refreshes its thread IDs. In the meantime, the thread may change state it again. So the editor puts a Set into this array when it starts the refresh, and checks it after the refresh is finished, to see if any of the threads it looked up should now be invalidated.
+  bases:
+  - Disposable
+  fields:
+  - name: pendingCancellations
+    type: Set<number | undefined>[]
+    default: '[]'
+  - name: threadOps
+    type: any
+    default: this._register(new DisposableMap<number, CancellationTokenSource>())
+  methods:
+  - name: run
+    sig: 'run(threadIdsP: Promise<number[]>, operation: (threadId: number, ct: CancellationToken) => Promise<unknown>)'
+    is_async: true
+    lines:
+    - 1600
+    - 1633
+    detail:
+      calls:
+      - Promise.all
+      - cancelledWhileLookingUpThreads.has
+      - new Set
+      - s.add
+      - this.pendingCancellations.push
+      - this.pendingCancellations.splice
+      - threadIds.map
+  - name: cancel
+    sig: 'cancel(threadIds?: readonly number[])'
+    lines:
+    - 1639
+    - 1657
+    detail:
+      calls:
+      - op.cancel
+      - s.add
+      - this.threadOps.clearAndDisposeAll
+      - this.threadOps.deleteAndDispose
+      - this.threadOps.get
+      - this.threadOps.get(threadId)?.cancel
+  lines:
+  - 1581
+  - 1658
+exports:
+- name: DebugSession
+  kind: type
+- name: ThreadStatusScheduler
+  kind: type
+- name: TRIGGERED_BREAKPOINT_MAX_DELAY
+  kind: data

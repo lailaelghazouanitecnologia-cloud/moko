@@ -1,0 +1,3047 @@
+## Roska File Descriptor — common/extHostLanguageFeatures.ts
+file: common/extHostLanguageFeatures.ts
+lines: 3086
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: vscode.vscode
+- sym: ../../../base/common/arrays.js.asArray
+- sym: ../../../base/common/arrays.js.coalesce
+- sym: ../../../base/common/arrays.js.isFalsyOrEmpty
+- sym: ../../../base/common/arrays.js.isNonEmptyArray
+- sym: ../../../base/common/async.js.raceCancellationError
+- sym: ../../../base/common/buffer.js.VSBuffer
+- sym: ../../../base/common/cancellation.js.CancellationToken
+- sym: ../../../base/common/errors.js.NotImplementedError
+- sym: ../../../base/common/errors.js.isCancellationError
+- sym: ../../../base/common/idGenerator.js.IdGenerator
+- sym: ../../../base/common/lifecycle.js.DisposableStore
+- sym: ../../../base/common/objects.js.equals
+- sym: ../../../base/common/objects.js.mixin
+- sym: ../../../base/common/stopwatch.js.StopWatch
+- sym: ../../../base/common/strings.js.regExpLeadsToEndlessLoop
+- sym: ../../../base/common/types.js.assertType
+- sym: ../../../base/common/types.js.isObject
+- sym: ../../../base/common/uri.js.URI
+- sym: ../../../base/common/uri.js.UriComponents
+- sym: ../../../base/common/uriIpc.js.IURITransformer
+- sym: ../../../base/common/uuid.js.generateUuid
+- sym: ../../../editor/common/core/position.js.IPosition
+- sym: ../../../editor/common/core/range.js.Range as EditorRange
+- sym: ../../../editor/common/core/range.js.IRange
+- sym: ../../../editor/common/core/selection.js.ISelection
+- sym: ../../../editor/common/core/selection.js.Selection
+- sym: ../../../editor/common/languages.js.languages
+- sym: ../../../editor/common/languages/languageConfiguration.js.IAutoClosingPairConditional
+- sym: ../../../editor/common/services/semanticTokensDto.js.encodeSemanticTokensDto
+- sym: ../../../nls.js.localize
+- sym: ../../../platform/extensions/common/extensions.js.ExtensionIdentifier
+- sym: ../../../platform/extensions/common/extensions.js.IExtensionDescription
+- sym: ../../../platform/log/common/log.js.ILogService
+- sym: ../../services/extensions/common/extensions.js.checkProposedApiEnabled
+- sym: ../../services/extensions/common/extensions.js.isProposedApiEnabled
+- sym: ./cache.js.Cache
+- sym: ./extHost.protocol.js.extHostProtocol
+- sym: ./extHostApiDeprecationService.js.IExtHostApiDeprecationService
+- sym: ./extHostCommands.js.CommandsConverter
+- sym: ./extHostCommands.js.ExtHostCommands
+- sym: ./extHostDiagnostics.js.ExtHostDiagnostics
+- sym: ./extHostDocuments.js.ExtHostDocuments
+- sym: ./extHostTelemetry.js.ExtHostTelemetry
+- sym: ./extHostTelemetry.js.IExtHostTelemetry
+- sym: ./extHostTypeConverters.js.typeConvert
+- sym: ./extHostTypes.js.CodeAction
+- sym: ./extHostTypes.js.CodeActionKind
+- sym: ./extHostTypes.js.CompletionList
+- sym: ./extHostTypes.js.DataTransfer
+- sym: ./extHostTypes.js.Disposable
+- sym: ./extHostTypes.js.DocumentDropOrPasteEditKind
+- sym: ./extHostTypes.js.DocumentSymbol
+- sym: ./extHostTypes.js.InlineCompletionTriggerKind
+- sym: ./extHostTypes.js.InlineEditTriggerKind
+- sym: ./extHostTypes.js.InternalDataTransferItem
+- sym: ./extHostTypes.js.Location
+- sym: ./extHostTypes.js.NewSymbolNameTriggerKind
+- sym: ./extHostTypes.js.Range
+- sym: ./extHostTypes.js.SemanticTokens
+- sym: ./extHostTypes.js.SemanticTokensEdit
+- sym: ./extHostTypes.js.SemanticTokensEdits
+- sym: ./extHostTypes.js.SnippetString
+- sym: ./extHostTypes.js.SymbolInformation
+- sym: ./extHostTypes.js.SyntaxTokenType
+types:
+- name: DocumentSymbolAdapter
+  kind: struct
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tprivate readonly _documents: ExtHostDocuments,\n\t\tprivate readonly _provider: vscode.DocumentSymbolProvider\n\t)"
+    lines:
+    - 45
+    - 48
+    detail: {}
+  - name: provideDocumentSymbols
+    sig: 'provideDocumentSymbols(resource: URI, token: CancellationToken): Promise<languages.DocumentSymbol[] | undefined>'
+    is_async: true
+    lines:
+    - 50
+    - 60
+    detail:
+      calls:
+      - (<DocumentSymbol[]>value).map
+      - DocumentSymbolAdapter._asDocumentSymbolTree
+      - isFalsyOrEmpty
+      - this._documents.getDocument
+      - this._provider.provideDocumentSymbols
+  - name: _asDocumentSymbolTree
+    sig: '_asDocumentSymbolTree(infos: SymbolInformation[]): languages.DocumentSymbol[]'
+    vis: private
+    decorators:
+    - static
+    lines:
+    - 62
+    - 102
+    detail:
+      calls:
+      - EditorRange.containsRange
+      - EditorRange.equalsRange
+      - info.tags?.map
+      - infos.slice
+      - infos.slice(0).sort
+      - parent.children?.push
+      - parentStack.pop
+      - parentStack.push
+      - res.push
+      - typeConvert.Range.from
+      - typeConvert.SymbolKind.from
+  lines:
+  - 43
+  - 103
+- name: CodeLensAdapter
+  kind: struct
+  fields:
+  - name: _cache
+    type: any
+    default: new Cache<vscode.CodeLens>('CodeLens')
+  - name: _disposables
+    type: any
+    default: new Map<number, DisposableStore>()
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tprivate readonly _documents: ExtHostDocuments,\n\t\tprivate readonly _commands: CommandsConverter,\n\t\tprivate readonly _provider: vscode.CodeLensProvider,\n\t\tprivate readonly _extension: IExtensionDescription,\n\t\tprivate readonly _extTelemetry: ExtHostTelemetry,\n\t\tprivate readonly _logService: ILogService,\n\t)"
+    lines:
+    - 110
+    - 117
+    detail: {}
+  - name: provideCodeLenses
+    sig: 'provideCodeLenses(resource: URI, token: CancellationToken): Promise<extHostProtocol.ICodeLensListDto | undefined>'
+    is_async: true
+    lines:
+    - 119
+    - 147
+    detail:
+      calls:
+      - Range.isRange
+      - console.warn
+      - new DisposableStore
+      - result.lenses.push
+      - this._cache.add
+      - this._commands.toInternal
+      - this._disposables.set
+      - this._documents.getDocument
+      - this._provider.provideCodeLenses
+      - typeConvert.Range.from
+  - name: resolveCodeLens
+    sig: 'resolveCodeLens(symbol: extHostProtocol.ICodeLensDto, token: CancellationToken): Promise<extHostProtocol.ICodeLensDto | undefined>'
+    is_async: true
+    lines:
+    - 149
+    - 184
+    detail:
+      calls:
+      - new Error
+      - this._cache.get
+      - this._commands.toInternal
+      - this._disposables.get
+      - this._extTelemetry.onExtensionError
+      - this._logService.error
+      - this._provider.resolveCodeLens
+  - name: releaseCodeLenses
+    sig: 'releaseCodeLenses(cachedId: number): void'
+    lines:
+    - 186
+    - 190
+    detail:
+      calls:
+      - this._cache.delete
+      - this._disposables.delete
+      - this._disposables.get
+      - this._disposables.get(cachedId)?.dispose
+  lines:
+  - 105
+  - 191
+- name: DefinitionAdapter
+  kind: struct
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tprivate readonly _documents: ExtHostDocuments,\n\t\tprivate readonly _provider: vscode.DefinitionProvider\n\t)"
+    lines:
+    - 204
+    - 207
+    detail: {}
+  - name: provideDefinition
+    sig: 'provideDefinition(resource: URI, position: IPosition, token: CancellationToken): Promise<languages.LocationLink[]>'
+    is_async: true
+    lines:
+    - 209
+    - 214
+    detail:
+      calls:
+      - convertToLocationLinks
+      - this._documents.getDocument
+      - this._provider.provideDefinition
+      - typeConvert.Position.to
+  lines:
+  - 202
+  - 215
+- name: DeclarationAdapter
+  kind: struct
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tprivate readonly _documents: ExtHostDocuments,\n\t\tprivate readonly _provider: vscode.DeclarationProvider\n\t)"
+    lines:
+    - 219
+    - 222
+    detail: {}
+  - name: provideDeclaration
+    sig: 'provideDeclaration(resource: URI, position: IPosition, token: CancellationToken): Promise<languages.LocationLink[]>'
+    is_async: true
+    lines:
+    - 224
+    - 229
+    detail:
+      calls:
+      - convertToLocationLinks
+      - this._documents.getDocument
+      - this._provider.provideDeclaration
+      - typeConvert.Position.to
+  lines:
+  - 217
+  - 230
+- name: ImplementationAdapter
+  kind: struct
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tprivate readonly _documents: ExtHostDocuments,\n\t\tprivate readonly _provider: vscode.ImplementationProvider\n\t)"
+    lines:
+    - 234
+    - 237
+    detail: {}
+  - name: provideImplementation
+    sig: 'provideImplementation(resource: URI, position: IPosition, token: CancellationToken): Promise<languages.LocationLink[]>'
+    is_async: true
+    lines:
+    - 239
+    - 244
+    detail:
+      calls:
+      - convertToLocationLinks
+      - this._documents.getDocument
+      - this._provider.provideImplementation
+      - typeConvert.Position.to
+  lines:
+  - 232
+  - 245
+- name: TypeDefinitionAdapter
+  kind: struct
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tprivate readonly _documents: ExtHostDocuments,\n\t\tprivate readonly _provider: vscode.TypeDefinitionProvider\n\t)"
+    lines:
+    - 249
+    - 252
+    detail: {}
+  - name: provideTypeDefinition
+    sig: 'provideTypeDefinition(resource: URI, position: IPosition, token: CancellationToken): Promise<languages.LocationLink[]>'
+    is_async: true
+    lines:
+    - 254
+    - 259
+    detail:
+      calls:
+      - convertToLocationLinks
+      - this._documents.getDocument
+      - this._provider.provideTypeDefinition
+      - typeConvert.Position.to
+  lines:
+  - 247
+  - 260
+- name: HoverAdapter
+  kind: struct
+  fields:
+  - name: _hoverCounter
+    type: number
+    default: '0'
+  - name: _hoverMap
+    type: Map<number, vscode.Hover>
+    default: new Map<number, vscode.Hover>()
+  - name: HOVER_MAP_MAX_SIZE
+    type: any
+    default: '10'
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tprivate readonly _documents: ExtHostDocuments,\n\t\tprivate readonly _provider: vscode.HoverProvider,\n\t)"
+    lines:
+    - 269
+    - 272
+    detail: {}
+  - name: provideHover
+    sig: 'provideHover(resource: URI, position: IPosition, context: languages.HoverContext<{ id: number }> | undefined, token: CancellationToken): Promise<extHostProtocol.HoverWithId | undefined>'
+    is_async: true
+    lines:
+    - 274
+    - 314
+    detail:
+      calls:
+      - Math.min
+      - doc.getWordRangeAtPosition
+      - isFalsyOrEmpty
+      - new Error
+      - new Range
+      - this._documents.getDocument
+      - this._hoverMap.delete
+      - this._hoverMap.get
+      - this._hoverMap.keys
+      - this._hoverMap.set
+      - this._provider.provideHover
+      - typeConvert.Hover.from
+      - typeConvert.Position.to
+  - name: releaseHover
+    sig: 'releaseHover(id: number): void'
+    lines:
+    - 316
+    - 318
+    detail:
+      calls:
+      - this._hoverMap.delete
+  lines:
+  - 262
+  - 319
+- name: EvaluatableExpressionAdapter
+  kind: struct
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tprivate readonly _documents: ExtHostDocuments,\n\t\tprivate readonly _provider: vscode.EvaluatableExpressionProvider,\n\t)"
+    lines:
+    - 323
+    - 326
+    detail: {}
+  - name: provideEvaluatableExpression
+    sig: 'provideEvaluatableExpression(resource: URI, position: IPosition, token: CancellationToken): Promise<languages.EvaluatableExpression | undefined>'
+    is_async: true
+    lines:
+    - 328
+    - 338
+    detail:
+      calls:
+      - this._documents.getDocument
+      - this._provider.provideEvaluatableExpression
+      - typeConvert.EvaluatableExpression.from
+      - typeConvert.Position.to
+  lines:
+  - 321
+  - 339
+- name: InlineValuesAdapter
+  kind: struct
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tprivate readonly _documents: ExtHostDocuments,\n\t\tprivate readonly _provider: vscode.InlineValuesProvider,\n\t)"
+    lines:
+    - 343
+    - 346
+    detail: {}
+  - name: provideInlineValues
+    sig: 'provideInlineValues(resource: URI, viewPort: IRange, context: extHostProtocol.IInlineValueContextDto, token: CancellationToken): Promise<languages.InlineValue[] | undefined>'
+    is_async: true
+    lines:
+    - 348
+    - 355
+    detail:
+      calls:
+      - Array.isArray
+      - this._documents.getDocument
+      - this._provider.provideInlineValues
+      - typeConvert.InlineValueContext.to
+      - typeConvert.Range.to
+      - value.map
+  lines:
+  - 341
+  - 356
+- name: DocumentHighlightAdapter
+  kind: struct
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tprivate readonly _documents: ExtHostDocuments,\n\t\tprivate readonly _provider: vscode.DocumentHighlightProvider\n\t)"
+    lines:
+    - 360
+    - 363
+    detail: {}
+  - name: provideDocumentHighlights
+    sig: 'provideDocumentHighlights(resource: URI, position: IPosition, token: CancellationToken): Promise<languages.DocumentHighlight[] | undefined>'
+    is_async: true
+    lines:
+    - 365
+    - 375
+    detail:
+      calls:
+      - Array.isArray
+      - this._documents.getDocument
+      - this._provider.provideDocumentHighlights
+      - typeConvert.Position.to
+      - value.map
+  lines:
+  - 358
+  - 376
+- name: MultiDocumentHighlightAdapter
+  kind: struct
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tprivate readonly _documents: ExtHostDocuments,\n\t\tprivate readonly _provider: vscode.MultiDocumentHighlightProvider,\n\t\tprivate readonly _logService: ILogService,\n\t)"
+    lines:
+    - 380
+    - 384
+    detail: {}
+  - name: provideMultiDocumentHighlights
+    sig: 'provideMultiDocumentHighlights(resource: URI, position: IPosition, otherResources: URI[], token: CancellationToken): Promise<languages.MultiDocumentHighlight[] | undefined>'
+    is_async: true
+    lines:
+    - 386
+    - 404
+    detail:
+      calls:
+      - Array.isArray
+      - otherResources.map
+      - "otherResources.map(r => {\n\t\t\ttry {\n\t\t\t\treturn this._documents.getDocument(r);\n\t\t\t} catch (err) {\n\t\t\t..."
+      - this._documents.getDocument
+      - this._provider.provideMultiDocumentHighlights
+      - typeConvert.Position.to
+      - value.map
+  lines:
+  - 378
+  - 405
+- name: LinkedEditingRangeAdapter
+  kind: struct
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tprivate readonly _documents: ExtHostDocuments,\n\t\tprivate readonly _provider: vscode.LinkedEditingRangeProvider\n\t)"
+    lines:
+    - 408
+    - 411
+    detail: {}
+  - name: provideLinkedEditingRanges
+    sig: 'provideLinkedEditingRanges(resource: URI, position: IPosition, token: CancellationToken): Promise<languages.LinkedEditingRanges | undefined>'
+    is_async: true
+    lines:
+    - 413
+    - 426
+    detail:
+      calls:
+      - Array.isArray
+      - coalesce
+      - this._documents.getDocument
+      - this._provider.provideLinkedEditingRanges
+      - typeConvert.Position.to
+      - value.ranges.map
+  lines:
+  - 407
+  - 427
+- name: ReferenceAdapter
+  kind: struct
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tprivate readonly _documents: ExtHostDocuments,\n\t\tprivate readonly _provider: vscode.ReferenceProvider\n\t)"
+    lines:
+    - 431
+    - 434
+    detail: {}
+  - name: provideReferences
+    sig: 'provideReferences(resource: URI, position: IPosition, context: languages.ReferenceContext, token: CancellationToken): Promise<languages.Location[] | undefined>'
+    is_async: true
+    lines:
+    - 436
+    - 445
+    detail:
+      calls:
+      - Array.isArray
+      - this._documents.getDocument
+      - this._provider.provideReferences
+      - typeConvert.Position.to
+      - value.map
+  lines:
+  - 429
+  - 446
+- name: CustomCodeAction
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: _isSynthetic
+    type: boolean
+  lines:
+  - 448
+  - 450
+- name: CodeActionAdapter
+  kind: struct
+  fields:
+  - name: _maxCodeActionsPerFile
+    type: number
+    default: '1000'
+  - name: _cache
+    type: any
+    default: new Cache<vscode.CodeAction | vscode.Command>('CodeAction')
+  - name: _disposables
+    type: any
+    default: new Map<number, DisposableStore>()
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tprivate readonly _documents: ExtHostDocuments,\n\t\tprivate readonly _commands: CommandsConverter,\n\t\tprivate readonly _diagnostics: ExtHostDiagnostics,\n\t\tprivate readonly _provider: vscode.CodeActionProvider,\n\t\tprivate readonly _logService: ILogService,\n\t\tprivate readonly _extension: IExtensionDescription,\n\t\tprivate readonly _apiDeprecation: IExtHostApiDeprecationService,\n\t)"
+    lines:
+    - 458
+    - 466
+    detail: {}
+  - name: provideCodeActions
+    sig: 'provideCodeActions(resource: URI, rangeOrSelection: IRange | ISelection, context: languages.CodeActionContext, token: CancellationToken): Promise<extHostProtocol.ICodeActionListDto | undefined>'
+    is_async: true
+    lines:
+    - 468
+    - 546
+    detail:
+      calls:
+      - CodeActionAdapter._isCommand
+      - Selection.isISelection
+      - actions.push
+      - allDiagnostics.push
+      - coalesce
+      - codeActionContext.only.contains
+      - isNonEmptyArray
+      - isProposedApiEnabled
+      - new CodeActionKind
+      - new DisposableStore
+      - ran.intersection
+      - range.map
+      - this._apiDeprecation.report
+      - this._cache.add
+      - this._commands.toInternal
+      - this._diagnostics.getDiagnostics
+      - this._disposables.set
+      - this._documents.getDocument
+      - this._logService.warn
+      - this._provider.provideCodeActions
+      - toConvert.diagnostics.map
+      - typeConvert.CodeActionTriggerKind.to
+      - typeConvert.Range.to
+      - typeConvert.Selection.to
+      - typeConvert.WorkspaceEdit.from
+  - name: resolveCodeAction
+    sig: 'resolveCodeAction(id: extHostProtocol.ChainedCacheId, token: CancellationToken): Promise<{ edit?: extHostProtocol.IWorkspaceEditDto; command?: extHostProtocol.ICommandDto }>'
+    is_async: true
+    lines:
+    - 548
+    - 575
+    detail:
+      calls:
+      - CodeActionAdapter._isCommand
+      - this._cache.get
+      - this._commands.toInternal
+      - this._disposables.get
+      - this._provider.resolveCodeAction
+      - typeConvert.WorkspaceEdit.from
+  - name: releaseCodeActions
+    sig: 'releaseCodeActions(cachedId: number): void'
+    lines:
+    - 577
+    - 581
+    detail:
+      calls:
+      - this._cache.delete
+      - this._disposables.delete
+      - this._disposables.get
+      - this._disposables.get(cachedId)?.dispose
+  lines:
+  - 452
+  - 586
+- name: DocumentPasteEditProvider
+  kind: struct
+  fields:
+  - name: _cachedPrepare
+    type: Map<string, vscode.DataTransferItem>
+  - name: _editsCache
+    type: any
+    default: new Cache<vscode.DocumentPasteEdit>('DocumentPasteEdit.edits')
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tprivate readonly _proxy: extHostProtocol.MainThreadLanguageFeaturesShape,\n\t\tprivate readonly _documents: ExtHostDocuments,\n\t\tprivate readonly _provider: vscode.DocumentPasteEditProvider,\n\t\tprivate readonly _handle: number,\n\t\tprivate readonly _extension: IExtensionDescription,\n\t)"
+    lines:
+    - 594
+    - 600
+    detail: {}
+  - name: prepareDocumentPaste
+    sig: 'prepareDocumentPaste(resource: URI, ranges: IRange[], dataTransferDto: extHostProtocol.DataTransferDTO, token: CancellationToken): Promise<extHostProtocol.DataTransferDTO | undefined>'
+    is_async: true
+    lines:
+    - 602
+    - 635
+    detail:
+      calls:
+      - Array.from
+      - Array.from(dataTransfer).filter
+      - Promise.all
+      - new Map
+      - ranges.map
+      - this._documents.getDocument
+      - this._provider.prepareDocumentPaste
+      - typeConvert.DataTransfer.toDataTransfer
+  - name: providePasteEdits
+    sig: 'providePasteEdits(requestId: number, resource: URI, ranges: IRange[], dataTransferDto: extHostProtocol.DataTransferDTO, context: extHostProtocol.IDocumentPasteContextDto, token: CancellationToken): Promise<extHostProtocol.IPasteEditDto[]>'
+    is_async: true
+    lines:
+    - 637
+    - 679
+    detail:
+      calls:
+      - dataTransferDto.items.map
+      - edits.map
+      - new DataTransfer
+      - new DocumentDropOrPasteEditKind
+      - ranges.map
+      - this._documents.getDocument
+      - this._editsCache.add
+      - this._provider.provideDocumentPasteEdits
+  - name: resolvePasteEdit
+    sig: 'resolvePasteEdit(id: extHostProtocol.ChainedCacheId, token: CancellationToken): Promise<{ insertText?: string | vscode.SnippetString; additionalEdit?: extHostProtocol.IWorkspaceEditDto }>'
+    is_async: true
+    lines:
+    - 681
+    - 693
+    detail:
+      calls:
+      - this._editsCache.get
+      - this._provider.resolveDocumentPasteEdit
+      - typeConvert.WorkspaceEdit.from
+  - name: releasePasteEdits
+    sig: 'releasePasteEdits(id: number): any'
+    lines:
+    - 695
+    - 697
+    detail:
+      calls:
+      - this._editsCache.delete
+  lines:
+  - 588
+  - 698
+- name: DocumentFormattingAdapter
+  kind: struct
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tprivate readonly _documents: ExtHostDocuments,\n\t\tprivate readonly _provider: vscode.DocumentFormattingEditProvider\n\t)"
+    lines:
+    - 702
+    - 705
+    detail: {}
+  - name: provideDocumentFormattingEdits
+    sig: 'provideDocumentFormattingEdits(resource: URI, options: languages.FormattingOptions, token: CancellationToken): Promise<languages.TextEdit[] | undefined>'
+    is_async: true
+    lines:
+    - 707
+    - 716
+    detail:
+      calls:
+      - Array.isArray
+      - this._documents.getDocument
+      - this._provider.provideDocumentFormattingEdits
+      - value.map
+  lines:
+  - 700
+  - 717
+- name: RangeFormattingAdapter
+  kind: struct
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tprivate readonly _documents: ExtHostDocuments,\n\t\tprivate readonly _provider: vscode.DocumentRangeFormattingEditProvider\n\t)"
+    lines:
+    - 721
+    - 724
+    detail: {}
+  - name: provideDocumentRangeFormattingEdits
+    sig: 'provideDocumentRangeFormattingEdits(resource: URI, range: IRange, options: languages.FormattingOptions, token: CancellationToken): Promise<languages.TextEdit[] | undefined>'
+    is_async: true
+    lines:
+    - 726
+    - 736
+    detail:
+      calls:
+      - Array.isArray
+      - this._documents.getDocument
+      - this._provider.provideDocumentRangeFormattingEdits
+      - typeConvert.Range.to
+      - value.map
+  - name: provideDocumentRangesFormattingEdits
+    sig: 'provideDocumentRangesFormattingEdits(resource: URI, ranges: IRange[], options: languages.FormattingOptions, token: CancellationToken): Promise<languages.TextEdit[] | undefined>'
+    is_async: true
+    lines:
+    - 738
+    - 748
+    detail:
+      calls:
+      - Array.isArray
+      - assertType
+      - ranges.map
+      - this._documents.getDocument
+      - this._provider.provideDocumentRangesFormattingEdits
+      - value.map
+  lines:
+  - 719
+  - 749
+- name: OnTypeFormattingAdapter
+  kind: struct
+  ctx: not here
+  fields:
+  - name: autoFormatTriggerCharacters
+    type: string[]
+    default: '[]'
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tprivate readonly _documents: ExtHostDocuments,\n\t\tprivate readonly _provider: vscode.OnTypeFormattingEditProvider\n\t)"
+    lines:
+    - 753
+    - 756
+    detail: {}
+  - name: provideOnTypeFormattingEdits
+    sig: 'provideOnTypeFormattingEdits(resource: URI, position: IPosition, ch: string, options: languages.FormattingOptions, token: CancellationToken): Promise<languages.TextEdit[] | undefined>'
+    is_async: true
+    lines:
+    - 760
+    - 770
+    detail:
+      calls:
+      - Array.isArray
+      - this._documents.getDocument
+      - this._provider.provideOnTypeFormattingEdits
+      - typeConvert.Position.to
+      - value.map
+  lines:
+  - 751
+  - 771
+- name: NavigateTypeAdapter
+  kind: struct
+  fields:
+  - name: _cache
+    type: any
+    default: new Cache<vscode.SymbolInformation>('WorkspaceSymbols')
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tprivate readonly _provider: vscode.WorkspaceSymbolProvider,\n\t\tprivate readonly _logService: ILogService\n\t)"
+    lines:
+    - 777
+    - 780
+    detail: {}
+  - name: provideWorkspaceSymbols
+    sig: 'provideWorkspaceSymbols(search: string, token: CancellationToken): Promise<extHostProtocol.IWorkspaceSymbolsDto>'
+    is_async: true
+    lines:
+    - 782
+    - 808
+    detail:
+      calls:
+      - isNonEmptyArray
+      - result.symbols.push
+      - this._cache.add
+      - this._logService.warn
+      - this._provider.provideWorkspaceSymbols
+      - typeConvert.WorkspaceSymbol.from
+  - name: resolveWorkspaceSymbol
+    sig: 'resolveWorkspaceSymbol(symbol: extHostProtocol.IWorkspaceSymbolDto, token: CancellationToken): Promise<extHostProtocol.IWorkspaceSymbolDto | undefined>'
+    is_async: true
+    lines:
+    - 810
+    - 823
+    detail:
+      calls:
+      - mixin
+      - this._cache.get
+      - this._provider.resolveWorkspaceSymbol
+      - typeConvert.WorkspaceSymbol.from
+  - name: releaseWorkspaceSymbols
+    sig: 'releaseWorkspaceSymbols(id: number): any'
+    lines:
+    - 825
+    - 827
+    detail:
+      calls:
+      - this._cache.delete
+  lines:
+  - 773
+  - 828
+- name: RenameAdapter
+  kind: struct
+  methods:
+  - name: supportsResolving
+    sig: 'supportsResolving(provider: vscode.RenameProvider): boolean'
+    decorators:
+    - static
+    lines:
+    - 832
+    - 834
+    detail: {}
+  - name: constructor
+    sig: "constructor(\n\t\tprivate readonly _documents: ExtHostDocuments,\n\t\tprivate readonly _provider: vscode.RenameProvider,\n\t\tprivate readonly _logService: ILogService\n\t)"
+    lines:
+    - 836
+    - 840
+    detail: {}
+  - name: provideRenameEdits
+    sig: 'provideRenameEdits(resource: URI, position: IPosition, newName: string, token: CancellationToken): Promise<extHostProtocol.IWorkspaceEditDto & languages.Rejection | undefined>'
+    is_async: true
+    lines:
+    - 842
+    - 863
+    detail:
+      calls:
+      - Promise.reject
+      - RenameAdapter._asMessage
+      - this._documents.getDocument
+      - this._provider.provideRenameEdits
+      - typeConvert.Position.to
+      - typeConvert.WorkspaceEdit.from
+  - name: resolveRenameLocation
+    sig: 'resolveRenameLocation(resource: URI, position: IPosition, token: CancellationToken): Promise<(languages.RenameLocation & languages.Rejection) | undefined>'
+    is_async: true
+    lines:
+    - 865
+    - 904
+    detail:
+      calls:
+      - Promise.reject
+      - Promise.resolve
+      - Range.isRange
+      - RenameAdapter._asMessage
+      - doc.getText
+      - isObject
+      - this._documents.getDocument
+      - this._logService.warn
+      - this._provider.prepareRename
+      - typeConvert.Position.to
+      - typeConvert.Range.from
+  lines:
+  - 830
+  - 915
+- name: NewSymbolNamesAdapter
+  kind: struct
+  ctx: ''
+  fields:
+  - name: languageTriggerKindToVSCodeTriggerKind
+    type: Record<languages.NewSymbolNameTriggerKind, vscode.NewSymbolNameTriggerKind>
+    default: "{\n\t\t[languages.NewSymbolNameTriggerKind.Invoke]: NewSymbolNameTriggerKind.Invoke..."
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tprivate readonly _documents: ExtHostDocuments,\n\t\tprivate readonly _provider: vscode.NewSymbolNamesProvider,\n\t\tprivate readonly _logService: ILogService\n\t)"
+    lines:
+    - 924
+    - 928
+    detail: {}
+  - name: supportsAutomaticNewSymbolNamesTriggerKind
+    sig: supportsAutomaticNewSymbolNamesTriggerKind()
+    is_async: true
+    lines:
+    - 930
+    - 932
+    detail: {}
+  - name: provideNewSymbolNames
+    sig: 'provideNewSymbolNames(resource: URI, range: IRange, triggerKind: languages.NewSymbolNameTriggerKind, token: CancellationToken): Promise<languages.NewSymbolName[] | undefined>'
+    is_async: true
+    lines:
+    - 934
+    - 954
+    detail:
+      calls:
+      - JSON.stringify
+      - NewSymbolNamesAdapter._asMessage
+      - this._documents.getDocument
+      - this._logService.error
+      - this._provider.provideNewSymbolNames
+      - typeConvert.Range.to
+      - value.map
+  lines:
+  - 917
+  - 966
+- name: SemanticTokensPreviousResult
+  kind: struct
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\treadonly resultId: string | undefined,\n\t\treadonly tokens?: Uint32Array,\n\t)"
+    lines:
+    - 969
+    - 972
+    detail: {}
+  lines:
+  - 968
+  - 973
+- name: RelaxedSemanticTokens
+  kind: typealias
+  decorators:
+  - type
+  fields:
+  - name: readonly
+    type: string
+  - name: readonly
+    type: number[]
+  lines:
+  - 975
+  - 975
+- name: RelaxedSemanticTokensEdit
+  kind: typealias
+  decorators:
+  - type
+  fields:
+  - name: readonly
+    type: number
+  - name: readonly
+    type: number
+  - name: readonly
+    type: number[]
+  lines:
+  - 976
+  - 976
+- name: RelaxedSemanticTokensEdits
+  kind: typealias
+  decorators:
+  - type
+  fields:
+  - name: readonly
+    type: string
+  - name: readonly
+    type: RelaxedSemanticTokensEdit[]
+  lines:
+  - 977
+  - 977
+- name: ProvidedSemanticTokens
+  kind: enum
+  decorators:
+  - type
+  variants:
+  - name: RelaxedSemanticTokens
+  lines:
+  - 979
+  - 979
+- name: ProvidedSemanticTokensEdits
+  kind: enum
+  decorators:
+  - type
+  variants:
+  - name: RelaxedSemanticTokensEdits
+  lines:
+  - 980
+  - 980
+- name: DocumentSemanticTokensAdapter
+  kind: struct
+  fields:
+  - name: _previousResults
+    type: Map<number, SemanticTokensPreviousResult>
+  - name: _nextResultId
+    type: any
+    default: '1'
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tprivate readonly _documents: ExtHostDocuments,\n\t\tprivate readonly _provider: vscode.DocumentSemanticTokensProvider,\n\t)"
+    lines:
+    - 987
+    - 992
+    detail:
+      calls:
+      - new Map
+  - name: provideDocumentSemanticTokens
+    sig: 'provideDocumentSemanticTokens(resource: URI, previousResultId: number, token: CancellationToken): Promise<VSBuffer | null>'
+    is_async: true
+    lines:
+    - 994
+    - 1009
+    detail:
+      calls:
+      - DocumentSemanticTokensAdapter._convertToEdits
+      - DocumentSemanticTokensAdapter._fixProvidedSemanticTokens
+      - this._documents.getDocument
+      - this._previousResults.delete
+      - this._previousResults.get
+      - this._provider.provideDocumentSemanticTokens
+      - this._provider.provideDocumentSemanticTokensEdits
+      - this._send
+  - name: releaseDocumentSemanticColoring
+    sig: 'releaseDocumentSemanticColoring(semanticColoringResultId: number): Promise<void>'
+    is_async: true
+    lines:
+    - 1011
+    - 1013
+    detail:
+      calls:
+      - this._previousResults.delete
+  - name: _fixProvidedSemanticTokens
+    sig: '_fixProvidedSemanticTokens(v: ProvidedSemanticTokens | ProvidedSemanticTokensEdits): vscode.SemanticTokens | vscode.SemanticTokensEdits'
+    vis: private
+    decorators:
+    - static
+    lines:
+    - 1015
+    - 1028
+    detail:
+      calls:
+      - DocumentSemanticTokensAdapter._isCorrectSemanticTokens
+      - DocumentSemanticTokensAdapter._isCorrectSemanticTokensEdits
+      - DocumentSemanticTokensAdapter._isSemanticTokens
+      - DocumentSemanticTokensAdapter._isSemanticTokensEdits
+      - new SemanticTokens
+      - new SemanticTokensEdits
+      - new Uint32Array
+      - v.edits.map
+  - name: _convertToEdits
+    sig: '_convertToEdits(previousResult: SemanticTokensPreviousResult | null | undefined, newResult: vscode.SemanticTokens | vscode.SemanticTokensEdits): vscode.SemanticTokens | vscode.SemanticTokensEdits'
+    vis: private
+    decorators:
+    - static
+    lines:
+    - 1051
+    - 1085
+    detail:
+      calls:
+      - DocumentSemanticTokensAdapter._isSemanticTokens
+      - Math.min
+      - new SemanticTokensEdits
+      - newData.subarray
+  - name: _send
+    sig: '_send(value: vscode.SemanticTokens | vscode.SemanticTokensEdits, original: vscode.SemanticTokens | vscode.SemanticTokensEdits): VSBuffer | null'
+    vis: private
+    lines:
+    - 1087
+    - 1114
+    detail:
+      calls:
+      - (value.edits || []).map
+      - DocumentSemanticTokensAdapter._isSemanticTokens
+      - DocumentSemanticTokensAdapter._isSemanticTokensEdits
+      - encodeSemanticTokensDto
+      - new SemanticTokensPreviousResult
+      - this._previousResults.set
+  lines:
+  - 982
+  - 1115
+- name: DocumentRangeSemanticTokensAdapter
+  kind: struct
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tprivate readonly _documents: ExtHostDocuments,\n\t\tprivate readonly _provider: vscode.DocumentRangeSemanticTokensProvider,\n\t)"
+    lines:
+    - 1119
+    - 1122
+    detail: {}
+  - name: provideDocumentRangeSemanticTokens
+    sig: 'provideDocumentRangeSemanticTokens(resource: URI, range: IRange, token: CancellationToken): Promise<VSBuffer | null>'
+    is_async: true
+    lines:
+    - 1124
+    - 1131
+    detail:
+      calls:
+      - this._documents.getDocument
+      - this._provider.provideDocumentRangeSemanticTokens
+      - this._send
+      - typeConvert.Range.to
+  lines:
+  - 1117
+  - 1140
+- name: CompletionsAdapter
+  kind: struct
+  fields:
+  - name: _cache
+    type: any
+    default: new Cache<vscode.CompletionItem>('CompletionItem')
+  - name: _disposables
+    type: any
+    default: new Map<number, DisposableStore>()
+  methods:
+  - name: supportsResolving
+    sig: 'supportsResolving(provider: vscode.CompletionItemProvider): boolean'
+    decorators:
+    - static
+    lines:
+    - 1144
+    - 1146
+    detail: {}
+  - name: constructor
+    sig: "constructor(\n\t\tprivate readonly _documents: ExtHostDocuments,\n\t\tprivate readonly _commands: CommandsConverter,\n\t\tprivate readonly _provider: vscode.CompletionItemProvider,\n\t\tprivate readonly _apiDeprecation: IExtHostApiDeprecationService,\n\t\tprivate readonly _extension: IExtensionDescription,\n\t)"
+    lines:
+    - 1151
+    - 1157
+    detail: {}
+  - name: provideCompletionItems
+    sig: 'provideCompletionItems(resource: URI, position: IPosition, context: languages.CompletionContext, token: CancellationToken): Promise<extHostProtocol.ISuggestResultDto | undefined>'
+    is_async: true
+    lines:
+    - 1159
+    - 1208
+    detail:
+      calls:
+      - Array.isArray
+      - CompletionsAdapter.supportsResolving
+      - completions.push
+      - doc.getWordRangeAtPosition
+      - new CompletionList
+      - new DisposableStore
+      - new Range
+      - new StopWatch
+      - replaceRange.with
+      - sw.elapsed
+      - this._cache.add
+      - this._convertCompletionItem
+      - this._disposables.set
+      - this._documents.getDocument
+      - this._provider.provideCompletionItems
+      - typeConvert.CompletionContext.to
+      - typeConvert.Position.to
+      - typeConvert.Range.from
+  - name: resolveCompletionItem
+    sig: 'resolveCompletionItem(id: extHostProtocol.ChainedCacheId, token: CancellationToken): Promise<extHostProtocol.ISuggestDataDto | undefined>'
+    is_async: true
+    lines:
+    - 1210
+    - 1259
+    detail:
+      calls:
+      - equals
+      - this._apiDeprecation.report
+      - this._cache.get
+      - this._convertCompletionItem
+      - this._provider.resolveCompletionItem
+  - name: releaseCompletionItems
+    sig: 'releaseCompletionItems(id: number): any'
+    lines:
+    - 1261
+    - 1265
+    detail:
+      calls:
+      - this._cache.delete
+      - this._disposables.delete
+      - this._disposables.get
+      - this._disposables.get(id)?.dispose
+  - name: _convertCompletionItem
+    sig: '_convertCompletionItem(item: vscode.CompletionItem, id: extHostProtocol.ChainedCacheId, defaultInsertRange?: vscode.Range, defaultReplaceRange?: vscode.Range): extHostProtocol.ISuggestDataDto'
+    vis: private
+    lines:
+    - 1267
+    - 1329
+    detail:
+      calls:
+      - Error
+      - Range.isRange
+      - defaultInsertRange?.isEqual
+      - defaultReplaceRange?.isEqual
+      - item.additionalTextEdits.map
+      - item.commitCharacters?.join
+      - item.tags.map
+      - this._apiDeprecation.report
+      - this._commands.toInternal
+      - this._disposables.get
+      - typeConvert.CompletionItemKind.from
+      - typeConvert.MarkdownString.fromStrict
+      - typeConvert.Range.from
+  lines:
+  - 1142
+  - 1330
+- name: InlineCompletionAdapter
+  kind: struct
+  fields:
+  - name: _references
+    type: any
+    default: "new ReferenceMap<{\n\t\tdispose(): void;\n\t\titems: readonly vscode.InlineCompletionI..."
+  - name: _isAdditionsProposedApiEnabled
+    type: any
+    default: isProposedApiEnabled(this._extension, 'inlineCompletionsAdditions')
+  - name: languageTriggerKindToVSCodeTriggerKind
+    type: Record<languages.InlineCompletionTriggerKind, InlineCompletionTriggerKind>
+    default: "{\n\t\t[languages.InlineCompletionTriggerKind.Automatic]: InlineCompletionTriggerKi..."
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tprivate readonly _extension: IExtensionDescription,\n\t\tprivate readonly _documents: ExtHostDocuments,\n\t\tprivate readonly _provider: vscode.InlineCompletionItemProvider,\n\t\tprivate readonly _commands: CommandsConverter,\n\t)"
+    lines:
+    - 1340
+    - 1346
+    detail: {}
+  - name: supportsHandleEvents
+    sig: 'supportsHandleEvents(): boolean'
+    lines:
+    - 1348
+    - 1354
+    detail:
+      calls:
+      - isProposedApiEnabled
+  - name: provideInlineCompletions
+    sig: 'provideInlineCompletions(resource: URI, position: IPosition, context: languages.InlineCompletionContext, token: CancellationToken): Promise<extHostProtocol.IdentifiableInlineCompletions | undefined>'
+    is_async: true
+    lines:
+    - 1361
+    - 1446
+    detail:
+      calls:
+      - Array.isArray
+      - commands.map
+      - disposableStore?.dispose
+      - normalizedResult.map
+      - this._documents.getDocument
+      - this._provider.provideInlineCompletionItems
+      - this._references.createReferenceId
+      - typeConvert.Position.to
+      - typeConvert.Range.to
+  - name: provideInlineEditsForRange
+    sig: 'provideInlineEditsForRange(resource: URI, range: IRange, context: languages.InlineCompletionContext, token: CancellationToken): Promise<extHostProtocol.IdentifiableInlineCompletions | undefined>'
+    is_async: true
+    lines:
+    - 1448
+    - 1532
+    detail:
+      calls:
+      - Array.isArray
+      - checkProposedApiEnabled
+      - commands.map
+      - disposableStore?.dispose
+      - normalizedResult.map
+      - this._documents.getDocument
+      - this._provider.provideInlineEditsForRange
+      - this._references.createReferenceId
+      - typeConvert.Range.to
+  - name: disposeCompletions
+    sig: 'disposeCompletions(pid: number)'
+    lines:
+    - 1534
+    - 1537
+    detail:
+      calls:
+      - data?.dispose
+      - this._references.disposeReferenceId
+  - name: handleDidShowCompletionItem
+    sig: 'handleDidShowCompletionItem(pid: number, idx: number, updatedInsertText: string): void'
+    lines:
+    - 1539
+    - 1546
+    detail:
+      calls:
+      - this._provider.handleDidShowCompletionItem
+      - this._references.get
+  - name: handlePartialAccept
+    sig: 'handlePartialAccept(pid: number, idx: number, acceptedCharacters: number, info: languages.PartialAcceptInfo): void'
+    lines:
+    - 1548
+    - 1556
+    detail:
+      calls:
+      - this._provider.handleDidPartiallyAcceptCompletionItem
+      - this._references.get
+      - typeConvert.PartialAcceptInfo.to
+  - name: handleRejection
+    sig: 'handleRejection(pid: number, idx: number): void'
+    lines:
+    - 1558
+    - 1565
+    detail:
+      calls:
+      - this._provider.handleDidRejectCompletionItem
+      - this._references.get
+  lines:
+  - 1332
+  - 1566
+- name: InlineEditAdapter
+  kind: struct
+  fields:
+  - name: _references
+    type: any
+    default: "new ReferenceMap<{\n\t\tdispose(): void;\n\t\titem: vscode.InlineEdit;\n\t}>()"
+  - name: languageTriggerKindToVSCodeTriggerKind
+    type: Record<languages.InlineEditTriggerKind, InlineEditTriggerKind>
+    default: "{\n\t\t[languages.InlineEditTriggerKind.Automatic]: InlineEditTriggerKind.Automatic..."
+  methods:
+  - name: provideInlineEdits
+    sig: 'provideInlineEdits(uri: URI, context: languages.IInlineEditContext, token: CancellationToken): Promise<extHostProtocol.IdentifiableInlineEdit | undefined>'
+    is_async: true
+    lines:
+    - 1579
+    - 1651
+    detail:
+      calls:
+      - disposableStore?.dispose
+      - new DisposableStore
+      - result.commands?.map
+      - this._commands.toInternal
+      - this._documents.getDocument
+      - this._provider.provideInlineEdit
+      - this._references.createReferenceId
+      - typeConvert.Range.from
+  - name: disposeEdit
+    sig: 'disposeEdit(pid: number)'
+    lines:
+    - 1653
+    - 1656
+    detail:
+      calls:
+      - data?.dispose
+      - this._references.disposeReferenceId
+  - name: constructor
+    sig: "constructor(\n\t\t_extension: IExtensionDescription,\n\t\tprivate readonly _documents: ExtHostDocuments,\n\t\tprivate readonly _provider: vscode.InlineEditProvider,\n\t\tprivate readonly _commands: CommandsConverter,\n\t)"
+    lines:
+    - 1658
+    - 1664
+    detail: {}
+  lines:
+  - 1568
+  - 1665
+- name: ReferenceMap
+  kind: struct
+  fields:
+  - name: _references
+    type: any
+    default: new Map<number, T>()
+  - name: _idPool
+    type: any
+    default: '1'
+  methods:
+  - name: createReferenceId
+    sig: 'createReferenceId(value: T): number'
+    lines:
+    - 1671
+    - 1675
+    detail:
+      calls:
+      - this._references.set
+  - name: disposeReferenceId
+    sig: 'disposeReferenceId(referenceId: number): T | undefined'
+    lines:
+    - 1677
+    - 1681
+    detail:
+      calls:
+      - this._references.delete
+      - this._references.get
+  - name: get
+    sig: 'get(referenceId: number): T | undefined'
+    lines:
+    - 1683
+    - 1685
+    detail:
+      calls:
+      - this._references.get
+  lines:
+  - 1667
+  - 1686
+- name: SignatureHelpAdapter
+  kind: struct
+  fields:
+  - name: _cache
+    type: any
+    default: new Cache<vscode.SignatureHelp>('SignatureHelp')
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tprivate readonly _documents: ExtHostDocuments,\n\t\tprivate readonly _provider: vscode.SignatureHelpProvider,\n\t)"
+    lines:
+    - 1692
+    - 1695
+    detail: {}
+  - name: provideSignatureHelp
+    sig: 'provideSignatureHelp(resource: URI, position: IPosition, context: extHostProtocol.ISignatureHelpContextDto, token: CancellationToken): Promise<extHostProtocol.ISignatureHelpDto | undefined>'
+    is_async: true
+    lines:
+    - 1697
+    - 1708
+    detail:
+      calls:
+      - this._cache.add
+      - this._documents.getDocument
+      - this._provider.provideSignatureHelp
+      - this.reviveContext
+      - typeConvert.Position.to
+      - typeConvert.SignatureHelp.from
+  - name: releaseSignatureHelp
+    sig: 'releaseSignatureHelp(id: number): any'
+    lines:
+    - 1726
+    - 1728
+    detail:
+      calls:
+      - this._cache.delete
+  lines:
+  - 1688
+  - 1729
+- name: InlayHintsAdapter
+  kind: struct
+  fields:
+  - name: _cache
+    type: any
+    default: new Cache<vscode.InlayHint>('InlayHints')
+  - name: _disposables
+    type: any
+    default: new Map<number, DisposableStore>()
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tprivate readonly _documents: ExtHostDocuments,\n\t\tprivate readonly _commands: CommandsConverter,\n\t\tprivate readonly _provider: vscode.InlayHintsProvider,\n\t\tprivate readonly _logService: ILogService,\n\t\tprivate readonly _extension: IExtensionDescription\n\t)"
+    lines:
+    - 1736
+    - 1742
+    detail: {}
+  - name: provideInlayHints
+    sig: 'provideInlayHints(resource: URI, ran: IRange, token: CancellationToken): Promise<extHostProtocol.IInlayHintsDto | undefined>'
+    is_async: true
+    lines:
+    - 1744
+    - 1769
+    detail:
+      calls:
+      - Array.isArray
+      - JSON.stringify
+      - new DisposableStore
+      - result.hints.push
+      - this._cache.add
+      - this._convertInlayHint
+      - this._disposables.set
+      - this._documents.getDocument
+      - this._isValidInlayHint
+      - this._logService.trace
+      - this._provider.provideInlayHints
+      - typeConvert.Range.to
+  - name: resolveInlayHint
+    sig: 'resolveInlayHint(id: extHostProtocol.ChainedCacheId, token: CancellationToken)'
+    is_async: true
+    lines:
+    - 1771
+    - 1787
+    detail:
+      calls:
+      - this._cache.get
+      - this._convertInlayHint
+      - this._isValidInlayHint
+      - this._provider.resolveInlayHint
+  - name: releaseHints
+    sig: 'releaseHints(id: number): any'
+    lines:
+    - 1789
+    - 1793
+    detail:
+      calls:
+      - this._cache.delete
+      - this._disposables.delete
+      - this._disposables.get
+      - this._disposables.get(id)?.dispose
+  - name: _isValidInlayHint
+    sig: '_isValidInlayHint(hint: vscode.InlayHint, range?: vscode.Range): boolean'
+    vis: private
+    lines:
+    - 1795
+    - 1805
+    detail:
+      calls:
+      - Array.isArray
+      - console.log
+      - hint.label.every
+      - range.contains
+  - name: _convertInlayHint
+    sig: '_convertInlayHint(hint: vscode.InlayHint, id: extHostProtocol.ChainedCacheId): extHostProtocol.IInlayHintDto'
+    vis: private
+    lines:
+    - 1807
+    - 1850
+    detail:
+      calls:
+      - Error
+      - Location.isLocation
+      - console.warn
+      - hint.textEdits.map
+      - parts.push
+      - this._commands.toInternal
+      - this._disposables.get
+      - typeConvert.InlayHintKind.from
+      - typeConvert.MarkdownString.fromStrict
+      - typeConvert.Position.from
+      - typeConvert.location.from
+  lines:
+  - 1731
+  - 1851
+- name: LinkProviderAdapter
+  kind: struct
+  fields:
+  - name: _cache
+    type: any
+    default: new Cache<vscode.DocumentLink>('DocumentLink')
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tprivate readonly _documents: ExtHostDocuments,\n\t\tprivate readonly _provider: vscode.DocumentLinkProvider\n\t)"
+    lines:
+    - 1857
+    - 1860
+    detail: {}
+  - name: provideLinks
+    sig: 'provideLinks(resource: URI, token: CancellationToken): Promise<extHostProtocol.ILinksListDto | undefined>'
+    is_async: true
+    lines:
+    - 1862
+    - 1895
+    detail:
+      calls:
+      - Array.isArray
+      - LinkProviderAdapter._validateLink
+      - links.filter
+      - links.filter(LinkProviderAdapter._validateLink).map
+      - result.links.push
+      - this._cache.add
+      - this._documents.getDocument
+      - this._provider.provideDocumentLinks
+      - typeConvert.DocumentLink.from
+  - name: resolveLink
+    sig: 'resolveLink(id: extHostProtocol.ChainedCacheId, token: CancellationToken): Promise<extHostProtocol.ILinkDto | undefined>'
+    is_async: true
+    lines:
+    - 1905
+    - 1918
+    detail:
+      calls:
+      - LinkProviderAdapter._validateLink
+      - this._cache.get
+      - this._provider.resolveDocumentLink
+      - typeConvert.DocumentLink.from
+  - name: releaseLinks
+    sig: 'releaseLinks(id: number): any'
+    lines:
+    - 1920
+    - 1922
+    detail:
+      calls:
+      - this._cache.delete
+  lines:
+  - 1853
+  - 1923
+- name: ColorProviderAdapter
+  kind: struct
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tprivate _documents: ExtHostDocuments,\n\t\tprivate _provider: vscode.DocumentColorProvider\n\t)"
+    lines:
+    - 1927
+    - 1930
+    detail: {}
+  - name: provideColors
+    sig: 'provideColors(resource: URI, token: CancellationToken): Promise<extHostProtocol.IRawColorInfo[]>'
+    is_async: true
+    lines:
+    - 1932
+    - 1945
+    detail:
+      calls:
+      - Array.isArray
+      - colors.map
+      - this._documents.getDocument
+      - this._provider.provideDocumentColors
+  - name: provideColorPresentations
+    sig: 'provideColorPresentations(resource: URI, raw: extHostProtocol.IRawColorInfo, token: CancellationToken): Promise<languages.IColorPresentation[] | undefined>'
+    is_async: true
+    lines:
+    - 1947
+    - 1956
+    detail:
+      calls:
+      - Array.isArray
+      - this._documents.getDocument
+      - this._provider.provideColorPresentations
+      - typeConvert.Color.to
+      - typeConvert.Range.to
+      - value.map
+  lines:
+  - 1925
+  - 1957
+- name: FoldingProviderAdapter
+  kind: struct
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tprivate _documents: ExtHostDocuments,\n\t\tprivate _provider: vscode.FoldingRangeProvider\n\t)"
+    lines:
+    - 1961
+    - 1964
+    detail: {}
+  - name: provideFoldingRanges
+    sig: 'provideFoldingRanges(resource: URI, context: languages.FoldingContext, token: CancellationToken): Promise<languages.FoldingRange[] | undefined>'
+    is_async: true
+    lines:
+    - 1966
+    - 1973
+    detail:
+      calls:
+      - Array.isArray
+      - ranges.map
+      - this._documents.getDocument
+      - this._provider.provideFoldingRanges
+  lines:
+  - 1959
+  - 1974
+- name: SelectionRangeAdapter
+  kind: struct
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tprivate readonly _documents: ExtHostDocuments,\n\t\tprivate readonly _provider: vscode.SelectionRangeProvider,\n\t\tprivate readonly _logService: ILogService\n\t)"
+    lines:
+    - 1978
+    - 1982
+    detail: {}
+  - name: provideSelectionRanges
+    sig: 'provideSelectionRanges(resource: URI, pos: IPosition[], token: CancellationToken): Promise<languages.SelectionRange[][]>'
+    is_async: true
+    lines:
+    - 1984
+    - 2017
+    detail:
+      calls:
+      - allResults.push
+      - isNonEmptyArray
+      - new Error
+      - oneResult.push
+      - pos.map
+      - selectionRange.range.contains
+      - this._documents.getDocument
+      - this._logService.warn
+      - this._provider.provideSelectionRanges
+      - typeConvert.SelectionRange.from
+  lines:
+  - 1976
+  - 2018
+- name: CallHierarchyAdapter
+  kind: struct
+  fields:
+  - name: _idPool
+    type: any
+    default: new IdGenerator('')
+  - name: _cache
+    type: any
+    default: new Map<string, Map<string, vscode.CallHierarchyItem>>()
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tprivate readonly _documents: ExtHostDocuments,\n\t\tprivate readonly _provider: vscode.CallHierarchyProvider\n\t)"
+    lines:
+    - 2025
+    - 2028
+    detail: {}
+  - name: prepareSession
+    sig: 'prepareSession(uri: URI, position: IPosition, token: CancellationToken): Promise<extHostProtocol.ICallHierarchyItemDto[] | undefined>'
+    is_async: true
+    lines:
+    - 2030
+    - 2047
+    detail:
+      calls:
+      - Array.isArray
+      - items.map
+      - new Map
+      - this._cache.set
+      - this._cacheAndConvertItem
+      - this._documents.getDocument
+      - this._idPool.nextId
+      - this._provider.prepareCallHierarchy
+      - typeConvert.Position.to
+  - name: provideCallsTo
+    sig: 'provideCallsTo(sessionId: string, itemId: string, token: CancellationToken): Promise<extHostProtocol.IIncomingCallDto[] | undefined>'
+    is_async: true
+    lines:
+    - 2049
+    - 2064
+    detail:
+      calls:
+      - calls.map
+      - new Error
+      - this._itemFromCache
+      - this._provider.provideCallHierarchyIncomingCalls
+  - name: provideCallsFrom
+    sig: 'provideCallsFrom(sessionId: string, itemId: string, token: CancellationToken): Promise<extHostProtocol.IOutgoingCallDto[] | undefined>'
+    is_async: true
+    lines:
+    - 2066
+    - 2081
+    detail:
+      calls:
+      - calls.map
+      - new Error
+      - this._itemFromCache
+      - this._provider.provideCallHierarchyOutgoingCalls
+  - name: releaseSession
+    sig: 'releaseSession(sessionId: string): void'
+    lines:
+    - 2083
+    - 2085
+    detail:
+      calls:
+      - this._cache.delete
+  - name: _cacheAndConvertItem
+    sig: '_cacheAndConvertItem(sessionId: string, item: vscode.CallHierarchyItem): extHostProtocol.ICallHierarchyItemDto'
+    vis: private
+    lines:
+    - 2087
+    - 2092
+    detail:
+      calls:
+      - map.set
+      - map.size.toString
+      - this._cache.get
+      - typeConvert.CallHierarchyItem.from
+  lines:
+  - 2020
+  - 2098
+- name: TypeHierarchyAdapter
+  kind: struct
+  fields:
+  - name: _idPool
+    type: any
+    default: new IdGenerator('')
+  - name: _cache
+    type: any
+    default: new Map<string, Map<string, vscode.TypeHierarchyItem>>()
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tprivate readonly _documents: ExtHostDocuments,\n\t\tprivate readonly _provider: vscode.TypeHierarchyProvider\n\t)"
+    lines:
+    - 2105
+    - 2108
+    detail: {}
+  - name: prepareSession
+    sig: 'prepareSession(uri: URI, position: IPosition, token: CancellationToken): Promise<extHostProtocol.ITypeHierarchyItemDto[] | undefined>'
+    is_async: true
+    lines:
+    - 2110
+    - 2127
+    detail:
+      calls:
+      - Array.isArray
+      - items.map
+      - new Map
+      - this._cache.set
+      - this._cacheAndConvertItem
+      - this._documents.getDocument
+      - this._idPool.nextId
+      - this._provider.prepareTypeHierarchy
+      - typeConvert.Position.to
+  - name: provideSupertypes
+    sig: 'provideSupertypes(sessionId: string, itemId: string, token: CancellationToken): Promise<extHostProtocol.ITypeHierarchyItemDto[] | undefined>'
+    is_async: true
+    lines:
+    - 2129
+    - 2141
+    detail:
+      calls:
+      - new Error
+      - supertypes.map
+      - this._itemFromCache
+      - this._provider.provideTypeHierarchySupertypes
+  - name: provideSubtypes
+    sig: 'provideSubtypes(sessionId: string, itemId: string, token: CancellationToken): Promise<extHostProtocol.ITypeHierarchyItemDto[] | undefined>'
+    is_async: true
+    lines:
+    - 2143
+    - 2155
+    detail:
+      calls:
+      - new Error
+      - subtypes.map
+      - this._itemFromCache
+      - this._provider.provideTypeHierarchySubtypes
+  - name: releaseSession
+    sig: 'releaseSession(sessionId: string): void'
+    lines:
+    - 2157
+    - 2159
+    detail:
+      calls:
+      - this._cache.delete
+  - name: _cacheAndConvertItem
+    sig: '_cacheAndConvertItem(sessionId: string, item: vscode.TypeHierarchyItem): extHostProtocol.ITypeHierarchyItemDto'
+    vis: private
+    lines:
+    - 2161
+    - 2166
+    detail:
+      calls:
+      - map.set
+      - map.size.toString
+      - this._cache.get
+      - typeConvert.TypeHierarchyItem.from
+  lines:
+  - 2100
+  - 2172
+- name: DocumentDropEditAdapter
+  kind: struct
+  fields:
+  - name: _cache
+    type: any
+    default: new Cache<vscode.DocumentDropEdit>('DocumentDropEdit')
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tprivate readonly _proxy: extHostProtocol.MainThreadLanguageFeaturesShape,\n\t\tprivate readonly _documents: ExtHostDocuments,\n\t\tprivate readonly _provider: vscode.DocumentDropEditProvider,\n\t\tprivate readonly _handle: number,\n\t\tprivate readonly _extension: IExtensionDescription,\n\t)"
+    lines:
+    - 2178
+    - 2184
+    detail: {}
+  - name: provideDocumentOnDropEdits
+    sig: 'provideDocumentOnDropEdits(requestId: number, uri: URI, position: IPosition, dataTransferDto: extHostProtocol.DataTransferDTO, token: CancellationToken): Promise<extHostProtocol.IDocumentDropEditDto[] | undefined>'
+    is_async: true
+    lines:
+    - 2186
+    - 2209
+    detail:
+      calls:
+      - asArray
+      - editsArray.map
+      - this._cache.add
+      - this._documents.getDocument
+      - this._provider.provideDocumentDropEdits
+      - typeConvert.DataTransfer.toDataTransfer
+      - typeConvert.Position.to
+  - name: resolveDropEdit
+    sig: 'resolveDropEdit(id: extHostProtocol.ChainedCacheId, token: CancellationToken): Promise<{ additionalEdit?: extHostProtocol.IWorkspaceEditDto }>'
+    is_async: true
+    lines:
+    - 2211
+    - 2221
+    detail:
+      calls:
+      - this._cache.get
+      - this._provider.resolveDocumentDropEdit
+      - typeConvert.WorkspaceEdit.from
+  - name: releaseDropEdits
+    sig: 'releaseDropEdits(id: number): any'
+    lines:
+    - 2223
+    - 2225
+    detail:
+      calls:
+      - this._cache.delete
+  lines:
+  - 2174
+  - 2226
+- name: Adapter
+  kind: enum
+  decorators:
+  - type
+  variants:
+  - name: InlineEditAdapter
+  lines:
+  - 2228
+  - 2238
+- name: AdapterData
+  kind: struct
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\treadonly adapter: Adapter,\n\t\treadonly extension: IExtensionDescription\n\t)"
+    lines:
+    - 2241
+    - 2244
+    detail: {}
+  lines:
+  - 2240
+  - 2245
+- name: ExtHostLanguageFeatures
+  kind: struct
+  ctx: '--- outline'
+  fields:
+  - name: _handlePool
+    type: number
+    default: '0'
+  - name: _proxy
+    type: extHostProtocol.MainThreadLanguageFeaturesShape
+  - name: _adapter
+    type: any
+    default: new Map<number, AdapterData>()
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tmainContext: extHostProtocol.IMainContext,\n\t\tprivate readonly _uriTransformer: IURITransformer,\n\t\tprivate readonly _documents: ExtHostDocuments,\n\t\tprivate readonly _commands: ExtHostCommands,\n\t\tprivate readonly _diagnostics: ExtHostDiagnostics,\n\t\tprivate readonly _logService: ILogService,\n\t\tprivate readonly _apiDeprecation: IExtHostApiDeprecationService,\n\t\tprivate readonly _extensionTelemetry: IExtHostTelemetry\n\t)"
+    lines:
+    - 2254
+    - 2265
+    detail:
+      calls:
+      - mainContext.getProxy
+  - name: _withAdapter
+    sig: "_withAdapter(\n\t\thandle: number,\n\t\tctor: { new(...args: any[]): A },\n\t\tcallback: (adapter: A, extension: IExtensionDescription) => Promise<R>,\n\t\tfallbackValue: R,\n\t\ttokenToRaceAgainst: CancellationToken | undefined,\n\t\tdoNotLog: boolean = false\n\t): Promise<R>"
+    is_async: true
+    vis: private
+    lines:
+    - 2283
+    - 2321
+    detail:
+      calls:
+      - CancellationToken.isCancellationToken
+      - Date.now
+      - Promise.resolve
+      - Promise.resolve(result).catch
+      - "Promise.resolve(result).catch(err => {\n\t\t\tif (!isCancellationError(err)) {\n\t\t\t\tthis._logService.erro..."
+      - callback
+      - callback.toString
+      - callback.toString().replace
+      - raceCancellationError
+      - this._adapter.get
+      - this._logService.trace
+  - name: registerDocumentSymbolProvider
+    sig: 'registerDocumentSymbolProvider(extension: IExtensionDescription, selector: vscode.DocumentSelector, provider: vscode.DocumentSymbolProvider, metadata?: vscode.DocumentSymbolProviderMetadata): vscode.Disposable'
+    lines:
+    - 2339
+    - 2344
+    detail:
+      calls:
+      - ExtHostLanguageFeatures._extLabel
+      - new DocumentSymbolAdapter
+      - this._addNewAdapter
+      - this._createDisposable
+      - this._proxy.$registerDocumentSymbolProvider
+      - this._transformDocumentSelector
+  - name: $provideDocumentSymbols
+    sig: '$provideDocumentSymbols(handle: number, resource: UriComponents, token: CancellationToken): Promise<languages.DocumentSymbol[] | undefined>'
+    lines:
+    - 2346
+    - 2348
+    detail:
+      calls:
+      - this._withAdapter
+  - name: registerCodeLensProvider
+    sig: 'registerCodeLensProvider(extension: IExtensionDescription, selector: vscode.DocumentSelector, provider: vscode.CodeLensProvider): vscode.Disposable'
+    lines:
+    - 2352
+    - 2366
+    detail:
+      calls:
+      - Disposable.from
+      - new AdapterData
+      - new CodeLensAdapter
+      - provider.onDidChangeCodeLenses!
+      - this._adapter.set
+      - this._createDisposable
+      - this._nextHandle
+      - this._proxy.$registerCodeLensSupport
+      - this._transformDocumentSelector
+  - name: $provideCodeLenses
+    sig: '$provideCodeLenses(handle: number, resource: UriComponents, token: CancellationToken): Promise<extHostProtocol.ICodeLensListDto | undefined>'
+    lines:
+    - 2368
+    - 2370
+    detail:
+      calls:
+      - this._withAdapter
+  - name: $resolveCodeLens
+    sig: '$resolveCodeLens(handle: number, symbol: extHostProtocol.ICodeLensDto, token: CancellationToken): Promise<extHostProtocol.ICodeLensDto | undefined>'
+    lines:
+    - 2372
+    - 2374
+    detail:
+      calls:
+      - this._withAdapter
+  - name: $releaseCodeLenses
+    sig: '$releaseCodeLenses(handle: number, cacheId: number): void'
+    lines:
+    - 2376
+    - 2378
+    detail:
+      calls:
+      - this._withAdapter
+  - name: registerDefinitionProvider
+    sig: 'registerDefinitionProvider(extension: IExtensionDescription, selector: vscode.DocumentSelector, provider: vscode.DefinitionProvider): vscode.Disposable'
+    lines:
+    - 2382
+    - 2386
+    detail:
+      calls:
+      - new DefinitionAdapter
+      - this._addNewAdapter
+      - this._createDisposable
+      - this._proxy.$registerDefinitionSupport
+      - this._transformDocumentSelector
+  - name: $provideDefinition
+    sig: '$provideDefinition(handle: number, resource: UriComponents, position: IPosition, token: CancellationToken): Promise<languages.LocationLink[]>'
+    lines:
+    - 2388
+    - 2390
+    detail:
+      calls:
+      - this._withAdapter
+  - name: registerDeclarationProvider
+    sig: 'registerDeclarationProvider(extension: IExtensionDescription, selector: vscode.DocumentSelector, provider: vscode.DeclarationProvider): vscode.Disposable'
+    lines:
+    - 2392
+    - 2396
+    detail:
+      calls:
+      - new DeclarationAdapter
+      - this._addNewAdapter
+      - this._createDisposable
+      - this._proxy.$registerDeclarationSupport
+      - this._transformDocumentSelector
+  - name: $provideDeclaration
+    sig: '$provideDeclaration(handle: number, resource: UriComponents, position: IPosition, token: CancellationToken): Promise<languages.LocationLink[]>'
+    lines:
+    - 2398
+    - 2400
+    detail:
+      calls:
+      - this._withAdapter
+  - name: registerImplementationProvider
+    sig: 'registerImplementationProvider(extension: IExtensionDescription, selector: vscode.DocumentSelector, provider: vscode.ImplementationProvider): vscode.Disposable'
+    lines:
+    - 2402
+    - 2406
+    detail:
+      calls:
+      - new ImplementationAdapter
+      - this._addNewAdapter
+      - this._createDisposable
+      - this._proxy.$registerImplementationSupport
+      - this._transformDocumentSelector
+  - name: $provideImplementation
+    sig: '$provideImplementation(handle: number, resource: UriComponents, position: IPosition, token: CancellationToken): Promise<languages.LocationLink[]>'
+    lines:
+    - 2408
+    - 2410
+    detail:
+      calls:
+      - this._withAdapter
+  - name: registerTypeDefinitionProvider
+    sig: 'registerTypeDefinitionProvider(extension: IExtensionDescription, selector: vscode.DocumentSelector, provider: vscode.TypeDefinitionProvider): vscode.Disposable'
+    lines:
+    - 2412
+    - 2416
+    detail:
+      calls:
+      - new TypeDefinitionAdapter
+      - this._addNewAdapter
+      - this._createDisposable
+      - this._proxy.$registerTypeDefinitionSupport
+      - this._transformDocumentSelector
+  - name: $provideTypeDefinition
+    sig: '$provideTypeDefinition(handle: number, resource: UriComponents, position: IPosition, token: CancellationToken): Promise<languages.LocationLink[]>'
+    lines:
+    - 2418
+    - 2420
+    detail:
+      calls:
+      - this._withAdapter
+  - name: registerHoverProvider
+    sig: 'registerHoverProvider(extension: IExtensionDescription, selector: vscode.DocumentSelector, provider: vscode.HoverProvider, extensionId?: ExtensionIdentifier): vscode.Disposable'
+    lines:
+    - 2424
+    - 2428
+    detail:
+      calls:
+      - new HoverAdapter
+      - this._addNewAdapter
+      - this._createDisposable
+      - this._proxy.$registerHoverProvider
+      - this._transformDocumentSelector
+  - name: $provideHover
+    sig: '$provideHover(handle: number, resource: UriComponents, position: IPosition, context: languages.HoverContext<{ id: number }> | undefined, token: CancellationToken,): Promise<extHostProtocol.HoverWithId | undefined>'
+    lines:
+    - 2430
+    - 2432
+    detail:
+      calls:
+      - this._withAdapter
+  - name: $releaseHover
+    sig: '$releaseHover(handle: number, id: number): void'
+    lines:
+    - 2434
+    - 2436
+    detail:
+      calls:
+      - this._withAdapter
+  - name: registerEvaluatableExpressionProvider
+    sig: 'registerEvaluatableExpressionProvider(extension: IExtensionDescription, selector: vscode.DocumentSelector, provider: vscode.EvaluatableExpressionProvider, extensionId?: ExtensionIdentifier): vscode.Disposable'
+    lines:
+    - 2440
+    - 2444
+    detail:
+      calls:
+      - new EvaluatableExpressionAdapter
+      - this._addNewAdapter
+      - this._createDisposable
+      - this._proxy.$registerEvaluatableExpressionProvider
+      - this._transformDocumentSelector
+  - name: $provideEvaluatableExpression
+    sig: '$provideEvaluatableExpression(handle: number, resource: UriComponents, position: IPosition, token: CancellationToken): Promise<languages.EvaluatableExpression | undefined>'
+    lines:
+    - 2446
+    - 2448
+    detail:
+      calls:
+      - this._withAdapter
+  - name: registerInlineValuesProvider
+    sig: 'registerInlineValuesProvider(extension: IExtensionDescription, selector: vscode.DocumentSelector, provider: vscode.InlineValuesProvider, extensionId?: ExtensionIdentifier): vscode.Disposable'
+    lines:
+    - 2452
+    - 2465
+    detail:
+      calls:
+      - Disposable.from
+      - new InlineValuesAdapter
+      - provider.onDidChangeInlineValues!
+      - this._addNewAdapter
+      - this._createDisposable
+      - this._nextHandle
+      - this._proxy.$registerInlineValuesProvider
+      - this._transformDocumentSelector
+  - name: $provideInlineValues
+    sig: '$provideInlineValues(handle: number, resource: UriComponents, range: IRange, context: extHostProtocol.IInlineValueContextDto, token: CancellationToken): Promise<languages.InlineValue[] | undefined>'
+    lines:
+    - 2467
+    - 2469
+    detail:
+      calls:
+      - this._withAdapter
+  - name: registerDocumentHighlightProvider
+    sig: 'registerDocumentHighlightProvider(extension: IExtensionDescription, selector: vscode.DocumentSelector, provider: vscode.DocumentHighlightProvider): vscode.Disposable'
+    lines:
+    - 2473
+    - 2477
+    detail:
+      calls:
+      - new DocumentHighlightAdapter
+      - this._addNewAdapter
+      - this._createDisposable
+      - this._proxy.$registerDocumentHighlightProvider
+      - this._transformDocumentSelector
+  - name: registerMultiDocumentHighlightProvider
+    sig: 'registerMultiDocumentHighlightProvider(extension: IExtensionDescription, selector: vscode.DocumentSelector, provider: vscode.MultiDocumentHighlightProvider): vscode.Disposable'
+    lines:
+    - 2479
+    - 2483
+    detail:
+      calls:
+      - new MultiDocumentHighlightAdapter
+      - this._addNewAdapter
+      - this._createDisposable
+      - this._proxy.$registerMultiDocumentHighlightProvider
+      - this._transformDocumentSelector
+  - name: $provideDocumentHighlights
+    sig: '$provideDocumentHighlights(handle: number, resource: UriComponents, position: IPosition, token: CancellationToken): Promise<languages.DocumentHighlight[] | undefined>'
+    lines:
+    - 2485
+    - 2487
+    detail:
+      calls:
+      - this._withAdapter
+  - name: $provideMultiDocumentHighlights
+    sig: '$provideMultiDocumentHighlights(handle: number, resource: UriComponents, position: IPosition, otherModels: UriComponents[], token: CancellationToken): Promise<languages.MultiDocumentHighlight[] | undefined>'
+    lines:
+    - 2489
+    - 2491
+    detail:
+      calls:
+      - this._withAdapter
+  - name: registerLinkedEditingRangeProvider
+    sig: 'registerLinkedEditingRangeProvider(extension: IExtensionDescription, selector: vscode.DocumentSelector, provider: vscode.LinkedEditingRangeProvider): vscode.Disposable'
+    lines:
+    - 2495
+    - 2499
+    detail:
+      calls:
+      - new LinkedEditingRangeAdapter
+      - this._addNewAdapter
+      - this._createDisposable
+      - this._proxy.$registerLinkedEditingRangeProvider
+      - this._transformDocumentSelector
+  - name: $provideLinkedEditingRanges
+    sig: '$provideLinkedEditingRanges(handle: number, resource: UriComponents, position: IPosition, token: CancellationToken): Promise<extHostProtocol.ILinkedEditingRangesDto | undefined>'
+    lines:
+    - 2501
+    - 2512
+    detail:
+      calls:
+      - this._withAdapter
+  - name: registerReferenceProvider
+    sig: 'registerReferenceProvider(extension: IExtensionDescription, selector: vscode.DocumentSelector, provider: vscode.ReferenceProvider): vscode.Disposable'
+    lines:
+    - 2516
+    - 2520
+    detail:
+      calls:
+      - new ReferenceAdapter
+      - this._addNewAdapter
+      - this._createDisposable
+      - this._proxy.$registerReferenceSupport
+      - this._transformDocumentSelector
+  - name: $provideReferences
+    sig: '$provideReferences(handle: number, resource: UriComponents, position: IPosition, context: languages.ReferenceContext, token: CancellationToken): Promise<languages.Location[] | undefined>'
+    lines:
+    - 2522
+    - 2524
+    detail:
+      calls:
+      - this._withAdapter
+  - name: registerCodeActionProvider
+    sig: 'registerCodeActionProvider(extension: IExtensionDescription, selector: vscode.DocumentSelector, provider: vscode.CodeActionProvider, metadata?: vscode.CodeActionProviderMetadata): vscode.Disposable'
+    lines:
+    - 2528
+    - 2540
+    detail:
+      calls:
+      - Boolean
+      - ExtHostLanguageFeatures._extId
+      - ExtHostLanguageFeatures._extLabel
+      - metadata?.documentation?.map
+      - metadata?.providedCodeActionKinds?.map
+      - new CodeActionAdapter
+      - new DisposableStore
+      - store.add
+      - this._addNewAdapter
+      - this._createDisposable
+      - this._proxy.$registerCodeActionSupport
+      - this._transformDocumentSelector
+  - name: $provideCodeActions
+    sig: '$provideCodeActions(handle: number, resource: UriComponents, rangeOrSelection: IRange | ISelection, context: languages.CodeActionContext, token: CancellationToken): Promise<extHostProtocol.ICodeActionListDto | undefined>'
+    lines:
+    - 2543
+    - 2545
+    detail:
+      calls:
+      - this._withAdapter
+  - name: $resolveCodeAction
+    sig: '$resolveCodeAction(handle: number, id: extHostProtocol.ChainedCacheId, token: CancellationToken): Promise<{ edit?: extHostProtocol.IWorkspaceEditDto; command?: extHostProtocol.ICommandDto }>'
+    lines:
+    - 2547
+    - 2549
+    detail:
+      calls:
+      - this._withAdapter
+  - name: $releaseCodeActions
+    sig: '$releaseCodeActions(handle: number, cacheId: number): void'
+    lines:
+    - 2551
+    - 2553
+    detail:
+      calls:
+      - this._withAdapter
+  - name: registerDocumentFormattingEditProvider
+    sig: 'registerDocumentFormattingEditProvider(extension: IExtensionDescription, selector: vscode.DocumentSelector, provider: vscode.DocumentFormattingEditProvider): vscode.Disposable'
+    lines:
+    - 2557
+    - 2561
+    detail:
+      calls:
+      - new DocumentFormattingAdapter
+      - this._addNewAdapter
+      - this._createDisposable
+      - this._proxy.$registerDocumentFormattingSupport
+      - this._transformDocumentSelector
+  - name: $provideDocumentFormattingEdits
+    sig: '$provideDocumentFormattingEdits(handle: number, resource: UriComponents, options: languages.FormattingOptions, token: CancellationToken): Promise<languages.TextEdit[] | undefined>'
+    lines:
+    - 2563
+    - 2565
+    detail:
+      calls:
+      - this._withAdapter
+  - name: registerDocumentRangeFormattingEditProvider
+    sig: 'registerDocumentRangeFormattingEditProvider(extension: IExtensionDescription, selector: vscode.DocumentSelector, provider: vscode.DocumentRangeFormattingEditProvider): vscode.Disposable'
+    lines:
+    - 2567
+    - 2572
+    detail:
+      calls:
+      - new RangeFormattingAdapter
+      - this._addNewAdapter
+      - this._createDisposable
+      - this._proxy.$registerRangeFormattingSupport
+      - this._transformDocumentSelector
+  - name: $provideDocumentRangeFormattingEdits
+    sig: '$provideDocumentRangeFormattingEdits(handle: number, resource: UriComponents, range: IRange, options: languages.FormattingOptions, token: CancellationToken): Promise<languages.TextEdit[] | undefined>'
+    lines:
+    - 2574
+    - 2576
+    detail:
+      calls:
+      - this._withAdapter
+  - name: $provideDocumentRangesFormattingEdits
+    sig: '$provideDocumentRangesFormattingEdits(handle: number, resource: UriComponents, ranges: IRange[], options: languages.FormattingOptions, token: CancellationToken): Promise<languages.TextEdit[] | undefined>'
+    lines:
+    - 2578
+    - 2580
+    detail:
+      calls:
+      - this._withAdapter
+  - name: registerOnTypeFormattingEditProvider
+    sig: 'registerOnTypeFormattingEditProvider(extension: IExtensionDescription, selector: vscode.DocumentSelector, provider: vscode.OnTypeFormattingEditProvider, triggerCharacters: string[]): vscode.Disposable'
+    lines:
+    - 2582
+    - 2586
+    detail:
+      calls:
+      - new OnTypeFormattingAdapter
+      - this._addNewAdapter
+      - this._createDisposable
+      - this._proxy.$registerOnTypeFormattingSupport
+      - this._transformDocumentSelector
+  - name: $provideOnTypeFormattingEdits
+    sig: '$provideOnTypeFormattingEdits(handle: number, resource: UriComponents, position: IPosition, ch: string, options: languages.FormattingOptions, token: CancellationToken): Promise<languages.TextEdit[] | undefined>'
+    lines:
+    - 2588
+    - 2590
+    detail:
+      calls:
+      - this._withAdapter
+  - name: registerWorkspaceSymbolProvider
+    sig: 'registerWorkspaceSymbolProvider(extension: IExtensionDescription, provider: vscode.WorkspaceSymbolProvider): vscode.Disposable'
+    lines:
+    - 2594
+    - 2598
+    detail:
+      calls:
+      - new NavigateTypeAdapter
+      - this._addNewAdapter
+      - this._createDisposable
+      - this._proxy.$registerNavigateTypeSupport
+  - name: $provideWorkspaceSymbols
+    sig: '$provideWorkspaceSymbols(handle: number, search: string, token: CancellationToken): Promise<extHostProtocol.IWorkspaceSymbolsDto>'
+    lines:
+    - 2600
+    - 2602
+    detail:
+      calls:
+      - this._withAdapter
+  - name: $resolveWorkspaceSymbol
+    sig: '$resolveWorkspaceSymbol(handle: number, symbol: extHostProtocol.IWorkspaceSymbolDto, token: CancellationToken): Promise<extHostProtocol.IWorkspaceSymbolDto | undefined>'
+    lines:
+    - 2604
+    - 2606
+    detail:
+      calls:
+      - this._withAdapter
+  - name: $releaseWorkspaceSymbols
+    sig: '$releaseWorkspaceSymbols(handle: number, id: number): void'
+    lines:
+    - 2608
+    - 2610
+    detail:
+      calls:
+      - this._withAdapter
+  - name: registerRenameProvider
+    sig: 'registerRenameProvider(extension: IExtensionDescription, selector: vscode.DocumentSelector, provider: vscode.RenameProvider): vscode.Disposable'
+    lines:
+    - 2614
+    - 2618
+    detail:
+      calls:
+      - RenameAdapter.supportsResolving
+      - new RenameAdapter
+      - this._addNewAdapter
+      - this._createDisposable
+      - this._proxy.$registerRenameSupport
+      - this._transformDocumentSelector
+  - name: $provideRenameEdits
+    sig: '$provideRenameEdits(handle: number, resource: UriComponents, position: IPosition, newName: string, token: CancellationToken): Promise<extHostProtocol.IWorkspaceEditDto | undefined>'
+    lines:
+    - 2620
+    - 2622
+    detail:
+      calls:
+      - this._withAdapter
+  - name: $resolveRenameLocation
+    sig: '$resolveRenameLocation(handle: number, resource: URI, position: IPosition, token: CancellationToken): Promise<languages.RenameLocation | undefined>'
+    lines:
+    - 2624
+    - 2626
+    detail:
+      calls:
+      - this._withAdapter
+  - name: registerNewSymbolNamesProvider
+    sig: 'registerNewSymbolNamesProvider(extension: IExtensionDescription, selector: vscode.DocumentSelector, provider: vscode.NewSymbolNamesProvider): vscode.Disposable'
+    lines:
+    - 2628
+    - 2632
+    detail:
+      calls:
+      - new NewSymbolNamesAdapter
+      - this._addNewAdapter
+      - this._createDisposable
+      - this._proxy.$registerNewSymbolNamesProvider
+      - this._transformDocumentSelector
+  - name: $supportsAutomaticNewSymbolNamesTriggerKind
+    sig: '$supportsAutomaticNewSymbolNamesTriggerKind(handle: number): Promise<boolean | undefined>'
+    lines:
+    - 2634
+    - 2642
+    detail:
+      calls:
+      - this._withAdapter
+  - name: $provideNewSymbolNames
+    sig: '$provideNewSymbolNames(handle: number, resource: UriComponents, range: IRange, triggerKind: languages.NewSymbolNameTriggerKind, token: CancellationToken): Promise<languages.NewSymbolName[] | undefined>'
+    lines:
+    - 2644
+    - 2646
+    detail:
+      calls:
+      - this._withAdapter
+  - name: registerDocumentSemanticTokensProvider
+    sig: 'registerDocumentSemanticTokensProvider(extension: IExtensionDescription, selector: vscode.DocumentSelector, provider: vscode.DocumentSemanticTokensProvider, legend: vscode.SemanticTokensLegend): vscode.Disposable'
+    lines:
+    - 2650
+    - 2662
+    detail:
+      calls:
+      - Disposable.from
+      - new DocumentSemanticTokensAdapter
+      - provider.onDidChangeSemanticTokens!
+      - this._addNewAdapter
+      - this._createDisposable
+      - this._nextHandle
+      - this._proxy.$registerDocumentSemanticTokensProvider
+      - this._transformDocumentSelector
+  - name: $provideDocumentSemanticTokens
+    sig: '$provideDocumentSemanticTokens(handle: number, resource: UriComponents, previousResultId: number, token: CancellationToken): Promise<VSBuffer | null>'
+    lines:
+    - 2664
+    - 2666
+    detail:
+      calls:
+      - this._withAdapter
+  - name: $releaseDocumentSemanticTokens
+    sig: '$releaseDocumentSemanticTokens(handle: number, semanticColoringResultId: number): void'
+    lines:
+    - 2668
+    - 2670
+    detail:
+      calls:
+      - this._withAdapter
+  - name: registerDocumentRangeSemanticTokensProvider
+    sig: 'registerDocumentRangeSemanticTokensProvider(extension: IExtensionDescription, selector: vscode.DocumentSelector, provider: vscode.DocumentRangeSemanticTokensProvider, legend: vscode.SemanticTokensLegend): vscode.Disposable'
+    lines:
+    - 2672
+    - 2676
+    detail:
+      calls:
+      - new DocumentRangeSemanticTokensAdapter
+      - this._addNewAdapter
+      - this._createDisposable
+      - this._proxy.$registerDocumentRangeSemanticTokensProvider
+      - this._transformDocumentSelector
+  - name: $provideDocumentRangeSemanticTokens
+    sig: '$provideDocumentRangeSemanticTokens(handle: number, resource: UriComponents, range: IRange, token: CancellationToken): Promise<VSBuffer | null>'
+    lines:
+    - 2678
+    - 2680
+    detail:
+      calls:
+      - this._withAdapter
+  - name: registerCompletionItemProvider
+    sig: 'registerCompletionItemProvider(extension: IExtensionDescription, selector: vscode.DocumentSelector, provider: vscode.CompletionItemProvider, triggerCharacters: string[]): vscode.Disposable'
+    lines:
+    - 2686
+    - 2690
+    detail:
+      calls:
+      - CompletionsAdapter.supportsResolving
+      - new CompletionsAdapter
+      - this._addNewAdapter
+      - this._createDisposable
+      - this._proxy.$registerCompletionsProvider
+      - this._transformDocumentSelector
+  - name: $provideCompletionItems
+    sig: '$provideCompletionItems(handle: number, resource: UriComponents, position: IPosition, context: languages.CompletionContext, token: CancellationToken): Promise<extHostProtocol.ISuggestResultDto | undefined>'
+    lines:
+    - 2692
+    - 2694
+    detail:
+      calls:
+      - this._withAdapter
+  - name: $resolveCompletionItem
+    sig: '$resolveCompletionItem(handle: number, id: extHostProtocol.ChainedCacheId, token: CancellationToken): Promise<extHostProtocol.ISuggestDataDto | undefined>'
+    lines:
+    - 2696
+    - 2698
+    detail:
+      calls:
+      - this._withAdapter
+  - name: $releaseCompletionItems
+    sig: '$releaseCompletionItems(handle: number, id: number): void'
+    lines:
+    - 2700
+    - 2702
+    detail:
+      calls:
+      - this._withAdapter
+  - name: registerInlineCompletionsProvider
+    sig: 'registerInlineCompletionsProvider(extension: IExtensionDescription, selector: vscode.DocumentSelector, provider: vscode.InlineCompletionItemProvider, metadata: vscode.InlineCompletionItemProviderMetadata | undefined): vscode.Disposable'
+    lines:
+    - 2706
+    - 2719
+    detail:
+      calls:
+      - ExtensionIdentifier.toKey
+      - metadata?.yieldTo?.map
+      - new InlineCompletionAdapter
+      - this._addNewAdapter
+      - this._createDisposable
+      - this._proxy.$registerInlineCompletionsSupport
+      - this._transformDocumentSelector
+  - name: $provideInlineCompletions
+    sig: '$provideInlineCompletions(handle: number, resource: UriComponents, position: IPosition, context: languages.InlineCompletionContext, token: CancellationToken): Promise<extHostProtocol.IdentifiableInlineCompletions | undefined>'
+    lines:
+    - 2721
+    - 2723
+    detail:
+      calls:
+      - this._withAdapter
+  - name: $provideInlineEditsForRange
+    sig: '$provideInlineEditsForRange(handle: number, resource: UriComponents, range: IRange, context: languages.InlineCompletionContext, token: CancellationToken): Promise<extHostProtocol.IdentifiableInlineCompletions | undefined>'
+    lines:
+    - 2725
+    - 2727
+    detail:
+      calls:
+      - this._withAdapter
+  - name: $handleInlineCompletionDidShow
+    sig: '$handleInlineCompletionDidShow(handle: number, pid: number, idx: number, updatedInsertText: string): void'
+    lines:
+    - 2729
+    - 2733
+    detail:
+      calls:
+      - this._withAdapter
+  - name: $handleInlineCompletionPartialAccept
+    sig: '$handleInlineCompletionPartialAccept(handle: number, pid: number, idx: number, acceptedCharacters: number, info: languages.PartialAcceptInfo): void'
+    lines:
+    - 2735
+    - 2739
+    detail:
+      calls:
+      - this._withAdapter
+  - name: $handleInlineCompletionRejection
+    sig: '$handleInlineCompletionRejection(handle: number, pid: number, idx: number): void'
+    lines:
+    - 2741
+    - 2745
+    detail:
+      calls:
+      - this._withAdapter
+  - name: $freeInlineCompletionsList
+    sig: '$freeInlineCompletionsList(handle: number, pid: number): void'
+    lines:
+    - 2747
+    - 2749
+    detail:
+      calls:
+      - this._withAdapter
+  - name: registerInlineEditProvider
+    sig: 'registerInlineEditProvider(extension: IExtensionDescription, selector: vscode.DocumentSelector, provider: vscode.InlineEditProvider): vscode.Disposable'
+    lines:
+    - 2753
+    - 2758
+    detail:
+      calls:
+      - new InlineEditAdapter
+      - this._addNewAdapter
+      - this._createDisposable
+      - this._proxy.$registerInlineEditProvider
+      - this._transformDocumentSelector
+  - name: $provideInlineEdit
+    sig: '$provideInlineEdit(handle: number, resource: UriComponents, context: languages.IInlineEditContext, token: CancellationToken): Promise<extHostProtocol.IdentifiableInlineEdit | undefined>'
+    lines:
+    - 2760
+    - 2762
+    detail:
+      calls:
+      - this._withAdapter
+  - name: $freeInlineEdit
+    sig: '$freeInlineEdit(handle: number, pid: number): void'
+    lines:
+    - 2764
+    - 2766
+    detail:
+      calls:
+      - this._withAdapter
+  - name: registerSignatureHelpProvider
+    sig: 'registerSignatureHelpProvider(extension: IExtensionDescription, selector: vscode.DocumentSelector, provider: vscode.SignatureHelpProvider, metadataOrTriggerChars: string[] | vscode.SignatureHelpProviderMetadata): vscode.Disposable'
+    lines:
+    - 2770
+    - 2778
+    detail:
+      calls:
+      - Array.isArray
+      - new SignatureHelpAdapter
+      - this._addNewAdapter
+      - this._createDisposable
+      - this._proxy.$registerSignatureHelpProvider
+      - this._transformDocumentSelector
+  - name: $provideSignatureHelp
+    sig: '$provideSignatureHelp(handle: number, resource: UriComponents, position: IPosition, context: extHostProtocol.ISignatureHelpContextDto, token: CancellationToken): Promise<extHostProtocol.ISignatureHelpDto | undefined>'
+    lines:
+    - 2780
+    - 2782
+    detail:
+      calls:
+      - this._withAdapter
+  - name: $releaseSignatureHelp
+    sig: '$releaseSignatureHelp(handle: number, id: number): void'
+    lines:
+    - 2784
+    - 2786
+    detail:
+      calls:
+      - this._withAdapter
+  - name: registerInlayHintsProvider
+    sig: 'registerInlayHintsProvider(extension: IExtensionDescription, selector: vscode.DocumentSelector, provider: vscode.InlayHintsProvider): vscode.Disposable'
+    lines:
+    - 2790
+    - 2803
+    detail:
+      calls:
+      - Disposable.from
+      - ExtHostLanguageFeatures._extLabel
+      - new InlayHintsAdapter
+      - provider.onDidChangeInlayHints!
+      - this._addNewAdapter
+      - this._createDisposable
+      - this._nextHandle
+      - this._proxy.$registerInlayHintsProvider
+      - this._transformDocumentSelector
+  - name: $provideInlayHints
+    sig: '$provideInlayHints(handle: number, resource: UriComponents, range: IRange, token: CancellationToken): Promise<extHostProtocol.IInlayHintsDto | undefined>'
+    lines:
+    - 2805
+    - 2807
+    detail:
+      calls:
+      - this._withAdapter
+  - name: $resolveInlayHint
+    sig: '$resolveInlayHint(handle: number, id: extHostProtocol.ChainedCacheId, token: CancellationToken): Promise<extHostProtocol.IInlayHintDto | undefined>'
+    lines:
+    - 2809
+    - 2811
+    detail:
+      calls:
+      - this._withAdapter
+  - name: $releaseInlayHints
+    sig: '$releaseInlayHints(handle: number, id: number): void'
+    lines:
+    - 2813
+    - 2815
+    detail:
+      calls:
+      - this._withAdapter
+  - name: registerDocumentLinkProvider
+    sig: 'registerDocumentLinkProvider(extension: IExtensionDescription, selector: vscode.DocumentSelector, provider: vscode.DocumentLinkProvider): vscode.Disposable'
+    lines:
+    - 2819
+    - 2823
+    detail:
+      calls:
+      - new LinkProviderAdapter
+      - this._addNewAdapter
+      - this._createDisposable
+      - this._proxy.$registerDocumentLinkProvider
+      - this._transformDocumentSelector
+  - name: $provideDocumentLinks
+    sig: '$provideDocumentLinks(handle: number, resource: UriComponents, token: CancellationToken): Promise<extHostProtocol.ILinksListDto | undefined>'
+    lines:
+    - 2825
+    - 2827
+    detail:
+      calls:
+      - this._withAdapter
+  - name: $resolveDocumentLink
+    sig: '$resolveDocumentLink(handle: number, id: extHostProtocol.ChainedCacheId, token: CancellationToken): Promise<extHostProtocol.ILinkDto | undefined>'
+    lines:
+    - 2829
+    - 2831
+    detail:
+      calls:
+      - this._withAdapter
+  - name: $releaseDocumentLinks
+    sig: '$releaseDocumentLinks(handle: number, id: number): void'
+    lines:
+    - 2833
+    - 2835
+    detail:
+      calls:
+      - this._withAdapter
+  - name: registerColorProvider
+    sig: 'registerColorProvider(extension: IExtensionDescription, selector: vscode.DocumentSelector, provider: vscode.DocumentColorProvider): vscode.Disposable'
+    lines:
+    - 2837
+    - 2841
+    detail:
+      calls:
+      - new ColorProviderAdapter
+      - this._addNewAdapter
+      - this._createDisposable
+      - this._proxy.$registerDocumentColorProvider
+      - this._transformDocumentSelector
+  - name: $provideDocumentColors
+    sig: '$provideDocumentColors(handle: number, resource: UriComponents, token: CancellationToken): Promise<extHostProtocol.IRawColorInfo[]>'
+    lines:
+    - 2843
+    - 2845
+    detail:
+      calls:
+      - this._withAdapter
+  - name: $provideColorPresentations
+    sig: '$provideColorPresentations(handle: number, resource: UriComponents, colorInfo: extHostProtocol.IRawColorInfo, token: CancellationToken): Promise<languages.IColorPresentation[] | undefined>'
+    lines:
+    - 2847
+    - 2849
+    detail:
+      calls:
+      - this._withAdapter
+  - name: registerFoldingRangeProvider
+    sig: 'registerFoldingRangeProvider(extension: IExtensionDescription, selector: vscode.DocumentSelector, provider: vscode.FoldingRangeProvider): vscode.Disposable'
+    lines:
+    - 2851
+    - 2865
+    detail:
+      calls:
+      - Disposable.from
+      - new AdapterData
+      - new FoldingProviderAdapter
+      - provider.onDidChangeFoldingRanges!
+      - this._adapter.set
+      - this._createDisposable
+      - this._nextHandle
+      - this._proxy.$registerFoldingRangeProvider
+      - this._transformDocumentSelector
+  - name: $provideFoldingRanges
+    sig: '$provideFoldingRanges(handle: number, resource: UriComponents, context: vscode.FoldingContext, token: CancellationToken): Promise<languages.FoldingRange[] | undefined>'
+    lines:
+    - 2867
+    - 2876
+    detail:
+      calls:
+      - this._withAdapter
+  - name: registerSelectionRangeProvider
+    sig: 'registerSelectionRangeProvider(extension: IExtensionDescription, selector: vscode.DocumentSelector, provider: vscode.SelectionRangeProvider): vscode.Disposable'
+    lines:
+    - 2880
+    - 2884
+    detail:
+      calls:
+      - new SelectionRangeAdapter
+      - this._addNewAdapter
+      - this._createDisposable
+      - this._proxy.$registerSelectionRangeProvider
+      - this._transformDocumentSelector
+  - name: $provideSelectionRanges
+    sig: '$provideSelectionRanges(handle: number, resource: UriComponents, positions: IPosition[], token: CancellationToken): Promise<languages.SelectionRange[][]>'
+    lines:
+    - 2886
+    - 2888
+    detail:
+      calls:
+      - this._withAdapter
+  - name: registerCallHierarchyProvider
+    sig: 'registerCallHierarchyProvider(extension: IExtensionDescription, selector: vscode.DocumentSelector, provider: vscode.CallHierarchyProvider): vscode.Disposable'
+    lines:
+    - 2892
+    - 2896
+    detail:
+      calls:
+      - new CallHierarchyAdapter
+      - this._addNewAdapter
+      - this._createDisposable
+      - this._proxy.$registerCallHierarchyProvider
+      - this._transformDocumentSelector
+  - name: $prepareCallHierarchy
+    sig: '$prepareCallHierarchy(handle: number, resource: UriComponents, position: IPosition, token: CancellationToken): Promise<extHostProtocol.ICallHierarchyItemDto[] | undefined>'
+    lines:
+    - 2898
+    - 2900
+    detail:
+      calls:
+      - this._withAdapter
+  - name: $provideCallHierarchyIncomingCalls
+    sig: '$provideCallHierarchyIncomingCalls(handle: number, sessionId: string, itemId: string, token: CancellationToken): Promise<extHostProtocol.IIncomingCallDto[] | undefined>'
+    lines:
+    - 2902
+    - 2904
+    detail:
+      calls:
+      - this._withAdapter
+  - name: $provideCallHierarchyOutgoingCalls
+    sig: '$provideCallHierarchyOutgoingCalls(handle: number, sessionId: string, itemId: string, token: CancellationToken): Promise<extHostProtocol.IOutgoingCallDto[] | undefined>'
+    lines:
+    - 2906
+    - 2908
+    detail:
+      calls:
+      - this._withAdapter
+  - name: $releaseCallHierarchy
+    sig: '$releaseCallHierarchy(handle: number, sessionId: string): void'
+    lines:
+    - 2910
+    - 2912
+    detail:
+      calls:
+      - this._withAdapter
+  - name: registerTypeHierarchyProvider
+    sig: 'registerTypeHierarchyProvider(extension: IExtensionDescription, selector: vscode.DocumentSelector, provider: vscode.TypeHierarchyProvider): vscode.Disposable'
+    lines:
+    - 2915
+    - 2919
+    detail:
+      calls:
+      - new TypeHierarchyAdapter
+      - this._addNewAdapter
+      - this._createDisposable
+      - this._proxy.$registerTypeHierarchyProvider
+      - this._transformDocumentSelector
+  - name: $prepareTypeHierarchy
+    sig: '$prepareTypeHierarchy(handle: number, resource: UriComponents, position: IPosition, token: CancellationToken): Promise<extHostProtocol.ITypeHierarchyItemDto[] | undefined>'
+    lines:
+    - 2921
+    - 2923
+    detail:
+      calls:
+      - this._withAdapter
+  - name: $provideTypeHierarchySupertypes
+    sig: '$provideTypeHierarchySupertypes(handle: number, sessionId: string, itemId: string, token: CancellationToken): Promise<extHostProtocol.ITypeHierarchyItemDto[] | undefined>'
+    lines:
+    - 2925
+    - 2927
+    detail:
+      calls:
+      - this._withAdapter
+  - name: $provideTypeHierarchySubtypes
+    sig: '$provideTypeHierarchySubtypes(handle: number, sessionId: string, itemId: string, token: CancellationToken): Promise<extHostProtocol.ITypeHierarchyItemDto[] | undefined>'
+    lines:
+    - 2929
+    - 2931
+    detail:
+      calls:
+      - this._withAdapter
+  - name: $releaseTypeHierarchy
+    sig: '$releaseTypeHierarchy(handle: number, sessionId: string): void'
+    lines:
+    - 2933
+    - 2935
+    detail:
+      calls:
+      - this._withAdapter
+  - name: registerDocumentOnDropEditProvider
+    sig: 'registerDocumentOnDropEditProvider(extension: IExtensionDescription, selector: vscode.DocumentSelector, provider: vscode.DocumentDropEditProvider, metadata?: vscode.DocumentDropEditProviderMetadata)'
+    lines:
+    - 2939
+    - 2950
+    detail:
+      calls:
+      - metadata.providedDropEditKinds?.map
+      - new AdapterData
+      - new DocumentDropEditAdapter
+      - this._adapter.set
+      - this._createDisposable
+      - this._nextHandle
+      - this._proxy.$registerDocumentOnDropEditProvider
+      - this._transformDocumentSelector
+  - name: $provideDocumentOnDropEdits
+    sig: '$provideDocumentOnDropEdits(handle: number, requestId: number, resource: UriComponents, position: IPosition, dataTransferDto: extHostProtocol.DataTransferDTO, token: CancellationToken): Promise<extHostProtocol.IDocumentDropEditDto[] | undefined>'
+    lines:
+    - 2952
+    - 2955
+    detail:
+      calls:
+      - this._withAdapter
+  - name: $resolveDropEdit
+    sig: '$resolveDropEdit(handle: number, id: extHostProtocol.ChainedCacheId, token: CancellationToken): Promise<{ additionalEdit?: extHostProtocol.IWorkspaceEditDto }>'
+    lines:
+    - 2957
+    - 2959
+    detail:
+      calls:
+      - this._withAdapter
+  - name: $releaseDocumentOnDropEdits
+    sig: '$releaseDocumentOnDropEdits(handle: number, cacheId: number): void'
+    lines:
+    - 2961
+    - 2963
+    detail:
+      calls:
+      - this._withAdapter
+  - name: registerDocumentPasteEditProvider
+    sig: 'registerDocumentPasteEditProvider(extension: IExtensionDescription, selector: vscode.DocumentSelector, provider: vscode.DocumentPasteEditProvider, metadata: vscode.DocumentPasteProviderMetadata): vscode.Disposable'
+    lines:
+    - 2967
+    - 2979
+    detail:
+      calls:
+      - metadata.providedPasteEditKinds?.map
+      - new AdapterData
+      - new DocumentPasteEditProvider
+      - this._adapter.set
+      - this._createDisposable
+      - this._nextHandle
+      - this._proxy.$registerPasteEditProvider
+      - this._transformDocumentSelector
+  - name: $prepareDocumentPaste
+    sig: '$prepareDocumentPaste(handle: number, resource: UriComponents, ranges: IRange[], dataTransfer: extHostProtocol.DataTransferDTO, token: CancellationToken): Promise<extHostProtocol.DataTransferDTO | undefined>'
+    lines:
+    - 2981
+    - 2983
+    detail:
+      calls:
+      - this._withAdapter
+  - name: $providePasteEdits
+    sig: '$providePasteEdits(handle: number, requestId: number, resource: UriComponents, ranges: IRange[], dataTransferDto: extHostProtocol.DataTransferDTO, context: extHostProtocol.IDocumentPasteContextDto, token: CancellationToken): Promise<extHostProtocol.IPasteEditDto[] | undefined>'
+    lines:
+    - 2985
+    - 2987
+    detail:
+      calls:
+      - this._withAdapter
+  - name: $resolvePasteEdit
+    sig: '$resolvePasteEdit(handle: number, id: extHostProtocol.ChainedCacheId, token: CancellationToken): Promise<{ additionalEdit?: extHostProtocol.IWorkspaceEditDto }>'
+    lines:
+    - 2989
+    - 2991
+    detail:
+      calls:
+      - this._withAdapter
+  - name: $releasePasteEdits
+    sig: '$releasePasteEdits(handle: number, cacheId: number): void'
+    lines:
+    - 2993
+    - 2995
+    detail:
+      calls:
+      - this._withAdapter
+  - name: setLanguageConfiguration
+    sig: 'setLanguageConfiguration(extension: IExtensionDescription, languageId: string, configuration: vscode.LanguageConfiguration): vscode.Disposable'
+    lines:
+    - 3040
+    - 3079
+    detail:
+      calls:
+      - ExtHostLanguageFeatures._serializeAutoClosingPairs
+      - ExtHostLanguageFeatures._serializeIndentationRule
+      - ExtHostLanguageFeatures._serializeOnEnterRules
+      - ExtHostLanguageFeatures._serializeRegExp
+      - new Error
+      - regExpLeadsToEndlessLoop
+      - this._apiDeprecation.report
+      - this._createDisposable
+      - this._documents.setWordDefinitionFor
+      - this._nextHandle
+      - this._proxy.$setLanguageConfiguration
+  - name: $setWordDefinitions
+    sig: '$setWordDefinitions(wordDefinitions: extHostProtocol.ILanguageWordDefinitionDto[]): void'
+    lines:
+    - 3081
+    - 3085
+    detail:
+      calls:
+      - new RegExp
+      - this._documents.setWordDefinitionFor
+  lines:
+  - 2247
+  - 3086
+functions:
+- name: convertToLocationLinks
+  sig: 'convertToLocationLinks(value: vscode.Location | vscode.Location[] | vscode.LocationLink[] | undefined | null): languages.LocationLink[]'
+  lines:
+  - 193
+  - 200
+  detail:
+    calls:
+    - (<any>value).map
+    - Array.isArray
+    - typeConvert.DefinitionLink.from
+exports:
+- name: DocumentSymbolAdapter
+  kind: type
+- name: CodeLensAdapter
+  kind: type
+- name: DefinitionAdapter
+  kind: type
+- name: DeclarationAdapter
+  kind: type
+- name: ImplementationAdapter
+  kind: type
+- name: TypeDefinitionAdapter
+  kind: type
+- name: HoverAdapter
+  kind: type
+- name: EvaluatableExpressionAdapter
+  kind: type
+- name: InlineValuesAdapter
+  kind: type
+- name: DocumentHighlightAdapter
+  kind: type
+- name: MultiDocumentHighlightAdapter
+  kind: type
+- name: LinkedEditingRangeAdapter
+  kind: type
+- name: ReferenceAdapter
+  kind: type
+- name: CustomCodeAction
+  kind: type
+- name: CodeActionAdapter
+  kind: type
+- name: DocumentPasteEditProvider
+  kind: type
+- name: DocumentFormattingAdapter
+  kind: type
+- name: RangeFormattingAdapter
+  kind: type
+- name: OnTypeFormattingAdapter
+  kind: type
+- name: NavigateTypeAdapter
+  kind: type
+- name: RenameAdapter
+  kind: type
+- name: NewSymbolNamesAdapter
+  kind: type
+- name: SemanticTokensPreviousResult
+  kind: type
+- name: RelaxedSemanticTokens
+  kind: type
+- name: RelaxedSemanticTokensEdit
+  kind: type
+- name: RelaxedSemanticTokensEdits
+  kind: type
+- name: ProvidedSemanticTokens
+  kind: type
+- name: ProvidedSemanticTokensEdits
+  kind: type
+- name: DocumentSemanticTokensAdapter
+  kind: type
+- name: DocumentRangeSemanticTokensAdapter
+  kind: type
+- name: CompletionsAdapter
+  kind: type
+- name: InlineCompletionAdapter
+  kind: type
+- name: InlineEditAdapter
+  kind: type
+- name: ReferenceMap
+  kind: type
+- name: SignatureHelpAdapter
+  kind: type
+- name: InlayHintsAdapter
+  kind: type
+- name: LinkProviderAdapter
+  kind: type
+- name: ColorProviderAdapter
+  kind: type
+- name: FoldingProviderAdapter
+  kind: type
+- name: SelectionRangeAdapter
+  kind: type
+- name: CallHierarchyAdapter
+  kind: type
+- name: TypeHierarchyAdapter
+  kind: type
+- name: DocumentDropEditAdapter
+  kind: type
+- name: Adapter
+  kind: type
+- name: AdapterData
+  kind: type
+- name: ExtHostLanguageFeatures
+  kind: type
+- name: convertToLocationLinks
+  kind: func

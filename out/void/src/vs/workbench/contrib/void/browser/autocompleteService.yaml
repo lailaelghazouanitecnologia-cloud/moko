@@ -1,0 +1,491 @@
+## Roska File Descriptor — browser/autocompleteService.ts
+file: browser/autocompleteService.ts
+lines: 949
+layer: logic
+purpose: '-------------------------------------------------------------------------------------- Copyright 2025 Glass Devtools, Inc. All rights reserved. Licensed under the Apache License, Version 2.0. See LICENSE.txt for more information. --------------------------------------------------------------------------------------'
+imports:
+- sym: ../../../../base/common/lifecycle.js.Disposable
+- sym: ../../../../editor/common/services/languageFeatures.js.ILanguageFeaturesService
+- sym: ../../../../platform/instantiation/common/instantiation.js.createDecorator
+- sym: ../../../../editor/common/model.js.EndOfLinePreference
+- sym: ../../../../editor/common/model.js.ITextModel
+- sym: ../../../../editor/common/core/position.js.Position
+- sym: ../../../../editor/common/languages.js.InlineCompletion
+- sym: ../../../../editor/common/core/range.js.Range
+- sym: ../../../services/editor/common/editorService.js.IEditorService
+- sym: ../../../../editor/browser/editorBrowser.js.isCodeEditor
+- sym: ../../../common/editor.js.EditorResourceAccessor
+- sym: ../../../../editor/common/services/model.js.IModelService
+- sym: ../common/helpers/extractCodeFromResult.js.extractCodeFromRegular
+- sym: ../../../common/contributions.js.registerWorkbenchContribution2
+- sym: ../../../common/contributions.js.WorkbenchPhase
+- sym: ../common/sendLLMMessageService.js.ILLMMessageService
+- sym: ../../../../base/common/platform.js.isWindows
+- sym: ../common/voidSettingsService.js.IVoidSettingsService
+- sym: ../common/voidSettingsTypes.js.FeatureName
+- sym: ./convertToLLMMessageService.js.IConvertToLLMMessageService
+data:
+- name: allLinebreakSymbols
+  type: array
+  val: '[''\r\n'', ''\n'']'
+- name: _ln
+  type: any
+  val: 'isWindows ? allLinebreakSymbols[0] : allLinebreakSymbols[1]'
+- name: DEBOUNCE_TIME
+  type: number
+  val: '500'
+- name: TIMEOUT_TIME
+  type: number
+  val: '60000'
+- name: MAX_CACHE_SIZE
+  type: number
+  val: '20'
+- name: MAX_PENDING_REQUESTS
+  type: number
+  val: '2'
+- name: IAutocompleteService
+  type: any
+  val: createDecorator<IAutocompleteService>('AutocompleteService')
+types:
+- name: LRUCache
+  kind: struct
+  fields:
+  - name: items
+    type: Map<K, V>
+  - name: keyOrder
+    type: K[]
+  - name: maxSize
+    type: number
+  - name: disposeCallback
+    type: '(value: V, key?: K) => void'
+  methods:
+  - name: constructor
+    sig: 'constructor(maxSize: number, disposeCallback?: (value: V, key?: K) => void)'
+    lines:
+    - 75
+    - 82
+    detail:
+      calls:
+      - new Error
+      - new Map
+  - name: set
+    sig: 'set(key: K, value: V): void'
+    lines:
+    - 84
+    - 106
+    detail:
+      calls:
+      - this.disposeCallback
+      - this.items.delete
+      - this.items.get
+      - this.items.has
+      - this.items.set
+      - this.keyOrder.filter
+      - this.keyOrder.push
+      - this.keyOrder.shift
+  - name: delete
+    sig: 'delete(key: K): boolean'
+    lines:
+    - 108
+    - 123
+    detail:
+      calls:
+      - this.disposeCallback
+      - this.items.delete
+      - this.items.get
+      - this.keyOrder.filter
+  - name: clear
+    sig: 'clear(): void'
+    lines:
+    - 125
+    - 135
+    detail:
+      calls:
+      - this.disposeCallback
+      - this.items.clear
+      - this.items.entries
+  - name: size
+    sig: 'size(): number'
+    lines:
+    - 137
+    - 139
+    detail: {}
+  - name: has
+    sig: 'has(key: K): boolean'
+    lines:
+    - 141
+    - 143
+    detail:
+      calls:
+      - this.items.has
+  lines:
+  - 69
+  - 144
+- name: AutocompletionPredictionType
+  kind: enum
+  decorators:
+  - type
+  variants:
+  - name: '''do-not-predict'''
+  lines:
+  - 146
+  - 151
+- name: Autocompletion
+  kind: typealias
+  decorators:
+  - type
+  fields:
+  - name: id
+    type: number
+  - name: prefix
+    type: string
+  - name: suffix
+    type: string
+  - name: llmPrefix
+    type: string
+  - name: llmSuffix
+    type: string
+  - name: startTime
+    type: number
+  - name: endTime
+    type: number | undefined
+  - name: status
+    type: '''pending'' | ''finished'' | ''error'''
+  - name: type
+    type: AutocompletionPredictionType
+  - name: llmPromise
+    type: Promise<string> | undefined
+  - name: insertText
+    type: string
+  - name: requestId
+    type: string | null
+  - name: _newlineCount
+    type: number
+  lines:
+  - 153
+  - 167
+- name: PrefixAndSuffixInfo
+  kind: typealias
+  decorators:
+  - type
+  fields:
+  - name: prefix
+    type: string
+  - name: suffix
+    type: string
+  - name: prefixLines
+    type: string[]
+  - name: suffixLines
+    type: string[]
+  - name: prefixToTheLeftOfCursor
+    type: string
+  - name: suffixToTheRightOfCursor
+    type: string
+  lines:
+  - 425
+  - 425
+- name: AutocompletionMatchupBounds
+  kind: typealias
+  decorators:
+  - type
+  fields:
+  - name: startLine
+    type: number
+  - name: startCharacter
+    type: number
+  - name: startIdx
+    type: number
+  lines:
+  - 453
+  - 457
+- name: CompletionOptions
+  kind: typealias
+  decorators:
+  - type
+  fields:
+  - name: predictionType
+    type: AutocompletionPredictionType
+  - name: shouldGenerate
+    type: boolean
+  - name: llmPrefix
+    type: string
+  - name: llmSuffix
+    type: string
+  - name: stopTokens
+    type: string[]
+  lines:
+  - 529
+  - 535
+- name: IAutocompleteService
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: readonly
+    type: undefined
+  lines:
+  - 612
+  - 614
+- name: AutocompleteService
+  kind: struct
+  ctx: 'private _lastPrefix: string = '''''
+  bases:
+  - Disposable
+  - IAutocompleteService
+  fields:
+  - name: ID
+    type: any
+    default: '''void.autocompleteService'''
+  - name: _serviceBrand
+    type: undefined
+  - name: _autocompletionId
+    type: number
+    default: '0'
+  - name: _autocompletionsOfDocument
+    type: '{ [docUriStr: string]: LRUCache<number, Autocompletion> }'
+    default: '{}'
+  - name: _lastCompletionStart
+    type: any
+    default: '0'
+  - name: _lastCompletionAccept
+    type: any
+    default: '0'
+  methods:
+  - name: _provideInlineCompletionItems
+    sig: "_provideInlineCompletionItems(\n\t\tmodel: ITextModel,\n\t\tposition: Position,\n\t): Promise<InlineCompletion[]>"
+    is_async: true
+    lines:
+    - 633
+    - 889
+    detail:
+      calls:
+      - Date.now
+      - console.error
+      - console.log
+      - getAutocompletionMatchup
+      - getCompletionOptions
+      - getPrefixAndSuffixInfo
+      - new LRUCache
+      - new Promise
+      - this._autocompletionsOfDocument[docUriStr].delete
+      - this._autocompletionsOfDocument[docUriStr].items.values
+      - this._autocompletionsOfDocument[docUriStr].set
+      - toInlineCompletions
+  - name: constructor
+    sig: "constructor(\n\t\t@ILanguageFeaturesService private _langFeatureService: ILanguageFeaturesService,\n\t\t@ILLMMessageService private readonly _llmMessageService: ILLMMessageService,\n\t\t@IEditorService private readonly _editorService: IEditorService,\n\t\t@IModelService private readonly _modelService: IModelService,\n\t\t@IVoidSettingsService private readonly _settingsService: IVoidSettingsService,\n\t\t@IConvertToLLMMessageService private readonly _convertToLLMMessageService: IConvertToLLMMessageService\n\t\t// @IContextGatheringService private readonly _contextGatheringService: IContextGatheringService,\n\t)"
+    lines:
+    - 891
+    - 942
+    detail:
+      calls:
+      - super
+      - this._langFeatureService.inlineCompletionsProvider.register
+      - this._register
+  lines:
+  - 618
+  - 945
+functions:
+- name: processStartAndEndSpaces
+  sig: 'processStartAndEndSpaces(result: string)'
+  lines:
+  - 175
+  - 189
+  detail:
+    calls:
+    - extractCodeFromRegular
+    - result.endsWith
+    - result.startsWith
+    - result.trim
+- name: removeLeftTabsAndTrimEnds
+  sig: 'removeLeftTabsAndTrimEnds(s: string): string'
+  lines:
+  - 193
+  - 205
+  detail:
+    calls:
+    - s.replace
+    - s.slice
+    - s.trimEnd
+    - trailingEnd.includes
+- name: removeAllWhitespace
+  sig: 'removeAllWhitespace(str: string): string'
+  lines:
+  - 209
+  - 209
+- name: getIsSubsequence
+  sig: 'getIsSubsequence({ of, subsequence }: { of: string, subsequence: string }): [boolean, string]'
+  lines:
+  - 213
+  - 231
+  detail: {}
+- name: getStringUpToUnbalancedClosingParenthesis
+  sig: 'getStringUpToUnbalancedClosingParenthesis(s: string, prefix: string): string'
+  lines:
+  - 234
+  - 267
+  detail:
+    calls:
+    - prefix.search
+    - prefix.slice
+    - prefix.slice(firstOpenIdx).split
+    - prefix.slice(firstOpenIdx).split('').filter
+    - s.substring
+    - stack.pop
+    - stack.push
+- name: postprocessAutocompletion
+  sig: 'postprocessAutocompletion({ autocompletionMatchup, autocompletion, prefixAndSuffix }: { autocompletionMatchup: AutocompletionMatchupBounds, autocompletion: Autocompletion, prefixAndSuffix: PrefixAndSuffixInfo })'
+  lines:
+  - 271
+  - 363
+  detail:
+    calls:
+    - Math.max
+    - Math.min
+    - '`{}()[]<>\`''"`.includes'
+    - generatedMiddle.slice
+    - generatedMiddle.slice(startIdx).indexOf
+    - generatedMiddle.slice(startIdx).lastIndexOf
+    - generatedMiddle.slice(startIdx).match
+    - generatedMiddle.slice(startIdx).search
+    - generatedMiddle.slice(startIdx).split
+    - getStringUpToUnbalancedClosingParenthesis
+    - new RegExp
+    - prefixToTheLeftOfCursor.slice
+    - prefixToTheLeftOfCursor.trim
+    - restOfLineToGenerate.trim
+    - suffixToTheRightOfCursor.trim
+- name: toInlineCompletions
+  sig: 'toInlineCompletions({ autocompletionMatchup, autocompletion, prefixAndSuffix, position, debug }: { autocompletionMatchup: AutocompletionMatchupBounds, autocompletion: Autocompletion, prefixAndSuffix: PrefixAndSuffixInfo, position: Position, debug?: boolean }): { insertText: string, range: Range }[]'
+  lines:
+  - 366
+  - 401
+  detail:
+    calls:
+    - getIsSubsequence
+    - new Range
+    - oldSuffix.lastIndexOf
+    - postprocessAutocompletion
+    - removeAllWhitespace
+    - trimmedInsertText.lastIndexOf
+    - trimmedInsertText.slice
+- name: getPrefixAndSuffixInfo
+  sig: 'getPrefixAndSuffixInfo(model: ITextModel, position: Position): PrefixAndSuffixInfo'
+  lines:
+  - 426
+  - 443
+  detail:
+    calls:
+    - fullText.substring
+    - model.getOffsetAt
+    - model.getValue
+    - prefix.split
+    - prefixLines.slice
+    - suffix.split
+- name: getIndex
+  sig: 'getIndex(str: string, line: number, char: number)'
+  lines:
+  - 445
+  - 447
+  detail:
+    calls:
+    - str.split
+    - str.split(_ln).slice
+    - str.split(_ln).slice(0, line).join
+- name: getLastLine
+  sig: 'getLastLine(s: string): string'
+  lines:
+  - 448
+  - 451
+  detail:
+    calls:
+    - new RegExp
+    - s.match
+- name: getAutocompletionMatchup
+  sig: 'getAutocompletionMatchup({ prefix, autocompletion }: { prefix: string, autocompletion: Autocompletion }): AutocompletionMatchupBounds | undefined'
+  lines:
+  - 460
+  - 526
+  detail:
+    calls:
+    - "(trimmedCompletionPrefix + trimmedCompletionMiddle)\n\t\t\t.startsWith"
+    - autocompletion.insertText.split
+    - console.error
+    - fullCompletionLine.indexOf
+    - getIndex
+    - getLastLine
+    - removeLeftTabsAndTrimEnds
+    - trimmedCompletionPrefix.split
+    - trimmedCurrentPrefix.split
+- name: getCompletionOptions
+  sig: 'getCompletionOptions(prefixAndSuffix: PrefixAndSuffixInfo, relevantContext: string, justAcceptedAutocompletion: boolean): CompletionOptions'
+  lines:
+  - 536
+  - 610
+  detail:
+    calls:
+    - prefix.split
+    - prefix.split(_ln).slice
+    - prefixLines.join
+    - prefixToTheLeftOfCursor.trim
+    - removeAllWhitespace
+    - suffix.split
+    - suffix.split(_ln).slice
+    - suffixLines.join
+    - suffixLines.slice
+    - suffixLinesIgnoringThisLine.join
+    - suffixToTheRightOfCursor.trim
+exports:
+- name: LRUCache
+  kind: type
+- name: AutocompletionPredictionType
+  kind: type
+- name: Autocompletion
+  kind: type
+- name: PrefixAndSuffixInfo
+  kind: type
+- name: AutocompletionMatchupBounds
+  kind: type
+- name: CompletionOptions
+  kind: type
+- name: IAutocompleteService
+  kind: type
+- name: AutocompleteService
+  kind: type
+- name: processStartAndEndSpaces
+  kind: func
+- name: removeLeftTabsAndTrimEnds
+  kind: func
+- name: removeAllWhitespace
+  kind: func
+- name: getIsSubsequence
+  kind: func
+- name: getStringUpToUnbalancedClosingParenthesis
+  kind: func
+- name: postprocessAutocompletion
+  kind: func
+- name: toInlineCompletions
+  kind: func
+- name: getPrefixAndSuffixInfo
+  kind: func
+- name: getIndex
+  kind: func
+- name: getLastLine
+  kind: func
+- name: getAutocompletionMatchup
+  kind: func
+- name: getCompletionOptions
+  kind: func
+- name: allLinebreakSymbols
+  kind: data
+- name: _ln
+  kind: data
+- name: DEBOUNCE_TIME
+  kind: data
+- name: TIMEOUT_TIME
+  kind: data
+- name: MAX_CACHE_SIZE
+  kind: data
+- name: MAX_PENDING_REQUESTS
+  kind: data
+- name: IAutocompleteService
+  kind: data

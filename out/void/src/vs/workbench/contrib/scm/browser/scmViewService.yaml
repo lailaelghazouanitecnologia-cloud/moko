@@ -1,0 +1,390 @@
+## Roska File Descriptor — browser/scmViewService.ts
+file: browser/scmViewService.ts
+lines: 514
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: ../../../../base/common/lifecycle.js.DisposableStore
+- sym: ../../../../base/common/event.js.Emitter
+- sym: ../../../../base/common/event.js.Event
+- sym: ../common/scm.js.ISCMViewService
+- sym: ../common/scm.js.ISCMRepository
+- sym: ../common/scm.js.ISCMService
+- sym: ../common/scm.js.ISCMViewVisibleRepositoryChangeEvent
+- sym: ../common/scm.js.ISCMMenus
+- sym: ../common/scm.js.ISCMProvider
+- sym: ../common/scm.js.ISCMRepositorySortKey
+- sym: ../../../../base/common/iterator.js.Iterable
+- sym: ../../../../platform/instantiation/common/instantiation.js.IInstantiationService
+- sym: ./menus.js.SCMMenus
+- sym: ../../../../platform/storage/common/storage.js.IStorageService
+- sym: ../../../../platform/storage/common/storage.js.StorageScope
+- sym: ../../../../platform/storage/common/storage.js.StorageTarget
+- sym: ../../../../base/common/decorators.js.debounce
+- sym: ../../../../platform/workspace/common/workspace.js.IWorkspaceContextService
+- sym: ../../../../base/common/comparers.js.compareFileNames
+- sym: ../../../../base/common/comparers.js.comparePaths
+- sym: ../../../../base/common/resources.js.basename
+- sym: ../../../../base/common/arrays.js.binarySearch
+- sym: ../../../../platform/configuration/common/configuration.js.IConfigurationService
+- sym: ../../../../platform/contextkey/common/contextkey.js.IContextKey
+- sym: ../../../../platform/contextkey/common/contextkey.js.IContextKeyService
+- sym: ../../../../platform/contextkey/common/contextkey.js.RawContextKey
+- sym: ../../../services/extensions/common/extensions.js.IExtensionService
+- sym: ../../../../base/common/observable.js.derivedObservableWithCache
+- sym: ../../../../base/common/observable.js.derivedOpts
+- sym: ../../../../base/common/observable.js.IObservable
+- sym: ../../../../base/common/observable.js.ISettableObservable
+- sym: ../../../../base/common/observable.js.latestChangedValue
+- sym: ../../../../base/common/observable.js.observableFromEventOpts
+- sym: ../../../../base/common/observable.js.observableValue
+- sym: ../../../services/editor/common/editorService.js.IEditorService
+- sym: ../../../common/editor.js.EditorResourceAccessor
+- sym: ../../../common/editor/editorInput.js.EditorInput
+- sym: ../../../../platform/quickinput/common/quickInput.js.IQuickInputService
+- sym: ../../../../platform/quickinput/common/quickInput.js.IQuickPickItem
+- sym: ../../../../platform/quickinput/common/quickInput.js.IQuickPickSeparator
+- sym: ../../../../base/common/themables.js.ThemeIcon
+- sym: ../../../../base/common/codicons.js.Codicon
+- sym: ../../../../nls.js.localize
+data:
+- name: RepositoryContextKeys
+  type: object
+  val: "{\n\tRepositorySortKey: new RawContextKey<ISCMRepositorySortKey>('scmRepositorySortKey', ISCMRepositorySortKey.DiscoveryTi..."
+types:
+- name: RepositoryQuickPickItem
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 47
+  - 47
+- name: RepositoryPicker
+  kind: struct
+  fields:
+  - name: _autoQuickPickItem
+    type: RepositoryQuickPickItem
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tprivate readonly _placeHolder: string,\n\t\tprivate readonly _autoQuickItemDescription: string,\n\t\t@IQuickInputService private readonly _quickInputService: IQuickInputService,\n\t\t@ISCMViewService private readonly _scmViewService: ISCMViewService\n\t)"
+    lines:
+    - 52
+    - 63
+    detail:
+      calls:
+      - localize
+  - name: pickRepository
+    sig: 'pickRepository(): Promise<RepositoryQuickPickItem | undefined>'
+    is_async: true
+    lines:
+    - 65
+    - 79
+    detail:
+      calls:
+      - picks.push
+      - this._quickInputService.pick
+      - this._scmViewService.repositories.map
+  lines:
+  - 49
+  - 80
+- name: ISCMRepositoryView
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: readonly
+    type: ISCMRepository
+  - name: readonly
+    type: number
+  - name: focused
+    type: boolean
+  - name: selectionIndex
+    type: number
+  lines:
+  - 82
+  - 87
+- name: ISCMViewServiceState
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: readonly
+    type: string[]
+  - name: readonly
+    type: ISCMRepositorySortKey
+  - name: readonly
+    type: number[]
+  lines:
+  - 89
+  - 93
+- name: SCMViewService
+  kind: struct
+  ctx: The focused repository takes precedence over the active editor repository when the observable values are updated in the same transaction (or during the initial read of the observable value).
+  bases:
+  - ISCMViewService
+  fields:
+  - name: _serviceBrand
+    type: undefined
+  - name: menus
+    type: ISCMMenus
+  - name: didFinishLoading
+    type: boolean
+    default: 'false'
+  - name: didSelectRepository
+    type: boolean
+    default: 'false'
+  - name: previousState
+    type: ISCMViewServiceState | undefined
+  - name: disposables
+    type: any
+    default: new DisposableStore()
+  - name: _repositories
+    type: ISCMRepositoryView[]
+    default: '[]'
+  - name: _onDidChangeRepositories
+    type: any
+    default: new Emitter<ISCMViewVisibleRepositoryChangeEvent>()
+  - name: onDidChangeRepositories
+    type: any
+    default: this._onDidChangeRepositories.event
+  - name: _onDidSetVisibleRepositories
+    type: any
+    default: new Emitter<ISCMViewVisibleRepositoryChangeEvent>()
+  - name: onDidChangeVisibleRepositories
+    type: any
+    default: "Event.any(\n\t\tthis._onDidSetVisibleRepositories.event,\n\t\tEvent.debounce(\n\t\t\tthis...."
+  - name: _onDidFocusRepository
+    type: any
+    default: new Emitter<ISCMRepository | undefined>()
+  - name: onDidFocusRepository
+    type: any
+    default: this._onDidFocusRepository.event
+  - name: activeRepository
+    type: IObservable<ISCMRepository | undefined>
+  - name: _activeEditorObs
+    type: IObservable<EditorInput | undefined>
+  - name: _activeEditorRepositoryObs
+    type: IObservable<ISCMRepository | undefined>
+  - name: _activeRepositoryObs
+    type: IObservable<ISCMRepository | undefined>
+  - name: _activeRepositoryPinnedObs
+    type: ISettableObservable<ISCMRepository | undefined>
+  - name: _focusedRepositoryObs
+    type: IObservable<ISCMRepository | undefined>
+  - name: _repositoriesSortKey
+    type: ISCMRepositorySortKey
+  - name: _sortKeyContextKey
+    type: IContextKey<ISCMRepositorySortKey>
+  methods:
+  - name: repositories
+    sig: 'repositories(): ISCMRepository[]'
+    lines:
+    - 108
+    - 110
+    detail:
+      calls:
+      - this._repositories.map
+  - name: visibleRepositories
+    sig: 'visibleRepositories(): ISCMRepository[]'
+    lines:
+    - 112
+    - 124
+    detail:
+      calls:
+      - "this._repositories\n\t\t\t.filter"
+      - "this._repositories\n\t\t\t.filter(r => r.selectionIndex !== -1)\n\t\t\t.map"
+      - this._repositories.filter
+      - "this._repositories.filter(r => r.selectionIndex !== -1)\n\t\t\t\t.sort"
+      - "this._repositories.filter(r => r.selectionIndex !== -1)\n\t\t\t\t.sort((r1, r2) => r1.selectionIndex - r2..."
+  - name: visibleRepositories
+    sig: 'visibleRepositories(visibleRepositories: ISCMRepository[])'
+    lines:
+    - 126
+    - 156
+    detail:
+      calls:
+      - added.add
+      - new Set
+      - removed.add
+      - set.has
+      - this._onDidSetVisibleRepositories.fire
+      - this._repositories.find
+      - this.focus
+      - visibleRepositories.indexOf
+  - name: focusedRepository
+    sig: 'focusedRepository(): ISCMRepository | undefined'
+    lines:
+    - 193
+    - 195
+    detail:
+      calls:
+      - this._repositories.find
+  - name: constructor
+    sig: "constructor(\n\t\t@ISCMService private readonly scmService: ISCMService,\n\t\t@IContextKeyService contextKeyService: IContextKeyService,\n\t\t@IEditorService private readonly editorService: IEditorService,\n\t\t@IExtensionService extensionService: IExtensionService,\n\t\t@IInstantiationService instantiationService: IInstantiationService,\n\t\t@IConfigurationService private readonly configurationService: IConfigurationService,\n\t\t@IStorageService private readonly storageService: IStorageService,\n\t\t@IWorkspaceContextService private readonly workspaceContextService: IWorkspaceContextService\n\t)"
+    lines:
+    - 215
+    - 296
+    detail:
+      calls:
+      - JSON.parse
+      - RepositoryContextKeys.RepositorySortKey.bindTo
+      - derivedObservableWithCache
+      - derivedOpts
+      - extensionService.onWillStop
+      - instantiationService.createInstance
+      - latestChangedValue
+      - observableFromEventOpts
+      - observableValue
+      - scmService.onDidAddRepository
+      - scmService.onDidRemoveRepository
+      - storageService.get
+      - storageService.onWillSaveState
+      - this._sortKeyContextKey.set
+      - this.getViewSortOrder
+      - this.onDidAddRepository
+  - name: onDidAddRepository
+    sig: 'onDidAddRepository(repository: ISCMRepository): void'
+    vis: private
+    lines:
+    - 298
+    - 360
+    detail:
+      calls:
+      - Date.now
+      - Iterable.empty
+      - getProviderStorageKey
+      - this._onDidChangeRepositories.fire
+      - this._repositories.find
+      - this._repositories.forEach
+      - this.eventuallyFinishLoading
+      - this.focus
+      - this.getMaxSelectionIndex
+      - this.insertRepositoryView
+      - this.previousState.all.indexOf
+      - this.previousState.visible.indexOf
+  - name: onDidRemoveRepository
+    sig: 'onDidRemoveRepository(repository: ISCMRepository): void'
+    vis: private
+    lines:
+    - 362
+    - 386
+    detail:
+      calls:
+      - Iterable.empty
+      - repositoryView.map
+      - this._onDidChangeRepositories.fire
+      - this._repositories.findIndex
+      - this._repositories.splice
+      - this.eventuallyFinishLoading
+      - this.focus
+  - name: isVisible
+    sig: 'isVisible(repository: ISCMRepository): boolean'
+    lines:
+    - 388
+    - 390
+    detail:
+      calls:
+      - this._repositories.find
+  - name: toggleVisibility
+    sig: 'toggleVisibility(repository: ISCMRepository, visible?: boolean): void'
+    lines:
+    - 392
+    - 411
+    detail:
+      calls:
+      - this.isVisible
+      - this.visibleRepositories.indexOf
+      - this.visibleRepositories.slice
+  - name: toggleSortKey
+    sig: 'toggleSortKey(sortKey: ISCMRepositorySortKey): void'
+    lines:
+    - 413
+    - 419
+    detail:
+      calls:
+      - Iterable.empty
+      - this._onDidChangeRepositories.fire
+      - this._repositories.sort
+      - this._sortKeyContextKey.set
+      - this.compareRepositories.bind
+  - name: focus
+    sig: 'focus(repository: ISCMRepository | undefined): void'
+    lines:
+    - 421
+    - 431
+    detail:
+      calls:
+      - this._onDidFocusRepository.fire
+      - this._repositories.find
+      - this._repositories.forEach
+      - this.isVisible
+  - name: pinActiveRepository
+    sig: 'pinActiveRepository(repository: ISCMRepository | undefined): void'
+    lines:
+    - 433
+    - 435
+    detail:
+      calls:
+      - this._activeRepositoryPinnedObs.set
+  - name: onWillSaveState
+    sig: 'onWillSaveState(): void'
+    vis: private
+    lines:
+    - 484
+    - 494
+    detail:
+      calls:
+      - JSON.stringify
+      - this.repositories.map
+      - this.storageService.store
+      - this.visibleRepositories.map
+  - name: dispose
+    sig: 'dispose(): void'
+    lines:
+    - 509
+    - 513
+    detail:
+      calls:
+      - this._onDidChangeRepositories.dispose
+      - this._onDidSetVisibleRepositories.dispose
+      - this.disposables.dispose
+  lines:
+  - 95
+  - 514
+functions:
+- name: getProviderStorageKey
+  sig: 'getProviderStorageKey(provider: ISCMProvider): string'
+  lines:
+  - 30
+  - 32
+  detail:
+    calls:
+    - provider.rootUri.toString
+- name: getRepositoryName
+  sig: 'getRepositoryName(workspaceContextService: IWorkspaceContextService, repository: ISCMRepository): string'
+  lines:
+  - 34
+  - 41
+  detail:
+    calls:
+    - basename
+    - folder?.uri.toString
+    - repository.provider.rootUri.toString
+    - workspaceContextService.getWorkspaceFolder
+exports:
+- name: RepositoryQuickPickItem
+  kind: type
+- name: RepositoryPicker
+  kind: type
+- name: ISCMRepositoryView
+  kind: type
+- name: ISCMViewServiceState
+  kind: type
+- name: SCMViewService
+  kind: type
+- name: getProviderStorageKey
+  kind: func
+- name: getRepositoryName
+  kind: func
+- name: RepositoryContextKeys
+  kind: data

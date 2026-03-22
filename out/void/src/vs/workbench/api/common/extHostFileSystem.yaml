@@ -1,0 +1,328 @@
+## Roska File Descriptor — common/extHostFileSystem.ts
+file: common/extHostFileSystem.ts
+lines: 350
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: ../../../base/common/uri.js.URI
+- sym: ../../../base/common/uri.js.UriComponents
+- sym: ./extHost.protocol.js.MainContext
+- sym: ./extHost.protocol.js.IMainContext
+- sym: ./extHost.protocol.js.ExtHostFileSystemShape
+- sym: ./extHost.protocol.js.MainThreadFileSystemShape
+- sym: ./extHost.protocol.js.IFileChangeDto
+- sym: vscode.vscode
+- sym: ../../../platform/files/common/files.js.files
+- sym: ../../../base/common/lifecycle.js.IDisposable
+- sym: ../../../base/common/lifecycle.js.toDisposable
+- sym: ./extHostTypes.js.FileChangeType
+- sym: ./extHostTypeConverters.js.typeConverter
+- sym: ./extHostLanguageFeatures.js.ExtHostLanguageFeatures
+- sym: ../../../editor/common/languages/linkComputer.js.State
+- sym: ../../../editor/common/languages/linkComputer.js.StateMachine
+- sym: ../../../editor/common/languages/linkComputer.js.LinkComputer
+- sym: ../../../editor/common/languages/linkComputer.js.Edge
+- sym: ../../../base/common/strings.js.commonPrefixLength
+- sym: ../../../base/common/charCode.js.CharCode
+- sym: ../../../base/common/buffer.js.VSBuffer
+- sym: ../../../platform/extensions/common/extensions.js.IExtensionDescription
+- sym: ../../services/extensions/common/extensions.js.checkProposedApiEnabled
+- sym: ../../../base/common/htmlContent.js.IMarkdownString
+- sym: ../../../base/common/htmlContent.js.isMarkdownString
+types:
+- name: FsLinkProvider
+  kind: struct
+  fields:
+  - name: _schemes
+    type: string[]
+    default: '[]'
+  - name: _stateMachine
+    type: StateMachine
+  methods:
+  - name: add
+    sig: 'add(scheme: string): void'
+    lines:
+    - 27
+    - 30
+    detail:
+      calls:
+      - this._schemes.push
+  - name: delete
+    sig: 'delete(scheme: string): void'
+    lines:
+    - 32
+    - 38
+    detail:
+      calls:
+      - this._schemes.indexOf
+      - this._schemes.splice
+  - name: _initStateMachine
+    sig: '_initStateMachine(): void'
+    vis: private
+    lines:
+    - 40
+    - 88
+    detail:
+      calls:
+      - commonPrefixLength
+      - edges.push
+      - new StateMachine
+      - scheme.toLowerCase
+      - scheme.toLowerCase().charCodeAt
+      - scheme.toUpperCase
+      - scheme.toUpperCase().charCodeAt
+      - this._schemes.sort
+  - name: provideDocumentLinks
+    sig: 'provideDocumentLinks(document: vscode.TextDocument): vscode.ProviderResult<vscode.DocumentLink[]>'
+    lines:
+    - 90
+    - 110
+    detail:
+      calls:
+      - LinkComputer.computeLinks
+      - document.lineAt
+      - result.push
+      - this._initStateMachine
+      - typeConverter.DocumentLink.to
+  lines:
+  - 22
+  - 111
+- name: ExtHostFileSystem
+  kind: struct
+  bases:
+  - ExtHostFileSystemShape
+  fields:
+  - name: _proxy
+    type: MainThreadFileSystemShape
+  - name: _linkProvider
+    type: any
+    default: new FsLinkProvider()
+  - name: _fsProvider
+    type: any
+    default: new Map<number, vscode.FileSystemProvider>()
+  - name: _registeredSchemes
+    type: any
+    default: new Set<string>()
+  - name: _watches
+    type: any
+    default: new Map<number, IDisposable>()
+  - name: _linkProviderRegistration
+    type: IDisposable
+  - name: _handlePool
+    type: number
+    default: '0'
+  methods:
+  - name: constructor
+    sig: 'constructor(mainContext: IMainContext, private _extHostLanguageFeatures: ExtHostLanguageFeatures)'
+    lines:
+    - 124
+    - 126
+    detail:
+      calls:
+      - mainContext.getProxy
+  - name: dispose
+    sig: 'dispose(): void'
+    lines:
+    - 128
+    - 130
+    detail:
+      calls:
+      - this._linkProviderRegistration?.dispose
+  - name: registerFileSystemProvider
+    sig: 'registerFileSystemProvider(extension: IExtensionDescription, scheme: string, provider: vscode.FileSystemProvider, options: { isCaseSensitive?: boolean; isReadonly?: boolean | vscode.MarkdownString } = {})'
+    lines:
+    - 132
+    - 219
+    detail:
+      calls:
+      - ExtHostFileSystem._validateFileSystemProvider
+      - checkProposedApiEnabled
+      - isMarkdownString
+      - new Error
+      - provider.onDidChangeFile
+      - this._extHostLanguageFeatures.registerDocumentLinkProvider
+      - this._fsProvider.set
+      - this._linkProvider.add
+      - this._proxy.$registerFileSystemProvider
+      - this._proxy.$registerFileSystemProvider(handle, scheme, capabilities, readOnlyMessage).catch
+      - this._registeredSchemes.add
+      - this._registeredSchemes.has
+      - toDisposable
+  - name: _validateFileSystemProvider
+    sig: '_validateFileSystemProvider(provider: vscode.FileSystemProvider)'
+    vis: private
+    decorators:
+    - static
+    lines:
+    - 221
+    - 249
+    detail:
+      calls:
+      - new Error
+  - name: $stat
+    sig: '$stat(handle: number, resource: UriComponents): Promise<files.IStat>'
+    lines:
+    - 256
+    - 258
+    detail:
+      calls:
+      - Promise.resolve
+      - Promise.resolve(this._getFsProvider(handle).stat(URI.revive(resource))).then
+      - URI.revive
+      - this._getFsProvider
+      - this._getFsProvider(handle).stat
+  - name: $readdir
+    sig: '$readdir(handle: number, resource: UriComponents): Promise<[string, files.FileType][]>'
+    lines:
+    - 260
+    - 262
+    detail:
+      calls:
+      - Promise.resolve
+      - URI.revive
+      - this._getFsProvider
+      - this._getFsProvider(handle).readDirectory
+  - name: $readFile
+    sig: '$readFile(handle: number, resource: UriComponents): Promise<VSBuffer>'
+    lines:
+    - 264
+    - 266
+    detail:
+      calls:
+      - Promise.resolve
+      - Promise.resolve(this._getFsProvider(handle).readFile(URI.revive(resource))).then
+      - URI.revive
+      - this._getFsProvider
+      - this._getFsProvider(handle).readFile
+  - name: $writeFile
+    sig: '$writeFile(handle: number, resource: UriComponents, content: VSBuffer, opts: files.IFileWriteOptions): Promise<void>'
+    lines:
+    - 268
+    - 270
+    detail:
+      calls:
+      - Promise.resolve
+      - URI.revive
+      - this._getFsProvider
+      - this._getFsProvider(handle).writeFile
+  - name: $delete
+    sig: '$delete(handle: number, resource: UriComponents, opts: files.IFileDeleteOptions): Promise<void>'
+    lines:
+    - 272
+    - 274
+    detail:
+      calls:
+      - Promise.resolve
+      - URI.revive
+      - this._getFsProvider
+      - this._getFsProvider(handle).delete
+  - name: $rename
+    sig: '$rename(handle: number, oldUri: UriComponents, newUri: UriComponents, opts: files.IFileOverwriteOptions): Promise<void>'
+    lines:
+    - 276
+    - 278
+    detail:
+      calls:
+      - Promise.resolve
+      - URI.revive
+      - this._getFsProvider
+      - this._getFsProvider(handle).rename
+  - name: $copy
+    sig: '$copy(handle: number, oldUri: UriComponents, newUri: UriComponents, opts: files.IFileOverwriteOptions): Promise<void>'
+    lines:
+    - 280
+    - 286
+    detail:
+      calls:
+      - Promise.resolve
+      - URI.revive
+      - new Error
+      - provider.copy
+      - this._getFsProvider
+  - name: $mkdir
+    sig: '$mkdir(handle: number, resource: UriComponents): Promise<void>'
+    lines:
+    - 288
+    - 290
+    detail:
+      calls:
+      - Promise.resolve
+      - URI.revive
+      - this._getFsProvider
+      - this._getFsProvider(handle).createDirectory
+  - name: $watch
+    sig: '$watch(handle: number, session: number, resource: UriComponents, opts: files.IWatchOptions): void'
+    lines:
+    - 292
+    - 295
+    detail:
+      calls:
+      - URI.revive
+      - this._getFsProvider
+      - this._getFsProvider(handle).watch
+      - this._watches.set
+  - name: $unwatch
+    sig: '$unwatch(_handle: number, session: number): void'
+    lines:
+    - 297
+    - 303
+    detail:
+      calls:
+      - subscription.dispose
+      - this._watches.delete
+      - this._watches.get
+  - name: $open
+    sig: '$open(handle: number, resource: UriComponents, opts: files.IFileOpenOptions): Promise<number>'
+    lines:
+    - 305
+    - 311
+    detail:
+      calls:
+      - Promise.resolve
+      - URI.revive
+      - new Error
+      - provider.open
+      - this._getFsProvider
+  - name: $close
+    sig: '$close(handle: number, fd: number): Promise<void>'
+    lines:
+    - 313
+    - 319
+    detail:
+      calls:
+      - Promise.resolve
+      - new Error
+      - provider.close
+      - this._getFsProvider
+  - name: $read
+    sig: '$read(handle: number, fd: number, pos: number, length: number): Promise<VSBuffer>'
+    lines:
+    - 321
+    - 330
+    detail:
+      calls:
+      - Promise.resolve
+      - Promise.resolve(provider.read(fd, pos, data.buffer, 0, length)).then
+      - VSBuffer.alloc
+      - new Error
+      - provider.read
+      - this._getFsProvider
+  - name: $write
+    sig: '$write(handle: number, fd: number, pos: number, data: VSBuffer): Promise<number>'
+    lines:
+    - 332
+    - 338
+    detail:
+      calls:
+      - Promise.resolve
+      - new Error
+      - provider.write
+      - this._getFsProvider
+  lines:
+  - 113
+  - 350
+exports:
+- name: FsLinkProvider
+  kind: type
+- name: ExtHostFileSystem
+  kind: type

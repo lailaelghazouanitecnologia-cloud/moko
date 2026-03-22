@@ -1,0 +1,411 @@
+## Roska File Descriptor — browser/editSessionsStorageService.ts
+file: browser/editSessionsStorageService.ts
+lines: 531
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: ../../../../base/common/lifecycle.js.Disposable
+- sym: ../../../../base/common/lifecycle.js.DisposableStore
+- sym: ../../../../nls.js.localize
+- sym: ../../../../platform/actions/common/actions.js.Action2
+- sym: ../../../../platform/actions/common/actions.js.MenuId
+- sym: ../../../../platform/actions/common/actions.js.MenuRegistry
+- sym: ../../../../platform/actions/common/actions.js.registerAction2
+- sym: ../../../../platform/contextkey/common/contextkey.js.ContextKeyExpr
+- sym: ../../../../platform/contextkey/common/contextkey.js.IContextKey
+- sym: ../../../../platform/contextkey/common/contextkey.js.IContextKeyService
+- sym: ../../../../platform/environment/common/environment.js.IEnvironmentService
+- sym: ../../../../platform/files/common/files.js.IFileService
+- sym: ../../../../platform/product/common/productService.js.IProductService
+- sym: ../../../../platform/quickinput/common/quickInput.js.IQuickInputService
+- sym: ../../../../platform/quickinput/common/quickInput.js.IQuickPickItem
+- sym: ../../../../platform/quickinput/common/quickInput.js.IQuickPickSeparator
+- sym: ../../../../platform/storage/common/storage.js.IStorageService
+- sym: ../../../../platform/storage/common/storage.js.StorageScope
+- sym: ../../../../platform/storage/common/storage.js.StorageTarget
+- sym: ../../../../platform/userDataSync/common/userDataSync.js.createSyncHeaders
+- sym: ../../../../platform/userDataSync/common/userDataSync.js.IAuthenticationProvider
+- sym: ../../../../platform/userDataSync/common/userDataSync.js.IResourceRefHandle
+- sym: ../../../services/authentication/common/authentication.js.AuthenticationSession
+- sym: ../../../services/authentication/common/authentication.js.AuthenticationSessionsChangeEvent
+- sym: ../../../services/authentication/common/authentication.js.IAuthenticationService
+- sym: ../../../services/extensions/common/extensions.js.IExtensionService
+- sym: ../common/editSessions.js.EDIT_SESSIONS_SIGNED_IN
+- sym: ../common/editSessions.js.EditSession
+- sym: ../common/editSessions.js.EDIT_SESSION_SYNC_CATEGORY
+- sym: ../common/editSessions.js.IEditSessionsStorageService
+- sym: ../common/editSessions.js.EDIT_SESSIONS_SIGNED_IN_KEY
+- sym: ../common/editSessions.js.IEditSessionsLogService
+- sym: ../common/editSessions.js.SyncResource
+- sym: ../common/editSessions.js.EDIT_SESSIONS_PENDING_KEY
+- sym: ../../../../platform/dialogs/common/dialogs.js.IDialogService
+- sym: ../../../../base/common/uuid.js.generateUuid
+- sym: ../../../services/authentication/browser/authenticationService.js.getCurrentAuthenticationSessionInfo
+- sym: ../../../../base/common/platform.js.isWeb
+- sym: ../../../../platform/userDataSync/common/userDataSyncMachines.js.IUserDataSyncMachinesService
+- sym: ../../../../platform/userDataSync/common/userDataSyncMachines.js.UserDataSyncMachinesService
+- sym: ../../../../base/common/event.js.Emitter
+- sym: ../../../../base/common/errors.js.CancellationError
+- sym: ../common/editSessionsStorageClient.js.EditSessionsStoreClient
+- sym: ../../../../platform/secrets/common/secrets.js.ISecretStorageService
+types:
+- name: ExistingSession
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 29
+  - 29
+- name: AuthenticationProviderOption
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 30
+  - 30
+- name: EditSessionsWorkbenchService
+  kind: struct
+  ctx: 2 MB
+  bases:
+  - Disposable
+  - IEditSessionsStorageService
+  fields:
+  - name: _serviceBrand
+    type: undefined
+  - name: SIZE_LIMIT
+    type: any
+    default: Math.floor(1024 * 1024 * 1.9)
+  - name: serverConfiguration
+    type: any
+    default: this.productService['editSessions.store']
+  - name: machineClient
+    type: IUserDataSyncMachinesService | undefined
+  - name: authenticationInfo
+    type: '{ sessionId: string; token: string; providerId: string } | undefined'
+  - name: CACHED_SESSION_STORAGE_KEY
+    type: any
+    default: '''editSessionAccountPreference'''
+  - name: initialized
+    type: any
+    default: 'false'
+  - name: signedInContext
+    type: IContextKey<boolean>
+  - name: _didSignIn
+    type: any
+    default: new Emitter<void>()
+  - name: _didSignOut
+    type: any
+    default: new Emitter<void>()
+  - name: _lastWrittenResources
+    type: any
+    default: 'new Map<SyncResource, { ref: string; content: string }>()'
+  - name: _lastReadResources
+    type: any
+    default: 'new Map<SyncResource, { ref: string; content: string }>()'
+  - name: storeClient
+    type: EditSessionsStoreClient | undefined
+  - name: cachedMachines
+    type: Map<string, string> | undefined
+  methods:
+  - name: isSignedIn
+    sig: isSignedIn()
+    lines:
+    - 47
+    - 49
+    detail: {}
+  - name: onDidSignIn
+    sig: onDidSignIn()
+    lines:
+    - 52
+    - 54
+    detail: {}
+  - name: onDidSignOut
+    sig: onDidSignOut()
+    lines:
+    - 57
+    - 59
+    detail: {}
+  - name: lastWrittenResources
+    sig: lastWrittenResources()
+    lines:
+    - 62
+    - 64
+    detail: {}
+  - name: lastReadResources
+    sig: lastReadResources()
+    lines:
+    - 67
+    - 69
+    detail: {}
+  - name: constructor
+    sig: "constructor(\n\t\t@IFileService private readonly fileService: IFileService,\n\t\t@IStorageService private readonly storageService: IStorageService,\n\t\t@IQuickInputService private readonly quickInputService: IQuickInputService,\n\t\t@IAuthenticationService private readonly authenticationService: IAuthenticationService,\n\t\t@IExtensionService private readonly extensionService: IExtensionService,\n\t\t@IEnvironmentService private readonly environmentService: IEnvironmentService,\n\t\t@IEditSessionsLogService private readonly logService: IEditSessionsLogService,\n\t\t@IProductService private readonly productService: IProductService,\n\t\t@IContextKeyService private readonly contextKeyService: IContextKeyService,\n\t\t@IDialogService private readonly dialogService: IDialogService,\n\t\t@ISecretStorageService private readonly secretStorageService: ISecretStorageService\n\t)"
+    lines:
+    - 73
+    - 99
+    detail:
+      calls:
+      - EDIT_SESSIONS_SIGNED_IN.bindTo
+      - super
+      - this._register
+      - this.authenticationService.onDidChangeSessions
+      - this.registerResetAuthenticationAction
+      - this.registerSignInAction
+      - this.signedInContext.set
+      - this.storageService.onDidChangeValue
+      - this.storageService.onDidChangeValue(StorageScope.APPLICATION, EditSessionsWorkbenchService.CACHED_S...
+  - name: write
+    sig: 'write(resource: SyncResource, content: string | EditSession): Promise<string>'
+    is_async: true
+    lines:
+    - 106
+    - 122
+    detail:
+      calls:
+      - JSON.stringify
+      - createSyncHeaders
+      - generateUuid
+      - new Error
+      - this._lastWrittenResources.set
+      - this.getOrCreateCurrentMachineId
+      - this.initialize
+      - this.storeClient!.writeResource
+  - name: read
+    sig: 'read(resource: SyncResource, ref: string | undefined): Promise<{ ref: string; content: string } | undefined>'
+    is_async: true
+    lines:
+    - 131
+    - 157
+    detail:
+      calls:
+      - createSyncHeaders
+      - generateUuid
+      - new Error
+      - this._lastReadResources.set
+      - this.initialize
+      - this.logService.error
+      - this.storeClient?.readResource
+      - this.storeClient?.resolveResourceContent
+  - name: delete
+    sig: 'delete(resource: SyncResource, ref: string | null)'
+    is_async: true
+    lines:
+    - 159
+    - 170
+    detail:
+      calls:
+      - new Error
+      - this.initialize
+      - this.logService.error
+      - this.storeClient?.deleteResource
+  - name: list
+    sig: 'list(resource: SyncResource): Promise<IResourceRefHandle[]>'
+    is_async: true
+    lines:
+    - 172
+    - 185
+    detail:
+      calls:
+      - new Error
+      - this.initialize
+      - this.logService.error
+      - this.storeClient?.getAllResourceRefs
+  - name: initialize
+    sig: 'initialize(reason: ''read'' | ''write'', silent: boolean = false)'
+    is_async: true
+    lines:
+    - 187
+    - 198
+    detail:
+      calls:
+      - this._didSignIn.fire
+      - this.doInitialize
+      - this.signedInContext.set
+  - name: doInitialize
+    sig: 'doInitialize(reason: ''read'' | ''write'', silent: boolean): Promise<boolean>'
+    is_async: true
+    vis: private
+    lines:
+    - 206
+    - 239
+    detail:
+      calls:
+      - new Error
+      - new UserDataSyncMachinesService
+      - this._register
+      - this.extensionService.whenInstalledExtensionsRegistered
+      - this.getAuthenticationSession
+      - this.storeClient.onTokenFailed
+      - this.storeClient.setAuthToken
+  - name: getMachineById
+    sig: 'getMachineById(machineId: string)'
+    is_async: true
+    lines:
+    - 243
+    - 252
+    detail:
+      calls:
+      - machines.reduce
+      - new Map
+      - this.cachedMachines.get
+      - this.initialize
+      - this.machineClient!.getMachines
+  - name: getOrCreateCurrentMachineId
+    sig: 'getOrCreateCurrentMachineId(): Promise<string>'
+    is_async: true
+    vis: private
+    lines:
+    - 254
+    - 263
+    detail:
+      calls:
+      - this.machineClient!.addCurrentMachine
+      - this.machineClient!.getMachines
+      - this.machineClient!.getMachines().then
+  - name: getAuthenticationSession
+    sig: 'getAuthenticationSession(reason: ''read'' | ''write'', silent: boolean)'
+    is_async: true
+    vis: private
+    lines:
+    - 265
+    - 303
+    detail:
+      calls:
+      - getCurrentAuthenticationSessionInfo
+      - this._didSignOut.fire
+      - this.getAccountPreference
+      - this.getExistingSession
+      - this.logService.info
+      - this.shouldAttemptEditSessionInit
+  - name: getAccountPreference
+    sig: 'getAccountPreference(reason: ''read'' | ''write''): Promise<AuthenticationSession & { providerId: string } | undefined>'
+    is_async: true
+    vis: private
+    lines:
+    - 313
+    - 336
+    detail:
+      calls:
+      - disposables.add
+      - localize
+      - new DisposableStore
+      - new Promise
+      - this.createQuickpickItems
+      - this.quickInputService.createQuickPick
+  - name: createQuickpickItems
+    sig: 'createQuickpickItems(): Promise<(ExistingSession | AuthenticationProviderOption | IQuickPickSeparator | IQuickPickItem & { canceledAuthentication: boolean })[]>'
+    is_async: true
+    vis: private
+    lines:
+    - 338
+    - 357
+    detail:
+      calls:
+      - localize
+      - options.push
+      - sessions.some
+      - this.authenticationService.getProvider
+      - this.getAllSessions
+      - this.getAuthenticationProviders
+  - name: getAllSessions
+    sig: getAllSessions()
+    is_async: true
+    vis: private
+    lines:
+    - 363
+    - 389
+    detail:
+      calls:
+      - '[...accounts.values()].sort'
+      - accounts.set
+      - accounts.values
+      - new Map
+      - this.authenticationService.getProvider
+      - this.authenticationService.getSessions
+      - this.getAuthenticationProviders
+  - name: getAuthenticationProviders
+    sig: getAuthenticationProviders()
+    is_async: true
+    vis: private
+    lines:
+    - 397
+    - 413
+    detail:
+      calls:
+      - Object.keys
+      - Object.keys(authenticationProviders).reduce
+      - configuredAuthenticationProviders.filter
+      - new Error
+  - name: existingSessionId
+    sig: 'existingSessionId(sessionId: string | undefined)'
+    vis: private
+    lines:
+    - 419
+    - 426
+    detail:
+      calls:
+      - this.logService.trace
+      - this.storageService.remove
+      - this.storageService.store
+  - name: getExistingSession
+    sig: getExistingSession()
+    is_async: true
+    vis: private
+    lines:
+    - 428
+    - 431
+    detail:
+      calls:
+      - accounts.find
+      - this.getAllSessions
+  - name: onDidChangeStorage
+    sig: 'onDidChangeStorage(): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 433
+    - 442
+    detail:
+      calls:
+      - this.logService.trace
+  - name: registerSignInAction
+    sig: registerSignInAction()
+    vis: private
+    lines:
+    - 457
+    - 495
+    detail:
+      calls:
+      - ContextKeyExpr.and
+      - ContextKeyExpr.equals
+      - MenuRegistry.appendMenuItem
+      - localize
+      - registerAction2
+      - super
+      - that.initialize
+      - this._register
+  - name: registerResetAuthenticationAction
+    sig: registerResetAuthenticationAction()
+    vis: private
+    lines:
+    - 497
+    - 530
+    detail:
+      calls:
+      - ContextKeyExpr.equals
+      - localize
+      - registerAction2
+      - super
+      - that.clearAuthenticationPreference
+      - that.dialogService.confirm
+      - that.storeClient?.deleteResource
+      - this._register
+  lines:
+  - 32
+  - 531
+exports:
+- name: ExistingSession
+  kind: type
+- name: AuthenticationProviderOption
+  kind: type
+- name: EditSessionsWorkbenchService
+  kind: type

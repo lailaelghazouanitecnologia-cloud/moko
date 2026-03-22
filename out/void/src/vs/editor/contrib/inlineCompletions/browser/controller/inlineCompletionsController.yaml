@@ -1,0 +1,225 @@
+## Roska File Descriptor — controller/inlineCompletionsController.ts
+file: controller/inlineCompletionsController.ts
+lines: 353
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: ../../../../../base/browser/ui/aria/aria.js.alert
+- sym: ../../../../../base/common/async.js.timeout
+- sym: ../../../../../base/common/cancellation.js.cancelOnDispose
+- sym: ../../../../../base/common/hotReloadHelpers.js.createHotClass
+- sym: ../../../../../base/common/lifecycle.js.Disposable
+- sym: ../../../../../base/common/lifecycle.js.toDisposable
+- sym: ../../../../../base/common/observable.js.ITransaction
+- sym: ../../../../../base/common/observable.js.autorun
+- sym: ../../../../../base/common/observable.js.derived
+- sym: ../../../../../base/common/observable.js.derivedDisposable
+- sym: ../../../../../base/common/observable.js.derivedObservableWithCache
+- sym: ../../../../../base/common/observable.js.observableFromEvent
+- sym: ../../../../../base/common/observable.js.observableSignal
+- sym: ../../../../../base/common/observable.js.observableValue
+- sym: ../../../../../base/common/observable.js.runOnChange
+- sym: ../../../../../base/common/observable.js.runOnChangeWithStore
+- sym: ../../../../../base/common/observable.js.transaction
+- sym: ../../../../../base/common/observable.js.waitForState
+- sym: ../../../../../base/common/types.js.isUndefined
+- sym: ../../../../../nls.js.localize
+- sym: ../../../../../platform/accessibility/common/accessibility.js.IAccessibilityService
+- sym: ../../../../../platform/accessibilitySignal/browser/accessibilitySignalService.js.AccessibilitySignal
+- sym: ../../../../../platform/accessibilitySignal/browser/accessibilitySignalService.js.IAccessibilitySignalService
+- sym: ../../../../../platform/commands/common/commands.js.ICommandService
+- sym: ../../../../../platform/configuration/common/configuration.js.IConfigurationService
+- sym: ../../../../../platform/contextkey/common/contextkey.js.IContextKeyService
+- sym: ../../../../../platform/instantiation/common/instantiation.js.IInstantiationService
+- sym: ../../../../../platform/instantiation/common/instantiation.js.ServicesAccessor
+- sym: ../../../../../platform/keybinding/common/keybinding.js.IKeybindingService
+- sym: ../../../../../platform/observable/common/wrapInHotClass.js.hotClassGetOriginalInstance
+- sym: ../../../../browser/coreCommands.js.CoreEditingCommands
+- sym: ../../../../browser/editorBrowser.js.ICodeEditor
+- sym: ../../../../browser/observableCodeEditor.js.observableCodeEditor
+- sym: ../../../../browser/widget/codeEditor/embeddedCodeEditorWidget.js.getOuterEditor
+- sym: ../../../../common/config/editorOptions.js.EditorOption
+- sym: ../../../../common/core/position.js.Position
+- sym: ../../../../common/core/range.js.Range
+- sym: ../../../../common/cursorEvents.js.CursorChangeReason
+- sym: ../../../../common/services/languageFeatureDebounce.js.ILanguageFeatureDebounceService
+- sym: ../../../../common/services/languageFeatures.js.ILanguageFeaturesService
+- sym: ../hintsWidget/inlineCompletionsHintsWidget.js.InlineSuggestionHintsContentWidget
+- sym: ../model/changeRecorder.js.TextModelChangeRecorder
+- sym: ../model/inlineCompletionsModel.js.InlineCompletionsModel
+- sym: ../model/suggestWidgetAdapter.js.ObservableSuggestWidgetAdapter
+- sym: ../utils.js.ObservableContextKeyService
+- sym: ../view/inlineCompletionsView.js.InlineCompletionsView
+- sym: ./commandIds.js.inlineSuggestCommitId
+- sym: ./inlineCompletionContextKeys.js.InlineCompletionContextKeys
+types:
+- name: InlineCompletionsController
+  kind: struct
+  ctx: Find the controller in the focused editor or in the outer editor (if applicable)
+  bases:
+  - Disposable
+  fields:
+  - name: _instances
+    type: any
+    default: new Set<InlineCompletionsController>()
+  - name: hot
+    type: any
+    default: createHotClass(InlineCompletionsController)
+  - name: ID
+    type: any
+    default: '''editor.contrib.inlineCompletionsController'''
+  - name: _editorObs
+    type: any
+    default: observableCodeEditor(this.editor)
+  - name: _positions
+    type: any
+    default: derived(this, reader => this._editorObs.selections.read(reader)?.map(s => s.getE...
+  - name: _suggestWidgetAdapter
+    type: any
+    default: "this._register(new ObservableSuggestWidgetAdapter(\n\t\tthis._editorObs,\n\t\titem => ..."
+  - name: _enabledInConfig
+    type: any
+    default: observableFromEvent(this, this.editor.onDidChangeConfiguration, () => this.edito...
+  - name: _isScreenReaderEnabled
+    type: any
+    default: observableFromEvent(this, this._accessibilityService.onDidChangeScreenReaderOpti...
+  - name: _editorDictationInProgress
+    type: any
+    default: "observableFromEvent(this,\n\t\tthis._contextKeyService.onDidChangeContext,\n\t\t() => ..."
+  - name: _enabled
+    type: any
+    default: derived(this, reader => this._enabledInConfig.read(reader) && (!this._isScreenRe...
+  - name: _debounceValue
+    type: any
+    default: "this._debounceService.for(\n\t\tthis._languageFeaturesService.inlineCompletionsProv..."
+  - name: _focusIsInMenu
+    type: any
+    default: observableValue<boolean>(this, false)
+  - name: _focusIsInEditorOrMenu
+    type: any
+    default: "derived(this, reader => {\n\t\tconst editorHasFocus = this._editorObs.isFocused.rea..."
+  - name: _cursorIsInIndentation
+    type: any
+    default: "derived(this, reader => {\n\t\tconst cursorPos = this._editorObs.cursorPosition.rea..."
+  - name: model
+    type: any
+    default: "derivedDisposable<InlineCompletionsModel | undefined>(this, reader => {\n\t\tif (th..."
+  - name: _playAccessibilitySignal
+    type: any
+    default: observableSignal(this)
+  - name: _hideInlineEditOnSelectionChange
+    type: any
+    default: this._editorObs.getOption(EditorOption.inlineSuggest).map(val => true)
+  - name: _view
+    type: any
+    default: this._register(this._instantiationService.createInstance(InlineCompletionsView, ...
+  methods:
+  - name: getInFocusedEditorOrParent
+    sig: 'getInFocusedEditorOrParent(accessor: ServicesAccessor): InlineCompletionsController | null'
+    decorators:
+    - static
+    lines:
+    - 50
+    - 56
+    detail:
+      calls:
+      - InlineCompletionsController.get
+      - getOuterEditor
+  - name: get
+    sig: 'get(editor: ICodeEditor): InlineCompletionsController | null'
+    decorators:
+    - static
+    lines:
+    - 58
+    - 60
+    detail:
+      calls:
+      - editor.getContribution
+      - hotClassGetOriginalInstance
+  - name: constructor
+    sig: "constructor(\n\t\tpublic readonly editor: ICodeEditor,\n\t\t@IInstantiationService private readonly _instantiationService: IInstantiationService,\n\t\t@IContextKeyService private readonly _contextKeyService: IContextKeyService,\n\t\t@IConfigurationService private readonly _configurationService: IConfigurationService,\n\t\t@ICommandService private readonly _commandService: ICommandService,\n\t\t@ILanguageFeatureDebounceService private readonly _debounceService: ILanguageFeatureDebounceService,\n\t\t@ILanguageFeaturesService private readonly _languageFeaturesService: ILanguageFeaturesService,\n\t\t@IAccessibilitySignalService private readonly _accessibilitySignalService: IAccessibilitySignalService,\n\t\t@IKeybindingService private readonly _keybindingService: IKeybindingService,\n\t\t@IAccessibilityService private readonly _accessibilityService: IAccessibilityService,\n\t)"
+    lines:
+    - 126
+    - 310
+    detail:
+      calls:
+      - InlineCompletionsController._instances.add
+      - autorun
+      - contextKeySvcObs.bind
+      - derived
+      - derivedObservableWithCache
+      - new ObservableContextKeyService
+      - runOnChange
+      - runOnChangeWithStore
+      - super
+      - this._commandService.onDidExecuteCommand
+      - this._configurationService.getValue
+      - this._configurationService.onDidChangeConfiguration
+      - this._instantiationService.createInstance
+      - this._register
+      - this.editor.updateOptions
+      - this.model.map
+      - toDisposable
+  - name: playAccessibilitySignal
+    sig: 'playAccessibilitySignal(tx: ITransaction)'
+    lines:
+    - 312
+    - 314
+    detail:
+      calls:
+      - this._playAccessibilitySignal.trigger
+  - name: _provideScreenReaderUpdate
+    sig: '_provideScreenReaderUpdate(content: string): void'
+    vis: private
+    lines:
+    - 316
+    - 324
+    detail:
+      calls:
+      - accessibleViewKeybinding.getAriaLabel
+      - alert
+      - localize
+      - this._contextKeyService.getContextKeyValue
+      - this._keybindingService.lookupKeybinding
+      - this.editor.getOption
+  - name: shouldShowHoverAt
+    sig: 'shouldShowHoverAt(range: Range)'
+    lines:
+    - 326
+    - 332
+    detail:
+      calls:
+      - ghostText.parts.some
+      - this.model.get
+      - this.model.get()?.primaryGhostText.get
+  - name: shouldShowHoverAtViewZone
+    sig: 'shouldShowHoverAtViewZone(viewZoneId: string): boolean'
+    lines:
+    - 334
+    - 336
+    detail:
+      calls:
+      - this._view.shouldShowHoverAtViewZone
+  - name: reject
+    sig: 'reject(): void'
+    lines:
+    - 338
+    - 345
+    detail:
+      calls:
+      - transaction
+  - name: jump
+    sig: 'jump(): void'
+    lines:
+    - 347
+    - 352
+    detail:
+      calls:
+      - m.jump
+      - this.model.get
+  lines:
+  - 41
+  - 353
+exports:
+- name: InlineCompletionsController
+  kind: type

@@ -1,0 +1,296 @@
+## Roska File Descriptor — common/mcpService.ts
+file: common/mcpService.ts
+lines: 360
+layer: logic
+purpose: '-------------------------------------------------------------------------------------- Copyright 2025 Glass Devtools, Inc. All rights reserved. Licensed under the Apache License, Version 2.0. See LICENSE.txt for more information. --------------------------------------------------------------------------------------'
+imports:
+- sym: ../../../../base/common/uri.js.URI
+- sym: ../../../../base/common/lifecycle.js.Disposable
+- sym: ../../../../platform/instantiation/common/extensions.js.registerSingleton
+- sym: ../../../../platform/instantiation/common/extensions.js.InstantiationType
+- sym: ../../../../platform/instantiation/common/instantiation.js.createDecorator
+- sym: ../../../../platform/files/common/files.js.IFileService
+- sym: ../../../services/path/common/pathService.js.IPathService
+- sym: ../../../services/editor/common/editorService.js.IEditorService
+- sym: ../../../../platform/product/common/productService.js.IProductService
+- sym: ../../../../base/common/buffer.js.VSBuffer
+- sym: ../../../../base/parts/ipc/common/ipc.js.IChannel
+- sym: ../../../../platform/ipc/common/mainProcessService.js.IMainProcessService
+- sym: ./mcpServiceTypes.js.MCPServerOfName
+- sym: ./mcpServiceTypes.js.MCPConfigFileJSON
+- sym: ./mcpServiceTypes.js.MCPServer
+- sym: ./mcpServiceTypes.js.MCPToolCallParams
+- sym: ./mcpServiceTypes.js.RawMCPToolCall
+- sym: ./mcpServiceTypes.js.MCPServerEventResponse
+- sym: ../../../../base/common/event.js.Event
+- sym: ../../../../base/common/event.js.Emitter
+- sym: ./prompt/prompts.js.InternalToolInfo
+- sym: ./voidSettingsService.js.IVoidSettingsService
+- sym: ./voidSettingsTypes.js.MCPUserStateOfName
+data:
+- name: IMCPService
+  type: any
+  val: createDecorator<IMCPService>('mcpConfigService')
+- name: MCP_CONFIG_FILE_NAME
+  type: string
+  val: '''mcp.json'''
+- name: MCP_CONFIG_SAMPLE
+  type: object
+  val: '{ mcpServers: {} }'
+- name: MCP_CONFIG_SAMPLE_STRING
+  type: any
+  val: JSON.stringify(MCP_CONFIG_SAMPLE, null, 2)
+types:
+- name: MCPServiceState
+  kind: typealias
+  decorators:
+  - type
+  fields:
+  - name: mcpServerOfName
+    type: MCPServerOfName
+  - name: error
+    type: string | undefined
+  lines:
+  - 24
+  - 27
+- name: IMCPService
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: readonly
+    type: undefined
+  - name: revealMCPConfigFile
+    type: 'method: revealMCPConfigFile(): Promise<void>'
+  - name: toggleServerIsOn
+    type: 'method: toggleServerIsOn(serverName: string, isOn: boolean): Promise<void>'
+  - name: readonly
+    type: MCPServiceState
+  - name: onDidChangeState
+    type: Event<void>
+  - name: getMCPTools
+    type: 'method: getMCPTools(): InternalToolInfo[] | undefined'
+  - name: callMCPTool
+    type: 'method: callMCPTool(toolData: MCPToolCallParams): Promise<{ result: RawMCPToolCall }>'
+  - name: stringifyResult
+    type: 'method: stringifyResult(result: RawMCPToolCall): string'
+  lines:
+  - 29
+  - 40
+- name: MCPService
+  kind: struct
+  ctx: MCPChannel
+  bases:
+  - Disposable
+  - IMCPService
+  fields:
+  - name: _serviceBrand
+    type: undefined
+  - name: channel
+    type: IChannel
+  - name: state
+    type: MCPServiceState
+    default: "{\n\t\tmcpServerOfName: {},\n\t\terror: undefined,\n\t}"
+  - name: _onDidChangeState
+    type: any
+    default: new Emitter<void>()
+  - name: onDidChangeState
+    type: any
+    default: this._onDidChangeState.event
+  - name: _setMCPServerState
+    type: any
+    default: "async (serverName: string, newServer: MCPServer | undefined) => {\n\t\tif (newServe..."
+  - name: _setHasError
+    type: any
+    default: "async (errMsg: string | undefined) => {\n\t\tthis.state = {\n\t\t\t...this.state,\n\t\t\ter..."
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\t@IFileService private readonly fileService: IFileService,\n\t\t@IPathService private readonly pathService: IPathService,\n\t\t@IProductService private readonly productService: IProductService,\n\t\t@IEditorService private readonly editorService: IEditorService,\n\t\t@IMainProcessService private readonly mainProcessService: IMainProcessService,\n\t\t@IVoidSettingsService private readonly voidSettingsService: IVoidSettingsService,\n\t)"
+    lines:
+    - 78
+    - 99
+    detail:
+      calls:
+      - (this.channel.listen('onAdd_server') satisfies Event<MCPServerEventResponse>)
+      - (this.channel.listen('onDelete_server') satisfies Event<MCPServerEventResponse>)
+      - (this.channel.listen('onUpdate_server') satisfies Event<MCPServerEventResponse>)
+      - super
+      - this._initialize
+      - this._register
+      - this.channel.listen
+      - this.mainProcessService.getChannel
+  - name: _initialize
+    sig: _initialize()
+    is_async: true
+    vis: private
+    lines:
+    - 102
+    - 118
+    detail:
+      calls:
+      - console.error
+      - console.log
+      - mcpConfigUri.toString
+      - this._addMCPConfigFileWatcher
+      - this._configFileExists
+      - this._createMCPConfigFile
+      - this._getMCPConfigFilePath
+      - this._refreshMCPServers
+  - name: _createMCPConfigFile
+    sig: '_createMCPConfigFile(mcpConfigUri: URI): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 150
+    - 154
+    detail:
+      calls:
+      - VSBuffer.fromString
+      - mcpConfigUri.with
+      - this.fileService.createFile
+      - this.fileService.writeFile
+  - name: _addMCPConfigFileWatcher
+    sig: '_addMCPConfigFileWatcher(): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 157
+    - 167
+    detail:
+      calls:
+      - this._getMCPConfigFilePath
+      - this._register
+      - this.fileService.onDidFilesChange
+      - this.fileService.watch
+  - name: revealMCPConfigFile
+    sig: 'revealMCPConfigFile(): Promise<void>'
+    is_async: true
+    lines:
+    - 171
+    - 184
+    detail:
+      calls:
+      - console.error
+      - this._getMCPConfigFilePath
+      - this.editorService.openEditor
+  - name: getMCPTools
+    sig: 'getMCPTools(): InternalToolInfo[] | undefined'
+    lines:
+    - 186
+    - 201
+    detail:
+      calls:
+      - server.tools?.forEach
+  - name: _transformInputSchemaToParams
+    sig: '_transformInputSchemaToParams(inputSchema?: Record<string, any>): { [paramName: string]: { description: string } }'
+    vis: private
+    lines:
+    - 203
+    - 224
+    detail:
+      calls:
+      - Object.keys
+      - Object.keys(inputSchema.properties).forEach
+  - name: _getMCPConfigFilePath
+    sig: '_getMCPConfigFilePath(): Promise<URI>'
+    is_async: true
+    vis: private
+    lines:
+    - 226
+    - 231
+    detail:
+      calls:
+      - URI.joinPath
+      - this.pathService.userHome
+  - name: _configFileExists
+    sig: '_configFileExists(mcpConfigUri: URI): Promise<boolean>'
+    is_async: true
+    vis: private
+    lines:
+    - 233
+    - 240
+    detail:
+      calls:
+      - this.fileService.stat
+  - name: _parseMCPConfigFile
+    sig: '_parseMCPConfigFile(): Promise<MCPConfigFileJSON | null>'
+    is_async: true
+    vis: private
+    lines:
+    - 243
+    - 258
+    detail:
+      calls:
+      - JSON.parse
+      - fileContent.value.toString
+      - new Error
+      - this._getMCPConfigFilePath
+      - this._setHasError
+      - this.fileService.readFile
+  - name: _refreshMCPServers
+    sig: '_refreshMCPServers(): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 262
+    - 298
+    detail:
+      calls:
+      - Object.keys
+      - Object.keys(newConfigFileJSON.mcpServers).filter
+      - console.log
+      - newConfigFileNames.filter
+      - oldConfigFileNames.filter
+      - this._parseMCPConfigFile
+      - this._setHasError
+      - this._setMCPServerState
+      - this.channel.call
+      - this.voidSettingsService.addMCPUserStateOfNames
+      - this.voidSettingsService.removeMCPUserStateOfNames
+  - name: stringifyResult
+    sig: 'stringifyResult(result: RawMCPToolCall): string'
+    lines:
+    - 300
+    - 314
+    detail:
+      calls:
+      - JSON.stringify
+  - name: toggleServerIsOn
+    sig: 'toggleServerIsOn(serverName: string, isOn: boolean): Promise<void>'
+    is_async: true
+    lines:
+    - 317
+    - 322
+    detail:
+      calls:
+      - this._setMCPServerState
+      - this.channel.call
+      - this.voidSettingsService.setMCPServerState
+  - name: callMCPTool
+    sig: 'callMCPTool(toolData: MCPToolCallParams): Promise<{ result: RawMCPToolCall }>'
+    is_async: true
+    lines:
+    - 325
+    - 331
+    detail:
+      calls:
+      - await this.channel.call
+      - new Error
+  lines:
+  - 59
+  - 358
+exports:
+- name: MCPServiceState
+  kind: type
+- name: IMCPService
+  kind: type
+- name: MCPService
+  kind: type
+- name: IMCPService
+  kind: data
+- name: MCP_CONFIG_FILE_NAME
+  kind: data
+- name: MCP_CONFIG_SAMPLE
+  kind: data
+- name: MCP_CONFIG_SAMPLE_STRING
+  kind: data

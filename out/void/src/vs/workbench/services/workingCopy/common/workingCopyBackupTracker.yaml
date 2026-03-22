@@ -1,0 +1,252 @@
+## Roska File Descriptor — common/workingCopyBackupTracker.ts
+file: common/workingCopyBackupTracker.ts
+lines: 433
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: ./workingCopyBackup.js.IWorkingCopyBackupService
+- sym: ../../../../base/common/lifecycle.js.Disposable
+- sym: ../../../../base/common/lifecycle.js.IDisposable
+- sym: ../../../../base/common/lifecycle.js.toDisposable
+- sym: ./workingCopyService.js.IWorkingCopyService
+- sym: ./workingCopy.js.IWorkingCopy
+- sym: ./workingCopy.js.IWorkingCopyIdentifier
+- sym: ./workingCopy.js.WorkingCopyCapabilities
+- sym: ../../../../platform/log/common/log.js.ILogService
+- sym: ../../lifecycle/common/lifecycle.js.ShutdownReason
+- sym: ../../lifecycle/common/lifecycle.js.ILifecycleService
+- sym: ../../lifecycle/common/lifecycle.js.LifecyclePhase
+- sym: ../../lifecycle/common/lifecycle.js.InternalBeforeShutdownEvent
+- sym: ../../../../base/common/cancellation.js.CancellationTokenSource
+- sym: ../../filesConfiguration/common/filesConfigurationService.js.IFilesConfigurationService
+- sym: ./workingCopyEditorService.js.IWorkingCopyEditorHandler
+- sym: ./workingCopyEditorService.js.IWorkingCopyEditorService
+- sym: ../../../../base/common/async.js.Promises
+- sym: ../../editor/common/editorService.js.IEditorService
+- sym: ../../../common/editor.js.EditorsOrder
+- sym: ../../../common/editor/editorInput.js.EditorInput
+- sym: ../../editor/common/editorGroupsService.js.IEditorGroupsService
+types:
+- name: WorkingCopyBackupTracker
+  kind: trait
+  ctx: '#region Backup Creator'
+  bases:
+  - Disposable
+  decorators:
+  - abstract
+  fields:
+  - name: DEFAULT_BACKUP_SCHEDULE_DELAYS
+    type: any
+    default: "{\n\t\t['default']: 1000,\n\t\t['delayed']: 2000\n\t}"
+  - name: mapWorkingCopyToContentVersion
+    type: any
+    default: new Map<IWorkingCopy, number>()
+  - name: pendingBackupOperations
+    type: any
+    default: 'new Map<IWorkingCopyIdentifier, { disposable: IDisposable; cancel: () => void }>...'
+  - name: suspended
+    type: any
+    default: 'false'
+  - name: unrestoredBackups
+    type: any
+    default: new Set<IWorkingCopyIdentifier>()
+  - name: whenReady
+    type: Promise<void>
+  - name: _isReady
+    type: any
+    default: 'false'
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tprotected readonly workingCopyBackupService: IWorkingCopyBackupService,\n\t\tprotected readonly workingCopyService: IWorkingCopyService,\n\t\tprotected readonly logService: ILogService,\n\t\tprivate readonly lifecycleService: ILifecycleService,\n\t\tprotected readonly filesConfigurationService: IFilesConfigurationService,\n\t\tprivate readonly workingCopyEditorService: IWorkingCopyEditorService,\n\t\tprotected readonly editorService: IEditorService,\n\t\tprivate readonly editorGroupService: IEditorGroupsService\n\t)"
+    lines:
+    - 30
+    - 50
+    detail:
+      calls:
+      - super
+      - this.onDidRegister
+      - this.registerListeners
+      - this.resolveBackupsToRestore
+  - name: registerListeners
+    sig: registerListeners()
+    vis: private
+    lines:
+    - 52
+    - 66
+    detail:
+      calls:
+      - this._register
+      - this.lifecycleService.onBeforeShutdown
+      - this.lifecycleService.onWillShutdown
+      - this.workingCopyEditorService.onDidRegisterHandler
+      - this.workingCopyService.onDidChangeContent
+      - this.workingCopyService.onDidChangeDirty
+      - this.workingCopyService.onDidRegister
+      - this.workingCopyService.onDidUnregister
+  - name: onDidRegister
+    sig: 'onDidRegister(workingCopy: IWorkingCopy): void'
+    vis: private
+    lines:
+    - 111
+    - 120
+    detail:
+      calls:
+      - this.logService.warn
+      - this.scheduleBackup
+      - workingCopy.isModified
+      - workingCopy.resource.toString
+  - name: onDidUnregister
+    sig: 'onDidUnregister(workingCopy: IWorkingCopy): void'
+    vis: private
+    lines:
+    - 122
+    - 135
+    detail:
+      calls:
+      - this.discardBackup
+      - this.logService.warn
+      - this.mapWorkingCopyToContentVersion.delete
+      - workingCopy.resource.toString
+  - name: onDidChangeDirty
+    sig: 'onDidChangeDirty(workingCopy: IWorkingCopy): void'
+    vis: private
+    lines:
+    - 137
+    - 148
+    detail:
+      calls:
+      - this.discardBackup
+      - this.logService.warn
+      - this.scheduleBackup
+      - workingCopy.isDirty
+      - workingCopy.resource.toString
+  - name: onDidChangeContent
+    sig: 'onDidChangeContent(workingCopy: IWorkingCopy): void'
+    vis: private
+    lines:
+    - 150
+    - 169
+    detail:
+      calls:
+      - this.getContentVersion
+      - this.logService.warn
+      - this.mapWorkingCopyToContentVersion.set
+      - this.scheduleBackup
+      - workingCopy.isModified
+      - workingCopy.resource.toString
+  - name: scheduleBackup
+    sig: 'scheduleBackup(workingCopy: IWorkingCopy): void'
+    vis: private
+    lines:
+    - 171
+    - 225
+    detail:
+      calls:
+      - new CancellationTokenSource
+      - setTimeout
+      - this.cancelBackupOperation
+      - this.getBackupScheduleDelay
+      - this.logService.trace
+      - this.pendingBackupOperations.set
+      - toDisposable
+      - workingCopy.resource.toString
+  - name: discardBackup
+    sig: 'discardBackup(workingCopy: IWorkingCopy): void'
+    vis: private
+    lines:
+    - 246
+    - 265
+    detail:
+      calls:
+      - new CancellationTokenSource
+      - this.cancelBackupOperation
+      - this.doDiscardBackup
+      - this.pendingBackupOperations.set
+  - name: doDiscardBackup
+    sig: 'doDiscardBackup(workingCopyIdentifier: IWorkingCopyIdentifier, cts: CancellationTokenSource)'
+    is_async: true
+    vis: private
+    lines:
+    - 267
+    - 282
+    detail:
+      calls:
+      - this.doClearPendingBackupOperation
+      - this.logService.error
+      - this.logService.trace
+      - this.workingCopyBackupService.discardBackup
+      - workingCopyIdentifier.resource.toString
+  - name: cancelBackupOperation
+    sig: 'cancelBackupOperation(workingCopy: IWorkingCopy): void'
+    vis: private
+    lines:
+    - 284
+    - 302
+    detail:
+      calls:
+      - identifier.resource.toString
+      - this.doClearPendingBackupOperation
+      - workingCopy.resource.toString
+  - name: doClearPendingBackupOperation
+    sig: 'doClearPendingBackupOperation(workingCopyIdentifier: IWorkingCopyIdentifier, options?: { cancel: boolean }): void'
+    vis: private
+    lines:
+    - 304
+    - 317
+    detail:
+      calls:
+      - pendingBackupOperation.cancel
+      - pendingBackupOperation.disposable.dispose
+      - this.pendingBackupOperations.delete
+      - this.pendingBackupOperations.get
+  - name: cancelBackupOperations
+    sig: 'cancelBackupOperations(): void'
+    vis: protected
+    lines:
+    - 319
+    - 326
+    detail:
+      calls:
+      - operation.cancel
+      - operation.disposable.dispose
+      - this.pendingBackupOperations.clear
+  - name: resolveBackupsToRestore
+    sig: 'resolveBackupsToRestore(): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 345
+    - 356
+    detail:
+      calls:
+      - this.lifecycleService.when
+      - this.unrestoredBackups.add
+      - this.workingCopyBackupService.getBackups
+  - name: restoreBackups
+    sig: 'restoreBackups(handler: IWorkingCopyEditorHandler): Promise<void>'
+    is_async: true
+    vis: protected
+    lines:
+    - 358
+    - 430
+    detail:
+      calls:
+      - Promises.settled
+      - '[...nonOpenedEditorsForBackups].map'
+      - '[...openedEditorsForBackups].map'
+      - handler.createEditor
+      - handler.handles
+      - handler.isOpen
+      - new Set
+      - nonOpenedEditorsForBackups.add
+      - openedEditorsForBackups.add
+      - restoredBackups.add
+      - this.editorGroupService.activeGroup.openEditors
+      - this.editorService.getEditors
+      - this.unrestoredBackups.delete
+  lines:
+  - 28
+  - 433
+exports:
+- name: WorkingCopyBackupTracker
+  kind: type

@@ -1,0 +1,332 @@
+## Roska File Descriptor — preview/bulkEditPane.ts
+file: preview/bulkEditPane.ts
+lines: 420
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: ../../../../../base/browser/ui/button/button.js.ButtonBar
+- sym: ../../../../../base/browser/ui/tree/asyncDataTree.js.IAsyncDataTreeViewState
+  kind: typing
+- sym: ../../../../../base/browser/ui/tree/tree.js.ITreeContextMenuEvent
+- sym: ../../../../../base/common/cache.js.CachedFunction
+- sym: ../../../../../base/common/cache.js.LRUCachedFunction
+- sym: ../../../../../base/common/cancellation.js.CancellationToken
+- sym: ../../../../../base/common/filters.js.FuzzyScore
+- sym: ../../../../../base/common/lifecycle.js.DisposableStore
+- sym: ../../../../../base/common/types.js.Mutable
+- sym: ../../../../../base/common/uri.js.URI
+- sym: ../../../../../editor/browser/services/bulkEditService.js.ResourceEdit
+- sym: ../../../../../editor/browser/widget/multiDiffEditor/multiDiffEditorWidgetImpl.js.IMultiDiffEditorOptions
+- sym: ../../../../../editor/browser/widget/multiDiffEditor/multiDiffEditorWidgetImpl.js.IMultiDiffResourceId
+- sym: ../../../../../editor/common/core/range.js.IRange
+- sym: ../../../../../editor/common/services/resolverService.js.ITextModelService
+- sym: ../../../../../nls.js.localize
+- sym: ../../../../../platform/actions/common/actions.js.MenuId
+- sym: ../../../../../platform/configuration/common/configuration.js.IConfigurationService
+- sym: ../../../../../platform/contextkey/common/contextkey.js.IContextKey
+- sym: ../../../../../platform/contextkey/common/contextkey.js.IContextKeyService
+- sym: ../../../../../platform/contextkey/common/contextkey.js.RawContextKey
+- sym: ../../../../../platform/contextview/browser/contextView.js.IContextMenuService
+- sym: ../../../../../platform/dialogs/common/dialogs.js.IDialogService
+- sym: ../../../../../platform/hover/browser/hover.js.IHoverService
+- sym: ../../../../../platform/instantiation/common/instantiation.js.IInstantiationService
+- sym: ../../../../../platform/keybinding/common/keybinding.js.IKeybindingService
+- sym: ../../../../../platform/label/common/label.js.ILabelService
+- sym: ../../../../../platform/list/browser/listService.js.IOpenEvent
+- sym: ../../../../../platform/list/browser/listService.js.WorkbenchAsyncDataTree
+- sym: ../../../../../platform/opener/common/opener.js.IOpenerService
+- sym: ../../../../../platform/storage/common/storage.js.IStorageService
+- sym: ../../../../../platform/storage/common/storage.js.StorageScope
+- sym: ../../../../../platform/storage/common/storage.js.StorageTarget
+- sym: ../../../../../platform/theme/browser/defaultStyles.js.defaultButtonStyles
+- sym: ../../../../../platform/theme/common/themeService.js.IThemeService
+- sym: ../../../../browser/labels.js.ResourceLabels
+- sym: ../../../../browser/parts/views/viewPane.js.ViewPane
+- sym: ../../../../browser/parts/views/viewsViewlet.js.IViewletViewOptions
+- sym: ../../../../common/editor.js.IMultiDiffEditorResource
+- sym: ../../../../common/editor.js.IResourceDiffEditorInput
+- sym: ../../../../common/views.js.IViewDescriptorService
+- sym: ./bulkEditPreview.js.BulkEditPreviewProvider
+- sym: ./bulkEditPreview.js.BulkFileOperation
+- sym: ./bulkEditPreview.js.BulkFileOperations
+- sym: ./bulkEditPreview.js.BulkFileOperationType
+- sym: ./bulkEditTree.js.BulkEditAccessibilityProvider
+- sym: ./bulkEditTree.js.BulkEditDataSource
+- sym: ./bulkEditTree.js.BulkEditDelegate
+- sym: ./bulkEditTree.js.BulkEditElement
+- sym: ./bulkEditTree.js.BulkEditIdentityProvider
+- sym: ./bulkEditTree.js.BulkEditNaviLabelProvider
+- sym: ./bulkEditTree.js.BulkEditSorter
+- sym: ./bulkEditTree.js.CategoryElement
+- sym: ./bulkEditTree.js.CategoryElementRenderer
+- sym: ./bulkEditTree.js.compareBulkFileOperations
+- sym: ./bulkEditTree.js.FileElement
+- sym: ./bulkEditTree.js.FileElementRenderer
+- sym: ./bulkEditTree.js.TextEditElement
+- sym: ./bulkEditTree.js.TextEditElementRenderer
+- sym: ../../../../services/editor/common/editorService.js.ACTIVE_GROUP
+- sym: ../../../../services/editor/common/editorService.js.IEditorService
+- sym: ../../../../services/editor/common/editorService.js.SIDE_GROUP
+types:
+- name: State
+  kind: enum
+  variants:
+  - name: Data
+    val: '''data'''
+  - name: Message
+    val: '''message'''
+  lines:
+  - 44
+  - 47
+- name: BulkEditPane
+  kind: struct
+  bases:
+  - ViewPane
+  fields:
+  - name: ID
+    type: any
+    default: '''refactorPreview'''
+  - name: Schema
+    type: any
+    default: '''vscode-bulkeditpreview-multieditor'''
+  - name: ctxHasCategories
+    type: any
+    default: new RawContextKey('refactorPreview.hasCategories', false)
+  - name: ctxGroupByFile
+    type: any
+    default: new RawContextKey('refactorPreview.groupByFile', true)
+  - name: ctxHasCheckedChanges
+    type: any
+    default: new RawContextKey('refactorPreview.hasCheckedChanges', true)
+  - name: _memGroupByFile
+    type: any
+    default: '`${this.ID}.groupByFile`'
+  - name: _tree
+    type: WorkbenchAsyncDataTree<BulkFileOperations, BulkEditElement, FuzzyScore>
+  - name: _treeDataSource
+    type: BulkEditDataSource
+  - name: _treeViewStates
+    type: any
+    default: new Map<boolean, IAsyncDataTreeViewState>()
+  - name: _message
+    type: HTMLSpanElement
+  - name: _ctxHasCategories
+    type: IContextKey<boolean>
+  - name: _ctxGroupByFile
+    type: IContextKey<boolean>
+  - name: _ctxHasCheckedChanges
+    type: IContextKey<boolean>
+  - name: _disposables
+    type: any
+    default: new DisposableStore()
+  - name: _sessionDisposables
+    type: any
+    default: new DisposableStore()
+  - name: _currentResolve
+    type: '(edit?: ResourceEdit[]) => void'
+  - name: _currentInput
+    type: BulkFileOperations
+  - name: _currentProvider
+    type: BulkEditPreviewProvider
+  - name: _computeResourceDiffEditorInputs
+    type: any
+    default: "new LRUCachedFunction<\n\t\tBulkFileOperation[],\n\t\tPromise<{ resources: IMultiDiffE..."
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\toptions: IViewletViewOptions,\n\t\t@IInstantiationService private readonly _instaService: IInstantiationService,\n\t\t@IEditorService private readonly _editorService: IEditorService,\n\t\t@ILabelService private readonly _labelService: ILabelService,\n\t\t@ITextModelService private readonly _textModelService: ITextModelService,\n\t\t@IDialogService private readonly _dialogService: IDialogService,\n\t\t@IContextMenuService private readonly _contextMenuService: IContextMenuService,\n\t\t@IStorageService private readonly _storageService: IStorageService,\n\t\t@IContextKeyService contextKeyService: IContextKeyService,\n\t\t@IViewDescriptorService viewDescriptorService: IViewDescriptorService,\n\t\t@IKeybindingService keybindingService: IKeybindingService,\n\t\t@IContextMenuService contextMenuService: IContextMenuService,\n\t\t@IConfigurationService configurationService: IConfigurationService,\n\t\t@IOpenerService openerService: IOpenerService,\n\t\t@IThemeService themeService: IThemeService,\n\t\t@IHoverService hoverService: IHoverService,\n\t)"
+    lines:
+    - 75
+    - 102
+    detail:
+      calls:
+      - BulkEditPane.ctxGroupByFile.bindTo
+      - BulkEditPane.ctxHasCategories.bindTo
+      - BulkEditPane.ctxHasCheckedChanges.bindTo
+      - super
+      - this.element.classList.add
+  - name: dispose
+    sig: 'dispose(): void'
+    lines:
+    - 104
+    - 108
+    detail:
+      calls:
+      - super.dispose
+      - this._disposables.dispose
+      - this._tree.dispose
+  - name: renderBody
+    sig: 'renderBody(parent: HTMLElement): void'
+    vis: protected
+    lines:
+    - 110
+    - 173
+    detail:
+      calls:
+      - btnCancel.onDidClick
+      - btnConfirm.onDidClick
+      - buttonBar.addButton
+      - contentContainer.appendChild
+      - document.createElement
+      - localize
+      - new BulkEditDelegate
+      - new BulkEditIdentityProvider
+      - new BulkEditNaviLabelProvider
+      - new BulkEditSorter
+      - new ButtonBar
+      - parent.appendChild
+      - super.renderBody
+      - this._ctxGroupByFile.set
+      - this._disposables.add
+      - this._instaService.createInstance
+      - this._setState
+      - this._storageService.getBoolean
+      - this._tree.onContextMenu
+      - this._tree.onDidOpen
+  - name: layoutBody
+    sig: 'layoutBody(height: number, width: number): void'
+    vis: protected
+    lines:
+    - 175
+    - 180
+    detail:
+      calls:
+      - super.layoutBody
+      - this._tree.getHTMLElement
+      - this._tree.layout
+  - name: setInput
+    sig: 'setInput(edit: ResourceEdit[], token: CancellationToken): Promise<ResourceEdit[] | undefined>'
+    is_async: true
+    lines:
+    - 186
+    - 222
+    detail:
+      calls:
+      - new Promise
+      - this._ctxHasCategories.set
+      - this._ctxHasCheckedChanges.set
+      - this._currentResolve
+      - this._instaService.createInstance
+      - this._instaService.invokeFunction
+      - this._sessionDisposables.add
+      - this._sessionDisposables.clear
+      - this._setState
+      - this._treeViewStates.clear
+  - name: hasInput
+    sig: 'hasInput(): boolean'
+    lines:
+    - 224
+    - 226
+    detail:
+      calls:
+      - Boolean
+  - name: _setTreeInput
+    sig: '_setTreeInput(input: BulkFileOperations)'
+    is_async: true
+    vis: private
+    lines:
+    - 228
+    - 250
+    detail:
+      calls:
+      - '[...this._tree.getNode(input).children].slice'
+      - expand.push
+      - expand.shift
+      - this._tree.domFocus
+      - this._tree.expand
+      - this._tree.getNode
+      - this._tree.setInput
+      - this._treeViewStates.get
+  - name: accept
+    sig: 'accept(): void'
+    lines:
+    - 252
+    - 269
+    detail:
+      calls:
+      - localize
+      - this._currentInput?.conflicts.list
+      - this._dialogService.warn
+      - this._dialogService.warn(message).finally
+      - this._done
+      - this._labelService.getUriLabel
+  - name: discard
+    sig: discard()
+    lines:
+    - 271
+    - 273
+    detail:
+      calls:
+      - this._done
+  - name: _done
+    sig: '_done(accept: boolean): void'
+    vis: private
+    lines:
+    - 275
+    - 280
+    detail:
+      calls:
+      - this._currentInput?.getWorkspaceEdit
+      - this._currentResolve
+      - this._sessionDisposables.clear
+      - this._setState
+  - name: toggleChecked
+    sig: toggleChecked()
+    lines:
+    - 282
+    - 289
+    detail:
+      calls:
+      - first.isChecked
+      - first.isDisabled
+      - first.setChecked
+      - this._tree.getFocus
+  - name: groupByFile
+    sig: 'groupByFile(): void'
+    lines:
+    - 291
+    - 295
+    detail:
+      calls:
+      - this.toggleGrouping
+  - name: groupByType
+    sig: 'groupByType(): void'
+    lines:
+    - 297
+    - 301
+    detail:
+      calls:
+      - this.toggleGrouping
+  - name: toggleGrouping
+    sig: toggleGrouping()
+    lines:
+    - 303
+    - 319
+    detail:
+      calls:
+      - this._ctxGroupByFile.set
+      - this._setTreeInput
+      - this._storageService.store
+      - this._tree.getInput
+      - this._tree.getViewState
+      - this._treeViewStates.set
+  - name: _openElementInMultiDiffEditor
+    sig: '_openElementInMultiDiffEditor(e: IOpenEvent<BulkEditElement | undefined>): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 321
+    - 362
+    detail:
+      calls:
+      - URI.from
+      - result.getResourceDiffEditorInputIdOfOperation
+      - this._computeResourceDiffEditorInputs.get
+      - this._editorService.openEditor
+  lines:
+  - 49
+  - 420
+exports:
+- name: State
+  kind: type
+- name: BulkEditPane
+  kind: type

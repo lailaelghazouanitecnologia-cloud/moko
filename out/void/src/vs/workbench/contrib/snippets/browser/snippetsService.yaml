@@ -1,0 +1,377 @@
+## Roska File Descriptor — browser/snippetsService.ts
+file: browser/snippetsService.ts
+lines: 530
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: ../../../../base/common/jsonSchema.js.IJSONSchema
+- sym: ../../../../base/common/lifecycle.js.combinedDisposable
+- sym: ../../../../base/common/lifecycle.js.IDisposable
+- sym: ../../../../base/common/lifecycle.js.DisposableStore
+- sym: ../../../../base/common/resources.js.resources
+- sym: ../../../../base/common/strings.js.isFalsyOrWhitespace
+- sym: ../../../../base/common/uri.js.URI
+- sym: ../../../../editor/common/core/position.js.Position
+- sym: ../../../../editor/common/languages/language.js.ILanguageService
+- sym: ../../../../editor/contrib/suggest/browser/suggest.js.setSnippetSuggestSupport
+- sym: ../../../../nls.js.localize
+- sym: ../../../../platform/environment/common/environment.js.IEnvironmentService
+- sym: ../../../../platform/files/common/files.js.FileChangeType
+- sym: ../../../../platform/files/common/files.js.IFileService
+- sym: ../../../services/lifecycle/common/lifecycle.js.ILifecycleService
+- sym: ../../../services/lifecycle/common/lifecycle.js.LifecyclePhase
+- sym: ../../../../platform/log/common/log.js.ILogService
+- sym: ../../../../platform/workspace/common/workspace.js.IWorkspace
+- sym: ../../../../platform/workspace/common/workspace.js.IWorkspaceContextService
+- sym: ./snippets.js.ISnippetGetOptions
+- sym: ./snippets.js.ISnippetsService
+- sym: ./snippetsFile.js.Snippet
+- sym: ./snippetsFile.js.SnippetFile
+- sym: ./snippetsFile.js.SnippetSource
+- sym: ../../../services/extensions/common/extensionsRegistry.js.ExtensionsRegistry
+- sym: ../../../services/extensions/common/extensionsRegistry.js.IExtensionPointUser
+- sym: ../../../services/language/common/languageService.js.languagesExtPoint
+- sym: ./snippetCompletionProvider.js.SnippetCompletionProvider
+- sym: ../../../../platform/extensionResourceLoader/common/extensionResourceLoader.js.IExtensionResourceLoaderService
+- sym: ../../../../base/common/map.js.ResourceMap
+- sym: ../../../../platform/storage/common/storage.js.IStorageService
+- sym: ../../../../platform/storage/common/storage.js.StorageScope
+- sym: ../../../../platform/storage/common/storage.js.StorageTarget
+- sym: ../../../../base/common/types.js.isStringArray
+- sym: ../../../../platform/instantiation/common/instantiation.js.IInstantiationService
+- sym: ../../../services/textfile/common/textfiles.js.ITextFileService
+- sym: ../../../../editor/common/languages/languageConfigurationRegistry.js.ILanguageConfigurationService
+- sym: ../../../services/userDataProfile/common/userDataProfile.js.IUserDataProfileService
+- sym: ../../../../base/common/arrays.js.insertInto
+types:
+- name: SnippetEnablement
+  kind: struct
+  fields:
+  - name: _key
+    type: any
+    default: '''snippets.ignoredSnippets'''
+  - name: _ignored
+    type: Set<string>
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\t@IStorageService private readonly _storageService: IStorageService,\n\t)"
+    lines:
+    - 138
+    - 149
+    detail:
+      calls:
+      - JSON.parse
+      - _storageService.get
+      - isStringArray
+      - new Set
+  - name: isIgnored
+    sig: 'isIgnored(id: string): boolean'
+    lines:
+    - 151
+    - 153
+    detail:
+      calls:
+      - this._ignored.has
+  - name: updateIgnored
+    sig: 'updateIgnored(id: string, value: boolean): void'
+    lines:
+    - 155
+    - 167
+    detail:
+      calls:
+      - Array.from
+      - JSON.stringify
+      - this._ignored.add
+      - this._ignored.delete
+      - this._ignored.has
+      - this._storageService.store
+  lines:
+  - 132
+  - 168
+- name: SnippetUsageTimestamps
+  kind: struct
+  fields:
+  - name: _key
+    type: any
+    default: '''snippets.usageTimestamps'''
+  - name: _usages
+    type: Map<string, number>
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\t@IStorageService private readonly _storageService: IStorageService,\n\t)"
+    lines:
+    - 176
+    - 189
+    detail:
+      calls:
+      - Array.isArray
+      - JSON.parse
+      - _storageService.get
+      - new Map
+  - name: getUsageTimestamp
+    sig: 'getUsageTimestamp(id: string): number | undefined'
+    lines:
+    - 191
+    - 193
+    detail:
+      calls:
+      - this._usages.get
+  - name: updateUsageTimestamp
+    sig: 'updateUsageTimestamp(id: string): void'
+    lines:
+    - 195
+    - 203
+    detail:
+      calls:
+      - Date.now
+      - JSON.stringify
+      - '[...this._usages].slice'
+      - this._storageService.store
+      - this._usages.delete
+      - this._usages.set
+  lines:
+  - 170
+  - 204
+- name: SnippetsService
+  kind: struct
+  ctx: '--- loading, watching'
+  bases:
+  - ISnippetsService
+  fields:
+  - name: _serviceBrand
+    type: undefined
+  - name: _disposables
+    type: any
+    default: new DisposableStore()
+  - name: _pendingWork
+    type: Promise<any>[]
+    default: '[]'
+  - name: _files
+    type: any
+    default: new ResourceMap<SnippetFile>()
+  - name: _enablement
+    type: SnippetEnablement
+  - name: _usageTimestamps
+    type: SnippetUsageTimestamps
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\t@IEnvironmentService private readonly _environmentService: IEnvironmentService,\n\t\t@IUserDataProfileService private readonly _userDataProfileService: IUserDataProfileService,\n\t\t@IWorkspaceContextService private readonly _contextService: IWorkspaceContextService,\n\t\t@ILanguageService private readonly _languageService: ILanguageService,\n\t\t@ILogService private readonly _logService: ILogService,\n\t\t@IFileService private readonly _fileService: IFileService,\n\t\t@ITextFileService private readonly _textfileService: ITextFileService,\n\t\t@IExtensionResourceLoaderService private readonly _extensionResourceLoaderService: IExtensionResourceLoaderService,\n\t\t@ILifecycleService lifecycleService: ILifecycleService,\n\t\t@IInstantiationService instantiationService: IInstantiationService,\n\t\t@ILanguageConfigurationService languageConfigurationService: ILanguageConfigurationService,\n\t)"
+    lines:
+    - 216
+    - 239
+    detail:
+      calls:
+      - Promise.resolve
+      - instantiationService.createInstance
+      - lifecycleService.when
+      - lifecycleService.when(LifecyclePhase.Restored).then
+      - new SnippetCompletionProvider
+      - setSnippetSuggestSupport
+      - this._pendingWork.push
+  - name: dispose
+    sig: 'dispose(): void'
+    lines:
+    - 241
+    - 243
+    detail:
+      calls:
+      - this._disposables.dispose
+  - name: isEnabled
+    sig: 'isEnabled(snippet: Snippet): boolean'
+    lines:
+    - 245
+    - 247
+    detail:
+      calls:
+      - this._enablement.isIgnored
+  - name: updateEnablement
+    sig: 'updateEnablement(snippet: Snippet, enabled: boolean): void'
+    lines:
+    - 249
+    - 251
+    detail:
+      calls:
+      - this._enablement.updateIgnored
+  - name: updateUsageTimestamp
+    sig: 'updateUsageTimestamp(snippet: Snippet): void'
+    lines:
+    - 253
+    - 255
+    detail:
+      calls:
+      - this._usageTimestamps.updateUsageTimestamp
+  - name: getSnippetFiles
+    sig: 'getSnippetFiles(): Promise<Iterable<SnippetFile>>'
+    is_async: true
+    lines:
+    - 263
+    - 266
+    detail:
+      calls:
+      - this._files.values
+      - this._joinSnippets
+  - name: getSnippets
+    sig: 'getSnippets(languageId: string | undefined, opts?: ISnippetGetOptions): Promise<Snippet[]>'
+    is_async: true
+    lines:
+    - 268
+    - 293
+    detail:
+      calls:
+      - Promise.all
+      - file.load
+      - "file.load()\n\t\t\t\t\t\t.then"
+      - "file.load()\n\t\t\t\t\t\t.then(file => file.select(languageId, result))\n\t\t\t\t\t\t.catch"
+      - "file.load()\n\t\t\t\t\t.then"
+      - "file.load()\n\t\t\t\t\t.then(file => insertInto(result, result.length, file.data))\n\t\t\t\t\t.catch"
+      - promises.push
+      - this._files.values
+      - this._filterAndSortSnippets
+      - this._joinSnippets
+      - this._languageService.isRegisteredLanguageId
+  - name: getSnippetsSync
+    sig: 'getSnippetsSync(languageId: string, opts?: ISnippetGetOptions): Snippet[]'
+    lines:
+    - 295
+    - 306
+    detail:
+      calls:
+      - file.load
+      - file.load().catch
+      - file.select
+      - this._files.values
+      - this._filterAndSortSnippets
+      - this._languageService.isRegisteredLanguageId
+  - name: _filterAndSortSnippets
+    sig: '_filterAndSortSnippets(snippets: Snippet[], opts?: ISnippetGetOptions): Snippet[]'
+    vis: private
+    lines:
+    - 308
+    - 341
+    detail:
+      calls:
+      - result.push
+      - result.sort
+      - this.isEnabled
+  - name: _initExtensionSnippets
+    sig: '_initExtensionSnippets(): void'
+    vis: private
+    lines:
+    - 363
+    - 414
+    detail:
+      calls:
+      - snippetExt.point.setHandler
+  - name: _initWorkspaceSnippets
+    sig: '_initWorkspaceSnippets(): void'
+    vis: private
+    lines:
+    - 416
+    - 427
+    detail:
+      calls:
+      - new DisposableStore
+      - this._contextService.onDidChangeWorkbenchState
+      - this._contextService.onDidChangeWorkspaceFolders
+      - this._disposables.add
+      - updateWorkspaceSnippets
+  - name: _initWorkspaceFolderSnippets
+    sig: '_initWorkspaceFolderSnippets(workspace: IWorkspace, bucket: DisposableStore): Promise<any>'
+    is_async: true
+    vis: private
+    lines:
+    - 429
+    - 445
+    detail:
+      calls:
+      - Promise.all
+      - workspace.folders.map
+  - name: _initUserSnippets
+    sig: '_initUserSnippets(): Promise<any>'
+    is_async: true
+    vis: private
+    lines:
+    - 447
+    - 460
+    detail:
+      calls:
+      - new DisposableStore
+      - this._disposables.add
+      - this._userDataProfileService.onDidChangeCurrentProfile
+      - updateUserSnippets
+  - name: _initFolderSnippets
+    sig: '_initFolderSnippets(source: SnippetSource, folder: URI, bucket: DisposableStore): Promise<any>'
+    vis: private
+    lines:
+    - 462
+    - 487
+    detail:
+      calls:
+      - addFolderSnippets
+      - bucket.add
+      - new DisposableStore
+      - this._textfileService.files.onDidSave
+      - watch
+  - name: _addSnippetFile
+    sig: '_addSnippetFile(uri: URI, source: SnippetSource): IDisposable'
+    vis: private
+    lines:
+    - 489
+    - 500
+    detail:
+      calls:
+      - new SnippetFile
+      - resources.basename
+      - resources.basename(uri).replace
+      - resources.extname
+      - this._files.set
+  lines:
+  - 206
+  - 501
+- name: ISimpleModel
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: getLineContent
+    type: 'method: getLineContent(lineNumber: number): string'
+  lines:
+  - 504
+  - 506
+functions:
+- name: watch
+  sig: 'watch(service: IFileService, resource: URI, callback: () => unknown): IDisposable'
+  lines:
+  - 121
+  - 130
+  detail:
+    calls:
+    - combinedDisposable
+    - service.onDidFilesChange
+    - service.watch
+- name: getNonWhitespacePrefix
+  sig: 'getNonWhitespacePrefix(model: ISimpleModel, position: Position): string'
+  lines:
+  - 508
+  - 530
+  detail:
+    calls:
+    - /\s/.test
+    - Math.max
+    - line.charAt
+    - line.substr
+    - model.getLineContent
+    - model.getLineContent(position.lineNumber).substr
+exports:
+- name: SnippetEnablement
+  kind: type
+- name: SnippetUsageTimestamps
+  kind: type
+- name: SnippetsService
+  kind: type
+- name: ISimpleModel
+  kind: type
+- name: watch
+  kind: func
+- name: getNonWhitespacePrefix
+  kind: func

@@ -1,0 +1,262 @@
+## Roska File Descriptor — common/extensionStorage.ts
+file: common/extensionStorage.ts
+lines: 226
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: ../../instantiation/common/instantiation.js.createDecorator
+- sym: ../../../base/common/event.js.Emitter
+- sym: ../../../base/common/event.js.Event
+- sym: ../../../base/common/lifecycle.js.Disposable
+- sym: ../../storage/common/storage.js.IProfileStorageValueChangeEvent
+- sym: ../../storage/common/storage.js.IStorageService
+- sym: ../../storage/common/storage.js.StorageScope
+- sym: ../../storage/common/storage.js.StorageTarget
+- sym: ./extensionManagementUtil.js.adoptToGalleryExtensionId
+- sym: ./extensionManagementUtil.js.areSameExtensions
+- sym: ./extensionManagementUtil.js.getExtensionId
+- sym: ../../product/common/productService.js.IProductService
+- sym: ../../../base/common/arrays.js.distinct
+- sym: ../../log/common/log.js.ILogService
+- sym: ../../extensions/common/extensions.js.IExtension
+- sym: ../../../base/common/types.js.isString
+- sym: ../../../base/common/collections.js.IStringDictionary
+- sym: ./extensionManagement.js.IExtensionManagementService
+- sym: ./extensionManagement.js.IGalleryExtension
+data:
+- name: IExtensionStorageService
+  type: any
+  val: createDecorator<IExtensionStorageService>('IExtensionStorageService')
+- name: EXTENSION_KEYS_ID_VERSION_REGEX
+  type: any
+  val: /^extensionKeys\/([^.]+\..+)@(\d+\.\d+\.\d+(-.*)?)$/
+types:
+- name: IExtensionIdWithVersion
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: id
+    type: string
+  - name: version
+    type: string
+  lines:
+  - 19
+  - 22
+- name: IExtensionStorageService
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: readonly
+    type: undefined
+  - name: getExtensionState
+    type: 'method: getExtensionState(extension: IExtension | IGalleryExtension | string, global: boolean): IStringDictionary<any> | undefined'
+  - name: getExtensionStateRaw
+    type: 'method: getExtensionStateRaw(extension: IExtension | IGalleryExtension | string, global: boolean): string | undefined'
+  - name: setExtensionState
+    type: 'method: setExtensionState(extension: IExtension | IGalleryExtension | string, state: IStringDictionary<any> | undefined, global: boolean): void'
+  - name: readonly
+    type: Event<void>
+  - name: setKeysForSync
+    type: 'method: setKeysForSync(extensionIdWithVersion: IExtensionIdWithVersion, keys: string[]): void'
+  - name: getKeysForSync
+    type: 'method: getKeysForSync(extensionIdWithVersion: IExtensionIdWithVersion): string[] | undefined'
+  - name: addToMigrationList
+    type: 'method: addToMigrationList(from: string, to: string): void'
+  - name: getSourceExtensionToMigrate
+    type: 'method: getSourceExtensionToMigrate(target: string): string | undefined'
+  lines:
+  - 26
+  - 39
+- name: ExtensionStorageService
+  kind: struct
+  ctx: 'TODO @sandy081: This has to be done across all profiles'
+  bases:
+  - Disposable
+  - IExtensionStorageService
+  fields:
+  - name: _serviceBrand
+    type: undefined
+  - name: LARGE_STATE_WARNING_THRESHOLD
+    type: any
+    default: 512 * 1024
+  - name: _onDidChangeExtensionStorageToSync
+    type: any
+    default: this._register(new Emitter<void>())
+  - name: onDidChangeExtensionStorageToSync
+    type: any
+    default: this._onDidChangeExtensionStorageToSync.event
+  - name: extensionsWithKeysForSync
+    type: Map<string, string[]>
+  methods:
+  - name: removeOutdatedExtensionVersions
+    sig: 'removeOutdatedExtensionVersions(extensionManagementService: IExtensionManagementService, storageService: IStorageService): Promise<void>'
+    is_async: true
+    decorators:
+    - static
+    lines:
+    - 62
+    - 76
+    detail:
+      calls:
+      - ExtensionStorageService.readAllExtensionsWithKeysForSync
+      - ExtensionStorageService.toKey
+      - extensionManagementService.getInstalled
+      - extensionVersionsToRemove.push
+      - extensions.find
+      - storageService.remove
+  - name: readAllExtensionsWithKeysForSync
+    sig: 'readAllExtensionsWithKeysForSync(storageService: IStorageService): Map<string, string[]>'
+    vis: private
+    decorators:
+    - static
+    lines:
+    - 78
+    - 92
+    detail:
+      calls:
+      - ExtensionStorageService.fromKey
+      - extensionIdWithVersion.id.toLowerCase
+      - extensionsWithKeysForSync.get
+      - extensionsWithKeysForSync.set
+      - new Map
+      - storageService.keys
+      - versions.push
+  - name: constructor
+    sig: "constructor(\n\t\t@IStorageService private readonly storageService: IStorageService,\n\t\t@IProductService private readonly productService: IProductService,\n\t\t@ILogService private readonly logService: ILogService,\n\t)"
+    lines:
+    - 99
+    - 107
+    detail:
+      calls:
+      - ExtensionStorageService.readAllExtensionsWithKeysForSync
+      - super
+      - this._register
+      - this.storageService.onDidChangeValue
+      - this.storageService.onDidChangeValue(StorageScope.PROFILE, undefined, this._store)
+  - name: onDidChangeStorageValue
+    sig: 'onDidChangeStorageValue(e: IProfileStorageValueChangeEvent): void'
+    vis: private
+    lines:
+    - 109
+    - 132
+    detail:
+      calls:
+      - ExtensionStorageService.fromKey
+      - e.key.toLowerCase
+      - extensionIdWithVersion.id.toLowerCase
+      - this._onDidChangeExtensionStorageToSync.fire
+      - this.extensionsWithKeysForSync.delete
+      - this.extensionsWithKeysForSync.get
+      - this.extensionsWithKeysForSync.has
+      - this.extensionsWithKeysForSync.set
+      - this.storageService.get
+      - versions.push
+  - name: getExtensionState
+    sig: 'getExtensionState(extension: IExtension | IGalleryExtension | string, global: boolean): IStringDictionary<any> | undefined'
+    lines:
+    - 143
+    - 157
+    detail:
+      calls:
+      - JSON.parse
+      - this.getExtensionId
+      - this.getExtensionStateRaw
+      - this.logService.error
+  - name: getExtensionStateRaw
+    sig: 'getExtensionStateRaw(extension: IExtension | IGalleryExtension | string, global: boolean): string | undefined'
+    lines:
+    - 159
+    - 168
+    detail:
+      calls:
+      - this.getExtensionId
+      - this.logService.warn
+      - this.storageService.get
+  - name: setExtensionState
+    sig: 'setExtensionState(extension: IExtension | IGalleryExtension | string, state: IStringDictionary<any> | undefined, global: boolean): void'
+    lines:
+    - 170
+    - 177
+    detail:
+      calls:
+      - JSON.stringify
+      - this.getExtensionId
+      - this.storageService.remove
+      - this.storageService.store
+  - name: setKeysForSync
+    sig: 'setKeysForSync(extensionIdWithVersion: IExtensionIdWithVersion, keys: string[]): void'
+    lines:
+    - 179
+    - 181
+    detail:
+      calls:
+      - ExtensionStorageService.toKey
+      - JSON.stringify
+      - this.storageService.store
+  - name: getKeysForSync
+    sig: 'getKeysForSync(extensionIdWithVersion: IExtensionIdWithVersion): string[] | undefined'
+    lines:
+    - 183
+    - 191
+    detail:
+      calls:
+      - ExtensionStorageService.toKey
+      - JSON.parse
+      - distinct
+      - extensionIdWithVersion.id.toLowerCase
+      - this.storageService.get
+  - name: addToMigrationList
+    sig: 'addToMigrationList(from: string, to: string): void'
+    lines:
+    - 193
+    - 200
+    detail:
+      calls:
+      - migrationList.push
+      - this.migrationList.filter
+  - name: getSourceExtensionToMigrate
+    sig: 'getSourceExtensionToMigrate(toExtensionId: string): string | undefined'
+    lines:
+    - 202
+    - 205
+    detail:
+      calls:
+      - this.migrationList.find
+  - name: migrationList
+    sig: 'migrationList(): [string, string][]'
+    vis: private
+    lines:
+    - 207
+    - 216
+    detail:
+      calls:
+      - Array.isArray
+      - JSON.parse
+      - this.storageService.get
+  - name: migrationList
+    sig: 'migrationList(migrationList: [string, string][])'
+    vis: private
+    lines:
+    - 218
+    - 224
+    detail:
+      calls:
+      - JSON.stringify
+      - this.storageService.remove
+      - this.storageService.store
+  lines:
+  - 43
+  - 226
+exports:
+- name: IExtensionIdWithVersion
+  kind: type
+- name: IExtensionStorageService
+  kind: type
+- name: ExtensionStorageService
+  kind: type
+- name: IExtensionStorageService
+  kind: data
+- name: EXTENSION_KEYS_ID_VERSION_REGEX
+  kind: data

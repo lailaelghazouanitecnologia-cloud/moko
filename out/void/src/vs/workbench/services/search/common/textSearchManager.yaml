@@ -1,0 +1,287 @@
+## Roska File Descriptor — common/textSearchManager.ts
+file: common/textSearchManager.ts
+lines: 386
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: ../../../../base/common/async.js.isThenable
+- sym: ../../../../base/common/cancellation.js.CancellationToken
+- sym: ../../../../base/common/cancellation.js.CancellationTokenSource
+- sym: ../../../../base/common/errorMessage.js.toErrorMessage
+- sym: ../../../../base/common/network.js.Schemas
+- sym: ../../../../base/common/path.js.path
+- sym: ../../../../base/common/resources.js.resources
+- sym: ../../../../base/common/uri.js.URI
+- sym: ./folderQuerySearchTree.js.FolderQuerySearchTree
+- sym: ./search.js.DEFAULT_MAX_SEARCH_RESULTS
+- sym: ./search.js.hasSiblingPromiseFn
+- sym: ./search.js.IAITextQuery
+- sym: ./search.js.IExtendedExtensionSearchOptions
+- sym: ./search.js.IFileMatch
+- sym: ./search.js.IFolderQuery
+- sym: ./search.js.excludeToGlobPattern
+- sym: ./search.js.IPatternInfo
+- sym: ./search.js.ISearchCompleteStats
+- sym: ./search.js.ITextQuery
+- sym: ./search.js.ITextSearchContext
+- sym: ./search.js.ITextSearchMatch
+- sym: ./search.js.ITextSearchResult
+- sym: ./search.js.ITextSearchStats
+- sym: ./search.js.QueryGlobTester
+- sym: ./search.js.QueryType
+- sym: ./search.js.resolvePatternsForProvider
+- sym: ./search.js.ISearchRange
+- sym: ./search.js.DEFAULT_TEXT_SEARCH_PREVIEW_OPTIONS
+- sym: ./searchExtTypes.js.TextSearchComplete2
+- sym: ./searchExtTypes.js.TextSearchMatch2
+- sym: ./searchExtTypes.js.TextSearchProviderFolderOptions
+- sym: ./searchExtTypes.js.TextSearchProvider2
+- sym: ./searchExtTypes.js.TextSearchProviderOptions
+- sym: ./searchExtTypes.js.TextSearchQuery2
+- sym: ./searchExtTypes.js.TextSearchResult2
+- sym: ./searchExtTypes.js.AITextSearchProvider
+types:
+- name: IFileUtils
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: readdir
+    type: '(resource: URI) => Promise<string[]>'
+  - name: toCanonicalName
+    type: '(encoding: string) => string'
+  lines:
+  - 17
+  - 20
+- name: IAITextQueryProviderPair
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: query
+    type: IAITextQuery
+  - name: provider
+    type: AITextSearchProvider
+  lines:
+  - 21
+  - 23
+- name: ITextQueryProviderPair
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: query
+    type: ITextQuery
+  - name: provider
+    type: TextSearchProvider2
+  lines:
+  - 25
+  - 27
+- name: FolderQueryInfo
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: queryTester
+    type: QueryGlobTester
+  - name: folder
+    type: URI
+  - name: folderIdx
+    type: number
+  lines:
+  - 28
+  - 32
+- name: TextSearchManager
+  kind: struct
+  fields:
+  - name: collector
+    type: TextSearchResultsCollector | null
+    default: 'null'
+  - name: isLimitHit
+    type: any
+    default: 'false'
+  - name: resultCount
+    type: any
+    default: '0'
+  methods:
+  - name: constructor
+    sig: "constructor(private queryProviderPair: IAITextQueryProviderPair | ITextQueryProviderPair,\n\t\tprivate fileUtils: IFileUtils,\n\t\tprivate processType: ITextSearchStats['type'])"
+    lines:
+    - 41
+    - 43
+    detail: {}
+  - name: search
+    sig: 'search(onProgress: (matches: IFileMatch[]) => void, token: CancellationToken): Promise<ISearchCompleteStats>'
+    lines:
+    - 49
+    - 100
+    detail:
+      calls:
+      - new CancellationTokenSource
+      - new Promise
+  - name: doSearch
+    sig: 'doSearch(folderQueries: IFolderQuery<URI>[], onResult: (result: TextSearchResult2, folderIdx: number) => void, token: CancellationToken): Promise<TextSearchComplete2 | null | undefined>'
+    is_async: true
+    vis: private
+    lines:
+    - 124
+    - 189
+    detail:
+      calls:
+      - (this.queryProviderPair as IAITextQueryProviderPair).provider.provideAITextSearchResults
+      - (this.queryProviderPair as ITextQueryProviderPair).provider.provideTextSearchResults
+      - Promise.all
+      - folderQueries.map
+      - new FolderQuerySearchTree
+      - patternInfoToQuery
+  - name: getSearchOptionsForFolder
+    sig: 'getSearchOptionsForFolder(fq: IFolderQuery<URI>): TextSearchProviderFolderOptions'
+    vis: private
+    lines:
+    - 191
+    - 220
+    detail:
+      calls:
+      - URI.from
+      - excludeToGlobPattern
+      - fq.excludePattern?.map
+      - resolvePatternsForProvider
+      - this.fileUtils.toCanonicalName
+  lines:
+  - 34
+  - 221
+- name: TextSearchResultsCollector
+  kind: struct
+  fields:
+  - name: _batchedCollector
+    type: BatchedCollector<IFileMatch>
+  - name: _currentFolderIdx
+    type: number
+    default: '-1'
+  - name: _currentUri
+    type: URI | undefined
+  - name: _currentFileMatch
+    type: IFileMatch | null
+    default: 'null'
+  methods:
+  - name: constructor
+    sig: 'constructor(private _onResult: (result: IFileMatch[]) => void)'
+    lines:
+    - 240
+    - 242
+    detail:
+      calls:
+      - new BatchedCollector
+  - name: add
+    sig: 'add(data: TextSearchResult2, folderIdx: number): void'
+    lines:
+    - 244
+    - 262
+    detail:
+      calls:
+      - extensionResultToFrontendResult
+      - resources.isEqual
+      - this._currentFileMatch.results!.push
+      - this.pushToCollector
+  - name: flush
+    sig: 'flush(): void'
+    lines:
+    - 271
+    - 274
+    detail:
+      calls:
+      - this._batchedCollector.flush
+      - this.pushToCollector
+  lines:
+  - 233
+  - 279
+- name: BatchedCollector
+  kind: struct
+  ctx: After START_BATCH_AFTER_COUNT items have been collected, stop flushing on timeout
+  fields:
+  - name: TIMEOUT
+    type: any
+    default: '4000'
+  - name: START_BATCH_AFTER_COUNT
+    type: any
+    default: '50'
+  - name: totalNumberCompleted
+    type: any
+    default: '0'
+  - name: batch
+    type: T[]
+    default: '[]'
+  - name: batchSize
+    type: any
+    default: '0'
+  - name: timeoutHandle
+    type: any
+  methods:
+  - name: constructor
+    sig: 'constructor(private maxBatchSize: number, private cb: (items: T[]) => void)'
+    lines:
+    - 327
+    - 328
+    detail: {}
+  - name: addItem
+    sig: 'addItem(item: T, size: number): void'
+    lines:
+    - 330
+    - 336
+    detail:
+      calls:
+      - this.addItemToBatch
+  - name: addItems
+    sig: 'addItems(items: T[], size: number): void'
+    lines:
+    - 338
+    - 344
+    detail:
+      calls:
+      - this.addItemsToBatch
+  - name: flush
+    sig: 'flush(): void'
+    lines:
+    - 373
+    - 385
+    detail:
+      calls:
+      - clearTimeout
+      - this.cb
+  lines:
+  - 316
+  - 386
+functions:
+- name: patternInfoToQuery
+  sig: 'patternInfoToQuery(patternInfo: IPatternInfo): TextSearchQuery2'
+  lines:
+  - 223
+  - 231
+  detail: {}
+- name: extensionResultToFrontendResult
+  sig: 'extensionResultToFrontendResult(data: TextSearchResult2): ITextSearchResult'
+  lines:
+  - 281
+  - 307
+  detail:
+    calls:
+    - data.ranges.map
+exports:
+- name: IFileUtils
+  kind: type
+- name: IAITextQueryProviderPair
+  kind: type
+- name: ITextQueryProviderPair
+  kind: type
+- name: FolderQueryInfo
+  kind: type
+- name: TextSearchManager
+  kind: type
+- name: TextSearchResultsCollector
+  kind: type
+- name: BatchedCollector
+  kind: type
+- name: patternInfoToQuery
+  kind: func
+- name: extensionResultToFrontendResult
+  kind: func

@@ -1,0 +1,942 @@
+## Roska File Descriptor — common/terminal.ts
+file: common/terminal.ts
+lines: 689
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: ../../../../base/common/event.js.Event
+- sym: ../../../../base/common/lifecycle.js.IDisposable
+- sym: ../../../../base/common/marshallingIds.js.MarshalledId
+- sym: ../../../../base/common/platform.js.IProcessEnvironment
+- sym: ../../../../base/common/platform.js.isLinux
+- sym: ../../../../base/common/platform.js.OperatingSystem
+- sym: ../../../../base/common/severity.js.Severity
+- sym: ../../../../base/common/themables.js.ThemeIcon
+- sym: ../../../../base/common/uri.js.URI
+- sym: ../../../../nls.js.nls
+- sym: ../../../../platform/instantiation/common/instantiation.js.createDecorator
+- sym: ../../../../platform/terminal/common/capabilities/capabilities.js.ISerializedCommandDetectionCapability
+- sym: ../../../../platform/terminal/common/capabilities/capabilities.js.ITerminalCapabilityStore
+- sym: ../../../../platform/terminal/common/environmentVariable.js.IMergedEnvironmentVariableCollection
+- sym: ../../../../platform/terminal/common/terminal.js.ICreateContributedTerminalProfileOptions
+- sym: ../../../../platform/terminal/common/terminal.js.IExtensionTerminalProfile
+- sym: ../../../../platform/terminal/common/terminal.js.IFixedTerminalDimensions
+- sym: ../../../../platform/terminal/common/terminal.js.IProcessDataEvent
+- sym: ../../../../platform/terminal/common/terminal.js.IProcessProperty
+- sym: ../../../../platform/terminal/common/terminal.js.IProcessPropertyMap
+- sym: ../../../../platform/terminal/common/terminal.js.IProcessReadyEvent
+- sym: ../../../../platform/terminal/common/terminal.js.IProcessReadyWindowsPty
+- sym: ../../../../platform/terminal/common/terminal.js.IShellLaunchConfig
+- sym: ../../../../platform/terminal/common/terminal.js.ITerminalBackend
+- sym: ../../../../platform/terminal/common/terminal.js.ITerminalContributions
+- sym: ../../../../platform/terminal/common/terminal.js.ITerminalEnvironment
+- sym: ../../../../platform/terminal/common/terminal.js.ITerminalLaunchError
+- sym: ../../../../platform/terminal/common/terminal.js.ITerminalProfile
+- sym: ../../../../platform/terminal/common/terminal.js.ITerminalProfileObject
+- sym: ../../../../platform/terminal/common/terminal.js.ITerminalTabAction
+- sym: ../../../../platform/terminal/common/terminal.js.ProcessPropertyType
+- sym: ../../../../platform/terminal/common/terminal.js.TerminalIcon
+- sym: ../../../../platform/terminal/common/terminal.js.TerminalLocationString
+- sym: ../../../../platform/terminal/common/terminal.js.TitleEventSource
+- sym: ../../accessibility/common/accessibilityCommands.js.AccessibilityCommandId
+- sym: ./environmentVariable.js.IEnvironmentVariableInfo
+- sym: ../../../services/extensions/common/extensionsRegistry.js.IExtensionPointDescriptor
+- sym: ../terminalContribExports.js.defaultTerminalContribCommandsToSkipShell
+data:
+- name: TERMINAL_VIEW_ID
+  type: string
+  val: '''terminal'''
+- name: TERMINAL_CREATION_COMMANDS
+  type: array
+  val: '[''workbench.action.terminal.toggleTerminal'', ''workbench.action.terminal.new'', ''workbench.action.togglePanel'', ''workbench...'
+- name: TERMINAL_CONFIG_SECTION
+  type: string
+  val: '''terminal.integrated'''
+- name: DEFAULT_LETTER_SPACING
+  type: number
+  val: '0'
+- name: MINIMUM_LETTER_SPACING
+  type: number
+  val: '-5'
+- name: DEFAULT_LINE_HEIGHT
+  type: any
+  val: 'isLinux ? 1.1 : 1'
+- name: MINIMUM_FONT_WEIGHT
+  type: number
+  val: '1'
+- name: MAXIMUM_FONT_WEIGHT
+  type: number
+  val: '1000'
+- name: DEFAULT_FONT_WEIGHT
+  type: string
+  val: '''normal'''
+- name: DEFAULT_BOLD_FONT_WEIGHT
+  type: string
+  val: '''bold'''
+- name: SUGGESTIONS_FONT_WEIGHT
+  type: array
+  val: '[''normal'', ''bold'', ''100'', ''200'', ''300'', ''400'', ''500'', ''600'', ''700'', ''800'', ''900'']'
+- name: ITerminalProfileResolverService
+  type: any
+  val: createDecorator<ITerminalProfileResolverService>('terminalProfileResolverService')
+- name: ShellIntegrationExitCode
+  type: number
+  val: '633'
+- name: ITerminalProfileService
+  type: any
+  val: createDecorator<ITerminalProfileService>('terminalProfileService')
+- name: QUICK_LAUNCH_PROFILE_CHOICE
+  type: string
+  val: '''workbench.action.terminal.profile.choice'''
+- name: DEFAULT_COMMANDS_TO_SKIP_SHELL
+  type: string[]
+  val: "[\n\tTerminalCommandId.ClearSelection,\n\tTerminalCommandId.Clear,\n\tTerminalCommandId.CopyAndClearSelection,\n\tTerminalComman..."
+- name: terminalContributionsDescriptor
+  type: IExtensionPointDescriptor<ITerminalContributions>
+  val: "{\n\textensionPoint: 'terminal',\n\tdefaultExtensionKind: ['workspace'],\n\tactivationEventsGenerator: (contribs: ITerminalCon..."
+types:
+- name: ITerminalProfileResolverService
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: readonly
+    type: undefined
+  - name: readonly
+    type: string | undefined
+  - name: resolveIcon
+    type: 'method: resolveIcon(shellLaunchConfig: IShellLaunchConfig, os: OperatingSystem): void'
+  - name: resolveShellLaunchConfig
+    type: 'method: resolveShellLaunchConfig(shellLaunchConfig: IShellLaunchConfig, options: IShellLaunchConfigResolveOptions): Promise<void>'
+  - name: getDefaultProfile
+    type: 'method: getDefaultProfile(options: IShellLaunchConfigResolveOptions): Promise<ITerminalProfile>'
+  - name: getDefaultShell
+    type: 'method: getDefaultShell(options: IShellLaunchConfigResolveOptions): Promise<string>'
+  - name: getDefaultShellArgs
+    type: 'method: getDefaultShellArgs(options: IShellLaunchConfigResolveOptions): Promise<string | string[]>'
+  - name: getDefaultIcon
+    type: 'method: getDefaultIcon(): TerminalIcon & ThemeIcon'
+  - name: getEnvironment
+    type: 'method: getEnvironment(remoteAuthority: string | undefined): Promise<IProcessEnvironment>'
+  lines:
+  - 45
+  - 60
+- name: IRegisterContributedProfileArgs
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: extensionIdentifier
+    type: string
+  - name: id
+    type: string
+  - name: options
+    type: ICreateContributedTerminalProfileOptions
+  lines:
+  - 68
+  - 70
+- name: ITerminalProfileService
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: readonly
+    type: undefined
+  - name: readonly
+    type: ITerminalProfile[]
+  - name: readonly
+    type: IExtensionTerminalProfile[]
+  - name: readonly
+    type: Promise<void>
+  - name: getPlatformKey
+    type: 'method: getPlatformKey(): Promise<string>'
+  - name: refreshAvailableProfiles
+    type: 'method: refreshAvailableProfiles(): void'
+  - name: getDefaultProfileName
+    type: 'method: getDefaultProfileName(): string | undefined'
+  - name: getDefaultProfile
+    type: 'method: getDefaultProfile(os?: OperatingSystem): ITerminalProfile | undefined'
+  - name: onDidChangeAvailableProfiles
+    type: Event<ITerminalProfile[]>
+  - name: getContributedDefaultProfile
+    type: 'method: getContributedDefaultProfile(shellLaunchConfig: IShellLaunchConfig): Promise<IExtensionTerminalProfile | undefined>'
+  - name: registerContributedProfile
+    type: 'method: registerContributedProfile(args: IRegisterContributedProfileArgs): Promise<void>'
+  - name: getContributedProfileProvider
+    type: 'method: getContributedProfileProvider(extensionIdentifier: string, id: string): ITerminalProfileProvider | undefined'
+  - name: registerTerminalProfileProvider
+    type: 'method: registerTerminalProfileProvider(extensionIdentifier: string, id: string, profileProvider: ITerminalProfileProvider): IDisposable'
+  lines:
+  - 73
+  - 87
+- name: ITerminalProfileProvider
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: createContributedTerminalProfile
+    type: 'method: createContributedTerminalProfile(options: ICreateContributedTerminalProfileOptions): Promise<void>'
+  lines:
+  - 89
+  - 91
+- name: IShellLaunchConfigResolveOptions
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: remoteAuthority
+    type: string | undefined
+  - name: os
+    type: OperatingSystem
+  - name: allowAutomationShell
+    type: boolean
+  lines:
+  - 93
+  - 97
+- name: FontWeight
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 99
+  - 99
+- name: ITerminalProfiles
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: linux
+    type: '{ [key: string]: ITerminalProfileObject }'
+  - name: osx
+    type: '{ [key: string]: ITerminalProfileObject }'
+  - name: windows
+    type: '{ [key: string]: ITerminalProfileObject }'
+  lines:
+  - 101
+  - 105
+- name: ConfirmOnKill
+  kind: enum
+  decorators:
+  - type
+  variants:
+  - name: '''panel'''
+  lines:
+  - 107
+  - 107
+- name: ConfirmOnExit
+  kind: enum
+  decorators:
+  - type
+  variants:
+  - name: '''hasChildProcesses'''
+  lines:
+  - 108
+  - 108
+- name: ICompleteTerminalConfiguration
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: '''terminal.integrated.env.windows'''
+    type: ITerminalEnvironment
+  - name: '''terminal.integrated.env.osx'''
+    type: ITerminalEnvironment
+  - name: '''terminal.integrated.env.linux'''
+    type: ITerminalEnvironment
+  - name: '''terminal.integrated.cwd'''
+    type: string
+  - name: '''terminal.integrated.detectLocale'''
+    type: '''auto'' | ''off'' | ''on'''
+  lines:
+  - 110
+  - 116
+- name: ITerminalConfiguration
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: shell
+    type: "{\n\t\tlinux: string | null;\n\t\tosx: string | null;\n\t\twindows: string | null;\n\t}"
+  - name: automationShell
+    type: "{\n\t\tlinux: string | null;\n\t\tosx: string | null;\n\t\twindows: string | null;\n\t}"
+  - name: shellArgs
+    type: "{\n\t\tlinux: string[];\n\t\tosx: string[];\n\t\twindows: string[];\n\t}"
+  - name: profiles
+    type: ITerminalProfiles
+  - name: defaultProfile
+    type: "{\n\t\tlinux: string | null;\n\t\tosx: string | null;\n\t\twindows: string | null;\n\t}"
+  - name: useWslProfiles
+    type: boolean
+  - name: altClickMovesCursor
+    type: boolean
+  - name: macOptionIsMeta
+    type: boolean
+  - name: macOptionClickForcesSelection
+    type: boolean
+  - name: gpuAcceleration
+    type: '''auto'' | ''on'' | ''off'''
+  - name: rightClickBehavior
+    type: '''default'' | ''copyPaste'' | ''paste'' | ''selectWord'' | ''nothing'''
+  - name: middleClickBehavior
+    type: '''default'' | ''paste'''
+  - name: cursorBlinking
+    type: boolean
+  - name: cursorStyle
+    type: '''block'' | ''underline'' | ''line'''
+  - name: cursorStyleInactive
+    type: '''outline'' | ''block'' | ''underline'' | ''line'' | ''none'''
+  - name: cursorWidth
+    type: number
+  - name: drawBoldTextInBrightColors
+    type: boolean
+  - name: fastScrollSensitivity
+    type: number
+  - name: fontFamily
+    type: string
+  - name: fontWeight
+    type: FontWeight
+  - name: fontWeightBold
+    type: FontWeight
+  - name: minimumContrastRatio
+    type: number
+  - name: mouseWheelScrollSensitivity
+    type: number
+  - name: tabStopWidth
+    type: number
+  - name: sendKeybindingsToShell
+    type: boolean
+  - name: fontSize
+    type: number
+  - name: letterSpacing
+    type: number
+  - name: lineHeight
+    type: number
+  - name: detectLocale
+    type: '''auto'' | ''off'' | ''on'''
+  - name: scrollback
+    type: number
+  - name: commandsToSkipShell
+    type: string[]
+  - name: allowChords
+    type: boolean
+  - name: allowMnemonics
+    type: boolean
+  - name: cwd
+    type: string
+  - name: confirmOnExit
+    type: ConfirmOnExit
+  - name: confirmOnKill
+    type: ConfirmOnKill
+  - name: enableBell
+    type: boolean
+  - name: env
+    type: "{\n\t\tlinux: { [key: string]: string };\n\t\tosx: { [key: string]: string };\n\t\twindows: { [key: string]: string };\n\t}"
+  - name: environmentChangesIndicator
+    type: '''off'' | ''on'' | ''warnonly'''
+  - name: environmentChangesRelaunch
+    type: boolean
+  - name: showExitAlert
+    type: boolean
+  - name: splitCwd
+    type: '''workspaceRoot'' | ''initial'' | ''inherited'''
+  - name: windowsEnableConpty
+    type: boolean
+  - name: windowsUseConptyDll
+    type: boolean
+  - name: wordSeparators
+    type: string
+  - name: enableFileLinks
+    type: '''off'' | ''on'' | ''notRemote'''
+  - name: allowedLinkSchemes
+    type: string[]
+  - name: unicodeVersion
+    type: '''6'' | ''11'''
+  - name: enablePersistentSessions
+    type: boolean
+  - name: tabs
+    type: "{\n\t\tenabled: boolean;\n\t\thideCondition: 'never' | 'singleTerminal' | 'singleGroup';\n\t\tshowActiveTerminal: 'always' | 'singleTerminal' | 'singleTerminalOrNarrow' | 'singleGroup' | 'never';\n\t\tlocation: 'left' | 'right';\n\t\tfocusMode: 'singleClick' | 'doubleClick';\n\t\ttitle: string;\n\t\tdescription: string;\n\t\tseparator: string;\n\t}"
+  - name: bellDuration
+    type: number
+  - name: defaultLocation
+    type: TerminalLocationString
+  - name: customGlyphs
+    type: boolean
+  - name: persistentSessionReviveProcess
+    type: '''onExit'' | ''onExitAndWindowClose'' | ''never'''
+  - name: ignoreProcessNames
+    type: string[]
+  - name: shellIntegration
+    type: "{\n\t\tenabled: boolean;\n\t\tdecorationsEnabled: 'both' | 'gutter' | 'overviewRuler' | 'never';\n\t}"
+  - name: enableImages
+    type: boolean
+  - name: smoothScrolling
+    type: boolean
+  - name: ignoreBracketedPasteMode
+    type: boolean
+  - name: rescaleOverlappingGlyphs
+    type: boolean
+  - name: fontLigatures
+    type: "{\n\t\tenabled: boolean;\n\t\tfeatureSettings: string;\n\t\tfallbackLigatures: string[];\n\t}"
+  - name: hideOnLastClosed
+    type: boolean
+  lines:
+  - 118
+  - 217
+- name: ITerminalFont
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: fontFamily
+    type: string
+  - name: fontSize
+    type: number
+  - name: letterSpacing
+    type: number
+  - name: lineHeight
+    type: number
+  - name: charWidth
+    type: number
+  - name: charHeight
+    type: number
+  lines:
+  - 219
+  - 226
+- name: IRemoteTerminalAttachTarget
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: id
+    type: number
+  - name: pid
+    type: number
+  - name: titleSource
+    type: TitleEventSource
+  - name: cwd
+    type: string
+  - name: workspaceId
+    type: string
+  - name: isOrphan
+    type: boolean
+  - name: icon
+    type: 'URI | { light: URI; dark: URI } | { id: string; color?: { id: string } } | undefined'
+  - name: color
+    type: string | undefined
+  - name: fixedDimensions
+    type: IFixedTerminalDimensions | undefined
+  - name: shellIntegrationNonce
+    type: string
+  - name: tabActions
+    type: ITerminalTabAction[]
+  lines:
+  - 228
+  - 242
+- name: IBeforeProcessDataEvent
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: data
+    type: string
+  lines:
+  - 244
+  - 250
+- name: IDefaultShellAndArgsRequest
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: useAutomationShell
+    type: boolean
+  - name: callback
+    type: '(shell: string, args: string[] | string | undefined) => void'
+  lines:
+  - 252
+  - 255
+- name: ITerminalProcessInfo
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: readonly
+    type: ProcessState
+  - name: readonly
+    type: Promise<void>
+  - name: readonly
+    type: number | undefined
+  - name: readonly
+    type: string | undefined
+  - name: readonly
+    type: OperatingSystem | undefined
+  - name: readonly
+    type: string | undefined
+  - name: readonly
+    type: string
+  - name: readonly
+    type: IEnvironmentVariableInfo | undefined
+  - name: readonly
+    type: number | undefined
+  - name: readonly
+    type: boolean
+  - name: readonly
+    type: boolean
+  - name: readonly
+    type: boolean
+  - name: readonly
+    type: ITerminalBackend | undefined
+  - name: readonly
+    type: ITerminalCapabilityStore
+  - name: readonly
+    type: string
+  - name: readonly
+    type: IMergedEnvironmentVariableCollection | undefined
+  lines:
+  - 258
+  - 275
+- name: ITerminalProcessManager
+  kind: trait
+  bases:
+  - IDisposable
+  - ITerminalProcessInfo
+  decorators:
+  - interface
+  fields:
+  - name: readonly
+    type: IProcessReadyEvent | undefined
+  - name: readonly
+    type: Event<void>
+  - name: readonly
+    type: Event<void>
+  - name: readonly
+    type: Event<IProcessReadyEvent>
+  - name: readonly
+    type: Event<IBeforeProcessDataEvent>
+  - name: readonly
+    type: Event<IProcessDataEvent>
+  - name: readonly
+    type: Event<void>
+  - name: readonly
+    type: Event<IEnvironmentVariableInfo>
+  - name: readonly
+    type: Event<IProcessProperty<any>>
+  - name: readonly
+    type: Event<number | undefined>
+  - name: readonly
+    type: Event<ISerializedCommandDetectionCapability>
+  - name: dispose
+    type: 'method: dispose(immediate?: boolean): void'
+  - name: detachFromProcess
+    type: 'method: detachFromProcess(forcePersist?: boolean): Promise<void>'
+  - name: createProcess
+    type: 'method: createProcess(shellLaunchConfig: IShellLaunchConfig, cols: number, rows: number): Promise<ITerminalLaunchError | { injectedArgs: string[] } | undefined>'
+  - name: relaunch
+    type: 'method: relaunch(shellLaunchConfig: IShellLaunchConfig, cols: number, rows: number, reset: boolean): Promise<ITerminalLaunchError | { injectedArgs: string[] } | undefined>'
+  - name: write
+    type: 'method: write(data: string): Promise<void>'
+  - name: setDimensions
+    type: 'method: setDimensions(cols: number, rows: number): Promise<void>'
+  - name: setDimensions
+    type: 'method: setDimensions(cols: number, rows: number, sync: false): Promise<void>'
+  - name: setDimensions
+    type: 'method: setDimensions(cols: number, rows: number, sync: true): void'
+  - name: clearBuffer
+    type: 'method: clearBuffer(): Promise<void>'
+  - name: setUnicodeVersion
+    type: 'method: setUnicodeVersion(version: ''6'' | ''11''): Promise<void>'
+  - name: acknowledgeDataEvent
+    type: 'method: acknowledgeDataEvent(charCount: number): void'
+  - name: processBinary
+    type: 'method: processBinary(data: string): void'
+  - name: refreshProperty
+    type: 'method: refreshProperty<T extends ProcessPropertyType>(type: T): Promise<IProcessPropertyMap[T]>'
+  - name: updateProperty
+    type: 'method: updateProperty<T extends ProcessPropertyType>(property: T, value: IProcessPropertyMap[T]): Promise<void>'
+  - name: getBackendOS
+    type: 'method: getBackendOS(): Promise<OperatingSystem>'
+  - name: freePortKillProcess
+    type: 'method: freePortKillProcess(port: string): Promise<void>'
+  lines:
+  - 279
+  - 311
+- name: ProcessState
+  kind: enum
+  variants:
+  - name: Uninitialized
+    val: '1'
+  - name: Launching
+    val: '2'
+  - name: Running
+    val: '3'
+  - name: KilledDuringLaunch
+    val: '4'
+  - name: KilledByUser
+    val: '5'
+  - name: KilledByProcess
+    val: '6'
+  lines:
+  - 313
+  - 330
+- name: ITerminalProcessExtHostProxy
+  kind: trait
+  bases:
+  - IDisposable
+  decorators:
+  - interface
+  fields:
+  - name: readonly
+    type: number
+  - name: emitData
+    type: 'method: emitData(data: string): void'
+  - name: emitProcessProperty
+    type: 'method: emitProcessProperty(property: IProcessProperty<any>): void'
+  - name: emitReady
+    type: 'method: emitReady(pid: number, cwd: string, windowsPty: IProcessReadyWindowsPty | undefined): void'
+  - name: emitExit
+    type: 'method: emitExit(exitCode: number | undefined): void'
+  - name: onInput
+    type: Event<string>
+  - name: onBinary
+    type: Event<string>
+  - name: onResize
+    type: 'Event<{ cols: number; rows: number }>'
+  - name: onAcknowledgeDataEvent
+    type: Event<number>
+  - name: onShutdown
+    type: Event<boolean>
+  - name: onRequestInitialCwd
+    type: Event<void>
+  - name: onRequestCwd
+    type: Event<void>
+  lines:
+  - 332
+  - 347
+- name: IStartExtensionTerminalRequest
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: proxy
+    type: ITerminalProcessExtHostProxy
+  - name: cols
+    type: number
+  - name: rows
+    type: number
+  - name: callback
+    type: '(error: ITerminalLaunchError | undefined) => void'
+  lines:
+  - 349
+  - 354
+- name: ITerminalStatus
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: id
+    type: string
+  - name: severity
+    type: Severity
+  - name: icon
+    type: ThemeIcon
+  - name: tooltip
+    type: string | undefined
+  - name: detailedTooltip
+    type: string | undefined
+  - name: hoverActions
+    type: ITerminalStatusHoverAction[]
+  lines:
+  - 356
+  - 381
+- name: ITerminalStatusHoverAction
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: commandId
+    type: string
+  - name: run
+    type: () => void
+  lines:
+  - 383
+  - 387
+- name: ISerializedTerminalInstanceContext
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: $mid
+    type: MarshalledId.TerminalContext
+  - name: instanceId
+    type: number
+  lines:
+  - 392
+  - 395
+- name: TerminalCommandId
+  kind: enum
+  variants:
+  - name: Toggle
+    val: '''workbench.action.terminal.toggleTerminal'''
+  - name: Kill
+    val: '''workbench.action.terminal.kill'''
+  - name: KillViewOrEditor
+    val: '''workbench.action.terminal.killViewOrEditor'''
+  - name: KillEditor
+    val: '''workbench.action.terminal.killEditor'''
+  - name: KillActiveTab
+    val: '''workbench.action.terminal.killActiveTab'''
+  - name: KillAll
+    val: '''workbench.action.terminal.killAll'''
+  - name: QuickKill
+    val: '''workbench.action.terminal.quickKill'''
+  - name: ConfigureTerminalSettings
+    val: '''workbench.action.terminal.openSettings'''
+  - name: ShellIntegrationLearnMore
+    val: '''workbench.action.terminal.learnMore'''
+  - name: CopyLastCommand
+    val: '''workbench.action.terminal.copyLastCommand'''
+  - name: CopyLastCommandOutput
+    val: '''workbench.action.terminal.copyLastCommandOutput'''
+  - name: CopyLastCommandAndLastCommandOutput
+    val: '''workbench.action.terminal.copyLastCommandAndLastCommandOutput'''
+  - name: CopyAndClearSelection
+    val: '''workbench.action.terminal.copyAndClearSelection'''
+  - name: CopySelection
+    val: '''workbench.action.terminal.copySelection'''
+  - name: CopySelectionAsHtml
+    val: '''workbench.action.terminal.copySelectionAsHtml'''
+  - name: SelectAll
+    val: '''workbench.action.terminal.selectAll'''
+  - name: DeleteWordLeft
+    val: '''workbench.action.terminal.deleteWordLeft'''
+  - name: DeleteWordRight
+    val: '''workbench.action.terminal.deleteWordRight'''
+  - name: DeleteToLineStart
+    val: '''workbench.action.terminal.deleteToLineStart'''
+  - name: MoveToLineStart
+    val: '''workbench.action.terminal.moveToLineStart'''
+  - name: MoveToLineEnd
+    val: '''workbench.action.terminal.moveToLineEnd'''
+  - name: New
+    val: '''workbench.action.terminal.new'''
+  - name: NewWithCwd
+    val: '''workbench.action.terminal.newWithCwd'''
+  - name: NewLocal
+    val: '''workbench.action.terminal.newLocal'''
+  - name: NewInActiveWorkspace
+    val: '''workbench.action.terminal.newInActiveWorkspace'''
+  - name: NewWithProfile
+    val: '''workbench.action.terminal.newWithProfile'''
+  - name: Split
+    val: '''workbench.action.terminal.split'''
+  - name: SplitActiveTab
+    val: '''workbench.action.terminal.splitActiveTab'''
+  - name: SplitInActiveWorkspace
+    val: '''workbench.action.terminal.splitInActiveWorkspace'''
+  - name: Unsplit
+    val: '''workbench.action.terminal.unsplit'''
+  - name: JoinActiveTab
+    val: '''workbench.action.terminal.joinActiveTab'''
+  - name: Join
+    val: '''workbench.action.terminal.join'''
+  - name: Relaunch
+    val: '''workbench.action.terminal.relaunch'''
+  - name: FocusPreviousPane
+    val: '''workbench.action.terminal.focusPreviousPane'''
+  - name: CreateTerminalEditor
+    val: '''workbench.action.createTerminalEditor'''
+  - name: CreateTerminalEditorSameGroup
+    val: '''workbench.action.createTerminalEditorSameGroup'''
+  - name: CreateTerminalEditorSide
+    val: '''workbench.action.createTerminalEditorSide'''
+  - name: FocusTabs
+    val: '''workbench.action.terminal.focusTabs'''
+  - name: FocusNextPane
+    val: '''workbench.action.terminal.focusNextPane'''
+  - name: ResizePaneLeft
+    val: '''workbench.action.terminal.resizePaneLeft'''
+  - name: ResizePaneRight
+    val: '''workbench.action.terminal.resizePaneRight'''
+  - name: ResizePaneUp
+    val: '''workbench.action.terminal.resizePaneUp'''
+  - name: SizeToContentWidth
+    val: '''workbench.action.terminal.sizeToContentWidth'''
+  - name: SizeToContentWidthActiveTab
+    val: '''workbench.action.terminal.sizeToContentWidthActiveTab'''
+  - name: ResizePaneDown
+    val: '''workbench.action.terminal.resizePaneDown'''
+  - name: Focus
+    val: '''workbench.action.terminal.focus'''
+  - name: FocusNext
+    val: '''workbench.action.terminal.focusNext'''
+  - name: FocusPrevious
+    val: '''workbench.action.terminal.focusPrevious'''
+  - name: Paste
+    val: '''workbench.action.terminal.paste'''
+  - name: PasteSelection
+    val: '''workbench.action.terminal.pasteSelection'''
+  - name: SelectDefaultProfile
+    val: '''workbench.action.terminal.selectDefaultShell'''
+  - name: RunSelectedText
+    val: '''workbench.action.terminal.runSelectedText'''
+  - name: RunActiveFile
+    val: '''workbench.action.terminal.runActiveFile'''
+  - name: SwitchTerminal
+    val: '''workbench.action.terminal.switchTerminal'''
+  - name: ScrollDownLine
+    val: '''workbench.action.terminal.scrollDown'''
+  - name: ScrollDownPage
+    val: '''workbench.action.terminal.scrollDownPage'''
+  - name: ScrollToBottom
+    val: '''workbench.action.terminal.scrollToBottom'''
+  - name: ScrollUpLine
+    val: '''workbench.action.terminal.scrollUp'''
+  - name: ScrollUpPage
+    val: '''workbench.action.terminal.scrollUpPage'''
+  - name: ScrollToTop
+    val: '''workbench.action.terminal.scrollToTop'''
+  - name: Clear
+    val: '''workbench.action.terminal.clear'''
+  - name: ClearSelection
+    val: '''workbench.action.terminal.clearSelection'''
+  - name: ChangeIcon
+    val: '''workbench.action.terminal.changeIcon'''
+  - name: ChangeIconActiveTab
+    val: '''workbench.action.terminal.changeIconActiveTab'''
+  - name: ChangeColor
+    val: '''workbench.action.terminal.changeColor'''
+  - name: ChangeColorActiveTab
+    val: '''workbench.action.terminal.changeColorActiveTab'''
+  - name: Rename
+    val: '''workbench.action.terminal.rename'''
+  - name: RenameActiveTab
+    val: '''workbench.action.terminal.renameActiveTab'''
+  - name: RenameWithArgs
+    val: '''workbench.action.terminal.renameWithArg'''
+  - name: ScrollToPreviousCommand
+    val: '''workbench.action.terminal.scrollToPreviousCommand'''
+  - name: ScrollToNextCommand
+    val: '''workbench.action.terminal.scrollToNextCommand'''
+  - name: SelectToPreviousCommand
+    val: '''workbench.action.terminal.selectToPreviousCommand'''
+  - name: SelectToNextCommand
+    val: '''workbench.action.terminal.selectToNextCommand'''
+  - name: SelectToPreviousLine
+    val: '''workbench.action.terminal.selectToPreviousLine'''
+  - name: SelectToNextLine
+    val: '''workbench.action.terminal.selectToNextLine'''
+  - name: SendSequence
+    val: '''workbench.action.terminal.sendSequence'''
+  - name: AttachToSession
+    val: '''workbench.action.terminal.attachToSession'''
+  - name: DetachSession
+    val: '''workbench.action.terminal.detachSession'''
+  - name: MoveToEditor
+    val: '''workbench.action.terminal.moveToEditor'''
+  - name: MoveToTerminalPanel
+    val: '''workbench.action.terminal.moveToTerminalPanel'''
+  - name: MoveIntoNewWindow
+    val: '''workbench.action.terminal.moveIntoNewWindow'''
+  - name: SetDimensions
+    val: '''workbench.action.terminal.setDimensions'''
+  - name: FocusHover
+    val: '''workbench.action.terminal.focusHover'''
+  - name: ShowEnvironmentContributions
+    val: '''workbench.action.terminal.showEnvironmentContributions'''
+  - name: StartVoice
+    val: '''workbench.action.terminal.startVoice'''
+  - name: StopVoice
+    val: '''workbench.action.terminal.stopVoice'''
+  lines:
+  - 399
+  - 486
+functions:
+- name: isTerminalProcessManager
+  sig: 'isTerminalProcessManager(t: ITerminalProcessInfo | ITerminalProcessManager)'
+  lines:
+  - 277
+  - 277
+exports:
+- name: ITerminalProfileResolverService
+  kind: type
+- name: IRegisterContributedProfileArgs
+  kind: type
+- name: ITerminalProfileService
+  kind: type
+- name: ITerminalProfileProvider
+  kind: type
+- name: IShellLaunchConfigResolveOptions
+  kind: type
+- name: FontWeight
+  kind: type
+- name: ITerminalProfiles
+  kind: type
+- name: ConfirmOnKill
+  kind: type
+- name: ConfirmOnExit
+  kind: type
+- name: ICompleteTerminalConfiguration
+  kind: type
+- name: ITerminalConfiguration
+  kind: type
+- name: ITerminalFont
+  kind: type
+- name: IRemoteTerminalAttachTarget
+  kind: type
+- name: IBeforeProcessDataEvent
+  kind: type
+- name: IDefaultShellAndArgsRequest
+  kind: type
+- name: ITerminalProcessInfo
+  kind: type
+- name: ITerminalProcessManager
+  kind: type
+- name: ProcessState
+  kind: type
+- name: ITerminalProcessExtHostProxy
+  kind: type
+- name: IStartExtensionTerminalRequest
+  kind: type
+- name: ITerminalStatus
+  kind: type
+- name: ITerminalStatusHoverAction
+  kind: type
+- name: ISerializedTerminalInstanceContext
+  kind: type
+- name: TerminalCommandId
+  kind: type
+- name: isTerminalProcessManager
+  kind: func
+- name: TERMINAL_VIEW_ID
+  kind: data
+- name: TERMINAL_CREATION_COMMANDS
+  kind: data
+- name: TERMINAL_CONFIG_SECTION
+  kind: data
+- name: DEFAULT_LETTER_SPACING
+  kind: data
+- name: MINIMUM_LETTER_SPACING
+  kind: data
+- name: DEFAULT_LINE_HEIGHT
+  kind: data
+- name: MINIMUM_FONT_WEIGHT
+  kind: data
+- name: MAXIMUM_FONT_WEIGHT
+  kind: data
+- name: DEFAULT_FONT_WEIGHT
+  kind: data
+- name: DEFAULT_BOLD_FONT_WEIGHT
+  kind: data
+- name: SUGGESTIONS_FONT_WEIGHT
+  kind: data
+- name: ITerminalProfileResolverService
+  kind: data
+- name: ShellIntegrationExitCode
+  kind: data
+- name: ITerminalProfileService
+  kind: data
+- name: QUICK_LAUNCH_PROFILE_CHOICE
+  kind: data
+- name: DEFAULT_COMMANDS_TO_SKIP_SHELL
+  kind: data
+- name: terminalContributionsDescriptor
+  kind: data

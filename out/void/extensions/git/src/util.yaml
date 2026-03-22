@@ -1,0 +1,561 @@
+## Roska File Descriptor — src/util.ts
+file: src/util.ts
+lines: 789
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: vscode.Event
+- sym: vscode.Disposable
+- sym: vscode.EventEmitter
+- sym: vscode.SourceControlHistoryItemRef
+- sym: vscode.l10n
+- sym: vscode.workspace
+- sym: vscode.Uri
+- sym: vscode.DiagnosticSeverity
+- sym: vscode.env
+- sym: path.dirname
+- sym: path.sep
+- sym: path.relative
+- sym: stream.Readable
+- sym: fs.promises as fs
+- sym: fs.createReadStream
+- sym: byline.byline
+data:
+- name: isMacintosh
+  type: any
+  val: process.platform === 'darwin'
+- name: isWindows
+  type: any
+  val: process.platform === 'win32'
+- name: isRemote
+  type: any
+  val: env.remoteName !== undefined
+- name: isLinux
+  type: any
+  val: process.platform === 'linux'
+- name: isLinuxSnap
+  type: any
+  val: isLinux && !!process.env['SNAP'] && !!process.env['SNAP_REVISION']
+- name: EmptyDisposable
+  type: any
+  val: toDisposable(() => null)
+- name: minute
+  type: number
+  val: '60'
+- name: hour
+  type: any
+  val: minute * 60
+- name: day
+  type: any
+  val: hour * 24
+- name: week
+  type: any
+  val: day * 7
+- name: month
+  type: any
+  val: day * 30
+- name: year
+  type: any
+  val: day * 365
+types:
+- name: IDisposable
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: dispose
+    type: 'method: dispose(): void'
+  lines:
+  - 22
+  - 24
+- name: Encoding
+  kind: enum
+  variants:
+  - name: UTF8
+    val: '''utf8'''
+  - name: UTF16be
+    val: '''utf16be'''
+  - name: UTF16le
+    val: '''utf16le'''
+  lines:
+  - 259
+  - 263
+- name: ILimitedTaskFactory
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: factory
+    type: () => Promise<T>
+  - name: c
+    type: '(value: T | Promise<T>) => void'
+  - name: e
+    type: '(error?: any) => void'
+  lines:
+  - 390
+  - 394
+- name: Limiter
+  kind: struct
+  fields:
+  - name: runningPromises
+    type: number
+  - name: maxDegreeOfParalellism
+    type: number
+  - name: outstandingPromises
+    type: ILimitedTaskFactory<T>[]
+  methods:
+  - name: constructor
+    sig: 'constructor(maxDegreeOfParalellism: number)'
+    lines:
+    - 402
+    - 406
+    detail: {}
+  - name: queue
+    sig: 'queue(factory: () => Promise<T>): Promise<T>'
+    lines:
+    - 408
+    - 413
+    detail:
+      calls:
+      - new Promise
+  - name: consume
+    sig: 'consume(): void'
+    vis: private
+    lines:
+    - 415
+    - 424
+    detail:
+      calls:
+      - iLimitedTask.factory
+      - promise.then
+      - this.outstandingPromises.shift
+  lines:
+  - 396
+  - 433
+- name: Completion
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 435
+  - 435
+- name: PromiseSource
+  kind: struct
+  fields:
+  - name: _onDidComplete
+    type: any
+    default: new EventEmitter<Completion<T>>()
+  - name: _promise
+    type: Promise<T> | undefined
+  methods:
+  - name: promise
+    sig: 'promise(): Promise<T>'
+    lines:
+    - 442
+    - 454
+    detail:
+      calls:
+      - eventToPromise
+      - eventToPromise(this._onDidComplete.event).then
+  - name: resolve
+    sig: 'resolve(value: T): void'
+    lines:
+    - 456
+    - 461
+    detail:
+      calls:
+      - Promise.resolve
+      - this._onDidComplete.fire
+  - name: reject
+    sig: 'reject(err: any): void'
+    lines:
+    - 463
+    - 468
+    detail:
+      calls:
+      - Promise.reject
+      - this._onDidComplete.fire
+  lines:
+  - 437
+  - 469
+- name: DiagnosticSeverityConfig
+  kind: enum
+  decorators:
+  - type
+  variants:
+  - name: '''none'''
+  lines:
+  - 779
+  - 779
+functions:
+- name: log
+  sig: 'log(...args: any[]): void'
+  lines:
+  - 18
+  - 20
+  detail:
+    calls:
+    - console.log.apply
+- name: dispose
+  sig: 'dispose(disposables: T[]): T[]'
+  lines:
+  - 26
+  - 29
+  detail:
+    calls:
+    - disposables.forEach
+- name: toDisposable
+  sig: 'toDisposable(dispose: () => void): IDisposable'
+  lines:
+  - 31
+  - 33
+- name: combinedDisposable
+  sig: 'combinedDisposable(disposables: IDisposable[]): IDisposable'
+  lines:
+  - 35
+  - 37
+- name: fireEvent
+  sig: 'fireEvent(event: Event<T>): Event<T>'
+  lines:
+  - 41
+  - 43
+- name: mapEvent
+  sig: 'mapEvent(event: Event<I>, map: (i: I) => O): Event<O>'
+  lines:
+  - 45
+  - 47
+- name: filterEvent
+  sig: 'filterEvent(event: Event<T>, filter: (e: T) => boolean): Event<T>'
+  lines:
+  - 49
+  - 51
+- name: runAndSubscribeEvent
+  sig: 'runAndSubscribeEvent(event: Event<T>, handler: (e: T | undefined) => any, initial?: T): IDisposable'
+  lines:
+  - 55
+  - 58
+- name: anyEvent
+  sig: 'anyEvent(...events: Event<T>[]): Event<T>'
+  lines:
+  - 60
+  - 68
+  detail: {}
+- name: done
+  sig: 'done(promise: Promise<T>): Promise<void>'
+  lines:
+  - 70
+  - 72
+  detail:
+    calls:
+    - promise.then
+- name: onceEvent
+  sig: 'onceEvent(event: Event<T>): Event<T>'
+  lines:
+  - 74
+  - 83
+  detail: {}
+- name: debounceEvent
+  sig: 'debounceEvent(event: Event<T>, delay: number): Event<T>'
+  lines:
+  - 85
+  - 93
+  detail: {}
+- name: eventToPromise
+  sig: 'eventToPromise(event: Event<T>): Promise<T>'
+  lines:
+  - 95
+  - 97
+- name: once
+  sig: 'once(fn: (...args: any[]) => any): (...args: any[]) => any'
+  lines:
+  - 99
+  - 109
+  detail: {}
+- name: assign
+  sig: 'assign(destination: T, ...sources: any[]): T'
+  lines:
+  - 111
+  - 117
+  detail:
+    calls:
+    - Object.keys
+    - Object.keys(source).forEach
+- name: uniqBy
+  sig: 'uniqBy(arr: T[], fn: (el: T) => string): T[]'
+  lines:
+  - 119
+  - 132
+  detail:
+    calls:
+    - Object.create
+    - arr.filter
+- name: groupBy
+  sig: 'groupBy(arr: T[], fn: (el: T) => string): { [key: string]: T[] }'
+  lines:
+  - 134
+  - 140
+  detail:
+    calls:
+    - Object.create
+    - arr.reduce
+- name: mkdirp
+  sig: 'mkdirp(path: string, mode?: number): Promise<boolean>'
+  is_async: true
+  lines:
+  - 143
+  - 179
+  detail:
+    calls:
+    - dirname
+    - mkdir
+    - mkdirp
+- name: uniqueFilter
+  sig: 'uniqueFilter(keyFn: (t: T) => string): (t: T) => boolean'
+  lines:
+  - 181
+  - 194
+  detail:
+    calls:
+    - Object.create
+- name: find
+  sig: 'find(array: T[], fn: (t: T) => boolean): T | undefined'
+  lines:
+  - 196
+  - 209
+  detail:
+    calls:
+    - array.some
+- name: grep
+  sig: 'grep(filename: string, pattern: RegExp): Promise<boolean>'
+  is_async: true
+  lines:
+  - 211
+  - 225
+  detail:
+    calls:
+    - new Promise
+- name: readBytes
+  sig: 'readBytes(stream: Readable, bytes: number): Promise<Buffer>'
+  lines:
+  - 227
+  - 257
+  detail:
+    calls:
+    - new Promise
+- name: detectUnicodeEncoding
+  sig: 'detectUnicodeEncoding(buffer: Buffer): Encoding | null'
+  lines:
+  - 265
+  - 292
+  detail:
+    calls:
+    - buffer.readUInt8
+- name: truncate
+  sig: 'truncate(value: string, maxLength = 20): string'
+  lines:
+  - 294
+  - 296
+  detail:
+    calls:
+    - value.substring
+- name: normalizePath
+  sig: 'normalizePath(path: string): string'
+  lines:
+  - 298
+  - 306
+  detail:
+    calls:
+    - path.toLowerCase
+- name: isDescendant
+  sig: 'isDescendant(parent: string, descendant: string): boolean'
+  lines:
+  - 308
+  - 318
+  detail:
+    calls:
+    - normalizePath
+    - normalizePath(descendant).startsWith
+    - parent.charAt
+- name: pathEquals
+  sig: 'pathEquals(a: string, b: string): boolean'
+  lines:
+  - 320
+  - 322
+- name: relativePath
+  sig: 'relativePath(from: string, to: string): string'
+  lines:
+  - 330
+  - 345
+  detail:
+    calls:
+    - from.charAt
+    - isDescendant
+    - relative
+    - to.substring
+- name: isDefined
+  sig: 'isDefined(arg: T | null | undefined)'
+  lines:
+  - 372
+  - 374
+- name: isUndefinedOrNull
+  sig: 'isUndefinedOrNull(obj: unknown)'
+  lines:
+  - 379
+  - 381
+- name: isUndefined
+  sig: 'isUndefined(obj: unknown)'
+  lines:
+  - 386
+  - 388
+- name: deltaHistoryItemRefs
+  sig: "deltaHistoryItemRefs(before: SourceControlHistoryItemRef[], after: SourceControlHistoryItemRef[]): {\n\tadded: SourceControlHistoryItemRef[];\n\tmodified: SourceControlHistoryItemRef[];\n\tremoved: SourceControlHistoryItemRef[];\n}"
+  lines:
+  - 524
+  - 577
+  detail:
+    calls:
+    - added.push
+    - after.slice
+    - before.slice
+    - beforeElement.id.localeCompare
+    - modified.push
+    - removed.push
+- name: fromNow
+  sig: 'fromNow(date: number | Date, appendAgoLabel?: boolean, useFullTimeWords?: boolean, disallowNow?: boolean): string'
+  lines:
+  - 595
+  - 771
+  detail:
+    calls:
+    - Math.floor
+    - Math.round
+    - date.getTime
+    - fromNow
+    - l10n.t
+    - new Date
+    - new Date().getTime
+- name: getCommitShortHash
+  sig: 'getCommitShortHash(scope: Uri, hash: string): string'
+  lines:
+  - 773
+  - 777
+  detail:
+    calls:
+    - config.get
+    - hash.substring
+    - workspace.getConfiguration
+- name: toDiagnosticSeverity
+  sig: 'toDiagnosticSeverity(value: DiagnosticSeverityConfig): DiagnosticSeverity'
+  lines:
+  - 781
+  - 789
+  detail: {}
+exports:
+- name: IDisposable
+  kind: type
+- name: Encoding
+  kind: type
+- name: ILimitedTaskFactory
+  kind: type
+- name: Limiter
+  kind: type
+- name: Completion
+  kind: type
+- name: PromiseSource
+  kind: type
+- name: DiagnosticSeverityConfig
+  kind: type
+- name: log
+  kind: func
+- name: dispose
+  kind: func
+- name: toDisposable
+  kind: func
+- name: combinedDisposable
+  kind: func
+- name: fireEvent
+  kind: func
+- name: mapEvent
+  kind: func
+- name: filterEvent
+  kind: func
+- name: runAndSubscribeEvent
+  kind: func
+- name: anyEvent
+  kind: func
+- name: done
+  kind: func
+- name: onceEvent
+  kind: func
+- name: debounceEvent
+  kind: func
+- name: eventToPromise
+  kind: func
+- name: once
+  kind: func
+- name: assign
+  kind: func
+- name: uniqBy
+  kind: func
+- name: groupBy
+  kind: func
+- name: mkdirp
+  kind: func
+- name: uniqueFilter
+  kind: func
+- name: find
+  kind: func
+- name: grep
+  kind: func
+- name: readBytes
+  kind: func
+- name: detectUnicodeEncoding
+  kind: func
+- name: truncate
+  kind: func
+- name: normalizePath
+  kind: func
+- name: isDescendant
+  kind: func
+- name: pathEquals
+  kind: func
+- name: relativePath
+  kind: func
+- name: isDefined
+  kind: func
+- name: isUndefinedOrNull
+  kind: func
+- name: isUndefined
+  kind: func
+- name: deltaHistoryItemRefs
+  kind: func
+- name: fromNow
+  kind: func
+- name: getCommitShortHash
+  kind: func
+- name: toDiagnosticSeverity
+  kind: func
+- name: isMacintosh
+  kind: data
+- name: isWindows
+  kind: data
+- name: isRemote
+  kind: data
+- name: isLinux
+  kind: data
+- name: isLinuxSnap
+  kind: data
+- name: EmptyDisposable
+  kind: data
+- name: minute
+  kind: data
+- name: hour
+  kind: data
+- name: day
+  kind: data
+- name: week
+  kind: data
+- name: month
+  kind: data
+- name: year
+  kind: data

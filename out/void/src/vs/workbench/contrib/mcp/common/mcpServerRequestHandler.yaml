@@ -1,0 +1,383 @@
+## Roska File Descriptor — common/mcpServerRequestHandler.ts
+file: common/mcpServerRequestHandler.ts
+lines: 486
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: ../../../../base/common/arrays.js.equals
+- sym: ../../../../base/common/async.js.DeferredPromise
+- sym: ../../../../base/common/async.js.IntervalTimer
+- sym: ../../../../base/common/cancellation.js.CancellationToken
+- sym: ../../../../base/common/errors.js.CancellationError
+- sym: ../../../../base/common/event.js.Emitter
+- sym: ../../../../base/common/lifecycle.js.Disposable
+- sym: ../../../../base/common/lifecycle.js.DisposableStore
+- sym: ../../../../base/common/observable.js.autorun
+- sym: ../../../../platform/instantiation/common/instantiation.js.IInstantiationService
+- sym: ../../../../platform/log/common/log.js.canLog
+- sym: ../../../../platform/log/common/log.js.ILogger
+- sym: ../../../../platform/log/common/log.js.LogLevel
+- sym: ../../../../platform/product/common/productService.js.IProductService
+- sym: ./mcpRegistryTypes.js.IMcpMessageTransport
+- sym: ./mcpTypes.js.McpConnectionState
+- sym: ./mcpTypes.js.MpcResponseError
+- sym: ./modelContextProtocol.js.MCP
+types:
+- name: PendingRequest
+  kind: trait
+  ctx: Maps request IDs to handlers.
+  decorators:
+  - interface
+  fields:
+  - name: promise
+    type: DeferredPromise<MCP.Result>
+  lines:
+  - 23
+  - 25
+- name: McpRoot
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: uri
+    type: string
+  lines:
+  - 27
+  - 30
+- name: McpServerRequestHandler
+  kind: struct
+  ctx: Event emitters for server notifications
+  bases:
+  - Disposable
+  fields:
+  - name: _nextRequestId
+    type: any
+    default: '1'
+  - name: _pendingRequests
+    type: any
+    default: new Map<MCP.RequestId, PendingRequest>()
+  - name: _hasAnnouncedRoots
+    type: any
+    default: 'false'
+  - name: _roots
+    type: MCP.Root[]
+    default: '[]'
+  - name: _serverInit
+    type: MCP.InitializeResult
+  - name: _onDidReceiveCancelledNotification
+    type: any
+    default: this._register(new Emitter<MCP.CancelledNotification>())
+  - name: onDidReceiveCancelledNotification
+    type: any
+    default: this._onDidReceiveCancelledNotification.event
+  - name: _onDidReceiveProgressNotification
+    type: any
+    default: this._register(new Emitter<MCP.ProgressNotification>())
+  - name: onDidReceiveProgressNotification
+    type: any
+    default: this._onDidReceiveProgressNotification.event
+  - name: _onDidChangeResourceList
+    type: any
+    default: this._register(new Emitter<void>())
+  - name: onDidChangeResourceList
+    type: any
+    default: this._onDidChangeResourceList.event
+  - name: _onDidUpdateResource
+    type: any
+    default: this._register(new Emitter<MCP.ResourceUpdatedNotification>())
+  - name: onDidUpdateResource
+    type: any
+    default: this._onDidUpdateResource.event
+  - name: _onDidChangeToolList
+    type: any
+    default: this._register(new Emitter<void>())
+  - name: onDidChangeToolList
+    type: any
+    default: this._onDidChangeToolList.event
+  - name: _onDidChangePromptList
+    type: any
+    default: this._register(new Emitter<void>())
+  - name: onDidChangePromptList
+    type: any
+    default: this._onDidChangePromptList.event
+  methods:
+  - name: roots
+    sig: 'roots(roots: MCP.Root[])'
+    lines:
+    - 45
+    - 53
+    detail:
+      calls:
+      - equals
+      - this.sendNotification
+  - name: capabilities
+    sig: 'capabilities(): MCP.ServerCapabilities'
+    lines:
+    - 56
+    - 58
+    detail: {}
+  - name: create
+    sig: 'create(instaService: IInstantiationService, launch: IMcpMessageTransport, logger: ILogger, token?: CancellationToken)'
+    is_async: true
+    decorators:
+    - static
+    lines:
+    - 83
+    - 122
+    detail:
+      calls:
+      - instaService.invokeFunction
+      - mcp.dispose
+      - new DisposableStore
+      - new IntervalTimer
+      - new McpServerRequestHandler
+      - store.add
+      - store.dispose
+      - timer.cancelAndSet
+  - name: sendRequest
+    sig: "sendRequest(\n\t\trequest: Pick<T, 'params' | 'method'>,\n\t\ttoken: CancellationToken = CancellationToken.None\n\t): Promise<R>"
+    is_async: true
+    vis: private
+    lines:
+    - 148
+    - 186
+    detail:
+      calls:
+      - Promise.reject
+      - new CancellationError
+      - new DeferredPromise
+      - promise.p.finally
+      - this._pendingRequests.set
+      - this.send
+      - token.onCancellationRequested
+  - name: send
+    sig: 'send(mcp: MCP.JSONRPCMessage)'
+    vis: private
+    lines:
+    - 188
+    - 194
+    detail:
+      calls:
+      - JSON.stringify
+      - canLog
+      - this.launch.send
+      - this.logger.debug
+      - this.logger.getLevel
+  - name: sendRequestPaginated
+    sig: 'sendRequestPaginated(method: T[''method''], getItems: (result: R) => I[], initialParams?: Omit<T[''params''], ''jsonrpc'' | ''id''>, token: CancellationToken = CancellationToken.None): Promise<I[]>'
+    is_async: true
+    vis: private
+    lines:
+    - 205
+    - 221
+    detail:
+      calls:
+      - allItems.concat
+      - await this.sendRequest
+      - getItems
+  - name: handleMessage
+    sig: 'handleMessage(message: MCP.JSONRPCMessage): void'
+    vis: private
+    lines:
+    - 230
+    - 253
+    detail:
+      calls:
+      - JSON.stringify
+      - canLog
+      - this.handleError
+      - this.handleResult
+      - this.handleServerNotification
+      - this.handleServerRequest
+      - this.logger.debug
+      - this.logger.getLevel
+  - name: handleResult
+    sig: 'handleResult(response: MCP.JSONRPCResponse): void'
+    vis: private
+    lines:
+    - 258
+    - 264
+    detail:
+      calls:
+      - request.promise.complete
+      - this._pendingRequests.delete
+      - this._pendingRequests.get
+  - name: handleError
+    sig: 'handleError(response: MCP.JSONRPCError): void'
+    vis: private
+    lines:
+    - 269
+    - 275
+    detail:
+      calls:
+      - new MpcResponseError
+      - request.promise.error
+      - this._pendingRequests.delete
+      - this._pendingRequests.get
+  - name: handleServerRequest
+    sig: 'handleServerRequest(request: MCP.JSONRPCRequest & MCP.ServerRequest): void'
+    vis: private
+    lines:
+    - 280
+    - 300
+    detail:
+      calls:
+      - this.handlePing
+      - this.handleRootsList
+      - this.respondToRequest
+      - this.send
+  - name: handleServerNotification
+    sig: 'handleServerNotification(request: MCP.JSONRPCNotification & MCP.ServerNotification): void'
+    vis: private
+    lines:
+    - 304
+    - 327
+    detail:
+      calls:
+      - this._onDidChangePromptList.fire
+      - this._onDidChangeResourceList.fire
+      - this._onDidChangeToolList.fire
+      - this._onDidReceiveCancelledNotification.fire
+      - this._onDidReceiveProgressNotification.fire
+      - this._onDidUpdateResource.fire
+      - this.handleCancelledNotification
+      - this.handleLoggingNotification
+  - name: handleCancelledNotification
+    sig: 'handleCancelledNotification(request: MCP.CancelledNotification): void'
+    vis: private
+    lines:
+    - 329
+    - 335
+    detail:
+      calls:
+      - pendingRequest.promise.cancel
+      - this._pendingRequests.delete
+      - this._pendingRequests.get
+  - name: handleLoggingNotification
+    sig: 'handleLoggingNotification(request: MCP.LoggingMessageNotification): void'
+    vis: private
+    lines:
+    - 337
+    - 364
+    detail:
+      calls:
+      - JSON.stringify
+      - this.logger.debug
+      - this.logger.error
+      - this.logger.info
+      - this.logger.warn
+  - name: dispose
+    sig: 'dispose(): void'
+    lines:
+    - 398
+    - 401
+    detail:
+      calls:
+      - super.dispose
+      - this.cancelAllRequests
+  - name: initialize
+    sig: 'initialize(params: MCP.InitializeRequest[''params''], token?: CancellationToken): Promise<MCP.InitializeResult>'
+    lines:
+    - 406
+    - 408
+    detail:
+      calls:
+      - this.sendRequest
+  - name: listResources
+    sig: 'listResources(params?: MCP.ListResourcesRequest[''params''], token?: CancellationToken): Promise<MCP.Resource[]>'
+    lines:
+    - 413
+    - 415
+    detail:
+      calls:
+      - this.sendRequestPaginated
+  - name: readResource
+    sig: 'readResource(params: MCP.ReadResourceRequest[''params''], token?: CancellationToken): Promise<MCP.ReadResourceResult>'
+    lines:
+    - 420
+    - 422
+    detail:
+      calls:
+      - this.sendRequest
+  - name: listResourceTemplates
+    sig: 'listResourceTemplates(params?: MCP.ListResourceTemplatesRequest[''params''], token?: CancellationToken): Promise<MCP.ResourceTemplate[]>'
+    lines:
+    - 427
+    - 429
+    detail:
+      calls:
+      - this.sendRequestPaginated
+  - name: subscribe
+    sig: 'subscribe(params: MCP.SubscribeRequest[''params''], token?: CancellationToken): Promise<MCP.EmptyResult>'
+    lines:
+    - 434
+    - 436
+    detail:
+      calls:
+      - this.sendRequest
+  - name: unsubscribe
+    sig: 'unsubscribe(params: MCP.UnsubscribeRequest[''params''], token?: CancellationToken): Promise<MCP.EmptyResult>'
+    lines:
+    - 441
+    - 443
+    detail:
+      calls:
+      - this.sendRequest
+  - name: listPrompts
+    sig: 'listPrompts(params?: MCP.ListPromptsRequest[''params''], token?: CancellationToken): Promise<MCP.Prompt[]>'
+    lines:
+    - 448
+    - 450
+    detail:
+      calls:
+      - this.sendRequestPaginated
+  - name: getPrompt
+    sig: 'getPrompt(params: MCP.GetPromptRequest[''params''], token?: CancellationToken): Promise<MCP.GetPromptResult>'
+    lines:
+    - 455
+    - 457
+    detail:
+      calls:
+      - this.sendRequest
+  - name: listTools
+    sig: 'listTools(params?: MCP.ListToolsRequest[''params''], token?: CancellationToken): Promise<MCP.Tool[]>'
+    lines:
+    - 462
+    - 464
+    detail:
+      calls:
+      - this.sendRequestPaginated
+  - name: callTool
+    sig: 'callTool(params: MCP.CallToolRequest[''params''], token?: CancellationToken): Promise<MCP.CallToolResult>'
+    lines:
+    - 469
+    - 471
+    detail:
+      calls:
+      - this.sendRequest
+  - name: setLevel
+    sig: 'setLevel(params: MCP.SetLevelRequest[''params''], token?: CancellationToken): Promise<MCP.EmptyResult>'
+    lines:
+    - 476
+    - 478
+    detail:
+      calls:
+      - this.sendRequest
+  - name: complete
+    sig: 'complete(params: MCP.CompleteRequest[''params''], token?: CancellationToken): Promise<MCP.CompleteResult>'
+    lines:
+    - 483
+    - 485
+    detail:
+      calls:
+      - this.sendRequest
+  lines:
+  - 38
+  - 486
+exports:
+- name: PendingRequest
+  kind: type
+- name: McpRoot
+  kind: type
+- name: McpServerRequestHandler
+  kind: type

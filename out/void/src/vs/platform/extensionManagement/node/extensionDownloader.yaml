@@ -1,0 +1,228 @@
+## Roska File Descriptor — node/extensionDownloader.ts
+file: node/extensionDownloader.ts
+lines: 300
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: ../../../base/common/async.js.Promises
+- sym: ../../../base/common/errors.js.getErrorMessage
+- sym: ../../../base/common/lifecycle.js.Disposable
+- sym: ../../../base/common/network.js.Schemas
+- sym: ../../../base/common/resources.js.joinPath
+- sym: ../../../base/common/semver/semver.js.semver
+- sym: ../../../base/common/uri.js.URI
+- sym: ../../../base/common/uuid.js.generateUuid
+- sym: ../../../base/node/pfs.js.Promises as FSPromises
+- sym: ../../../base/node/zip.js.buffer
+- sym: ../../../base/node/zip.js.CorruptZipMessage
+- sym: ../../environment/common/environment.js.INativeEnvironmentService
+- sym: ../common/abstractExtensionManagementService.js.toExtensionManagementError
+- sym: ../common/extensionManagement.js.ExtensionManagementError
+- sym: ../common/extensionManagement.js.ExtensionManagementErrorCode
+- sym: ../common/extensionManagement.js.ExtensionSignatureVerificationCode
+- sym: ../common/extensionManagement.js.IExtensionGalleryService
+- sym: ../common/extensionManagement.js.IGalleryExtension
+- sym: ../common/extensionManagement.js.InstallOperation
+- sym: ../common/extensionManagementUtil.js.ExtensionKey
+- sym: ../common/extensionManagementUtil.js.groupByExtension
+- sym: ./extensionManagementUtil.js.fromExtractError
+- sym: ./extensionSignatureVerificationService.js.IExtensionSignatureVerificationService
+- sym: ../../extensions/common/extensions.js.TargetPlatform
+- sym: ../../files/common/files.js.FileOperationResult
+- sym: ../../files/common/files.js.IFileService
+- sym: ../../files/common/files.js.IFileStatWithMetadata
+- sym: ../../files/common/files.js.toFileOperationResult
+- sym: ../../log/common/log.js.ILogService
+- sym: ../../telemetry/common/telemetry.js.ITelemetryService
+- sym: ../../uriIdentity/common/uriIdentity.js.IUriIdentityService
+types:
+- name: RetryDownloadClassification
+  kind: typealias
+  decorators:
+  - type
+  fields:
+  - name: owner
+    type: '''sandy081'''
+  - name: comment
+    type: '''Event reporting the retry of downloading'''
+  - name: extensionId
+    type: '{ classification: ''SystemMetaData''; purpose: ''FeatureInsight''; comment: ''Extension Id'' }'
+  - name: attempts
+    type: '{ classification: ''SystemMetaData''; purpose: ''PerformanceAndHealth''; isMeasurement: true; comment: ''Number of Attempts'' }'
+  lines:
+  - 28
+  - 33
+- name: RetryDownloadEvent
+  kind: typealias
+  decorators:
+  - type
+  fields:
+  - name: extensionId
+    type: string
+  - name: attempts
+    type: number
+  lines:
+  - 34
+  - 37
+- name: ExtensionsDownloader
+  kind: struct
+  bases:
+  - Disposable
+  fields:
+  - name: SignatureArchiveExtension
+    type: any
+    default: '''.sigzip'''
+  - name: extensionsDownloadDir
+    type: URI
+  - name: extensionsTrashDir
+    type: URI
+  - name: cache
+    type: number
+  - name: cleanUpPromise
+    type: Promise<void>
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\t@INativeEnvironmentService environmentService: INativeEnvironmentService,\n\t\t@IFileService private readonly fileService: IFileService,\n\t\t@IExtensionGalleryService private readonly extensionGalleryService: IExtensionGalleryService,\n\t\t@IExtensionSignatureVerificationService private readonly extensionSignatureVerificationService: IExtensionSignatureVerificationService,\n\t\t@ITelemetryService private readonly telemetryService: ITelemetryService,\n\t\t@IUriIdentityService private readonly uriIdentityService: IUriIdentityService,\n\t\t@ILogService private readonly logService: ILogService,\n\t)"
+    lines:
+    - 48
+    - 62
+    detail:
+      calls:
+      - super
+      - this.cleanUp
+      - uriIdentityService.extUri.joinPath
+  - name: download
+    sig: 'download(extension: IGalleryExtension, operation: InstallOperation, verifySignature: boolean, clientTargetPlatform?: TargetPlatform): Promise<{ readonly location: URI; readonly verificationStatus: ExtensionSignatureVerificationCode | undefined }>'
+    is_async: true
+    lines:
+    - 64
+    - 109
+    detail:
+      calls:
+      - new ExtensionManagementError
+      - this.delete
+      - this.downloadSignatureArchive
+      - this.downloadVSIX
+      - this.extensionSignatureVerificationService.verify
+      - this.logService.error
+  - name: downloadVSIX
+    sig: 'downloadVSIX(extension: IGalleryExtension, operation: InstallOperation): Promise<URI>'
+    is_async: true
+    vis: private
+    lines:
+    - 111
+    - 139
+    detail:
+      calls:
+      - joinPath
+      - this.doDownload
+      - this.getName
+      - this.telemetryService.publicLog2
+      - toExtensionManagementError
+  - name: downloadSignatureArchive
+    sig: 'downloadSignatureArchive(extension: IGalleryExtension): Promise<URI>'
+    is_async: true
+    vis: private
+    lines:
+    - 141
+    - 169
+    detail:
+      calls:
+      - joinPath
+      - this.doDownload
+      - this.getName
+      - this.telemetryService.publicLog2
+      - toExtensionManagementError
+  - name: downloadFile
+    sig: 'downloadFile(extension: IGalleryExtension, location: URI, downloadFn: (location: URI) => Promise<void>): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 171
+    - 208
+    detail:
+      calls:
+      - FSPromises.rename
+      - downloadFn
+      - generateUuid
+      - getErrorMessage
+      - joinPath
+      - this.fileService.del
+      - this.fileService.exists
+      - this.logService.info
+  - name: doDownload
+    sig: 'doDownload(extension: IGalleryExtension, name: string, downloadFn: () => Promise<void>, retries: number): Promise<number>'
+    is_async: true
+    vis: private
+    lines:
+    - 210
+    - 223
+    detail:
+      calls:
+      - downloadFn
+      - getErrorMessage
+      - this.logService.warn
+  - name: delete
+    sig: 'delete(location: URI): Promise<void>'
+    is_async: true
+    lines:
+    - 233
+    - 241
+    detail:
+      calls:
+      - this.fileService.del
+      - this.fileService.move
+      - this.uriIdentityService.extUri.joinPath
+      - this.uriIdentityService.extUri.relativePath
+  - name: cleanUp
+    sig: 'cleanUp(): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 243
+    - 294
+    detail:
+      calls:
+      - ExtensionKey.parse
+      - Math.max
+      - Promises.settled
+      - distinct.push
+      - distinct.slice
+      - distinct.slice(0, Math.max(0, distinct.length - this.cache)).map
+      - distinct.sort
+      - groupByExtension
+      - p.slice
+      - p.slice(1).map
+      - p.sort
+      - signatureArchives.push
+      - stat.name.endsWith
+      - this.fileService.del
+      - this.fileService.exists
+      - this.fileService.resolve
+      - this.logService.error
+      - this.logService.trace
+      - toDelete.map
+      - toDelete.push
+      - toFileOperationResult
+      - vsixs.push
+  - name: getName
+    sig: 'getName(extension: IGalleryExtension): string'
+    vis: private
+    lines:
+    - 296
+    - 298
+    detail:
+      calls:
+      - ExtensionKey.create
+      - ExtensionKey.create(extension).toString
+      - ExtensionKey.create(extension).toString().toLowerCase
+  lines:
+  - 39
+  - 300
+exports:
+- name: RetryDownloadClassification
+  kind: type
+- name: RetryDownloadEvent
+  kind: type
+- name: ExtensionsDownloader
+  kind: type

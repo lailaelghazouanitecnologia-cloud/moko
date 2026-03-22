@@ -1,0 +1,286 @@
+## Roska File Descriptor — src/github.ts
+file: src/github.ts
+lines: 402
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: vscode.vscode
+- sym: '@vscode/extension-telemetry.TelemetryReporter'
+- sym: ./common/keychain.Keychain
+- sym: ./githubServer.GitHubServer
+- sym: ./githubServer.IGitHubServer
+- sym: ./common/utils.PromiseAdapter
+- sym: ./common/utils.arrayEquals
+- sym: ./common/utils.promiseFromEvent
+- sym: ./common/experimentationService.ExperimentationTelemetry
+- sym: ./common/logger.Log
+- sym: ./node/crypto.crypto
+- sym: ./common/errors.TIMED_OUT_ERROR
+- sym: ./common/errors.USER_CANCELLATION_ERROR
+types:
+- name: SessionData
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: id
+    type: string
+  - name: account
+    type: "{\n\t\tlabel?: string;\n\t\tdisplayName?: string;\n\t\t// Unfortunately, for some time the id was a number, so we need to support both.\n\t\t// This can be removed once we are confident that all users have migrated to the new id.\n\t\tid: string | number;\n\t}"
+  - name: scopes
+    type: string[]
+  - name: accessToken
+    type: string
+  lines:
+  - 16
+  - 27
+- name: AuthProviderType
+  kind: enum
+  variants:
+  - name: github
+    val: '''github'''
+  - name: githubEnterprise
+    val: '''github-enterprise'''
+  lines:
+  - 29
+  - 32
+- name: UriEventHandler
+  kind: struct
+  bases:
+  - vscode.EventEmitter
+  fields:
+  - name: _pendingNonces
+    type: any
+    default: new Map<string, string[]>()
+  - name: _codeExchangePromises
+    type: any
+    default: 'new Map<string, { promise: Promise<string>; cancel: vscode.EventEmitter<void> }>...'
+  - name: handleEvent
+    type: '(logger: Log, scopes: string) => PromiseAdapter<vscode.Uri, string>'
+    default: "(logger: Log, scopes) => (uri, resolve, reject) => {\n\t\t\tconst query = new URLSea..."
+  methods:
+  - name: handleUri
+    sig: 'handleUri(uri: vscode.Uri)'
+    lines:
+    - 38
+    - 40
+    detail:
+      calls:
+      - this.fire
+  - name: waitForCode
+    sig: 'waitForCode(logger: Log, scopes: string, nonce: string, token: vscode.CancellationToken)'
+    is_async: true
+    lines:
+    - 42
+    - 63
+    detail:
+      calls:
+      - Promise.race
+      - codeExchangePromise?.cancel.fire
+      - new Promise
+      - promiseFromEvent
+      - this._codeExchangePromises.delete
+      - this._codeExchangePromises.get
+      - this._codeExchangePromises.set
+      - this._pendingNonces.delete
+      - this._pendingNonces.get
+      - this._pendingNonces.set
+      - this.handleEvent
+  lines:
+  - 34
+  - 92
+- name: GitHubAuthenticationProvider
+  kind: struct
+  fields:
+  - name: _sessionChangeEmitter
+    type: any
+    default: new vscode.EventEmitter<vscode.AuthenticationProviderAuthenticationSessionsChang...
+  - name: _logger
+    type: Log
+  - name: _githubServer
+    type: IGitHubServer
+  - name: _telemetryReporter
+    type: ExperimentationTelemetry
+  - name: _keychain
+    type: Keychain
+  - name: _accountsSeen
+    type: any
+    default: new Set<string>()
+  - name: _disposable
+    type: vscode.Disposable | undefined
+  - name: _sessionsPromise
+    type: Promise<vscode.AuthenticationSession[]>
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tprivate readonly context: vscode.ExtensionContext,\n\t\turiHandler: UriEventHandler,\n\t\tghesUri?: vscode.Uri\n\t)"
+    lines:
+    - 105
+    - 143
+    detail:
+      calls:
+      - new ExperimentationTelemetry
+      - new GitHubServer
+      - new Keychain
+      - new Log
+      - new TelemetryReporter
+      - this.context.secrets.onDidChange
+      - this.readSessions
+      - this.readSessions().then
+      - vscode.Disposable.from
+      - vscode.authentication.registerAuthenticationProvider
+  - name: dispose
+    sig: dispose()
+    lines:
+    - 145
+    - 147
+    detail:
+      calls:
+      - this._disposable?.dispose
+  - name: onDidChangeSessions
+    sig: onDidChangeSessions()
+    lines:
+    - 149
+    - 151
+    detail: {}
+  - name: getSessions
+    sig: 'getSessions(scopes: string[] | undefined, options?: vscode.AuthenticationProviderSessionOptions): Promise<vscode.AuthenticationSession[]>'
+    is_async: true
+    lines:
+    - 153
+    - 167
+    detail:
+      calls:
+      - accountFilteredSessions.filter
+      - scopes?.sort
+      - sessions.filter
+      - sortedScopes.join
+      - sortedScopes?.join
+      - this._logger.info
+  - name: afterSessionLoad
+    sig: 'afterSessionLoad(session: vscode.AuthenticationSession): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 169
+    - 175
+    detail:
+      calls:
+      - this._accountsSeen.add
+      - this._accountsSeen.has
+      - this._githubServer.sendAdditionalTelemetryInfo
+  - name: checkForUpdates
+    sig: checkForUpdates()
+    is_async: true
+    vis: private
+    lines:
+    - 177
+    - 206
+    detail:
+      calls:
+      - previousSessions.forEach
+      - storedSessions.forEach
+      - this._sessionChangeEmitter.fire
+      - this.readSessions
+  - name: readSessions
+    sig: 'readSessions(): Promise<vscode.AuthenticationSession[]>'
+    is_async: true
+    vis: private
+    lines:
+    - 208
+    - 290
+    detail:
+      calls:
+      - "(await Promise.allSettled(sessionPromises))\n\t\t\t.filter"
+      - "(await Promise.allSettled(sessionPromises))\n\t\t\t.filter(p => p.status === 'fulfilled')\n\t\t\t.map"
+      - "(await Promise.allSettled(sessionPromises))\n\t\t\t.filter(p => p.status === 'fulfilled')\n\t\t\t.map(p => (..."
+      - JSON.parse
+      - Promise.allSettled
+      - new Set
+      - sessionData.map
+      - this._keychain.deleteToken
+      - this._keychain.getToken
+      - this._logger.error
+      - this._logger.info
+      - this.storeSessions
+  - name: storeSessions
+    sig: 'storeSessions(sessions: vscode.AuthenticationSession[]): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 292
+    - 297
+    detail:
+      calls:
+      - JSON.stringify
+      - Promise.resolve
+      - this._keychain.setToken
+      - this._logger.info
+  - name: createSession
+    sig: 'createSession(scopes: string[], options?: vscode.AuthenticationProviderSessionOptions): Promise<vscode.AuthenticationSession>'
+    is_async: true
+    lines:
+    - 299
+    - 357
+    detail:
+      calls:
+      - JSON.stringify
+      - '[...scopes].sort'
+      - new Array
+      - removed.push
+      - sessions.findIndex
+      - sessions.push
+      - sessions.splice
+      - sortedScopes.join
+      - this._githubServer.login
+      - this._logger.error
+      - this._logger.info
+      - this._sessionChangeEmitter.fire
+      - this._telemetryReporter?.sendTelemetryEvent
+      - this.afterSessionLoad
+      - this.storeSessions
+      - this.tokenToSession
+      - vscode.l10n.t
+      - vscode.window.showErrorMessage
+  - name: tokenToSession
+    sig: 'tokenToSession(token: string, scopes: string[]): Promise<vscode.AuthenticationSession>'
+    is_async: true
+    vis: private
+    lines:
+    - 359
+    - 367
+    detail:
+      calls:
+      - crypto.getRandomValues
+      - crypto.getRandomValues(new Uint32Array(2)).reduce
+      - new Uint32Array
+      - this._githubServer.getUserInfo
+  - name: removeSession
+    sig: 'removeSession(id: string)'
+    is_async: true
+    lines:
+    - 369
+    - 401
+    detail:
+      calls:
+      - sessions.findIndex
+      - sessions.splice
+      - this._githubServer.logout
+      - this._logger.error
+      - this._logger.info
+      - this._sessionChangeEmitter.fire
+      - this._telemetryReporter?.sendTelemetryEvent
+      - this.storeSessions
+      - vscode.l10n.t
+      - vscode.window.showErrorMessage
+  lines:
+  - 94
+  - 402
+exports:
+- name: SessionData
+  kind: type
+- name: AuthProviderType
+  kind: type
+- name: UriEventHandler
+  kind: type
+- name: GitHubAuthenticationProvider
+  kind: type

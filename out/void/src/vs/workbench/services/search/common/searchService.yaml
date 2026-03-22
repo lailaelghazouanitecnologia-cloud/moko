@@ -1,0 +1,259 @@
+## Roska File Descriptor — common/searchService.ts
+file: common/searchService.ts
+lines: 584
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: ../../../../base/common/arrays.js.arrays
+- sym: ../../../../base/common/async.js.DeferredPromise
+- sym: ../../../../base/common/async.js.raceCancellationError
+- sym: ../../../../base/common/cancellation.js.CancellationToken
+- sym: ../../../../base/common/errors.js.CancellationError
+- sym: ../../../../base/common/lifecycle.js.Disposable
+- sym: ../../../../base/common/lifecycle.js.IDisposable
+- sym: ../../../../base/common/lifecycle.js.toDisposable
+- sym: ../../../../base/common/map.js.ResourceMap
+- sym: ../../../../base/common/map.js.ResourceSet
+- sym: ../../../../base/common/network.js.Schemas
+- sym: ../../../../base/common/numbers.js.randomChance
+- sym: ../../../../base/common/stopwatch.js.StopWatch
+- sym: ../../../../base/common/types.js.isNumber
+- sym: ../../../../base/common/uri.js.URI
+- sym: ../../../../base/common/uri.js.URI as uri
+- sym: ../../../../editor/common/services/model.js.IModelService
+- sym: ../../../../platform/files/common/files.js.IFileService
+- sym: ../../../../platform/log/common/log.js.ILogService
+- sym: ../../../../platform/telemetry/common/telemetry.js.ITelemetryService
+- sym: ../../../../platform/uriIdentity/common/uriIdentity.js.IUriIdentityService
+- sym: ../../../common/editor.js.EditorResourceAccessor
+- sym: ../../../common/editor.js.SideBySideEditor
+- sym: ../../editor/common/editorService.js.IEditorService
+- sym: ../../extensions/common/extensions.js.IExtensionService
+- sym: ./search.js.DEFAULT_MAX_SEARCH_RESULTS
+- sym: ./search.js.deserializeSearchError
+- sym: ./search.js.FileMatch
+- sym: ./search.js.IAITextQuery
+- sym: ./search.js.ICachedSearchStats
+- sym: ./search.js.IFileMatch
+- sym: ./search.js.IFileQuery
+- sym: ./search.js.IFileSearchStats
+- sym: ./search.js.IFolderQuery
+- sym: ./search.js.IProgressMessage
+- sym: ./search.js.ISearchComplete
+- sym: ./search.js.ISearchEngineStats
+- sym: ./search.js.ISearchProgressItem
+- sym: ./search.js.ISearchQuery
+- sym: ./search.js.ISearchResultProvider
+- sym: ./search.js.ISearchService
+- sym: ./search.js.isFileMatch
+- sym: ./search.js.isProgressMessage
+- sym: ./search.js.ITextQuery
+- sym: ./search.js.pathIncludedInQuery
+- sym: ./search.js.QueryType
+- sym: ./search.js.SEARCH_RESULT_LANGUAGE_ID
+- sym: ./search.js.SearchError
+- sym: ./search.js.SearchErrorCode
+- sym: ./search.js.SearchProviderType
+- sym: ./searchHelpers.js.getTextSearchMatchWithModelContext
+- sym: ./searchHelpers.js.editorMatchesToTextSearchResults
+types:
+- name: SearchService
+  kind: struct
+  bases:
+  - Disposable
+  - ISearchService
+  fields:
+  - name: _serviceBrand
+    type: undefined
+  - name: fileSearchProviders
+    type: any
+    default: new Map<string, ISearchResultProvider>()
+  - name: textSearchProviders
+    type: any
+    default: new Map<string, ISearchResultProvider>()
+  - name: aiTextSearchProviders
+    type: any
+    default: new Map<string, ISearchResultProvider>()
+  - name: deferredFileSearchesByScheme
+    type: any
+    default: new Map<string, DeferredPromise<ISearchResultProvider>>()
+  - name: deferredTextSearchesByScheme
+    type: any
+    default: new Map<string, DeferredPromise<ISearchResultProvider>>()
+  - name: deferredAITextSearchesByScheme
+    type: any
+    default: new Map<string, DeferredPromise<ISearchResultProvider>>()
+  - name: loggedSchemesMissingProviders
+    type: any
+    default: new Set<string>()
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\t@IModelService private readonly modelService: IModelService,\n\t\t@IEditorService private readonly editorService: IEditorService,\n\t\t@ITelemetryService private readonly telemetryService: ITelemetryService,\n\t\t@ILogService private readonly logService: ILogService,\n\t\t@IExtensionService private readonly extensionService: IExtensionService,\n\t\t@IFileService private readonly fileService: IFileService,\n\t\t@IUriIdentityService private readonly uriIdentityService: IUriIdentityService,\n\t)"
+    lines:
+    - 42
+    - 52
+    detail:
+      calls:
+      - super
+  - name: registerSearchResultProvider
+    sig: 'registerSearchResultProvider(scheme: string, type: SearchProviderType, provider: ISearchResultProvider): IDisposable'
+    lines:
+    - 54
+    - 80
+    detail:
+      calls:
+      - deferredMap.delete
+      - deferredMap.get
+      - deferredMap.get(scheme)!.complete
+      - deferredMap.has
+      - list.set
+      - new Error
+      - toDisposable
+  - name: textSearch
+    sig: 'textSearch(query: ITextQuery, token?: CancellationToken, onProgress?: (item: ISearchProgressItem) => void): Promise<ISearchComplete>'
+    is_async: true
+    lines:
+    - 82
+    - 91
+    detail:
+      calls:
+      - this.textSearchSplitSyncAsync
+  - name: aiTextSearch
+    sig: 'aiTextSearch(query: IAITextQuery, token?: CancellationToken, onProgress?: (item: ISearchProgressItem) => void): Promise<ISearchComplete>'
+    is_async: true
+    lines:
+    - 93
+    - 109
+    detail:
+      calls:
+      - this.doSearch
+  - name: getAIName
+    sig: 'getAIName(): Promise<string | undefined>'
+    is_async: true
+    lines:
+    - 111
+    - 114
+    detail:
+      calls:
+      - provider?.getAIName
+      - this.getSearchProvider
+      - this.getSearchProvider(QueryType.aiText).get
+  - name: textSearchSplitSyncAsync
+    sig: "textSearchSplitSyncAsync(\n\t\tquery: ITextQuery,\n\t\ttoken?: CancellationToken | undefined,\n\t\tonProgress?: ((result: ISearchProgressItem) => void) | undefined,\n\t\tnotebookFilesToIgnore?: ResourceSet,\n\t\tasyncNotebookFilesToIgnore?: Promise<ResourceSet>\n\t): {\n\t\tsyncResults: ISearchComplete;\n\t\tasyncResults: Promise<ISearchComplete>;\n\t}"
+    lines:
+    - 116
+    - 163
+    detail:
+      calls:
+      - arrays.coalesce
+      - arrays.coalesce([...openEditorResults.results.values()]).filter
+      - arrays.coalesce([...openEditorResults.results.values()]).filter(e => !(notebookFilesToIgnore && note...
+      - getAsyncResults
+      - openEditorResults.results.values
+      - this.getOpenEditorResults
+  - name: fileSearch
+    sig: 'fileSearch(query: IFileQuery, token?: CancellationToken): Promise<ISearchComplete>'
+    lines:
+    - 165
+    - 167
+    detail:
+      calls:
+      - this.doSearch
+  - name: schemeHasFileSearchProvider
+    sig: 'schemeHasFileSearchProvider(scheme: string): boolean'
+    lines:
+    - 169
+    - 171
+    detail:
+      calls:
+      - this.fileSearchProviders.has
+  - name: doSearch
+    sig: 'doSearch(query: ISearchQuery, token?: CancellationToken, onProgress?: (item: ISearchProgressItem) => void): Promise<ISearchComplete>'
+    vis: private
+    lines:
+    - 173
+    - 221
+    detail:
+      calls:
+      - "(async () => {\n\t\t\tawait Promise.all(providerActivations);\n\t\t\tawait this.extensionService.whenInstall..."
+      - JSON.stringify
+      - Promise.resolve
+      - providerActivations.push
+      - raceCancellationError
+      - schemesInQuery.forEach
+      - this.extensionService.activateByEvent
+      - this.getSchemesInQuery
+      - this.logService.trace
+  - name: waitForProvider
+    sig: 'waitForProvider(queryType: QueryType, scheme: string): Promise<ISearchResultProvider>'
+    is_async: true
+    vis: private
+    lines:
+    - 232
+    - 242
+    detail:
+      calls:
+      - deferredMap.get
+      - deferredMap.has
+      - deferredMap.set
+      - new DeferredPromise
+      - this.getDeferredTextSearchesByScheme
+  - name: searchWithProviders
+    sig: 'searchWithProviders(query: ISearchQuery, onProviderProgress: (progress: ISearchProgressItem) => void, token?: CancellationToken)'
+    is_async: true
+    vis: private
+    lines:
+    - 270
+    - 343
+    detail:
+      calls:
+      - Promise.all
+      - Promise.all(searchPs).then
+      - StopWatch.create
+      - '[...fqs.keys()].map'
+      - '[...fqs.keys()].some'
+      - fqs.keys
+      - this.groupFolderQueriesByScheme
+  - name: sendTelemetry
+    sig: 'sendTelemetry(query: ISearchQuery, endToEndTime: number, complete?: ISearchComplete, err?: SearchError): void'
+    vis: private
+    lines:
+    - 358
+    - 496
+    detail:
+      calls:
+      - query.folderQueries.every
+      - randomChance
+      - this.telemetryService.publicLog2
+  - name: getOpenEditorResults
+    sig: 'getOpenEditorResults(query: ITextQuery): { results: ResourceMap<IFileMatch | null>; limitHit: boolean }'
+    vis: private
+    lines:
+    - 498
+    - 573
+    detail:
+      calls:
+      - EditorResourceAccessor.getCanonicalUri
+      - EditorResourceAccessor.getOriginalUri
+      - canonicalToOriginalResources.set
+      - models.forEach
+      - new ResourceMap
+      - this.modelService.getModels
+  - name: clearCache
+    sig: 'clearCache(cacheKey: string): Promise<void>'
+    is_async: true
+    lines:
+    - 579
+    - 583
+    detail:
+      calls:
+      - Array.from
+      - "Array.from(this.fileSearchProviders.values())\n\t\t\t.map"
+      - Promise.all
+      - this.fileSearchProviders.values
+  lines:
+  - 28
+  - 584
+exports:
+- name: SearchService
+  kind: type

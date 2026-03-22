@@ -1,0 +1,438 @@
+## Roska File Descriptor — browser/remoteIndicator.ts
+file: browser/remoteIndicator.ts
+lines: 873
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: ../../../../nls.js.nls
+- sym: ../../../services/remote/common/remoteAgentService.js.IRemoteAgentService
+- sym: ../../../services/remote/common/remoteAgentService.js.remoteConnectionLatencyMeasurer
+- sym: ../../../../base/common/async.js.RunOnceScheduler
+- sym: ../../../../base/common/async.js.retry
+- sym: ../../../../base/common/event.js.Emitter
+- sym: ../../../../base/common/event.js.Event
+- sym: ../../../../base/common/lifecycle.js.Disposable
+- sym: ../../../../base/common/lifecycle.js.DisposableStore
+- sym: ../../../../platform/actions/common/actions.js.MenuId
+- sym: ../../../../platform/actions/common/actions.js.IMenuService
+- sym: ../../../../platform/actions/common/actions.js.MenuItemAction
+- sym: ../../../../platform/actions/common/actions.js.MenuRegistry
+- sym: ../../../../platform/actions/common/actions.js.registerAction2
+- sym: ../../../../platform/actions/common/actions.js.Action2
+- sym: ../../../../platform/actions/common/actions.js.SubmenuItemAction
+- sym: ../../../../platform/actions/common/actions.js.IMenu
+- sym: ../../../common/contributions.js.IWorkbenchContribution
+- sym: ../../../services/statusbar/browser/statusbar.js.StatusbarAlignment
+- sym: ../../../services/statusbar/browser/statusbar.js.IStatusbarService
+- sym: ../../../services/statusbar/browser/statusbar.js.IStatusbarEntryAccessor
+- sym: ../../../services/statusbar/browser/statusbar.js.IStatusbarEntry
+- sym: ../../../../platform/label/common/label.js.ILabelService
+- sym: ../../../../platform/contextkey/common/contextkey.js.ContextKeyExpr
+- sym: ../../../../platform/contextkey/common/contextkey.js.IContextKey
+- sym: ../../../../platform/contextkey/common/contextkey.js.IContextKeyService
+- sym: ../../../../platform/contextkey/common/contextkey.js.RawContextKey
+- sym: ../../../../platform/commands/common/commands.js.ICommandService
+- sym: ../../../../base/common/network.js.Schemas
+- sym: ../../../services/extensions/common/extensions.js.IExtensionService
+- sym: ../../../../platform/quickinput/common/quickInput.js.QuickPickItem
+- sym: ../../../../platform/quickinput/common/quickInput.js.IQuickInputService
+- sym: ../../../../platform/quickinput/common/quickInput.js.IQuickInputButton
+- sym: ../../../services/environment/browser/environmentService.js.IBrowserWorkbenchEnvironmentService
+- sym: ../../../../platform/remote/common/remoteAgentConnection.js.PersistentConnectionEventType
+- sym: ../../../../platform/remote/common/remoteAuthorityResolver.js.IRemoteAuthorityResolverService
+- sym: ../../../services/host/browser/host.js.IHostService
+- sym: ../../../../base/common/platform.js.PlatformName
+- sym: ../../../../base/common/platform.js.PlatformToString
+- sym: ../../../../base/common/platform.js.isWeb
+- sym: ../../../../base/common/platform.js.platform
+- sym: ../../../../base/common/strings.js.truncate
+- sym: ../../../../platform/workspace/common/workspace.js.IWorkspaceContextService
+- sym: ../../../../platform/remote/common/remoteHosts.js.getRemoteName
+- sym: ../../../../platform/workspace/common/virtualWorkspace.js.getVirtualWorkspaceLocation
+- sym: ../../../../base/common/iconLabels.js.getCodiconAriaLabel
+- sym: ../../../../platform/log/common/log.js.ILogService
+- sym: ../../../browser/actions/windowActions.js.ReloadWindowAction
+- sym: ../../../../platform/extensionManagement/common/extensionManagement.js.EXTENSION_INSTALL_SKIP_WALKTHROUGH_CONTEXT
+- sym: ../../../../platform/extensionManagement/common/extensionManagement.js.IExtensionGalleryService
+- sym: ../../../../platform/extensionManagement/common/extensionManagement.js.IExtensionManagementService
+- sym: ../../extensions/common/extensions.js.IExtensionsWorkbenchService
+- sym: ../../extensions/common/extensions.js.LIST_WORKSPACE_UNSUPPORTED_EXTENSIONS_COMMAND_ID
+- sym: ../../../../platform/instantiation/common/instantiation.js.ServicesAccessor
+- sym: ../../../../base/common/htmlContent.js.IMarkdownString
+- sym: ../../../../base/common/htmlContent.js.MarkdownString
+- sym: ../../../common/contextkeys.js.RemoteNameContext
+- sym: ../../../common/contextkeys.js.VirtualWorkspaceContext
+- sym: ../../../../platform/telemetry/common/telemetry.js.ITelemetryService
+- sym: ../../../../base/common/actions.js.WorkbenchActionExecutedClassification
+- sym: ../../../../base/common/actions.js.WorkbenchActionExecutedEvent
+- sym: ../../../../platform/keybinding/common/keybindingsRegistry.js.KeybindingWeight
+- sym: ../../../../base/common/keyCodes.js.KeyCode
+- sym: ../../../../base/common/keyCodes.js.KeyMod
+- sym: ../../../../platform/product/common/productService.js.IProductService
+- sym: ../../../../base/browser/event.js.DomEmitter
+- sym: ../../../../platform/extensions/common/extensions.js.ExtensionIdentifier
+- sym: ../../../../base/common/themables.js.ThemeIcon
+- sym: ../../extensions/browser/extensionsIcons.js.infoIcon
+- sym: ../../../../platform/opener/common/opener.js.IOpenerService
+- sym: ../../../../base/common/uri.js.URI
+- sym: ../../../../base/browser/window.js.mainWindow
+- sym: ../../../../platform/registry/common/platform.js.Registry
+- sym: ../../../../platform/configuration/common/configurationRegistry.js.IConfigurationRegistry
+- sym: ../../../../platform/configuration/common/configurationRegistry.js.Extensions as ConfigurationExtensions
+- sym: ../../../common/configuration.js.workbenchConfigurationNodeBase
+- sym: ../../../../platform/configuration/common/configuration.js.IConfigurationService
+- sym: ../../../../platform/dialogs/common/dialogs.js.IDialogService
+- sym: ../../../../base/common/severity.js.Severity
+- sym: ../../../../base/common/errors.js.isCancellationError
+- sym: ../../../../base/common/errorMessage.js.toErrorMessage
+- sym: ../../../services/lifecycle/common/lifecycle.js.ILifecycleService
+types:
+- name: ActionGroup
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 59
+  - 59
+- name: RemoteExtensionMetadata
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: id
+    type: string
+  - name: installed
+    type: boolean
+  - name: dependencies
+    type: string[]
+  - name: isPlatformCompatible
+    type: boolean
+  - name: helpLink
+    type: string
+  - name: startCommand
+    type: string
+  - name: priority
+    type: number
+  - name: supportedPlatforms
+    type: PlatformName[]
+  lines:
+  - 61
+  - 71
+- name: RemoteStatusIndicator
+  kind: struct
+  ctx: web does not have a "Close Remote" command
+  bases:
+  - Disposable
+  - IWorkbenchContribution
+  fields:
+  - name: ID
+    type: any
+    default: '''workbench.contrib.remoteStatusIndicator'''
+  - name: REMOTE_ACTIONS_COMMAND_ID
+    type: any
+    default: '''workbench.action.remote.showMenu'''
+  - name: CLOSE_REMOTE_COMMAND_ID
+    type: any
+    default: '''workbench.action.remote.close'''
+  - name: SHOW_CLOSE_REMOTE_COMMAND_ID
+    type: any
+    default: '!isWeb'
+  - name: INSTALL_REMOTE_EXTENSIONS_ID
+    type: any
+    default: '''workbench.action.remote.extensions'''
+  - name: REMOTE_STATUS_LABEL_MAX_LENGTH
+    type: any
+    default: '40'
+  - name: REMOTE_CONNECTION_LATENCY_SCHEDULER_DELAY
+    type: any
+    default: 60 * 1000
+  - name: REMOTE_CONNECTION_LATENCY_SCHEDULER_FIRST_RUN_DELAY
+    type: any
+    default: 10 * 1000
+  - name: remoteStatusEntry
+    type: IStatusbarEntryAccessor | undefined
+  - name: legacyIndicatorMenu
+    type: IMenu
+  - name: remoteIndicatorMenu
+    type: IMenu
+  - name: remoteMenuActionsGroups
+    type: ActionGroup[] | undefined
+  - name: virtualWorkspaceLocation
+    type: '{ scheme: string; authority: string } | undefined'
+    default: undefined
+  - name: connectionState
+    type: '''initializing'' | ''connected'' | ''reconnecting'' | ''disconnected'' | undefined'
+    default: undefined
+  - name: connectionToken
+    type: string | undefined
+    default: undefined
+  - name: connectionStateContextKey
+    type: IContextKey<'' | 'initializing' | 'disconnected' | 'connected'>
+  - name: networkState
+    type: '''online'' | ''offline'' | ''high-latency'' | undefined'
+    default: undefined
+  - name: measureNetworkConnectionLatencyScheduler
+    type: RunOnceScheduler | undefined
+    default: undefined
+  - name: loggedInvalidGroupNames
+    type: '{ [group: string]: boolean }'
+    default: Object.create(null)
+  - name: _remoteExtensionMetadata
+    type: RemoteExtensionMetadata[] | undefined
+    default: undefined
+  - name: remoteMetadataInitialized
+    type: boolean
+    default: 'false'
+  - name: _onDidChangeEntries
+    type: any
+    default: this._register(new Emitter<void>())
+  - name: onDidChangeEntries
+    type: Event<void>
+    default: this._onDidChangeEntries.event
+  methods:
+  - name: remoteExtensionMetadata
+    sig: 'remoteExtensionMetadata(): RemoteExtensionMetadata[]'
+    vis: private
+    lines:
+    - 106
+    - 128
+    detail:
+      calls:
+      - Object.values
+      - Object.values(remoteExtensionTips).filter
+      - Object.values(remoteExtensionTips).filter(value => value.startEntry !== undefined).map
+      - this.remoteExtensionMetadata.sort
+  - name: constructor
+    sig: "constructor(\n\t\t@IStatusbarService private readonly statusbarService: IStatusbarService,\n\t\t@IBrowserWorkbenchEnvironmentService private readonly environmentService: IBrowserWorkbenchEnvironmentService,\n\t\t@ILabelService private readonly labelService: ILabelService,\n\t\t@IContextKeyService private contextKeyService: IContextKeyService,\n\t\t@IMenuService private menuService: IMenuService,\n\t\t@IQuickInputService private readonly quickInputService: IQuickInputService,\n\t\t@ICommandService private readonly commandService: ICommandService,\n\t\t@IExtensionService private readonly extensionService: IExtensionService,\n\t\t@IRemoteAgentService private readonly remoteAgentService: IRemoteAgentService,\n\t\t@IRemoteAuthorityResolverService private readonly remoteAuthorityResolverService: IRemoteAuthorityResolverService,\n\t\t@IHostService private readonly hostService: IHostService,\n\t\t@IWorkspaceContextService private readonly workspaceContextService: IWorkspaceContextService,\n\t\t@ILogService private readonly logService: ILogService,\n\t\t@IExtensionGalleryService private readonly extensionGalleryService: IExtensionGalleryService,\n\t\t@ITelemetryService private readonly telemetryService: ITelemetryService,\n\t\t@IProductService private readonly productService: IProductService,\n\t\t@IExtensionManagementService private readonly extensionManagementService: IExtensionManagementService,\n\t\t@IExtensionsWorkbenchService private readonly extensionsWorkbenchService: IExtensionsWorkbenchService,\n\t\t@IDialogService private readonly dialogService: IDialogService,\n\t\t@ILifecycleService private readonly lifecycleService: ILifecycleService,\n\t\t@IOpenerService private readonly openerService: IOpenerService,\n\t\t@IConfigurationService private readonly configurationService: IConfigurationService,\n\t)"
+    lines:
+    - 138
+    - 182
+    detail:
+      calls:
+      - new RawContextKey
+      - new RawContextKey<'' | 'initializing' | 'disconnected' | 'connected'>('remoteConnectionState', '').b...
+      - super
+      - this._register
+      - this.connectionStateContextKey.set
+      - this.menuService.createMenu
+      - this.registerActions
+      - this.registerListeners
+      - this.updateRemoteStatusIndicator
+      - this.updateVirtualWorkspaceLocation
+      - this.updateWhenInstalledExtensionsRegistered
+  - name: registerActions
+    sig: 'registerActions(): void'
+    vis: private
+    lines:
+    - 184
+    - 247
+    detail:
+      calls:
+      - ContextKeyExpr.or
+      - MenuRegistry.appendMenuItem
+      - nls.localize
+      - nls.localize2
+      - registerAction2
+      - super
+      - this._register
+      - this.extensionGalleryService.isEnabled
+  - name: registerListeners
+    sig: 'registerListeners(): void'
+    vis: private
+    lines:
+    - 249
+    - 319
+    detail:
+      calls:
+      - Event.any
+      - "Event.any(\n\t\t\t\tthis._register(new DomEmitter(mainWindow, 'online')).event,\n\t\t\t\tthis._register(new Do..."
+      - connection.onDidStateChange
+      - new DomEmitter
+      - remoteIndicator.onDidChange
+      - this._register
+      - this.extensionManagementService.onDidUninstallExtension
+      - this.extensionService.onDidChangeExtensions
+      - this.labelService.onDidChangeFormatters
+      - this.legacyIndicatorMenu.onDidChange
+      - this.remoteAgentService.getConnection
+      - this.remoteIndicatorMenu.onDidChange
+      - this.workspaceContextService.onDidChangeWorkbenchState
+  - name: initializeRemoteMetadata
+    sig: 'initializeRemoteMetadata(): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 321
+    - 348
+    detail:
+      calls:
+      - (await this.extensionManagementService.getInstalled()).find
+      - PlatformToString
+      - supportedPlatforms.includes
+      - this._onDidChangeEntries.fire
+      - this.extensionManagementService.getInstalled
+      - this.updateRemoteStatusIndicator
+  - name: updateWhenInstalledExtensionsRegistered
+    sig: 'updateWhenInstalledExtensionsRegistered(): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 354
+    - 375
+    detail:
+      calls:
+      - "(async () => {\n\t\t\t\ttry {\n\t\t\t\t\tconst { authority } = await this.remoteAuthorityResolverService.resolv..."
+      - this.extensionService.whenInstalledExtensionsRegistered
+      - this.initializeRemoteMetadata
+      - this.updateRemoteStatusIndicator
+  - name: setConnectionState
+    sig: 'setConnectionState(newState: ''disconnected'' | ''connected'' | ''reconnecting''): void'
+    vis: private
+    lines:
+    - 377
+    - 396
+    detail:
+      calls:
+      - this.connectionStateContextKey.set
+      - this.scheduleMeasureNetworkConnectionLatency
+      - this.updateRemoteStatusIndicator
+  - name: measureNetworkConnectionLatency
+    sig: 'measureNetworkConnectionLatency(): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 410
+    - 428
+    detail:
+      calls:
+      - remoteConnectionLatencyMeasurer.measure
+      - this.measureNetworkConnectionLatencyScheduler?.schedule
+      - this.setNetworkState
+  - name: setNetworkState
+    sig: 'setNetworkState(newState: ''online'' | ''offline'' | ''high-latency''): void'
+    vis: private
+    lines:
+    - 430
+    - 450
+    detail:
+      calls:
+      - remoteConnectionLatencyMeasurer.latency?.average?.toFixed
+      - remoteConnectionLatencyMeasurer.latency?.current?.toFixed
+      - this.logNetworkConnectionHealthTelemetry
+      - this.logService.warn
+      - this.updateRemoteStatusIndicator
+  - name: getRemoteMenuActions
+    sig: 'getRemoteMenuActions(doNotUseCache?: boolean): ActionGroup[]'
+    vis: private
+    lines:
+    - 483
+    - 488
+    detail:
+      calls:
+      - this.legacyIndicatorMenu.getActions
+      - this.remoteIndicatorMenu.getActions
+      - this.remoteIndicatorMenu.getActions().filter
+      - this.remoteIndicatorMenu.getActions().filter(a => this.validatedGroup(a[0])).concat
+  - name: updateRemoteStatusIndicator
+    sig: 'updateRemoteStatusIndicator(): void'
+    vis: private
+    lines:
+    - 490
+    - 558
+    detail:
+      calls:
+      - new MarkdownString
+      - nls.localize
+      - remoteIndicator.label.trim
+      - remoteIndicatorLabel.startsWith
+      - this.labelService.getHostLabel
+      - this.labelService.getHostTooltip
+      - this.renderRemoteStatusIndicator
+      - tooltip.appendMarkdown
+      - tooltip.appendText
+      - truncate
+  - name: renderRemoteStatusIndicator
+    sig: 'renderRemoteStatusIndicator(initialText: string, initialTooltip?: string | MarkdownString, command?: string, showProgress?: boolean): void'
+    vis: private
+    lines:
+    - 560
+    - 578
+    detail:
+      calls:
+      - nls.localize
+      - this.remoteStatusEntry.update
+      - this.statusbarService.addEntry
+      - this.withNetworkStatus
+  - name: withNetworkStatus
+    sig: 'withNetworkStatus(initialText: string, initialTooltip?: string | MarkdownString, showProgress?: boolean): { text: string; tooltip: string | IMarkdownString | undefined; ariaLabel: string }'
+    vis: private
+    lines:
+    - 580
+    - 616
+    detail:
+      calls:
+      - getCodiconAriaLabel
+      - nls.localize
+      - remoteConnectionLatencyMeasurer.latency?.average?.toFixed
+      - remoteConnectionLatencyMeasurer.latency?.current?.toFixed
+      - textWithAlert
+      - this.appendTooltipLine
+  - name: installExtension
+    sig: 'installExtension(extensionId: string, remoteLabel: string): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 635
+    - 656
+    detail:
+      calls:
+      - isCancellationError
+      - nls.localize
+      - this.dialogService.confirm
+      - this.extensionsWorkbenchService.install
+      - this.installExtension
+      - toErrorMessage
+  - name: runRemoteStartCommand
+    sig: 'runRemoteStartCommand(extensionId: string, startCommand: string)'
+    is_async: true
+    vis: private
+    lines:
+    - 658
+    - 675
+    detail:
+      calls:
+      - retry
+      - this.commandService.executeCommand
+      - this.telemetryService.publicLog2
+  - name: showRemoteMenu
+    sig: showRemoteMenu()
+    vis: private
+    lines:
+    - 677
+    - 860
+    detail:
+      calls:
+      - Event.once
+      - Event.once(quickPick.onDidAccept)
+      - Event.once(quickPick.onDidTriggerItemButton)
+      - computeItems
+      - disposables.add
+      - new DisposableStore
+      - nls.localize
+      - quickPick.onDidHide
+      - quickPick.show
+      - this._register
+      - this.legacyIndicatorMenu.onDidChange
+      - this.onDidChangeEntries
+      - this.quickInputService.createQuickPick
+      - this.remoteIndicatorMenu.onDidChange
+  lines:
+  - 73
+  - 861
+exports:
+- name: ActionGroup
+  kind: type
+- name: RemoteExtensionMetadata
+  kind: type
+- name: RemoteStatusIndicator
+  kind: type

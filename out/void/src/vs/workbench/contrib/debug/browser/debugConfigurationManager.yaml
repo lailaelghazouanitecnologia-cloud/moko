@@ -1,0 +1,655 @@
+## Roska File Descriptor — browser/debugConfigurationManager.ts
+file: browser/debugConfigurationManager.ts
+lines: 773
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: ../../../../base/common/arrays.js.distinct
+- sym: ../../../../base/common/async.js.sequence
+- sym: ../../../../base/common/cancellation.js.CancellationToken
+- sym: ../../../../base/common/cancellation.js.CancellationTokenSource
+- sym: ../../../../base/common/event.js.Emitter
+- sym: ../../../../base/common/event.js.Event
+- sym: ../../../../base/common/json.js.json
+- sym: ../../../../base/common/jsonSchema.js.IJSONSchema
+- sym: ../../../../base/common/lifecycle.js.DisposableStore
+- sym: ../../../../base/common/lifecycle.js.IDisposable
+- sym: ../../../../base/common/lifecycle.js.dispose
+- sym: ../../../../base/common/resources.js.resources
+- sym: ../../../../base/common/themables.js.ThemeIcon
+- sym: ../../../../base/common/uri.js.URI as uri
+- sym: ../../../../nls.js.nls
+- sym: ../../../../platform/configuration/common/configuration.js.ConfigurationTarget
+- sym: ../../../../platform/configuration/common/configuration.js.IConfigurationService
+- sym: ../../../../platform/contextkey/common/contextkey.js.IContextKey
+- sym: ../../../../platform/contextkey/common/contextkey.js.IContextKeyService
+- sym: ../../../../platform/files/common/files.js.IFileService
+- sym: ../../../../platform/instantiation/common/instantiation.js.IInstantiationService
+- sym: ../../../../platform/jsonschemas/common/jsonContributionRegistry.js.IJSONContributionRegistry
+- sym: ../../../../platform/jsonschemas/common/jsonContributionRegistry.js.Extensions as JSONExtensions
+- sym: ../../../../platform/log/common/log.js.ILogService
+- sym: ../../../../platform/quickinput/common/quickInput.js.IQuickInputService
+- sym: ../../../../platform/registry/common/platform.js.Registry
+- sym: ../../../../platform/storage/common/storage.js.IStorageService
+- sym: ../../../../platform/storage/common/storage.js.StorageScope
+- sym: ../../../../platform/storage/common/storage.js.StorageTarget
+- sym: ../../../../platform/uriIdentity/common/uriIdentity.js.IUriIdentityService
+- sym: ../../../../platform/workspace/common/workspace.js.IWorkspaceContextService
+- sym: ../../../../platform/workspace/common/workspace.js.IWorkspaceFolder
+- sym: ../../../../platform/workspace/common/workspace.js.IWorkspaceFoldersChangeEvent
+- sym: ../../../../platform/workspace/common/workspace.js.WorkbenchState
+- sym: ../../../common/editor.js.IEditorPane
+- sym: ../../../services/configuration/common/configuration.js.launchSchemaId
+- sym: ../../../services/editor/common/editorService.js.ACTIVE_GROUP
+- sym: ../../../services/editor/common/editorService.js.IEditorService
+- sym: ../../../services/extensions/common/extensions.js.IExtensionService
+- sym: ../../../services/history/common/history.js.IHistoryService
+- sym: ../../../services/preferences/common/preferences.js.IPreferencesService
+- sym: ../../../services/textfile/common/textfiles.js.ITextFileService
+- sym: ../common/debug.js.CONTEXT_DEBUG_CONFIGURATION_TYPE
+- sym: ../common/debug.js.DebugConfigurationProviderTriggerKind
+- sym: ../common/debug.js.IAdapterManager
+- sym: ../common/debug.js.ICompound
+- sym: ../common/debug.js.IConfig
+- sym: ../common/debug.js.IConfigPresentation
+- sym: ../common/debug.js.IConfigurationManager
+- sym: ../common/debug.js.IDebugConfigurationProvider
+- sym: ../common/debug.js.IGlobalConfig
+- sym: ../common/debug.js.IGuessedDebugger
+- sym: ../common/debug.js.ILaunch
+- sym: ../common/debugSchemas.js.launchSchema
+- sym: ../common/debugUtils.js.getVisibleAndSorted
+- sym: ./debugIcons.js.debugConfigure
+data:
+- name: jsonRegistry
+  type: any
+  val: Registry.as<IJSONContributionRegistry>(JSONExtensions.JSONContribution)
+- name: DEBUG_SELECTED_CONFIG_NAME_KEY
+  type: string
+  val: '''debug.selectedconfigname'''
+- name: DEBUG_SELECTED_ROOT
+  type: string
+  val: '''debug.selectedroot'''
+- name: DEBUG_SELECTED_TYPE
+  type: string
+  val: '''debug.selectedtype'''
+- name: DEBUG_RECENT_DYNAMIC_CONFIGURATIONS
+  type: string
+  val: '''debug.recentdynamicconfigurations'''
+- name: ON_DEBUG_DYNAMIC_CONFIGURATIONS_NAME
+  type: string
+  val: '''onDebugDynamicConfigurations'''
+types:
+- name: IDynamicPickItem
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: launch
+    type: ILaunch
+  - name: config
+    type: IConfig
+  lines:
+  - 50
+  - 50
+- name: ConfigurationManager
+  kind: struct
+  ctx: if scope is not specified,a value of DebugConfigurationProvideTrigger.Initial is assumed.
+  bases:
+  - IConfigurationManager
+  fields:
+  - name: launches
+    type: ILaunch[]
+  - name: selectedName
+    type: string | undefined
+  - name: selectedLaunch
+    type: ILaunch | undefined
+  - name: getSelectedConfig
+    type: () => Promise<IConfig | undefined>
+    default: () => Promise.resolve(undefined)
+  - name: selectedType
+    type: string | undefined
+  - name: selectedDynamic
+    type: any
+    default: 'false'
+  - name: toDispose
+    type: IDisposable[]
+  - name: _onDidSelectConfigurationName
+    type: any
+    default: new Emitter<void>()
+  - name: configProviders
+    type: IDebugConfigurationProvider[]
+  - name: debugConfigurationTypeContext
+    type: IContextKey<string>
+  - name: _onDidChangeConfigurationProviders
+    type: any
+    default: new Emitter<void>()
+  - name: onDidChangeConfigurationProviders
+    type: any
+    default: this._onDidChangeConfigurationProviders.event
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tprivate readonly adapterManager: IAdapterManager,\n\t\t@IWorkspaceContextService private readonly contextService: IWorkspaceContextService,\n\t\t@IConfigurationService private readonly configurationService: IConfigurationService,\n\t\t@IQuickInputService private readonly quickInputService: IQuickInputService,\n\t\t@IInstantiationService private readonly instantiationService: IInstantiationService,\n\t\t@IStorageService private readonly storageService: IStorageService,\n\t\t@IExtensionService private readonly extensionService: IExtensionService,\n\t\t@IHistoryService private readonly historyService: IHistoryService,\n\t\t@IUriIdentityService private readonly uriIdentityService: IUriIdentityService,\n\t\t@IContextKeyService contextKeyService: IContextKeyService,\n\t\t@ILogService private readonly logService: ILogService,\n\t)"
+    lines:
+    - 66
+    - 95
+    detail:
+      calls:
+      - CONTEXT_DEBUG_CONFIGURATION_TYPE.bindTo
+      - previousSelectedLaunch.getConfigurationNames
+      - this.initLaunches
+      - this.launches.find
+      - this.registerListeners
+      - this.selectConfiguration
+      - this.setCompoundSchemaValues
+      - this.storageService.get
+  - name: registerDebugConfigurationProvider
+    sig: 'registerDebugConfigurationProvider(debugConfigurationProvider: IDebugConfigurationProvider): IDisposable'
+    lines:
+    - 97
+    - 106
+    detail:
+      calls:
+      - this._onDidChangeConfigurationProviders.fire
+      - this.configProviders.push
+  - name: unregisterDebugConfigurationProvider
+    sig: 'unregisterDebugConfigurationProvider(debugConfigurationProvider: IDebugConfigurationProvider): void'
+    lines:
+    - 108
+    - 113
+    detail:
+      calls:
+      - this.configProviders.indexOf
+      - this.configProviders.splice
+  - name: hasDebugConfigurationProvider
+    sig: 'hasDebugConfigurationProvider(debugType: string, triggerKind?: DebugConfigurationProviderTriggerKind): boolean'
+    lines:
+    - 118
+    - 125
+    detail:
+      calls:
+      - this.configProviders.find
+  - name: resolveConfigurationByProviders
+    sig: 'resolveConfigurationByProviders(folderUri: uri | undefined, type: string | undefined, config: IConfig, token: CancellationToken): Promise<IConfig | null | undefined>'
+    is_async: true
+    lines:
+    - 127
+    - 152
+    detail:
+      calls:
+      - new Set
+      - resolveDebugConfigurationForType
+      - seen.add
+      - seen.has
+  - name: resolveDebugConfigurationWithSubstitutedVariables
+    sig: 'resolveDebugConfigurationWithSubstitutedVariables(folderUri: uri | undefined, type: string | undefined, config: IConfig, token: CancellationToken): Promise<IConfig | null | undefined>'
+    is_async: true
+    lines:
+    - 154
+    - 168
+    detail:
+      calls:
+      - providers.map
+      - sequence
+      - this.configProviders.filter
+      - this.configProviders.filter(p => p.type === type && p.resolveDebugConfigurationWithSubstitutedVariab...
+  - name: provideDebugConfigurations
+    sig: 'provideDebugConfigurations(folderUri: uri | undefined, type: string, token: CancellationToken): Promise<any[]>'
+    is_async: true
+    lines:
+    - 170
+    - 175
+    detail:
+      calls:
+      - Promise.all
+      - results.reduce
+      - this.adapterManager.activateDebuggers
+      - this.configProviders.filter
+      - this.configProviders.filter(p => p.type === type && p.triggerKind === DebugConfigurationProviderTrig...
+  - name: getDynamicProviders
+    sig: 'getDynamicProviders(): Promise<{ label: string; type: string; getProvider: () => Promise<IDebugConfigurationProvider | undefined>; pick: () => Promise<{ launch: ILaunch; config: IConfig; label: string } | undefined> }[]>'
+    is_async: true
+    lines:
+    - 177
+    - 267
+    detail:
+      calls:
+      - '[...debugDynamicExtensionsTypes].map'
+      - debugDynamicExtensionsTypes.add
+      - new Set
+      - this.extensionService.extensions.reduce
+      - this.extensionService.whenInstalledExtensionsRegistered
+  - name: getDynamicConfigurationsByType
+    sig: 'getDynamicConfigurationsByType(type: string, token: CancellationToken = CancellationToken.None): Promise<IDynamicPickItem[]>'
+    is_async: true
+    lines:
+    - 269
+    - 291
+    detail:
+      calls:
+      - (await Promise.all(picks)).flat
+      - Promise.all
+      - this.adapterManager.activateDebuggers
+      - this.configProviders.find
+      - this.getLaunches
+      - this.getLaunches().forEach
+  - name: getAllConfigurations
+    sig: 'getAllConfigurations(): { launch: ILaunch; name: string; presentation?: IConfigPresentation }[]'
+    lines:
+    - 293
+    - 305
+    detail:
+      calls:
+      - all.push
+      - getVisibleAndSorted
+      - l.getCompound
+      - l.getConfiguration
+      - l.getConfigurationNames
+  - name: removeRecentDynamicConfigurations
+    sig: 'removeRecentDynamicConfigurations(name: string, type: string)'
+    lines:
+    - 307
+    - 315
+    detail:
+      calls:
+      - JSON.stringify
+      - this._onDidSelectConfigurationName.fire
+      - this.getRecentDynamicConfigurations
+      - this.getRecentDynamicConfigurations().filter
+      - this.selectConfiguration
+      - this.storageService.store
+  - name: getRecentDynamicConfigurations
+    sig: 'getRecentDynamicConfigurations(): { name: string; type: string }[]'
+    lines:
+    - 317
+    - 319
+    detail:
+      calls:
+      - JSON.parse
+      - this.storageService.get
+  - name: registerListeners
+    sig: 'registerListeners(): void'
+    vis: private
+    lines:
+    - 321
+    - 337
+    detail:
+      calls:
+      - Event.any
+      - Event.any<IWorkspaceFoldersChangeEvent | WorkbenchState>(this.contextService.onDidChangeWorkspaceFol...
+      - this.adapterManager.onDidDebuggersExtPointRead
+      - this.configurationService.onDidChangeConfiguration
+      - this.toDispose.push
+  - name: initLaunches
+    sig: 'initLaunches(): void'
+    vis: private
+    lines:
+    - 339
+    - 349
+    detail:
+      calls:
+      - this.contextService.getWorkbenchState
+      - this.contextService.getWorkspace
+      - this.contextService.getWorkspace().folders.map
+      - this.instantiationService.createInstance
+      - this.launches.indexOf
+      - this.launches.push
+      - this.selectConfiguration
+  - name: setCompoundSchemaValues
+    sig: 'setCompoundSchemaValues(): void'
+    vis: private
+    lines:
+    - 351
+    - 362
+    detail:
+      calls:
+      - jsonRegistry.registerSchema
+      - this.contextService.getWorkspace
+      - this.contextService.getWorkspace().folders.map
+      - this.launches.map
+      - "this.launches.map(l =>\n\t\t\tl.getConfigurationNames(true)).reduce"
+  - name: getLaunches
+    sig: 'getLaunches(): ILaunch[]'
+    lines:
+    - 364
+    - 366
+    detail: {}
+  - name: getLaunch
+    sig: 'getLaunch(workspaceUri: uri | undefined): ILaunch | undefined'
+    lines:
+    - 368
+    - 374
+    detail:
+      calls:
+      - this.launches.find
+      - uri.isUri
+  - name: selectedConfiguration
+    sig: 'selectedConfiguration(): { launch: ILaunch | undefined; name: string | undefined; getConfig: () => Promise<IConfig | undefined>; type: string | undefined }'
+    lines:
+    - 376
+    - 383
+    detail: {}
+  - name: onDidSelectConfiguration
+    sig: 'onDidSelectConfiguration(): Event<void>'
+    lines:
+    - 385
+    - 387
+    detail: {}
+  - name: getWorkspaceLaunch
+    sig: 'getWorkspaceLaunch(): ILaunch | undefined'
+    lines:
+    - 389
+    - 395
+    detail:
+      calls:
+      - this.contextService.getWorkbenchState
+  - name: selectConfiguration
+    sig: 'selectConfiguration(launch: ILaunch | undefined, name?: string, config?: IConfig, dynamicConfig?: { type?: string }): Promise<void>'
+    is_async: true
+    lines:
+    - 397
+    - 481
+    detail:
+      calls:
+      - (await this.getDynamicProviders()).filter
+      - JSON.stringify
+      - distinct
+      - launch.getConfiguration
+      - launch.getConfigurationNames
+      - names.indexOf
+      - recentDynamicProviders.unshift
+      - this._onDidSelectConfigurationName.fire
+      - this.debugConfigurationTypeContext.reset
+      - this.debugConfigurationTypeContext.set
+      - this.getDynamicProviders
+      - this.getLaunch
+      - this.getRecentDynamicConfigurations
+      - this.historyService.getLastActiveWorkspaceRoot
+      - this.launches.find
+      - this.selectedLaunch.uri.toString
+      - this.setSelectedLaunchName
+      - this.storageService.remove
+      - this.storageService.store
+  - name: dispose
+    sig: 'dispose(): void'
+    lines:
+    - 493
+    - 495
+    detail:
+      calls:
+      - dispose
+  lines:
+  - 52
+  - 496
+- name: AbstractLaunch
+  kind: trait
+  bases:
+  - ILaunch
+  decorators:
+  - abstract
+  fields:
+  - name: uri
+    type: uri
+  - name: workspace
+    type: IWorkspaceFolder | undefined
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tprotected configurationManager: ConfigurationManager,\n\t\tprivate readonly adapterManager: IAdapterManager\n\t)"
+    lines:
+    - 505
+    - 508
+    detail: {}
+  - name: getCompound
+    sig: 'getCompound(name: string): ICompound | undefined'
+    lines:
+    - 510
+    - 517
+    detail:
+      calls:
+      - config.compounds.find
+      - this.getDeduplicatedConfig
+  - name: getConfigurationNames
+    sig: 'getConfigurationNames(ignoreCompoundsAndPresentation = false): string[]'
+    lines:
+    - 519
+    - 538
+    detail:
+      calls:
+      - Array.isArray
+      - config.compounds.filter
+      - config.configurations.filter
+      - configurations.map
+      - configurations.push
+      - getVisibleAndSorted
+      - getVisibleAndSorted(configurations).map
+      - this.getDeduplicatedConfig
+  - name: getConfiguration
+    sig: 'getConfiguration(name: string): IConfig | undefined'
+    lines:
+    - 540
+    - 558
+    detail:
+      calls:
+      - config.configurations.find
+      - this.getDeduplicatedConfig
+  - name: getInitialConfigurationContent
+    sig: 'getInitialConfigurationContent(folderUri?: uri, type?: string, useInitialConfigs?: boolean, token?: CancellationToken): Promise<string>'
+    is_async: true
+    lines:
+    - 560
+    - 576
+    detail:
+      calls:
+      - adapter.debugger.getInitialConfigurationContent
+      - this.adapterManager.getEnabledDebugger
+      - this.adapterManager.guessDebugger
+      - this.configurationManager.provideDebugConfigurations
+  - name: hidden
+    sig: 'hidden(): boolean'
+    lines:
+    - 579
+    - 581
+    detail: {}
+  lines:
+  - 498
+  - 591
+- name: Launch
+  kind: struct
+  bases:
+  - AbstractLaunch
+  - ILaunch
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tconfigurationManager: ConfigurationManager,\n\t\tadapterManager: IAdapterManager,\n\t\tpublic workspace: IWorkspaceFolder,\n\t\t@IFileService private readonly fileService: IFileService,\n\t\t@ITextFileService private readonly textFileService: ITextFileService,\n\t\t@IEditorService private readonly editorService: IEditorService,\n\t\t@IConfigurationService private readonly configurationService: IConfigurationService\n\t)"
+    lines:
+    - 604
+    - 614
+    detail:
+      calls:
+      - super
+  - name: uri
+    sig: 'uri(): uri'
+    lines:
+    - 616
+    - 618
+    detail:
+      calls:
+      - resources.joinPath
+  - name: name
+    sig: 'name(): string'
+    lines:
+    - 620
+    - 622
+    detail: {}
+  - name: openConfigFile
+    sig: 'openConfigFile({ preserveFocus, type, suppressInitialConfigs }: { preserveFocus: boolean; type?: string; suppressInitialConfigs?: boolean }, token?: CancellationToken): Promise<{ editor: IEditorPane | null; created: boolean }>'
+    is_async: true
+    lines:
+    - 628
+    - 674
+    detail:
+      calls:
+      - content.charAt
+      - content.indexOf
+      - fileContent.value.toString
+      - new Error
+      - nls.localize
+      - this.editorService.openEditor
+      - this.fileService.readFile
+      - this.getInitialConfigurationContent
+      - this.textFileService.write
+  - name: writeConfiguration
+    sig: 'writeConfiguration(configuration: IConfig): Promise<void>'
+    is_async: true
+    lines:
+    - 676
+    - 681
+    detail:
+      calls:
+      - this.configurationService.updateValue
+      - this.getConfig
+  lines:
+  - 602
+  - 682
+- name: WorkspaceLaunch
+  kind: struct
+  bases:
+  - AbstractLaunch
+  - ILaunch
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tconfigurationManager: ConfigurationManager,\n\t\tadapterManager: IAdapterManager,\n\t\t@IEditorService private readonly editorService: IEditorService,\n\t\t@IConfigurationService private readonly configurationService: IConfigurationService,\n\t\t@IWorkspaceContextService private readonly contextService: IWorkspaceContextService\n\t)"
+    lines:
+    - 685
+    - 693
+    detail:
+      calls:
+      - super
+  - name: workspace
+    sig: 'workspace(): undefined'
+    lines:
+    - 695
+    - 697
+    detail: {}
+  - name: uri
+    sig: 'uri(): uri'
+    lines:
+    - 699
+    - 701
+    detail:
+      calls:
+      - this.contextService.getWorkspace
+  - name: name
+    sig: 'name(): string'
+    lines:
+    - 703
+    - 705
+    detail:
+      calls:
+      - nls.localize
+  - name: openConfigFile
+    sig: 'openConfigFile({ preserveFocus, type, useInitialConfigs }: { preserveFocus: boolean; type?: string; useInitialConfigs?: boolean }, token?: CancellationToken): Promise<{ editor: IEditorPane | null; created: boolean }>'
+    is_async: true
+    lines:
+    - 711
+    - 732
+    detail:
+      calls:
+      - json.parse
+      - this.configurationService.updateValue
+      - this.contextService.getWorkspace
+      - this.editorService.openEditor
+      - this.getConfig
+      - this.getInitialConfigurationContent
+  lines:
+  - 684
+  - 733
+- name: UserLaunch
+  kind: struct
+  bases:
+  - AbstractLaunch
+  - ILaunch
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tconfigurationManager: ConfigurationManager,\n\t\tadapterManager: IAdapterManager,\n\t\t@IConfigurationService private readonly configurationService: IConfigurationService,\n\t\t@IPreferencesService private readonly preferencesService: IPreferencesService\n\t)"
+    lines:
+    - 737
+    - 744
+    detail:
+      calls:
+      - super
+  - name: workspace
+    sig: 'workspace(): undefined'
+    lines:
+    - 746
+    - 748
+    detail: {}
+  - name: uri
+    sig: 'uri(): uri'
+    lines:
+    - 750
+    - 752
+    detail: {}
+  - name: name
+    sig: 'name(): string'
+    lines:
+    - 754
+    - 756
+    detail:
+      calls:
+      - nls.localize
+  - name: hidden
+    sig: 'hidden(): boolean'
+    lines:
+    - 758
+    - 760
+    detail: {}
+  - name: openConfigFile
+    sig: 'openConfigFile({ preserveFocus, type, useInitialContent }: { preserveFocus: boolean; type?: string; useInitialContent?: boolean }): Promise<{ editor: IEditorPane | null; created: boolean }>'
+    is_async: true
+    lines:
+    - 766
+    - 772
+    detail:
+      calls:
+      - this.preferencesService.openUserSettings
+  lines:
+  - 735
+  - 773
+functions:
+- name: distinguishConfigsByName
+  sig: 'distinguishConfigsByName(things: readonly T[]): T[]'
+  lines:
+  - 593
+  - 600
+  detail:
+    calls:
+    - new Map
+    - things.map
+exports:
+- name: IDynamicPickItem
+  kind: type
+- name: ConfigurationManager
+  kind: type
+- name: AbstractLaunch
+  kind: type
+- name: Launch
+  kind: type
+- name: WorkspaceLaunch
+  kind: type
+- name: UserLaunch
+  kind: type
+- name: distinguishConfigsByName
+  kind: func
+- name: jsonRegistry
+  kind: data
+- name: DEBUG_SELECTED_CONFIG_NAME_KEY
+  kind: data
+- name: DEBUG_SELECTED_ROOT
+  kind: data
+- name: DEBUG_SELECTED_TYPE
+  kind: data
+- name: DEBUG_RECENT_DYNAMIC_CONFIGURATIONS
+  kind: data
+- name: ON_DEBUG_DYNAMIC_CONFIGURATIONS_NAME
+  kind: data

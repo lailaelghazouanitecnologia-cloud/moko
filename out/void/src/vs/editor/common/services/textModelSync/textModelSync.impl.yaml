@@ -1,0 +1,399 @@
+## Roska File Descriptor — textModelSync/textModelSync.impl.ts
+file: textModelSync/textModelSync.impl.ts
+lines: 427
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: ../../../../base/common/async.js.IntervalTimer
+- sym: ../../../../base/common/lifecycle.js.Disposable
+- sym: ../../../../base/common/lifecycle.js.DisposableStore
+- sym: ../../../../base/common/lifecycle.js.dispose
+- sym: ../../../../base/common/lifecycle.js.IDisposable
+- sym: ../../../../base/common/lifecycle.js.toDisposable
+- sym: ../../../../base/common/uri.js.URI
+- sym: ../../../../base/common/worker/webWorker.js.IWebWorkerClient
+- sym: ../../../../base/common/worker/webWorker.js.IWebWorkerServer
+- sym: ../../core/position.js.IPosition
+- sym: ../../core/position.js.Position
+- sym: ../../core/range.js.IRange
+- sym: ../../core/range.js.Range
+- sym: ../../core/wordHelper.js.ensureValidWordDefinition
+- sym: ../../core/wordHelper.js.getWordAtText
+- sym: ../../core/wordHelper.js.IWordAtPosition
+- sym: ../../languages/defaultDocumentColorsComputer.js.IDocumentColorComputerTarget
+- sym: ../../languages/linkComputer.js.ILinkComputerTarget
+- sym: ../../model/mirrorTextModel.js.MirrorTextModel as BaseMirrorModel
+- sym: ../../model/mirrorTextModel.js.IModelChangedEvent
+- sym: ../editorWebWorker.js.IMirrorModel
+- sym: ../editorWebWorker.js.IWordRange
+- sym: ../model.js.IModelService
+- sym: ./textModelSync.protocol.js.IRawModelData
+- sym: ./textModelSync.protocol.js.IWorkerTextModelSyncChannelServer
+data:
+- name: STOP_SYNC_MODEL_DELTA_TIME_MS
+  type: any
+  val: 60 * 1000
+- name: WORKER_TEXT_MODEL_SYNC_CHANNEL
+  type: string
+  val: '''workerTextModelSync'''
+types:
+- name: WorkerTextModelSyncClient
+  kind: struct
+  bases:
+  - Disposable
+  fields:
+  - name: _proxy
+    type: IWorkerTextModelSyncChannelServer
+  - name: _modelService
+    type: IModelService
+  - name: _syncedModels
+    type: '{ [modelUrl: string]: IDisposable }'
+    default: Object.create(null)
+  - name: _syncedModelsLastUsedTime
+    type: '{ [modelUrl: string]: number }'
+    default: Object.create(null)
+  methods:
+  - name: create
+    sig: 'create(workerClient: IWebWorkerClient<any>, modelService: IModelService): WorkerTextModelSyncClient'
+    decorators:
+    - static
+    lines:
+    - 29
+    - 34
+    detail:
+      calls:
+      - new WorkerTextModelSyncClient
+      - workerClient.getChannel
+  - name: constructor
+    sig: 'constructor(proxy: IWorkerTextModelSyncChannelServer, modelService: IModelService, keepIdleModels: boolean = false)'
+    lines:
+    - 41
+    - 51
+    detail:
+      calls:
+      - Math.round
+      - new IntervalTimer
+      - super
+      - this._register
+      - timer.cancelAndSet
+  - name: dispose
+    sig: 'dispose(): void'
+    lines:
+    - 53
+    - 60
+    detail:
+      calls:
+      - Object.create
+      - dispose
+      - super.dispose
+  - name: ensureSyncedResources
+    sig: 'ensureSyncedResources(resources: URI[], forceLargeModels: boolean = false): void'
+    lines:
+    - 62
+    - 73
+    detail:
+      calls:
+      - (new Date()).getTime
+      - new Date
+      - resource.toString
+      - this._beginModelSync
+  - name: _checkStopModelSync
+    sig: '_checkStopModelSync(): void'
+    vis: private
+    lines:
+    - 75
+    - 89
+    detail:
+      calls:
+      - (new Date()).getTime
+      - new Date
+      - this._stopModelSync
+      - toRemove.push
+  - name: _beginModelSync
+    sig: '_beginModelSync(resource: URI, forceLargeModels: boolean): void'
+    vis: private
+    lines:
+    - 91
+    - 121
+    detail:
+      calls:
+      - model.getEOL
+      - model.getLinesContent
+      - model.getVersionId
+      - model.isTooLargeForSyncing
+      - model.onDidChangeContent
+      - model.onWillDispose
+      - model.uri.toString
+      - new DisposableStore
+      - resource.toString
+      - this._modelService.getModel
+      - this._proxy.$acceptNewModel
+      - toDisposable
+      - toDispose.add
+  lines:
+  - 27
+  - 129
+- name: WorkerTextModelSyncServer
+  kind: model
+  bases:
+  - IWorkerTextModelSyncChannelServer
+  fields:
+  - name: _models
+    type: '{ [uri: string]: MirrorModel }'
+  methods:
+  - name: constructor
+    sig: constructor()
+    lines:
+    - 135
+    - 137
+    detail:
+      calls:
+      - Object.create
+  - name: bindToServer
+    sig: 'bindToServer(workerServer: IWebWorkerServer): void'
+    lines:
+    - 139
+    - 141
+    detail:
+      calls:
+      - workerServer.setChannel
+  - name: getModel
+    sig: 'getModel(uri: string): ICommonModel | undefined'
+    lines:
+    - 143
+    - 145
+    detail: {}
+  - name: getModels
+    sig: 'getModels(): ICommonModel[]'
+    lines:
+    - 147
+    - 151
+    detail:
+      calls:
+      - Object.keys
+      - Object.keys(this._models).forEach
+  - name: $acceptNewModel
+    sig: '$acceptNewModel(data: IRawModelData): void'
+    lines:
+    - 153
+    - 155
+    detail:
+      calls:
+      - URI.parse
+      - new MirrorModel
+  - name: $acceptModelChanged
+    sig: '$acceptModelChanged(uri: string, e: IModelChangedEvent): void'
+    lines:
+    - 157
+    - 163
+    detail:
+      calls:
+      - model.onEvents
+  - name: $acceptRemovedModel
+    sig: '$acceptRemovedModel(uri: string): void'
+    lines:
+    - 165
+    - 170
+    detail: {}
+  lines:
+  - 131
+  - 171
+- name: MirrorModel
+  kind: model
+  bases:
+  - BaseMirrorModel
+  - ICommonModel
+  methods:
+  - name: uri
+    sig: 'uri(): URI'
+    lines:
+    - 175
+    - 177
+    detail: {}
+  - name: eol
+    sig: 'eol(): string'
+    lines:
+    - 179
+    - 181
+    detail: {}
+  - name: getValue
+    sig: 'getValue(): string'
+    lines:
+    - 183
+    - 185
+    detail:
+      calls:
+      - this.getText
+  - name: findMatches
+    sig: 'findMatches(regex: RegExp): RegExpMatchArray[]'
+    lines:
+    - 187
+    - 201
+    detail:
+      calls:
+      - line.matchAll
+      - matches.push
+      - new Position
+      - this.offsetAt
+  - name: getLinesContent
+    sig: 'getLinesContent(): string[]'
+    lines:
+    - 203
+    - 205
+    detail:
+      calls:
+      - this._lines.slice
+  - name: getLineCount
+    sig: 'getLineCount(): number'
+    lines:
+    - 207
+    - 209
+    detail: {}
+  - name: getLineContent
+    sig: 'getLineContent(lineNumber: number): string'
+    lines:
+    - 211
+    - 213
+    detail: {}
+  - name: getWordAtPosition
+    sig: 'getWordAtPosition(position: IPosition, wordDefinition: RegExp): Range | null'
+    lines:
+    - 215
+    - 229
+    detail:
+      calls:
+      - ensureValidWordDefinition
+      - getWordAtText
+      - new Range
+  - name: getWordUntilPosition
+    sig: 'getWordUntilPosition(position: IPosition, wordDefinition: RegExp): IWordAtPosition'
+    lines:
+    - 231
+    - 245
+    detail:
+      calls:
+      - this._lines[position.lineNumber - 1].substring
+      - this.getWordAtPosition
+  - name: words
+    sig: 'words(wordDefinition: RegExp): Iterable<string>'
+    lines:
+    - 248
+    - 278
+    detail:
+      calls:
+      - lineText.substring
+      - this._wordenize.bind
+      - wordenize
+  - name: getLineWords
+    sig: 'getLineWords(lineNumber: number, wordDefinition: RegExp): IWordAtPosition[]'
+    lines:
+    - 280
+    - 292
+    detail:
+      calls:
+      - content.substring
+      - this._wordenize
+      - words.push
+  - name: getValueInRange
+    sig: 'getValueInRange(range: IRange): string'
+    lines:
+    - 310
+    - 329
+    detail:
+      calls:
+      - resultLines.join
+      - resultLines.push
+      - this._lines[endLineIndex].substring
+      - this._lines[range.startLineNumber - 1].substring
+      - this._lines[startLineIndex].substring
+      - this._validateRange
+  - name: offsetAt
+    sig: 'offsetAt(position: IPosition): number'
+    lines:
+    - 331
+    - 335
+    detail:
+      calls:
+      - this._ensureLineStarts
+      - this._lineStarts!.getPrefixSum
+      - this._validatePosition
+  - name: positionAt
+    sig: 'positionAt(offset: number): IPosition'
+    lines:
+    - 337
+    - 350
+    detail:
+      calls:
+      - Math.floor
+      - Math.max
+      - Math.min
+      - this._ensureLineStarts
+      - this._lineStarts!.getIndexOf
+  - name: _validatePosition
+    sig: '_validatePosition(position: IPosition): IPosition'
+    vis: private
+    lines:
+    - 373
+    - 407
+    detail:
+      calls:
+      - Position.isIPosition
+      - new Error
+  lines:
+  - 173
+  - 408
+- name: ICommonModel
+  kind: trait
+  bases:
+  - ILinkComputerTarget
+  - IDocumentColorComputerTarget
+  - IMirrorModel
+  decorators:
+  - interface
+  fields:
+  - name: uri
+    type: URI
+  - name: version
+    type: number
+  - name: eol
+    type: string
+  - name: getValue
+    type: 'method: getValue(): string'
+  - name: getLinesContent
+    type: 'method: getLinesContent(): string[]'
+  - name: getLineCount
+    type: 'method: getLineCount(): number'
+  - name: getLineContent
+    type: 'method: getLineContent(lineNumber: number): string'
+  - name: getLineWords
+    type: 'method: getLineWords(lineNumber: number, wordDefinition: RegExp): IWordAtPosition[]'
+  - name: words
+    type: 'method: words(wordDefinition: RegExp): Iterable<string>'
+  - name: getWordUntilPosition
+    type: 'method: getWordUntilPosition(position: IPosition, wordDefinition: RegExp): IWordAtPosition'
+  - name: getValueInRange
+    type: 'method: getValueInRange(range: IRange): string'
+  - name: getWordAtPosition
+    type: 'method: getWordAtPosition(position: IPosition, wordDefinition: RegExp): Range | null'
+  - name: offsetAt
+    type: 'method: offsetAt(position: IPosition): number'
+  - name: positionAt
+    type: 'method: positionAt(offset: number): IPosition'
+  - name: findMatches
+    type: 'method: findMatches(regex: RegExp): RegExpMatchArray[]'
+  lines:
+  - 410
+  - 427
+exports:
+- name: WorkerTextModelSyncClient
+  kind: type
+- name: WorkerTextModelSyncServer
+  kind: type
+- name: MirrorModel
+  kind: type
+- name: ICommonModel
+  kind: type
+- name: STOP_SYNC_MODEL_DELTA_TIME_MS
+  kind: data
+- name: WORKER_TEXT_MODEL_SYNC_CHANNEL
+  kind: data

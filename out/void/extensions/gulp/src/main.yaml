@@ -1,0 +1,399 @@
+## Roska File Descriptor — src/main.ts
+file: src/main.ts
+lines: 406
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: path.path
+- sym: fs.fs
+- sym: child_process.cp
+- sym: vscode.vscode
+data:
+- name: buildNames
+  type: string[]
+  val: '[''build'', ''compile'', ''watch'']'
+- name: testNames
+  type: string[]
+  val: '[''test'']'
+- name: _channel
+  type: vscode.OutputChannel
+- name: detector
+  type: TaskDetector
+types:
+- name: AutoDetect
+  kind: enum
+  decorators:
+  - type
+  variants:
+  - name: '''on'''
+  - name: '''off'''
+  lines:
+  - 12
+  - 12
+- name: GulpTaskDefinition
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: task
+    type: string
+  - name: file
+    type: string
+  lines:
+  - 109
+  - 112
+- name: FolderDetector
+  kind: struct
+  ctx: Searches for a gulp entry point inside the given folder. Typically the entry point is a file named "gulpfile.js" It can also be a transposed gulp entry points, like gulp.babel.js or gulp.esm.js Additionally recent node version prefer the .mjs or .cjs extension over the .js. the folder which should be checked.
+  fields:
+  - name: fileWatcher
+    type: vscode.FileSystemWatcher | undefined
+  - name: promise
+    type: Thenable<vscode.Task[]> | undefined
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tprivate _workspaceFolder: vscode.WorkspaceFolder,\n\t\tprivate _gulpCommand: Promise<string>)"
+    lines:
+    - 119
+    - 122
+    detail: {}
+  - name: workspaceFolder
+    sig: 'workspaceFolder(): vscode.WorkspaceFolder'
+    lines:
+    - 124
+    - 126
+    detail: {}
+  - name: isEnabled
+    sig: 'isEnabled(): boolean'
+    lines:
+    - 128
+    - 130
+    detail:
+      calls:
+      - vscode.workspace.getConfiguration
+      - vscode.workspace.getConfiguration('gulp', this._workspaceFolder.uri).get
+  - name: start
+    sig: 'start(): void'
+    lines:
+    - 132
+    - 138
+    detail:
+      calls:
+      - path.join
+      - this.fileWatcher.onDidChange
+      - this.fileWatcher.onDidCreate
+      - this.fileWatcher.onDidDelete
+      - vscode.workspace.createFileSystemWatcher
+  - name: getTasks
+    sig: 'getTasks(): Promise<vscode.Task[]>'
+    is_async: true
+    lines:
+    - 140
+    - 150
+    detail:
+      calls:
+      - this.computeTasks
+      - this.isEnabled
+  - name: getTask
+    sig: 'getTask(_task: vscode.Task): Promise<vscode.Task | undefined>'
+    is_async: true
+    lines:
+    - 152
+    - 161
+    detail:
+      calls:
+      - new vscode.ShellExecution
+      - new vscode.Task
+  - name: hasGulpfile
+    sig: 'hasGulpfile(root: string): Promise<boolean | undefined>'
+    is_async: true
+    vis: private
+    lines:
+    - 175
+    - 201
+    detail:
+      calls:
+      - exists
+      - fs.promises.readdir
+      - path.basename
+      - path.basename(filename, ext).toLowerCase
+      - path.extname
+  - name: computeTasks
+    sig: 'computeTasks(): Promise<vscode.Task[]>'
+    is_async: true
+    vis: private
+    lines:
+    - 203
+    - 261
+    detail:
+      calls:
+      - channel.appendLine
+      - errors.every
+      - errors.pop
+      - exec
+      - getOutputChannel
+      - getOutputChannel().appendLine
+      - isBuildTask
+      - isTestTask
+      - line.toLowerCase
+      - new vscode.ShellExecution
+      - new vscode.Task
+      - result.push
+      - showError
+      - stderr.split
+      - stdout.split
+      - this.hasGulpfile
+      - vscode.l10n.t
+  - name: dispose
+    sig: dispose()
+    lines:
+    - 263
+    - 268
+    detail:
+      calls:
+      - this.fileWatcher.dispose
+  lines:
+  - 114
+  - 269
+- name: TaskDetector
+  kind: struct
+  fields:
+  - name: taskProvider
+    type: vscode.Disposable | undefined
+  - name: detectors
+    type: Map<string, FolderDetector>
+    default: new Map()
+  methods:
+  - name: constructor
+    sig: constructor()
+    lines:
+    - 276
+    - 277
+    detail: {}
+  - name: start
+    sig: 'start(): void'
+    lines:
+    - 279
+    - 286
+    detail:
+      calls:
+      - this.updateWorkspaceFolders
+      - vscode.workspace.onDidChangeConfiguration
+      - vscode.workspace.onDidChangeWorkspaceFolders
+  - name: dispose
+    sig: 'dispose(): void'
+    lines:
+    - 288
+    - 294
+    detail:
+      calls:
+      - this.detectors.clear
+      - this.taskProvider.dispose
+  - name: updateWorkspaceFolders
+    sig: 'updateWorkspaceFolders(added: readonly vscode.WorkspaceFolder[], removed: readonly vscode.WorkspaceFolder[]): void'
+    vis: private
+    lines:
+    - 296
+    - 312
+    detail:
+      calls:
+      - add.uri.toString
+      - detector.dispose
+      - detector.isEnabled
+      - detector.start
+      - findGulpCommand
+      - new FolderDetector
+      - remove.uri.toString
+      - this.detectors.delete
+      - this.detectors.get
+      - this.detectors.set
+      - this.updateProvider
+  - name: updateConfiguration
+    sig: 'updateConfiguration(): void'
+    vis: private
+    lines:
+    - 314
+    - 332
+    detail:
+      calls:
+      - detector.dispose
+      - detector.isEnabled
+      - detector.start
+      - detector.workspaceFolder.uri.toString
+      - findGulpCommand
+      - folder.uri.toString
+      - new FolderDetector
+      - this.detectors.delete
+      - this.detectors.has
+      - this.detectors.set
+      - this.detectors.values
+      - this.updateProvider
+  - name: updateProvider
+    sig: 'updateProvider(): void'
+    vis: private
+    lines:
+    - 334
+    - 350
+    detail:
+      calls:
+      - this.taskProvider.dispose
+      - thisCapture.getTask
+      - thisCapture.getTasks
+      - vscode.tasks.registerTaskProvider
+  - name: getTasks
+    sig: 'getTasks(): Promise<vscode.Task[]>'
+    lines:
+    - 352
+    - 354
+    detail:
+      calls:
+      - this.computeTasks
+  - name: computeTasks
+    sig: 'computeTasks(): Promise<vscode.Task[]>'
+    vis: private
+    lines:
+    - 356
+    - 376
+    detail:
+      calls:
+      - Promise.all
+      - Promise.all(promises).then
+      - Promise.resolve
+      - detector.getTasks
+      - detector.getTasks().then
+      - promises.push
+      - this.detectors.values
+      - this.detectors.values().next
+      - this.detectors.values().next().value!.getTasks
+  - name: getTask
+    sig: 'getTask(task: vscode.Task): Promise<vscode.Task | undefined>'
+    is_async: true
+    lines:
+    - 378
+    - 395
+    detail:
+      calls:
+      - detector.getTask
+      - task.scope.uri.toString
+      - this.detectors.get
+      - this.detectors.values
+      - this.detectors.values().next
+      - this.detectors.values().next().value!.getTask
+  lines:
+  - 271
+  - 396
+functions:
+- name: exists
+  sig: 'exists(filename: string): Promise<boolean>'
+  is_async: true
+  lines:
+  - 26
+  - 39
+  detail:
+    calls:
+    - (await fs.promises.stat(filename)).isFile
+    - fs.promises.stat
+- name: exec
+  sig: 'exec(command: string, options: cp.ExecOptions): Promise<{ stdout: string; stderr: string }>'
+  lines:
+  - 41
+  - 50
+  detail:
+    calls:
+    - new Promise
+- name: isBuildTask
+  sig: 'isBuildTask(name: string): boolean'
+  lines:
+  - 53
+  - 60
+  detail:
+    calls:
+    - name.indexOf
+- name: isTestTask
+  sig: 'isTestTask(name: string): boolean'
+  lines:
+  - 63
+  - 70
+  detail:
+    calls:
+    - name.indexOf
+- name: getOutputChannel
+  sig: 'getOutputChannel(): vscode.OutputChannel'
+  lines:
+  - 73
+  - 78
+  detail:
+    calls:
+    - vscode.window.createOutputChannel
+- name: showError
+  sig: showError()
+  lines:
+  - 80
+  - 87
+  detail:
+    calls:
+    - vscode.l10n.t
+    - vscode.window.showWarningMessage
+    - vscode.window.showWarningMessage(vscode.l10n.t("Problem finding gulp tasks. See the output for more ...
+- name: findGulpCommand
+  sig: 'findGulpCommand(rootPath: string): Promise<string>'
+  is_async: true
+  lines:
+  - 89
+  - 107
+  detail:
+    calls:
+    - exists
+    - path.join
+- name: activate
+  sig: 'activate(_context: vscode.ExtensionContext): void'
+  lines:
+  - 399
+  - 402
+  detail:
+    calls:
+    - detector.start
+    - new TaskDetector
+- name: deactivate
+  sig: 'deactivate(): void'
+  lines:
+  - 404
+  - 406
+  detail:
+    calls:
+    - detector.dispose
+exports:
+- name: AutoDetect
+  kind: type
+- name: GulpTaskDefinition
+  kind: type
+- name: FolderDetector
+  kind: type
+- name: TaskDetector
+  kind: type
+- name: exists
+  kind: func
+- name: exec
+  kind: func
+- name: isBuildTask
+  kind: func
+- name: isTestTask
+  kind: func
+- name: getOutputChannel
+  kind: func
+- name: showError
+  kind: func
+- name: findGulpCommand
+  kind: func
+- name: activate
+  kind: func
+- name: deactivate
+  kind: func
+- name: buildNames
+  kind: data
+- name: testNames
+  kind: data
+- name: _channel
+  kind: data
+- name: detector
+  kind: data

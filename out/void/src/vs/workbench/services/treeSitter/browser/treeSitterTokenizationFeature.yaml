@@ -1,0 +1,564 @@
+## Roska File Descriptor — browser/treeSitterTokenizationFeature.ts
+file: browser/treeSitterTokenizationFeature.ts
+lines: 837
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: '@vscode/tree-sitter-wasm.Parser'
+- sym: ../../../../base/common/event.js.Emitter
+- sym: ../../../../base/common/event.js.Event
+- sym: ../../../../base/common/lifecycle.js.Disposable
+- sym: ../../../../base/common/lifecycle.js.DisposableMap
+- sym: ../../../../base/common/lifecycle.js.DisposableStore
+- sym: ../../../../base/common/lifecycle.js.IDisposable
+- sym: ../../../../base/common/network.js.AppResourcePath
+- sym: ../../../../base/common/network.js.FileAccess
+- sym: ../../../../editor/common/languages.js.ILanguageIdCodec
+- sym: ../../../../editor/common/languages.js.ITreeSitterTokenizationSupport
+- sym: ../../../../editor/common/languages.js.LazyTokenizationSupport
+- sym: ../../../../editor/common/languages.js.QueryCapture
+- sym: ../../../../editor/common/languages.js.TreeSitterTokenizationRegistry
+- sym: ../../../../editor/common/model.js.ITextModel
+- sym: ../../../../editor/common/services/treeSitterParserService.js.EDITOR_EXPERIMENTAL_PREFER_TREESITTER
+- sym: ../../../../editor/common/services/treeSitterParserService.js.ITreeSitterParserService
+- sym: ../../../../editor/common/services/treeSitterParserService.js.RangeChange
+- sym: ../../../../editor/common/services/treeSitterParserService.js.ITreeSitterImporter
+- sym: ../../../../editor/common/services/treeSitterParserService.js.TREESITTER_ALLOWED_SUPPORT
+- sym: ../../../../editor/common/services/treeSitterParserService.js.RangeWithOffsets
+- sym: ../../../../editor/common/services/treeSitterParserService.js.ITextModelTreeSitter
+- sym: ../../../../editor/common/textModelEvents.js.IModelTokensChangedEvent
+- sym: ../../../../platform/configuration/common/configuration.js.IConfigurationService
+- sym: ../../../../platform/files/common/files.js.IFileService
+- sym: ../../../../platform/instantiation/common/extensions.js.InstantiationType
+- sym: ../../../../platform/instantiation/common/extensions.js.registerSingleton
+- sym: ../../../../platform/instantiation/common/instantiation.js.createDecorator
+- sym: ../../../../platform/instantiation/common/instantiation.js.IInstantiationService
+- sym: ../../themes/common/colorThemeData.js.ColorThemeData
+- sym: ../../themes/common/colorThemeData.js.findMetadata
+- sym: ../../../../editor/common/languages/language.js.ILanguageService
+- sym: ../../../../base/common/stopwatch.js.StopWatch
+- sym: ../../../../editor/common/model/treeSitterTokenStoreService.js.ITreeSitterTokenizationStoreService
+- sym: ../../../../editor/common/encodedTokenAttributes.js.LanguageId
+- sym: ../../../../editor/common/model/tokenStore.js.TokenQuality
+- sym: ../../../../editor/common/model/tokenStore.js.TokenUpdate
+- sym: ../../../../editor/common/core/range.js.Range
+- sym: ../../../../base/common/platform.js.setTimeout0
+- sym: ../../../../editor/common/model/textModelTokens.js.findLikelyRelevantLines
+- sym: ./treeSitterCodeEditors.js.TreeSitterCodeEditors
+- sym: ../../themes/common/workbenchThemeService.js.IWorkbenchColorTheme
+- sym: ../../themes/common/workbenchThemeService.js.IWorkbenchThemeService
+- sym: ../../../../editor/common/core/position.js.Position
+data:
+- name: ITreeSitterTokenizationFeature
+  type: any
+  val: createDecorator<ITreeSitterTokenizationFeature>('treeSitterTokenizationFeature')
+- name: TREESITTER_BASE_SCOPES
+  type: Record<string, string>
+  val: "{\n\t'css': 'source.css',\n\t'typescript': 'source.ts',\n\t'ini': 'source.ini',\n\t'regex': 'source.regex',\n}"
+- name: BRACKETS
+  type: any
+  val: /[\{\}\[\]\<\>\(\)]/g
+types:
+- name: TreeSitterQueries
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 31
+  - 31
+- name: ITreeSitterTokenizationFeature
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: _serviceBrand
+    type: undefined
+  lines:
+  - 35
+  - 37
+- name: EndOffsetToken
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: endOffset
+    type: number
+  - name: metadata
+    type: number
+  lines:
+  - 39
+  - 42
+- name: EndOffsetAndScopes
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: endOffset
+    type: number
+  - name: scopes
+    type: string[]
+  - name: bracket
+    type: number[]
+  - name: encodedLanguageId
+    type: LanguageId
+  lines:
+  - 44
+  - 49
+- name: EndOffsetWithMeta
+  kind: trait
+  bases:
+  - EndOffsetAndScopes
+  decorators:
+  - interface
+  fields:
+  - name: metadata
+    type: number
+  lines:
+  - 51
+  - 53
+- name: TreeSitterTokenizationFeature
+  kind: struct
+  bases:
+  - Disposable
+  - ITreeSitterTokenizationFeature
+  fields:
+  - name: _serviceBrand
+    type: undefined
+  - name: _tokenizersRegistrations
+    type: DisposableMap<string, DisposableStore>
+    default: this._register(new DisposableMap())
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\t@ITreeSitterImporter private readonly _treeSitterImporter: ITreeSitterImporter,\n\t\t@ILanguageService private readonly _languageService: ILanguageService,\n\t\t@IConfigurationService private readonly _configurationService: IConfigurationService,\n\t\t@IInstantiationService private readonly _instantiationService: IInstantiationService,\n\t\t@IFileService private readonly _fileService: IFileService\n\t)"
+    lines:
+    - 68
+    - 83
+    detail:
+      calls:
+      - super
+      - this._configurationService.onDidChangeConfiguration
+      - this._handleGrammarsExtPoint
+      - this._register
+  - name: _handleGrammarsExtPoint
+    sig: '_handleGrammarsExtPoint(): void'
+    vis: private
+    lines:
+    - 89
+    - 106
+    detail:
+      calls:
+      - TreeSitterTokenizationRegistry.getOrCreate
+      - TreeSitterTokenizationRegistry.registerFactory
+      - '[...this._tokenizersRegistrations.keys()].filter'
+      - disposableStore.add
+      - new DisposableStore
+      - new LazyTokenizationSupport
+      - this._getSetting
+      - this._tokenizersRegistrations.deleteAndDispose
+      - this._tokenizersRegistrations.has
+      - this._tokenizersRegistrations.keys
+      - this._tokenizersRegistrations.set
+  - name: _fetchQueries
+    sig: '_fetchQueries(newLanguage: string): Promise<TreeSitterQueries>'
+    is_async: true
+    vis: private
+    lines:
+    - 108
+    - 112
+    detail:
+      calls:
+      - FileAccess.asFileUri
+      - query.value.toString
+      - this._fileService.readFile
+  - name: _createTokenizationSupport
+    sig: '_createTokenizationSupport(languageId: string): Promise<ITreeSitterTokenizationSupport & IDisposable | null>'
+    is_async: true
+    vis: private
+    lines:
+    - 114
+    - 118
+    detail:
+      calls:
+      - this._fetchQueries
+      - this._instantiationService.createInstance
+      - this._treeSitterImporter.getQueryClass
+  lines:
+  - 64
+  - 119
+- name: TreeSitterTokenizationSupport
+  kind: struct
+  ctx: Do not await in this method, it will cause a race
+  bases:
+  - Disposable
+  - ITreeSitterTokenizationSupport
+  fields:
+  - name: _query
+    type: Parser.Query | undefined
+  - name: _onDidChangeTokens
+    type: 'Emitter<{ textModel: ITextModel; changes: IModelTokensChangedEvent }>'
+    default: this._register(new Emitter())
+  - name: onDidChangeTokens
+    type: 'Event<{ textModel: ITextModel; changes: IModelTokensChangedEvent }>'
+    default: this._onDidChangeTokens.event
+  - name: _onDidCompleteBackgroundTokenization
+    type: 'Emitter<{ textModel: ITextModel }>'
+    default: this._register(new Emitter())
+  - name: onDidChangeBackgroundTokenization
+    type: 'Event<{ textModel: ITextModel }>'
+    default: this._onDidCompleteBackgroundTokenization.event
+  - name: _colorThemeData
+    type: ColorThemeData
+  - name: _languageAddedListener
+    type: IDisposable | undefined
+  - name: _codeEditors
+    type: TreeSitterCodeEditors
+  - name: _encodedLanguage
+    type: LanguageId | undefined
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tprivate readonly _queries: TreeSitterQueries,\n\t\tprivate readonly Query: typeof Parser.Query,\n\t\tprivate readonly _languageId: string,\n\t\tprivate readonly _languageIdCodec: ILanguageIdCodec,\n\t\t@ITreeSitterParserService private readonly _treeSitterService: ITreeSitterParserService,\n\t\t@IWorkbenchThemeService private readonly _themeService: IWorkbenchThemeService,\n\t\t@ITreeSitterTokenizationStoreService private readonly _tokenizationStoreService: ITreeSitterTokenizationStoreService,\n\t\t@IInstantiationService private readonly _instantiationService: IInstantiationService,\n\t)"
+    lines:
+    - 132
+    - 175
+    detail:
+      calls:
+      - Event.runAndSubscribe
+      - super
+      - this._codeEditors.getInitialViewPorts
+      - this._codeEditors.getInitialViewPorts().then
+      - this._codeEditors.onDidChangeViewport
+      - this._instantiationService.createInstance
+      - this._register
+      - this._treeSitterService.onDidUpdateTree
+  - name: _forceParseAndTokenizeContent
+    sig: '_forceParseAndTokenizeContent(model: ITextModel, range: Range, startOffsetOfRangeInDocument: number, endOffsetOfRangeInDocument: number, content: string, asUpdate: boolean): EndOffsetToken[] | TokenUpdate[] | undefined'
+    vis: private
+    lines:
+    - 191
+    - 211
+    detail:
+      calls:
+      - findLikelyRelevantLines
+      - likelyRelevantLines.join
+      - model.getEOL
+      - new Range
+      - this._captureAtRange
+      - this._rangeTokensAsUpdates
+      - this._tokenizeCapturesWithMetadata
+      - this._treeSitterService.getTreeSync
+  - name: _parseAndTokenizeViewPort
+    sig: '_parseAndTokenizeViewPort(model: ITextModel, viewportRanges: Range[])'
+    is_async: true
+    vis: private
+    lines:
+    - 213
+    - 238
+    detail:
+      calls:
+      - model.getOffsetAt
+      - model.getValueInRange
+      - model.getVersionId
+      - range.getEndPosition
+      - range.getStartPosition
+      - this._forceParseAndTokenizeContent
+      - this._onDidChangeTokens.fire
+      - this._setInitialTokens
+      - this._tokenizationStoreService.hasTokens
+      - this._tokenizationStoreService.rangeHasTokens
+      - this._tokenizationStoreService.updateTokens
+  - name: guessTokensForLinesContent
+    sig: 'guessTokensForLinesContent(lineNumber: number, textModel: ITextModel, lines: string[]): Uint32Array[] | undefined'
+    lines:
+    - 240
+    - 280
+    detail:
+      calls:
+      - lines.join
+      - new Array
+      - new Range
+      - textModel.getEOL
+      - textModel.getOffsetAt
+      - this._endOffsetTokensToUint32Array
+      - this._forceParseAndTokenizeContent
+      - tokensForLine.push
+  - name: _createEmptyTokens
+    sig: '_createEmptyTokens(textModel: ITextModel)'
+    vis: private
+    lines:
+    - 286
+    - 292
+    detail:
+      calls:
+      - textModel.getValueLength
+      - this._emptyToken
+      - this._emptyTokensForOffsetAndLength
+  - name: _setViewPortTokens
+    sig: '_setViewPortTokens(textModel: ITextModel, versionId: number, tree: ITextModelTreeSitter)'
+    vis: private
+    lines:
+    - 299
+    - 324
+    detail:
+      calls:
+      - editor.getVisibleRangesPlusViewportAboveBelow
+      - new Array
+      - new Range
+      - range.getEndPosition
+      - range.getStartPosition
+      - textModel.getLineCount
+      - textModel.getLineMaxColumn
+      - textModel.getOffsetAt
+      - textModel.getValueLength
+      - this._codeEditors.getEditorForModel
+      - this._handleTreeUpdate
+  - name: _handleTreeUpdate
+    sig: '_handleTreeUpdate(ranges: RangeChange[], textModel: ITextModel, versionId: number, textModelTreeSitter: ITextModelTreeSitter)'
+    vis: private
+    lines:
+    - 329
+    - 398
+    detail:
+      calls:
+      - Range.fromPositions
+      - chunkRange.getEndPosition
+      - chunkRange.getStartPosition
+      - new Position
+      - new Range
+      - rangeChanges.map
+      - rangeChanges.push
+      - textModel.getLineMaxColumn
+      - textModel.getOffsetAt
+      - textModel.getPositionAt
+      - this._updateTreeForRanges
+      - this._updateTreeForRanges(textModel, rangeChanges, versionId, tree, captures).then
+  - name: _updateTreeForRanges
+    sig: '_updateTreeForRanges(textModel: ITextModel, rangeChanges: RangeWithOffsets[], versionId: number, tree: Parser.Tree, captures: QueryCapture[][])'
+    is_async: true
+    vis: private
+    lines:
+    - 400
+    - 428
+    detail:
+      calls:
+      - new Promise
+      - range.range.getEndPosition
+      - range.range.getStartPosition
+      - textModel.getVersionId
+      - textModel.isDisposed
+      - this._onDidChangeTokens.fire
+      - this._onDidCompleteBackgroundTokenization.fire
+      - this._tokenizationStoreService.updateTokens
+      - this.getTokensInRange
+  - name: _refreshNeedsRefresh
+    sig: '_refreshNeedsRefresh(textModel: ITextModel, versionId: number)'
+    vis: private
+    lines:
+    - 430
+    - 449
+    detail:
+      calls:
+      - new Array
+      - this._getTree
+      - this._handleTreeUpdate
+      - this._tokenizationStoreService.getNeedsRefresh
+  - name: getTokensInRange
+    sig: 'getTokensInRange(textModel: ITextModel, range: Range, rangeStartOffset: number, rangeEndOffset: number, tree?: Parser.Tree, captures?: QueryCapture[]): TokenUpdate[] | undefined'
+    lines:
+    - 470
+    - 476
+    detail:
+      calls:
+      - this._rangeTokensAsUpdates
+      - this._tokenize
+      - this._tokenizeCapturesWithMetadata
+  - name: _ensureQuery
+    sig: _ensureQuery()
+    vis: private
+    lines:
+    - 482
+    - 496
+    detail:
+      calls:
+      - Event.onceIf
+      - Event.onceIf(this._treeSitterService.onDidAddLanguage, e => e.id === this._languageId)
+      - new this.Query
+      - this._register
+      - this._treeSitterService.getOrInitLanguage
+  - name: _updateTheme
+    sig: '_updateTheme(e: IWorkbenchColorTheme | undefined)'
+    vis: private
+    lines:
+    - 498
+    - 508
+    detail:
+      calls:
+      - editor.getVisibleRangesPlusViewportAboveBelow
+      - model.getFullModelRange
+      - this._codeEditors.getEditorForModel
+      - this._parseAndTokenizeViewPort
+      - this._themeService.getColorTheme
+      - this._tokenizationStoreService.markForRefresh
+  - name: captureAtPosition
+    sig: 'captureAtPosition(lineNumber: number, column: number, textModel: ITextModel): QueryCapture[]'
+    lines:
+    - 510
+    - 517
+    detail:
+      calls:
+      - new Range
+      - this._captureAtRangeWithInjections
+      - this._getTree
+  - name: captureAtRangeTree
+    sig: 'captureAtRangeTree(range: Range, tree: Parser.Tree, textModelTreeSitter: ITextModelTreeSitter | undefined): QueryCapture[]'
+    lines:
+    - 519
+    - 522
+    detail:
+      calls:
+      - this._captureAtRange
+      - this._captureAtRangeWithInjections
+  - name: _captureAtRange
+    sig: '_captureAtRange(range: Range, tree: Parser.Tree | undefined): QueryCapture[]'
+    vis: private
+    lines:
+    - 524
+    - 549
+    detail:
+      calls:
+      - query.captures
+      - 'query.captures(tree.rootNode, { startPosition: { row: range.startLineNumber - 1, column: range.start...'
+      - this._ensureQuery
+  - name: _captureAtRangeWithInjections
+    sig: '_captureAtRangeWithInjections(range: Range, textModelTreeSitter: ITextModelTreeSitter, tree: Parser.Tree): QueryCapture[]'
+    vis: private
+    lines:
+    - 551
+    - 578
+    detail:
+      calls:
+      - captures.splice
+      - new Range
+      - this._captureAtRange
+      - this._ensureQuery
+      - this._getInjectionCaptures
+  - name: tokenizeEncoded
+    sig: 'tokenizeEncoded(lineNumber: number, textModel: ITextModel)'
+    lines:
+    - 587
+    - 596
+    detail:
+      calls:
+      - textModel.getLineLength
+      - textModel.getOffsetAt
+      - textModel.getVersionId
+      - this._rangeTokensAsUpdates
+      - this._tokenizationStoreService.updateTokens
+      - this._tokenizeEncoded
+  - name: tokenizeEncodedInstrumented
+    sig: 'tokenizeEncodedInstrumented(lineNumber: number, textModel: ITextModel): { result: Uint32Array; captureTime: number; metadataTime: number } | undefined'
+    lines:
+    - 598
+    - 604
+    detail:
+      calls:
+      - this._endOffsetTokensToUint32Array
+      - this._tokenizeEncoded
+  - name: _tokenize
+    sig: '_tokenize(range: Range, rangeStartOffset: number, rangeEndOffset: number, textModel: ITextModel): { endOffsetsAndMetadata: { endOffset: number; metadata: number }[]; versionId: number; captureTime: number; metadataTime: number } | undefined'
+    vis: private
+    lines:
+    - 611
+    - 622
+    detail:
+      calls:
+      - this._getCaptures
+      - this._getTree
+      - this._tokenizeCapturesWithMetadata
+  - name: _createTokensFromCaptures
+    sig: '_createTokensFromCaptures(tree: Parser.Tree | undefined, captures: QueryCapture[], rangeStartOffset: number, rangeEndOffset: number): { endOffsets: EndOffsetAndScopes[]; captureTime: number } | undefined'
+    vis: private
+    lines:
+    - 624
+    - 771
+    detail:
+      calls:
+      - Array
+      - StopWatch.create
+      - addCurrentTokenToArray
+      - brackets
+      - endOffsetsAndScopes.fill
+      - endOffsetsAndScopes.splice
+      - endOffsetsAndScopes[withinTokenIndex].scopes.push
+      - increaseSizeOfTokensByOneToken
+      - stopwatch.elapsed
+      - stopwatch.stop
+      - this._languageIdCodec.encodeLanguageId
+  - name: _getInjectionCaptures
+    sig: '_getInjectionCaptures(textModelTreeSitter: ITextModelTreeSitter, parentCapture: QueryCapture, range: Range)'
+    vis: private
+    lines:
+    - 773
+    - 784
+    detail:
+      calls:
+      - TreeSitterTokenizationRegistry.get
+      - feature.captureAtRangeTree
+      - textModelTreeSitter.getInjection
+  - name: _tokenizeCapturesWithMetadata
+    sig: '_tokenizeCapturesWithMetadata(tree: Parser.Tree | undefined, captures: QueryCapture[], rangeStartOffset: number, rangeEndOffset: number): { endOffsetsAndMetadata: EndOffsetToken[]; captureTime: number; metadataTime: number } | undefined'
+    vis: private
+    lines:
+    - 786
+    - 800
+    detail:
+      calls:
+      - StopWatch.create
+      - findMetadata
+      - stopwatch.elapsed
+      - this._createTokensFromCaptures
+  - name: _tokenizeEncoded
+    sig: '_tokenizeEncoded(lineNumber: number, textModel: ITextModel): { result: EndOffsetToken[]; captureTime: number; metadataTime: number; versionId: number } | undefined'
+    vis: private
+    lines:
+    - 806
+    - 817
+    detail:
+      calls:
+      - new Range
+      - textModel.getLineCount
+      - textModel.getOffsetAt
+      - textModel.getValueLength
+      - this._tokenize
+  - name: dispose
+    sig: dispose()
+    lines:
+    - 829
+    - 833
+    detail:
+      calls:
+      - super.dispose
+      - this._query?.delete
+  lines:
+  - 121
+  - 834
+exports:
+- name: TreeSitterQueries
+  kind: type
+- name: ITreeSitterTokenizationFeature
+  kind: type
+- name: EndOffsetToken
+  kind: type
+- name: EndOffsetAndScopes
+  kind: type
+- name: EndOffsetWithMeta
+  kind: type
+- name: TreeSitterTokenizationFeature
+  kind: type
+- name: TreeSitterTokenizationSupport
+  kind: type
+- name: ITreeSitterTokenizationFeature
+  kind: data
+- name: TREESITTER_BASE_SCOPES
+  kind: data
+- name: BRACKETS
+  kind: data

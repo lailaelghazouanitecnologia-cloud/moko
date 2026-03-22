@@ -1,0 +1,986 @@
+## Roska File Descriptor — common/fileService.ts
+file: common/fileService.ts
+lines: 1473
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: ../../../base/common/arrays.js.coalesce
+- sym: ../../../base/common/async.js.Promises
+- sym: ../../../base/common/async.js.ResourceQueue
+- sym: ../../../base/common/buffer.js.bufferedStreamToBuffer
+- sym: ../../../base/common/buffer.js.bufferToReadable
+- sym: ../../../base/common/buffer.js.newWriteableBufferStream
+- sym: ../../../base/common/buffer.js.readableToBuffer
+- sym: ../../../base/common/buffer.js.streamToBuffer
+- sym: ../../../base/common/buffer.js.VSBuffer
+- sym: ../../../base/common/buffer.js.VSBufferReadable
+- sym: ../../../base/common/buffer.js.VSBufferReadableBufferedStream
+- sym: ../../../base/common/buffer.js.VSBufferReadableStream
+- sym: ../../../base/common/cancellation.js.CancellationToken
+- sym: ../../../base/common/cancellation.js.CancellationTokenSource
+- sym: ../../../base/common/event.js.Emitter
+- sym: ../../../base/common/hash.js.hash
+- sym: ../../../base/common/iterator.js.Iterable
+- sym: ../../../base/common/lifecycle.js.Disposable
+- sym: ../../../base/common/lifecycle.js.DisposableStore
+- sym: ../../../base/common/lifecycle.js.dispose
+- sym: ../../../base/common/lifecycle.js.IDisposable
+- sym: ../../../base/common/lifecycle.js.toDisposable
+- sym: ../../../base/common/ternarySearchTree.js.TernarySearchTree
+- sym: ../../../base/common/network.js.Schemas
+- sym: ../../../base/common/performance.js.mark
+- sym: ../../../base/common/resources.js.extUri
+- sym: ../../../base/common/resources.js.extUriIgnorePathCase
+- sym: ../../../base/common/resources.js.IExtUri
+- sym: ../../../base/common/resources.js.isAbsolutePath
+- sym: ../../../base/common/stream.js.consumeStream
+- sym: ../../../base/common/stream.js.isReadableBufferedStream
+- sym: ../../../base/common/stream.js.isReadableStream
+- sym: ../../../base/common/stream.js.listenStream
+- sym: ../../../base/common/stream.js.newWriteableStream
+- sym: ../../../base/common/stream.js.peekReadable
+- sym: ../../../base/common/stream.js.peekStream
+- sym: ../../../base/common/stream.js.transform
+- sym: ../../../base/common/uri.js.URI
+- sym: ../../../nls.js.localize
+- sym: ./files.js.ensureFileSystemProviderError
+- sym: ./files.js.etag
+- sym: ./files.js.ETAG_DISABLED
+- sym: ./files.js.FileChangesEvent
+- sym: ./files.js.IFileDeleteOptions
+- sym: ./files.js.FileOperation
+- sym: ./files.js.FileOperationError
+- sym: ./files.js.FileOperationEvent
+- sym: ./files.js.FileOperationResult
+- sym: ./files.js.FilePermission
+- sym: ./files.js.FileSystemProviderCapabilities
+- sym: ./files.js.FileSystemProviderErrorCode
+- sym: ./files.js.FileType
+- sym: ./files.js.hasFileAtomicReadCapability
+- sym: ./files.js.hasFileFolderCopyCapability
+- sym: ./files.js.hasFileReadStreamCapability
+- sym: ./files.js.hasOpenReadWriteCloseCapability
+- sym: ./files.js.hasReadWriteCapability
+- sym: ./files.js.ICreateFileOptions
+- sym: ./files.js.IFileContent
+- sym: ./files.js.IFileService
+- sym: ./files.js.IFileStat
+- sym: ./files.js.IFileStatWithMetadata
+- sym: ./files.js.IFileStreamContent
+- sym: ./files.js.IFileSystemProvider
+- sym: ./files.js.IFileSystemProviderActivationEvent
+- sym: ./files.js.IFileSystemProviderCapabilitiesChangeEvent
+- sym: ./files.js.IFileSystemProviderRegistrationEvent
+- sym: ./files.js.IFileSystemProviderWithFileAtomicReadCapability
+- sym: ./files.js.IFileSystemProviderWithFileReadStreamCapability
+- sym: ./files.js.IFileSystemProviderWithFileReadWriteCapability
+- sym: ./files.js.IFileSystemProviderWithOpenReadWriteCloseCapability
+- sym: ./files.js.IReadFileOptions
+- sym: ./files.js.IReadFileStreamOptions
+- sym: ./files.js.IResolveFileOptions
+- sym: ./files.js.IFileStatResult
+- sym: ./files.js.IFileStatResultWithMetadata
+- sym: ./files.js.IResolveMetadataFileOptions
+- sym: ./files.js.IStat
+- sym: ./files.js.IFileStatWithPartialMetadata
+- sym: ./files.js.IWatchOptions
+- sym: ./files.js.IWriteFileOptions
+- sym: ./files.js.NotModifiedSinceFileOperationError
+- sym: ./files.js.toFileOperationResult
+- sym: ./files.js.toFileSystemProviderErrorCode
+- sym: ./files.js.hasFileCloneCapability
+- sym: ./files.js.TooLargeFileOperationError
+- sym: ./files.js.hasFileAtomicDeleteCapability
+- sym: ./files.js.hasFileAtomicWriteCapability
+- sym: ./files.js.IWatchOptionsWithCorrelation
+- sym: ./files.js.IFileSystemWatcher
+- sym: ./files.js.IWatchOptionsWithoutCorrelation
+- sym: ./io.js.readFileIntoStream
+- sym: ../../log/common/log.js.ILogService
+- sym: ../../../base/common/errors.js.ErrorNoTelemetry
+types:
+- name: FileService
+  kind: struct
+  ctx: Choose a buffer size that is a balance between memory needs and
+  bases:
+  - Disposable
+  - IFileService
+  fields:
+  - name: _serviceBrand
+    type: undefined
+  - name: BUFFER_SIZE
+    type: any
+    default: 256 * 1024
+  - name: _onDidChangeFileSystemProviderRegistrations
+    type: any
+    default: this._register(new Emitter<IFileSystemProviderRegistrationEvent>())
+  - name: onDidChangeFileSystemProviderRegistrations
+    type: any
+    default: this._onDidChangeFileSystemProviderRegistrations.event
+  - name: _onWillActivateFileSystemProvider
+    type: any
+    default: this._register(new Emitter<IFileSystemProviderActivationEvent>())
+  - name: onWillActivateFileSystemProvider
+    type: any
+    default: this._onWillActivateFileSystemProvider.event
+  - name: _onDidChangeFileSystemProviderCapabilities
+    type: any
+    default: this._register(new Emitter<IFileSystemProviderCapabilitiesChangeEvent>())
+  - name: onDidChangeFileSystemProviderCapabilities
+    type: any
+    default: this._onDidChangeFileSystemProviderCapabilities.event
+  - name: provider
+    type: any
+    default: new Map<string, IFileSystemProvider>()
+  - name: _onDidRunOperation
+    type: any
+    default: this._register(new Emitter<FileOperationEvent>())
+  - name: onDidRunOperation
+    type: any
+    default: this._onDidRunOperation.event
+  - name: internalOnDidFilesChange
+    type: any
+    default: this._register(new Emitter<FileChangesEvent>())
+  - name: _onDidUncorrelatedFilesChange
+    type: any
+    default: this._register(new Emitter<FileChangesEvent>())
+  - name: onDidFilesChange
+    type: any
+    default: this._onDidUncorrelatedFilesChange.event
+  - name: _onDidWatchError
+    type: any
+    default: this._register(new Emitter<Error>())
+  - name: onDidWatchError
+    type: any
+    default: this._onDidWatchError.event
+  - name: activeWatchers
+    type: any
+    default: 'new Map<number /* watch request hash */, { disposable: IDisposable; count: numbe...'
+  - name: WATCHER_CORRELATION_IDS
+    type: any
+    default: '0'
+  - name: writeQueue
+    type: any
+    default: this._register(new ResourceQueue())
+  methods:
+  - name: constructor
+    sig: 'constructor(@ILogService private readonly logService: ILogService)'
+    lines:
+    - 35
+    - 37
+    detail:
+      calls:
+      - super
+  - name: registerProvider
+    sig: 'registerProvider(scheme: string, provider: IFileSystemProvider): IDisposable'
+    lines:
+    - 52
+    - 88
+    detail:
+      calls:
+      - mark
+      - new DisposableStore
+      - new Error
+      - provider.onDidChangeCapabilities
+      - provider.onDidChangeFile
+      - provider.onDidWatchError
+      - providerDisposables.add
+      - this._onDidChangeFileSystemProviderRegistrations.fire
+      - this.provider.has
+      - this.provider.set
+      - toDisposable
+  - name: getProvider
+    sig: 'getProvider(scheme: string): IFileSystemProvider | undefined'
+    lines:
+    - 90
+    - 92
+    detail:
+      calls:
+      - this.provider.get
+  - name: activateProvider
+    sig: 'activateProvider(scheme: string): Promise<void>'
+    is_async: true
+    lines:
+    - 94
+    - 113
+    detail:
+      calls:
+      - Promises.settled
+      - joiners.push
+      - this._onWillActivateFileSystemProvider.fire
+      - this.provider.has
+  - name: canHandleResource
+    sig: 'canHandleResource(resource: URI): Promise<boolean>'
+    is_async: true
+    lines:
+    - 115
+    - 121
+    detail:
+      calls:
+      - this.activateProvider
+      - this.hasProvider
+  - name: hasProvider
+    sig: 'hasProvider(resource: URI): boolean'
+    lines:
+    - 123
+    - 125
+    detail:
+      calls:
+      - this.provider.has
+  - name: hasCapability
+    sig: 'hasCapability(resource: URI, capability: FileSystemProviderCapabilities): boolean'
+    lines:
+    - 127
+    - 131
+    detail:
+      calls:
+      - this.provider.get
+  - name: listCapabilities
+    sig: 'listCapabilities(): Iterable<{ scheme: string; capabilities: FileSystemProviderCapabilities }>'
+    lines:
+    - 133
+    - 135
+    detail:
+      calls:
+      - Iterable.map
+  - name: withProvider
+    sig: 'withProvider(resource: URI): Promise<IFileSystemProvider>'
+    is_async: true
+    vis: protected
+    lines:
+    - 137
+    - 157
+    detail:
+      calls:
+      - isAbsolutePath
+      - localize
+      - new ErrorNoTelemetry
+      - new FileOperationError
+      - resource.toString
+      - this.activateProvider
+      - this.provider.get
+      - this.resourceForError
+  - name: withReadProvider
+    sig: 'withReadProvider(resource: URI): Promise<IFileSystemProviderWithFileReadWriteCapability | IFileSystemProviderWithOpenReadWriteCloseCapability | IFileSystemProviderWithFileReadStreamCapability>'
+    is_async: true
+    vis: private
+    lines:
+    - 159
+    - 167
+    detail:
+      calls:
+      - hasFileReadStreamCapability
+      - hasOpenReadWriteCloseCapability
+      - hasReadWriteCapability
+      - new Error
+      - this.withProvider
+  - name: withWriteProvider
+    sig: 'withWriteProvider(resource: URI): Promise<IFileSystemProviderWithFileReadWriteCapability | IFileSystemProviderWithOpenReadWriteCloseCapability>'
+    is_async: true
+    vis: private
+    lines:
+    - 169
+    - 177
+    detail:
+      calls:
+      - hasOpenReadWriteCloseCapability
+      - hasReadWriteCapability
+      - new Error
+      - this.withProvider
+  - name: resolve
+    sig: 'resolve(resource: URI, options?: IResolveFileOptions): Promise<IFileStat>'
+    is_async: true
+    lines:
+    - 192
+    - 205
+    detail:
+      calls:
+      - ensureFileSystemProviderError
+      - localize
+      - new FileOperationError
+      - this.doResolveFile
+      - this.resourceForError
+      - toFileSystemProviderErrorCode
+  - name: doResolveFile
+    sig: 'doResolveFile(resource: URI, options?: IResolveFileOptions): Promise<IFileStat>'
+    is_async: true
+    vis: private
+    lines:
+    - 209
+    - 244
+    detail:
+      calls:
+      - provider.stat
+      - this.isPathCaseSensitive
+      - this.toFileStat
+      - this.withProvider
+  - name: toFileStat
+    sig: 'toFileStat(provider: IFileSystemProvider, resource: URI, stat: IStat | { type: FileType } & Partial<IStat>, siblings: number | undefined, resolveMetadata: boolean, recurse: (stat: IFileStat, siblings?: number) => boolean): Promise<IFileStat>'
+    is_async: true
+    vis: private
+    lines:
+    - 248
+    - 296
+    detail:
+      calls:
+      - Boolean
+      - Promises.settled
+      - coalesce
+      - entries.map
+      - etag
+      - provider.readdir
+      - providerExtUri.basename
+      - recurse
+      - this.getExtUri
+      - this.logService.trace
+  - name: resolveAll
+    sig: 'resolveAll(toResolve: { resource: URI; options?: IResolveFileOptions }[]): Promise<IFileStatResult[]>'
+    is_async: true
+    lines:
+    - 300
+    - 310
+    detail:
+      calls:
+      - Promises.settled
+      - toResolve.map
+  - name: stat
+    sig: 'stat(resource: URI): Promise<IFileStatWithPartialMetadata>'
+    is_async: true
+    lines:
+    - 312
+    - 318
+    detail:
+      calls:
+      - provider.stat
+      - this.toFileStat
+      - this.withProvider
+  - name: exists
+    sig: 'exists(resource: URI): Promise<boolean>'
+    is_async: true
+    lines:
+    - 320
+    - 330
+    detail:
+      calls:
+      - provider.stat
+      - this.withProvider
+  - name: canCreateFile
+    sig: 'canCreateFile(resource: URI, options?: ICreateFileOptions): Promise<Error | true>'
+    is_async: true
+    lines:
+    - 336
+    - 344
+    detail:
+      calls:
+      - this.doValidateCreateFile
+  - name: doValidateCreateFile
+    sig: 'doValidateCreateFile(resource: URI, options?: ICreateFileOptions): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 346
+    - 352
+    detail:
+      calls:
+      - localize
+      - new FileOperationError
+      - this.exists
+      - this.resourceForError
+  - name: createFile
+    sig: 'createFile(resource: URI, bufferOrReadableOrStream: VSBuffer | VSBufferReadable | VSBufferReadableStream = VSBuffer.fromString(''''), options?: ICreateFileOptions): Promise<IFileStatWithMetadata>'
+    is_async: true
+    lines:
+    - 354
+    - 366
+    detail:
+      calls:
+      - new FileOperationEvent
+      - this._onDidRunOperation.fire
+      - this.doValidateCreateFile
+      - this.writeFile
+  - name: writeFile
+    sig: 'writeFile(resource: URI, bufferOrReadableOrStream: VSBuffer | VSBufferReadable | VSBufferReadableStream, options?: IWriteFileOptions): Promise<IFileStatWithMetadata>'
+    is_async: true
+    lines:
+    - 368
+    - 419
+    detail:
+      calls:
+      - bufferToReadable
+      - ensureFileSystemProviderError
+      - ensureFileSystemProviderError(error).toString
+      - hasFileAtomicWriteCapability
+      - hasOpenReadWriteCloseCapability
+      - hasReadWriteCapability
+      - localize
+      - new FileOperationError
+      - new FileOperationEvent
+      - provider.enforceAtomicWriteFile
+      - providerExtUri.dirname
+      - this._onDidRunOperation.fire
+      - this.doWriteBuffered
+      - this.doWriteUnbuffered
+      - this.getExtUri
+      - this.mkdirp
+      - this.peekBufferForWriting
+      - this.resolve
+      - this.resourceForError
+      - this.throwIfFileSystemIsReadonly
+      - this.validateWriteFile
+      - this.withWriteProvider
+      - toFileOperationResult
+  - name: peekBufferForWriting
+    sig: 'peekBufferForWriting(provider: IFileSystemProviderWithFileReadWriteCapability | IFileSystemProviderWithOpenReadWriteCloseCapability, bufferOrReadableOrStream: VSBuffer | VSBufferReadable | VSBufferReadableStream): Promise<VSBuffer | VSBufferReadable | VSBufferReadableStream | VSBufferReadableBufferedStream>'
+    is_async: true
+    vis: private
+    lines:
+    - 422
+    - 440
+    detail:
+      calls:
+      - VSBuffer.concat
+      - hasReadWriteCapability
+      - isReadableStream
+      - peekReadable
+      - peekStream
+  - name: validateWriteFile
+    sig: 'validateWriteFile(provider: IFileSystemProviderWithFileReadWriteCapability | IFileSystemProviderWithOpenReadWriteCloseCapability, resource: URI, bufferOrReadableOrStream: VSBuffer | VSBufferReadable | VSBufferReadableStream, options?: IWriteFileOptions): Promise<{ stat: IStat | undefined; buffer: VSBuffer | VSBufferReadable | VSBufferReadableStream | VSBufferReadableBufferedStream | undefined }>'
+    is_async: true
+    vis: private
+    lines:
+    - 442
+    - 520
+    detail:
+      calls:
+      - Object.create
+      - buffer.equals
+      - etag
+      - localize
+      - new Error
+      - new FileOperationError
+      - provider.stat
+      - this.peekBufferForWriting
+      - this.readFile
+      - this.resourceForError
+      - this.throwIfFileIsReadonly
+  - name: readFile
+    sig: 'readFile(resource: URI, options?: IReadFileOptions, token?: CancellationToken): Promise<IFileContent>'
+    is_async: true
+    lines:
+    - 522
+    - 530
+    detail:
+      calls:
+      - this.doReadFile
+      - this.doReadFileAtomic
+      - this.withReadProvider
+  - name: doReadFile
+    sig: 'doReadFile(provider: IFileSystemProviderWithFileReadWriteCapability | IFileSystemProviderWithOpenReadWriteCloseCapability | IFileSystemProviderWithFileReadStreamCapability, resource: URI, options?: IReadFileOptions, token?: CancellationToken): Promise<IFileContent>'
+    is_async: true
+    vis: private
+    lines:
+    - 545
+    - 560
+    detail:
+      calls:
+      - streamToBuffer
+      - this.doReadFileStream
+  - name: readFileStream
+    sig: 'readFileStream(resource: URI, options?: IReadFileStreamOptions, token?: CancellationToken): Promise<IFileStreamContent>'
+    is_async: true
+    lines:
+    - 562
+    - 566
+    detail:
+      calls:
+      - this.doReadFileStream
+      - this.withReadProvider
+  - name: doReadFileStream
+    sig: 'doReadFileStream(provider: IFileSystemProviderWithFileReadWriteCapability | IFileSystemProviderWithOpenReadWriteCloseCapability | IFileSystemProviderWithFileReadStreamCapability, resource: URI, options?: IReadFileOptions & IReadFileStreamOptions & { preferUnbuffered?: boolean }, token?: CancellationToken): Promise<IFileStreamContent>'
+    is_async: true
+    vis: private
+    lines:
+    - 568
+    - 644
+    detail:
+      calls:
+      - consumeStream
+      - fileStream.on
+      - hasFileAtomicReadCapability
+      - hasFileReadStreamCapability
+      - hasOpenReadWriteCloseCapability
+      - hasReadWriteCapability
+      - new CancellationTokenSource
+      - provider.enforceAtomicReadFile
+      - this.readFileBuffered
+      - this.readFileStreamed
+      - this.readFileUnbuffered
+      - this.restoreReadError
+      - this.validateReadFile
+      - this.validateReadFile(resource, readFileOptions).then
+  - name: readFileUnbuffered
+    sig: 'readFileUnbuffered(provider: IFileSystemProviderWithFileReadWriteCapability | IFileSystemProviderWithFileAtomicReadCapability, resource: URI, options?: IReadFileOptions & IReadFileStreamOptions): VSBufferReadableStream'
+    vis: private
+    lines:
+    - 681
+    - 717
+    detail:
+      calls:
+      - "(async () => {\n\t\t\ttry {\n\t\t\t\tlet buffer: Uint8Array;\n\t\t\t\tif (options?.atomic && hasFileAtomicReadCapa..."
+      - newWriteableStream
+  - name: validateReadFile
+    sig: 'validateReadFile(resource: URI, options?: IReadFileStreamOptions): Promise<IFileStatWithMetadata>'
+    is_async: true
+    vis: private
+    lines:
+    - 719
+    - 736
+    detail:
+      calls:
+      - localize
+      - new FileOperationError
+      - new NotModifiedSinceFileOperationError
+      - this.resolve
+      - this.resourceForError
+      - this.validateReadFileLimits
+  - name: canMove
+    sig: 'canMove(source: URI, target: URI, overwrite?: boolean): Promise<Error | true>'
+    is_async: true
+    lines:
+    - 748
+    - 750
+    detail:
+      calls:
+      - this.doCanMoveCopy
+  - name: canCopy
+    sig: 'canCopy(source: URI, target: URI, overwrite?: boolean): Promise<Error | true>'
+    is_async: true
+    lines:
+    - 752
+    - 754
+    detail:
+      calls:
+      - this.doCanMoveCopy
+  - name: doCanMoveCopy
+    sig: 'doCanMoveCopy(source: URI, target: URI, mode: ''move'' | ''copy'', overwrite?: boolean): Promise<Error | true>'
+    is_async: true
+    vis: private
+    lines:
+    - 756
+    - 769
+    detail:
+      calls:
+      - source.toString
+      - target.toString
+      - this.doValidateMoveCopy
+      - this.throwIfFileSystemIsReadonly
+      - this.withReadProvider
+      - this.withWriteProvider
+  - name: move
+    sig: 'move(source: URI, target: URI, overwrite?: boolean): Promise<IFileStatWithMetadata>'
+    is_async: true
+    lines:
+    - 771
+    - 783
+    detail:
+      calls:
+      - new FileOperationEvent
+      - this._onDidRunOperation.fire
+      - this.doMoveCopy
+      - this.resolve
+      - this.throwIfFileSystemIsReadonly
+      - this.withWriteProvider
+  - name: copy
+    sig: 'copy(source: URI, target: URI, overwrite?: boolean): Promise<IFileStatWithMetadata>'
+    is_async: true
+    lines:
+    - 785
+    - 797
+    detail:
+      calls:
+      - new FileOperationEvent
+      - this._onDidRunOperation.fire
+      - this.doMoveCopy
+      - this.resolve
+      - this.throwIfFileSystemIsReadonly
+      - this.withReadProvider
+      - this.withWriteProvider
+  - name: doMoveCopy
+    sig: 'doMoveCopy(sourceProvider: IFileSystemProvider, source: URI, targetProvider: IFileSystemProvider, target: URI, mode: ''move'' | ''copy'', overwrite: boolean): Promise<''move'' | ''copy''>'
+    is_async: true
+    vis: private
+    lines:
+    - 799
+    - 855
+    detail:
+      calls:
+      - hasFileFolderCopyCapability
+      - source.toString
+      - sourceProvider.copy
+      - sourceProvider.rename
+      - target.toString
+      - this.del
+      - this.doCopyFile
+      - this.doCopyFolder
+      - this.doMoveCopy
+      - this.doValidateMoveCopy
+      - this.getExtUri
+      - this.getExtUri(targetProvider).providerExtUri.dirname
+      - this.mkdirp
+      - this.resolve
+  - name: doCopyFile
+    sig: 'doCopyFile(sourceProvider: IFileSystemProvider, source: URI, targetProvider: IFileSystemProvider, target: URI): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 857
+    - 878
+    detail:
+      calls:
+      - hasOpenReadWriteCloseCapability
+      - hasReadWriteCapability
+      - this.doPipeBuffered
+      - this.doPipeBufferedToUnbuffered
+      - this.doPipeUnbuffered
+      - this.doPipeUnbufferedToBuffered
+  - name: doCopyFolder
+    sig: 'doCopyFolder(sourceProvider: IFileSystemProvider, sourceFolder: IFileStat, targetProvider: IFileSystemProvider, targetFolder: URI): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 880
+    - 896
+    detail:
+      calls:
+      - Array.isArray
+      - Promises.settled
+      - sourceFolder.children.map
+      - targetProvider.mkdir
+  - name: doValidateMoveCopy
+    sig: 'doValidateMoveCopy(sourceProvider: IFileSystemProvider, source: URI, targetProvider: IFileSystemProvider, target: URI, mode: ''move'' | ''copy'', overwrite?: boolean): Promise<{ exists: boolean; isSameResourceWithDifferentPathCase: boolean }>'
+    is_async: true
+    vis: private
+    lines:
+    - 898
+    - 937
+    detail:
+      calls:
+      - localize
+      - new Error
+      - new FileOperationError
+      - providerExtUri.isEqual
+      - providerExtUri.isEqualOrParent
+      - this.exists
+      - this.getExtUri
+      - this.resourceForError
+  - name: createFolder
+    sig: 'createFolder(resource: URI): Promise<IFileStatWithMetadata>'
+    is_async: true
+    lines:
+    - 952
+    - 963
+    detail:
+      calls:
+      - new FileOperationEvent
+      - this._onDidRunOperation.fire
+      - this.mkdirp
+      - this.resolve
+      - this.throwIfFileSystemIsReadonly
+      - this.withProvider
+  - name: mkdirp
+    sig: 'mkdirp(provider: IFileSystemProvider, directory: URI): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 965
+    - 1013
+    detail:
+      calls:
+      - directoriesToCreate.push
+      - localize
+      - new Error
+      - provider.mkdir
+      - provider.stat
+      - providerExtUri.basename
+      - providerExtUri.dirname
+      - providerExtUri.isEqual
+      - providerExtUri.joinPath
+      - this.getExtUri
+      - this.resourceForError
+      - toFileSystemProviderErrorCode
+  - name: canDelete
+    sig: 'canDelete(resource: URI, options?: Partial<IFileDeleteOptions>): Promise<Error | true>'
+    is_async: true
+    lines:
+    - 1015
+    - 1023
+    detail:
+      calls:
+      - this.doValidateDelete
+  - name: doValidateDelete
+    sig: 'doValidateDelete(resource: URI, options?: Partial<IFileDeleteOptions>): Promise<IFileSystemProvider>'
+    is_async: true
+    vis: private
+    lines:
+    - 1025
+    - 1068
+    detail:
+      calls:
+      - Array.isArray
+      - localize
+      - new Error
+      - new FileOperationError
+      - provider.stat
+      - this.resolve
+      - this.resourceForError
+      - this.throwIfFileIsReadonly
+      - this.throwIfFileSystemIsReadonly
+      - this.withProvider
+  - name: del
+    sig: 'del(resource: URI, options?: Partial<IFileDeleteOptions>): Promise<void>'
+    is_async: true
+    lines:
+    - 1070
+    - 1090
+    detail:
+      calls:
+      - hasFileAtomicDeleteCapability
+      - new FileOperationEvent
+      - provider.delete
+      - provider.enforceAtomicDelete
+      - this._onDidRunOperation.fire
+      - this.doValidateDelete
+  - name: cloneFile
+    sig: 'cloneFile(source: URI, target: URI): Promise<void>'
+    is_async: true
+    lines:
+    - 1096
+    - 1125
+    detail:
+      calls:
+      - hasFileCloneCapability
+      - hasFileFolderCopyCapability
+      - sourceProvider.cloneFile
+      - this.getExtUri
+      - this.getExtUri(sourceProvider).providerExtUri.isEqual
+      - this.getExtUri(targetProvider).providerExtUri.dirname
+      - this.mkdirp
+      - this.throwIfFileSystemIsReadonly
+      - this.withProvider
+      - this.withWriteProvider
+      - this.writeQueue.queueFor
+  - name: createWatcher
+    sig: 'createWatcher(resource: URI, options: IWatchOptionsWithoutCorrelation & { recursive: false }): IFileSystemWatcher'
+    lines:
+    - 1143
+    - 1151
+    detail:
+      calls:
+      - this.watch
+  - name: watch
+    sig: 'watch(resource: URI, options: IWatchOptions = { recursive: false, excludes: [] }): IFileSystemWatcher | IDisposable'
+    lines:
+    - 1155
+    - 1198
+    detail:
+      calls:
+      - "(async () => {\n\t\t\ttry {\n\t\t\t\tconst disposable = await this.doWatch(resource, options);\n\t\t\t\tif (watchD..."
+      - disposables.add
+      - new DisposableStore
+      - new Emitter
+      - this.internalOnDidFilesChange.event
+      - toDisposable
+  - name: doWatch
+    sig: 'doWatch(resource: URI, options: IWatchOptions): Promise<IDisposable>'
+    is_async: true
+    vis: private
+    lines:
+    - 1200
+    - 1231
+    detail:
+      calls:
+      - hash
+      - provider.watch
+      - this.activeWatchers.get
+      - this.activeWatchers.set
+      - this.getExtUri
+      - this.getExtUri(provider).providerExtUri.getComparisonKey
+      - this.withProvider
+      - toDisposable
+  - name: dispose
+    sig: 'dispose(): void'
+    lines:
+    - 1233
+    - 1241
+    detail:
+      calls:
+      - dispose
+      - super.dispose
+      - this.activeWatchers.clear
+  - name: doWriteBuffered
+    sig: 'doWriteBuffered(provider: IFileSystemProviderWithOpenReadWriteCloseCapability, resource: URI, options: IWriteFileOptions | undefined, readableOrStreamOrBufferedStream: VSBufferReadable | VSBufferReadableStream | VSBufferReadableBufferedStream): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 1249
+    - 1270
+    detail:
+      calls:
+      - this.getExtUri
+      - this.writeQueue.queueFor
+  - name: doWriteStreamBufferedQueued
+    sig: 'doWriteStreamBufferedQueued(provider: IFileSystemProviderWithOpenReadWriteCloseCapability, handle: number, streamOrBufferedStream: VSBufferReadableStream | VSBufferReadableBufferedStream): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 1272
+    - 1324
+    detail:
+      calls:
+      - VSBuffer.concat
+      - isReadableBufferedStream
+      - new Promise
+      - this.doWriteBuffer
+  - name: doWriteReadableBufferedQueued
+    sig: 'doWriteReadableBufferedQueued(provider: IFileSystemProviderWithOpenReadWriteCloseCapability, handle: number, readable: VSBufferReadable): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 1326
+    - 1335
+    detail:
+      calls:
+      - readable.read
+      - this.doWriteBuffer
+  - name: doWriteBuffer
+    sig: 'doWriteBuffer(provider: IFileSystemProviderWithOpenReadWriteCloseCapability, handle: number, buffer: VSBuffer, length: number, posInFile: number, posInBuffer: number): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 1337
+    - 1345
+    detail:
+      calls:
+      - provider.write
+  - name: doWriteUnbuffered
+    sig: 'doWriteUnbuffered(provider: IFileSystemProviderWithFileReadWriteCapability, resource: URI, options: IWriteFileOptions | undefined, bufferOrReadableOrStreamOrBufferedStream: VSBuffer | VSBufferReadable | VSBufferReadableStream | VSBufferReadableBufferedStream): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 1347
+    - 1349
+    detail:
+      calls:
+      - this.getExtUri
+      - this.writeQueue.queueFor
+  - name: doWriteUnbufferedQueued
+    sig: 'doWriteUnbufferedQueued(provider: IFileSystemProviderWithFileReadWriteCapability, resource: URI, options: IWriteFileOptions | undefined, bufferOrReadableOrStreamOrBufferedStream: VSBuffer | VSBufferReadable | VSBufferReadableStream | VSBufferReadableBufferedStream): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 1351
+    - 1365
+    detail:
+      calls:
+      - bufferedStreamToBuffer
+      - isReadableBufferedStream
+      - isReadableStream
+      - provider.writeFile
+      - readableToBuffer
+      - streamToBuffer
+  - name: doPipeBuffered
+    sig: 'doPipeBuffered(sourceProvider: IFileSystemProviderWithOpenReadWriteCloseCapability, source: URI, targetProvider: IFileSystemProviderWithOpenReadWriteCloseCapability, target: URI): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 1367
+    - 1369
+    detail:
+      calls:
+      - this.getExtUri
+      - this.writeQueue.queueFor
+  - name: doPipeBufferedQueued
+    sig: 'doPipeBufferedQueued(sourceProvider: IFileSystemProviderWithOpenReadWriteCloseCapability, source: URI, targetProvider: IFileSystemProviderWithOpenReadWriteCloseCapability, target: URI): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 1371
+    - 1411
+    detail:
+      calls:
+      - Promise.resolve
+      - Promises.settled
+      - VSBuffer.alloc
+      - ensureFileSystemProviderError
+      - sourceProvider.close
+      - sourceProvider.open
+      - sourceProvider.read
+      - targetProvider.close
+      - targetProvider.open
+      - this.doWriteBuffer
+  - name: doPipeUnbuffered
+    sig: 'doPipeUnbuffered(sourceProvider: IFileSystemProviderWithFileReadWriteCapability, source: URI, targetProvider: IFileSystemProviderWithFileReadWriteCapability, target: URI): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 1413
+    - 1415
+    detail:
+      calls:
+      - this.getExtUri
+      - this.writeQueue.queueFor
+  - name: doPipeUnbufferedQueued
+    sig: 'doPipeUnbufferedQueued(sourceProvider: IFileSystemProviderWithFileReadWriteCapability, source: URI, targetProvider: IFileSystemProviderWithFileReadWriteCapability, target: URI): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 1417
+    - 1419
+    detail:
+      calls:
+      - sourceProvider.readFile
+      - targetProvider.writeFile
+  - name: doPipeUnbufferedToBuffered
+    sig: 'doPipeUnbufferedToBuffered(sourceProvider: IFileSystemProviderWithFileReadWriteCapability, source: URI, targetProvider: IFileSystemProviderWithOpenReadWriteCloseCapability, target: URI): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 1421
+    - 1423
+    detail:
+      calls:
+      - this.getExtUri
+      - this.writeQueue.queueFor
+  - name: doPipeUnbufferedToBufferedQueued
+    sig: 'doPipeUnbufferedToBufferedQueued(sourceProvider: IFileSystemProviderWithFileReadWriteCapability, source: URI, targetProvider: IFileSystemProviderWithOpenReadWriteCloseCapability, target: URI): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 1425
+    - 1439
+    detail:
+      calls:
+      - VSBuffer.wrap
+      - ensureFileSystemProviderError
+      - sourceProvider.readFile
+      - targetProvider.close
+      - targetProvider.open
+      - this.doWriteBuffer
+  - name: doPipeBufferedToUnbuffered
+    sig: 'doPipeBufferedToUnbuffered(sourceProvider: IFileSystemProviderWithOpenReadWriteCloseCapability, source: URI, targetProvider: IFileSystemProviderWithFileReadWriteCapability, target: URI): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 1441
+    - 1448
+    detail:
+      calls:
+      - streamToBuffer
+      - this.doWriteUnbuffered
+      - this.readFileBuffered
+  lines:
+  - 26
+  - 1473
+exports:
+- name: FileService
+  kind: type

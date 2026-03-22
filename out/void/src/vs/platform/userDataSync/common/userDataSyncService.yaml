@@ -1,0 +1,804 @@
+## Roska File Descriptor — common/userDataSyncService.ts
+file: common/userDataSyncService.ts
+lines: 904
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: ../../../base/common/arrays.js.equals
+- sym: ../../../base/common/async.js.CancelablePromise
+- sym: ../../../base/common/async.js.createCancelablePromise
+- sym: ../../../base/common/async.js.RunOnceScheduler
+- sym: ../../../base/common/cancellation.js.CancellationToken
+- sym: ../../../base/common/cancellation.js.CancellationTokenSource
+- sym: ../../../base/common/errorMessage.js.toErrorMessage
+- sym: ../../../base/common/event.js.Emitter
+- sym: ../../../base/common/event.js.Event
+- sym: ../../../base/common/lifecycle.js.Disposable
+- sym: ../../../base/common/lifecycle.js.DisposableStore
+- sym: ../../../base/common/lifecycle.js.IDisposable
+- sym: ../../../base/common/lifecycle.js.toDisposable
+- sym: ../../../base/common/resources.js.isEqual
+- sym: ../../../base/common/types.js.isBoolean
+- sym: ../../../base/common/types.js.isUndefined
+- sym: ../../../base/common/uri.js.URI
+- sym: ../../../base/common/uuid.js.generateUuid
+- sym: ../../configuration/common/configuration.js.IConfigurationService
+- sym: ../../extensionManagement/common/extensionManagement.js.IExtensionGalleryService
+- sym: ../../files/common/files.js.IFileService
+- sym: ../../instantiation/common/instantiation.js.IInstantiationService
+- sym: ../../storage/common/storage.js.IStorageService
+- sym: ../../storage/common/storage.js.StorageScope
+- sym: ../../storage/common/storage.js.StorageTarget
+- sym: ../../telemetry/common/telemetry.js.ITelemetryService
+- sym: ../../userDataProfile/common/userDataProfile.js.IUserDataProfile
+- sym: ../../userDataProfile/common/userDataProfile.js.IUserDataProfilesService
+- sym: ./extensionsSync.js.ExtensionsSynchroniser
+- sym: ./globalStateSync.js.GlobalStateSynchroniser
+- sym: ./keybindingsSync.js.KeybindingsSynchroniser
+- sym: ./promptsSync/promptsSync.js.PromptsSynchronizer
+- sym: ./settingsSync.js.SettingsSynchroniser
+- sym: ./snippetsSync.js.SnippetsSynchroniser
+- sym: ./tasksSync.js.TasksSynchroniser
+- sym: ./userDataProfilesManifestSync.js.UserDataProfilesManifestSynchroniser
+- sym: ./userDataSync.js.ALL_SYNC_RESOURCES
+- sym: ./userDataSync.js.createSyncHeaders
+- sym: ./userDataSync.js.IUserDataManualSyncTask
+- sym: ./userDataSync.js.IUserDataSyncResourceConflicts
+- sym: ./userDataSync.js.IUserDataSyncResourceError
+- sym: ./userDataSync.js.IUserDataSyncResource
+- sym: ./userDataSync.js.ISyncResourceHandle
+- sym: ./userDataSync.js.IUserDataSyncTask
+- sym: ./userDataSync.js.ISyncUserDataProfile
+- sym: ./userDataSync.js.IUserDataManifest
+- sym: ./userDataSync.js.IUserDataResourceManifest
+- sym: ./userDataSync.js.IUserDataSyncConfiguration
+- sym: ./userDataSync.js.IUserDataSyncEnablementService
+- sym: ./userDataSync.js.IUserDataSynchroniser
+- sym: ./userDataSync.js.IUserDataSyncLogService
+- sym: ./userDataSync.js.IUserDataSyncService
+- sym: ./userDataSync.js.IUserDataSyncStoreManagementService
+- sym: ./userDataSync.js.IUserDataSyncStoreService
+- sym: ./userDataSync.js.SyncResource
+- sym: ./userDataSync.js.SyncStatus
+- sym: ./userDataSync.js.UserDataSyncError
+- sym: ./userDataSync.js.UserDataSyncErrorCode
+- sym: ./userDataSync.js.UserDataSyncStoreError
+- sym: ./userDataSync.js.USER_DATA_SYNC_CONFIGURATION_SCOPE
+- sym: ./userDataSync.js.IUserDataSyncResourceProviderService
+- sym: ./userDataSync.js.IUserDataActivityData
+- sym: ./userDataSync.js.IUserDataSyncLocalStoreService
+data:
+- name: LAST_SYNC_TIME_KEY
+  type: string
+  val: '''sync.lastSyncTime'''
+types:
+- name: SyncErrorClassification
+  kind: typealias
+  decorators:
+  - type
+  fields:
+  - name: owner
+    type: '''sandy081'''
+  - name: comment
+    type: '''Information about the error that occurred while syncing'''
+  - name: code
+    type: '{ classification: ''SystemMetaData''; purpose: ''FeatureInsight''; comment: ''error code'' }'
+  - name: service
+    type: '{ classification: ''SystemMetaData''; purpose: ''FeatureInsight''; comment: ''Settings Sync service for which this error has occurred'' }'
+  - name: serverCode
+    type: '{ classification: ''SystemMetaData''; purpose: ''FeatureInsight''; comment: ''Settings Sync service error code'' }'
+  - name: url
+    type: '{ classification: ''SystemMetaData''; purpose: ''FeatureInsight''; comment: ''Settings Sync resource URL for which this error has occurred'' }'
+  - name: resource
+    type: '{ classification: ''SystemMetaData''; purpose: ''FeatureInsight''; comment: ''Settings Sync resource for which this error has occurred'' }'
+  - name: executionId
+    type: '{ classification: ''SystemMetaData''; purpose: ''FeatureInsight''; comment: ''Settings Sync execution id for which this error has occurred'' }'
+  lines:
+  - 38
+  - 47
+- name: UserDataSyncService
+  kind: struct
+  bases:
+  - Disposable
+  - IUserDataSyncService
+  fields:
+  - name: _serviceBrand
+    type: any
+  - name: _status
+    type: SyncStatus
+    default: SyncStatus.Uninitialized
+  - name: _onDidChangeStatus
+    type: Emitter<SyncStatus>
+    default: this._register(new Emitter<SyncStatus>())
+  - name: onDidChangeStatus
+    type: Event<SyncStatus>
+    default: this._onDidChangeStatus.event
+  - name: _onDidChangeLocal
+    type: any
+    default: this._register(new Emitter<SyncResource>())
+  - name: onDidChangeLocal
+    type: any
+    default: this._onDidChangeLocal.event
+  - name: _conflicts
+    type: IUserDataSyncResourceConflicts[]
+    default: '[]'
+  - name: _onDidChangeConflicts
+    type: any
+    default: this._register(new Emitter<IUserDataSyncResourceConflicts[]>())
+  - name: onDidChangeConflicts
+    type: any
+    default: this._onDidChangeConflicts.event
+  - name: _syncErrors
+    type: IUserDataSyncResourceError[]
+    default: '[]'
+  - name: _onSyncErrors
+    type: any
+    default: this._register(new Emitter<IUserDataSyncResourceError[]>())
+  - name: onSyncErrors
+    type: any
+    default: this._onSyncErrors.event
+  - name: _lastSyncTime
+    type: number | undefined
+    default: undefined
+  - name: _onDidChangeLastSyncTime
+    type: Emitter<number>
+    default: this._register(new Emitter<number>())
+  - name: onDidChangeLastSyncTime
+    type: Event<number>
+    default: this._onDidChangeLastSyncTime.event
+  - name: _onDidResetLocal
+    type: any
+    default: this._register(new Emitter<void>())
+  - name: onDidResetLocal
+    type: any
+    default: this._onDidResetLocal.event
+  - name: _onDidResetRemote
+    type: any
+    default: this._register(new Emitter<void>())
+  - name: onDidResetRemote
+    type: any
+    default: this._onDidResetRemote.event
+  - name: activeProfileSynchronizers
+    type: any
+    default: new Map<string, [ProfileSynchronizer, IDisposable]>()
+  methods:
+  - name: status
+    sig: 'status(): SyncStatus'
+    lines:
+    - 56
+    - 56
+    detail: {}
+  - name: conflicts
+    sig: 'conflicts(): IUserDataSyncResourceConflicts[]'
+    lines:
+    - 64
+    - 64
+    detail: {}
+  - name: lastSyncTime
+    sig: 'lastSyncTime(): number | undefined'
+    lines:
+    - 73
+    - 73
+    detail: {}
+  - name: constructor
+    sig: "constructor(\n\t\t@IFileService private readonly fileService: IFileService,\n\t\t@IUserDataSyncStoreService private readonly userDataSyncStoreService: IUserDataSyncStoreService,\n\t\t@IUserDataSyncStoreManagementService private readonly userDataSyncStoreManagementService: IUserDataSyncStoreManagementService,\n\t\t@IInstantiationService private readonly instantiationService: IInstantiationService,\n\t\t@IUserDataSyncLogService private readonly logService: IUserDataSyncLogService,\n\t\t@ITelemetryService private readonly telemetryService: ITelemetryService,\n\t\t@IStorageService private readonly storageService: IStorageService,\n\t\t@IUserDataSyncEnablementService private readonly userDataSyncEnablementService: IUserDataSyncEnablementService,\n\t\t@IUserDataProfilesService private readonly userDataProfilesService: IUserDataProfilesService,\n\t\t@IUserDataSyncResourceProviderService private readonly userDataSyncResourceProviderService: IUserDataSyncResourceProviderService,\n\t\t@IUserDataSyncLocalStoreService private readonly userDataSyncLocalStoreService: IUserDataSyncLocalStoreService,\n\t)"
+    lines:
+    - 85
+    - 104
+    detail:
+      calls:
+      - new RunOnceScheduler
+      - super
+      - this._register
+      - this._register(new RunOnceScheduler(() => this.cleanUpStaleStorageData(), 5 * 1000 /* after 5s */))....
+      - this.storageService.getNumber
+      - toDisposable
+  - name: createSyncTask
+    sig: 'createSyncTask(manifest: IUserDataManifest | null, disableCache?: boolean): Promise<IUserDataSyncTask>'
+    is_async: true
+    lines:
+    - 106
+    - 143
+    detail:
+      calls:
+      - UserDataSyncError.toUserDataSyncError
+      - cancellablePromise.finally
+      - cancellablePromise?.cancel
+      - createCancelablePromise
+      - createSyncHeaders
+      - generateUuid
+      - new Date
+      - new Date().getTime
+      - new Error
+      - reportUserDataSyncError
+      - that.logService.info
+      - that.stop
+      - that.updateLastSyncTime
+      - this.checkEnablement
+      - this.logService.info
+      - this.userDataSyncStoreService.manifest
+  - name: createManualSyncTask
+    sig: 'createManualSyncTask(): Promise<IUserDataManualSyncTask>'
+    is_async: true
+    lines:
+    - 145
+    - 202
+    detail:
+      calls:
+      - UserDataSyncError.toUserDataSyncError
+      - cancellableToken.cancel
+      - createSyncHeaders
+      - generateUuid
+      - new CancellationTokenSource
+      - new Date
+      - new Date().getTime
+      - new UserDataSyncError
+      - reportUserDataSyncError
+      - that.applyManualSync
+      - that.cleanUpRemoteData
+      - that.logService.error
+      - that.logService.info
+      - that.resetLocal
+      - that.stop
+      - that.sync
+      - that.updateLastSyncTime
+      - this.checkEnablement
+      - this.logService.info
+      - this.resetLocal
+      - this.userDataSyncEnablementService.isEnabled
+      - this.userDataSyncStoreService.manifest
+  - name: sync
+    sig: 'sync(manifest: IUserDataManifest | null, preview: boolean, executionId: string, token: CancellationToken): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 204
+    - 230
+    detail:
+      calls:
+      - (userDataProfileManifestSynchronizer as UserDataProfilesManifestSynchroniser).getLastSyncedProfiles
+      - defaultProfileSynchronizer.enabled.find
+      - this._onSyncErrors.fire
+      - this._syncErrors.push
+      - this.getOrCreateActiveProfileSynchronizer
+      - this.setStatus
+      - this.syncProfile
+      - this.syncRemoteProfiles
+  - name: syncRemoteProfiles
+    sig: 'syncRemoteProfiles(remoteProfiles: ISyncUserDataProfile[], manifest: IUserDataManifest | null, preview: boolean, executionId: string, token: CancellationToken): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 232
+    - 255
+    detail:
+      calls:
+      - profileSynchronizerItem[0].resetLocal
+      - profileSynchronizerItem[1].dispose
+      - this._syncErrors.push
+      - this.activeProfileSynchronizers.delete
+      - this.activeProfileSynchronizers.entries
+      - this.getOrCreateActiveProfileSynchronizer
+      - this.logService.error
+      - this.logService.info
+      - this.syncProfile
+      - this.userDataProfilesService.profiles.find
+      - this.userDataProfilesService.profiles.some
+  - name: applyManualSync
+    sig: 'applyManualSync(manifest: IUserDataManifest | null, executionId: string, token: CancellationToken): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 257
+    - 287
+    detail:
+      calls:
+      - (userDataProfileManifestSynchronizer as UserDataProfilesManifestSynchroniser).getRemoteSyncedProfile...
+      - defaultProfileSynchronizer.enabled.find
+      - profileSynchronizer.apply
+      - profileSynchronizers.find
+      - remoteProfiles.filter
+      - this.getActiveProfileSynchronizers
+      - this.setStatus
+      - this.syncRemoteProfiles
+  - name: syncProfile
+    sig: 'syncProfile(profileSynchronizer: ProfileSynchronizer, manifest: IUserDataManifest | null, preview: boolean, executionId: string, token: CancellationToken): Promise<IUserDataSyncResourceError[]>'
+    is_async: true
+    vis: private
+    lines:
+    - 289
+    - 292
+    detail:
+      calls:
+      - errors.map
+      - profileSynchronizer.sync
+  - name: stop
+    sig: 'stop(): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 294
+    - 298
+    detail:
+      calls:
+      - Promise.allSettled
+      - this.getActiveProfileSynchronizers
+      - this.getActiveProfileSynchronizers().map
+  - name: resolveContent
+    sig: 'resolveContent(resource: URI): Promise<string | null>'
+    is_async: true
+    lines:
+    - 300
+    - 314
+    detail:
+      calls:
+      - synchronizer.resolveContent
+      - this.getActiveProfileSynchronizers
+      - this.userDataSyncResourceProviderService.resolveContent
+  - name: replace
+    sig: 'replace(syncResourceHandle: ISyncResourceHandle): Promise<void>'
+    is_async: true
+    lines:
+    - 316
+    - 338
+    detail:
+      calls:
+      - this.checkEnablement
+      - this.performAction
+      - this.resolveContent
+      - this.userDataSyncResourceProviderService.resolveUserDataSyncResource
+  - name: accept
+    sig: 'accept(syncResource: IUserDataSyncResource, resource: URI, content: string | null | undefined, apply: boolean | { force: boolean }): Promise<void>'
+    is_async: true
+    lines:
+    - 340
+    - 353
+    detail:
+      calls:
+      - this.checkEnablement
+      - this.performAction
+  - name: hasLocalData
+    sig: 'hasLocalData(): Promise<boolean>'
+    is_async: true
+    lines:
+    - 355
+    - 364
+    detail:
+      calls:
+      - this.performAction
+  - name: hasPreviouslySynced
+    sig: 'hasPreviouslySynced(): Promise<boolean>'
+    is_async: true
+    lines:
+    - 366
+    - 374
+    detail:
+      calls:
+      - this.performAction
+  - name: reset
+    sig: 'reset(): Promise<void>'
+    is_async: true
+    lines:
+    - 376
+    - 380
+    detail:
+      calls:
+      - this.checkEnablement
+      - this.resetLocal
+      - this.resetRemote
+  - name: resetRemote
+    sig: 'resetRemote(): Promise<void>'
+    is_async: true
+    lines:
+    - 382
+    - 391
+    detail:
+      calls:
+      - this._onDidResetRemote.fire
+      - this.checkEnablement
+      - this.logService.error
+      - this.logService.info
+      - this.userDataSyncStoreService.clear
+  - name: resetLocal
+    sig: 'resetLocal(): Promise<void>'
+    is_async: true
+    lines:
+    - 393
+    - 407
+    detail:
+      calls:
+      - synchronizer.resetLocal
+      - this._onDidResetLocal.fire
+      - this.activeProfileSynchronizers.values
+      - this.checkEnablement
+      - this.clearActiveProfileSynchronizers
+      - this.logService.error
+      - this.logService.info
+      - this.storageService.remove
+  - name: cleanUpStaleStorageData
+    sig: 'cleanUpStaleStorageData(): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 409
+    - 447
+    detail:
+      calls:
+      - defaultProfileSynchronizer.enabled.find
+      - disposables.add
+      - disposables.dispose
+      - key.endsWith
+      - key.split
+      - lastSyncProfileKeys.push
+      - lastSyncedCollections.includes
+      - lastSyncedProfiles?.map
+      - new DisposableStore
+      - this.activeProfileSynchronizers.get
+      - this.instantiationService.createInstance
+      - this.logService.info
+      - this.storageService.keys
+      - this.storageService.remove
+      - userDataProfileManifestSynchronizer.getLastSyncedProfiles
+  - name: cleanUpRemoteData
+    sig: 'cleanUpRemoteData(): Promise<void>'
+    is_async: true
+    lines:
+    - 449
+    - 473
+    detail:
+      calls:
+      - Promise.allSettled
+      - allCollections.filter
+      - profileManifestSynchronizer.dispose
+      - profileManifestSynchronizer.resetLocal
+      - profileManifestSynchronizer.updateRemoteProfiles
+      - redundantCollections.map
+      - remoteProfiles.filter
+      - remoteProfiles.map
+      - this.instantiationService.createInstance
+      - this.logService.info
+      - this.userDataSyncResourceProviderService.getRemoteSyncedProfiles
+      - this.userDataSyncStoreService.getAllCollections
+  - name: saveRemoteActivityData
+    sig: 'saveRemoteActivityData(location: URI): Promise<void>'
+    is_async: true
+    lines:
+    - 475
+    - 479
+    detail:
+      calls:
+      - this.checkEnablement
+      - this.fileService.writeFile
+      - this.userDataSyncStoreService.getActivityData
+  - name: extractActivityData
+    sig: 'extractActivityData(activityDataResource: URI, location: URI): Promise<void>'
+    is_async: true
+    lines:
+    - 481
+    - 502
+    detail:
+      calls:
+      - (await this.fileService.readFile(activityDataResource)).value.toString
+      - JSON.parse
+      - new Date
+      - this.fileService.readFile
+      - this.userDataSyncLocalStoreService.writeResource
+  - name: performAction
+    sig: 'performAction(profile: IUserDataProfile, action: (synchroniser: IUserDataSynchroniser) => Promise<T | undefined>): Promise<T | null>'
+    is_async: true
+    vis: private
+    lines:
+    - 504
+    - 533
+    detail:
+      calls:
+      - disposables.add
+      - disposables.dispose
+      - isUndefined
+      - new DisposableStore
+      - syncProfiles.find
+      - this.activeProfileSynchronizers.get
+      - this.instantiationService.createInstance
+      - this.performActionWithProfileSynchronizer
+      - this.userDataSyncStoreService.manifest
+      - userDataProfileManifestSynchronizer.getRemoteSyncedProfiles
+  - name: performActionWithProfileSynchronizer
+    sig: 'performActionWithProfileSynchronizer(profileSynchronizer: ProfileSynchronizer, action: (synchroniser: IUserDataSynchroniser) => Promise<T | undefined>, disposables: DisposableStore): Promise<T | undefined>'
+    is_async: true
+    vis: private
+    lines:
+    - 535
+    - 549
+    detail:
+      calls:
+      - action
+      - isUndefined
+      - profileSynchronizer.disabled.reduce
+  - name: updateConflicts
+    sig: 'updateConflicts(): void'
+    vis: private
+    lines:
+    - 562
+    - 568
+    detail:
+      calls:
+      - equals
+      - this._onDidChangeConflicts.fire
+      - this.getActiveProfileSynchronizers
+      - this.getActiveProfileSynchronizers().map
+      - this.getActiveProfileSynchronizers().map(synchronizer => synchronizer.conflicts).flat
+  - name: updateLastSyncTime
+    sig: 'updateLastSyncTime(): void'
+    vis: private
+    lines:
+    - 570
+    - 576
+    detail:
+      calls:
+      - new Date
+      - new Date().getTime
+      - this._onDidChangeLastSyncTime.fire
+      - this.storageService.store
+  - name: getOrCreateActiveProfileSynchronizer
+    sig: 'getOrCreateActiveProfileSynchronizer(profile: IUserDataProfile, syncProfile: ISyncUserDataProfile | undefined): ProfileSynchronizer'
+    lines:
+    - 578
+    - 595
+    detail:
+      calls:
+      - activeProfileSynchronizer[1].dispose
+      - disposables.add
+      - new DisposableStore
+      - profileSynchronizer.onDidChangeConflicts
+      - profileSynchronizer.onDidChangeLocal
+      - profileSynchronizer.onDidChangeStatus
+      - this.activeProfileSynchronizers.delete
+      - this.activeProfileSynchronizers.get
+      - this.activeProfileSynchronizers.set
+      - this.instantiationService.createInstance
+      - this.logService.error
+  lines:
+  - 51
+  - 616
+- name: ProfileSynchronizer
+  kind: struct
+  bases:
+  - Disposable
+  fields:
+  - name: _enabled
+    type: '[IUserDataSynchroniser, number, IDisposable][]'
+    default: '[]'
+  - name: _status
+    type: SyncStatus
+    default: SyncStatus.Idle
+  - name: _onDidChangeStatus
+    type: Emitter<SyncStatus>
+    default: this._register(new Emitter<SyncStatus>())
+  - name: onDidChangeStatus
+    type: Event<SyncStatus>
+    default: this._onDidChangeStatus.event
+  - name: _onDidChangeLocal
+    type: any
+    default: this._register(new Emitter<SyncResource>())
+  - name: onDidChangeLocal
+    type: any
+    default: this._onDidChangeLocal.event
+  - name: _conflicts
+    type: IUserDataSyncResourceConflicts[]
+    default: '[]'
+  - name: _onDidChangeConflicts
+    type: any
+    default: this._register(new Emitter<IUserDataSyncResourceConflicts[]>())
+  - name: onDidChangeConflicts
+    type: any
+    default: this._onDidChangeConflicts.event
+  methods:
+  - name: enabled
+    sig: 'enabled(): IUserDataSynchroniser[]'
+    lines:
+    - 622
+    - 622
+    detail:
+      calls:
+      - this._enabled.sort
+      - this._enabled.sort((a, b) => a[1] - b[1]).map
+  - name: disabled
+    sig: 'disabled(): SyncResource[]'
+    lines:
+    - 624
+    - 624
+    detail:
+      calls:
+      - ALL_SYNC_RESOURCES.filter
+  - name: status
+    sig: 'status(): SyncStatus'
+    lines:
+    - 627
+    - 627
+    detail: {}
+  - name: conflicts
+    sig: 'conflicts(): IUserDataSyncResourceConflicts[]'
+    lines:
+    - 635
+    - 635
+    detail: {}
+  - name: constructor
+    sig: "constructor(\n\t\treadonly profile: IUserDataProfile,\n\t\treadonly collection: string | undefined,\n\t\t@IUserDataSyncEnablementService private readonly userDataSyncEnablementService: IUserDataSyncEnablementService,\n\t\t@IInstantiationService private readonly instantiationService: IInstantiationService,\n\t\t@IExtensionGalleryService private readonly extensionGalleryService: IExtensionGalleryService,\n\t\t@IUserDataSyncStoreManagementService private readonly userDataSyncStoreManagementService: IUserDataSyncStoreManagementService,\n\t\t@ITelemetryService private readonly telemetryService: ITelemetryService,\n\t\t@IUserDataSyncLogService private readonly logService: IUserDataSyncLogService,\n\t\t@IConfigurationService private readonly configurationService: IConfigurationService,\n\t)"
+    lines:
+    - 639
+    - 658
+    detail:
+      calls:
+      - super
+      - this._register
+      - this.registerSynchronizer
+      - toDisposable
+      - userDataSyncEnablementService.isResourceEnabled
+      - userDataSyncEnablementService.onDidChangeResourceEnablement
+  - name: registerSynchronizer
+    sig: 'registerSynchronizer(syncResource: SyncResource): void'
+    vis: protected
+    lines:
+    - 668
+    - 695
+    detail:
+      calls:
+      - disposables.add
+      - new DisposableStore
+      - synchronizer.onDidChangeConflicts
+      - synchronizer.onDidChangeLocal
+      - synchronizer.onDidChangeStatus
+      - this._enabled.push
+      - this._enabled.some
+      - this.createSynchronizer
+      - this.extensionGalleryService.isEnabled
+      - this.getOrder
+      - this.logService.debug
+      - this.logService.info
+  - name: deRegisterSynchronizer
+    sig: 'deRegisterSynchronizer(syncResource: SyncResource): void'
+    vis: private
+    lines:
+    - 697
+    - 705
+    detail:
+      calls:
+      - disposable.dispose
+      - synchronizer.stop
+      - synchronizer.stop().then
+      - this._enabled.findIndex
+      - this._enabled.splice
+      - this.updateStatus
+  - name: createSynchronizer
+    sig: 'createSynchronizer(syncResource: Exclude<SyncResource, SyncResource.WorkspaceState>): IUserDataSynchroniser & IDisposable'
+    lines:
+    - 707
+    - 718
+    detail:
+      calls:
+      - this.instantiationService.createInstance
+  - name: sync
+    sig: 'sync(manifest: IUserDataManifest | null, preview: boolean, executionId: string, token: CancellationToken): Promise<[SyncResource, UserDataSyncError][]>'
+    is_async: true
+    lines:
+    - 720
+    - 768
+    detail:
+      calls:
+      - UserDataSyncError.toUserDataSyncError
+      - canBailout
+      - createSyncHeaders
+      - reportUserDataSyncError
+      - syncErrors.push
+      - synchroniser.sync
+      - this.getLocalUserDataSyncConfiguration
+      - this.getUserDataSyncConfiguration
+      - this.logService.error
+      - this.updateStatus
+      - this.userDataSyncEnablementService.isResourceEnabled
+      - toErrorMessage
+  - name: apply
+    sig: 'apply(executionId: string, token: CancellationToken): Promise<void>'
+    is_async: true
+    lines:
+    - 770
+    - 790
+    detail:
+      calls:
+      - UserDataSyncError.toUserDataSyncError
+      - canBailout
+      - createSyncHeaders
+      - reportUserDataSyncError
+      - synchroniser.apply
+      - this.logService.error
+      - toErrorMessage
+  - name: stop
+    sig: 'stop(): Promise<void>'
+    is_async: true
+    lines:
+    - 792
+    - 802
+    detail:
+      calls:
+      - synchroniser.stop
+      - this.logService.error
+  - name: resetLocal
+    sig: 'resetLocal(): Promise<void>'
+    is_async: true
+    lines:
+    - 804
+    - 813
+    detail:
+      calls:
+      - synchroniser.resetLocal
+      - this.logService.error
+      - toErrorMessage
+  - name: getUserDataSyncConfiguration
+    sig: 'getUserDataSyncConfiguration(manifest: IUserDataResourceManifest | null): Promise<IUserDataSyncConfiguration>'
+    is_async: true
+    vis: private
+    lines:
+    - 815
+    - 826
+    detail:
+      calls:
+      - (<SettingsSynchroniser>settingsSynchronizer).getRemoteUserDataSyncConfiguration
+      - this.enabled.find
+      - this.getLocalUserDataSyncConfiguration
+  - name: updateStatus
+    sig: 'updateStatus(): void'
+    vis: private
+    lines:
+    - 839
+    - 848
+    detail:
+      calls:
+      - this.enabled.some
+      - this.setStatus
+      - this.updateConflicts
+  - name: updateConflicts
+    sig: 'updateConflicts(): void'
+    vis: private
+    lines:
+    - 850
+    - 858
+    detail:
+      calls:
+      - equals
+      - this._onDidChangeConflicts.fire
+      - this.enabled.filter
+      - "this.enabled.filter(s => s.status === SyncStatus.HasConflicts)\n\t\t\t.filter"
+      - "this.enabled.filter(s => s.status === SyncStatus.HasConflicts)\n\t\t\t.filter(s => s.conflicts.conflicts..."
+  lines:
+  - 619
+  - 873
+functions:
+- name: canBailout
+  sig: 'canBailout(e: any): boolean'
+  lines:
+  - 875
+  - 892
+  detail: {}
+- name: reportUserDataSyncError
+  sig: 'reportUserDataSyncError(userDataSyncError: UserDataSyncError, executionId: string, userDataSyncStoreManagementService: IUserDataSyncStoreManagementService, telemetryService: ITelemetryService): void'
+  lines:
+  - 894
+  - 904
+  detail:
+    calls:
+    - String
+    - telemetryService.publicLog2
+    - userDataSyncStoreManagementService.userDataSyncStore!.url.toString
+exports:
+- name: SyncErrorClassification
+  kind: type
+- name: UserDataSyncService
+  kind: type
+- name: ProfileSynchronizer
+  kind: type
+- name: canBailout
+  kind: func
+- name: reportUserDataSyncError
+  kind: func
+- name: LAST_SYNC_TIME_KEY
+  kind: data

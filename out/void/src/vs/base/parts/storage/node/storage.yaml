@@ -1,0 +1,244 @@
+## Roska File Descriptor — node/storage.ts
+file: node/storage.ts
+lines: 466
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: fs.fs
+- sym: ../../../common/async.js.timeout
+- sym: ../../../common/event.js.Event
+- sym: ../../../common/map.js.mapToString
+- sym: ../../../common/map.js.setToString
+- sym: ../../../common/path.js.basename
+- sym: ../../../node/pfs.js.Promises
+- sym: ../common/storage.js.IStorageDatabase
+- sym: ../common/storage.js.IStorageItemsChangeEvent
+- sym: ../common/storage.js.IUpdateRequest
+- sym: '@vscode/sqlite3.Database'
+  kind: typing
+- sym: '@vscode/sqlite3.Statement'
+  kind: typing
+types:
+- name: IDatabaseConnection
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: readonly
+    type: Database
+  - name: readonly
+    type: boolean
+  - name: isErroneous
+    type: boolean
+  - name: lastError
+    type: string
+  lines:
+  - 15
+  - 21
+- name: ISQLiteStorageDatabaseOptions
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: readonly
+    type: ISQLiteStorageDatabaseLoggingOptions
+  lines:
+  - 23
+  - 25
+- name: ISQLiteStorageDatabaseLoggingOptions
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: logError
+    type: '(error: string | Error) => void'
+  - name: logTrace
+    type: '(msg: string) => void'
+  lines:
+  - 27
+  - 30
+- name: SQLiteStorageDatabase
+  kind: struct
+  ctx: timeout in ms to retry when opening DB fails with SQLITE_BUSY
+  bases:
+  - IStorageDatabase
+  fields:
+  - name: IN_MEMORY_PATH
+    type: any
+    default: ''':memory:'''
+  - name: BUSY_OPEN_TIMEOUT
+    type: any
+    default: '2000'
+  - name: MAX_HOST_PARAMETERS
+    type: any
+    default: '256'
+  - name: logger
+    type: SQLiteStorageDatabaseLogger
+  - name: whenConnected
+    type: Promise<IDatabaseConnection>
+  methods:
+  - name: onDidChangeItemsExternal
+    sig: 'onDidChangeItemsExternal(): Event<IStorageItemsChangeEvent>'
+    lines:
+    - 36
+    - 36
+    detail: {}
+  - name: constructor
+    sig: "constructor(\n\t\tprivate readonly path: string,\n\t\toptions: ISQLiteStorageDatabaseOptions = Object.create(null)\n\t)"
+    lines:
+    - 47
+    - 54
+    detail:
+      calls:
+      - basename
+      - new SQLiteStorageDatabaseLogger
+      - this.connect
+  - name: getItems
+    sig: 'getItems(): Promise<Map<string, string>>'
+    is_async: true
+    lines:
+    - 56
+    - 69
+    detail:
+      calls:
+      - new Map
+      - rows.forEach
+      - this.all
+      - this.logger.trace
+  - name: updateItems
+    sig: 'updateItems(request: IUpdateRequest): Promise<void>'
+    is_async: true
+    lines:
+    - 71
+    - 75
+    detail:
+      calls:
+      - this.doUpdateItems
+  - name: doUpdateItems
+    sig: 'doUpdateItems(connection: IDatabaseConnection, request: IUpdateRequest): Promise<void>'
+    vis: private
+    lines:
+    - 77
+    - 153
+    detail:
+      calls:
+      - mapToString
+      - setToString
+      - this.logger.trace
+      - this.transaction
+  - name: optimize
+    sig: 'optimize(): Promise<void>'
+    is_async: true
+    lines:
+    - 155
+    - 161
+    detail:
+      calls:
+      - this.exec
+      - this.logger.trace
+  - name: close
+    sig: 'close(recovery?: () => Map<string, string>): Promise<void>'
+    is_async: true
+    lines:
+    - 163
+    - 169
+    detail:
+      calls:
+      - this.doClose
+      - this.logger.trace
+  - name: checkIntegrity
+    sig: 'checkIntegrity(full: boolean): Promise<string>'
+    is_async: true
+    lines:
+    - 242
+    - 259
+    detail:
+      calls:
+      - this.get
+      - this.logger.trace
+  - name: connect
+    sig: 'connect(path: string, retryOnBusy: boolean = true): Promise<IDatabaseConnection>'
+    is_async: true
+    vis: private
+    lines:
+    - 261
+    - 307
+    detail:
+      calls:
+      - Promises.rename
+      - fs.promises.unlink
+      - this.connect
+      - this.doConnect
+      - this.logger.error
+      - this.logger.trace
+      - this.toBackupPath
+      - timeout
+  - name: prepare
+    sig: 'prepare(connection: IDatabaseConnection, sql: string, runCallback: (stmt: Statement) => void, errorDetails: () => string): void'
+    vis: private
+    lines:
+    - 414
+    - 432
+    detail:
+      calls:
+      - connection.db.prepare
+      - runCallback
+      - stmt.finalize
+      - stmt.on
+  lines:
+  - 32
+  - 433
+- name: SQLiteStorageDatabaseLogger
+  kind: struct
+  ctx: to reduce lots of output, require an environment variable to enable tracing
+  fields:
+  - name: VSCODE_TRACE_STORAGE
+    type: any
+    default: '''VSCODE_TRACE_STORAGE'''
+  - name: logTrace
+    type: '((msg: string) => void) | undefined'
+  - name: logError
+    type: '((error: string | Error) => void) | undefined'
+  methods:
+  - name: constructor
+    sig: 'constructor(options?: ISQLiteStorageDatabaseLoggingOptions)'
+    lines:
+    - 445
+    - 453
+    detail: {}
+  - name: isTracing
+    sig: 'isTracing(): boolean'
+    lines:
+    - 455
+    - 457
+    detail: {}
+  - name: trace
+    sig: 'trace(msg: string): void'
+    lines:
+    - 459
+    - 461
+    detail:
+      calls:
+      - this.logTrace
+  - name: error
+    sig: 'error(error: string | Error): void'
+    lines:
+    - 463
+    - 465
+    detail:
+      calls:
+      - this.logError
+  lines:
+  - 435
+  - 466
+exports:
+- name: IDatabaseConnection
+  kind: type
+- name: ISQLiteStorageDatabaseOptions
+  kind: type
+- name: ISQLiteStorageDatabaseLoggingOptions
+  kind: type
+- name: SQLiteStorageDatabase
+  kind: type
+- name: SQLiteStorageDatabaseLogger
+  kind: type

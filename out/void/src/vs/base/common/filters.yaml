@@ -1,0 +1,586 @@
+## Roska File Descriptor — common/filters.ts
+file: common/filters.ts
+lines: 926
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: ./charCode.js.CharCode
+- sym: ./map.js.LRUCache
+- sym: ./naturalLanguage/korean.js.getKoreanAltChars
+- sym: ./strings.js.strings
+data:
+- name: matchesStrictPrefix
+  type: IFilter
+  val: _matchesPrefix.bind(undefined, false)
+- name: matchesPrefix
+  type: IFilter
+  val: _matchesPrefix.bind(undefined, true)
+- name: wordSeparators
+  type: any
+  val: new Set<number>()
+- name: alternateCharsCache
+  type: Map<number, ArrayLike<number> | undefined>
+  val: new Map()
+- name: fuzzyContiguousFilter
+  type: any
+  val: or(matchesPrefix, matchesCamelCase, matchesContiguousSubString)
+- name: fuzzySeparateFilter
+  type: any
+  val: or(matchesPrefix, matchesCamelCase, matchesSubString)
+- name: fuzzyRegExpCache
+  type: any
+  val: new LRUCache<string, RegExp>(10000)
+- name: _maxLen
+  type: number
+  val: '128'
+- name: _minWordMatchPos
+  type: any
+  val: initArr(2 * _maxLen)
+- name: _maxWordMatchPos
+  type: any
+  val: initArr(2 * _maxLen)
+- name: _diag
+  type: any
+  val: initTable()
+- name: _table
+  type: any
+  val: initTable()
+- name: _arrows
+  type: any
+  val: <Arrow[][]>initTable()
+- name: _debug
+  type: boolean
+  val: 'false'
+types:
+- name: IFilter
+  kind: trait
+  decorators:
+  - interface
+  lines:
+  - 11
+  - 14
+- name: IMatch
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: start
+    type: number
+  - name: end
+    type: number
+  lines:
+  - 16
+  - 19
+- name: ICamelCaseAnalysis
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: upperPercent
+    type: number
+  - name: lowerPercent
+    type: number
+  - name: alphaPercent
+    type: number
+  - name: numericPercent
+    type: number
+  lines:
+  - 209
+  - 214
+- name: Arrow
+  kind: enum
+  variants:
+  - name: Diag
+    val: '1'
+  - name: Left
+    val: '2'
+  - name: LeftLeft
+    val: '3'
+  lines:
+  - 590
+  - 590
+- name: FuzzyScore
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 601
+  - 601
+- name: FuzzyScoreOptions
+  kind: trait
+  decorators:
+  - abstract
+  fields:
+  - name: default
+    type: any
+    default: '{ boostFullMatch: true, firstMatchCanBeWeak: false }'
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\treadonly firstMatchCanBeWeak: boolean,\n\t\treadonly boostFullMatch: boolean,\n\t)"
+    lines:
+    - 618
+    - 621
+    detail: {}
+  lines:
+  - 614
+  - 622
+- name: FuzzyScorer
+  kind: trait
+  decorators:
+  - interface
+  lines:
+  - 624
+  - 626
+functions:
+- name: or
+  sig: 'or(...filter: IFilter[]): IFilter'
+  lines:
+  - 29
+  - 39
+  detail:
+    calls:
+    - filter[i]
+- name: matchesContiguousSubString
+  sig: 'matchesContiguousSubString(word: string, wordToMatchAgainst: string): IMatch[] | null'
+  lines:
+  - 67
+  - 74
+  detail:
+    calls:
+    - word.toLowerCase
+    - wordToMatchAgainst.toLowerCase
+    - wordToMatchAgainst.toLowerCase().indexOf
+- name: matchesSubString
+  sig: 'matchesSubString(word: string, wordToMatchAgainst: string): IMatch[] | null'
+  lines:
+  - 78
+  - 80
+  detail:
+    calls:
+    - _matchesSubString
+    - word.toLowerCase
+    - wordToMatchAgainst.toLowerCase
+- name: isLower
+  sig: 'isLower(code: number): boolean'
+  lines:
+  - 102
+  - 104
+- name: isUpper
+  sig: 'isUpper(code: number): boolean'
+  lines:
+  - 106
+  - 108
+- name: isNumber
+  sig: 'isNumber(code: number): boolean'
+  lines:
+  - 110
+  - 112
+- name: isWhitespace
+  sig: 'isWhitespace(code: number): boolean'
+  lines:
+  - 114
+  - 121
+  detail: {}
+- name: isWordSeparator
+  sig: 'isWordSeparator(code: number): boolean'
+  lines:
+  - 130
+  - 132
+  detail:
+    calls:
+    - isWhitespace
+    - wordSeparators.has
+- name: charactersMatch
+  sig: 'charactersMatch(codeA: number, codeB: number): boolean'
+  lines:
+  - 134
+  - 136
+- name: getAlternateCodes
+  sig: 'getAlternateCodes(code: number): ArrayLike<number> | undefined'
+  lines:
+  - 146
+  - 163
+  detail:
+    calls:
+    - alternateCharsCache.get
+    - alternateCharsCache.has
+    - alternateCharsCache.set
+    - getKoreanAltChars
+- name: isAlphanumeric
+  sig: 'isAlphanumeric(code: number): boolean'
+  lines:
+  - 165
+  - 167
+- name: join
+  sig: 'join(head: IMatch, tail: IMatch[]): IMatch[]'
+  lines:
+  - 169
+  - 178
+  detail:
+    calls:
+    - tail.unshift
+- name: nextAnchor
+  sig: 'nextAnchor(camelCaseWord: string, start: number): number'
+  lines:
+  - 180
+  - 188
+  detail:
+    calls:
+    - camelCaseWord.charCodeAt
+    - isAlphanumeric
+    - isNumber
+    - isUpper
+- name: analyzeCamelCaseWord
+  sig: 'analyzeCamelCaseWord(word: string): ICamelCaseAnalysis'
+  lines:
+  - 218
+  - 236
+  detail:
+    calls:
+    - isAlphanumeric
+    - isLower
+    - isNumber
+    - isUpper
+    - word.charCodeAt
+- name: isUpperCaseWord
+  sig: 'isUpperCaseWord(analysis: ICamelCaseAnalysis): boolean'
+  lines:
+  - 238
+  - 241
+- name: isCamelCaseWord
+  sig: 'isCamelCaseWord(analysis: ICamelCaseAnalysis): boolean'
+  lines:
+  - 243
+  - 246
+- name: isCamelCasePattern
+  sig: 'isCamelCasePattern(word: string): boolean'
+  lines:
+  - 250
+  - 266
+  detail:
+    calls:
+    - isLower
+    - isUpper
+    - isWhitespace
+    - word.charCodeAt
+- name: matchesCamelCase
+  sig: 'matchesCamelCase(word: string, camelCaseWord: string): IMatch[] | null'
+  lines:
+  - 268
+  - 307
+  detail:
+    calls:
+    - _matchesCamelCase
+    - analyzeCamelCaseWord
+    - camelCaseWord.substring
+    - camelCaseWord.toLowerCase
+    - camelCaseWord.trim
+    - isCamelCasePattern
+    - isCamelCaseWord
+    - isUpperCaseWord
+    - nextAnchor
+    - word.toLowerCase
+- name: matchesWords
+  sig: 'matchesWords(word: string, target: string, contiguous: boolean = false): IMatch[] | null'
+  lines:
+  - 314
+  - 333
+  detail:
+    calls:
+    - _matchesWords
+    - nextWord
+    - target.toLowerCase
+    - word.toLowerCase
+- name: _matchesWords
+  sig: '_matchesWords(word: string, target: string, wordIndex: number, targetIndex: number, contiguous: boolean): IMatch[] | null'
+  vis: private
+  lines:
+  - 335
+  - 386
+  detail:
+    calls:
+    - _matchesWords
+    - charactersMatch
+    - getAlternateCodes
+    - join
+    - nextWord
+    - target.charCodeAt
+    - word.charCodeAt
+- name: nextWord
+  sig: 'nextWord(word: string, start: number): number'
+  lines:
+  - 388
+  - 396
+  detail:
+    calls:
+    - isWordSeparator
+    - word.charCodeAt
+- name: matchesFuzzy
+  sig: 'matchesFuzzy(word: string, wordToMatchAgainst: string, enableSeparateSubstringMatching = false): IMatch[] | null'
+  lines:
+  - 404
+  - 424
+  detail:
+    calls:
+    - fuzzyContiguousFilter
+    - fuzzyRegExpCache.get
+    - fuzzyRegExpCache.set
+    - fuzzySeparateFilter
+    - new RegExp
+    - regexp.exec
+    - strings.convertSimple2RegExpPattern
+- name: matchesFuzzy2
+  sig: 'matchesFuzzy2(pattern: string, word: string): IMatch[] | null'
+  lines:
+  - 430
+  - 433
+  detail:
+    calls:
+    - createMatches
+    - fuzzyScore
+    - pattern.toLowerCase
+    - word.toLowerCase
+- name: anyScore
+  sig: 'anyScore(pattern: string, lowPattern: string, patternPos: number, word: string, lowWord: string, wordPos: number): FuzzyScore'
+  lines:
+  - 435
+  - 444
+  detail:
+    calls:
+    - Math.min
+    - fuzzyScore
+- name: createMatches
+  sig: 'createMatches(score: undefined | FuzzyScore): IMatch[]'
+  lines:
+  - 448
+  - 464
+  detail:
+    calls:
+    - res.push
+- name: initTable
+  sig: initTable()
+  lines:
+  - 468
+  - 478
+  detail:
+    calls:
+    - row.slice
+    - table.push
+- name: initArr
+  sig: 'initArr(maxLen: number)'
+  lines:
+  - 480
+  - 486
+  detail: {}
+- name: printTable
+  sig: 'printTable(table: number[][], pattern: string, patternLen: number, word: string, wordLen: number): string'
+  lines:
+  - 495
+  - 513
+  detail:
+    calls:
+    - table[i].slice
+    - table[i].slice(0, wordLen + 1).map
+    - table[i].slice(0, wordLen + 1).map(n => pad(n.toString(), 3)).join
+    - word.split
+    - word.split('').map
+    - word.split('').map(c => pad(c, 3)).join
+- name: printTables
+  sig: 'printTables(pattern: string, patternStart: number, word: string, wordStart: number): void'
+  lines:
+  - 515
+  - 521
+  detail:
+    calls:
+    - console.log
+    - pattern.substr
+    - printTable
+    - word.substr
+- name: isSeparatorAtPos
+  sig: 'isSeparatorAtPos(value: string, index: number): boolean'
+  lines:
+  - 523
+  - 556
+  detail:
+    calls:
+    - strings.isEmojiImprecise
+    - value.codePointAt
+- name: isWhitespaceAtPos
+  sig: 'isWhitespaceAtPos(value: string, index: number): boolean'
+  lines:
+  - 558
+  - 570
+  detail:
+    calls:
+    - value.charCodeAt
+- name: isUpperCaseAtPos
+  sig: 'isUpperCaseAtPos(pos: number, word: string, wordLow: string): boolean'
+  lines:
+  - 572
+  - 574
+- name: isPatternInWord
+  sig: 'isPatternInWord(patternLow: string, patternPos: number, patternLen: number, wordLow: string, wordPos: number, wordLen: number, fillMinWordPosArr = false): boolean'
+  lines:
+  - 576
+  - 588
+  detail: {}
+- name: fuzzyScore
+  sig: 'fuzzyScore(pattern: string, patternLow: string, patternStart: number, word: string, wordLow: string, wordStart: number, options: FuzzyScoreOptions = FuzzyScoreOptions.default): FuzzyScore | undefined'
+  lines:
+  - 628
+  - 778
+  detail:
+    calls:
+    - _doScore
+    - _fillInMaxWordMatchPos
+    - isPatternInWord
+    - isUpperCaseAtPos
+    - new Error
+    - printTables
+    - result.push
+- name: fuzzyScoreGracefulAggressive
+  sig: 'fuzzyScoreGracefulAggressive(pattern: string, lowPattern: string, patternPos: number, word: string, lowWord: string, wordPos: number, options?: FuzzyScoreOptions): FuzzyScore | undefined'
+  lines:
+  - 866
+  - 868
+- name: fuzzyScoreGraceful
+  sig: 'fuzzyScoreGraceful(pattern: string, lowPattern: string, patternPos: number, word: string, lowWord: string, wordPos: number, options?: FuzzyScoreOptions): FuzzyScore | undefined'
+  lines:
+  - 870
+  - 872
+- name: fuzzyScoreWithPermutations
+  sig: 'fuzzyScoreWithPermutations(pattern: string, lowPattern: string, patternPos: number, word: string, lowWord: string, wordPos: number, aggressive: boolean, options?: FuzzyScoreOptions): FuzzyScore | undefined'
+  lines:
+  - 874
+  - 905
+  detail:
+    calls:
+    - Math.min
+    - fuzzyScore
+    - newPattern.toLowerCase
+    - nextTypoPermutation
+- name: nextTypoPermutation
+  sig: 'nextTypoPermutation(pattern: string, patternPos: number): string | undefined'
+  lines:
+  - 907
+  - 924
+  detail:
+    calls:
+    - pattern.slice
+exports:
+- name: IFilter
+  kind: type
+- name: IMatch
+  kind: type
+- name: ICamelCaseAnalysis
+  kind: type
+- name: Arrow
+  kind: type
+- name: FuzzyScore
+  kind: type
+- name: FuzzyScoreOptions
+  kind: type
+- name: FuzzyScorer
+  kind: type
+- name: or
+  kind: func
+- name: matchesContiguousSubString
+  kind: func
+- name: matchesSubString
+  kind: func
+- name: isLower
+  kind: func
+- name: isUpper
+  kind: func
+- name: isNumber
+  kind: func
+- name: isWhitespace
+  kind: func
+- name: isWordSeparator
+  kind: func
+- name: charactersMatch
+  kind: func
+- name: getAlternateCodes
+  kind: func
+- name: isAlphanumeric
+  kind: func
+- name: join
+  kind: func
+- name: nextAnchor
+  kind: func
+- name: analyzeCamelCaseWord
+  kind: func
+- name: isUpperCaseWord
+  kind: func
+- name: isCamelCaseWord
+  kind: func
+- name: isCamelCasePattern
+  kind: func
+- name: matchesCamelCase
+  kind: func
+- name: matchesWords
+  kind: func
+- name: nextWord
+  kind: func
+- name: matchesFuzzy
+  kind: func
+- name: matchesFuzzy2
+  kind: func
+- name: anyScore
+  kind: func
+- name: createMatches
+  kind: func
+- name: initTable
+  kind: func
+- name: initArr
+  kind: func
+- name: printTable
+  kind: func
+- name: printTables
+  kind: func
+- name: isSeparatorAtPos
+  kind: func
+- name: isWhitespaceAtPos
+  kind: func
+- name: isUpperCaseAtPos
+  kind: func
+- name: isPatternInWord
+  kind: func
+- name: fuzzyScore
+  kind: func
+- name: fuzzyScoreGracefulAggressive
+  kind: func
+- name: fuzzyScoreGraceful
+  kind: func
+- name: fuzzyScoreWithPermutations
+  kind: func
+- name: nextTypoPermutation
+  kind: func
+- name: matchesStrictPrefix
+  kind: data
+- name: matchesPrefix
+  kind: data
+- name: wordSeparators
+  kind: data
+- name: alternateCharsCache
+  kind: data
+- name: fuzzyContiguousFilter
+  kind: data
+- name: fuzzySeparateFilter
+  kind: data
+- name: fuzzyRegExpCache
+  kind: data
+- name: _maxLen
+  kind: data
+- name: _minWordMatchPos
+  kind: data
+- name: _maxWordMatchPos
+  kind: data
+- name: _diag
+  kind: data
+- name: _table
+  kind: data
+- name: _arrows
+  kind: data
+- name: _debug
+  kind: data

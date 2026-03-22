@@ -1,0 +1,160 @@
+## Roska File Descriptor — src/branchProtection.ts
+file: src/branchProtection.ts
+lines: 244
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: vscode.authentication
+- sym: vscode.EventEmitter
+- sym: vscode.LogOutputChannel
+- sym: vscode.Memento
+- sym: vscode.Uri
+- sym: vscode.workspace
+- sym: '@octokit/graphql-schema.Repository as GitHubRepository'
+- sym: '@octokit/graphql-schema.RepositoryRuleset'
+- sym: ./auth.AuthenticationError
+- sym: ./auth.getOctokitGraphql
+- sym: ./typings/git.API
+- sym: ./typings/git.BranchProtection
+- sym: ./typings/git.BranchProtectionProvider
+- sym: ./typings/git.BranchProtectionRule
+- sym: ./typings/git.Repository
+- sym: ./util.DisposableStore
+- sym: ./util.getRepositoryFromUrl
+- sym: '@vscode/extension-telemetry.TelemetryReporter'
+data:
+- name: REPOSITORY_QUERY
+  type: string
+  val: "`\n\tquery repositoryPermissions($owner: String!, $repo: String!) {\n\t\trepository(owner: $owner, name: $repo) {\n\t\t\tdefaultB..."
+- name: REPOSITORY_RULESETS_QUERY
+  type: string
+  val: "`\n\tquery repositoryRulesets($owner: String!, $repo: String!, $cursor: String, $limit: Int = 100) {\n\t\trepository(owner: $..."
+types:
+- name: GitHubBranchProtectionProviderManager
+  kind: struct
+  fields:
+  - name: disposables
+    type: any
+    default: new DisposableStore()
+  - name: providerDisposables
+    type: any
+    default: new DisposableStore()
+  - name: _enabled
+    type: any
+    default: 'false'
+  methods:
+  - name: enabled
+    sig: 'enabled(enabled: boolean)'
+    vis: private
+    lines:
+    - 57
+    - 71
+    detail:
+      calls:
+      - new GitHubBranchProtectionProvider
+      - this.gitAPI.registerBranchProtectionProvider
+      - this.providerDisposables.add
+      - this.providerDisposables.dispose
+  - name: constructor
+    sig: "constructor(\n\t\tprivate readonly gitAPI: API,\n\t\tprivate readonly globalState: Memento,\n\t\tprivate readonly logger: LogOutputChannel,\n\t\tprivate readonly telemetryReporter: TelemetryReporter)"
+    lines:
+    - 73
+    - 91
+    detail:
+      calls:
+      - this.disposables.add
+      - this.gitAPI.onDidOpenRepository
+      - this.updateEnablement
+      - workspace.onDidChangeConfiguration
+  - name: dispose
+    sig: 'dispose(): void'
+    lines:
+    - 98
+    - 101
+    detail:
+      calls:
+      - this.disposables.dispose
+  lines:
+  - 51
+  - 103
+- name: GitHubBranchProtectionProvider
+  kind: struct
+  bases:
+  - BranchProtectionProvider
+  fields:
+  - name: _onDidChangeBranchProtection
+    type: any
+    default: new EventEmitter<Uri>()
+  - name: onDidChangeBranchProtection
+    type: any
+    default: this._onDidChangeBranchProtection.event
+  - name: branchProtection
+    type: BranchProtection[]
+  - name: globalStateKey
+    type: any
+    default: '`branchProtection:${this.repository.rootUri.toString()}`'
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tprivate readonly repository: Repository,\n\t\tprivate readonly globalState: Memento,\n\t\tprivate readonly logger: LogOutputChannel,\n\t\tprivate readonly telemetryReporter: TelemetryReporter)"
+    lines:
+    - 112
+    - 128
+    detail:
+      calls:
+      - repository.status
+      - repository.status().then
+      - this.globalState.get
+  - name: provideBranchProtection
+    sig: 'provideBranchProtection(): BranchProtection[]'
+    lines:
+    - 130
+    - 132
+    detail: {}
+  - name: getRepositoryRulesets
+    sig: 'getRepositoryRulesets(owner: string, repo: string): Promise<RepositoryRuleset[]>'
+    is_async: true
+    vis: private
+    lines:
+    - 141
+    - 162
+    detail:
+      calls:
+      - "(repository.rulesets?.nodes ?? [])\n\t\t\t\t// Active branch ruleset that contains the pull request requi..."
+      - await graphql
+      - getOctokitGraphql
+      - rulesets.push
+  - name: updateRepositoryBranchProtection
+    sig: 'updateRepositoryBranchProtection(): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 164
+    - 228
+    detail:
+      calls:
+      - (ruleset.conditions.refName?.exclude ?? []).map
+      - (ruleset.conditions.refName?.include ?? []).map
+      - JSON.stringify
+      - branchProtection.push
+      - branchProtectionRules.push
+      - getRepositoryFromUrl
+      - this._onDidChangeBranchProtection.fire
+      - this.getRepositoryDetails
+      - this.getRepositoryRulesets
+      - this.globalState.update
+      - this.logger.trace
+      - this.logger.warn
+      - this.repository.rootUri.toString
+      - this.telemetryReporter.sendTelemetryEvent
+  lines:
+  - 105
+  - 244
+exports:
+- name: GitHubBranchProtectionProviderManager
+  kind: type
+- name: GitHubBranchProtectionProvider
+  kind: type
+- name: REPOSITORY_QUERY
+  kind: data
+- name: REPOSITORY_RULESETS_QUERY
+  kind: data

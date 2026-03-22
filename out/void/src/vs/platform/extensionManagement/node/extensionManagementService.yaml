@@ -1,0 +1,981 @@
+## Roska File Descriptor — node/extensionManagementService.ts
+file: node/extensionManagementService.ts
+lines: 1156
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: fs.fs
+- sym: ../../../base/common/async.js.Promises
+- sym: ../../../base/common/async.js.Queue
+- sym: ../../../base/common/buffer.js.VSBuffer
+- sym: ../../../base/common/cancellation.js.CancellationToken
+- sym: ../../../base/common/collections.js.IStringDictionary
+- sym: ../../../base/common/errors.js.CancellationError
+- sym: ../../../base/common/errors.js.getErrorMessage
+- sym: ../../../base/common/event.js.Emitter
+- sym: ../../../base/common/hash.js.hash
+- sym: ../../../base/common/lifecycle.js.Disposable
+- sym: ../../../base/common/map.js.ResourceMap
+- sym: ../../../base/common/map.js.ResourceSet
+- sym: ../../../base/common/network.js.Schemas
+- sym: ../../../base/common/path.js.path
+- sym: ../../../base/common/resources.js.joinPath
+- sym: ../../../base/common/semver/semver.js.semver
+- sym: ../../../base/common/types.js.isBoolean
+- sym: ../../../base/common/types.js.isDefined
+- sym: ../../../base/common/types.js.isUndefined
+- sym: ../../../base/common/uri.js.URI
+- sym: ../../../base/common/uuid.js.generateUuid
+- sym: ../../../base/node/pfs.js.pfs
+- sym: ../../../base/node/zip.js.extract
+- sym: ../../../base/node/zip.js.IFile
+- sym: ../../../base/node/zip.js.zip
+- sym: ../../../nls.js.nls
+- sym: ../../download/common/download.js.IDownloadService
+- sym: ../../environment/common/environment.js.INativeEnvironmentService
+- sym: ../common/abstractExtensionManagementService.js.AbstractExtensionManagementService
+- sym: ../common/abstractExtensionManagementService.js.AbstractExtensionTask
+- sym: ../common/abstractExtensionManagementService.js.IInstallExtensionTask
+- sym: ../common/abstractExtensionManagementService.js.InstallExtensionTaskOptions
+- sym: ../common/abstractExtensionManagementService.js.IUninstallExtensionTask
+- sym: ../common/abstractExtensionManagementService.js.toExtensionManagementError
+- sym: ../common/abstractExtensionManagementService.js.UninstallExtensionTaskOptions
+- sym: ../common/extensionManagement.js.ExtensionManagementError
+- sym: ../common/extensionManagement.js.ExtensionManagementErrorCode
+- sym: ../common/extensionManagement.js.IExtensionGalleryService
+- sym: ../common/extensionManagement.js.IExtensionIdentifier
+- sym: ../common/extensionManagement.js.IExtensionManagementService
+- sym: ../common/extensionManagement.js.IGalleryExtension
+- sym: ../common/extensionManagement.js.ILocalExtension
+- sym: ../common/extensionManagement.js.InstallOperation
+- sym: ../common/extensionManagement.js.Metadata
+- sym: ../common/extensionManagement.js.InstallOptions
+- sym: ../common/extensionManagement.js.IProductVersion
+- sym: ../common/extensionManagement.js.EXTENSION_INSTALL_CLIENT_TARGET_PLATFORM_CONTEXT
+- sym: ../common/extensionManagement.js.ExtensionSignatureVerificationCode
+- sym: ../common/extensionManagement.js.computeSize
+- sym: ../common/extensionManagement.js.IAllowedExtensionsService
+- sym: ../common/extensionManagementUtil.js.areSameExtensions
+- sym: ../common/extensionManagementUtil.js.computeTargetPlatform
+- sym: ../common/extensionManagementUtil.js.ExtensionKey
+- sym: ../common/extensionManagementUtil.js.getGalleryExtensionId
+- sym: ../common/extensionManagementUtil.js.groupByExtension
+- sym: ../common/extensionsProfileScannerService.js.IExtensionsProfileScannerService
+- sym: ../common/extensionsProfileScannerService.js.IScannedProfileExtension
+- sym: ../common/extensionsScannerService.js.IExtensionsScannerService
+- sym: ../common/extensionsScannerService.js.IScannedExtension
+- sym: ../common/extensionsScannerService.js.ManifestMetadata
+- sym: ../common/extensionsScannerService.js.UserExtensionsScanOptions
+- sym: ./extensionDownloader.js.ExtensionsDownloader
+- sym: ./extensionLifecycle.js.ExtensionsLifecycle
+- sym: ./extensionManagementUtil.js.fromExtractError
+- sym: ./extensionManagementUtil.js.getManifest
+- sym: ./extensionsManifestCache.js.ExtensionsManifestCache
+- sym: ./extensionsWatcher.js.DidChangeProfileExtensionsEvent
+- sym: ./extensionsWatcher.js.ExtensionsWatcher
+- sym: ../../extensions/common/extensions.js.ExtensionType
+- sym: ../../extensions/common/extensions.js.IExtension
+- sym: ../../extensions/common/extensions.js.IExtensionManifest
+- sym: ../../extensions/common/extensions.js.TargetPlatform
+- sym: ../../extensions/common/extensionValidator.js.isEngineValid
+- sym: ../../files/common/files.js.FileChangesEvent
+- sym: ../../files/common/files.js.FileChangeType
+- sym: ../../files/common/files.js.FileOperationResult
+- sym: ../../files/common/files.js.IFileService
+- sym: ../../files/common/files.js.IFileStat
+- sym: ../../files/common/files.js.toFileOperationResult
+- sym: ../../instantiation/common/instantiation.js.IInstantiationService
+- sym: ../../instantiation/common/instantiation.js.refineServiceDecorator
+- sym: ../../log/common/log.js.ILogService
+- sym: ../../product/common/productService.js.IProductService
+- sym: ../../telemetry/common/telemetry.js.ITelemetryService
+- sym: ../../uriIdentity/common/uriIdentity.js.IUriIdentityService
+- sym: ../../userDataProfile/common/userDataProfile.js.IUserDataProfilesService
+- sym: ../../configuration/common/configuration.js.IConfigurationService
+- sym: ../../../base/common/platform.js.isLinux
+- sym: ../common/extensionGalleryManifest.js.IExtensionGalleryManifestService
+data:
+- name: INativeServerExtensionManagementService
+  type: any
+  val: refineServiceDecorator<IExtensionManagementService, INativeServerExtensionManagementService>(IExtensionManagementService...
+- name: DELETED_FOLDER_POSTFIX
+  type: string
+  val: '''.vsctmp'''
+types:
+- name: INativeServerExtensionManagementService
+  kind: trait
+  bases:
+  - IExtensionManagementService
+  decorators:
+  - interface
+  fields:
+  - name: readonly
+    type: undefined
+  - name: scanAllUserInstalledExtensions
+    type: 'method: scanAllUserInstalledExtensions(): Promise<ILocalExtension[]>'
+  - name: scanInstalledExtensionAtLocation
+    type: 'method: scanInstalledExtensionAtLocation(location: URI): Promise<ILocalExtension | null>'
+  - name: deleteExtensions
+    type: 'method: deleteExtensions(...extensions: IExtension[]): Promise<void>'
+  lines:
+  - 60
+  - 65
+- name: ExtractExtensionResult
+  kind: typealias
+  decorators:
+  - type
+  fields:
+  - name: readonly
+    type: ILocalExtension
+  - name: readonly
+    type: ExtensionSignatureVerificationCode
+  lines:
+  - 67
+  - 67
+- name: ExtensionManagementService
+  kind: struct
+  bases:
+  - AbstractExtensionManagementService
+  - INativeServerExtensionManagementService
+  fields:
+  - name: extensionsScanner
+    type: ExtensionsScanner
+  - name: manifestCache
+    type: ExtensionsManifestCache
+  - name: extensionsDownloader
+    type: ExtensionsDownloader
+  - name: extractingGalleryExtensions
+    type: any
+    default: new Map<string, Promise<ExtractExtensionResult>>()
+  - name: _targetPlatformPromise
+    type: Promise<TargetPlatform> | undefined
+  - name: knownDirectories
+    type: any
+    default: new ResourceSet()
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\t@IExtensionGalleryService galleryService: IExtensionGalleryService,\n\t\t@ITelemetryService telemetryService: ITelemetryService,\n\t\t@ILogService logService: ILogService,\n\t\t@INativeEnvironmentService private readonly environmentService: INativeEnvironmentService,\n\t\t@IExtensionsScannerService private readonly extensionsScannerService: IExtensionsScannerService,\n\t\t@IExtensionsProfileScannerService private readonly extensionsProfileScannerService: IExtensionsProfileScannerService,\n\t\t@IDownloadService private downloadService: IDownloadService,\n\t\t@IInstantiationService private readonly instantiationService: IInstantiationService,\n\t\t@IFileService private readonly fileService: IFileService,\n\t\t@IConfigurationService private readonly configurationService: IConfigurationService,\n\t\t@IExtensionGalleryManifestService protected readonly extensionGalleryManifestService: IExtensionGalleryManifestService,\n\t\t@IProductService productService: IProductService,\n\t\t@IAllowedExtensionsService allowedExtensionsService: IAllowedExtensionsService,\n\t\t@IUriIdentityService uriIdentityService: IUriIdentityService,\n\t\t@IUserDataProfilesService userDataProfilesService: IUserDataProfilesService\n\t)"
+    lines:
+    - 79
+    - 105
+    detail:
+      calls:
+      - extensionsWatcher.onDidChangeExtensionsByAnotherSource
+      - instantiationService.createInstance
+      - new ExtensionsManifestCache
+      - new ExtensionsWatcher
+      - super
+      - this._register
+      - this.watchForExtensionsNotInstalledBySystem
+  - name: getTargetPlatform
+    sig: 'getTargetPlatform(): Promise<TargetPlatform>'
+    lines:
+    - 108
+    - 113
+    detail:
+      calls:
+      - computeTargetPlatform
+  - name: zip
+    sig: 'zip(extension: ILocalExtension): Promise<URI>'
+    is_async: true
+    lines:
+    - 115
+    - 120
+    detail:
+      calls:
+      - URI.file
+      - generateUuid
+      - joinPath
+      - this.collectFiles
+      - this.logService.trace
+      - zip
+  - name: getManifest
+    sig: 'getManifest(vsix: URI): Promise<IExtensionManifest>'
+    is_async: true
+    lines:
+    - 122
+    - 130
+    detail:
+      calls:
+      - cleanup
+      - getManifest
+      - path.resolve
+      - this.downloadVsix
+  - name: getInstalled
+    sig: 'getInstalled(type?: ExtensionType, profileLocation: URI = this.userDataProfilesService.defaultProfile.extensionsResource, productVersion: IProductVersion = { version: this.productService.version, date: this.productService.date }): Promise<ILocalExtension[]>'
+    lines:
+    - 132
+    - 134
+    detail:
+      calls:
+      - this.extensionsScanner.scanExtensions
+  - name: scanAllUserInstalledExtensions
+    sig: 'scanAllUserInstalledExtensions(): Promise<ILocalExtension[]>'
+    lines:
+    - 136
+    - 138
+    detail:
+      calls:
+      - this.extensionsScanner.scanAllUserExtensions
+  - name: scanInstalledExtensionAtLocation
+    sig: 'scanInstalledExtensionAtLocation(location: URI): Promise<ILocalExtension | null>'
+    lines:
+    - 140
+    - 142
+    detail:
+      calls:
+      - this.extensionsScanner.scanUserExtensionAtLocation
+  - name: install
+    sig: 'install(vsix: URI, options: InstallOptions = {}): Promise<ILocalExtension>'
+    is_async: true
+    lines:
+    - 144
+    - 173
+    detail:
+      calls:
+      - cleanup
+      - getGalleryExtensionId
+      - getManifest
+      - isEngineValid
+      - new Error
+      - nls.localize
+      - path.resolve
+      - results.find
+      - this.allowedExtensionsService.isAllowed
+      - this.downloadVsix
+      - this.installExtensions
+      - this.logService.trace
+      - toExtensionManagementError
+      - vsix.toString
+  - name: installFromLocation
+    sig: 'installFromLocation(location: URI, profileLocation: URI): Promise<ILocalExtension>'
+    is_async: true
+    lines:
+    - 175
+    - 184
+    detail:
+      calls:
+      - location.toString
+      - new Error
+      - profileLocation.toString
+      - this.addExtensionsToProfile
+      - this.extensionsScanner.scanUserExtensionAtLocation
+      - this.logService.info
+      - this.logService.trace
+  - name: installExtensionsFromProfile
+    sig: 'installExtensionsFromProfile(extensions: IExtensionIdentifier[], fromProfileLocation: URI, toProfileLocation: URI): Promise<ILocalExtension[]>'
+    is_async: true
+    lines:
+    - 186
+    - 195
+    detail:
+      calls:
+      - (await this.getInstalled(ExtensionType.User, fromProfileLocation)).filter
+      - Promise.all
+      - extensionsToInstall.map
+      - fromProfileLocation.toString
+      - this.addExtensionsToProfile
+      - this.getInstalled
+      - this.logService.info
+      - this.logService.trace
+      - toProfileLocation.toString
+  - name: updateMetadata
+    sig: 'updateMetadata(local: ILocalExtension, metadata: Partial<Metadata>, profileLocation: URI): Promise<ILocalExtension>'
+    is_async: true
+    lines:
+    - 197
+    - 217
+    detail:
+      calls:
+      - this._onDidUpdateExtensionMetadata.fire
+      - this.extensionsScanner.updateMetadata
+      - this.logService.trace
+      - this.manifestCache.invalidate
+  - name: copyExtensions
+    sig: 'copyExtensions(fromProfileLocation: URI, toProfileLocation: URI): Promise<void>'
+    lines:
+    - 227
+    - 229
+    detail:
+      calls:
+      - this.extensionsScanner.copyExtensions
+  - name: deleteExtensions
+    sig: 'deleteExtensions(...extensions: IExtension[]): Promise<void>'
+    lines:
+    - 231
+    - 233
+    detail:
+      calls:
+      - this.extensionsScanner.setExtensionsForRemoval
+  - name: cleanUp
+    sig: 'cleanUp(): Promise<void>'
+    is_async: true
+    lines:
+    - 235
+    - 242
+    detail:
+      calls:
+      - this.extensionsScanner.cleanUp
+      - this.logService.error
+      - this.logService.trace
+  - name: download
+    sig: 'download(extension: IGalleryExtension, operation: InstallOperation, donotVerifySignature: boolean): Promise<URI>'
+    is_async: true
+    lines:
+    - 244
+    - 247
+    detail:
+      calls:
+      - this.downloadExtension
+  - name: downloadVsix
+    sig: 'downloadVsix(vsix: URI): Promise<{ location: URI; cleanup: () => Promise<void> }>'
+    is_async: true
+    vis: private
+    lines:
+    - 249
+    - 265
+    detail:
+      calls:
+      - generateUuid
+      - joinPath
+      - location.toString
+      - this.downloadService.download
+      - this.logService.info
+      - this.logService.trace
+      - vsix.toString
+  - name: downloadAndExtractGalleryExtension
+    sig: 'downloadAndExtractGalleryExtension(extensionKey: ExtensionKey, gallery: IGalleryExtension, operation: InstallOperation, options: InstallExtensionTaskOptions, token: CancellationToken): Promise<ExtractExtensionResult>'
+    is_async: true
+    vis: private
+    lines:
+    - 290
+    - 329
+    detail:
+      calls:
+      - getErrorMessage
+      - getGalleryExtensionId
+      - getManifest
+      - location.toString
+      - new CancellationError
+      - new ExtensionKey
+      - new ExtensionKey(gallery.identifier, gallery.version).equals
+      - new ExtensionManagementError
+      - nls.localize
+      - this.downloadExtension
+      - this.extensionsDownloader.delete
+      - this.extensionsScanner.extractUserExtension
+      - this.logService.warn
+      - toExtensionManagementError
+  - name: downloadExtension
+    sig: 'downloadExtension(extension: IGalleryExtension, operation: InstallOperation, verifySignature: boolean, clientTargetPlatform?: TargetPlatform): Promise<{ readonly location: URI; readonly verificationStatus: ExtensionSignatureVerificationCode | undefined }>'
+    is_async: true
+    vis: private
+    lines:
+    - 331
+    - 376
+    detail:
+      calls:
+      - getErrorMessage
+      - isBoolean
+      - location.toString
+      - new ExtensionManagementError
+      - nls.localize
+      - this.configurationService.getValue
+      - this.extensionGalleryManifestService.getExtensionGalleryManifest
+      - this.extensionsDownloader.delete
+      - this.extensionsDownloader.download
+      - this.logService.warn
+  - name: extractVSIX
+    sig: 'extractVSIX(extensionKey: ExtensionKey, location: URI, options: InstallExtensionTaskOptions, token: CancellationToken): Promise<ExtractExtensionResult>'
+    is_async: true
+    vis: private
+    lines:
+    - 378
+    - 385
+    detail:
+      calls:
+      - isBoolean
+      - path.resolve
+      - this.extensionsScanner.extractUserExtension
+  - name: collectFiles
+    sig: 'collectFiles(extension: ILocalExtension): Promise<IFile[]>'
+    is_async: true
+    vis: private
+    lines:
+    - 387
+    - 410
+    detail:
+      calls:
+      - collectFilesFromDirectory
+      - files.map
+  - name: onDidChangeExtensionsFromAnotherSource
+    sig: 'onDidChangeExtensionsFromAnotherSource({ added, removed }: DidChangeProfileExtensionsEvent): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 412
+    - 430
+    detail:
+      calls:
+      - addedExtensions.map
+      - extensions.filter
+      - removed.extensions.filter
+      - removed.profileLocation.toString
+      - this._onDidInstallExtensions.fire
+      - this._onDidUninstallExtension.fire
+      - this.getInstalled
+      - this.logService.info
+      - this.uriIdentityService.extUri.isEqual
+  - name: watchForExtensionsNotInstalledBySystem
+    sig: 'watchForExtensionsNotInstalledBySystem(): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 433
+    - 443
+    detail:
+      calls:
+      - this._register
+      - this.extensionsScanner.onExtract
+      - this.fileService.onDidFilesChange
+      - this.fileService.resolve
+      - this.fileService.watch
+      - this.knownDirectories.add
+  - name: onDidFilesChange
+    sig: 'onDidFilesChange(e: FileChangesEvent): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 445
+    - 502
+    detail:
+      calls:
+      - added.map
+      - added.push
+      - e.affects
+      - this.addExtensionsToProfile
+      - this.extensionsScanner.scanUserExtensionAtLocation
+      - this.fileService.stat
+      - this.knownDirectories.add
+      - this.knownDirectories.has
+      - this.logService.error
+      - this.logService.info
+      - this.uriIdentityService.extUri.basename
+      - this.uriIdentityService.extUri.basename(resource).endsWith
+      - this.uriIdentityService.extUri.basename(resource).startsWith
+      - this.uriIdentityService.extUri.dirname
+      - this.uriIdentityService.extUri.isEqual
+      - this.uriIdentityService.extUri.joinPath
+      - toFileOperationResult
+  - name: addExtensionsToProfile
+    sig: 'addExtensionsToProfile(extensions: [ILocalExtension, Metadata | undefined][], profileLocation: URI): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 504
+    - 509
+    detail:
+      calls:
+      - extensions.map
+      - localExtensions.map
+      - this._onDidInstallExtensions.fire
+      - this.extensionsProfileScannerService.addExtensionsToProfile
+      - this.extensionsScanner.unsetExtensionsForRemoval
+  lines:
+  - 71
+  - 510
+- name: UpdateMetadataErrorClassification
+  kind: typealias
+  decorators:
+  - type
+  fields:
+  - name: owner
+    type: '''sandy081'''
+  - name: comment
+    type: '''Update metadata error'''
+  - name: extensionId
+    type: '{ classification: ''SystemMetaData''; purpose: ''FeatureInsight''; comment: ''extension identifier'' }'
+  - name: code
+    type: '{ classification: ''SystemMetaData''; purpose: ''FeatureInsight''; comment: ''error code'' }'
+  - name: isProfile
+    type: '{ classification: ''SystemMetaData''; purpose: ''FeatureInsight''; comment: ''Is writing into profile'' }'
+  lines:
+  - 512
+  - 518
+- name: UpdateMetadataErrorEvent
+  kind: typealias
+  decorators:
+  - type
+  fields:
+  - name: extensionId
+    type: string
+  - name: code
+    type: string
+  - name: isProfile
+    type: boolean
+  lines:
+  - 519
+  - 523
+- name: ExtensionsScanner
+  kind: struct
+  bases:
+  - Disposable
+  fields:
+  - name: obsoletedResource
+    type: URI
+  - name: obsoleteFileLimiter
+    type: Queue<any>
+  - name: _onExtract
+    type: any
+    default: this._register(new Emitter<URI>())
+  - name: onExtract
+    type: any
+    default: this._onExtract.event
+  - name: scanAllExtensionPromise
+    type: any
+    default: new ResourceMap<Promise<IScannedExtension[]>>()
+  - name: scanUserExtensionsPromise
+    type: any
+    default: new ResourceMap<Promise<IScannedExtension[]>>()
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tprivate readonly beforeRemovingExtension: (e: ILocalExtension) => Promise<void>,\n\t\t@IFileService private readonly fileService: IFileService,\n\t\t@IExtensionsScannerService private readonly extensionsScannerService: IExtensionsScannerService,\n\t\t@IExtensionsProfileScannerService private readonly extensionsProfileScannerService: IExtensionsProfileScannerService,\n\t\t@IUriIdentityService private readonly uriIdentityService: IUriIdentityService,\n\t\t@ITelemetryService private readonly telemetryService: ITelemetryService,\n\t\t@ILogService private readonly logService: ILogService,\n\t)"
+    lines:
+    - 536
+    - 548
+    detail:
+      calls:
+      - joinPath
+      - new Queue
+      - super
+  - name: cleanUp
+    sig: 'cleanUp(): Promise<void>'
+    is_async: true
+    lines:
+    - 550
+    - 555
+    detail:
+      calls:
+      - this.deleteExtensionsMarkedForRemoval
+      - this.initializeExtensionSize
+      - this.removeTemporarilyDeletedFolders
+  - name: scanExtensions
+    sig: 'scanExtensions(type: ExtensionType | null, profileLocation: URI, productVersion: IProductVersion): Promise<ILocalExtension[]>'
+    is_async: true
+    lines:
+    - 557
+    - 583
+    detail:
+      calls:
+      - Promise.all
+      - scannedExtensions.filter
+      - scannedExtensions.map
+      - scannedExtensions.push
+      - this.extensionsScannerService.scanAllExtensions
+      - "this.extensionsScannerService.scanAllExtensions({}, userScanOptions)\n\t\t\t\t\t\t.finally"
+      - this.extensionsScannerService.scanUserExtensions
+      - "this.extensionsScannerService.scanUserExtensions(userScanOptions)\n\t\t\t\t\t\t.finally"
+      - this.scanAllExtensionPromise.get
+      - this.scanAllExtensionPromise.set
+      - this.scanUserExtensionsPromise.get
+      - this.scanUserExtensionsPromise.set
+      - toExtensionManagementError
+  - name: scanAllUserExtensions
+    sig: 'scanAllUserExtensions(): Promise<ILocalExtension[]>'
+    is_async: true
+    lines:
+    - 585
+    - 592
+    detail:
+      calls:
+      - Promise.all
+      - scannedExtensions.map
+      - this.extensionsScannerService.scanAllUserExtensions
+      - toExtensionManagementError
+  - name: scanUserExtensionAtLocation
+    sig: 'scanUserExtensionAtLocation(location: URI): Promise<ILocalExtension | null>'
+    is_async: true
+    lines:
+    - 594
+    - 604
+    detail:
+      calls:
+      - this.extensionsScannerService.scanExistingExtension
+      - this.logService.error
+      - this.toLocalExtension
+  - name: extractUserExtension
+    sig: 'extractUserExtension(extensionKey: ExtensionKey, zipPath: string, removeIfExists: boolean, token: CancellationToken): Promise<ILocalExtension>'
+    is_async: true
+    lines:
+    - 606
+    - 683
+    detail:
+      calls:
+      - Date.now
+      - URI.file
+      - computeSize
+      - extensionKey.toString
+      - extract
+      - fromExtractError
+      - generateUuid
+      - getErrorMessage
+      - new CancellationError
+      - new ExtensionManagementError
+      - nls.localize
+      - path.join
+      - this._onExtract.fire
+      - this.deleteExtensionFromLocation
+      - this.extensionsScannerService.updateManifestMetadata
+      - this.fileService.del
+      - this.fileService.exists
+      - this.logService.info
+      - this.logService.trace
+      - this.logService.warn
+      - this.rename
+      - this.scanLocalExtension
+      - this.telemetryService.publicLog2
+      - toExtensionManagementError
+      - toFileOperationResult
+  - name: scanMetadata
+    sig: 'scanMetadata(local: ILocalExtension, profileLocation: URI): Promise<Metadata | undefined>'
+    is_async: true
+    lines:
+    - 685
+    - 688
+    detail:
+      calls:
+      - this.getScannedExtension
+  - name: getScannedExtension
+    sig: 'getScannedExtension(local: ILocalExtension, profileLocation: URI): Promise<IScannedProfileExtension | undefined>'
+    is_async: true
+    vis: private
+    lines:
+    - 690
+    - 693
+    detail:
+      calls:
+      - extensions.find
+      - this.extensionsProfileScannerService.scanProfileExtensions
+  - name: updateMetadata
+    sig: 'updateMetadata(local: ILocalExtension, metadata: Partial<Metadata>, profileLocation: URI): Promise<ILocalExtension>'
+    is_async: true
+    lines:
+    - 695
+    - 703
+    detail:
+      calls:
+      - this.extensionsProfileScannerService.updateMetadata
+      - this.scanLocalExtension
+      - this.telemetryService.publicLog2
+      - toExtensionManagementError
+      - toFileOperationResult
+  - name: setExtensionsForRemoval
+    sig: 'setExtensionsForRemoval(...extensions: IExtension[]): Promise<void>'
+    is_async: true
+    lines:
+    - 705
+    - 718
+    detail:
+      calls:
+      - extensionsToRemove.map
+      - extensionsToRemove.push
+      - this.fileService.exists
+      - this.withRemovedExtensions
+  - name: unsetExtensionsForRemoval
+    sig: 'unsetExtensionsForRemoval(...extensionKeys: ExtensionKey[]): Promise<boolean[]>'
+    is_async: true
+    lines:
+    - 720
+    - 736
+    detail:
+      calls:
+      - this.withRemovedExtensions
+      - toExtensionManagementError
+  - name: deleteExtension
+    sig: 'deleteExtension(extension: ILocalExtension | IScannedExtension, type: string): Promise<void>'
+    is_async: true
+    lines:
+    - 738
+    - 743
+    detail:
+      calls:
+      - ExtensionKey.create
+      - this.deleteExtensionFromLocation
+      - this.unsetExtensionsForRemoval
+      - this.uriIdentityService.extUri.isEqualOrParent
+  - name: copyExtension
+    sig: 'copyExtension(extension: ILocalExtension, fromProfileLocation: URI, toProfileLocation: URI, metadata: Partial<Metadata>): Promise<ILocalExtension>'
+    is_async: true
+    lines:
+    - 745
+    - 763
+    detail:
+      calls:
+      - this.extensionsProfileScannerService.addExtensionsToProfile
+      - this.extensionsProfileScannerService.removeExtensionsFromProfile
+      - this.extensionsProfileScannerService.updateMetadata
+      - this.getScannedExtension
+      - this.scanLocalExtension
+      - this.uriIdentityService.extUri.isEqual
+  - name: copyExtensions
+    sig: 'copyExtensions(fromProfileLocation: URI, toProfileLocation: URI, productVersion: IProductVersion): Promise<void>'
+    is_async: true
+    lines:
+    - 765
+    - 771
+    detail:
+      calls:
+      - Promise.all
+      - "fromExtensions\n\t\t\t.filter"
+      - "fromExtensions\n\t\t\t.filter(e => !e.isApplicationScoped) /* remove application scoped extensions */\n\t\t..."
+      - this.extensionsProfileScannerService.addExtensionsToProfile
+      - this.scanExtensions
+  - name: deleteExtensionFromLocation
+    sig: 'deleteExtensionFromLocation(id: string, location: URI, type: string): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 773
+    - 779
+    detail:
+      calls:
+      - generateUuid
+      - hash
+      - hash(generateUuid()).toString
+      - this.fileService.del
+      - this.logService.info
+      - this.logService.trace
+      - this.rename
+      - this.uriIdentityService.extUri.basename
+      - this.uriIdentityService.extUri.dirname
+      - this.uriIdentityService.extUri.joinPath
+  - name: withRemovedExtensions
+    sig: 'withRemovedExtensions(updateFn?: (removed: IStringDictionary<boolean>) => void): Promise<IStringDictionary<boolean>>'
+    vis: private
+    lines:
+    - 781
+    - 817
+    detail:
+      calls:
+      - this.obsoleteFileLimiter.queue
+  - name: rename
+    sig: 'rename(extractPath: string, renamePath: string): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 819
+    - 825
+    detail:
+      calls:
+      - pfs.Promises.rename
+      - toExtensionManagementError
+  - name: scanLocalExtension
+    sig: 'scanLocalExtension(location: URI, type: ExtensionType, profileLocation?: URI): Promise<ILocalExtension>'
+    is_async: true
+    lines:
+    - 827
+    - 845
+    detail:
+      calls:
+      - new ExtensionManagementError
+      - nls.localize
+      - scannedExtensions.find
+      - this.extensionsScannerService.scanExistingExtension
+      - this.extensionsScannerService.scanUserExtensions
+      - this.toLocalExtension
+      - toExtensionManagementError
+  - name: toLocalExtension
+    sig: 'toLocalExtension(extension: IScannedExtension): Promise<ILocalExtension>'
+    is_async: true
+    vis: private
+    lines:
+    - 847
+    - 885
+    detail:
+      calls:
+      - stat.children.find
+      - this.fileService.resolve
+  - name: initializeExtensionSize
+    sig: 'initializeExtensionSize(): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 887
+    - 896
+    detail:
+      calls:
+      - Promise.all
+      - extensions.map
+      - this.extensionsScannerService.scanAllUserExtensions
+  - name: deleteExtensionsMarkedForRemoval
+    sig: 'deleteExtensionsMarkedForRemoval(): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 898
+    - 936
+    detail:
+      calls:
+      - ExtensionKey.create
+      - ExtensionKey.create(e).toString
+      - Object.keys
+      - Promise.allSettled
+      - Promises.settled
+      - byExtension.map
+      - e.identifier.id.toLowerCase
+      - extensions.filter
+      - groupByExtension
+      - installed.add
+      - new Set
+      - this.logService.debug
+      - this.logService.error
+      - this.scanAllUserExtensions
+      - this.withRemovedExtensions
+      - toExtensionManagementError
+      - toRemove.map
+  - name: removeTemporarilyDeletedFolders
+    sig: 'removeTemporarilyDeletedFolders(): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 938
+    - 971
+    detail:
+      calls:
+      - Promise.allSettled
+      - stat.children.map
+      - this.fileService.resolve
+      - this.logService.error
+      - this.logService.trace
+      - toFileOperationResult
+  lines:
+  - 525
+  - 973
+- name: InstallExtensionInProfileTask
+  kind: struct
+  bases:
+  - AbstractExtensionTask
+  - IInstallExtensionTask
+  fields:
+  - name: _operation
+    type: any
+    default: InstallOperation.Install
+  - name: _verificationStatus
+    type: ExtensionSignatureVerificationCode | undefined
+  - name: identifier
+    type: IExtensionIdentifier
+  methods:
+  - name: operation
+    sig: operation()
+    lines:
+    - 978
+    - 978
+    detail: {}
+  - name: verificationStatus
+    sig: verificationStatus()
+    lines:
+    - 981
+    - 981
+    detail: {}
+  - name: constructor
+    sig: "constructor(\n\t\tprivate readonly extensionKey: ExtensionKey,\n\t\treadonly manifest: IExtensionManifest,\n\t\treadonly source: IGalleryExtension | URI,\n\t\treadonly options: InstallExtensionTaskOptions,\n\t\tprivate readonly extractExtensionFn: (operation: InstallOperation, token: CancellationToken) => Promise<ExtractExtensionResult>,\n\t\tprivate readonly extensionsScanner: ExtensionsScanner,\n\t\t@IUriIdentityService private readonly uriIdentityService: IUriIdentityService,\n\t\t@IExtensionGalleryService private readonly galleryService: IExtensionGalleryService,\n\t\t@IUserDataProfilesService private readonly userDataProfilesService: IUserDataProfilesService,\n\t\t@IExtensionsScannerService private readonly extensionsScannerService: IExtensionsScannerService,\n\t\t@IExtensionsProfileScannerService private readonly extensionsProfileScannerService: IExtensionsProfileScannerService,\n\t\t@ILogService private readonly logService: ILogService,\n\t)"
+    lines:
+    - 985
+    - 1001
+    detail:
+      calls:
+      - super
+  - name: doRun
+    sig: 'doRun(token: CancellationToken): Promise<ILocalExtension>'
+    is_async: true
+    vis: protected
+    lines:
+    - 1003
+    - 1106
+    detail:
+      calls:
+      - Date.now
+      - installed.find
+      - isBoolean
+      - new CancellationError
+      - new Error
+      - new ExtensionKey
+      - new ExtensionManagementError
+      - nls.localize
+      - this.extensionKey.equals
+      - this.extensionsProfileScannerService.addExtensionsToProfile
+      - this.extensionsScanner.deleteExtension
+      - this.extensionsScanner.scanExtensions
+      - this.extensionsScanner.scanLocalExtension
+      - this.extensionsScanner.updateMetadata
+      - this.extensionsScannerService.initializeDefaultProfileExtensions
+      - this.extractExtensionFn
+      - this.unsetIfRemoved
+      - this.updateMetadata
+      - this.uriIdentityService.extUri.isEqual
+      - toExtensionManagementError
+  - name: unsetIfRemoved
+    sig: 'unsetIfRemoved(extensionKey: ExtensionKey): Promise<ILocalExtension | undefined>'
+    is_async: true
+    vis: private
+    lines:
+    - 1108
+    - 1117
+    detail:
+      calls:
+      - this.extensionsScanner.scanAllUserExtensions
+      - this.extensionsScanner.unsetExtensionsForRemoval
+      - this.logService.info
+      - userExtensions.find
+  - name: updateMetadata
+    sig: 'updateMetadata(extension: ILocalExtension, token: CancellationToken): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 1119
+    - 1139
+    detail:
+      calls:
+      - this.extensionsScanner.updateMetadata
+      - this.galleryService.getExtensions
+  lines:
+  - 975
+  - 1140
+- name: UninstallExtensionInProfileTask
+  kind: struct
+  bases:
+  - AbstractExtensionTask
+  - IUninstallExtensionTask
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\treadonly extension: ILocalExtension,\n\t\treadonly options: UninstallExtensionTaskOptions,\n\t\tprivate readonly extensionsProfileScannerService: IExtensionsProfileScannerService,\n\t)"
+    lines:
+    - 1144
+    - 1150
+    detail:
+      calls:
+      - super
+  lines:
+  - 1142
+  - 1156
+exports:
+- name: INativeServerExtensionManagementService
+  kind: type
+- name: ExtractExtensionResult
+  kind: type
+- name: ExtensionManagementService
+  kind: type
+- name: UpdateMetadataErrorClassification
+  kind: type
+- name: UpdateMetadataErrorEvent
+  kind: type
+- name: ExtensionsScanner
+  kind: type
+- name: InstallExtensionInProfileTask
+  kind: type
+- name: UninstallExtensionInProfileTask
+  kind: type
+- name: INativeServerExtensionManagementService
+  kind: data
+- name: DELETED_FOLDER_POSTFIX
+  kind: data

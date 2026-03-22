@@ -1,0 +1,495 @@
+## Roska File Descriptor — browser/mainThreadTerminalService.ts
+file: browser/mainThreadTerminalService.ts
+lines: 518
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: ../../../base/common/lifecycle.js.DisposableStore
+- sym: ../../../base/common/lifecycle.js.Disposable
+- sym: ../../../base/common/lifecycle.js.IDisposable
+- sym: ../../../base/common/lifecycle.js.MutableDisposable
+- sym: ../../../base/common/lifecycle.js.combinedDisposable
+- sym: ../common/extHost.protocol.js.ExtHostContext
+- sym: ../common/extHost.protocol.js.ExtHostTerminalServiceShape
+- sym: ../common/extHost.protocol.js.MainThreadTerminalServiceShape
+- sym: ../common/extHost.protocol.js.MainContext
+- sym: ../common/extHost.protocol.js.TerminalLaunchConfig
+- sym: ../common/extHost.protocol.js.ITerminalDimensionsDto
+- sym: ../common/extHost.protocol.js.ExtHostTerminalIdentifier
+- sym: ../common/extHost.protocol.js.TerminalQuickFix
+- sym: ../common/extHost.protocol.js.ITerminalCommandDto
+- sym: ../../services/extensions/common/extHostCustomers.js.extHostNamedCustomer
+- sym: ../../services/extensions/common/extHostCustomers.js.IExtHostContext
+- sym: ../../../base/common/uri.js.URI
+- sym: ../../../platform/instantiation/common/instantiation.js.IInstantiationService
+- sym: ../../../platform/log/common/log.js.ILogService
+- sym: ../../../platform/terminal/common/terminal.js.IProcessProperty
+- sym: ../../../platform/terminal/common/terminal.js.IProcessReadyWindowsPty
+- sym: ../../../platform/terminal/common/terminal.js.IShellLaunchConfig
+- sym: ../../../platform/terminal/common/terminal.js.IShellLaunchConfigDto
+- sym: ../../../platform/terminal/common/terminal.js.ITerminalOutputMatch
+- sym: ../../../platform/terminal/common/terminal.js.ITerminalOutputMatcher
+- sym: ../../../platform/terminal/common/terminal.js.ProcessPropertyType
+- sym: ../../../platform/terminal/common/terminal.js.TerminalExitReason
+- sym: ../../../platform/terminal/common/terminal.js.TerminalLocation
+- sym: ../../../platform/terminal/common/terminalDataBuffering.js.TerminalDataBufferer
+- sym: ../../contrib/terminal/browser/terminal.js.ITerminalEditorService
+- sym: ../../contrib/terminal/browser/terminal.js.ITerminalExternalLinkProvider
+- sym: ../../contrib/terminal/browser/terminal.js.ITerminalGroupService
+- sym: ../../contrib/terminal/browser/terminal.js.ITerminalInstance
+- sym: ../../contrib/terminal/browser/terminal.js.ITerminalLink
+- sym: ../../contrib/terminal/browser/terminal.js.ITerminalService
+- sym: ../../contrib/terminal/browser/terminalProcessExtHostProxy.js.TerminalProcessExtHostProxy
+- sym: ../../contrib/terminal/common/environmentVariable.js.IEnvironmentVariableService
+- sym: ../../../platform/terminal/common/environmentVariableShared.js.deserializeEnvironmentDescriptionMap
+- sym: ../../../platform/terminal/common/environmentVariableShared.js.deserializeEnvironmentVariableCollection
+- sym: ../../../platform/terminal/common/environmentVariableShared.js.serializeEnvironmentVariableCollection
+- sym: ../../contrib/terminal/common/terminal.js.IStartExtensionTerminalRequest
+- sym: ../../contrib/terminal/common/terminal.js.ITerminalProcessExtHostProxy
+- sym: ../../contrib/terminal/common/terminal.js.ITerminalProfileResolverService
+- sym: ../../contrib/terminal/common/terminal.js.ITerminalProfileService
+- sym: ../../services/remote/common/remoteAgentService.js.IRemoteAgentService
+- sym: ../../../base/common/platform.js.OperatingSystem
+- sym: ../../../base/common/platform.js.OS
+- sym: vscode.TerminalEditorLocationOptions
+- sym: ../../../base/common/async.js.Promises
+- sym: ../../../platform/terminal/common/environmentVariable.js.ISerializableEnvironmentDescriptionMap
+- sym: ../../../platform/terminal/common/environmentVariable.js.ISerializableEnvironmentVariableCollection
+- sym: ../../contrib/terminalContrib/links/browser/links.js.ITerminalLinkProviderService
+- sym: ../../contrib/terminalContrib/quickFix/browser/quickFix.js.ITerminalQuickFixService
+- sym: ../../contrib/terminalContrib/quickFix/browser/quickFix.js.ITerminalQuickFix
+- sym: ../../contrib/terminalContrib/quickFix/browser/quickFix.js.TerminalQuickFixType
+- sym: ../../../platform/terminal/common/capabilities/capabilities.js.TerminalCapability
+- sym: ../../contrib/terminalContrib/suggest/browser/terminalCompletionService.js.ITerminalCompletionService
+types:
+- name: MainThreadTerminalService
+  kind: struct
+  ctx: Stores a map from a temporary terminal id (a UUID generated on the extension host side) to a numeric terminal id (an id generated on the renderer side) This comes in play only when dealing with terminals created on the extension host side
+  bases:
+  - MainThreadTerminalServiceShape
+  fields:
+  - name: _store
+    type: any
+    default: new DisposableStore()
+  - name: _proxy
+    type: ExtHostTerminalServiceShape
+  - name: _extHostTerminals
+    type: any
+    default: new Map<string, Promise<ITerminalInstance>>()
+  - name: _terminalProcessProxies
+    type: any
+    default: new Map<number, ITerminalProcessExtHostProxy>()
+  - name: _profileProviders
+    type: any
+    default: new Map<string, IDisposable>()
+  - name: _completionProviders
+    type: any
+    default: new Map<string, IDisposable>()
+  - name: _quickFixProviders
+    type: any
+    default: new Map<string, IDisposable>()
+  - name: _dataEventTracker
+    type: any
+    default: new MutableDisposable<TerminalDataEventTracker>()
+  - name: _sendCommandEventListener
+    type: any
+    default: new MutableDisposable()
+  - name: _linkProvider
+    type: any
+    default: this._store.add(new MutableDisposable())
+  - name: _os
+    type: OperatingSystem
+    default: OS
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tprivate readonly _extHostContext: IExtHostContext,\n\t\t@ITerminalService private readonly _terminalService: ITerminalService,\n\t\t@ITerminalLinkProviderService private readonly _terminalLinkProviderService: ITerminalLinkProviderService,\n\t\t@ITerminalQuickFixService private readonly _terminalQuickFixService: ITerminalQuickFixService,\n\t\t@IInstantiationService private readonly _instantiationService: IInstantiationService,\n\t\t@IEnvironmentVariableService private readonly _environmentVariableService: IEnvironmentVariableService,\n\t\t@ILogService private readonly _logService: ILogService,\n\t\t@ITerminalProfileResolverService private readonly _terminalProfileResolverService: ITerminalProfileResolverService,\n\t\t@IRemoteAgentService remoteAgentService: IRemoteAgentService,\n\t\t@ITerminalGroupService private readonly _terminalGroupService: ITerminalGroupService,\n\t\t@ITerminalEditorService private readonly _terminalEditorService: ITerminalEditorService,\n\t\t@ITerminalProfileService private readonly _terminalProfileService: ITerminalProfileService,\n\t\t@ITerminalCompletionService private readonly _terminalCompletionService: ITerminalCompletionService,\n\t)"
+    lines:
+    - 58
+    - 117
+    detail:
+      calls:
+      - _extHostContext.getProxy
+      - _terminalService.onAnyInstanceDataInput
+      - _terminalService.onAnyInstanceMaximumDimensionsChange
+      - _terminalService.onAnyInstanceProcessIdReady
+      - _terminalService.onAnyInstanceSelectionChange
+      - _terminalService.onAnyInstanceShellTypeChanged
+      - _terminalService.onAnyInstanceTitleChange
+      - _terminalService.onDidChangeActiveInstance
+      - _terminalService.onDidChangeInstanceDimensions
+      - _terminalService.onDidCreateInstance
+      - _terminalService.onDidDisposeInstance
+      - _terminalService.onDidRequestStartExtensionTerminal
+      - collectionAsArray.map
+      - instance.processReady.then
+      - remoteAgentService.getEnvironment
+      - remoteAgentService.getEnvironment().then
+      - this._environmentVariableService.collections.entries
+      - this._onTerminalOpened
+      - this._proxy.$acceptActiveTerminalChanged
+      - this._proxy.$acceptTerminalShellType
+      - this._proxy.$initEnvironmentVariableCollections
+      - this._store.add
+      - this._terminalProfileService.onDidChangeAvailableProfiles
+  - name: dispose
+    sig: 'dispose(): void'
+    lines:
+    - 119
+    - 127
+    detail:
+      calls:
+      - provider.dispose
+      - this._profileProviders.values
+      - this._quickFixProviders.values
+      - this._store.dispose
+  - name: _updateDefaultProfile
+    sig: _updateDefaultProfile()
+    is_async: true
+    vis: private
+    lines:
+    - 129
+    - 134
+    detail:
+      calls:
+      - Promise.all
+      - this._proxy.$acceptDefaultProfile
+      - this._terminalProfileResolverService.getDefaultProfile
+  - name: _getTerminalInstance
+    sig: '_getTerminalInstance(id: ExtHostTerminalIdentifier): Promise<ITerminalInstance | undefined>'
+    is_async: true
+    vis: private
+    lines:
+    - 136
+    - 141
+    detail:
+      calls:
+      - this._extHostTerminals.get
+      - this._terminalService.getInstanceFromId
+  - name: $createTerminal
+    sig: '$createTerminal(extHostTerminalId: string, launchConfig: TerminalLaunchConfig): Promise<void>'
+    is_async: true
+    lines:
+    - 143
+    - 179
+    detail:
+      calls:
+      - Promises.withAsyncBody
+      - URI.revive
+      - terminalInstance.onDisposed
+      - this._extHostTerminals.set
+      - this._store.add
+  - name: _deserializeParentTerminal
+    sig: '_deserializeParentTerminal(location?: TerminalLocation | TerminalEditorLocationOptions | { parentTerminal: ExtHostTerminalIdentifier } | { splitActiveTerminal: boolean; location?: TerminalLocation }): Promise<TerminalLocation | TerminalEditorLocationOptions | { parentTerminal: ITerminalInstance } | { splitActiveTerminal: boolean } | undefined>'
+    is_async: true
+    vis: private
+    lines:
+    - 181
+    - 187
+    detail:
+      calls:
+      - location.parentTerminal.toString
+      - this._extHostTerminals.get
+  - name: $show
+    sig: '$show(id: ExtHostTerminalIdentifier, preserveFocus: boolean): Promise<void>'
+    is_async: true
+    lines:
+    - 189
+    - 199
+    detail:
+      calls:
+      - this._getTerminalInstance
+      - this._terminalEditorService.revealActiveEditor
+      - this._terminalGroupService.showPanel
+      - this._terminalService.setActiveInstance
+  - name: $hide
+    sig: '$hide(id: ExtHostTerminalIdentifier): Promise<void>'
+    is_async: true
+    lines:
+    - 201
+    - 207
+    detail:
+      calls:
+      - this._getTerminalInstance
+      - this._terminalGroupService.hidePanel
+  - name: $dispose
+    sig: '$dispose(id: ExtHostTerminalIdentifier): Promise<void>'
+    is_async: true
+    lines:
+    - 209
+    - 211
+    detail:
+      calls:
+      - (await this._getTerminalInstance(id))?.dispose
+      - this._getTerminalInstance
+  - name: $sendText
+    sig: '$sendText(id: ExtHostTerminalIdentifier, text: string, shouldExecute: boolean): Promise<void>'
+    is_async: true
+    lines:
+    - 213
+    - 216
+    detail:
+      calls:
+      - instance?.sendText
+      - this._getTerminalInstance
+  - name: $sendProcessExit
+    sig: '$sendProcessExit(terminalId: number, exitCode: number | undefined): void'
+    lines:
+    - 218
+    - 220
+    detail:
+      calls:
+      - this._terminalProcessProxies.get
+      - this._terminalProcessProxies.get(terminalId)?.emitExit
+  - name: $startSendingDataEvents
+    sig: '$startSendingDataEvents(): void'
+    lines:
+    - 222
+    - 234
+    detail:
+      calls:
+      - this._instantiationService.createInstance
+      - this._onTerminalData
+  - name: $stopSendingDataEvents
+    sig: '$stopSendingDataEvents(): void'
+    lines:
+    - 236
+    - 238
+    detail:
+      calls:
+      - this._dataEventTracker.clear
+  - name: $startSendingCommandEvents
+    sig: '$startSendingCommandEvents(): void'
+    lines:
+    - 240
+    - 256
+    detail:
+      calls:
+      - combinedDisposable
+      - multiplexer.event
+      - this._terminalService.createOnInstanceCapabilityEvent
+  - name: $stopSendingCommandEvents
+    sig: '$stopSendingCommandEvents(): void'
+    lines:
+    - 258
+    - 260
+    detail:
+      calls:
+      - this._sendCommandEventListener.clear
+  - name: $startLinkProvider
+    sig: '$startLinkProvider(): void'
+    lines:
+    - 262
+    - 264
+    detail:
+      calls:
+      - new ExtensionTerminalLinkProvider
+      - this._terminalLinkProviderService.registerLinkProvider
+  - name: $stopLinkProvider
+    sig: '$stopLinkProvider(): void'
+    lines:
+    - 266
+    - 268
+    detail:
+      calls:
+      - this._linkProvider.clear
+  - name: $registerProcessSupport
+    sig: '$registerProcessSupport(isSupported: boolean): void'
+    lines:
+    - 270
+    - 272
+    detail:
+      calls:
+      - this._terminalService.registerProcessSupport
+  - name: $registerCompletionProvider
+    sig: '$registerCompletionProvider(id: string, extensionIdentifier: string, ...triggerCharacters: string[]): void'
+    lines:
+    - 274
+    - 285
+    detail:
+      calls:
+      - this._completionProviders.set
+      - this._terminalCompletionService.registerTerminalCompletionProvider
+  - name: $unregisterCompletionProvider
+    sig: '$unregisterCompletionProvider(id: string): void'
+    lines:
+    - 287
+    - 290
+    detail:
+      calls:
+      - this._completionProviders.delete
+      - this._completionProviders.get
+      - this._completionProviders.get(id)?.dispose
+  - name: $registerProfileProvider
+    sig: '$registerProfileProvider(id: string, extensionIdentifier: string): void'
+    lines:
+    - 292
+    - 299
+    detail:
+      calls:
+      - this._profileProviders.set
+      - this._terminalProfileService.registerTerminalProfileProvider
+  - name: $unregisterProfileProvider
+    sig: '$unregisterProfileProvider(id: string): void'
+    lines:
+    - 301
+    - 304
+    detail:
+      calls:
+      - this._profileProviders.delete
+      - this._profileProviders.get
+      - this._profileProviders.get(id)?.dispose
+  - name: $registerQuickFixProvider
+    sig: '$registerQuickFixProvider(id: string, extensionId: string): Promise<void>'
+    is_async: true
+    lines:
+    - 306
+    - 341
+    detail:
+      calls:
+      - this._quickFixProviders.set
+      - this._terminalQuickFixService.registerQuickFixProvider
+  - name: $unregisterQuickFixProvider
+    sig: '$unregisterQuickFixProvider(id: string): void'
+    lines:
+    - 343
+    - 346
+    detail:
+      calls:
+      - this._quickFixProviders.delete
+      - this._quickFixProviders.get
+      - this._quickFixProviders.get(id)?.dispose
+  - name: _onRequestStartExtensionTerminal
+    sig: '_onRequestStartExtensionTerminal(request: IStartExtensionTerminalRequest): void'
+    vis: private
+    lines:
+    - 404
+    - 424
+    detail:
+      calls:
+      - proxy.onInput
+      - proxy.onRequestCwd
+      - proxy.onRequestInitialCwd
+      - proxy.onShutdown
+      - this._proxy.$startExtensionTerminal
+      - "this._proxy.$startExtensionTerminal(\n\t\t\tproxy.instanceId,\n\t\t\tinitialDimensions\n\t\t).then"
+      - this._terminalProcessProxies.set
+  - name: $sendProcessData
+    sig: '$sendProcessData(terminalId: number, data: string): void'
+    lines:
+    - 426
+    - 428
+    detail:
+      calls:
+      - this._terminalProcessProxies.get
+      - this._terminalProcessProxies.get(terminalId)?.emitData
+  - name: $sendProcessReady
+    sig: '$sendProcessReady(terminalId: number, pid: number, cwd: string, windowsPty: IProcessReadyWindowsPty | undefined): void'
+    lines:
+    - 430
+    - 432
+    detail:
+      calls:
+      - this._terminalProcessProxies.get
+      - this._terminalProcessProxies.get(terminalId)?.emitReady
+  - name: $sendProcessProperty
+    sig: '$sendProcessProperty(terminalId: number, property: IProcessProperty<any>): void'
+    lines:
+    - 434
+    - 440
+    detail:
+      calls:
+      - instance?.rename
+      - this._terminalProcessProxies.get
+      - this._terminalProcessProxies.get(terminalId)?.emitProcessProperty
+      - this._terminalService.getInstanceFromId
+  - name: $setEnvironmentVariableCollection
+    sig: '$setEnvironmentVariableCollection(extensionIdentifier: string, persistent: boolean, collection: ISerializableEnvironmentVariableCollection | undefined, descriptionMap: ISerializableEnvironmentDescriptionMap): void'
+    lines:
+    - 442
+    - 453
+    detail:
+      calls:
+      - deserializeEnvironmentDescriptionMap
+      - deserializeEnvironmentVariableCollection
+      - this._environmentVariableService.delete
+      - this._environmentVariableService.set
+  lines:
+  - 30
+  - 454
+- name: TerminalDataEventTracker
+  kind: struct
+  bases:
+  - Disposable
+  fields:
+  - name: _bufferer
+    type: TerminalDataBufferer
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tprivate readonly _callback: (id: number, data: string) => void,\n\t\t@ITerminalService private readonly _terminalService: ITerminalService\n\t)"
+    lines:
+    - 463
+    - 476
+    detail:
+      calls:
+      - new TerminalDataBufferer
+      - super
+      - this._register
+      - this._registerInstance
+      - this._terminalService.onDidCreateInstance
+      - this._terminalService.onDidDisposeInstance
+  lines:
+  - 460
+  - 482
+- name: ExtensionTerminalLinkProvider
+  kind: struct
+  bases:
+  - ITerminalExternalLinkProvider
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tprivate readonly _proxy: ExtHostTerminalServiceShape\n\t)"
+    lines:
+    - 485
+    - 488
+    detail: {}
+  - name: provideLinks
+    sig: 'provideLinks(instance: ITerminalInstance, line: string): Promise<ITerminalLink[] | undefined>'
+    is_async: true
+    lines:
+    - 490
+    - 500
+    detail:
+      calls:
+      - extHostLinks.map
+      - proxy.$provideLinks
+  lines:
+  - 484
+  - 501
+functions:
+- name: getOutputMatchForLines
+  sig: 'getOutputMatchForLines(lines: string[], outputMatcher: ITerminalOutputMatcher): ITerminalOutputMatch | undefined'
+  lines:
+  - 503
+  - 506
+  detail:
+    calls:
+    - lines.join
+    - lines.join('\n').match
+- name: parseQuickFix
+  sig: 'parseQuickFix(id: string, source: string, fix: TerminalQuickFix): ITerminalQuickFix'
+  lines:
+  - 508
+  - 517
+  detail:
+    calls:
+    - URI.revive
+exports:
+- name: MainThreadTerminalService
+  kind: type
+- name: TerminalDataEventTracker
+  kind: type
+- name: ExtensionTerminalLinkProvider
+  kind: type
+- name: getOutputMatchForLines
+  kind: func
+- name: parseQuickFix
+  kind: func

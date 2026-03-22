@@ -1,0 +1,325 @@
+## Roska File Descriptor — browser/mcpCommandsAddConfiguration.ts
+file: browser/mcpCommandsAddConfiguration.ts
+lines: 498
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: ../../../../base/common/arraysFind.js.mapFindFirst
+- sym: ../../../../base/common/assert.js.assertNever
+- sym: ../../../../base/common/async.js.disposableTimeout
+- sym: ../../../../base/common/jsonc.js.parse as parseJsonc
+- sym: ../../../../base/common/lifecycle.js.DisposableStore
+- sym: ../../../../base/common/observable.js.autorun
+- sym: ../../../../base/common/resources.js.basename
+- sym: ../../../../base/common/uri.js.URI
+- sym: ../../../../base/common/uuid.js.generateUuid
+- sym: ../../../../nls.js.localize
+- sym: ../../../../platform/commands/common/commands.js.ICommandService
+- sym: ../../../../platform/configuration/common/configuration.js.ConfigurationTarget
+- sym: ../../../../platform/configuration/common/configuration.js.getConfigValueInTarget
+- sym: ../../../../platform/configuration/common/configuration.js.IConfigurationService
+- sym: ../../../../platform/files/common/files.js.IFileService
+- sym: ../../../../platform/mcp/common/mcpPlatformTypes.js.IMcpConfiguration
+- sym: ../../../../platform/mcp/common/mcpPlatformTypes.js.IMcpConfigurationSSE
+- sym: ../../../../platform/mcp/common/mcpPlatformTypes.js.McpConfigurationServer
+- sym: ../../../../platform/notification/common/notification.js.INotificationService
+- sym: ../../../../platform/quickinput/common/quickInput.js.IQuickInputService
+- sym: ../../../../platform/quickinput/common/quickInput.js.IQuickPickItem
+- sym: ../../../../platform/quickinput/common/quickInput.js.QuickPickInput
+- sym: ../../../../platform/telemetry/common/telemetry.js.ITelemetryService
+- sym: ../../../../platform/workspace/common/workspace.js.IWorkspaceContextService
+- sym: ../../../common/editor.js.EditorsOrder
+- sym: ../../../services/configuration/common/jsonEditing.js.IJSONEditingService
+- sym: ../../../services/configurationResolver/common/configurationResolver.js.ConfiguredInput
+- sym: ../../../services/editor/common/editorService.js.IEditorService
+- sym: ../../../services/environment/common/environmentService.js.IWorkbenchEnvironmentService
+- sym: ../common/mcpConfiguration.js.IMcpConfigurationStdio
+- sym: ../common/mcpConfiguration.js.mcpConfigurationSection
+- sym: ../common/mcpConfiguration.js.mcpStdioServerSchema
+- sym: ../common/mcpRegistryTypes.js.IMcpRegistry
+- sym: ./mcpCommands.js.McpServerOptionsCommand
+data:
+- name: assistedTypes
+  type: object
+  val: "{\n\t[AddConfigurationType.NpmPackage]: {\n\t\ttitle: localize('mcp.npm.title', \"Enter NPM Package Name\"),\n\t\tplaceholder: loc..."
+types:
+- name: AddConfigurationType
+  kind: enum
+  variants:
+  - name: Stdio
+  - name: SSE
+  - name: NpmPackage
+  - name: PipPackage
+  - name: DockerImage
+  lines:
+  - 33
+  - 40
+- name: AssistedConfigurationType
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 42
+  - 42
+- name: AddConfigurationCopilotCommand
+  kind: enum
+  variants:
+  - name: IsSupported
+    val: '''github.copilot.chat.mcp.setup.check'''
+  - name: ValidatePackage
+    val: '''github.copilot.chat.mcp.setup.validatePackage'''
+  - name: StartFlow
+    val: '''github.copilot.chat.mcp.setup.flow'''
+  lines:
+  - 64
+  - 73
+- name: ValidatePackageResult
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 75
+  - 75
+- name: AddServerData
+  kind: typealias
+  decorators:
+  - type
+  fields:
+  - name: packageType
+    type: string
+  lines:
+  - 77
+  - 79
+- name: AddServerClassification
+  kind: typealias
+  decorators:
+  - type
+  fields:
+  - name: owner
+    type: '''digitarald'''
+  - name: comment
+    type: '''Generic details for adding a new MCP server'''
+  - name: packageType
+    type: '{ classification: ''SystemMetaData''; purpose: ''FeatureInsight''; comment: ''The type of MCP server package'' }'
+  lines:
+  - 80
+  - 84
+- name: AddServerCompletedData
+  kind: typealias
+  decorators:
+  - type
+  fields:
+  - name: packageType
+    type: string
+  - name: serverType
+    type: string | undefined
+  - name: target
+    type: string
+  lines:
+  - 85
+  - 89
+- name: AddServerCompletedClassification
+  kind: typealias
+  decorators:
+  - type
+  fields:
+  - name: owner
+    type: '''digitarald'''
+  - name: comment
+    type: '''Generic details for successfully adding model-assisted MCP server'''
+  - name: packageType
+    type: '{ classification: ''SystemMetaData''; purpose: ''FeatureInsight''; comment: ''The type of MCP server package'' }'
+  - name: serverType
+    type: '{ classification: ''SystemMetaData''; purpose: ''FeatureInsight''; comment: ''The type of MCP server'' }'
+  - name: target
+    type: '{ classification: ''SystemMetaData''; purpose: ''FeatureInsight''; comment: ''The target of the MCP server configuration'' }'
+  lines:
+  - 90
+  - 96
+- name: McpAddConfigurationCommand
+  kind: struct
+  ctx: Shows the location of a server config once it's discovered.
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tprivate readonly _explicitConfigUri: string | undefined,\n\t\t@IQuickInputService private readonly _quickInputService: IQuickInputService,\n\t\t@IConfigurationService private readonly _configurationService: IConfigurationService,\n\t\t@IJSONEditingService private readonly _jsonEditingService: IJSONEditingService,\n\t\t@IWorkspaceContextService private readonly _workspaceService: IWorkspaceContextService,\n\t\t@IWorkbenchEnvironmentService private readonly _environmentService: IWorkbenchEnvironmentService,\n\t\t@ICommandService private readonly _commandService: ICommandService,\n\t\t@IMcpRegistry private readonly _mcpRegistry: IMcpRegistry,\n\t\t@IEditorService private readonly _openerService: IEditorService,\n\t\t@IEditorService private readonly _editorService: IEditorService,\n\t\t@IFileService private readonly _fileService: IFileService,\n\t\t@INotificationService private readonly _notificationService: INotificationService,\n\t\t@ITelemetryService private readonly _telemetryService: ITelemetryService,\n\t)"
+    lines:
+    - 99
+    - 113
+    detail: {}
+  - name: getServerType
+    sig: 'getServerType(): Promise<AddConfigurationType | undefined>'
+    is_async: true
+    vis: private
+    lines:
+    - 115
+    - 145
+    detail:
+      calls:
+      - Object.entries
+      - Object.entries(assistedTypes).map
+      - await this._commandService.executeCommand
+      - await this._quickInputService.pick
+      - items.push
+      - items.unshift
+      - localize
+  - name: getStdioConfig
+    sig: 'getStdioConfig(): Promise<IMcpConfigurationStdio | undefined>'
+    is_async: true
+    vis: private
+    lines:
+    - 147
+    - 170
+    detail:
+      calls:
+      - command.match
+      - localize
+      - parts.slice
+      - parts.slice(1).map
+      - parts[0].replace
+      - this._quickInputService.input
+      - this._telemetryService.publicLog2
+  - name: getSSEConfig
+    sig: 'getSSEConfig(): Promise<IMcpConfigurationSSE | undefined>'
+    is_async: true
+    vis: private
+    lines:
+    - 172
+    - 191
+    detail:
+      calls:
+      - localize
+      - this._quickInputService.input
+      - this._telemetryService.publicLog2
+  - name: getServerId
+    sig: 'getServerId(suggestion = `my-mcp-server-${generateUuid().split(''-'')[0]}`): Promise<string | undefined>'
+    is_async: true
+    vis: private
+    lines:
+    - 193
+    - 202
+    detail:
+      calls:
+      - localize
+      - this._quickInputService.input
+  - name: getConfigurationTarget
+    sig: 'getConfigurationTarget(): Promise<ConfigurationTarget | undefined>'
+    is_async: true
+    vis: private
+    lines:
+    - 204
+    - 227
+    detail:
+      calls:
+      - localize
+      - options.push
+      - this._quickInputService.pick
+      - this._workspaceService.getWorkspace
+  - name: getAssistedConfig
+    sig: 'getAssistedConfig(type: AssistedConfigurationType): Promise<{ name: string; config: McpConfigurationServer } | undefined>'
+    is_async: true
+    vis: private
+    lines:
+    - 229
+    - 319
+    detail:
+      calls:
+      - await this._commandService.executeCommand
+      - loadingQuickPickStore.add
+      - localize
+      - new DisposableStore
+      - new Promise
+      - "new Promise<LoadAction | undefined>(resolve => {\n\t\t\tloadingQuickPick.onDidAccept(() => resolve(loadi..."
+      - this._commandService.executeCommand
+      - "this._commandService.executeCommand<ValidatePackageResult>(\n\t\t\tAddConfigurationCopilotCommand.Valida..."
+      - this._quickInputService.createQuickPick
+      - this._quickInputService.input
+      - this._telemetryService.publicLog2
+      - this.getAssistedConfig
+      - this.getPackageType
+  - name: showOnceDiscovered
+    sig: 'showOnceDiscovered(name: string)'
+    vis: private
+    lines:
+    - 322
+    - 346
+    detail:
+      calls:
+      - autorun
+      - disposableTimeout
+      - new DisposableStore
+      - store.add
+  - name: run
+    sig: 'run(): Promise<void>'
+    is_async: true
+    lines:
+    - 357
+    - 432
+    detail:
+      calls:
+      - URI.joinPath
+      - URI.parse
+      - assertNever
+      - this._jsonEditingService.write
+      - this._telemetryService.publicLog2
+      - this._workspaceService.getWorkspace
+      - this.getAssistedConfig
+      - this.getConfigurationTarget
+      - this.getPackageType
+      - this.getSSEConfig
+      - this.getServerId
+      - this.getServerType
+      - this.getStdioConfig
+      - this.showOnceDiscovered
+      - this.writeToUserSetting
+  - name: pickForUrlHandler
+    sig: 'pickForUrlHandler(resource: URI, showIsPrimary = false): Promise<void>'
+    is_async: true
+    lines:
+    - 434
+    - 480
+    detail:
+      calls:
+      - basename
+      - contents.value.toString
+      - decodeURIComponent
+      - decodeURIComponent(basename(resource)).replace
+      - encodeURIComponent
+      - getEditors
+      - localize
+      - parseJsonc
+      - resource.with
+      - this._editorService.closeEditors
+      - this._editorService.openEditor
+      - this._editorService.save
+      - this._fileService.move
+      - this._fileService.readFile
+      - this._notificationService.error
+      - this._quickInputService.input
+      - this._quickInputService.pick
+      - this.pickForUrlHandler
+      - this.showOnceDiscovered
+      - this.writeToUserSetting
+  lines:
+  - 98
+  - 498
+exports:
+- name: AddConfigurationType
+  kind: type
+- name: AssistedConfigurationType
+  kind: type
+- name: AddConfigurationCopilotCommand
+  kind: type
+- name: ValidatePackageResult
+  kind: type
+- name: AddServerData
+  kind: type
+- name: AddServerClassification
+  kind: type
+- name: AddServerCompletedData
+  kind: type
+- name: AddServerCompletedClassification
+  kind: type
+- name: McpAddConfigurationCommand
+  kind: type
+- name: assistedTypes
+  kind: data

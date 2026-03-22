@@ -1,0 +1,529 @@
+## Roska File Descriptor — common/extHostTask.ts
+file: common/extHostTask.ts
+lines: 833
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: ../../../base/common/uri.js.URI
+- sym: ../../../base/common/uri.js.UriComponents
+- sym: ../../../base/common/async.js.asPromise
+- sym: ../../../base/common/event.js.Event
+- sym: ../../../base/common/event.js.Emitter
+- sym: ./extHost.protocol.js.MainContext
+- sym: ./extHost.protocol.js.MainThreadTaskShape
+- sym: ./extHost.protocol.js.ExtHostTaskShape
+- sym: ./extHostTypes.js.types
+- sym: ./extHostWorkspace.js.IExtHostWorkspaceProvider
+- sym: ./extHostWorkspace.js.IExtHostWorkspace
+- sym: vscode.vscode
+- sym: ./shared/tasks.js.tasks
+- sym: ./extHostDocumentsAndEditors.js.IExtHostDocumentsAndEditors
+- sym: ./extHostConfiguration.js.IExtHostConfiguration
+- sym: ../../../base/common/cancellation.js.CancellationToken
+- sym: ../../../platform/extensions/common/extensions.js.IExtensionDescription
+- sym: ./extHostTerminalService.js.IExtHostTerminalService
+- sym: ./extHostRpcService.js.IExtHostRpcService
+- sym: ./extHostInitDataService.js.IExtHostInitDataService
+- sym: ../../../platform/instantiation/common/instantiation.js.createDecorator
+- sym: ../../../base/common/network.js.Schemas
+- sym: ../../../base/common/platform.js.Platform
+- sym: ../../../platform/log/common/log.js.ILogService
+- sym: ./extHostApiDeprecationService.js.IExtHostApiDeprecationService
+- sym: ../../contrib/tasks/common/tasks.js.USER_TASKS_GROUP_KEY
+- sym: ../../../base/common/errors.js.ErrorNoTelemetry
+- sym: ../../../base/common/errors.js.NotSupportedError
+- sym: ../../../base/common/arrays.js.asArray
+- sym: ./shared/tasks.js.ITaskProblemMatcherStartedDto
+- sym: ./shared/tasks.js.ITaskProblemMatcherEndedDto
+data:
+- name: IExtHostTask
+  type: any
+  val: createDecorator<IExtHostTask>('IExtHostTask')
+types:
+- name: IExtHostTask
+  kind: trait
+  bases:
+  - ExtHostTaskShape
+  decorators:
+  - interface
+  fields:
+  - name: readonly
+    type: undefined
+  - name: taskExecutions
+    type: vscode.TaskExecution[]
+  - name: onDidStartTask
+    type: Event<vscode.TaskStartEvent>
+  - name: onDidEndTask
+    type: Event<vscode.TaskEndEvent>
+  - name: onDidStartTaskProcess
+    type: Event<vscode.TaskProcessStartEvent>
+  - name: onDidEndTaskProcess
+    type: Event<vscode.TaskProcessEndEvent>
+  - name: onDidStartTaskProblemMatchers
+    type: Event<vscode.TaskProblemMatcherStartedEvent>
+  - name: onDidEndTaskProblemMatchers
+    type: Event<vscode.TaskProblemMatcherEndedEvent>
+  - name: registerTaskProvider
+    type: 'method: registerTaskProvider(extension: IExtensionDescription, type: string, provider: vscode.TaskProvider): vscode.Disposable'
+  - name: registerTaskSystem
+    type: 'method: registerTaskSystem(scheme: string, info: tasks.ITaskSystemInfoDTO): void'
+  - name: fetchTasks
+    type: 'method: fetchTasks(filter?: vscode.TaskFilter): Promise<vscode.Task[]>'
+  - name: executeTask
+    type: 'method: executeTask(extension: IExtensionDescription, task: vscode.Task): Promise<vscode.TaskExecution>'
+  - name: terminateTask
+    type: 'method: terminateTask(execution: vscode.TaskExecution): Promise<void>'
+  lines:
+  - 34
+  - 51
+- name: TaskExecutionImpl
+  kind: struct
+  methods:
+  - name: constructor
+    sig: 'constructor(tasks: ExtHostTaskBase, readonly _id: string, private readonly _task: vscode.Task)'
+    lines:
+    - 364
+    - 366
+    detail: {}
+  - name: task
+    sig: 'task(): vscode.Task'
+    lines:
+    - 368
+    - 370
+    detail: {}
+  - name: terminate
+    sig: 'terminate(): void'
+    lines:
+    - 372
+    - 374
+    detail:
+      calls:
+      - this.#tasks.terminateTask
+  - name: fireDidStartProcess
+    sig: 'fireDidStartProcess(value: tasks.ITaskProcessStartedDTO): void'
+    lines:
+    - 376
+    - 377
+    detail: {}
+  - name: fireDidEndProcess
+    sig: 'fireDidEndProcess(value: tasks.ITaskProcessEndedDTO): void'
+    lines:
+    - 379
+    - 380
+    detail: {}
+  lines:
+  - 360
+  - 381
+- name: HandlerData
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: type
+    type: string
+  - name: provider
+    type: vscode.TaskProvider
+  - name: extension
+    type: IExtensionDescription
+  lines:
+  - 383
+  - 387
+- name: ExtHostTaskBase
+  kind: trait
+  ctx: Used for custom executions tasks that are created and run through executeTask.
+  bases:
+  - ExtHostTaskShape
+  - IExtHostTask
+  decorators:
+  - abstract
+  fields:
+  - name: _serviceBrand
+    type: undefined
+  - name: _proxy
+    type: MainThreadTaskShape
+  - name: _workspaceProvider
+    type: IExtHostWorkspaceProvider
+  - name: _editorService
+    type: IExtHostDocumentsAndEditors
+  - name: _configurationService
+    type: IExtHostConfiguration
+  - name: _terminalService
+    type: IExtHostTerminalService
+  - name: _logService
+    type: ILogService
+  - name: _deprecationService
+    type: IExtHostApiDeprecationService
+  - name: _handleCounter
+    type: number
+  - name: _handlers
+    type: Map<number, HandlerData>
+  - name: _taskExecutions
+    type: Map<string, TaskExecutionImpl>
+  - name: _taskExecutionPromises
+    type: Map<string, Promise<TaskExecutionImpl>>
+  - name: _providedCustomExecutions2
+    type: Map<string, types.CustomExecution>
+  - name: _notProvidedCustomExecutions
+    type: Set<string>
+  - name: _activeCustomExecutions2
+    type: Map<string, types.CustomExecution>
+  - name: _lastStartedTask
+    type: string | undefined
+  - name: _onDidExecuteTask
+    type: Emitter<vscode.TaskStartEvent>
+    default: new Emitter<vscode.TaskStartEvent>()
+  - name: _onDidTerminateTask
+    type: Emitter<vscode.TaskEndEvent>
+    default: new Emitter<vscode.TaskEndEvent>()
+  - name: _onDidTaskProcessStarted
+    type: Emitter<vscode.TaskProcessStartEvent>
+    default: new Emitter<vscode.TaskProcessStartEvent>()
+  - name: _onDidTaskProcessEnded
+    type: Emitter<vscode.TaskProcessEndEvent>
+    default: new Emitter<vscode.TaskProcessEndEvent>()
+  - name: _onDidStartTaskProblemMatchers
+    type: Emitter<vscode.TaskProblemMatcherStartedEvent>
+    default: new Emitter<vscode.TaskProblemMatcherStartedEvent>()
+  - name: _onDidEndTaskProblemMatchers
+    type: Emitter<vscode.TaskProblemMatcherEndedEvent>
+    default: new Emitter<vscode.TaskProblemMatcherEndedEvent>()
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\t@IExtHostRpcService extHostRpc: IExtHostRpcService,\n\t\t@IExtHostInitDataService initData: IExtHostInitDataService,\n\t\t@IExtHostWorkspace workspaceService: IExtHostWorkspace,\n\t\t@IExtHostDocumentsAndEditors editorService: IExtHostDocumentsAndEditors,\n\t\t@IExtHostConfiguration configurationService: IExtHostConfiguration,\n\t\t@IExtHostTerminalService extHostTerminalService: IExtHostTerminalService,\n\t\t@ILogService logService: ILogService,\n\t\t@IExtHostApiDeprecationService deprecationService: IExtHostApiDeprecationService\n\t)"
+    lines:
+    - 415
+    - 440
+    detail:
+      calls:
+      - extHostRpc.getProxy
+      - new Map
+      - new Set
+      - this._proxy.$registerSupportedExecutions
+  - name: registerTaskProvider
+    sig: 'registerTaskProvider(extension: IExtensionDescription, type: string, provider: vscode.TaskProvider): vscode.Disposable'
+    lines:
+    - 442
+    - 453
+    detail:
+      calls:
+      - new types.Disposable
+      - this._handlers.set
+      - this._proxy.$registerTaskProvider
+      - this.nextHandle
+  - name: registerTaskSystem
+    sig: 'registerTaskSystem(scheme: string, info: tasks.ITaskSystemInfoDTO): void'
+    lines:
+    - 455
+    - 457
+    detail:
+      calls:
+      - this._proxy.$registerTaskSystem
+  - name: fetchTasks
+    sig: 'fetchTasks(filter?: vscode.TaskFilter): Promise<vscode.Task[]>'
+    lines:
+    - 459
+    - 470
+    detail:
+      calls:
+      - TaskFilterDTO.from
+      - this._proxy.$fetchTasks
+      - this._proxy.$fetchTasks(TaskFilterDTO.from(filter)).then
+  - name: taskExecutions
+    sig: 'taskExecutions(): vscode.TaskExecution[]'
+    lines:
+    - 474
+    - 478
+    detail:
+      calls:
+      - this._taskExecutions.forEach
+  - name: terminateTask
+    sig: 'terminateTask(execution: vscode.TaskExecution): Promise<void>'
+    lines:
+    - 480
+    - 485
+    detail:
+      calls:
+      - new Error
+      - this._proxy.$terminateTask
+  - name: onDidStartTask
+    sig: 'onDidStartTask(): Event<vscode.TaskStartEvent>'
+    lines:
+    - 487
+    - 489
+    detail: {}
+  - name: $onDidStartTask
+    sig: '$onDidStartTask(execution: tasks.ITaskExecutionDTO, terminalId: number, resolvedDefinition: tasks.ITaskDefinitionDTO): Promise<void>'
+    is_async: true
+    lines:
+    - 491
+    - 503
+    detail:
+      calls:
+      - customExecution.callback
+      - this._activeCustomExecutions2.set
+      - this._onDidExecuteTask.fire
+      - this._providedCustomExecutions2.get
+      - this._terminalService.attachPtyToTerminal
+      - this.getTaskExecution
+  - name: onDidEndTask
+    sig: 'onDidEndTask(): Event<vscode.TaskEndEvent>'
+    lines:
+    - 505
+    - 507
+    detail: {}
+  - name: $OnDidEndTask
+    sig: '$OnDidEndTask(execution: tasks.ITaskExecutionDTO): Promise<void>'
+    is_async: true
+    lines:
+    - 509
+    - 522
+    detail:
+      calls:
+      - this._onDidTerminateTask.fire
+      - this._taskExecutionPromises.delete
+      - this._taskExecutionPromises.has
+      - this._taskExecutions.delete
+      - this.customExecutionComplete
+      - this.getTaskExecution
+  - name: onDidStartTaskProcess
+    sig: 'onDidStartTaskProcess(): Event<vscode.TaskProcessStartEvent>'
+    lines:
+    - 524
+    - 526
+    detail: {}
+  - name: $onDidStartTaskProcess
+    sig: '$onDidStartTaskProcess(value: tasks.ITaskProcessStartedDTO): Promise<void>'
+    is_async: true
+    lines:
+    - 528
+    - 534
+    detail:
+      calls:
+      - this._onDidTaskProcessStarted.fire
+      - this.getTaskExecution
+  - name: onDidEndTaskProcess
+    sig: 'onDidEndTaskProcess(): Event<vscode.TaskProcessEndEvent>'
+    lines:
+    - 536
+    - 538
+    detail: {}
+  - name: $onDidEndTaskProcess
+    sig: '$onDidEndTaskProcess(value: tasks.ITaskProcessEndedDTO): Promise<void>'
+    is_async: true
+    lines:
+    - 540
+    - 546
+    detail:
+      calls:
+      - this._onDidTaskProcessEnded.fire
+      - this.getTaskExecution
+  - name: onDidStartTaskProblemMatchers
+    sig: 'onDidStartTaskProblemMatchers(): Event<vscode.TaskProblemMatcherStartedEvent>'
+    lines:
+    - 548
+    - 550
+    detail: {}
+  - name: $onDidStartTaskProblemMatchers
+    sig: '$onDidStartTaskProblemMatchers(value: ITaskProblemMatcherStartedDto): Promise<void>'
+    is_async: true
+    lines:
+    - 552
+    - 562
+    detail:
+      calls:
+      - this._onDidStartTaskProblemMatchers.fire
+      - this.getTaskExecution
+  - name: onDidEndTaskProblemMatchers
+    sig: 'onDidEndTaskProblemMatchers(): Event<vscode.TaskProblemMatcherEndedEvent>'
+    lines:
+    - 564
+    - 566
+    detail: {}
+  - name: $onDidEndTaskProblemMatchers
+    sig: '$onDidEndTaskProblemMatchers(value: ITaskProblemMatcherEndedDto): Promise<void>'
+    is_async: true
+    lines:
+    - 568
+    - 578
+    detail:
+      calls:
+      - this._onDidEndTaskProblemMatchers.fire
+      - this.getTaskExecution
+  - name: $provideTasks
+    sig: '$provideTasks(handle: number, validTypes: { [key: string]: boolean }): Promise<tasks.ITaskSetDTO>'
+    lines:
+    - 582
+    - 608
+    detail:
+      calls:
+      - Promise.reject
+      - asPromise
+      - asPromise(() => handler.provider.provideTasks(CancellationToken.None)).then
+      - new Error
+      - new Promise
+      - this._handlers.get
+  - name: $resolveTask
+    sig: '$resolveTask(handle: number, taskDTO: tasks.ITaskDTO): Promise<tasks.ITaskDTO | undefined>'
+    is_async: true
+    lines:
+    - 612
+    - 648
+    detail:
+      calls:
+      - CustomExecutionDTO.is
+      - Promise.reject
+      - TaskDTO.from
+      - TaskDTO.to
+      - handler.provider.resolveTask
+      - new Error
+      - this._handlers.get
+      - this.addCustomExecution
+      - this.checkDeprecation
+      - this.resolveTaskInternal
+  - name: addCustomExecution
+    sig: 'addCustomExecution(taskDTO: tasks.ITaskDTO, task: vscode.Task, isProvided: boolean): Promise<void>'
+    is_async: true
+    vis: protected
+    lines:
+    - 656
+    - 664
+    detail:
+      calls:
+      - this._activeCustomExecutions2.set
+      - this._notProvidedCustomExecutions.add
+      - this._providedCustomExecutions2.has
+      - this._providedCustomExecutions2.set
+      - this._proxy.$createTaskId
+  - name: getTaskExecution
+    sig: 'getTaskExecution(execution: tasks.ITaskExecutionDTO | string, task?: vscode.Task): Promise<TaskExecutionImpl>'
+    is_async: true
+    vis: protected
+    lines:
+    - 666
+    - 696
+    detail:
+      calls:
+      - Promise.resolve
+      - TaskDTO.to
+      - TaskDTO.to(execution.task, this._workspaceProvider, this._providedCustomExecutions2).then
+      - executionPromise.then
+      - new ErrorNoTelemetry
+      - new TaskExecutionImpl
+      - this._taskExecutionPromises.get
+      - this._taskExecutionPromises.set
+  - name: customExecutionComplete
+    sig: 'customExecutionComplete(execution: tasks.ITaskExecutionDTO): void'
+    vis: private
+    lines:
+    - 705
+    - 728
+    detail:
+      calls:
+      - iterator.next
+      - this._activeCustomExecutions2.delete
+      - this._activeCustomExecutions2.get
+      - this._activeCustomExecutions2.has
+      - this._notProvidedCustomExecutions.delete
+      - this._notProvidedCustomExecutions.has
+      - this._notProvidedCustomExecutions.values
+      - this._providedCustomExecutions2.delete
+  lines:
+  - 389
+  - 733
+- name: WorkerExtHostTask
+  kind: struct
+  bases:
+  - ExtHostTaskBase
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\t@IExtHostRpcService extHostRpc: IExtHostRpcService,\n\t\t@IExtHostInitDataService initData: IExtHostInitDataService,\n\t\t@IExtHostWorkspace workspaceService: IExtHostWorkspace,\n\t\t@IExtHostDocumentsAndEditors editorService: IExtHostDocumentsAndEditors,\n\t\t@IExtHostConfiguration configurationService: IExtHostConfiguration,\n\t\t@IExtHostTerminalService extHostTerminalService: IExtHostTerminalService,\n\t\t@ILogService logService: ILogService,\n\t\t@IExtHostApiDeprecationService deprecationService: IExtHostApiDeprecationService\n\t)"
+    lines:
+    - 736
+    - 752
+    detail:
+      calls:
+      - Platform.PlatformToString
+      - super
+      - this.registerTaskSystem
+  - name: executeTask
+    sig: 'executeTask(extension: IExtensionDescription, task: vscode.Task): Promise<vscode.TaskExecution>'
+    is_async: true
+    lines:
+    - 754
+    - 777
+    detail:
+      calls:
+      - CustomExecutionDTO.is
+      - TaskDTO.from
+      - new Error
+      - new NotSupportedError
+      - this._proxy.$executeTask
+      - this._proxy.$executeTask(dto).catch
+      - this._proxy.$getTaskExecution
+      - this.addCustomExecution
+      - this.getTaskExecution
+  - name: provideTasksInternal
+    sig: 'provideTasksInternal(validTypes: { [key: string]: boolean }, taskIdPromises: Promise<void>[], handler: HandlerData, value: vscode.Task[] | null | undefined): { tasks: tasks.ITaskDTO[]; extension: IExtensionDescription }'
+    vis: protected
+    lines:
+    - 779
+    - 805
+    detail:
+      calls:
+      - CustomExecutionDTO.is
+      - TaskDTO.from
+      - taskDTOs.push
+      - taskIdPromises.push
+      - this._logService.warn
+      - this.addCustomExecution
+      - this.checkDeprecation
+  - name: resolveTaskInternal
+    sig: 'resolveTaskInternal(resolvedTaskDTO: tasks.ITaskDTO): Promise<tasks.ITaskDTO | undefined>'
+    is_async: true
+    vis: protected
+    lines:
+    - 807
+    - 814
+    detail:
+      calls:
+      - CustomExecutionDTO.is
+      - this._logService.warn
+  - name: $resolveVariables
+    sig: '$resolveVariables(uriComponents: UriComponents, toResolve: { process?: { name: string; cwd?: string; path?: string }; variables: string[] }): Promise<{ process?: string; variables: { [key: string]: string } }>'
+    is_async: true
+    lines:
+    - 816
+    - 822
+    detail:
+      calls:
+      - Object.create
+  - name: $jsonTasksSupported
+    sig: '$jsonTasksSupported(): Promise<boolean>'
+    is_async: true
+    lines:
+    - 824
+    - 826
+    detail: {}
+  - name: $findExecutable
+    sig: '$findExecutable(command: string, cwd?: string | undefined, paths?: string[] | undefined): Promise<string | undefined>'
+    is_async: true
+    lines:
+    - 828
+    - 830
+    detail: {}
+  lines:
+  - 735
+  - 831
+exports:
+- name: IExtHostTask
+  kind: type
+- name: TaskExecutionImpl
+  kind: type
+- name: HandlerData
+  kind: type
+- name: ExtHostTaskBase
+  kind: type
+- name: WorkerExtHostTask
+  kind: type
+- name: IExtHostTask
+  kind: data

@@ -1,0 +1,758 @@
+## Roska File Descriptor — browser/renameWidget.ts
+file: browser/renameWidget.ts
+lines: 1068
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: ../../../../base/browser/dom.js.dom
+- sym: ../../../../base/browser/keyboardEvent.js.StandardKeyboardEvent
+- sym: ../../../../base/browser/ui/aria/aria.js.aria
+- sym: ../../../../base/browser/ui/hover/hoverDelegate2.js.getBaseLayerHoverDelegate
+- sym: ../../../../base/browser/ui/iconLabel/iconLabels.js.renderIcon
+- sym: ../../../../base/browser/ui/list/list.js.IListRenderer
+- sym: ../../../../base/browser/ui/list/list.js.IListVirtualDelegate
+- sym: ../../../../base/browser/ui/list/listWidget.js.List
+- sym: ../../../../base/common/arrays.js.arrays
+- sym: ../../../../base/common/async.js.DeferredPromise
+- sym: ../../../../base/common/async.js.raceCancellation
+- sym: ../../../../base/common/cancellation.js.CancellationToken
+- sym: ../../../../base/common/cancellation.js.CancellationTokenSource
+- sym: ../../../../base/common/codicons.js.Codicon
+- sym: ../../../../base/common/event.js.Emitter
+- sym: ../../../../base/common/keyCodes.js.KeyCode
+- sym: ../../../../base/common/lifecycle.js.DisposableStore
+- sym: ../../../../base/common/lifecycle.js.IDisposable
+- sym: ../../../../base/common/lifecycle.js.toDisposable
+- sym: ../../../../base/common/stopwatch.js.StopWatch
+- sym: ../../../../base/common/types.js.assertType
+- sym: ../../../../base/common/types.js.isDefined
+- sym: ../../../browser/config/domFontInfo.js.domFontInfo
+- sym: ../../../browser/editorBrowser.js.ContentWidgetPositionPreference
+- sym: ../../../browser/editorBrowser.js.ICodeEditor
+- sym: ../../../browser/editorBrowser.js.IContentWidget
+- sym: ../../../browser/editorBrowser.js.IContentWidgetPosition
+- sym: ../../../common/config/editorOptions.js.EditorOption
+- sym: ../../../common/config/fontInfo.js.FontInfo
+- sym: ../../../common/core/dimension.js.IDimension
+- sym: ../../../common/core/position.js.Position
+- sym: ../../../common/core/range.js.IRange
+- sym: ../../../common/core/range.js.Range
+- sym: ../../../common/editorCommon.js.ScrollType
+- sym: ../../../common/languages.js.NewSymbolName
+- sym: ../../../common/languages.js.NewSymbolNameTag
+- sym: ../../../common/languages.js.NewSymbolNameTriggerKind
+- sym: ../../../common/languages.js.ProviderResult
+- sym: ../../../../nls.js.nls
+- sym: ../../../../platform/contextkey/common/contextkey.js.IContextKey
+- sym: ../../../../platform/contextkey/common/contextkey.js.IContextKeyService
+- sym: ../../../../platform/contextkey/common/contextkey.js.RawContextKey
+- sym: ../../../../platform/keybinding/common/keybinding.js.IKeybindingService
+- sym: ../../../../platform/log/common/log.js.ILogService
+- sym: ../../../../platform/theme/browser/defaultStyles.js.getListStyles
+- sym: ../../../../platform/theme/common/colorRegistry.js.editorWidgetBackground
+- sym: ../../../../platform/theme/common/colorRegistry.js.inputBackground
+- sym: ../../../../platform/theme/common/colorRegistry.js.inputBorder
+- sym: ../../../../platform/theme/common/colorRegistry.js.inputForeground
+- sym: ../../../../platform/theme/common/colorRegistry.js.quickInputListFocusBackground
+- sym: ../../../../platform/theme/common/colorRegistry.js.quickInputListFocusForeground
+- sym: ../../../../platform/theme/common/colorRegistry.js.widgetBorder
+- sym: ../../../../platform/theme/common/colorRegistry.js.widgetShadow
+- sym: ../../../../platform/theme/common/themeService.js.IColorTheme
+- sym: ../../../../platform/theme/common/themeService.js.IThemeService
+data:
+- name: _sticky
+  type: boolean
+  val: 'false'
+- name: CONTEXT_RENAME_INPUT_VISIBLE
+  type: any
+  val: new RawContextKey<boolean>('renameInputVisible', false, nls.localize('renameInputVisible', "Whether the rename input wid...
+- name: CONTEXT_RENAME_INPUT_FOCUSED
+  type: any
+  val: new RawContextKey<boolean>('renameInputFocused', false, nls.localize('renameInputFocused', "Whether the rename input wid...
+types:
+- name: NewNameSource
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 64
+  - 67
+- name: RenameWidgetStats
+  kind: typealias
+  decorators:
+  - type
+  fields:
+  - name: nRenameSuggestions
+    type: number
+  - name: source
+    type: NewNameSource
+  - name: timeBeforeFirstInputFieldEdit
+    type: number | undefined
+  - name: nRenameSuggestionsInvocations
+    type: number
+  - name: hadAutomaticRenameSuggestionsInvocation
+    type: boolean
+  lines:
+  - 72
+  - 78
+- name: RenameWidgetResult
+  kind: typealias
+  decorators:
+  - type
+  fields:
+  - name: wantsPreview
+    type: boolean
+  - name: stats
+    type: RenameWidgetStats
+  lines:
+  - 80
+  - 87
+- name: IRenameWidget
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: getInput
+    type: "method: getInput(\n\t\twhere: IRange,\n\t\tcurrentName: string,\n\t\tsupportPreview: boolean,\n\t\trequestRenameSuggestions: (triggerKind: NewSymbolNameTriggerKind, cts: CancellationToken) => ProviderResult<NewSymbolName[]>[],\n\t\tcts: CancellationTokenSource\n\t): Promise<RenameWidgetResult | boolean>"
+  - name: acceptInput
+    type: 'method: acceptInput(wantsPreview: boolean): void'
+  - name: cancelInput
+    type: 'method: cancelInput(focusEditor: boolean, caller: string): void'
+  - name: focusNextRenameSuggestion
+    type: 'method: focusNextRenameSuggestion(): void'
+  - name: focusPreviousRenameSuggestion
+    type: 'method: focusPreviousRenameSuggestion(): void'
+  lines:
+  - 89
+  - 106
+- name: RenameWidget
+  kind: struct
+  ctx: implement IContentWidget
+  bases:
+  - IRenameWidget
+  - IContentWidget
+  - IDisposable
+  fields:
+  - name: allowEditorOverflow
+    type: boolean
+    default: 'true'
+  - name: _domNode
+    type: HTMLElement
+  - name: _inputWithButton
+    type: InputWithButton
+  - name: _renameCandidateListView
+    type: RenameCandidateListView
+  - name: _label
+    type: HTMLDivElement
+  - name: _nPxAvailableAbove
+    type: number
+  - name: _nPxAvailableBelow
+    type: number
+  - name: _position
+    type: Position
+  - name: _isEditingRenameCandidate
+    type: boolean
+  - name: _candidates
+    type: Set<string>
+  - name: _visible
+    type: boolean
+  - name: _beforeFirstInputFieldEditSW
+    type: StopWatch
+  - name: _timeBeforeFirstInputFieldEdit
+    type: number | undefined
+  - name: _nRenameSuggestionsInvocations
+    type: number
+  - name: _hadAutomaticRenameSuggestionsInvocation
+    type: boolean
+  - name: _renameCandidateProvidersCts
+    type: CancellationTokenSource | undefined
+  - name: _renameCts
+    type: CancellationTokenSource | undefined
+  - name: _visibleContextKey
+    type: IContextKey<boolean>
+  - name: _disposables
+    type: any
+    default: new DisposableStore()
+  - name: _currentAcceptInput
+    type: '(wantsPreview: boolean) => void'
+  - name: _currentCancelInput
+    type: '(focusEditor: boolean) => void'
+  - name: _requestRenameCandidatesOnce
+    type: '(triggerKind: NewSymbolNameTriggerKind, cts: CancellationToken) => ProviderResult<NewSymbolName[]>[]'
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tprivate readonly _editor: ICodeEditor,\n\t\tprivate readonly _acceptKeybindings: [string, string],\n\t\t@IThemeService private readonly _themeService: IThemeService,\n\t\t@IKeybindingService private readonly _keybindingService: IKeybindingService,\n\t\t@IContextKeyService contextKeyService: IContextKeyService,\n\t\t@ILogService private readonly _logService: ILogService,\n\t)"
+    lines:
+    - 153
+    - 185
+    detail:
+      calls:
+      - CONTEXT_RENAME_INPUT_VISIBLE.bindTo
+      - _themeService.onDidColorThemeChange
+      - new InputWithButton
+      - new Set
+      - new StopWatch
+      - this._disposables.add
+      - this._editor.addContentWidget
+      - this._editor.onDidChangeConfiguration
+  - name: dispose
+    sig: 'dispose(): void'
+    lines:
+    - 187
+    - 190
+    detail:
+      calls:
+      - this._disposables.dispose
+      - this._editor.removeContentWidget
+  - name: getId
+    sig: 'getId(): string'
+    lines:
+    - 192
+    - 194
+    detail: {}
+  - name: getDomNode
+    sig: 'getDomNode(): HTMLElement'
+    lines:
+    - 196
+    - 238
+    detail:
+      calls:
+      - document.createElement
+      - new RenameCandidateListView
+      - this._disposables.add
+      - this._domNode.appendChild
+      - this._editor.getOption
+      - this._inputWithButton.onDidInputChange
+      - this._themeService.getColorTheme
+      - this._updateFont
+      - this._updateStyles
+  - name: _updateFont
+    sig: '_updateFont(): void'
+    vis: private
+    lines:
+    - 261
+    - 271
+    detail:
+      calls:
+      - assertType
+      - this._computeLabelFontSize
+      - this._editor.applyFontInfo
+      - this._editor.getOption
+  - name: getPosition
+    sig: 'getPosition(): IContentWidgetPosition | null'
+    lines:
+    - 277
+    - 307
+    detail:
+      calls:
+      - RenameCandidateView.getLayoutInfo
+      - dom.getClientArea
+      - dom.getDomNodePagePosition
+      - this._editor.getDomNode
+      - this._editor.getOption
+      - this._editor.hasModel
+      - this._getTopForPosition
+      - this.getDomNode
+  - name: beforeRender
+    sig: 'beforeRender(): IDimension | null'
+    lines:
+    - 309
+    - 316
+    detail:
+      calls:
+      - nls.localize
+      - this._keybindingService.lookupKeybinding
+      - this._keybindingService.lookupKeybinding(accept)?.getLabel
+      - this._keybindingService.lookupKeybinding(preview)?.getLabel
+  - name: afterRender
+    sig: 'afterRender(position: ContentWidgetPositionPreference | null): void'
+    lines:
+    - 318
+    - 352
+    detail:
+      calls:
+      - assertType
+      - dom.getTotalHeight
+      - dom.getTotalWidth
+      - this._editor.getDomNode
+      - this._editor.hasModel
+      - this._renameCandidateListView!.layout
+      - this.cancelInput
+  - name: acceptInput
+    sig: 'acceptInput(wantsPreview: boolean): void'
+    lines:
+    - 359
+    - 362
+    detail:
+      calls:
+      - this._currentAcceptInput
+      - this._trace
+  - name: cancelInput
+    sig: 'cancelInput(focusEditor: boolean, caller: string): void'
+    lines:
+    - 364
+    - 367
+    detail:
+      calls:
+      - this._currentCancelInput
+  - name: focusNextRenameSuggestion
+    sig: focusNextRenameSuggestion()
+    lines:
+    - 369
+    - 373
+    detail:
+      calls:
+      - this._renameCandidateListView?.focusNext
+  - name: focusPreviousRenameSuggestion
+    sig: focusPreviousRenameSuggestion()
+    lines:
+    - 375
+    - 379
+    detail:
+      calls:
+      - this._renameCandidateListView?.focusPrevious
+  - name: getInput
+    sig: "getInput(\n\t\twhere: IRange,\n\t\tcurrentName: string,\n\t\tsupportPreview: boolean,\n\t\trequestRenameCandidates: undefined | ((triggerKind: NewSymbolNameTriggerKind, cts: CancellationToken) => ProviderResult<NewSymbolName[]>[]),\n\t\tcts: CancellationTokenSource\n\t): Promise<RenameWidgetResult | boolean>"
+    lines:
+    - 384
+    - 526
+    detail:
+      calls:
+      - Math.max
+      - cts.token.onCancellationRequested
+      - disposeOnDone.add
+      - dom.addDisposableListener
+      - inputResult.p.finally
+      - new DeferredPromise
+      - new DisposableStore
+      - new Position
+      - selectionEnd.toString
+      - selectionStart.toString
+      - this._beforeFirstInputFieldEditSW.reset
+      - this._domNode!.classList.toggle
+      - this._editor.onDidBlurEditorWidget
+      - this._getSelection
+      - this._inputWithButton.input.setAttribute
+      - this._requestRenameCandidates
+      - this._show
+      - toDisposable
+  - name: _requestRenameCandidates
+    sig: '_requestRenameCandidates(currentName: string, isManuallyTriggered: boolean)'
+    vis: private
+    lines:
+    - 528
+    - 560
+    detail:
+      calls:
+      - assertType
+      - new CancellationTokenSource
+      - this._inputWithButton.setSparkleButton
+      - this._inputWithButton.setStopButton
+      - this._renameCandidateProvidersCts.dispose
+      - this._requestRenameCandidatesOnce
+      - this._updateRenameCandidates
+  - name: _getSelection
+    sig: '_getSelection(where: IRange, currentName: string): { start: number; end: number }'
+    vis: private
+    lines:
+    - 565
+    - 578
+    detail:
+      calls:
+      - Math.max
+      - Math.min
+      - Range.containsRange
+      - Range.isEmpty
+      - Range.spansMultipleLines
+      - assertType
+      - this._editor.getSelection
+      - this._editor.hasModel
+  - name: _show
+    sig: '_show(): void'
+    vis: private
+    lines:
+    - 580
+    - 595
+    detail:
+      calls:
+      - setTimeout
+      - this._editor.layoutContentWidget
+      - this._editor.revealLineInCenterIfOutsideViewport
+      - this._trace
+      - this._visibleContextKey.set
+  - name: _updateRenameCandidates
+    sig: '_updateRenameCandidates(candidates: ProviderResult<NewSymbolName[]>[], currentName: string, token: CancellationToken)'
+    is_async: true
+    vis: private
+    lines:
+    - 597
+    - 639
+    detail:
+      calls:
+      - Promise.allSettled
+      - arrays.distinct
+      - distinctNames.filter
+      - namesListResults.flatMap
+      - raceCancellation
+      - this._editor.layoutContentWidget
+      - this._inputWithButton.setSparkleButton
+      - this._renameCandidateListView!.setCandidates
+      - trace
+      - validDistinctNames.forEach
+  - name: _hide
+    sig: '_hide(): void'
+    vis: private
+    lines:
+    - 641
+    - 646
+    detail:
+      calls:
+      - this._editor.layoutContentWidget
+      - this._trace
+      - this._visibleContextKey.reset
+  - name: _getTopForPosition
+    sig: '_getTopForPosition(): number'
+    vis: private
+    lines:
+    - 648
+    - 658
+    detail:
+      calls:
+      - Math.max
+      - this._editor.getTopForLineNumber
+      - this._editor.getVisibleRanges
+      - this._logService.warn
+  lines:
+  - 108
+  - 663
+- name: RenameCandidateListView
+  kind: struct
+  ctx: 'Parent node of the list widget; needed to control # of list elements visible'
+  fields:
+  - name: _listContainer
+    type: HTMLDivElement
+  - name: _listWidget
+    type: List<NewSymbolName>
+  - name: _lineHeight
+    type: number
+  - name: _availableHeight
+    type: number
+  - name: _minimumWidth
+    type: number
+  - name: _typicalHalfwidthCharacterWidth
+    type: number
+  - name: _disposables
+    type: DisposableStore
+  methods:
+  - name: constructor
+    sig: 'constructor(parent: HTMLElement, opts: { fontInfo: FontInfo; onFocusChange: (newSymbolName: string) => void; onSelectionChange: () => void })'
+    lines:
+    - 679
+    - 723
+    detail:
+      calls:
+      - RenameCandidateListView._createListWidget
+      - document.createElement
+      - getListStyles
+      - new DisposableStore
+      - parent.appendChild
+      - this._disposables.add
+      - this._listWidget.onDidBlur
+      - this._listWidget.onDidChangeFocus
+      - this._listWidget.onDidChangeSelection
+      - this._listWidget.style
+  - name: dispose
+    sig: dispose()
+    lines:
+    - 725
+    - 728
+    detail:
+      calls:
+      - this._disposables.dispose
+      - this._listWidget.dispose
+  - name: layout
+    sig: 'layout({ height, width }: { height: number; width: number }): void'
+    lines:
+    - 731
+    - 734
+    detail: {}
+  - name: setCandidates
+    sig: 'setCandidates(candidates: NewSymbolName[]): void'
+    lines:
+    - 736
+    - 752
+    detail:
+      calls:
+      - aria.status
+      - nls.localize
+      - this._listWidget.layout
+      - this._listWidget.splice
+      - this._pickListHeight
+      - this._pickListWidth
+  - name: clearCandidates
+    sig: 'clearCandidates(): void'
+    lines:
+    - 754
+    - 758
+    detail:
+      calls:
+      - this._listWidget.splice
+  - name: nCandidates
+    sig: nCandidates()
+    lines:
+    - 760
+    - 762
+    detail: {}
+  - name: focusedCandidate
+    sig: 'focusedCandidate(): string | undefined'
+    lines:
+    - 764
+    - 777
+    detail:
+      calls:
+      - this._listWidget.getFocusedElements
+      - this._listWidget.getSelectedElements
+  - name: focusNext
+    sig: 'focusNext(): boolean'
+    lines:
+    - 779
+    - 800
+    detail:
+      calls:
+      - this._listWidget.focusFirst
+      - this._listWidget.focusNext
+      - this._listWidget.getFocus
+      - this._listWidget.reveal
+      - this._listWidget.setFocus
+  - name: focusPrevious
+    sig: 'focusPrevious(): boolean'
+    lines:
+    - 805
+    - 826
+    detail:
+      calls:
+      - this._listWidget.focusLast
+      - this._listWidget.focusPrevious
+      - this._listWidget.getFocus
+      - this._listWidget.reveal
+      - this._listWidget.setFocus
+  - name: clearFocus
+    sig: 'clearFocus(): void'
+    lines:
+    - 828
+    - 830
+    detail:
+      calls:
+      - this._listWidget.setFocus
+  - name: _pickListWidth
+    sig: '_pickListWidth(candidates: NewSymbolName[]): number'
+    vis: private
+    lines:
+    - 844
+    - 851
+    detail:
+      calls:
+      - Math.ceil
+      - Math.max
+      - candidates.map
+  - name: _createListWidget
+    sig: '_createListWidget(container: HTMLElement, candidateViewHeight: number, fontInfo: FontInfo)'
+    vis: private
+    decorators:
+    - static
+    lines:
+    - 853
+    - 891
+    detail:
+      calls:
+      - new List
+      - new RenameCandidateView
+      - "new class implements IListRenderer<NewSymbolName, RenameCandidateView> {\n\t\t\treadonly templateId = 'candidate';\n\n\t\t\trenderTemplate(container: HTMLElement): RenameCandidateView {\n\t\t\t\treturn new RenameCandidateView(container, fontInfo);\n\t\t\t}\n\n\t\t\trenderElement(candidate: NewSymbolName, index: number, templateData: RenameCandidateView): void {\n\t\t\t\ttemplateData.populate(candidate);\n\t\t\t}\n\n\t\t\tdisposeTemplate(templateData: RenameCandidateView): void {\n\t\t\t\ttemplateData.dispose();\n\t\t\t}\n\t\t}"
+      - "new class implements IListVirtualDelegate<NewSymbolName> {\n\t\t\tgetTemplateId(element: NewSymbolName): string {\n\t\t\t\treturn 'candidate';\n\t\t\t}\n\n\t\t\tgetHeight(element: NewSymbolName): number {\n\t\t\t\treturn candidateViewHeight;\n\t\t\t}\n\t\t}"
+      - templateData.dispose
+      - templateData.populate
+  lines:
+  - 665
+  - 892
+- name: InputWithButton
+  kind: struct
+  bases:
+  - IDisposable
+  fields:
+  - name: _buttonState
+    type: '''sparkle'' | ''stop'' | undefined'
+  - name: _domNode
+    type: HTMLDivElement | undefined
+  - name: _inputNode
+    type: HTMLInputElement | undefined
+  - name: _buttonNode
+    type: HTMLElement | undefined
+  - name: _buttonHoverContent
+    type: string
+    default: ''''''
+  - name: _buttonGenHoverText
+    type: string | undefined
+  - name: _buttonCancelHoverText
+    type: string | undefined
+  - name: _sparkleIcon
+    type: HTMLElement | undefined
+  - name: _stopIcon
+    type: HTMLElement | undefined
+  - name: _onDidInputChange
+    type: any
+    default: new Emitter<void>()
+  - name: onDidInputChange
+    type: any
+    default: this._onDidInputChange.event
+  - name: _disposables
+    type: any
+    default: new DisposableStore()
+  methods:
+  - name: domNode
+    sig: domNode()
+    lines:
+    - 912
+    - 970
+    detail:
+      calls:
+      - document.createElement
+      - dom.addDisposableListener
+      - getBaseLayerHoverDelegate
+      - getBaseLayerHoverDelegate().setupDelayedHover
+      - nls.localize
+      - this._buttonNode.setAttribute
+      - this._disposables.add
+      - this._domNode.appendChild
+      - this._inputNode.setAttribute
+  - name: input
+    sig: input()
+    lines:
+    - 972
+    - 975
+    detail:
+      calls:
+      - assertType
+  - name: button
+    sig: button()
+    lines:
+    - 977
+    - 980
+    detail:
+      calls:
+      - assertType
+  - name: buttonState
+    sig: buttonState()
+    lines:
+    - 982
+    - 984
+    detail: {}
+  - name: setSparkleButton
+    sig: setSparkleButton()
+    lines:
+    - 986
+    - 994
+    detail:
+      calls:
+      - dom.clearNode
+      - renderIcon
+      - this.button.appendChild
+      - this.button.setAttribute
+      - this.input.focus
+  - name: setStopButton
+    sig: setStopButton()
+    lines:
+    - 996
+    - 1004
+    detail:
+      calls:
+      - dom.clearNode
+      - renderIcon
+      - this.button.appendChild
+      - this.button.setAttribute
+      - this.input.focus
+  - name: dispose
+    sig: 'dispose(): void'
+    lines:
+    - 1006
+    - 1008
+    detail:
+      calls:
+      - this._disposables.dispose
+  lines:
+  - 894
+  - 1009
+- name: RenameCandidateView
+  kind: struct
+  fields:
+  - name: _PADDING
+    type: number
+    default: '2'
+  - name: _domNode
+    type: HTMLElement
+  - name: _icon
+    type: HTMLElement
+  - name: _label
+    type: HTMLElement
+  methods:
+  - name: constructor
+    sig: 'constructor(parent: HTMLElement, fontInfo: FontInfo)'
+    lines:
+    - 1019
+    - 1045
+    detail:
+      calls:
+      - document.createElement
+      - domFontInfo.applyFontInfo
+      - iconContainer.appendChild
+      - parent.appendChild
+      - renderIcon
+      - this._domNode.appendChild
+  - name: populate
+    sig: 'populate(value: NewSymbolName)'
+    lines:
+    - 1047
+    - 1050
+    detail:
+      calls:
+      - this._updateIcon
+      - this._updateLabel
+  - name: getLayoutInfo
+    sig: 'getLayoutInfo({ lineHeight }: { lineHeight: number }): { totalHeight: number }'
+    decorators:
+    - static
+    lines:
+    - 1061
+    - 1064
+    detail: {}
+  - name: dispose
+    sig: dispose()
+    lines:
+    - 1066
+    - 1067
+    detail: {}
+  lines:
+  - 1011
+  - 1068
+exports:
+- name: NewNameSource
+  kind: type
+- name: RenameWidgetStats
+  kind: type
+- name: RenameWidgetResult
+  kind: type
+- name: IRenameWidget
+  kind: type
+- name: RenameWidget
+  kind: type
+- name: RenameCandidateListView
+  kind: type
+- name: InputWithButton
+  kind: type
+- name: RenameCandidateView
+  kind: type
+- name: _sticky
+  kind: data
+- name: CONTEXT_RENAME_INPUT_VISIBLE
+  kind: data
+- name: CONTEXT_RENAME_INPUT_FOCUSED
+  kind: data

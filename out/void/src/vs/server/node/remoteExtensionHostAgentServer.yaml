@@ -1,0 +1,385 @@
+## Roska File Descriptor — node/remoteExtensionHostAgentServer.ts
+file: node/remoteExtensionHostAgentServer.ts
+lines: 912
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: crypto.crypto
+- sym: fs.fs
+- sym: http.http
+- sym: net.net
+- sym: perf_hooks.performance
+- sym: url.url
+- sym: ../../base/common/buffer.js.VSBuffer
+- sym: ../../base/common/charCode.js.CharCode
+- sym: ../../base/common/errors.js.isSigPipeError
+- sym: ../../base/common/errors.js.onUnexpectedError
+- sym: ../../base/common/errors.js.setUnexpectedErrorHandler
+- sym: ../../base/common/extpath.js.isEqualOrParent
+- sym: ../../base/common/lifecycle.js.Disposable
+- sym: ../../base/common/lifecycle.js.DisposableStore
+- sym: ../../base/common/network.js.connectionTokenQueryName
+- sym: ../../base/common/network.js.FileAccess
+- sym: ../../base/common/network.js.getServerProductSegment
+- sym: ../../base/common/network.js.Schemas
+- sym: ../../base/common/path.js.dirname
+- sym: ../../base/common/path.js.join
+- sym: ../../base/common/performance.js.perf
+- sym: ../../base/common/platform.js.platform
+- sym: ../../base/common/strings.js.createRegExp
+- sym: ../../base/common/strings.js.escapeRegExpCharacters
+- sym: ../../base/common/uri.js.URI
+- sym: ../../base/common/uuid.js.generateUuid
+- sym: ../../base/node/osReleaseInfo.js.getOSReleaseInfo
+- sym: ../../base/node/ports.js.findFreePort
+- sym: ../../base/node/unc.js.addUNCHostToAllowlist
+- sym: ../../base/node/unc.js.disableUNCAccessRestrictions
+- sym: ../../base/parts/ipc/common/ipc.net.js.PersistentProtocol
+- sym: ../../base/parts/ipc/node/ipc.net.js.NodeSocket
+- sym: ../../base/parts/ipc/node/ipc.net.js.WebSocketNodeSocket
+- sym: ../../platform/configuration/common/configuration.js.IConfigurationService
+- sym: ../../platform/instantiation/common/instantiation.js.IInstantiationService
+- sym: ../../platform/log/common/log.js.ILogService
+- sym: ../../platform/product/common/productService.js.IProductService
+- sym: ../../platform/remote/common/remoteAgentConnection.js.ConnectionType
+- sym: ../../platform/remote/common/remoteAgentConnection.js.ConnectionTypeRequest
+- sym: ../../platform/remote/common/remoteAgentConnection.js.ErrorMessage
+- sym: ../../platform/remote/common/remoteAgentConnection.js.HandshakeMessage
+- sym: ../../platform/remote/common/remoteAgentConnection.js.IRemoteExtensionHostStartParams
+- sym: ../../platform/remote/common/remoteAgentConnection.js.ITunnelConnectionStartParams
+- sym: ../../platform/remote/common/remoteAgentConnection.js.SignRequest
+- sym: ../../platform/remote/common/remoteAgentEnvironment.js.RemoteAgentConnectionContext
+- sym: ../../platform/telemetry/common/telemetry.js.ITelemetryService
+- sym: ./extensionHostConnection.js.ExtensionHostConnection
+- sym: ./remoteExtensionManagement.js.ManagementConnection
+- sym: ./serverConnectionToken.js.determineServerConnectionToken
+- sym: ./serverConnectionToken.js.requestHasValidConnectionToken as httpRequestHasValidConnectionToken
+- sym: ./serverConnectionToken.js.ServerConnectionToken
+- sym: ./serverConnectionToken.js.ServerConnectionTokenParseError
+- sym: ./serverConnectionToken.js.ServerConnectionTokenType
+- sym: ./serverEnvironmentService.js.IServerEnvironmentService
+- sym: ./serverEnvironmentService.js.ServerParsedArgs
+- sym: ./serverServices.js.setupServerServices
+- sym: ./serverServices.js.SocketServer
+- sym: ./webClientServer.js.CacheControl
+- sym: ./webClientServer.js.serveError
+- sym: ./webClientServer.js.serveFile
+- sym: ./webClientServer.js.WebClientServer
+- sym: node:module.createRequire
+data:
+- name: require
+  type: any
+  val: createRequire(import.meta.url)
+- name: SHUTDOWN_TIMEOUT
+  type: any
+  val: 5 * 60 * 1000
+types:
+- name: RemoteExtensionHostAgentServer
+  kind: struct
+  ctx: Eventually cleanup
+  bases:
+  - Disposable
+  - IServerAPI
+  fields:
+  - name: _extHostConnections
+    type: '{ [reconnectionToken: string]: ExtensionHostConnection }'
+  - name: _managementConnections
+    type: '{ [reconnectionToken: string]: ManagementConnection }'
+  - name: _allReconnectionTokens
+    type: Set<string>
+  - name: _webClientServer
+    type: WebClientServer | null
+  - name: _webEndpointOriginChecker
+    type: WebEndpointOriginChecker
+  - name: _serverBasePath
+    type: string | undefined
+  - name: _serverProductPath
+    type: string
+  - name: shutdownTimer
+    type: NodeJS.Timeout | undefined
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tprivate readonly _socketServer: SocketServer<RemoteAgentConnectionContext>,\n\t\tprivate readonly _connectionToken: ServerConnectionToken,\n\t\tprivate readonly _vsdaMod: typeof vsda | null,\n\t\thasWebClient: boolean,\n\t\tserverBasePath: string | undefined,\n\t\t@IServerEnvironmentService private readonly _environmentService: IServerEnvironmentService,\n\t\t@IProductService private readonly _productService: IProductService,\n\t\t@ILogService private readonly _logService: ILogService,\n\t\t@IInstantiationService private readonly _instantiationService: IInstantiationService,\n\t)"
+    lines:
+    - 74
+    - 105
+    detail:
+      calls:
+      - Object.create
+      - WebEndpointOriginChecker.create
+      - getServerProductSegment
+      - new Set
+      - serverBasePath.charCodeAt
+      - serverBasePath.substring
+      - super
+      - this._instantiationService.createInstance
+      - this._logService.info
+      - this._waitThenShutdown
+  - name: handleRequest
+    sig: 'handleRequest(req: http.IncomingMessage, res: http.ServerResponse): Promise<void>'
+    is_async: true
+    lines:
+    - 107
+    - 192
+    detail:
+      calls:
+      - Object.create
+      - URI.from
+      - httpRequestHasValidConnectionToken
+      - isEqualOrParent
+      - pathname.charCodeAt
+      - pathname.startsWith
+      - pathname.substring
+      - res.end
+      - res.writeHead
+      - serveError
+      - serveFile
+      - this._delayShutdown
+      - this._webClientServer.handle
+      - this._webEndpointOriginChecker.matches
+      - url.parse
+  - name: handleUpgrade
+    sig: 'handleUpgrade(req: http.IncomingMessage, socket: net.Socket)'
+    lines:
+    - 194
+    - 265
+    detail:
+      calls:
+      - /\b((server_max_window_bits)|(server_no_context_takeover)|(client_no_context_takeover))\b/.test
+      - /\b(permessage-deflate)\b/.test
+      - /\b(x-webkit-deflate-frame)\b/.test
+      - Array.isArray
+      - crypto.createHash
+      - generateUuid
+      - hash.digest
+      - hash.update
+      - new NodeSocket
+      - new WebSocketNodeSocket
+      - req.headers['upgrade'].toLowerCase
+      - responseHeaders.join
+      - responseHeaders.push
+      - socket.end
+      - socket.setNoDelay
+      - socket.setTimeout
+      - socket.write
+      - this._handleWebSocketConnection
+      - url.parse
+  - name: handleServerError
+    sig: 'handleServerError(err: Error): void'
+    lines:
+    - 267
+    - 270
+    detail:
+      calls:
+      - this._logService.error
+  - name: _rejectWebSocketConnection
+    sig: '_rejectWebSocketConnection(logPrefix: string, protocol: PersistentProtocol, reason: string): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 284
+    - 295
+    detail:
+      calls:
+      - JSON.stringify
+      - VSBuffer.fromString
+      - protocol.dispose
+      - protocol.getSocket
+      - protocol.sendControl
+      - socket.dispose
+      - socket.drain
+      - this._logService.error
+  - name: _handleWebSocketConnection
+    sig: '_handleWebSocketConnection(socket: NodeSocket | WebSocketNodeSocket, isReconnection: boolean, reconnectionToken: string): void'
+    vis: private
+    lines:
+    - 302
+    - 426
+    detail:
+      calls:
+      - new PersistentProtocol
+      - new this._vsdaMod.signer
+      - new this._vsdaMod.validator
+      - protocol.onControlMessage
+      - reconnectionToken.substr
+      - this._getRemoteAddress
+  - name: _handleConnectionType
+    sig: '_handleConnectionType(remoteAddress: string, _logPrefix: string, protocol: PersistentProtocol, socket: NodeSocket | WebSocketNodeSocket, isReconnection: boolean, reconnectionToken: string, msg: ConnectionTypeRequest): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 428
+    - 537
+    detail:
+      calls:
+      - JSON.stringify
+      - VSBuffer.fromString
+      - con.onClose
+      - con.start
+      - new ManagementConnection
+      - protocol.dispose
+      - protocol.readEntireBuffer
+      - protocol.sendControl
+      - protocol.sendPause
+      - this._allReconnectionTokens.add
+      - this._allReconnectionTokens.has
+      - this._createTunnel
+      - this._extHostConnections[reconnectionToken].acceptReconnection
+      - this._instantiationService.createInstance
+      - this._logService.trace
+      - this._managementConnections[reconnectionToken].acceptReconnection
+      - this._rejectWebSocketConnection
+      - this._socketServer.acceptConnection
+      - this._updateWithFreeDebugPort
+  - name: _createTunnel
+    sig: '_createTunnel(protocol: PersistentProtocol, tunnelStartParams: ITunnelConnectionStartParams): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 539
+    - 560
+    detail:
+      calls:
+      - localSocket.on
+      - localSocket.pipe
+      - localSocket.write
+      - protocol.dispose
+      - protocol.getSocket
+      - protocol.readEntireBuffer
+      - remoteSocket.on
+      - remoteSocket.pause
+      - remoteSocket.pipe
+      - this._connectTunnelSocket
+  - name: _onDidCloseExtHostConnection
+    sig: '_onDidCloseExtHostConnection(): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 594
+    - 607
+    detail:
+      calls:
+      - Object.keys
+      - console.log
+      - this._cancelShutdown
+      - this._logService.info
+      - this._waitThenShutdown
+  - name: _shutdown
+    sig: '_shutdown(): void'
+    vis: private
+    lines:
+    - 625
+    - 637
+    detail:
+      calls:
+      - Object.keys
+      - console.log
+      - process.exit
+      - this._logService.info
+      - this.dispose
+  - name: _delayShutdown
+    sig: '_delayShutdown(): void'
+    vis: private
+    lines:
+    - 642
+    - 649
+    detail:
+      calls:
+      - console.log
+      - this._cancelShutdown
+      - this._logService.info
+      - this._waitThenShutdown
+  lines:
+  - 61
+  - 659
+- name: IServerAPI
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: handleRequest
+    type: 'method: handleRequest(req: http.IncomingMessage, res: http.ServerResponse): Promise<void>'
+  - name: handleUpgrade
+    type: 'method: handleUpgrade(req: http.IncomingMessage, socket: net.Socket): void'
+  - name: handleServerError
+    type: 'method: handleServerError(err: Error): void'
+  - name: dispose
+    type: 'method: dispose(): void'
+  lines:
+  - 661
+  - 678
+- name: WebEndpointOriginChecker
+  kind: struct
+  methods:
+  - name: create
+    sig: 'create(productService: IProductService): WebEndpointOriginChecker'
+    decorators:
+    - static
+    lines:
+    - 874
+    - 900
+    detail:
+      calls:
+      - createRegExp
+      - escapeRegExpCharacters
+      - "escapeRegExpCharacters(exampleOrigin)\n\t\t\t\t.replace"
+      - generateUuid
+      - new URL
+      - new WebEndpointOriginChecker
+      - "webEndpointUrlTemplate\n\t\t\t\t.replace"
+      - "webEndpointUrlTemplate\n\t\t\t\t.replace('{{uuid}}', uuid)\n\t\t\t\t.replace"
+      - "webEndpointUrlTemplate\n\t\t\t\t.replace('{{uuid}}', uuid)\n\t\t\t\t.replace('{{commit}}', commit)\n\t\t\t\t.replac..."
+  - name: constructor
+    sig: "constructor(\n\t\tprivate readonly _originRegExp: RegExp | null\n\t)"
+    lines:
+    - 902
+    - 904
+    detail: {}
+  - name: matches
+    sig: 'matches(origin: string): boolean'
+    lines:
+    - 906
+    - 911
+    detail:
+      calls:
+      - this._originRegExp.test
+  lines:
+  - 872
+  - 912
+functions:
+- name: createServer
+  sig: 'createServer(address: string | net.AddressInfo | null, args: ServerParsedArgs, REMOTE_DATA_FOLDER: string): Promise<IServerAPI>'
+  is_async: true
+  lines:
+  - 680
+  - 870
+  detail:
+    calls:
+    - FileAccess.asFileUri
+    - console.log
+    - console.warn
+    - determineServerConnectionToken
+    - fs.existsSync
+    - initUnexpectedErrorHandler
+    - instantiationService.createInstance
+    - instantiationService.invokeFunction
+    - new DisposableStore
+    - perf.mark
+    - performance.now
+    - process.exit
+    - process.on
+    - serverBasePath.startsWith
+    - setupServerServices
+exports:
+- name: RemoteExtensionHostAgentServer
+  kind: type
+- name: IServerAPI
+  kind: type
+- name: WebEndpointOriginChecker
+  kind: type
+- name: createServer
+  kind: func
+- name: require
+  kind: data
+- name: SHUTDOWN_TIMEOUT
+  kind: data

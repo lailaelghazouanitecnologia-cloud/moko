@@ -1,0 +1,315 @@
+## Roska File Descriptor — electron-main/workspacesHistoryMainService.ts
+file: electron-main/workspacesHistoryMainService.ts
+lines: 499
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: electron.app
+- sym: electron.JumpListCategory
+- sym: electron.JumpListItem
+- sym: ../../../base/common/arrays.js.coalesce
+- sym: ../../../base/common/async.js.ThrottledDelayer
+- sym: ../../../base/common/event.js.Emitter
+- sym: ../../../base/common/event.js.Event as CommonEvent
+- sym: ../../../base/common/labels.js.normalizeDriveLetter
+- sym: ../../../base/common/labels.js.splitRecentLabel
+- sym: ../../../base/common/lifecycle.js.Disposable
+- sym: ../../../base/common/network.js.Schemas
+- sym: ../../../base/common/platform.js.isMacintosh
+- sym: ../../../base/common/platform.js.isWindows
+- sym: ../../../base/common/resources.js.basename
+- sym: ../../../base/common/resources.js.extUriBiasedIgnorePathCase
+- sym: ../../../base/common/resources.js.originalFSPath
+- sym: ../../../base/common/uri.js.URI
+- sym: ../../../base/node/pfs.js.Promises
+- sym: ../../../nls.js.localize
+- sym: ../../instantiation/common/instantiation.js.createDecorator
+- sym: ../../lifecycle/electron-main/lifecycleMainService.js.ILifecycleMainService
+- sym: ../../lifecycle/electron-main/lifecycleMainService.js.LifecycleMainPhase
+- sym: ../../log/common/log.js.ILogService
+- sym: ../../storage/common/storage.js.StorageScope
+- sym: ../../storage/common/storage.js.StorageTarget
+- sym: ../../storage/electron-main/storageMainService.js.IApplicationStorageMainService
+- sym: ../common/workspaces.js.IRecent
+- sym: ../common/workspaces.js.IRecentFile
+- sym: ../common/workspaces.js.IRecentFolder
+- sym: ../common/workspaces.js.IRecentlyOpened
+- sym: ../common/workspaces.js.IRecentWorkspace
+- sym: ../common/workspaces.js.isRecentFile
+- sym: ../common/workspaces.js.isRecentFolder
+- sym: ../common/workspaces.js.isRecentWorkspace
+- sym: ../common/workspaces.js.restoreRecentlyOpened
+- sym: ../common/workspaces.js.toStoreData
+- sym: ../../workspace/common/workspace.js.IWorkspaceIdentifier
+- sym: ../../workspace/common/workspace.js.WORKSPACE_EXTENSION
+- sym: ./workspacesManagementMainService.js.IWorkspacesManagementMainService
+- sym: ../../../base/common/map.js.ResourceMap
+- sym: ../../dialogs/electron-main/dialogMainService.js.IDialogMainService
+data:
+- name: IWorkspacesHistoryMainService
+  type: any
+  val: createDecorator<IWorkspacesHistoryMainService>('workspacesHistoryMainService')
+types:
+- name: IWorkspacesHistoryMainService
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: readonly
+    type: undefined
+  - name: readonly
+    type: CommonEvent<void>
+  - name: addRecentlyOpened
+    type: 'method: addRecentlyOpened(recents: IRecent[]): Promise<void>'
+  - name: getRecentlyOpened
+    type: 'method: getRecentlyOpened(): Promise<IRecentlyOpened>'
+  - name: removeRecentlyOpened
+    type: 'method: removeRecentlyOpened(paths: URI[]): Promise<void>'
+  - name: clearRecentlyOpened
+    type: 'method: clearRecentlyOpened(options?: { confirm?: boolean }): Promise<void>'
+  lines:
+  - 31
+  - 41
+- name: WorkspacesHistoryMainService
+  kind: struct
+  ctx: '#region Workspaces History'
+  bases:
+  - Disposable
+  - IWorkspacesHistoryMainService
+  fields:
+  - name: MAX_TOTAL_RECENT_ENTRIES
+    type: any
+    default: '500'
+  - name: RECENTLY_OPENED_STORAGE_KEY
+    type: any
+    default: '''history.recentlyOpenedPathsList'''
+  - name: _serviceBrand
+    type: undefined
+  - name: _onDidChangeRecentlyOpened
+    type: any
+    default: this._register(new Emitter<void>())
+  - name: onDidChangeRecentlyOpened
+    type: any
+    default: this._onDidChangeRecentlyOpened.event
+  - name: MAX_MACOS_DOCK_RECENT_WORKSPACES
+    type: any
+    default: '7'
+  - name: MAX_MACOS_DOCK_RECENT_ENTRIES_TOTAL
+    type: any
+    default: '10'
+  - name: MAX_WINDOWS_JUMP_LIST_ENTRIES
+    type: any
+    default: '7'
+  - name: COMMON_FILES_FILTER
+    type: any
+    default: "[\n\t\t'COMMIT_EDITMSG',\n\t\t'MERGE_MSG',\n\t\t'git-rebase-todo'\n\t]"
+  - name: macOSRecentDocumentsUpdater
+    type: any
+    default: this._register(new ThrottledDelayer<void>(800))
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\t@ILogService private readonly logService: ILogService,\n\t\t@IWorkspacesManagementMainService private readonly workspacesManagementMainService: IWorkspacesManagementMainService,\n\t\t@ILifecycleMainService private readonly lifecycleMainService: ILifecycleMainService,\n\t\t@IApplicationStorageMainService private readonly applicationStorageMainService: IApplicationStorageMainService,\n\t\t@IDialogMainService private readonly dialogMainService: IDialogMainService\n\t)"
+    lines:
+    - 54
+    - 64
+    detail:
+      calls:
+      - super
+      - this.registerListeners
+  - name: registerListeners
+    sig: 'registerListeners(): void'
+    vis: private
+    lines:
+    - 66
+    - 74
+    detail:
+      calls:
+      - this._register
+      - this.lifecycleMainService.when
+      - this.lifecycleMainService.when(LifecycleMainPhase.Eventually).then
+      - this.workspacesManagementMainService.onDidEnterWorkspace
+  - name: addRecentlyOpened
+    sig: 'addRecentlyOpened(recentToAdd: IRecent[]): Promise<void>'
+    is_async: true
+    lines:
+    - 78
+    - 133
+    detail:
+      calls:
+      - WorkspacesHistoryMainService.COMMON_FILES_FILTER.indexOf
+      - app.addRecentDocument
+      - basename
+      - files.push
+      - isRecentFolder
+      - isRecentWorkspace
+      - this._onDidChangeRecentlyOpened.fire
+      - this.containsFile
+      - this.containsFolder
+      - this.containsWorkspace
+      - this.macOSRecentDocumentsUpdater.trigger
+      - this.mergeEntriesFromStorage
+      - this.saveRecentlyOpened
+      - this.workspacesManagementMainService.isUntitledWorkspace
+      - workspaces.push
+  - name: removeRecentlyOpened
+    sig: 'removeRecentlyOpened(recentToRemove: URI[]): Promise<void>'
+    is_async: true
+    lines:
+    - 135
+    - 160
+    detail:
+      calls:
+      - mru.files.filter
+      - mru.workspaces.filter
+      - this._onDidChangeRecentlyOpened.fire
+      - this.getRecentlyOpened
+      - this.macOSRecentDocumentsUpdater.trigger
+      - this.saveRecentlyOpened
+  - name: clearRecentlyOpened
+    sig: 'clearRecentlyOpened(options?: { confirm?: boolean }): Promise<void>'
+    is_async: true
+    lines:
+    - 162
+    - 185
+    detail:
+      calls:
+      - app.clearRecentDocuments
+      - localize
+      - this._onDidChangeRecentlyOpened.fire
+      - this.dialogMainService.showMessageBox
+      - this.saveRecentlyOpened
+  - name: getRecentlyOpened
+    sig: 'getRecentlyOpened(): Promise<IRecentlyOpened>'
+    is_async: true
+    lines:
+    - 187
+    - 189
+    detail:
+      calls:
+      - this.mergeEntriesFromStorage
+  - name: mergeEntriesFromStorage
+    sig: 'mergeEntriesFromStorage(existingEntries?: IRecentlyOpened): Promise<IRecentlyOpened>'
+    is_async: true
+    vis: private
+    lines:
+    - 191
+    - 235
+    detail:
+      calls:
+      - mapFileIdToFile.get
+      - mapFileIdToFile.set
+      - mapFileIdToFile.values
+      - mapWorkspaceIdToWorkspace.get
+      - mapWorkspaceIdToWorkspace.set
+      - mapWorkspaceIdToWorkspace.values
+      - new ResourceMap
+      - this.getRecentlyOpenedFromStorage
+      - this.location
+  - name: getRecentlyOpenedFromStorage
+    sig: 'getRecentlyOpenedFromStorage(): Promise<IRecentlyOpened>'
+    is_async: true
+    vis: private
+    lines:
+    - 237
+    - 255
+    detail:
+      calls:
+      - JSON.parse
+      - restoreRecentlyOpened
+      - this.applicationStorageMainService.get
+      - this.logService.error
+  - name: saveRecentlyOpened
+    sig: 'saveRecentlyOpened(recent: IRecentlyOpened): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 257
+    - 264
+    detail:
+      calls:
+      - JSON.stringify
+      - this.applicationStorageMainService.store
+      - toStoreData
+  - name: handleWindowsJumpList
+    sig: 'handleWindowsJumpList(): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 309
+    - 316
+    detail:
+      calls:
+      - this._register
+      - this.onDidChangeRecentlyOpened
+      - this.updateWindowsJumpList
+  - name: updateWindowsJumpList
+    sig: 'updateWindowsJumpList(): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 318
+    - 407
+    detail:
+      calls:
+      - (await this.getRecentlyOpened()).workspaces.slice
+      - (await this.getRecentlyOpened()).workspaces.slice(0, WorkspacesHistoryMainService.MAX_WINDOWS_JUMP_L...
+      - /^--(folder|file)-uri\s+"([^"]+)"$/.exec
+      - URI.parse
+      - app.getJumpListSettings
+      - app.setJumpList
+      - coalesce
+      - jumpList.push
+      - localize
+      - this.getRecentlyOpened
+      - this.logService.warn
+      - this.removeRecentlyOpened
+      - toRemove.push
+  - name: getWindowsJumpListLabel
+    sig: 'getWindowsJumpListLabel(workspace: IWorkspaceIdentifier | URI, recentLabel: string | undefined): { title: string; description: string }'
+    vis: private
+    lines:
+    - 409
+    - 433
+    detail:
+      calls:
+      - URI.isUri
+      - basename
+      - filename.endsWith
+      - filename.substr
+      - localize
+      - splitRecentLabel
+      - this.renderJumpListPathDescription
+      - this.workspacesManagementMainService.isUntitledWorkspace
+  - name: updateMacOSRecentDocuments
+    sig: 'updateMacOSRecentDocuments(): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 439
+    - 496
+    detail:
+      calls:
+      - Promises.exists
+      - WorkspacesHistoryMainService.COMMON_FILES_FILTER.includes
+      - app.clearRecentDocuments
+      - basename
+      - fileEntries.push
+      - fileEntries.reverse
+      - fileEntries.reverse().forEach
+      - originalFSPath
+      - this.getRecentlyOpened
+      - this.location
+      - workspaceEntries.includes
+      - workspaceEntries.push
+      - workspaceEntries.reverse
+      - workspaceEntries.reverse().forEach
+  lines:
+  - 43
+  - 499
+exports:
+- name: IWorkspacesHistoryMainService
+  kind: type
+- name: WorkspacesHistoryMainService
+  kind: type
+- name: IWorkspacesHistoryMainService
+  kind: data

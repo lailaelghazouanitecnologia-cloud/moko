@@ -1,0 +1,132 @@
+## Roska File Descriptor — browser/mainThreadFileSystemEventService.ts
+file: browser/mainThreadFileSystemEventService.ts
+lines: 285
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: ../../../base/common/lifecycle.js.DisposableMap
+- sym: ../../../base/common/lifecycle.js.DisposableStore
+- sym: ../../../platform/files/common/files.js.FileOperation
+- sym: ../../../platform/files/common/files.js.IFileService
+- sym: ../../../platform/files/common/files.js.IWatchOptions
+- sym: ../../services/extensions/common/extHostCustomers.js.extHostNamedCustomer
+- sym: ../../services/extensions/common/extHostCustomers.js.IExtHostContext
+- sym: ../common/extHost.protocol.js.ExtHostContext
+- sym: ../common/extHost.protocol.js.ExtHostFileSystemEventServiceShape
+- sym: ../common/extHost.protocol.js.MainContext
+- sym: ../common/extHost.protocol.js.MainThreadFileSystemEventServiceShape
+- sym: ../../../nls.js.localize
+- sym: ../../services/workingCopy/common/workingCopyFileService.js.IWorkingCopyFileOperationParticipant
+- sym: ../../services/workingCopy/common/workingCopyFileService.js.IWorkingCopyFileService
+- sym: ../../services/workingCopy/common/workingCopyFileService.js.SourceTargetPair
+- sym: ../../services/workingCopy/common/workingCopyFileService.js.IFileOperationUndoRedoInfo
+- sym: ../../../editor/browser/services/bulkEditService.js.IBulkEditService
+- sym: ../../../platform/progress/common/progress.js.IProgressService
+- sym: ../../../platform/progress/common/progress.js.ProgressLocation
+- sym: ../../../base/common/async.js.raceCancellation
+- sym: ../../../base/common/cancellation.js.CancellationToken
+- sym: ../../../base/common/cancellation.js.CancellationTokenSource
+- sym: ../../../platform/dialogs/common/dialogs.js.IDialogService
+- sym: ../../../base/common/severity.js.Severity
+- sym: ../../../platform/storage/common/storage.js.IStorageService
+- sym: ../../../platform/storage/common/storage.js.StorageScope
+- sym: ../../../platform/storage/common/storage.js.StorageTarget
+- sym: ../../../platform/actions/common/actions.js.Action2
+- sym: ../../../platform/actions/common/actions.js.registerAction2
+- sym: ../../../platform/instantiation/common/instantiation.js.ServicesAccessor
+- sym: ../../../platform/log/common/log.js.ILogService
+- sym: ../../../platform/environment/common/environment.js.IEnvironmentService
+- sym: ../../../platform/uriIdentity/common/uriIdentity.js.IUriIdentityService
+- sym: ./mainThreadBulkEdits.js.reviveWorkspaceEditDto
+- sym: ../../../base/common/uri.js.UriComponents
+- sym: ../../../base/common/uri.js.URI
+types:
+- name: MainThreadFileSystemEventService
+  kind: struct
+  bases:
+  - MainThreadFileSystemEventServiceShape
+  fields:
+  - name: MementoKeyAdditionalEdits
+    type: any
+    default: '`file.particpants.additionalEdits`'
+  - name: _proxy
+    type: ExtHostFileSystemEventServiceShape
+  - name: _listener
+    type: any
+    default: new DisposableStore()
+  - name: _watches
+    type: any
+    default: new DisposableMap<number>()
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\textHostContext: IExtHostContext,\n\t\t@IFileService private readonly _fileService: IFileService,\n\t\t@IWorkingCopyFileService workingCopyFileService: IWorkingCopyFileService,\n\t\t@IBulkEditService bulkEditService: IBulkEditService,\n\t\t@IProgressService progressService: IProgressService,\n\t\t@IDialogService dialogService: IDialogService,\n\t\t@IStorageService storageService: IStorageService,\n\t\t@ILogService logService: ILogService,\n\t\t@IEnvironmentService envService: IEnvironmentService,\n\t\t@IUriIdentityService uriIdentService: IUriIdentityService,\n\t\t@ILogService private readonly _logService: ILogService,\n\t)"
+    lines:
+    - 37
+    - 206
+    detail:
+      calls:
+      - Math.min
+      - _fileService.onDidFilesChange
+      - await dialogService.prompt
+      - bulkEditService.apply
+      - data.edit.edits.some
+      - dialogService.confirm
+      - extHostContext.getProxy
+      - localize
+      - logService.info
+      - new CancellationTokenSource
+      - "new class implements IWorkingCopyFileOperationParticipant {\n\t\t\tasync participate(files: SourceTargetPair[], operation: FileOperation, undoInfo: IFileOperationUndoRedoInfo | undefined, timeout: number, token: CancellationToken) {\n\t\t\t\tif (undoInfo?.isUndoing) {\n\t\t\t\t\treturn;\n\t\t\t\t}\n\n\t\t\t\tconst cts = new CancellationTokenSource(token);\n\t\t\t\tconst timer = setTimeout(() => cts.cancel(), timeout);\n\n\t\t\t\tconst data = await progressService.withProgress({\n\t\t\t\t\tlocation: ProgressLocation.Notification,\n\t\t\t\t\ttitle: this._progressLabel(operation),\n\t\t\t\t\tcancellable: true,\n\t\t\t\t\tdelay: Math.min(timeout / 2, 3000)\n\t\t\t\t}, () => {\n\t\t\t\t\t// race extension host event delivery against timeout AND user-cancel\n\t\t\t\t\tconst onWillEvent = that._proxy.$onWillRunFileOperation(operation, files, timeout, cts.token);\n\t\t\t\t\treturn raceCancellation(onWillEvent, cts.token);\n\t\t\t\t}, () => {\n\t\t\t\t\t// user-cancel\n\t\t\t\t\tcts.cancel();\n\n\t\t\t\t}).finally(() => {\n\t\t\t\t\tcts.dispose();\n\t\t\t\t\tclearTimeout(timer);\n\t\t\t\t});\n\n\t\t\t\tif (!data || data.edit.edits.length === 0) {\n\t\t\t\t\t// cancelled, no reply, or no edits\n\t\t\t\t\treturn;\n\t\t\t\t}\n\n\t\t\t\tconst needsConfirmation = data.edit.edits.some(edit => edit.metadata?.needsConfirmation);\n\t\t\t\tlet showPreview = storageService.getBoolean(MainThreadFileSystemEventService.MementoKeyAdditionalEdits, StorageScope.PROFILE);\n\n\t\t\t\tif (envService.extensionTestsLocationURI) {\n\t\t\t\t\t// don't show dialog in tests\n\t\t\t\t\tshowPreview = false;\n\t\t\t\t}\n\n\t\t\t\tif (showPreview === undefined) {\n\t\t\t\t\t// show a user facing message\n\n\t\t\t\t\tlet message: string;\n\t\t\t\t\tif (data.extensionNames.length === 1) {\n\t\t\t\t\t\tif (operation === FileOperation.CREATE) {\n\t\t\t\t\t\t\tmessage = localize('ask.1.create', \"Extension '{0}' wants to make refactoring changes with this file creation\", data.extensionNames[0]);\n\t\t\t\t\t\t} else if (operation === FileOperation.COPY) {\n\t\t\t\t\t\t\tmessage = localize('ask.1.copy', \"Extension '{0}' wants to make refactoring changes with this file copy\", data.extensionNames[0]);\n\t\t\t\t\t\t} else if (operation === FileOperation.MOVE) {\n\t\t\t\t\t\t\tmessage = localize('ask.1.move', \"Extension '{0}' wants to make refactoring changes with this file move\", data.extensionNames[0]);\n\t\t\t\t\t\t} else /* if (operation === FileOperation.DELETE) */ {\n\t\t\t\t\t\t\tmessage = localize('ask.1.delete', \"Extension '{0}' wants to make refactoring changes with this file deletion\", data.extensionNames[0]);\n\t\t\t\t\t\t}\n\t\t\t\t\t} else {\n\t\t\t\t\t\tif (operation === FileOperation.CREATE) {\n\t\t\t\t\t\t\tmessage = localize({ key: 'ask.N.create', comment: ['{0} is a number, e.g \"3 extensions want...\"'] }, \"{0} extensions want to make refactoring changes with this file creation\", data.extensionNames.length);\n\t\t\t\t\t\t} else if (operation === FileOperation.COPY) {\n\t\t\t\t\t\t\tmessage = localize({ key: 'ask.N.copy', comment: ['{0} is a number, e.g \"3 extensions want...\"'] }, \"{0} extensions want to make refactoring changes with this file copy\", data.extensionNames.length);\n\t\t\t\t\t\t} else if (operation === FileOperation.MOVE) {\n\t\t\t\t\t\t\tmessage = localize({ key: 'ask.N.move', comment: ['{0} is a number, e.g \"3 extensions want...\"'] }, \"{0} extensions want to make refactoring changes with this file move\", data.extensionNames.length);\n\t\t\t\t\t\t} else /* if (operation === FileOperation.DELETE) */ {\n\t\t\t\t\t\t\tmessage = localize({ key: 'ask.N.delete', comment: ['{0} is a number, e.g \"3 extensions want...\"'] }, \"{0} extensions want to make refactoring changes with this file deletion\", data.extensionNames.length);\n\t\t\t\t\t\t}\n\t\t\t\t\t}\n\n\t\t\t\t\tif (needsConfirmation) {\n\t\t\t\t\t\t// edit which needs confirmation -> always show dialog\n\t\t\t\t\t\tconst { confirmed } = await dialogService.confirm({\n\t\t\t\t\t\t\ttype: Severity.Info,\n\t\t\t\t\t\t\tmessage,\n\t\t\t\t\t\t\tprimaryButton: localize('preview', \"Show &&Preview\"),\n\t\t\t\t\t\t\tcancelButton: localize('cancel', \"Skip Changes\")\n\t\t\t\t\t\t});\n\t\t\t\t\t\tshowPreview = true;\n\t\t\t\t\t\tif (!confirmed) {\n\t\t\t\t\t\t\t// no changes wanted\n\t\t\t\t\t\t\treturn;\n\t\t\t\t\t\t}\n\t\t\t\t\t} else {\n\t\t\t\t\t\t// choice\n\t\t\t\t\t\tenum Choice {\n\t\t\t\t\t\t\tOK = 0,\n\t\t\t\t\t\t\tPreview = 1,\n\t\t\t\t\t\t\tCancel = 2\n\t\t\t\t\t\t}\n\t\t\t\t\t\tconst { result, checkboxChecked } = await dialogService.prompt<Choice>({\n\t\t\t\t\t\t\ttype: Severity.Info,\n\t\t\t\t\t\t\tmessage,\n\t\t\t\t\t\t\tbuttons: [\n\t\t\t\t\t\t\t\t{\n\t\t\t\t\t\t\t\t\tlabel: localize({ key: 'ok', comment: ['&& denotes a mnemonic'] }, \"&&OK\"),\n\t\t\t\t\t\t\t\t\trun: () => Choice.OK\n\t\t\t\t\t\t\t\t},\n\t\t\t\t\t\t\t\t{\n\t\t\t\t\t\t\t\t\tlabel: localize({ key: 'preview', comment: ['&& denotes a mnemonic'] }, \"Show &&Preview\"),\n\t\t\t\t\t\t\t\t\trun: () => Choice.Preview\n\t\t\t\t\t\t\t\t}\n\t\t\t\t\t\t\t],\n\t\t\t\t\t\t\tcancelButton: {\n\t\t\t\t\t\t\t\tlabel: localize('cancel', \"Skip Changes\"),\n\t\t\t\t\t\t\t\trun: () => Choice.Cancel\n\t\t\t\t\t\t\t},\n\t\t\t\t\t\t\tcheckbox: { label: localize('again', \"Do not ask me again\") }\n\t\t\t\t\t\t});\n\t\t\t\t\t\tif (result === Choice.Cancel) {\n\t\t\t\t\t\t\t// no changes wanted, don't persist cancel option\n\t\t\t\t\t\t\treturn;\n\t\t\t\t\t\t}\n\t\t\t\t\t\tshowPreview = result === Choice.Preview;\n\t\t\t\t\t\tif (checkboxChecked) {\n\t\t\t\t\t\t\tstorageService.store(MainThreadFileSystemEventService.MementoKeyAdditionalEdits, showPreview, StorageScope.PROFILE, StorageTarget.USER);\n\t\t\t\t\t\t}\n\t\t\t\t\t}\n\t\t\t\t}\n\n\t\t\t\tlogService.info('[onWill-handler] applying additional workspace edit from extensions', data.extensionNames);\n\n\t\t\t\tawait bulkEditService.apply(\n\t\t\t\t\treviveWorkspaceEditDto(data.edit, uriIdentService),\n\t\t\t\t\t{ undoRedoGroupId: undoInfo?.undoRedoGroupId, showPreview }\n\t\t\t\t);\n\t\t\t}\n\n\t\t\tprivate _progressLabel(operation: FileOperation): string {\n\t\t\t\tswitch (operation) {\n\t\t\t\t\tcase FileOperation.CREATE:\n\t\t\t\t\t\treturn localize('msg-create', \"Running 'File Create' participants...\");\n\t\t\t\t\tcase FileOperation.MOVE:\n\t\t\t\t\t\treturn localize('msg-rename', \"Running 'File Rename' participants...\");\n\t\t\t\t\tcase FileOperation.COPY:\n\t\t\t\t\t\treturn localize('msg-copy', \"Running 'File Copy' participants...\");\n\t\t\t\t\tcase FileOperation.DELETE:\n\t\t\t\t\t\treturn localize('msg-delete', \"Running 'File Delete' participants...\");\n\t\t\t\t\tcase FileOperation.WRITE:\n\t\t\t\t\t\treturn localize('msg-write', \"Running 'File Write' participants...\");\n\t\t\t\t}\n\t\t\t}\n\t\t}"
+      - progressService.withProgress
+      - "progressService.withProgress({\n\t\t\t\t\tlocation: ProgressLocation.Notification,\n\t\t\t\t\ttitle: this._progr..."
+      - reviveWorkspaceEditDto
+      - setTimeout
+      - storageService.getBoolean
+      - storageService.store
+      - this._listener.add
+      - this._progressLabel
+      - workingCopyFileService.addFileOperationParticipant
+      - workingCopyFileService.onDidRunWorkingCopyFileOperation
+  - name: $watch
+    sig: '$watch(extensionId: string, session: number, resource: UriComponents, unvalidatedOpts: IWatchOptions, correlate: boolean): Promise<void>'
+    is_async: true
+    lines:
+    - 208
+    - 256
+    detail:
+      calls:
+      - JSON.stringify
+      - URI.revive
+      - new DisposableStore
+      - subscription.onDidChange
+      - this._fileService.createWatcher
+      - this._fileService.stat
+      - this._fileService.watch
+      - this._logService.trace
+      - this._watches.set
+      - uri.toString
+      - watcherDisposables.add
+  - name: $unwatch
+    sig: '$unwatch(session: number): void'
+    lines:
+    - 258
+    - 263
+    detail:
+      calls:
+      - this._logService.trace
+      - this._watches.deleteAndDispose
+      - this._watches.has
+  - name: dispose
+    sig: 'dispose(): void'
+    lines:
+    - 265
+    - 268
+    detail:
+      calls:
+      - this._listener.dispose
+      - this._watches.dispose
+  lines:
+  - 28
+  - 269
+exports:
+- name: MainThreadFileSystemEventService
+  kind: type

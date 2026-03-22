@@ -1,0 +1,910 @@
+## Roska File Descriptor — common/event.ts
+file: common/event.ts
+lines: 1787
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: ./cancellation.js.CancellationToken
+- sym: ./collections.js.diffSets
+- sym: ./errors.js.onUnexpectedError
+- sym: ./functional.js.createSingleCallFunction
+- sym: ./lifecycle.js.combinedDisposable
+- sym: ./lifecycle.js.Disposable
+- sym: ./lifecycle.js.DisposableMap
+- sym: ./lifecycle.js.DisposableStore
+- sym: ./lifecycle.js.IDisposable
+- sym: ./lifecycle.js.toDisposable
+- sym: ./linkedList.js.LinkedList
+- sym: ./observable.js.IObservable
+- sym: ./observable.js.IObservableWithChange
+- sym: ./observable.js.IObserver
+- sym: ./stopwatch.js.StopWatch
+- sym: ./symbols.js.MicrotaskDelay
+data:
+- name: _enableDisposeWithListenerWarning
+  type: boolean
+  val: 'false'
+- name: _enableSnapshotPotentialLeakWarning
+  type: boolean
+  val: 'false'
+- name: _globalLeakWarningThreshold
+  type: number
+  val: '-1'
+- name: id
+  type: number
+  val: '0'
+- name: compactionThreshold
+  type: number
+  val: '2'
+types:
+- name: Event
+  kind: trait
+  decorators:
+  - interface
+  lines:
+  - 36
+  - 38
+- name: EmitterOptions
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: onWillAddFirstListener
+    type: Function
+  - name: onDidAddFirstListener
+    type: Function
+  - name: onDidAddListener
+    type: Function
+  - name: onDidRemoveLastListener
+    type: Function
+  - name: onWillRemoveListener
+    type: Function
+  - name: onListenerError
+    type: '(e: any) => void'
+  - name: leakWarningThreshold
+    type: number
+  - name: deliveryQueue
+    type: EventDeliveryQueue
+  lines:
+  - 767
+  - 808
+- name: EventProfiling
+  kind: struct
+  fields:
+  - name: all
+    type: any
+    default: new Set<EventProfiling>()
+  - name: _idPool
+    type: any
+    default: '0'
+  - name: listenerCount
+    type: number
+    default: '0'
+  - name: invocationCount
+    type: any
+    default: '0'
+  - name: elapsedOverall
+    type: any
+    default: '0'
+  - name: durations
+    type: number[]
+    default: '[]'
+  - name: _stopWatch
+    type: StopWatch
+  methods:
+  - name: constructor
+    sig: 'constructor(name: string)'
+    lines:
+    - 825
+    - 828
+    detail:
+      calls:
+      - EventProfiling.all.add
+  - name: start
+    sig: 'start(listenerCount: number): void'
+    lines:
+    - 830
+    - 833
+    detail:
+      calls:
+      - new StopWatch
+  - name: stop
+    sig: 'stop(): void'
+    lines:
+    - 835
+    - 843
+    detail:
+      calls:
+      - this._stopWatch.elapsed
+      - this.durations.push
+  lines:
+  - 811
+  - 844
+- name: LeakageMonitor
+  kind: struct
+  fields:
+  - name: _idPool
+    type: any
+    default: '1'
+  - name: _stacks
+    type: Map<string, number> | undefined
+  - name: _warnCountdown
+    type: number
+    default: '0'
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tprivate readonly _errorHandler: (err: Error) => void,\n\t\treadonly threshold: number,\n\t\treadonly name: string = (LeakageMonitor._idPool++).toString(16).padStart(3, '0')\n\t)"
+    lines:
+    - 864
+    - 868
+    detail: {}
+  - name: dispose
+    sig: 'dispose(): void'
+    lines:
+    - 870
+    - 872
+    detail:
+      calls:
+      - this._stacks?.clear
+  - name: check
+    sig: 'check(stack: Stacktrace, listenerCount: number): undefined | (() => void)'
+    lines:
+    - 874
+    - 906
+    detail:
+      calls:
+      - console.warn
+      - new ListenerLeakError
+      - new Map
+      - this._errorHandler
+      - this._stacks.get
+      - this._stacks.set
+      - this.getMostFrequentStack
+  - name: getMostFrequentStack
+    sig: 'getMostFrequentStack(): [string, number] | undefined'
+    lines:
+    - 908
+    - 921
+    detail: {}
+  lines:
+  - 857
+  - 922
+- name: Stacktrace
+  kind: struct
+  methods:
+  - name: create
+    sig: create()
+    decorators:
+    - static
+    lines:
+    - 926
+    - 929
+    detail:
+      calls:
+      - new Error
+      - new Stacktrace
+  - name: print
+    sig: print()
+    lines:
+    - 933
+    - 935
+    detail:
+      calls:
+      - console.warn
+      - this.value.split
+      - this.value.split('\n').slice
+      - this.value.split('\n').slice(2).join
+  lines:
+  - 924
+  - 936
+- name: ListenerLeakError
+  kind: struct
+  bases:
+  - Error
+  methods:
+  - name: constructor
+    sig: 'constructor(message: string, stack: string)'
+    lines:
+    - 940
+    - 944
+    detail:
+      calls:
+      - super
+  lines:
+  - 939
+  - 945
+- name: ListenerRefusalError
+  kind: struct
+  bases:
+  - Error
+  methods:
+  - name: constructor
+    sig: 'constructor(message: string, stack: string)'
+    lines:
+    - 950
+    - 954
+    detail:
+      calls:
+      - super
+  lines:
+  - 949
+  - 955
+- name: UniqueContainer
+  kind: struct
+  fields:
+  - name: stack
+    type: Stacktrace
+  - name: id
+    type: any
+    default: id++
+  methods:
+  - name: constructor
+    sig: 'constructor(public readonly value: T)'
+    lines:
+    - 961
+    - 961
+    detail: {}
+  lines:
+  - 958
+  - 962
+- name: ListenerContainer
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 965
+  - 965
+- name: ListenerOrListeners
+  kind: enum
+  decorators:
+  - type
+  variants:
+  - name: ListenerContainer<T>
+  lines:
+  - 966
+  - 966
+- name: Emitter
+  kind: struct
+  ctx: 'A listener, or list of listeners. A single listener is the most common for event emitters (#185789), so we optimize that special case to avoid wrapping it in an array (just like Node.js itself.) A list of listeners never ''downgrades'' back to a plain function if listeners are removed, for two reasons: 1. That''s complicated (especially with the deliveryQueue) 2. A listener with >1 listener is likely to have >1 listener again at some point, and swapping between arrays and functions may[citation needed] introduce unnecessary work and garbage. The array listeners can be ''sparse'', to avoid reallocating the array whenever any listener is added or removed. If more than `1 / compactionThreshold` of the array is empty, only then is it resized.'
+  fields:
+  - name: _options
+    type: EmitterOptions
+  - name: _leakageMon
+    type: LeakageMonitor
+  - name: _perfMon
+    type: EventProfiling
+  - name: _disposed
+    type: 'true'
+  - name: _event
+    type: Event<T>
+  - name: _listeners
+    type: ListenerOrListeners<T>
+  - name: _deliveryQueue
+    type: EventDeliveryQueuePrivate
+  - name: _size
+    type: any
+    default: '0'
+  methods:
+  - name: constructor
+    sig: 'constructor(options?: EmitterOptions)'
+    lines:
+    - 1037
+    - 1044
+    detail:
+      calls:
+      - new EventProfiling
+      - new LeakageMonitor
+  - name: dispose
+    sig: dispose()
+    lines:
+    - 1046
+    - 1077
+    detail:
+      calls:
+      - queueMicrotask
+      - this._deliveryQueue.reset
+      - this._leakageMon?.dispose
+      - this._options?.onDidRemoveLastListener
+  - name: event
+    sig: 'event(): Event<T>'
+    lines:
+    - 1083
+    - 1149
+    detail: {}
+  - name: _removeListener
+    sig: '_removeListener(listener: ListenerContainer<T>)'
+    vis: private
+    lines:
+    - 1151
+    - 1194
+    detail:
+      calls:
+      - JSON.stringify
+      - console.log
+      - listeners.indexOf
+      - new Error
+      - this._options?.onDidRemoveLastListener
+      - this._options?.onWillRemoveListener
+  - name: fire
+    sig: 'fire(event: T): void'
+    lines:
+    - 1228
+    - 1247
+    detail:
+      calls:
+      - dq.enqueue
+      - this._deliver
+      - this._deliverQueue
+      - this._perfMon?.start
+      - this._perfMon?.stop
+  - name: hasListeners
+    sig: 'hasListeners(): boolean'
+    lines:
+    - 1249
+    - 1251
+    detail: {}
+  lines:
+  - 1002
+  - 1252
+- name: EventDeliveryQueue
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: _isEventDeliveryQueue
+    type: 'true'
+  lines:
+  - 1254
+  - 1256
+- name: EventDeliveryQueuePrivate
+  kind: struct
+  ctx: Index in current's listener list.
+  bases:
+  - EventDeliveryQueue
+  fields:
+  - name: _isEventDeliveryQueue
+    type: 'true'
+  - name: i
+    type: any
+    default: '-1'
+  - name: end
+    type: any
+    default: '0'
+  - name: current
+    type: Emitter<any>
+  - name: value
+    type: unknown
+  methods:
+  - name: enqueue
+    sig: 'enqueue(emitter: Emitter<T>, value: T, end: number)'
+    lines:
+    - 1282
+    - 1287
+    detail: {}
+  - name: reset
+    sig: reset()
+    lines:
+    - 1289
+    - 1293
+    detail: {}
+  lines:
+  - 1260
+  - 1294
+- name: IWaitUntil
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: token
+    type: CancellationToken
+  - name: waitUntil
+    type: 'method: waitUntil(thenable: Promise<unknown>): void'
+  lines:
+  - 1296
+  - 1299
+- name: IWaitUntilData
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 1301
+  - 1301
+- name: AsyncEmitter
+  kind: struct
+  bases:
+  - Emitter
+  fields:
+  - name: _asyncDeliveryQueue
+    type: 'LinkedList<[(ev: T) => void, IWaitUntilData<T>]>'
+  methods:
+  - name: fireAsync
+    sig: 'fireAsync(data: IWaitUntilData<T>, token: CancellationToken, promiseJoin?: (p: Promise<unknown>, listener: Function) => Promise<unknown>): Promise<void>'
+    is_async: true
+    lines:
+    - 1307
+    - 1357
+    detail:
+      calls:
+      - Object.freeze
+      - Promise.allSettled
+      - Promise.allSettled(thenables).then
+      - forEachListener
+      - listener
+      - new LinkedList
+      - onUnexpectedError
+      - this._asyncDeliveryQueue.shift
+  lines:
+  - 1303
+  - 1358
+- name: PauseableEmitter
+  kind: struct
+  bases:
+  - Emitter
+  fields:
+  - name: _isPaused
+    type: any
+    default: '0'
+  - name: _eventQueue
+    type: any
+    default: new LinkedList<T>()
+  - name: _mergeFn
+    type: '(input: T[]) => T'
+  methods:
+  - name: isPaused
+    sig: 'isPaused(): boolean'
+    lines:
+    - 1367
+    - 1369
+    detail: {}
+  - name: constructor
+    sig: 'constructor(options?: EmitterOptions & { merge?: (input: T[]) => T })'
+    lines:
+    - 1371
+    - 1374
+    detail:
+      calls:
+      - super
+  - name: pause
+    sig: 'pause(): void'
+    lines:
+    - 1376
+    - 1378
+    detail: {}
+  - name: resume
+    sig: 'resume(): void'
+    lines:
+    - 1380
+    - 1399
+    detail:
+      calls:
+      - Array.from
+      - super.fire
+      - this._eventQueue.clear
+      - this._eventQueue.shift
+      - this._mergeFn
+  - name: fire
+    sig: 'fire(event: T): void'
+    lines:
+    - 1401
+    - 1409
+    detail:
+      calls:
+      - super.fire
+      - this._eventQueue.push
+  lines:
+  - 1361
+  - 1410
+- name: DebounceEmitter
+  kind: struct
+  bases:
+  - PauseableEmitter
+  fields:
+  - name: _delay
+    type: number
+  - name: _handle
+    type: any | undefined
+  methods:
+  - name: constructor
+    sig: 'constructor(options: EmitterOptions & { merge: (input: T[]) => T; delay?: number })'
+    lines:
+    - 1417
+    - 1420
+    detail:
+      calls:
+      - super
+  - name: fire
+    sig: 'fire(event: T): void'
+    lines:
+    - 1422
+    - 1431
+    detail:
+      calls:
+      - setTimeout
+      - super.fire
+      - this.pause
+  lines:
+  - 1412
+  - 1432
+- name: MicrotaskEmitter
+  kind: struct
+  bases:
+  - Emitter
+  fields:
+  - name: _queuedEvents
+    type: T[]
+    default: '[]'
+  - name: _mergeFn
+    type: '(input: T[]) => T'
+  methods:
+  - name: constructor
+    sig: 'constructor(options?: EmitterOptions & { merge?: (input: T[]) => T })'
+    lines:
+    - 1442
+    - 1445
+    detail:
+      calls:
+      - super
+  - name: fire
+    sig: 'fire(event: T): void'
+    lines:
+    - 1446
+    - 1463
+    detail:
+      calls:
+      - queueMicrotask
+      - this._queuedEvents.push
+      - this.hasListeners
+  lines:
+  - 1438
+  - 1464
+- name: EventMultiplexer
+  kind: struct
+  bases:
+  - IDisposable
+  fields:
+  - name: emitter
+    type: Emitter<T>
+  - name: hasListeners
+    type: any
+    default: 'false'
+  - name: events
+    type: '{ event: Event<T>; listener: IDisposable | null }[]'
+    default: '[]'
+  methods:
+  - name: constructor
+    sig: constructor()
+    lines:
+    - 1495
+    - 1500
+    detail:
+      calls:
+      - new Emitter
+  - name: event
+    sig: 'event(): Event<T>'
+    lines:
+    - 1502
+    - 1504
+    detail: {}
+  - name: add
+    sig: 'add(event: Event<T>): IDisposable'
+    lines:
+    - 1506
+    - 1524
+    detail:
+      calls:
+      - createSingleCallFunction
+      - this.events.push
+      - this.hook
+      - toDisposable
+  - name: dispose
+    sig: 'dispose(): void'
+    lines:
+    - 1545
+    - 1552
+    detail:
+      calls:
+      - e.listener?.dispose
+      - this.emitter.dispose
+  lines:
+  - 1489
+  - 1553
+- name: IDynamicListEventMultiplexer
+  kind: trait
+  bases:
+  - IDisposable
+  decorators:
+  - interface
+  fields:
+  - name: readonly
+    type: Event<TEventType>
+  lines:
+  - 1555
+  - 1557
+- name: DynamicListEventMultiplexer
+  kind: struct
+  bases:
+  - IDynamicListEventMultiplexer<TEventType>
+  fields:
+  - name: _store
+    type: any
+    default: new DisposableStore()
+  - name: event
+    type: Event<TEventType>
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\titems: TItem[],\n\t\tonAddItem: Event<TItem>,\n\t\tonRemoveItem: Event<TItem>,\n\t\tgetEvent: (item: TItem) => Event<TEventType>\n\t)"
+    lines:
+    - 1563
+    - 1592
+    detail:
+      calls:
+      - addItem
+      - new DisposableMap
+      - new EventMultiplexer
+      - onAddItem
+      - onRemoveItem
+      - this._store.add
+  - name: dispose
+    sig: dispose()
+    lines:
+    - 1594
+    - 1596
+    detail:
+      calls:
+      - this._store.dispose
+  lines:
+  - 1558
+  - 1597
+- name: EventBufferer
+  kind: struct
+  fields:
+  - name: data
+    type: '{ buffers: Function[] }[]'
+    default: '[]'
+  methods:
+  - name: wrapEvent
+    sig: 'wrapEvent(event: Event<T>, reduce?: (last: T | O | undefined, event: T) => T | O, initial?: O): Event<O | T>'
+    lines:
+    - 1626
+    - 1677
+    detail: {}
+  - name: bufferEvents
+    sig: 'bufferEvents(fn: () => R): R'
+    lines:
+    - 1679
+    - 1686
+    detail:
+      calls:
+      - data.buffers.forEach
+      - fn
+      - new Array
+      - this.data.pop
+      - this.data.push
+  lines:
+  - 1619
+  - 1687
+- name: Relay
+  kind: struct
+  bases:
+  - IDisposable
+  fields:
+  - name: listening
+    type: any
+    default: 'false'
+  - name: inputEvent
+    type: Event<T>
+    default: Event.None
+  - name: inputEventListener
+    type: IDisposable
+    default: Disposable.None
+  - name: emitter
+    type: any
+    default: "new Emitter<T>({\n\t\tonDidAddFirstListener: () => {\n\t\t\tthis.listening = true;\n\t\t\tt..."
+  - name: event
+    type: Event<T>
+    default: this.emitter.event
+  methods:
+  - name: input
+    sig: 'input(event: Event<T>)'
+    lines:
+    - 1714
+    - 1721
+    detail:
+      calls:
+      - event
+      - this.inputEventListener.dispose
+  - name: dispose
+    sig: dispose()
+    lines:
+    - 1723
+    - 1726
+    detail:
+      calls:
+      - this.emitter.dispose
+      - this.inputEventListener.dispose
+  lines:
+  - 1695
+  - 1727
+- name: IValueWithChangeEvent
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: readonly
+    type: Event<void>
+  - name: get
+    type: 'method: get value(): T'
+  lines:
+  - 1729
+  - 1732
+- name: ValueWithChangeEvent
+  kind: struct
+  bases:
+  - IValueWithChangeEvent<T>
+  fields:
+  - name: _onDidChange
+    type: any
+    default: new Emitter<void>()
+  - name: onDidChange
+    type: Event<void>
+    default: this._onDidChange.event
+  methods:
+  - name: const
+    sig: 'const(value: T): IValueWithChangeEvent<T>'
+    decorators:
+    - static
+    lines:
+    - 1735
+    - 1737
+    detail:
+      calls:
+      - new ConstValueWithChangeEvent
+  - name: constructor
+    sig: 'constructor(private _value: T)'
+    lines:
+    - 1742
+    - 1742
+    detail: {}
+  - name: value
+    sig: 'value(): T'
+    lines:
+    - 1744
+    - 1746
+    detail: {}
+  - name: value
+    sig: 'value(value: T)'
+    lines:
+    - 1748
+    - 1753
+    detail:
+      calls:
+      - this._onDidChange.fire
+  lines:
+  - 1734
+  - 1754
+- name: ConstValueWithChangeEvent
+  kind: struct
+  bases:
+  - IValueWithChangeEvent<T>
+  fields:
+  - name: onDidChange
+    type: Event<void>
+    default: Event.None
+  methods:
+  - name: constructor
+    sig: 'constructor(readonly value: T)'
+    lines:
+    - 1759
+    - 1759
+    detail: {}
+  lines:
+  - 1756
+  - 1760
+functions:
+- name: setGlobalLeakWarningThreshold
+  sig: 'setGlobalLeakWarningThreshold(n: number): IDisposable'
+  lines:
+  - 847
+  - 855
+  detail: {}
+- name: forEachListener
+  sig: 'forEachListener(listeners: ListenerOrListeners<T>, fn: (c: ListenerContainer<T>) => void)'
+  lines:
+  - 968
+  - 979
+  detail:
+    calls:
+    - fn
+- name: createEventDeliveryQueue
+  sig: 'createEventDeliveryQueue(): EventDeliveryQueue'
+  lines:
+  - 1258
+  - 1258
+- name: trackSetChanges
+  sig: 'trackSetChanges(getData: () => ReadonlySet<T>, onDidChangeData: Event<unknown>, handleItem: (d: T) => IDisposable): IDisposable'
+  lines:
+  - 1766
+  - 1787
+  detail:
+    calls:
+    - getData
+    - handleItem
+    - map.set
+    - new DisposableMap
+    - new DisposableStore
+    - new Set
+    - onDidChangeData
+    - store.add
+exports:
+- name: Event
+  kind: type
+- name: EmitterOptions
+  kind: type
+- name: EventProfiling
+  kind: type
+- name: LeakageMonitor
+  kind: type
+- name: Stacktrace
+  kind: type
+- name: ListenerLeakError
+  kind: type
+- name: ListenerRefusalError
+  kind: type
+- name: UniqueContainer
+  kind: type
+- name: ListenerContainer
+  kind: type
+- name: ListenerOrListeners
+  kind: type
+- name: Emitter
+  kind: type
+- name: EventDeliveryQueue
+  kind: type
+- name: EventDeliveryQueuePrivate
+  kind: type
+- name: IWaitUntil
+  kind: type
+- name: IWaitUntilData
+  kind: type
+- name: AsyncEmitter
+  kind: type
+- name: PauseableEmitter
+  kind: type
+- name: DebounceEmitter
+  kind: type
+- name: MicrotaskEmitter
+  kind: type
+- name: EventMultiplexer
+  kind: type
+- name: IDynamicListEventMultiplexer
+  kind: type
+- name: DynamicListEventMultiplexer
+  kind: type
+- name: EventBufferer
+  kind: type
+- name: Relay
+  kind: type
+- name: IValueWithChangeEvent
+  kind: type
+- name: ValueWithChangeEvent
+  kind: type
+- name: ConstValueWithChangeEvent
+  kind: type
+- name: setGlobalLeakWarningThreshold
+  kind: func
+- name: forEachListener
+  kind: func
+- name: createEventDeliveryQueue
+  kind: func
+- name: trackSetChanges
+  kind: func
+- name: _enableDisposeWithListenerWarning
+  kind: data
+- name: _enableSnapshotPotentialLeakWarning
+  kind: data
+- name: _globalLeakWarningThreshold
+  kind: data
+- name: id
+  kind: data
+- name: compactionThreshold
+  kind: data

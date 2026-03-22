@@ -1,0 +1,404 @@
+## Roska File Descriptor — languageFeatures/diagnostics.ts
+file: languageFeatures/diagnostics.ts
+lines: 416
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: vscode.vscode
+- sym: ../configuration/configuration.TypeScriptServiceConfiguration
+- sym: ../configuration/languageDescription.DiagnosticLanguage
+- sym: ../logging/telemetry.TelemetryReporter
+- sym: ../tsServer/protocol/protocol.DiagnosticPerformanceData as TsDiagnosticPerformanceData
+- sym: ../utils/arrays.arrays
+- sym: ../utils/dispose.Disposable
+- sym: ../utils/objects.equals
+- sym: ../utils/resourceMap.ResourceMap
+types:
+- name: DiagnosticKind
+  kind: enum
+  variants:
+  - name: Syntax
+  - name: Semantic
+  - name: Suggestion
+  - name: RegionSemantic
+  lines:
+  - 34
+  - 39
+- name: FileDiagnostics
+  kind: struct
+  ctx: ''
+  fields:
+  - name: _diagnostics
+    type: any
+    default: new Map<DiagnosticKind, ReadonlyArray<vscode.Diagnostic>>()
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tpublic readonly file: vscode.Uri,\n\t\tpublic language: DiagnosticLanguage\n\t)"
+    lines:
+    - 45
+    - 48
+    detail: {}
+  - name: updateDiagnostics
+    sig: "updateDiagnostics(\n\t\tlanguage: DiagnosticLanguage,\n\t\tkind: DiagnosticKind,\n\t\tdiagnostics: ReadonlyArray<vscode.Diagnostic>,\n\t\tranges: ReadonlyArray<vscode.Range> | undefined\n\t): boolean"
+    lines:
+    - 50
+    - 72
+    detail:
+      calls:
+      - this._diagnostics.clear
+      - this._diagnostics.get
+      - this._diagnostics.set
+      - this.updateRegionDiagnostics
+  - name: getAllDiagnostics
+    sig: 'getAllDiagnostics(settings: DiagnosticSettings): vscode.Diagnostic[]'
+    lines:
+    - 74
+    - 84
+    detail:
+      calls:
+      - settings.getValidate
+      - this.get
+      - this.getSuggestionDiagnostics
+  - name: delete
+    sig: 'delete(toDelete: vscode.Diagnostic): void'
+    lines:
+    - 86
+    - 90
+    detail:
+      calls:
+      - diags.filter
+      - this._diagnostics.set
+  - name: updateRegionDiagnostics
+    sig: "updateRegionDiagnostics(\n\t\tdiagnostics: ReadonlyArray<vscode.Diagnostic>,\n\t\tranges: ReadonlyArray<vscode.Range>): boolean"
+    vis: private
+    lines:
+    - 95
+    - 107
+    detail:
+      calls:
+      - newDiagnostics.push
+      - oldDiagnostics.filter
+      - this._diagnostics.get
+      - this._diagnostics.set
+  - name: getSuggestionDiagnostics
+    sig: 'getSuggestionDiagnostics(settings: DiagnosticSettings)'
+    vis: private
+    lines:
+    - 109
+    - 118
+    detail:
+      calls:
+      - settings.getEnableSuggestions
+      - this.get
+      - this.get(DiagnosticKind.Suggestion).filter
+  lines:
+  - 41
+  - 123
+- name: LanguageDiagnosticSettings
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: readonly
+    type: boolean
+  - name: readonly
+    type: boolean
+  lines:
+  - 125
+  - 128
+- name: DiagnosticSettings
+  kind: struct
+  fields:
+  - name: defaultSettings
+    type: LanguageDiagnosticSettings
+    default: "{\n\t\tvalidate: true,\n\t\tenableSuggestions: true\n\t}"
+  - name: _languageSettings
+    type: any
+    default: new Map<DiagnosticLanguage, LanguageDiagnosticSettings>()
+  methods:
+  - name: getValidate
+    sig: 'getValidate(language: DiagnosticLanguage): boolean'
+    lines:
+    - 143
+    - 145
+    detail:
+      calls:
+      - this.get
+  - name: setValidate
+    sig: 'setValidate(language: DiagnosticLanguage, value: boolean): boolean'
+    lines:
+    - 147
+    - 152
+    detail:
+      calls:
+      - this.update
+  - name: getEnableSuggestions
+    sig: 'getEnableSuggestions(language: DiagnosticLanguage): boolean'
+    lines:
+    - 154
+    - 156
+    detail:
+      calls:
+      - this.get
+  - name: setEnableSuggestions
+    sig: 'setEnableSuggestions(language: DiagnosticLanguage, value: boolean): boolean'
+    lines:
+    - 158
+    - 163
+    detail:
+      calls:
+      - this.update
+  lines:
+  - 135
+  - 175
+- name: DiagnosticPerformanceData
+  kind: trait
+  bases:
+  - TsDiagnosticPerformanceData
+  decorators:
+  - interface
+  fields:
+  - name: fileLineCount
+    type: number
+  lines:
+  - 177
+  - 179
+- name: DiagnosticsTelemetryManager
+  kind: struct
+  bases:
+  - Disposable
+  fields:
+  - name: _diagnosticCodesMap
+    type: any
+    default: new Map<number, number>()
+  - name: _diagnosticSnapshotsMap
+    type: any
+    default: new ResourceMap<readonly vscode.Diagnostic[]>(uri => uri.toString(), { onCaseIns...
+  - name: _timeout
+    type: NodeJS.Timeout | undefined
+  - name: _telemetryEmitter
+    type: NodeJS.Timeout | undefined
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tprivate readonly _telemetryReporter: TelemetryReporter,\n\t\tprivate readonly _diagnosticsCollection: vscode.DiagnosticCollection,\n\t)"
+    lines:
+    - 188
+    - 200
+    detail:
+      calls:
+      - super
+      - this._register
+      - this._registerTelemetryEventEmitter
+      - this._updateAllDiagnosticCodesAfterTimeout
+      - vscode.workspace.onDidChangeTextDocument
+  - name: logDiagnosticsPerformanceTelemetry
+    sig: 'logDiagnosticsPerformanceTelemetry(performanceData: DiagnosticPerformanceData[]): void'
+    lines:
+    - 202
+    - 227
+    detail:
+      calls:
+      - this._telemetryReporter.logTelemetry
+  - name: dispose
+    sig: dispose()
+    lines:
+    - 277
+    - 281
+    detail:
+      calls:
+      - clearInterval
+      - clearTimeout
+      - super.dispose
+  lines:
+  - 181
+  - 282
+- name: DiagnosticsManager
+  kind: struct
+  bases:
+  - Disposable
+  fields:
+  - name: _diagnostics
+    type: ResourceMap<FileDiagnostics>
+  - name: _settings
+    type: any
+    default: new DiagnosticSettings()
+  - name: _currentDiagnostics
+    type: vscode.DiagnosticCollection
+  - name: _pendingUpdates
+    type: ResourceMap<any>
+  - name: _updateDelay
+    type: any
+    default: '50'
+  - name: _diagnosticsTelemetryManager
+    type: DiagnosticsTelemetryManager | undefined
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\towner: string,\n\t\tconfiguration: TypeScriptServiceConfiguration,\n\t\ttelemetryReporter: TelemetryReporter,\n\t\tonCaseInsensitiveFileSystem: boolean\n\t)"
+    lines:
+    - 294
+    - 309
+    detail:
+      calls:
+      - Math.random
+      - new DiagnosticsTelemetryManager
+      - new ResourceMap
+      - super
+      - this._register
+      - vscode.languages.createDiagnosticCollection
+  - name: dispose
+    sig: dispose()
+    lines:
+    - 311
+    - 318
+    detail:
+      calls:
+      - clearTimeout
+      - super.dispose
+      - this._pendingUpdates.clear
+      - this._pendingUpdates.values
+  - name: reInitialize
+    sig: 'reInitialize(): void'
+    lines:
+    - 320
+    - 323
+    detail:
+      calls:
+      - this._currentDiagnostics.clear
+      - this._diagnostics.clear
+  - name: setValidate
+    sig: 'setValidate(language: DiagnosticLanguage, value: boolean)'
+    lines:
+    - 325
+    - 330
+    detail:
+      calls:
+      - this._settings.setValidate
+      - this.rebuildAll
+  - name: setEnableSuggestions
+    sig: 'setEnableSuggestions(language: DiagnosticLanguage, value: boolean)'
+    lines:
+    - 332
+    - 337
+    detail:
+      calls:
+      - this._settings.setEnableSuggestions
+      - this.rebuildAll
+  - name: updateDiagnostics
+    sig: "updateDiagnostics(\n\t\tfile: vscode.Uri,\n\t\tlanguage: DiagnosticLanguage,\n\t\tkind: DiagnosticKind,\n\t\tdiagnostics: ReadonlyArray<vscode.Diagnostic>,\n\t\tranges: ReadonlyArray<vscode.Range> | undefined,\n\t): void"
+    lines:
+    - 339
+    - 360
+    detail:
+      calls:
+      - entry.updateDiagnostics
+      - fileDiagnostics.updateDiagnostics
+      - new FileDiagnostics
+      - this._diagnostics.get
+      - this._diagnostics.set
+      - this.scheduleDiagnosticsUpdate
+  - name: configFileDiagnosticsReceived
+    sig: "configFileDiagnosticsReceived(\n\t\tfile: vscode.Uri,\n\t\tdiagnostics: ReadonlyArray<vscode.Diagnostic>\n\t): void"
+    lines:
+    - 362
+    - 367
+    detail:
+      calls:
+      - this._currentDiagnostics.set
+  - name: deleteAllDiagnosticsInFile
+    sig: 'deleteAllDiagnosticsInFile(resource: vscode.Uri): void'
+    lines:
+    - 369
+    - 372
+    detail:
+      calls:
+      - this._currentDiagnostics.delete
+      - this._diagnostics.delete
+  - name: deleteDiagnostic
+    sig: 'deleteDiagnostic(resource: vscode.Uri, diagnostic: vscode.Diagnostic): void'
+    lines:
+    - 374
+    - 380
+    detail:
+      calls:
+      - fileDiagnostics.delete
+      - this._diagnostics.get
+      - this.rebuildFile
+  - name: getDiagnostics
+    sig: 'getDiagnostics(file: vscode.Uri): ReadonlyArray<vscode.Diagnostic>'
+    lines:
+    - 382
+    - 384
+    detail:
+      calls:
+      - this._currentDiagnostics.get
+  - name: logDiagnosticsPerformanceTelemetry
+    sig: 'logDiagnosticsPerformanceTelemetry(performanceData: DiagnosticPerformanceData[]): void'
+    lines:
+    - 386
+    - 388
+    detail:
+      calls:
+      - this._diagnosticsTelemetryManager?.logDiagnosticsPerformanceTelemetry
+  - name: updateCurrentDiagnostics
+    sig: 'updateCurrentDiagnostics(file: vscode.Uri): void'
+    vis: private
+    lines:
+    - 396
+    - 404
+    detail:
+      calls:
+      - clearTimeout
+      - fileDiagnostics.getAllDiagnostics
+      - this._currentDiagnostics.set
+      - this._diagnostics.get
+      - this._pendingUpdates.delete
+      - this._pendingUpdates.get
+      - this._pendingUpdates.has
+  - name: rebuildAll
+    sig: 'rebuildAll(): void'
+    vis: private
+    lines:
+    - 406
+    - 411
+    detail:
+      calls:
+      - this._currentDiagnostics.clear
+      - this._diagnostics.values
+      - this.rebuildFile
+  lines:
+  - 284
+  - 416
+functions:
+- name: diagnosticsEquals
+  sig: 'diagnosticsEquals(a: vscode.Diagnostic, b: vscode.Diagnostic): boolean'
+  lines:
+  - 16
+  - 32
+  detail:
+    calls:
+    - a.range.isEqual
+    - arrays.equals
+- name: areLanguageDiagnosticSettingsEqual
+  sig: 'areLanguageDiagnosticSettingsEqual(currentSettings: LanguageDiagnosticSettings, newSettings: LanguageDiagnosticSettings): boolean'
+  lines:
+  - 130
+  - 133
+exports:
+- name: DiagnosticKind
+  kind: type
+- name: FileDiagnostics
+  kind: type
+- name: LanguageDiagnosticSettings
+  kind: type
+- name: DiagnosticSettings
+  kind: type
+- name: DiagnosticPerformanceData
+  kind: type
+- name: DiagnosticsTelemetryManager
+  kind: type
+- name: DiagnosticsManager
+  kind: type
+- name: diagnosticsEquals
+  kind: func
+- name: areLanguageDiagnosticSettingsEqual
+  kind: func

@@ -1,0 +1,391 @@
+## Roska File Descriptor — common/timeTravelScheduler.ts
+file: common/timeTravelScheduler.ts
+lines: 384
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: ../../common/arrays.js.compareBy
+- sym: ../../common/arrays.js.numberComparator
+- sym: ../../common/arrays.js.tieBreakComparators
+- sym: ../../common/event.js.Emitter
+- sym: ../../common/event.js.Event
+- sym: ../../common/lifecycle.js.Disposable
+- sym: ../../common/lifecycle.js.IDisposable
+- sym: ../../common/platform.js.setTimeout0
+- sym: ../../common/platform.js.setTimeout0IsFaster
+data:
+- name: scheduledTaskComparator
+  type: any
+  val: "tieBreakComparators<ExtendedScheduledTask>(\n\tcompareBy(i => i.time, numberComparator),\n\tcompareBy(i => i.id, numberCompa..."
+- name: originalGlobalValues
+  type: object
+  val: "{\n\tsetTimeout: globalThis.setTimeout.bind(globalThis),\n\tclearTimeout: globalThis.clearTimeout.bind(globalThis),\n\tsetInte..."
+types:
+- name: TimeOffset
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 11
+  - 11
+- name: Scheduler
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: schedule
+    type: 'method: schedule(task: ScheduledTask): IDisposable'
+  - name: get
+    type: 'method: get now(): TimeOffset'
+  lines:
+  - 13
+  - 16
+- name: ScheduledTask
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: readonly
+    type: TimeOffset
+  - name: readonly
+    type: ScheduledTaskSource
+  - name: run
+    type: 'method: run(): void'
+  lines:
+  - 18
+  - 23
+- name: ScheduledTaskSource
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: toString
+    type: 'method: toString(): string'
+  - name: readonly
+    type: string | undefined
+  lines:
+  - 25
+  - 28
+- name: ExtendedScheduledTask
+  kind: trait
+  bases:
+  - ScheduledTask
+  decorators:
+  - interface
+  fields:
+  - name: id
+    type: number
+  lines:
+  - 30
+  - 32
+- name: TimeTravelScheduler
+  kind: struct
+  bases:
+  - Scheduler
+  fields:
+  - name: taskCounter
+    type: any
+    default: '0'
+  - name: _now
+    type: TimeOffset
+    default: '0'
+  - name: queue
+    type: PriorityQueue<ExtendedScheduledTask>
+    default: new SimplePriorityQueue<ExtendedScheduledTask>([], scheduledTaskComparator)
+  - name: taskScheduledEmitter
+    type: any
+    default: 'new Emitter<{ task: ScheduledTask }>()'
+  - name: onTaskScheduled
+    type: any
+    default: this.taskScheduledEmitter.event
+  methods:
+  - name: schedule
+    sig: 'schedule(task: ScheduledTask): IDisposable'
+    lines:
+    - 47
+    - 55
+    detail:
+      calls:
+      - new Error
+      - this.queue.add
+      - this.taskScheduledEmitter.fire
+  - name: now
+    sig: 'now(): TimeOffset'
+    lines:
+    - 57
+    - 59
+    detail: {}
+  - name: hasScheduledTasks
+    sig: 'hasScheduledTasks(): boolean'
+    lines:
+    - 61
+    - 63
+    detail: {}
+  - name: getScheduledTasks
+    sig: 'getScheduledTasks(): readonly ScheduledTask[]'
+    lines:
+    - 65
+    - 67
+    detail:
+      calls:
+      - this.queue.toSortedArray
+  - name: runNext
+    sig: 'runNext(): ScheduledTask | undefined'
+    lines:
+    - 69
+    - 77
+    detail:
+      calls:
+      - task.run
+      - this.queue.removeMin
+  - name: installGlobally
+    sig: 'installGlobally(): IDisposable'
+    lines:
+    - 79
+    - 81
+    detail:
+      calls:
+      - overwriteGlobals
+  lines:
+  - 39
+  - 82
+- name: AsyncSchedulerProcessor
+  kind: struct
+  bases:
+  - Disposable
+  fields:
+  - name: isProcessing
+    type: any
+    default: 'false'
+  - name: _history
+    type: any
+    default: new Array<ScheduledTask>()
+  - name: maxTaskCount
+    type: number
+  - name: useSetImmediate
+    type: boolean
+  - name: queueEmptyEmitter
+    type: any
+    default: new Emitter<void>()
+  - name: onTaskQueueEmpty
+    type: any
+    default: this.queueEmptyEmitter.event
+  - name: lastError
+    type: Error | undefined
+  methods:
+  - name: history
+    sig: 'history(): readonly ScheduledTask[]'
+    lines:
+    - 87
+    - 87
+    detail: {}
+  - name: constructor
+    sig: 'constructor(private readonly scheduler: TimeTravelScheduler, options?: { useSetImmediate?: boolean; maxTaskCount?: number })'
+    lines:
+    - 97
+    - 111
+    detail:
+      calls:
+      - scheduler.onTaskScheduled
+      - super
+      - this._register
+  - name: process
+    sig: process()
+    vis: private
+    lines:
+    - 127
+    - 146
+    detail:
+      calls:
+      - Math.max
+      - lastTasks.join
+      - new Error
+      - this._history.push
+      - this._history.slice
+      - this._history.slice(Math.max(0, this.history.length - 10)).map
+      - this.queueEmptyEmitter.fire
+      - this.schedule
+      - this.scheduler.runNext
+  - name: waitForEmptyQueue
+    sig: 'waitForEmptyQueue(): Promise<void>'
+    lines:
+    - 148
+    - 163
+    detail:
+      calls:
+      - Event.toPromise
+      - Event.toPromise(this.onTaskQueueEmpty).then
+      - Promise.resolve
+  lines:
+  - 84
+  - 164
+- name: PriorityQueue
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: length
+    type: number
+  - name: add
+    type: 'method: add(value: T): void'
+  - name: remove
+    type: 'method: remove(value: T): void'
+  - name: removeMin
+    type: 'method: removeMin(): T | undefined'
+  - name: toSortedArray
+    type: 'method: toSortedArray(): T[]'
+  lines:
+  - 332
+  - 339
+- name: SimplePriorityQueue
+  kind: struct
+  bases:
+  - PriorityQueue<T>
+  fields:
+  - name: isSorted
+    type: any
+    default: 'false'
+  - name: items
+    type: T[]
+  methods:
+  - name: constructor
+    sig: 'constructor(items: T[], private readonly compare: (a: T, b: T) => number)'
+    lines:
+    - 345
+    - 347
+    detail: {}
+  - name: length
+    sig: 'length(): number'
+    lines:
+    - 349
+    - 351
+    detail: {}
+  - name: add
+    sig: 'add(value: T): void'
+    lines:
+    - 353
+    - 356
+    detail:
+      calls:
+      - this.items.push
+  - name: remove
+    sig: 'remove(value: T): void'
+    lines:
+    - 358
+    - 361
+    detail:
+      calls:
+      - this.items.indexOf
+      - this.items.splice
+  - name: removeMin
+    sig: 'removeMin(): T | undefined'
+    lines:
+    - 363
+    - 366
+    detail:
+      calls:
+      - this.ensureSorted
+      - this.items.shift
+  - name: getMin
+    sig: 'getMin(): T | undefined'
+    lines:
+    - 368
+    - 371
+    detail:
+      calls:
+      - this.ensureSorted
+  - name: toSortedArray
+    sig: 'toSortedArray(): T[]'
+    lines:
+    - 373
+    - 376
+    detail:
+      calls:
+      - this.ensureSorted
+  lines:
+  - 341
+  - 384
+functions:
+- name: runWithFakedTimers
+  sig: 'runWithFakedTimers(options: { useFakeTimers?: boolean; useSetImmediate?: boolean; maxTaskCount?: number }, fn: () => Promise<T>): Promise<T>'
+  is_async: true
+  lines:
+  - 167
+  - 193
+  detail:
+    calls:
+    - fn
+    - globalInstallDisposable.dispose
+    - new AsyncSchedulerProcessor
+    - new TimeTravelScheduler
+    - scheduler.installGlobally
+    - schedulerProcessor.dispose
+    - schedulerProcessor.waitForEmptyQueue
+- name: setTimeout
+  sig: 'setTimeout(scheduler: Scheduler, handler: TimerHandler, timeout: number = 0): IDisposable'
+  lines:
+  - 207
+  - 222
+  detail:
+    calls:
+    - new Error
+    - scheduler.schedule
+- name: setInterval
+  sig: 'setInterval(scheduler: Scheduler, handler: TimerHandler, interval: number): IDisposable'
+  lines:
+  - 224
+  - 265
+  detail:
+    calls:
+    - new Error
+    - schedule
+- name: overwriteGlobals
+  sig: 'overwriteGlobals(scheduler: Scheduler): IDisposable'
+  lines:
+  - 267
+  - 293
+  detail:
+    calls:
+    - createDateClass
+- name: createDateClass
+  sig: 'createDateClass(scheduler: Scheduler): DateConstructor'
+  lines:
+  - 295
+  - 330
+  detail:
+    calls:
+    - OriginalDate.hasOwnProperty
+    - OriginalDate.toString
+exports:
+- name: TimeOffset
+  kind: type
+- name: Scheduler
+  kind: type
+- name: ScheduledTask
+  kind: type
+- name: ScheduledTaskSource
+  kind: type
+- name: ExtendedScheduledTask
+  kind: type
+- name: TimeTravelScheduler
+  kind: type
+- name: AsyncSchedulerProcessor
+  kind: type
+- name: PriorityQueue
+  kind: type
+- name: SimplePriorityQueue
+  kind: type
+- name: runWithFakedTimers
+  kind: func
+- name: setTimeout
+  kind: func
+- name: setInterval
+  kind: func
+- name: overwriteGlobals
+  kind: func
+- name: createDateClass
+  kind: func
+- name: scheduledTaskComparator
+  kind: data
+- name: originalGlobalValues
+  kind: data

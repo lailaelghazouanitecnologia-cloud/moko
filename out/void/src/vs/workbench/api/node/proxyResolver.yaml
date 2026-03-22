@@ -1,0 +1,334 @@
+## Roska File Descriptor — node/proxyResolver.ts
+file: node/proxyResolver.ts
+lines: 418
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: ../common/extHostWorkspace.js.IExtHostWorkspaceProvider
+- sym: ../common/extHostConfiguration.js.ConfigurationInspect
+- sym: ../common/extHostConfiguration.js.ExtHostConfigProvider
+- sym: ../common/extHost.protocol.js.MainThreadTelemetryShape
+- sym: ../../services/extensions/common/extensionHostProtocol.js.IExtensionHostInitData
+- sym: ./extHostExtensionService.js.ExtHostExtensionService
+- sym: ../../../base/common/uri.js.URI
+- sym: ../../../platform/log/common/log.js.ILogService
+- sym: ../../../platform/log/common/log.js.LogLevel as LogServiceLevel
+- sym: ../../../platform/extensions/common/extensions.js.IExtensionDescription
+- sym: '@vscode/proxy-agent.LogLevel'
+- sym: '@vscode/proxy-agent.createHttpPatch'
+- sym: '@vscode/proxy-agent.createProxyResolver'
+- sym: '@vscode/proxy-agent.createTlsPatch'
+- sym: '@vscode/proxy-agent.ProxySupportSetting'
+- sym: '@vscode/proxy-agent.ProxyAgentParams'
+- sym: '@vscode/proxy-agent.createNetPatch'
+- sym: '@vscode/proxy-agent.loadSystemCertificates'
+- sym: '@vscode/proxy-agent.ResolveProxyWithRequest'
+- sym: ../../../platform/request/common/request.js.AuthInfo
+- sym: ../../../base/common/lifecycle.js.DisposableStore
+- sym: node:module.createRequire
+- sym: undici-types.undiciType
+- sym: tls.tlsType
+- sym: ../../../platform/request/node/requestService.js.lookupKerberosAuthorization
+- sym: '@vscode/proxy-agent.proxyAgent'
+data:
+- name: require
+  type: any
+  val: createRequire(import.meta.url)
+- name: http
+  type: any
+  val: require('http')
+- name: https
+  type: any
+  val: require('https')
+- name: tls
+  type: typeof tlsType
+  val: require('tls')
+- name: net
+  type: any
+  val: require('net')
+- name: systemCertificatesV2Default
+  type: boolean
+  val: 'false'
+- name: useElectronFetchDefault
+  type: boolean
+  val: 'false'
+- name: unsafeHeaders
+  type: array
+  val: "[\n\t'content-length',\n\t'host',\n\t'trailer',\n\t'te',\n\t'upgrade',\n\t'cookie2',\n\t'keep-alive',\n\t'transfer-encoding',\n\t'set-cook..."
+- name: fetchFeatureUse
+  type: FetchFeatureUseEvent
+  val: "{\n\turl: 0,\n\ttypeProperty: 0,\n\tdata: 0,\n\tblob: 0,\n\tintegrity: 0,\n\tmanualRedirect: 0,\n}"
+- name: timer
+  type: NodeJS.Timeout | undefined
+- name: enableFeatureUseTelemetry
+  type: boolean
+  val: 'false'
+- name: modulesCache
+  type: any
+  val: 'new Map<IExtensionDescription | undefined, { http?: typeof http; https?: typeof https; undici?: typeof undiciType }>()'
+- name: telemetrySent
+  type: boolean
+  val: 'false'
+- name: enableProxyAuthenticationTelemetry
+  type: boolean
+  val: 'false'
+types:
+- name: FetchFeatureUseClassification
+  kind: typealias
+  decorators:
+  - type
+  fields:
+  - name: owner
+    type: '''chrmarti'''
+  - name: comment
+    type: '''Data about fetch API use'''
+  - name: url
+    type: '{ classification: ''SystemMetaData''; purpose: ''FeatureInsight''; comment: ''Whether the url property was used.'' }'
+  - name: typeProperty
+    type: '{ classification: ''SystemMetaData''; purpose: ''FeatureInsight''; comment: ''Whether the type property was used.'' }'
+  - name: data
+    type: '{ classification: ''SystemMetaData''; purpose: ''FeatureInsight''; comment: ''Whether a data URL was used.'' }'
+  - name: blob
+    type: '{ classification: ''SystemMetaData''; purpose: ''FeatureInsight''; comment: ''Whether a blob URL was used.'' }'
+  - name: integrity
+    type: '{ classification: ''SystemMetaData''; purpose: ''FeatureInsight''; comment: ''Whether the integrity property was used.'' }'
+  - name: manualRedirect
+    type: '{ classification: ''SystemMetaData''; purpose: ''FeatureInsight''; comment: ''Whether a manual redirect was used.'' }'
+  lines:
+  - 196
+  - 205
+- name: FetchFeatureUseEvent
+  kind: typealias
+  decorators:
+  - type
+  fields:
+  - name: url
+    type: number
+  - name: typeProperty
+    type: number
+  - name: data
+    type: number
+  - name: blob
+    type: number
+  - name: integrity
+    type: number
+  - name: manualRedirect
+    type: number
+  lines:
+  - 207
+  - 214
+- name: ProxyAuthenticationClassification
+  kind: typealias
+  decorators:
+  - type
+  fields:
+  - name: owner
+    type: '''chrmarti'''
+  - name: comment
+    type: '''Data about proxy authentication requests'''
+  - name: authenticationType
+    type: '{ classification: ''PublicNonPersonalData''; purpose: ''FeatureInsight''; comment: ''Type of the authentication requested'' }'
+  - name: extensionHostType
+    type: '{ classification: ''SystemMetaData''; purpose: ''FeatureInsight''; comment: ''Type of the extension host'' }'
+  lines:
+  - 384
+  - 389
+- name: ProxyAuthenticationEvent
+  kind: typealias
+  decorators:
+  - type
+  fields:
+  - name: authenticationType
+    type: string
+  - name: extensionHostType
+    type: string
+  lines:
+  - 391
+  - 394
+functions:
+- name: connectProxyResolver
+  sig: "connectProxyResolver(\n\textHostWorkspace: IExtHostWorkspaceProvider,\n\tconfigProvider: ExtHostConfigProvider,\n\textensionService: ExtHostExtensionService,\n\textHostLogService: ILogService,\n\tmainThreadTelemetry: MainThreadTelemetryShape,\n\tinitData: IExtensionHostInitData,\n\tdisposables: DisposableStore,\n)"
+  lines:
+  - 32
+  - 103
+  detail:
+    calls:
+    - configureModuleLoading
+    - createPatchedModules
+    - createProxyResolver
+    - lookupProxyAuthorization.bind
+    - patchGlobalFetch
+- name: patchGlobalFetch
+  sig: 'patchGlobalFetch(params: ProxyAgentParams, configProvider: ExtHostConfigProvider, mainThreadTelemetry: MainThreadTelemetryShape, initData: IExtensionHostInitData, resolveProxyURL: (url: string) => Promise<string | undefined>, disposables: DisposableStore)'
+  lines:
+  - 117
+  - 177
+  detail:
+    calls:
+    - configProvider.getConfiguration
+    - configProvider.getConfiguration('http').get
+    - configProvider.onDidChangeConfiguration
+    - disposables.add
+    - electron.net.fetch
+    - getRequestProperty
+    - headers.delete
+    - input.toString
+    - monitorResponseProperties
+    - new Headers
+    - patchedFetch
+    - proxyAgent.createFetchPatch
+    - recordFetchFeatureUse
+    - require
+    - urlString.startsWith
+- name: monitorResponseProperties
+  sig: 'monitorResponseProperties(mainThreadTelemetry: MainThreadTelemetryShape, response: Response, urlString: string)'
+  lines:
+  - 179
+  - 194
+  detail:
+    calls:
+    - Object.defineProperty
+    - recordFetchFeatureUse
+- name: recordFetchFeatureUse
+  sig: 'recordFetchFeatureUse(mainThreadTelemetry: MainThreadTelemetryShape, feature: keyof typeof fetchFeatureUse)'
+  lines:
+  - 227
+  - 237
+  detail:
+    calls:
+    - clearTimeout
+    - setTimeout
+    - timer.unref
+- name: createPatchedModules
+  sig: 'createPatchedModules(params: ProxyAgentParams, resolveProxy: ResolveProxyWithRequest)'
+  lines:
+  - 239
+  - 253
+  detail:
+    calls:
+    - createHttpPatch
+    - createNetPatch
+    - createTlsPatch
+    - mergeModules
+- name: certSettingV1
+  sig: 'certSettingV1(configProvider: ExtHostConfigProvider, isRemote: boolean)'
+  lines:
+  - 255
+  - 257
+- name: certSettingV2
+  sig: 'certSettingV2(configProvider: ExtHostConfigProvider, isRemote: boolean)'
+  lines:
+  - 259
+  - 261
+- name: configureModuleLoading
+  sig: 'configureModuleLoading(extensionService: ExtHostExtensionService, lookup: ReturnType<typeof createPatchedModules>): Promise<void>'
+  lines:
+  - 264
+  - 300
+  detail:
+    calls:
+    - extensionService.getExtensionPathIndex
+    - "extensionService.getExtensionPathIndex()\n\t\t.then"
+- name: lookupProxyAuthorization
+  sig: "lookupProxyAuthorization(\n\textHostWorkspace: IExtHostWorkspaceProvider,\n\textHostLogService: ILogService,\n\tmainThreadTelemetry: MainThreadTelemetryShape,\n\tconfigProvider: ExtHostConfigProvider,\n\tproxyAuthenticateCache: Record<string, string | string[] | undefined>,\n\tbasicAuthCache: Record<string, string | undefined>,\n\tisRemote: boolean,\n\tfallbackToLocalKerberos: boolean,\n\tproxyURL: string,\n\tproxyAuthenticate: string | string[] | undefined,\n\tstate: { kerberosRequested?: boolean; basicAuthCacheUsed?: boolean; basicAuthAttempt?: number }\n): Promise<string | undefined>"
+  is_async: true
+  lines:
+  - 302
+  - 382
+  detail:
+    calls:
+    - / realm="([^"]+)"/i.exec
+    - Array.isArray
+    - Buffer.from
+    - Buffer.from(`${credentials.username}:${credentials.password}`).toString
+    - Number
+    - authenticate.find
+    - authenticate.some
+    - extHostLogService.debug
+    - extHostLogService.error
+    - extHostLogService.trace
+    - extHostWorkspace.lookupAuthorization
+    - extHostWorkspace.lookupKerberosAuthorization
+    - getExtHostConfigValue
+    - lookupKerberosAuthorization
+    - new URL
+    - sendTelemetry
+- name: sendTelemetry
+  sig: 'sendTelemetry(mainThreadTelemetry: MainThreadTelemetryShape, authenticate: string[], isRemote: boolean)'
+  lines:
+  - 398
+  - 408
+  detail:
+    calls:
+    - authenticate.map
+    - authenticate.map(a => a.split(' ')[0]).join
+    - mainThreadTelemetry.$publicLog2
+- name: getExtHostConfigValue
+  sig: 'getExtHostConfigValue(configProvider: ExtHostConfigProvider, isRemote: boolean, key: string, fallback?: T): T | undefined'
+  lines:
+  - 412
+  - 418
+  detail:
+    calls:
+    - configProvider.getConfiguration
+    - configProvider.getConfiguration().get
+    - configProvider.getConfiguration().inspect
+exports:
+- name: FetchFeatureUseClassification
+  kind: type
+- name: FetchFeatureUseEvent
+  kind: type
+- name: ProxyAuthenticationClassification
+  kind: type
+- name: ProxyAuthenticationEvent
+  kind: type
+- name: connectProxyResolver
+  kind: func
+- name: patchGlobalFetch
+  kind: func
+- name: monitorResponseProperties
+  kind: func
+- name: recordFetchFeatureUse
+  kind: func
+- name: createPatchedModules
+  kind: func
+- name: certSettingV1
+  kind: func
+- name: certSettingV2
+  kind: func
+- name: configureModuleLoading
+  kind: func
+- name: lookupProxyAuthorization
+  kind: func
+- name: sendTelemetry
+  kind: func
+- name: getExtHostConfigValue
+  kind: func
+- name: require
+  kind: data
+- name: http
+  kind: data
+- name: https
+  kind: data
+- name: tls
+  kind: data
+- name: net
+  kind: data
+- name: systemCertificatesV2Default
+  kind: data
+- name: useElectronFetchDefault
+  kind: data
+- name: unsafeHeaders
+  kind: data
+- name: fetchFeatureUse
+  kind: data
+- name: timer
+  kind: data
+- name: enableFeatureUseTelemetry
+  kind: data
+- name: modulesCache
+  kind: data
+- name: telemetrySent
+  kind: data
+- name: enableProxyAuthenticationTelemetry
+  kind: data

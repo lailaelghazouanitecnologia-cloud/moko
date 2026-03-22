@@ -1,0 +1,473 @@
+## Roska File Descriptor — viewLayout/viewLineRenderer.ts
+file: viewLayout/viewLineRenderer.ts
+lines: 1152
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: ../../../nls.js.nls
+- sym: ../../../base/common/charCode.js.CharCode
+- sym: ../../../base/common/strings.js.strings
+- sym: ../tokens/lineTokens.js.IViewLineTokens
+- sym: ../core/stringBuilder.js.StringBuilder
+- sym: ./lineDecorations.js.LineDecoration
+- sym: ./lineDecorations.js.LineDecorationsNormalizer
+- sym: ../viewModel.js.InlineDecorationType
+- sym: ./linePart.js.LinePart
+- sym: ./linePart.js.LinePartMetadata
+types:
+- name: RenderWhitespace
+  kind: enum
+  variants:
+  - name: None
+    val: '0'
+  - name: Boundary
+    val: '1'
+  - name: Selection
+    val: '2'
+  - name: Trailing
+    val: '3'
+  - name: All
+    val: '4'
+  lines:
+  - 15
+  - 21
+- name: LineRange
+  kind: struct
+  ctx: Zero-based offset on which the range starts, inclusive.
+  fields:
+  - name: startOffset
+    type: number
+  - name: endOffset
+    type: number
+  methods:
+  - name: constructor
+    sig: 'constructor(startIndex: number, endIndex: number)'
+    lines:
+    - 34
+    - 37
+    detail: {}
+  - name: equals
+    sig: 'equals(otherLineRange: LineRange)'
+    lines:
+    - 39
+    - 42
+    detail: {}
+  lines:
+  - 23
+  - 43
+- name: RenderLineInput
+  kind: struct
+  ctx: Defined only when renderWhitespace is 'selection'. Selections are non-overlapping, and ordered by position within the line.
+  fields:
+  - name: useMonospaceOptimizations
+    type: boolean
+  - name: canUseHalfwidthRightwardsArrow
+    type: boolean
+  - name: lineContent
+    type: string
+  - name: continuesWithWrappedLine
+    type: boolean
+  - name: isBasicASCII
+    type: boolean
+  - name: containsRTL
+    type: boolean
+  - name: fauxIndentLength
+    type: number
+  - name: lineTokens
+    type: IViewLineTokens
+  - name: lineDecorations
+    type: LineDecoration[]
+  - name: tabSize
+    type: number
+  - name: startVisibleColumn
+    type: number
+  - name: spaceWidth
+    type: number
+  - name: renderSpaceWidth
+    type: number
+  - name: renderSpaceCharCode
+    type: number
+  - name: stopRenderingLineAfter
+    type: number
+  - name: renderWhitespace
+    type: RenderWhitespace
+  - name: renderControlCharacters
+    type: boolean
+  - name: fontLigatures
+    type: boolean
+  - name: selectionsOnLine
+    type: LineRange[] | null
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tuseMonospaceOptimizations: boolean,\n\t\tcanUseHalfwidthRightwardsArrow: boolean,\n\t\tlineContent: string,\n\t\tcontinuesWithWrappedLine: boolean,\n\t\tisBasicASCII: boolean,\n\t\tcontainsRTL: boolean,\n\t\tfauxIndentLength: number,\n\t\tlineTokens: IViewLineTokens,\n\t\tlineDecorations: LineDecoration[],\n\t\ttabSize: number,\n\t\tstartVisibleColumn: number,\n\t\tspaceWidth: number,\n\t\tmiddotWidth: number,\n\t\twsmiddotWidth: number,\n\t\tstopRenderingLineAfter: number,\n\t\trenderWhitespace: 'none' | 'boundary' | 'selection' | 'trailing' | 'all',\n\t\trenderControlCharacters: boolean,\n\t\tfontLigatures: boolean,\n\t\tselectionsOnLine: LineRange[] | null\n\t)"
+    lines:
+    - 72
+    - 130
+    detail:
+      calls:
+      - Math.abs
+      - lineDecorations.sort
+      - selectionsOnLine.sort
+  - name: equals
+    sig: 'equals(other: RenderLineInput): boolean'
+    lines:
+    - 154
+    - 176
+    detail:
+      calls:
+      - LineDecoration.equalsArr
+      - this.lineTokens.equals
+      - this.sameSelection
+  lines:
+  - 45
+  - 177
+- name: CharacterMappingConstants
+  kind: enum
+  variants:
+  - name: PART_INDEX_MASK
+    val: '0b11111111111111110000000000000000'
+  - name: CHAR_INDEX_MASK
+    val: '0b00000000000000001111111111111111'
+  - name: CHAR_INDEX_OFFSET
+    val: '0'
+  - name: PART_INDEX_OFFSET
+    val: '16'
+  lines:
+  - 179
+  - 185
+- name: DomPosition
+  kind: struct
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tpublic readonly partIndex: number,\n\t\tpublic readonly charIndex: number\n\t)"
+    lines:
+    - 188
+    - 191
+    detail: {}
+  lines:
+  - 187
+  - 192
+- name: CharacterMapping
+  kind: struct
+  fields:
+  - name: length
+    type: number
+  - name: _data
+    type: Uint32Array
+  - name: _horizontalOffset
+    type: Uint32Array
+  methods:
+  - name: constructor
+    sig: 'constructor(length: number, partCount: number)'
+    lines:
+    - 211
+    - 215
+    detail:
+      calls:
+      - new Uint32Array
+  - name: setColumnInfo
+    sig: 'setColumnInfo(column: number, partIndex: number, charIndex: number, horizontalOffset: number): void'
+    lines:
+    - 217
+    - 224
+    detail: {}
+  - name: getHorizontalOffset
+    sig: 'getHorizontalOffset(column: number): number'
+    lines:
+    - 226
+    - 232
+    detail: {}
+  - name: getDomPosition
+    sig: 'getDomPosition(column: number): DomPosition'
+    lines:
+    - 247
+    - 252
+    detail:
+      calls:
+      - CharacterMapping.getCharIndex
+      - CharacterMapping.getPartIndex
+      - new DomPosition
+      - this.charOffsetToPartData
+  - name: getColumn
+    sig: 'getColumn(domPosition: DomPosition, partLength: number): number'
+    lines:
+    - 254
+    - 257
+    detail:
+      calls:
+      - this.partDataToCharOffset
+  - name: partDataToCharOffset
+    sig: 'partDataToCharOffset(partIndex: number, partLength: number, charIndex: number): number'
+    vis: private
+    lines:
+    - 259
+    - 317
+    detail:
+      calls:
+      - CharacterMapping.getCharIndex
+      - CharacterMapping.getPartIndex
+  - name: inflate
+    sig: inflate()
+    lines:
+    - 319
+    - 329
+    detail:
+      calls:
+      - CharacterMapping.getCharIndex
+      - CharacterMapping.getPartIndex
+      - result.push
+  lines:
+  - 197
+  - 330
+- name: ForeignElementType
+  kind: enum
+  variants:
+  - name: None
+    val: '0'
+  - name: Before
+    val: '1'
+  - name: After
+    val: '2'
+  lines:
+  - 332
+  - 336
+- name: RenderLineOutput
+  kind: struct
+  fields:
+  - name: _renderLineOutputBrand
+    type: void
+    default: undefined
+  - name: characterMapping
+    type: CharacterMapping
+  - name: containsRTL
+    type: boolean
+  - name: containsForeignElements
+    type: ForeignElementType
+  methods:
+  - name: constructor
+    sig: 'constructor(characterMapping: CharacterMapping, containsRTL: boolean, containsForeignElements: ForeignElementType)'
+    lines:
+    - 345
+    - 349
+    detail: {}
+  lines:
+  - 338
+  - 350
+- name: RenderLineOutput2
+  kind: struct
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tpublic readonly characterMapping: CharacterMapping,\n\t\tpublic readonly html: string,\n\t\tpublic readonly containsRTL: boolean,\n\t\tpublic readonly containsForeignElements: ForeignElementType\n\t)"
+    lines:
+    - 404
+    - 410
+    detail: {}
+  lines:
+  - 403
+  - 411
+- name: ResolvedRenderLineInput
+  kind: struct
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tpublic readonly fontIsMonospace: boolean,\n\t\tpublic readonly canUseHalfwidthRightwardsArrow: boolean,\n\t\tpublic readonly lineContent: string,\n\t\tpublic readonly len: number,\n\t\tpublic readonly isOverflowing: boolean,\n\t\tpublic readonly overflowingCharCount: number,\n\t\tpublic readonly parts: LinePart[],\n\t\tpublic readonly containsForeignElements: ForeignElementType,\n\t\tpublic readonly fauxIndentLength: number,\n\t\tpublic readonly tabSize: number,\n\t\tpublic readonly startVisibleColumn: number,\n\t\tpublic readonly containsRTL: boolean,\n\t\tpublic readonly spaceWidth: number,\n\t\tpublic readonly renderSpaceCharCode: number,\n\t\tpublic readonly renderWhitespace: RenderWhitespace,\n\t\tpublic readonly renderControlCharacters: boolean,\n\t)"
+    lines:
+    - 420
+    - 439
+    detail: {}
+  lines:
+  - 419
+  - 440
+- name: Constants
+  kind: enum
+  variants:
+  - name: LongToken
+    val: '50'
+  lines:
+  - 548
+  - 550
+functions:
+- name: renderViewLine
+  sig: 'renderViewLine(input: RenderLineInput, sb: StringBuilder): RenderLineOutput'
+  lines:
+  - 352
+  - 401
+  detail:
+    calls:
+    - _renderLine
+    - characterMapping.setColumnInfo
+    - new CharacterMapping
+    - new RenderLineOutput
+    - resolveRenderLineInput
+    - sb.appendString
+- name: renderViewLine2
+  sig: 'renderViewLine2(input: RenderLineInput): RenderLineOutput2'
+  lines:
+  - 413
+  - 417
+  detail:
+    calls:
+    - new RenderLineOutput2
+    - new StringBuilder
+    - renderViewLine
+    - sb.build
+- name: resolveRenderLineInput
+  sig: 'resolveRenderLineInput(input: RenderLineInput): ResolvedRenderLineInput'
+  lines:
+  - 442
+  - 510
+  detail:
+    calls:
+    - _applyInlineDecorations
+    - _applyRenderWhitespace
+    - extractControlCharacters
+    - new ResolvedRenderLineInput
+    - splitLargeTokens
+    - transformAndRemoveOverflowing
+- name: transformAndRemoveOverflowing
+  sig: 'transformAndRemoveOverflowing(lineContent: string, lineContainsRTL: boolean, tokens: IViewLineTokens, fauxIndentLength: number, len: number): LinePart[]'
+  lines:
+  - 516
+  - 543
+  detail:
+    calls:
+    - lineContent.substring
+    - new LinePart
+    - strings.containsRTL
+    - tokens.getClassName
+    - tokens.getCount
+    - tokens.getEndOffset
+- name: splitLargeTokens
+  sig: 'splitLargeTokens(lineContent: string, tokens: LinePart[], onlyAtSpaces: boolean): LinePart[]'
+  lines:
+  - 557
+  - 618
+  detail:
+    calls:
+    - Math.ceil
+    - lineContent.charCodeAt
+    - new LinePart
+- name: isControlCharacter
+  sig: 'isControlCharacter(charCode: number): boolean'
+  lines:
+  - 620
+  - 652
+  detail: {}
+- name: extractControlCharacters
+  sig: 'extractControlCharacters(lineContent: string, tokens: LinePart[]): LinePart[]'
+  lines:
+  - 654
+  - 679
+  detail:
+    calls:
+    - isControlCharacter
+    - lineContent.charCodeAt
+    - new LinePart
+    - result.push
+- name: _applyRenderWhitespace
+  sig: '_applyRenderWhitespace(input: RenderLineInput, lineContent: string, len: number, tokens: LinePart[]): LinePart[]'
+  vis: private
+  lines:
+  - 686
+  - 848
+  detail:
+    calls:
+    - lineContent.charCodeAt
+    - new LinePart
+    - strings.firstNonWhitespaceIndex
+    - strings.isFullWidthCharacter
+    - strings.lastNonWhitespaceIndex
+- name: _applyInlineDecorations
+  sig: '_applyInlineDecorations(lineContent: string, len: number, tokens: LinePart[], _lineDecorations: LineDecoration[]): LinePart[]'
+  vis: private
+  lines:
+  - 854
+  - 907
+  detail:
+    calls:
+    - LineDecorationsNormalizer.normalize
+    - _lineDecorations.sort
+    - new LinePart
+- name: _renderLine
+  sig: '_renderLine(input: ResolvedRenderLineInput, sb: StringBuilder): RenderLineOutput'
+  vis: private
+  lines:
+  - 913
+  - 1138
+  detail:
+    calls:
+    - String
+    - characterMapping.setColumnInfo
+    - isControlCharacter
+    - lineContent.charCodeAt
+    - new CharacterMapping
+    - new RenderLineOutput
+    - nls.localize
+    - part.isPseudoAfter
+    - part.isWhitespace
+    - renderOverflowingCharCount
+    - sb.appendASCIICharCode
+    - sb.appendCharCode
+    - sb.appendString
+    - strings.isFullWidthCharacter
+    - to4CharHex
+- name: to4CharHex
+  sig: 'to4CharHex(n: number): string'
+  lines:
+  - 1140
+  - 1142
+  detail:
+    calls:
+    - n.toString
+    - n.toString(16).toUpperCase
+    - n.toString(16).toUpperCase().padStart
+- name: renderOverflowingCharCount
+  sig: 'renderOverflowingCharCount(n: number): string'
+  lines:
+  - 1144
+  - 1152
+  detail:
+    calls:
+    - (n / 1024 / 1024).toFixed
+    - (n / 1024).toFixed
+    - nls.localize
+exports:
+- name: RenderWhitespace
+  kind: type
+- name: LineRange
+  kind: type
+- name: RenderLineInput
+  kind: type
+- name: CharacterMappingConstants
+  kind: type
+- name: DomPosition
+  kind: type
+- name: CharacterMapping
+  kind: type
+- name: ForeignElementType
+  kind: type
+- name: RenderLineOutput
+  kind: type
+- name: RenderLineOutput2
+  kind: type
+- name: ResolvedRenderLineInput
+  kind: type
+- name: Constants
+  kind: type
+- name: renderViewLine
+  kind: func
+- name: renderViewLine2
+  kind: func
+- name: resolveRenderLineInput
+  kind: func
+- name: transformAndRemoveOverflowing
+  kind: func
+- name: splitLargeTokens
+  kind: func
+- name: isControlCharacter
+  kind: func
+- name: extractControlCharacters
+  kind: func
+- name: to4CharHex
+  kind: func
+- name: renderOverflowingCharCount
+  kind: func

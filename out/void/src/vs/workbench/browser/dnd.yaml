@@ -1,0 +1,567 @@
+## Roska File Descriptor — browser/dnd.ts
+file: browser/dnd.ts
+lines: 741
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: ../../base/browser/dnd.js.DataTransfers
+- sym: ../../base/browser/dnd.js.IDragAndDropData
+- sym: ../../base/browser/dom.js.DragAndDropObserver
+- sym: ../../base/browser/dom.js.EventType
+- sym: ../../base/browser/dom.js.addDisposableListener
+- sym: ../../base/browser/dom.js.onDidRegisterWindow
+- sym: ../../base/browser/mouseEvent.js.DragMouseEvent
+- sym: ../../base/browser/ui/list/list.js.IListDragAndDrop
+- sym: ../../base/browser/ui/list/listView.js.ElementsDragAndDropData
+- sym: ../../base/browser/ui/list/listView.js.ListViewTargetSector
+- sym: ../../base/browser/ui/tree/tree.js.ITreeDragOverReaction
+- sym: ../../base/common/arrays.js.coalesce
+- sym: ../../base/common/dataTransfer.js.UriList
+- sym: ../../base/common/dataTransfer.js.VSDataTransfer
+- sym: ../../base/common/event.js.Emitter
+- sym: ../../base/common/event.js.Event
+- sym: ../../base/common/lifecycle.js.Disposable
+- sym: ../../base/common/lifecycle.js.DisposableStore
+- sym: ../../base/common/lifecycle.js.IDisposable
+- sym: ../../base/common/lifecycle.js.markAsSingleton
+- sym: ../../base/common/marshalling.js.stringify
+- sym: ../../base/common/mime.js.Mimes
+- sym: ../../base/common/network.js.FileAccess
+- sym: ../../base/common/network.js.Schemas
+- sym: ../../base/common/platform.js.isWindows
+- sym: ../../base/common/resources.js.basename
+- sym: ../../base/common/resources.js.isEqual
+- sym: ../../base/common/uri.js.URI
+- sym: ../../platform/dnd/browser/dnd.js.CodeDataTransfers
+- sym: ../../platform/dnd/browser/dnd.js.Extensions
+- sym: ../../platform/dnd/browser/dnd.js.IDragAndDropContributionRegistry
+- sym: ../../platform/dnd/browser/dnd.js.IDraggedResourceEditorInput
+- sym: ../../platform/dnd/browser/dnd.js.IResourceStat
+- sym: ../../platform/dnd/browser/dnd.js.LocalSelectionTransfer
+- sym: ../../platform/dnd/browser/dnd.js.createDraggedEditorInputFromRawResourcesData
+- sym: ../../platform/dnd/browser/dnd.js.extractEditorsAndFilesDropData
+- sym: ../../platform/files/common/files.js.IFileService
+- sym: ../../platform/instantiation/common/instantiation.js.IInstantiationService
+- sym: ../../platform/instantiation/common/instantiation.js.ServicesAccessor
+- sym: ../../platform/label/common/label.js.ILabelService
+- sym: ../../platform/opener/common/opener.js.extractSelection
+- sym: ../../platform/opener/common/opener.js.withSelection
+- sym: ../../platform/registry/common/platform.js.Registry
+- sym: ../../platform/window/common/window.js.IWindowOpenable
+- sym: ../../platform/workspace/common/workspace.js.IWorkspaceContextService
+- sym: ../../platform/workspace/common/workspace.js.hasWorkspaceFileExtension
+- sym: ../../platform/workspace/common/workspace.js.isTemporaryWorkspace
+- sym: ../../platform/workspaces/common/workspaces.js.IWorkspaceFolderCreationData
+- sym: ../../platform/workspaces/common/workspaces.js.IWorkspacesService
+- sym: ../common/editor.js.EditorResourceAccessor
+- sym: ../common/editor.js.GroupIdentifier
+- sym: ../common/editor.js.IEditorIdentifier
+- sym: ../common/editor.js.isEditorIdentifier
+- sym: ../common/editor.js.isResourceDiffEditorInput
+- sym: ../common/editor.js.isResourceMergeEditorInput
+- sym: ../common/editor.js.isResourceSideBySideEditorInput
+- sym: ../services/editor/common/editorGroupsService.js.IEditorGroup
+- sym: ../services/editor/common/editorService.js.IEditorService
+- sym: ../services/host/browser/host.js.IHostService
+- sym: ../services/textfile/common/textfiles.js.ITextFileService
+- sym: ../services/workspaces/common/workspaceEditing.js.IWorkspaceEditingService
+- sym: ../../platform/editor/common/editor.js.IEditorOptions
+- sym: ../../base/browser/window.js.mainWindow
+- sym: ../../base/browser/broadcast.js.BroadcastDataChannel
+data:
+- name: globalDraggedOverTracker
+  type: any
+  val: new GlobalWindowDraggedOverTracker()
+types:
+- name: DraggedEditorIdentifier
+  kind: struct
+  methods:
+  - name: constructor
+    sig: 'constructor(readonly identifier: IEditorIdentifier)'
+    lines:
+    - 45
+    - 45
+    detail: {}
+  lines:
+  - 43
+  - 46
+- name: DraggedEditorGroupIdentifier
+  kind: struct
+  methods:
+  - name: constructor
+    sig: 'constructor(readonly identifier: GroupIdentifier)'
+    lines:
+    - 50
+    - 50
+    detail: {}
+  lines:
+  - 48
+  - 51
+- name: IResourcesDropHandlerOptions
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: readonly
+    type: boolean
+  lines:
+  - 71
+  - 79
+- name: ResourcesDropHandler
+  kind: struct
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tprivate readonly options: IResourcesDropHandlerOptions,\n\t\t@IFileService private readonly fileService: IFileService,\n\t\t@IWorkspacesService private readonly workspacesService: IWorkspacesService,\n\t\t@IEditorService private readonly editorService: IEditorService,\n\t\t@IWorkspaceEditingService private readonly workspaceEditingService: IWorkspaceEditingService,\n\t\t@IHostService private readonly hostService: IHostService,\n\t\t@IWorkspaceContextService private readonly contextService: IWorkspaceContextService,\n\t\t@IInstantiationService private readonly instantiationService: IInstantiationService\n\t)"
+    lines:
+    - 88
+    - 98
+    detail: {}
+  - name: handleDrop
+    sig: 'handleDrop(event: DragEvent, targetWindow: Window, resolveTargetGroup?: () => IEditorGroup | undefined, afterDrop?: (targetGroup: IEditorGroup | undefined) => void, options?: IEditorOptions): Promise<void>'
+    is_async: true
+    lines:
+    - 100
+    - 140
+    detail:
+      calls:
+      - afterDrop
+      - coalesce
+      - editors.filter
+      - editors.filter(editor => editor.allowWorkspaceOpen && editor.resource?.scheme === Schemas.file).map
+      - editors.filter(editor => editor.isExternal && editor.resource?.scheme === Schemas.file).map
+      - editors.map
+      - externalLocalFiles.map
+      - resolveTargetGroup
+      - this.editorService.openEditors
+      - this.handleWorkspaceDrop
+      - this.hostService.focus
+      - this.instantiationService.invokeFunction
+      - this.workspacesService.addRecentlyOpened
+  - name: handleWorkspaceDrop
+    sig: 'handleWorkspaceDrop(resources: URI[]): Promise<boolean>'
+    is_async: true
+    vis: private
+    lines:
+    - 142
+    - 188
+    detail:
+      calls:
+      - Promise.all
+      - isTemporaryWorkspace
+      - resources.map
+      - this.contextService.getWorkspace
+      - this.hostService.openWindow
+      - this.workspaceEditingService.addFolders
+      - this.workspaceEditingService.createAndEnterWorkspace
+  lines:
+  - 86
+  - 189
+- name: Before2D
+  kind: typealias
+  decorators:
+  - type
+  fields:
+  - name: readonly
+    type: boolean
+  - name: readonly
+    type: boolean
+  lines:
+  - 371
+  - 374
+- name: ICompositeDragAndDrop
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: drop
+    type: 'method: drop(data: IDragAndDropData, target: string | undefined, originalEvent: DragEvent, before?: Before2D): void'
+  - name: onDragOver
+    type: 'method: onDragOver(data: IDragAndDropData, target: string | undefined, originalEvent: DragEvent): boolean'
+  - name: onDragEnter
+    type: 'method: onDragEnter(data: IDragAndDropData, target: string | undefined, originalEvent: DragEvent): boolean'
+  lines:
+  - 376
+  - 380
+- name: ICompositeDragAndDropObserverCallbacks
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: onDragEnter
+    type: '(e: IDraggedCompositeData) => void'
+  - name: onDragLeave
+    type: '(e: IDraggedCompositeData) => void'
+  - name: onDrop
+    type: '(e: IDraggedCompositeData) => void'
+  - name: onDragOver
+    type: '(e: IDraggedCompositeData) => void'
+  - name: onDragStart
+    type: '(e: IDraggedCompositeData) => void'
+  - name: onDragEnd
+    type: '(e: IDraggedCompositeData) => void'
+  lines:
+  - 382
+  - 389
+- name: CompositeDragAndDropData
+  kind: struct
+  bases:
+  - IDragAndDropData
+  methods:
+  - name: constructor
+    sig: 'constructor(private type: ''view'' | ''composite'', private id: string)'
+    lines:
+    - 393
+    - 393
+    detail: {}
+  - name: update
+    sig: 'update(dataTransfer: DataTransfer): void'
+    lines:
+    - 395
+    - 397
+    detail: {}
+  - name: getData
+    sig: "getData(): {\n\t\ttype: 'view' | 'composite';\n\t\tid: string;\n\t}"
+    lines:
+    - 399
+    - 404
+    detail: {}
+  lines:
+  - 391
+  - 405
+- name: IDraggedCompositeData
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: readonly
+    type: DragEvent
+  - name: readonly
+    type: CompositeDragAndDropData
+  lines:
+  - 407
+  - 410
+- name: DraggedCompositeIdentifier
+  kind: struct
+  methods:
+  - name: constructor
+    sig: 'constructor(private compositeId: string)'
+    lines:
+    - 414
+    - 414
+    detail: {}
+  - name: id
+    sig: 'id(): string'
+    lines:
+    - 416
+    - 418
+    detail: {}
+  lines:
+  - 412
+  - 419
+- name: DraggedViewIdentifier
+  kind: struct
+  methods:
+  - name: constructor
+    sig: 'constructor(private viewId: string)'
+    lines:
+    - 423
+    - 423
+    detail: {}
+  - name: id
+    sig: 'id(): string'
+    lines:
+    - 425
+    - 427
+    detail: {}
+  lines:
+  - 421
+  - 428
+- name: ViewType
+  kind: enum
+  decorators:
+  - type
+  variants:
+  - name: '''composite'''
+  - name: '''view'''
+  lines:
+  - 430
+  - 430
+- name: CompositeDragAndDropObserver
+  kind: struct
+  bases:
+  - Disposable
+  fields:
+  - name: instance
+    type: CompositeDragAndDropObserver | undefined
+  - name: transferData
+    type: any
+    default: LocalSelectionTransfer.getInstance<DraggedCompositeIdentifier | DraggedViewIdent...
+  - name: onDragStart
+    type: any
+    default: this._register(new Emitter<IDraggedCompositeData>())
+  - name: onDragEnd
+    type: any
+    default: this._register(new Emitter<IDraggedCompositeData>())
+  methods:
+  - name: INSTANCE
+    sig: 'INSTANCE(): CompositeDragAndDropObserver'
+    decorators:
+    - static
+    lines:
+    - 436
+    - 443
+    detail:
+      calls:
+      - markAsSingleton
+      - new CompositeDragAndDropObserver
+  - name: registerTarget
+    sig: 'registerTarget(element: HTMLElement, callbacks: ICompositeDragAndDropObserverCallbacks): IDisposable'
+    lines:
+    - 478
+    - 537
+    detail:
+      calls:
+      - disposableStore.add
+      - new DisposableStore
+      - new DragAndDropObserver
+      - this._register
+      - this.onDragEnd.event
+      - this.onDragStart.event
+  - name: registerDraggable
+    sig: 'registerDraggable(element: HTMLElement, draggedItemProvider: () => { type: ViewType; id: string }, callbacks: ICompositeDragAndDropObserverCallbacks): IDisposable'
+    lines:
+    - 539
+    - 620
+    detail:
+      calls:
+      - disposableStore.add
+      - new DisposableStore
+      - new DragAndDropObserver
+      - this._register
+      - this.onDragEnd.event
+      - this.onDragStart.event
+  lines:
+  - 432
+  - 621
+- name: ResourceListDnDHandler
+  kind: struct
+  bases:
+  - IListDragAndDrop<T>
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tprivate readonly toResource: (e: T) => URI | null,\n\t\t@IInstantiationService private readonly instantiationService: IInstantiationService\n\t)"
+    lines:
+    - 632
+    - 635
+    detail: {}
+  - name: getDragURI
+    sig: 'getDragURI(element: T): string | null'
+    lines:
+    - 637
+    - 640
+    detail:
+      calls:
+      - resource.toString
+      - this.toResource
+  - name: getDragLabel
+    sig: 'getDragLabel(elements: T[]): string | undefined'
+    lines:
+    - 642
+    - 645
+    detail:
+      calls:
+      - String
+      - basename
+      - coalesce
+      - elements.map
+  - name: onDragStart
+    sig: 'onDragStart(data: IDragAndDropData, originalEvent: DragEvent): void'
+    lines:
+    - 647
+    - 661
+    detail:
+      calls:
+      - resources.push
+      - this.instantiationService.invokeFunction
+      - this.onWillDragElements
+      - this.toResource
+  - name: onDragOver
+    sig: 'onDragOver(data: IDragAndDropData, targetElement: T, targetIndex: number, targetSector: ListViewTargetSector | undefined, originalEvent: DragEvent): boolean | ITreeDragOverReaction'
+    lines:
+    - 667
+    - 669
+    detail: {}
+  - name: drop
+    sig: 'drop(data: IDragAndDropData, targetElement: T, targetIndex: number, targetSector: ListViewTargetSector | undefined, originalEvent: DragEvent): void'
+    lines:
+    - 671
+    - 671
+    detail: {}
+  - name: dispose
+    sig: 'dispose(): void'
+    lines:
+    - 673
+    - 673
+    detail: {}
+  lines:
+  - 631
+  - 674
+- name: GlobalWindowDraggedOverTracker
+  kind: struct
+  bases:
+  - Disposable
+  fields:
+  - name: CHANNEL_NAME
+    type: any
+    default: '''monaco-workbench-global-dragged-over'''
+  - name: broadcaster
+    type: any
+    default: this._register(new BroadcastDataChannel<boolean>(GlobalWindowDraggedOverTracker....
+  - name: draggedOver
+    type: any
+    default: 'false'
+  methods:
+  - name: constructor
+    sig: constructor()
+    lines:
+    - 684
+    - 688
+    detail:
+      calls:
+      - super
+      - this.registerListeners
+  - name: registerListeners
+    sig: 'registerListeners(): void'
+    vis: private
+    lines:
+    - 690
+    - 703
+    detail:
+      calls:
+      - Event.runAndSubscribe
+      - this._register
+      - this.broadcaster.onDidReceiveData
+  - name: isDraggedOver
+    sig: 'isDraggedOver(): boolean'
+    lines:
+    - 706
+    - 706
+    detail: {}
+  lines:
+  - 678
+  - 731
+functions:
+- name: extractTreeDropData
+  sig: 'extractTreeDropData(dataTransfer: VSDataTransfer): Promise<Array<IDraggedResourceEditorInput>>'
+  is_async: true
+  lines:
+  - 53
+  - 69
+  detail:
+    calls:
+    - JSON.stringify
+    - Mimes.uriList.toLowerCase
+    - UriList.parse
+    - createDraggedEditorInputFromRawResourcesData
+    - dataTransfer.get
+    - dataTransfer.get(resourcesKey)?.asString
+    - dataTransfer.has
+    - editors.push
+- name: fillEditorsDragData
+  sig: 'fillEditorsDragData(accessor: ServicesAccessor, resourcesOrEditors: Array<URI | IResourceStat | IEditorIdentifier>, event: DragMouseEvent | DragEvent, options?: { disableStandardTransfer: boolean }): void'
+  lines:
+  - 194
+  - 365
+  detail:
+    calls:
+    - "(() => {\n\t\t\t\t\t\t\tfor (const visibleEditorPane of editorService.visibleEditorPanes) {\n\t\t\t\t\t\t\t\tif (isEq..."
+    - EditorResourceAccessor.getCanonicalUri
+    - FileAccess.uriToFileUri
+    - JSON.stringify
+    - Registry.as
+    - Registry.as<IDragAndDropContributionRegistry>(Extensions.DragAndDropContribution).getAll
+    - URI.isUri
+    - UriList.create
+    - '[Mimes.binary, basename(firstFile.resource), firstFileUri.toString()].join'
+    - accessor.get
+    - basename
+    - coalesce
+    - contribution.setData
+    - draggedEditors.push
+    - event.dataTransfer.setData
+    - extractSelection
+    - fileSystemResources.filter
+    - fileSystemResources.find
+    - fileSystemResources.map
+    - 'fileSystemResources.map(({ resource }) => labelService.getUriLabel(resource, { noPrefix: true })).jo...'
+    - files.map
+    - firstFileUri.toString
+    - isEditorIdentifier
+    - isResourceDiffEditorInput
+    - isResourceMergeEditorInput
+    - isResourceSideBySideEditorInput
+    - resourceOrEditor.editor.toUntyped
+    - resources.filter
+    - resourcesOrEditors.map
+    - stringify
+    - textFileModel.getEncoding
+    - textFileModel.getLanguageId
+    - textFileModel.isDirty
+    - textFileModel.textEditorModel.getValue
+    - textFileModel.textEditorModel.isTooLargeForHeapOperation
+    - textFileService.files.get
+    - uriListEntries.push
+    - uriListEntries.slice
+    - withSelection
+- name: toggleDropEffect
+  sig: 'toggleDropEffect(dataTransfer: DataTransfer | null, dropEffect: ''none'' | ''copy'' | ''link'' | ''move'', shouldHaveIt: boolean)'
+  lines:
+  - 623
+  - 629
+  detail: {}
+- name: isWindowDraggedOver
+  sig: 'isWindowDraggedOver(): boolean'
+  lines:
+  - 739
+  - 741
+exports:
+- name: DraggedEditorIdentifier
+  kind: type
+- name: DraggedEditorGroupIdentifier
+  kind: type
+- name: IResourcesDropHandlerOptions
+  kind: type
+- name: ResourcesDropHandler
+  kind: type
+- name: Before2D
+  kind: type
+- name: ICompositeDragAndDrop
+  kind: type
+- name: ICompositeDragAndDropObserverCallbacks
+  kind: type
+- name: CompositeDragAndDropData
+  kind: type
+- name: IDraggedCompositeData
+  kind: type
+- name: DraggedCompositeIdentifier
+  kind: type
+- name: DraggedViewIdentifier
+  kind: type
+- name: ViewType
+  kind: type
+- name: CompositeDragAndDropObserver
+  kind: type
+- name: ResourceListDnDHandler
+  kind: type
+- name: GlobalWindowDraggedOverTracker
+  kind: type
+- name: extractTreeDropData
+  kind: func
+- name: fillEditorsDragData
+  kind: func
+- name: toggleDropEffect
+  kind: func
+- name: isWindowDraggedOver
+  kind: func
+- name: globalDraggedOverTracker
+  kind: data

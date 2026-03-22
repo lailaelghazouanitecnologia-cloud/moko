@@ -1,0 +1,745 @@
+## Roska File Descriptor — browser/mainThreadLanguageFeatures.ts
+file: browser/mainThreadLanguageFeatures.ts
+lines: 1255
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: ../../../base/common/buffer.js.VSBuffer
+- sym: ../../../base/common/cancellation.js.CancellationToken
+- sym: ../../../base/common/dataTransfer.js.createStringDataTransferItem
+- sym: ../../../base/common/dataTransfer.js.IReadonlyVSDataTransfer
+- sym: ../../../base/common/dataTransfer.js.VSDataTransfer
+- sym: ../../../base/common/errors.js.CancellationError
+- sym: ../../../base/common/event.js.Emitter
+- sym: ../../../base/common/event.js.Event
+- sym: ../../../base/common/hierarchicalKind.js.HierarchicalKind
+- sym: ../../../base/common/lifecycle.js.combinedDisposable
+- sym: ../../../base/common/lifecycle.js.Disposable
+- sym: ../../../base/common/lifecycle.js.DisposableMap
+- sym: ../../../base/common/lifecycle.js.toDisposable
+- sym: ../../../base/common/map.js.ResourceMap
+- sym: ../../../base/common/marshalling.js.revive
+- sym: ../../../base/common/objects.js.mixin
+- sym: ../../../base/common/uri.js.URI
+- sym: ../../../editor/common/core/position.js.Position as EditorPosition
+- sym: ../../../editor/common/core/position.js.IPosition
+- sym: ../../../editor/common/core/range.js.Range as EditorRange
+- sym: ../../../editor/common/core/range.js.IRange
+- sym: ../../../editor/common/core/selection.js.Selection
+- sym: ../../../editor/common/languages.js.languages
+- sym: ../../../editor/common/languages/language.js.ILanguageService
+- sym: ../../../editor/common/languages/languageConfiguration.js.IndentationRule
+- sym: ../../../editor/common/languages/languageConfiguration.js.LanguageConfiguration
+- sym: ../../../editor/common/languages/languageConfiguration.js.OnEnterRule
+- sym: ../../../editor/common/languages/languageConfigurationRegistry.js.ILanguageConfigurationService
+- sym: ../../../editor/common/model.js.ITextModel
+- sym: ../../../editor/common/services/languageFeatures.js.ILanguageFeaturesService
+- sym: ../../../editor/common/services/semanticTokensDto.js.decodeSemanticTokensDto
+- sym: ../../../platform/extensions/common/extensions.js.ExtensionIdentifier
+- sym: ../../../platform/uriIdentity/common/uriIdentity.js.IUriIdentityService
+- sym: ./mainThreadBulkEdits.js.reviveWorkspaceEditDto
+- sym: ../common/extHostTypeConverters.js.typeConvert
+- sym: ../common/shared/dataTransferCache.js.DataTransferFileCache
+- sym: ../../contrib/callHierarchy/common/callHierarchy.js.callh
+- sym: ../../contrib/search/common/search.js.search
+- sym: ../../contrib/typeHierarchy/common/typeHierarchy.js.typeh
+- sym: ../../services/extensions/common/extHostCustomers.js.extHostNamedCustomer
+- sym: ../../services/extensions/common/extHostCustomers.js.IExtHostContext
+- sym: ../common/extHost.protocol.js.ExtHostContext
+- sym: ../common/extHost.protocol.js.ExtHostLanguageFeaturesShape
+- sym: ../common/extHost.protocol.js.HoverWithId
+- sym: ../common/extHost.protocol.js.ICallHierarchyItemDto
+- sym: ../common/extHost.protocol.js.ICodeActionDto
+- sym: ../common/extHost.protocol.js.ICodeActionProviderMetadataDto
+- sym: ../common/extHost.protocol.js.IdentifiableInlineCompletion
+- sym: ../common/extHost.protocol.js.IdentifiableInlineCompletions
+- sym: ../common/extHost.protocol.js.IdentifiableInlineEdit
+- sym: ../common/extHost.protocol.js.IDocumentDropEditDto
+- sym: ../common/extHost.protocol.js.IDocumentDropEditProviderMetadata
+- sym: ../common/extHost.protocol.js.IDocumentFilterDto
+- sym: ../common/extHost.protocol.js.IIndentationRuleDto
+- sym: ../common/extHost.protocol.js.IInlayHintDto
+- sym: ../common/extHost.protocol.js.ILanguageConfigurationDto
+- sym: ../common/extHost.protocol.js.ILanguageWordDefinitionDto
+- sym: ../common/extHost.protocol.js.ILinkDto
+- sym: ../common/extHost.protocol.js.ILocationDto
+- sym: ../common/extHost.protocol.js.ILocationLinkDto
+- sym: ../common/extHost.protocol.js.IOnEnterRuleDto
+- sym: ../common/extHost.protocol.js.IPasteEditDto
+- sym: ../common/extHost.protocol.js.IPasteEditProviderMetadataDto
+- sym: ../common/extHost.protocol.js.IRegExpDto
+- sym: ../common/extHost.protocol.js.ISignatureHelpProviderMetadataDto
+- sym: ../common/extHost.protocol.js.ISuggestDataDto
+- sym: ../common/extHost.protocol.js.ISuggestDataDtoField
+- sym: ../common/extHost.protocol.js.ISuggestResultDtoField
+- sym: ../common/extHost.protocol.js.ITypeHierarchyItemDto
+- sym: ../common/extHost.protocol.js.IWorkspaceSymbolDto
+- sym: ../common/extHost.protocol.js.MainContext
+- sym: ../common/extHost.protocol.js.MainThreadLanguageFeaturesShape
+types:
+- name: MainThreadLanguageFeatures
+  kind: struct
+  ctx: '#region --- revive functions'
+  bases:
+  - Disposable
+  - MainThreadLanguageFeaturesShape
+  fields:
+  - name: _proxy
+    type: ExtHostLanguageFeaturesShape
+  - name: _registrations
+    type: any
+    default: this._register(new DisposableMap<number>())
+  - name: _pasteEditProviders
+    type: any
+    default: new Map<number, MainThreadPasteEditProvider>()
+  - name: _documentOnDropEditProviders
+    type: any
+    default: new Map<number, MainThreadDocumentOnDropEditProvider>()
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\textHostContext: IExtHostContext,\n\t\t@ILanguageService private readonly _languageService: ILanguageService,\n\t\t@ILanguageConfigurationService private readonly _languageConfigurationService: ILanguageConfigurationService,\n\t\t@ILanguageFeaturesService private readonly _languageFeaturesService: ILanguageFeaturesService,\n\t\t@IUriIdentityService private readonly _uriIdentService: IUriIdentityService\n\t)"
+    lines:
+    - 44
+    - 82
+    detail:
+      calls:
+      - extHostContext.getProxy
+      - super
+      - this._languageConfigurationService.onDidChange
+      - this._register
+      - updateAllWordDefinitions
+  - name: $unregister
+    sig: '$unregister(handle: number): void'
+    lines:
+    - 84
+    - 86
+    detail:
+      calls:
+      - this._registrations.deleteAndDispose
+  - name: _reviveLocationDto
+    sig: '_reviveLocationDto(data: ILocationDto | ILocationDto[] | undefined): languages.Location | languages.Location[] | undefined'
+    vis: private
+    decorators:
+    - static
+    lines:
+    - 92
+    - 102
+    detail:
+      calls:
+      - Array.isArray
+      - URI.revive
+      - data.forEach
+  - name: _reviveLocationLinkDto
+    sig: '_reviveLocationLinkDto(data: ILocationLinkDto | ILocationLinkDto[]): languages.LocationLink | languages.LocationLink[]'
+    vis: private
+    decorators:
+    - static
+    lines:
+    - 106
+    - 116
+    detail:
+      calls:
+      - Array.isArray
+      - URI.revive
+      - data.forEach
+  - name: _reviveWorkspaceSymbolDto
+    sig: '_reviveWorkspaceSymbolDto(data: IWorkspaceSymbolDto | IWorkspaceSymbolDto[] | undefined): search.IWorkspaceSymbol | search.IWorkspaceSymbol[] | undefined'
+    vis: private
+    decorators:
+    - static
+    lines:
+    - 121
+    - 131
+    detail:
+      calls:
+      - Array.isArray
+      - MainThreadLanguageFeatures._reviveLocationDto
+      - data.forEach
+  - name: $registerDocumentSymbolProvider
+    sig: '$registerDocumentSymbolProvider(handle: number, selector: IDocumentFilterDto[], displayName: string): void'
+    lines:
+    - 163
+    - 170
+    detail:
+      calls:
+      - this._languageFeaturesService.documentSymbolProvider.register
+      - this._registrations.set
+  - name: $registerCodeLensSupport
+    sig: '$registerCodeLensSupport(handle: number, selector: IDocumentFilterDto[], eventHandle: number | undefined): void'
+    lines:
+    - 174
+    - 206
+    detail:
+      calls:
+      - new Emitter
+      - this._languageFeaturesService.codeLensProvider.register
+      - this._registrations.set
+  - name: $emitCodeLensEvent
+    sig: '$emitCodeLensEvent(eventHandle: number, event?: any): void'
+    lines:
+    - 208
+    - 213
+    detail:
+      calls:
+      - obj.fire
+      - this._registrations.get
+  - name: $registerDefinitionSupport
+    sig: '$registerDefinitionSupport(handle: number, selector: IDocumentFilterDto[]): void'
+    lines:
+    - 217
+    - 223
+    detail:
+      calls:
+      - this._languageFeaturesService.definitionProvider.register
+      - this._registrations.set
+  - name: $registerDeclarationSupport
+    sig: '$registerDeclarationSupport(handle: number, selector: IDocumentFilterDto[]): void'
+    lines:
+    - 225
+    - 231
+    detail:
+      calls:
+      - this._languageFeaturesService.declarationProvider.register
+      - this._registrations.set
+  - name: $registerImplementationSupport
+    sig: '$registerImplementationSupport(handle: number, selector: IDocumentFilterDto[]): void'
+    lines:
+    - 233
+    - 239
+    detail:
+      calls:
+      - this._languageFeaturesService.implementationProvider.register
+      - this._registrations.set
+  - name: $registerTypeDefinitionSupport
+    sig: '$registerTypeDefinitionSupport(handle: number, selector: IDocumentFilterDto[]): void'
+    lines:
+    - 241
+    - 247
+    detail:
+      calls:
+      - this._languageFeaturesService.typeDefinitionProvider.register
+      - this._registrations.set
+  - name: $registerHoverProvider
+    sig: '$registerHoverProvider(handle: number, selector: IDocumentFilterDto[]): void'
+    lines:
+    - 251
+    - 270
+    detail:
+      calls:
+      - this._languageFeaturesService.hoverProvider.register
+      - this._registrations.set
+  - name: $registerEvaluatableExpressionProvider
+    sig: '$registerEvaluatableExpressionProvider(handle: number, selector: IDocumentFilterDto[]): void'
+    lines:
+    - 274
+    - 280
+    detail:
+      calls:
+      - this._languageFeaturesService.evaluatableExpressionProvider.register
+      - this._registrations.set
+  - name: $registerInlineValuesProvider
+    sig: '$registerInlineValuesProvider(handle: number, selector: IDocumentFilterDto[], eventHandle: number | undefined): void'
+    lines:
+    - 284
+    - 298
+    detail:
+      calls:
+      - new Emitter
+      - this._languageFeaturesService.inlineValuesProvider.register
+      - this._registrations.set
+  - name: $emitInlineValuesEvent
+    sig: '$emitInlineValuesEvent(eventHandle: number, event?: any): void'
+    lines:
+    - 300
+    - 305
+    detail:
+      calls:
+      - obj.fire
+      - this._registrations.get
+  - name: $registerDocumentHighlightProvider
+    sig: '$registerDocumentHighlightProvider(handle: number, selector: IDocumentFilterDto[]): void'
+    lines:
+    - 309
+    - 315
+    detail:
+      calls:
+      - this._languageFeaturesService.documentHighlightProvider.register
+      - this._registrations.set
+  - name: $registerMultiDocumentHighlightProvider
+    sig: '$registerMultiDocumentHighlightProvider(handle: number, selector: IDocumentFilterDto[]): void'
+    lines:
+    - 317
+    - 341
+    detail:
+      calls:
+      - this._languageFeaturesService.multiDocumentHighlightProvider.register
+      - this._registrations.set
+  - name: $registerLinkedEditingRangeProvider
+    sig: '$registerLinkedEditingRangeProvider(handle: number, selector: IDocumentFilterDto[]): void'
+    lines:
+    - 345
+    - 358
+    detail:
+      calls:
+      - this._languageFeaturesService.linkedEditingRangeProvider.register
+      - this._registrations.set
+  - name: $registerReferenceSupport
+    sig: '$registerReferenceSupport(handle: number, selector: IDocumentFilterDto[]): void'
+    lines:
+    - 362
+    - 368
+    detail:
+      calls:
+      - this._languageFeaturesService.referenceProvider.register
+      - this._registrations.set
+  - name: $registerCodeActionSupport
+    sig: '$registerCodeActionSupport(handle: number, selector: IDocumentFilterDto[], metadata: ICodeActionProviderMetadataDto, displayName: string, extensionId: string, supportsResolve: boolean): void'
+    lines:
+    - 372
+    - 410
+    detail:
+      calls:
+      - this._languageFeaturesService.codeActionProvider.register
+      - this._registrations.set
+  - name: $registerPasteEditProvider
+    sig: '$registerPasteEditProvider(handle: number, selector: IDocumentFilterDto[], metadata: IPasteEditProviderMetadataDto): void'
+    lines:
+    - 416
+    - 423
+    detail:
+      calls:
+      - combinedDisposable
+      - new MainThreadPasteEditProvider
+      - this._languageFeaturesService.documentPasteEditProvider.register
+      - this._pasteEditProviders.set
+      - this._registrations.set
+      - toDisposable
+  - name: $resolvePasteFileData
+    sig: '$resolvePasteFileData(handle: number, requestId: number, dataId: string): Promise<VSBuffer>'
+    lines:
+    - 425
+    - 431
+    detail:
+      calls:
+      - new Error
+      - provider.resolveFileData
+      - this._pasteEditProviders.get
+  - name: $registerDocumentFormattingSupport
+    sig: '$registerDocumentFormattingSupport(handle: number, selector: IDocumentFilterDto[], extensionId: ExtensionIdentifier, displayName: string): void'
+    lines:
+    - 435
+    - 443
+    detail:
+      calls:
+      - this._languageFeaturesService.documentFormattingEditProvider.register
+      - this._registrations.set
+  - name: $registerRangeFormattingSupport
+    sig: '$registerRangeFormattingSupport(handle: number, selector: IDocumentFilterDto[], extensionId: ExtensionIdentifier, displayName: string, supportsRanges: boolean): void'
+    lines:
+    - 445
+    - 458
+    detail:
+      calls:
+      - this._languageFeaturesService.documentRangeFormattingEditProvider.register
+      - this._registrations.set
+  - name: $registerOnTypeFormattingSupport
+    sig: '$registerOnTypeFormattingSupport(handle: number, selector: IDocumentFilterDto[], autoFormatTriggerCharacters: string[], extensionId: ExtensionIdentifier): void'
+    lines:
+    - 460
+    - 468
+    detail:
+      calls:
+      - this._languageFeaturesService.onTypeFormattingEditProvider.register
+      - this._registrations.set
+  - name: $registerNavigateTypeSupport
+    sig: '$registerNavigateTypeSupport(handle: number, supportsResolve: boolean): void'
+    lines:
+    - 472
+    - 492
+    detail:
+      calls:
+      - search.WorkspaceSymbolProviderRegistry.register
+      - this._registrations.set
+  - name: $registerRenameSupport
+    sig: '$registerRenameSupport(handle: number, selector: IDocumentFilterDto[], supportResolveLocation: boolean): void'
+    lines:
+    - 496
+    - 505
+    detail:
+      calls:
+      - this._languageFeaturesService.renameProvider.register
+      - this._registrations.set
+  - name: $registerNewSymbolNamesProvider
+    sig: '$registerNewSymbolNamesProvider(handle: number, selector: IDocumentFilterDto[]): void'
+    lines:
+    - 507
+    - 514
+    detail:
+      calls:
+      - this._languageFeaturesService.newSymbolNamesProvider.register
+      - this._proxy.$supportsAutomaticNewSymbolNamesTriggerKind
+      - this._registrations.set
+  - name: $registerDocumentSemanticTokensProvider
+    sig: '$registerDocumentSemanticTokensProvider(handle: number, selector: IDocumentFilterDto[], legend: languages.SemanticTokensLegend, eventHandle: number | undefined): void'
+    lines:
+    - 518
+    - 526
+    detail:
+      calls:
+      - new Emitter
+      - new MainThreadDocumentSemanticTokensProvider
+      - this._languageFeaturesService.documentSemanticTokensProvider.register
+      - this._registrations.set
+  - name: $emitDocumentSemanticTokensEvent
+    sig: '$emitDocumentSemanticTokensEvent(eventHandle: number): void'
+    lines:
+    - 528
+    - 533
+    detail:
+      calls:
+      - obj.fire
+      - this._registrations.get
+  - name: $registerDocumentRangeSemanticTokensProvider
+    sig: '$registerDocumentRangeSemanticTokensProvider(handle: number, selector: IDocumentFilterDto[], legend: languages.SemanticTokensLegend): void'
+    lines:
+    - 535
+    - 537
+    detail:
+      calls:
+      - new MainThreadDocumentRangeSemanticTokensProvider
+      - this._languageFeaturesService.documentRangeSemanticTokensProvider.register
+      - this._registrations.set
+  - name: _inflateSuggestDto
+    sig: '_inflateSuggestDto(defaultRange: IRange | { insert: IRange; replace: IRange }, data: ISuggestDataDto, extensionId: ExtensionIdentifier): languages.CompletionItem'
+    vis: private
+    decorators:
+    - static
+    lines:
+    - 541
+    - 579
+    detail:
+      calls:
+      - Array.from
+  - name: $registerCompletionsProvider
+    sig: '$registerCompletionsProvider(handle: number, selector: IDocumentFilterDto[], triggerCharacters: string[], supportsResolveDetails: boolean, extensionId: ExtensionIdentifier): void'
+    lines:
+    - 581
+    - 615
+    detail:
+      calls:
+      - this._languageFeaturesService.completionProvider.register
+      - this._registrations.set
+      - triggerCharacters.join
+  - name: $registerInlineCompletionsSupport
+    sig: '$registerInlineCompletionsSupport(handle: number, selector: IDocumentFilterDto[], supportsHandleEvents: boolean, extensionId: string, yieldsToExtensionIds: string[], displayName: string | undefined, debounceDelayMs: number | undefined): void'
+    lines:
+    - 617
+    - 652
+    detail:
+      calls:
+      - this._languageFeaturesService.inlineCompletionsProvider.register
+      - this._registrations.set
+  - name: $registerInlineEditProvider
+    sig: '$registerInlineEditProvider(handle: number, selector: IDocumentFilterDto[], extensionId: ExtensionIdentifier, displayName: string): void'
+    lines:
+    - 654
+    - 666
+    detail:
+      calls:
+      - this._languageFeaturesService.inlineEditProvider.register
+      - this._registrations.set
+  - name: $registerSignatureHelpProvider
+    sig: '$registerSignatureHelpProvider(handle: number, selector: IDocumentFilterDto[], metadata: ISignatureHelpProviderMetadataDto): void'
+    lines:
+    - 670
+    - 689
+    detail:
+      calls:
+      - this._languageFeaturesService.signatureHelpProvider.register
+      - this._registrations.set
+  - name: $registerInlayHintsProvider
+    sig: '$registerInlayHintsProvider(handle: number, selector: IDocumentFilterDto[], supportsResolve: boolean, eventHandle: number | undefined, displayName: string | undefined): void'
+    lines:
+    - 693
+    - 739
+    detail:
+      calls:
+      - new Emitter
+      - this._languageFeaturesService.inlayHintsProvider.register
+      - this._registrations.set
+  - name: $emitInlayHintsEvent
+    sig: '$emitInlayHintsEvent(eventHandle: number): void'
+    lines:
+    - 741
+    - 746
+    detail:
+      calls:
+      - obj.fire
+      - this._registrations.get
+  - name: $registerDocumentLinkProvider
+    sig: '$registerDocumentLinkProvider(handle: number, selector: IDocumentFilterDto[], supportsResolve: boolean): void'
+    lines:
+    - 750
+    - 780
+    detail:
+      calls:
+      - this._languageFeaturesService.linkProvider.register
+      - this._registrations.set
+  - name: $registerDocumentColorProvider
+    sig: '$registerDocumentColorProvider(handle: number, selector: IDocumentFilterDto[]): void'
+    lines:
+    - 784
+    - 814
+    detail:
+      calls:
+      - this._languageFeaturesService.colorProvider.register
+      - this._registrations.set
+  - name: $registerFoldingRangeProvider
+    sig: '$registerFoldingRangeProvider(handle: number, selector: IDocumentFilterDto[], extensionId: ExtensionIdentifier, eventHandle: number | undefined): void'
+    lines:
+    - 818
+    - 833
+    detail:
+      calls:
+      - new Emitter
+      - this._languageFeaturesService.foldingRangeProvider.register
+      - this._registrations.set
+  - name: $emitFoldingRangeEvent
+    sig: '$emitFoldingRangeEvent(eventHandle: number, event?: any): void'
+    lines:
+    - 835
+    - 840
+    detail:
+      calls:
+      - obj.fire
+      - this._registrations.get
+  - name: $registerSelectionRangeProvider
+    sig: '$registerSelectionRangeProvider(handle: number, selector: IDocumentFilterDto[]): void'
+    lines:
+    - 844
+    - 850
+    detail:
+      calls:
+      - this._languageFeaturesService.selectionRangeProvider.register
+      - this._registrations.set
+  - name: $registerCallHierarchyProvider
+    sig: '$registerCallHierarchyProvider(handle: number, selector: IDocumentFilterDto[]): void'
+    lines:
+    - 854
+    - 893
+    detail:
+      calls:
+      - callh.CallHierarchyProviderRegistry.register
+      - this._registrations.set
+  - name: $setLanguageConfiguration
+    sig: '$setLanguageConfiguration(handle: number, languageId: string, _configuration: ILanguageConfigurationDto): void'
+    lines:
+    - 923
+    - 956
+    detail:
+      calls:
+      - MainThreadLanguageFeatures._reviveIndentationRule
+      - MainThreadLanguageFeatures._reviveOnEnterRules
+      - MainThreadLanguageFeatures._reviveRegExp
+      - this._languageConfigurationService.register
+      - this._languageService.isRegisteredLanguageId
+      - this._registrations.set
+  - name: $registerTypeHierarchyProvider
+    sig: '$registerTypeHierarchyProvider(handle: number, selector: IDocumentFilterDto[]): void'
+    lines:
+    - 960
+    - 993
+    detail:
+      calls:
+      - this._registrations.set
+      - typeh.TypeHierarchyProviderRegistry.register
+  - name: $registerDocumentOnDropEditProvider
+    sig: '$registerDocumentOnDropEditProvider(handle: number, selector: IDocumentFilterDto[], metadata: IDocumentDropEditProviderMetadata): void'
+    lines:
+    - 1000
+    - 1007
+    detail:
+      calls:
+      - combinedDisposable
+      - new MainThreadDocumentOnDropEditProvider
+      - this._documentOnDropEditProviders.set
+      - this._languageFeaturesService.documentDropEditProvider.register
+      - this._registrations.set
+      - toDisposable
+  - name: $resolveDocumentOnDropFileData
+    sig: '$resolveDocumentOnDropFileData(handle: number, requestId: number, dataId: string): Promise<VSBuffer>'
+    is_async: true
+    lines:
+    - 1009
+    - 1015
+    detail:
+      calls:
+      - new Error
+      - provider.resolveDocumentOnDropFileData
+      - this._documentOnDropEditProviders.get
+  lines:
+  - 39
+  - 1016
+- name: MainThreadPasteEditProvider
+  kind: struct
+  fields:
+  - name: dataTransfers
+    type: any
+    default: new DataTransferFileCache()
+  - name: copyMimeTypes
+    type: readonly string[]
+  - name: pasteMimeTypes
+    type: readonly string[]
+  - name: providedPasteEditKinds
+    type: readonly HierarchicalKind[]
+  - name: prepareDocumentPaste
+    type: languages.DocumentPasteEditProvider['prepareDocumentPaste']
+  - name: provideDocumentPasteEdits
+    type: languages.DocumentPasteEditProvider['provideDocumentPasteEdits']
+  - name: resolveDocumentPasteEdit
+    type: languages.DocumentPasteEditProvider['resolveDocumentPasteEdit']
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tprivate readonly _handle: number,\n\t\tprivate readonly _proxy: ExtHostLanguageFeaturesShape,\n\t\tmetadata: IPasteEditProviderMetadataDto,\n\t\t@IUriIdentityService private readonly _uriIdentService: IUriIdentityService\n\t)"
+    lines:
+    - 1030
+    - 1108
+    detail:
+      calls:
+      - metadata.providedPasteEditKinds?.map
+  - name: resolveFileData
+    sig: 'resolveFileData(requestId: number, dataId: string): Promise<VSBuffer>'
+    lines:
+    - 1110
+    - 1112
+    detail:
+      calls:
+      - this.dataTransfers.resolveFileData
+  lines:
+  - 1018
+  - 1113
+- name: MainThreadDocumentOnDropEditProvider
+  kind: struct
+  fields:
+  - name: dataTransfers
+    type: any
+    default: new DataTransferFileCache()
+  - name: dropMimeTypes
+    type: readonly string[]
+  - name: providedDropEditKinds
+    type: readonly HierarchicalKind[] | undefined
+  - name: resolveDocumentDropEdit
+    type: languages.DocumentDropEditProvider['resolveDocumentDropEdit']
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tprivate readonly _handle: number,\n\t\tprivate readonly _proxy: ExtHostLanguageFeaturesShape,\n\t\tmetadata: IDocumentDropEditProviderMetadata | undefined,\n\t\t@IUriIdentityService private readonly _uriIdentService: IUriIdentityService\n\t)"
+    lines:
+    - 1125
+    - 1143
+    detail:
+      calls:
+      - metadata?.providedDropKinds?.map
+  - name: provideDocumentDropEdits
+    sig: 'provideDocumentDropEdits(model: ITextModel, position: IPosition, dataTransfer: IReadonlyVSDataTransfer, token: CancellationToken): Promise<languages.DocumentDropEditsSession | undefined>'
+    is_async: true
+    lines:
+    - 1145
+    - 1174
+    detail:
+      calls:
+      - edits.map
+      - request.dispose
+      - this._proxy.$provideDocumentOnDropEdits
+      - this.dataTransfers.add
+      - typeConvert.DataTransfer.fromList
+  - name: resolveDocumentOnDropFileData
+    sig: 'resolveDocumentOnDropFileData(requestId: number, dataId: string): Promise<VSBuffer>'
+    lines:
+    - 1176
+    - 1178
+    detail:
+      calls:
+      - this.dataTransfers.resolveFileData
+  lines:
+  - 1115
+  - 1179
+- name: MainThreadDocumentSemanticTokensProvider
+  kind: struct
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tprivate readonly _proxy: ExtHostLanguageFeaturesShape,\n\t\tprivate readonly _handle: number,\n\t\tprivate readonly _legend: languages.SemanticTokensLegend,\n\t\tpublic readonly onDidChange: Event<void> | undefined,\n\t)"
+    lines:
+    - 1183
+    - 1189
+    detail: {}
+  - name: releaseDocumentSemanticTokens
+    sig: 'releaseDocumentSemanticTokens(resultId: string | undefined): void'
+    lines:
+    - 1191
+    - 1195
+    detail:
+      calls:
+      - parseInt
+      - this._proxy.$releaseDocumentSemanticTokens
+  - name: getLegend
+    sig: 'getLegend(): languages.SemanticTokensLegend'
+    lines:
+    - 1197
+    - 1199
+    detail: {}
+  - name: provideDocumentSemanticTokens
+    sig: 'provideDocumentSemanticTokens(model: ITextModel, lastResultId: string | null, token: CancellationToken): Promise<languages.SemanticTokens | languages.SemanticTokensEdits | null>'
+    is_async: true
+    lines:
+    - 1201
+    - 1221
+    detail:
+      calls:
+      - String
+      - decodeSemanticTokensDto
+      - parseInt
+      - this._proxy.$provideDocumentSemanticTokens
+  lines:
+  - 1181
+  - 1222
+- name: MainThreadDocumentRangeSemanticTokensProvider
+  kind: struct
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tprivate readonly _proxy: ExtHostLanguageFeaturesShape,\n\t\tprivate readonly _handle: number,\n\t\tprivate readonly _legend: languages.SemanticTokensLegend,\n\t)"
+    lines:
+    - 1226
+    - 1231
+    detail: {}
+  - name: getLegend
+    sig: 'getLegend(): languages.SemanticTokensLegend'
+    lines:
+    - 1233
+    - 1235
+    detail: {}
+  - name: provideDocumentRangeSemanticTokens
+    sig: 'provideDocumentRangeSemanticTokens(model: ITextModel, range: EditorRange, token: CancellationToken): Promise<languages.SemanticTokens | null>'
+    is_async: true
+    lines:
+    - 1237
+    - 1253
+    detail:
+      calls:
+      - String
+      - decodeSemanticTokensDto
+      - new Error
+      - this._proxy.$provideDocumentRangeSemanticTokens
+  lines:
+  - 1224
+  - 1254
+exports:
+- name: MainThreadLanguageFeatures
+  kind: type
+- name: MainThreadPasteEditProvider
+  kind: type
+- name: MainThreadDocumentOnDropEditProvider
+  kind: type
+- name: MainThreadDocumentSemanticTokensProvider
+  kind: type
+- name: MainThreadDocumentRangeSemanticTokensProvider
+  kind: type

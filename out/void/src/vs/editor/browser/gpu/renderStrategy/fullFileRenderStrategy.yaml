@@ -1,0 +1,328 @@
+## Roska File Descriptor — renderStrategy/fullFileRenderStrategy.ts
+file: renderStrategy/fullFileRenderStrategy.ts
+lines: 548
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: ../../../../base/browser/dom.js.getActiveWindow
+- sym: ../../../../base/common/color.js.Color
+- sym: ../../../../base/common/errors.js.BugIndicatingError
+- sym: ../../../common/core/cursorColumns.js.CursorColumns
+- sym: ../../../common/tokens/lineTokens.js.IViewLineTokens
+  kind: typing
+- sym: ../../../common/viewEvents.js.ViewEventType
+- sym: ../../../common/viewEvents.js.type ViewConfigurationChangedEvent
+- sym: ../../../common/viewEvents.js.type ViewDecorationsChangedEvent
+- sym: ../../../common/viewEvents.js.type ViewLineMappingChangedEvent
+- sym: ../../../common/viewEvents.js.type ViewLinesChangedEvent
+- sym: ../../../common/viewEvents.js.type ViewLinesDeletedEvent
+- sym: ../../../common/viewEvents.js.type ViewLinesInsertedEvent
+- sym: ../../../common/viewEvents.js.type ViewScrollChangedEvent
+- sym: ../../../common/viewEvents.js.type ViewThemeChangedEvent
+- sym: ../../../common/viewEvents.js.type ViewTokensChangedEvent
+- sym: ../../../common/viewEvents.js.type ViewZonesChangedEvent
+- sym: ../../../common/viewLayout/viewLinesViewportData.js.ViewportData
+  kind: typing
+- sym: ../../../common/viewModel.js.InlineDecoration
+  kind: typing
+- sym: ../../../common/viewModel.js.ViewLineRenderingData
+  kind: typing
+- sym: ../../../common/viewModel/viewContext.js.ViewContext
+  kind: typing
+- sym: ../../viewParts/viewLines/viewLineOptions.js.ViewLineOptions
+  kind: typing
+- sym: ../atlas/atlas.js.ITextureAtlasPageGlyph
+  kind: typing
+- sym: ../contentSegmenter.js.createContentSegmenter
+- sym: ../contentSegmenter.js.type IContentSegmenter
+- sym: ./fullFileRenderStrategy.wgsl.js.fullFileRenderStrategyWgsl
+- sym: ../gpu.js.BindingId
+- sym: ../gpuDisposable.js.GPULifecycle
+- sym: ../gpuUtils.js.quadVertices
+- sym: ../raster/glyphRasterizer.js.GlyphRasterizer
+- sym: ../viewGpuContext.js.ViewGpuContext
+- sym: ./baseRenderStrategy.js.BaseRenderStrategy
+types:
+- name: Constants
+  kind: enum
+  variants:
+  - name: IndicesPerCell
+    val: '6'
+  lines:
+  - 26
+  - 28
+- name: CellBufferInfo
+  kind: enum
+  variants:
+  - name: FloatsPerEntry
+    val: '6'
+  - name: BytesPerEntry
+    val: CellBufferInfo.FloatsPerEntry * 4
+  - name: Offset_X
+    val: '0'
+  - name: Offset_Y
+    val: '1'
+  - name: Offset_Unused1
+    val: '2'
+  - name: Offset_Unused2
+    val: '3'
+  - name: GlyphIndex
+    val: '4'
+  - name: TextureIndex
+    val: '5'
+  lines:
+  - 30
+  - 39
+- name: QueuedBufferEvent
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 41
+  - 46
+- name: FullFileRenderStrategy
+  kind: struct
+  ctx: The hard cap for line count that can be rendered by the GPU renderer.
+  bases:
+  - BaseRenderStrategy
+  fields:
+  - name: maxSupportedLines
+    type: any
+    default: '3000'
+  - name: maxSupportedColumns
+    type: any
+    default: '200'
+  - name: type
+    type: any
+    default: '''fullfile'''
+  - name: wgsl
+    type: string
+    default: fullFileRenderStrategyWgsl
+  - name: _cellBindBuffer
+    type: GPUBuffer
+  - name: _cellValueBuffers
+    type: '[ArrayBuffer, ArrayBuffer]'
+  - name: _activeDoubleBufferIndex
+    type: 0 | 1
+    default: '0'
+  - name: _upToDateLines
+    type: '[Set<number>, Set<number>]'
+    default: '[new Set(), new Set()]'
+  - name: _visibleObjectCount
+    type: number
+    default: '0'
+  - name: _finalRenderedLine
+    type: number
+    default: '0'
+  - name: _scrollOffsetBindBuffer
+    type: GPUBuffer
+  - name: _scrollOffsetValueBuffer
+    type: Float32Array
+  - name: _scrollInitialized
+    type: boolean
+    default: 'false'
+  - name: _queuedBufferUpdates
+    type: '[QueuedBufferEvent[], QueuedBufferEvent[]]'
+    default: '[[], []]'
+  methods:
+  - name: bindGroupEntries
+    sig: 'bindGroupEntries(): GPUBindGroupEntry[]'
+    lines:
+    - 87
+    - 92
+    detail: {}
+  - name: constructor
+    sig: "constructor(\n\t\tcontext: ViewContext,\n\t\tviewGpuContext: ViewGpuContext,\n\t\tdevice: GPUDevice,\n\t\tglyphRasterizer: { value: GlyphRasterizer },\n\t)"
+    lines:
+    - 94
+    - 120
+    detail:
+      calls:
+      - GPULifecycle.createBuffer
+      - new ArrayBuffer
+      - new Float32Array
+      - super
+      - this._register
+  - name: onConfigurationChanged
+    sig: 'onConfigurationChanged(e: ViewConfigurationChangedEvent): boolean'
+    lines:
+    - 132
+    - 136
+    detail:
+      calls:
+      - this._invalidateAllLines
+      - this._queueBufferUpdate
+  - name: onDecorationsChanged
+    sig: 'onDecorationsChanged(e: ViewDecorationsChangedEvent): boolean'
+    lines:
+    - 138
+    - 141
+    detail:
+      calls:
+      - this._invalidateAllLines
+  - name: onTokensChanged
+    sig: 'onTokensChanged(e: ViewTokensChangedEvent): boolean'
+    lines:
+    - 143
+    - 150
+    detail:
+      calls:
+      - this._invalidateLineRange
+  - name: onLinesDeleted
+    sig: 'onLinesDeleted(e: ViewLinesDeletedEvent): boolean'
+    lines:
+    - 152
+    - 159
+    detail:
+      calls:
+      - this._invalidateLinesFrom
+      - this._queueBufferUpdate
+  - name: onLinesInserted
+    sig: 'onLinesInserted(e: ViewLinesInsertedEvent): boolean'
+    lines:
+    - 161
+    - 166
+    detail:
+      calls:
+      - this._invalidateLinesFrom
+  - name: onLinesChanged
+    sig: 'onLinesChanged(e: ViewLinesChangedEvent): boolean'
+    lines:
+    - 168
+    - 171
+    detail:
+      calls:
+      - this._invalidateLineRange
+  - name: onScrollChanged
+    sig: 'onScrollChanged(e?: ViewScrollChangedEvent): boolean'
+    lines:
+    - 173
+    - 179
+    detail:
+      calls:
+      - getActiveWindow
+      - this._context.viewLayout.getCurrentScrollLeft
+      - this._context.viewLayout.getCurrentScrollTop
+      - this._device.queue.writeBuffer
+  - name: onThemeChanged
+    sig: 'onThemeChanged(e: ViewThemeChangedEvent): boolean'
+    lines:
+    - 181
+    - 184
+    detail:
+      calls:
+      - this._invalidateAllLines
+  - name: onLineMappingChanged
+    sig: 'onLineMappingChanged(e: ViewLineMappingChangedEvent): boolean'
+    lines:
+    - 186
+    - 190
+    detail:
+      calls:
+      - this._invalidateAllLines
+      - this._queueBufferUpdate
+  - name: onZonesChanged
+    sig: 'onZonesChanged(e: ViewZonesChangedEvent): boolean'
+    lines:
+    - 192
+    - 197
+    detail:
+      calls:
+      - this._invalidateAllLines
+      - this._queueBufferUpdate
+  - name: reset
+    sig: reset()
+    lines:
+    - 224
+    - 233
+    detail:
+      calls:
+      - buffer.fill
+      - new Float32Array
+      - this._device.queue.writeBuffer
+      - this._invalidateAllLines
+  - name: update
+    sig: 'update(viewportData: ViewportData, viewLineOptions: ViewLineOptions): number'
+    lines:
+    - 235
+    - 505
+    detail:
+      calls:
+      - Color.Format.CSS.parse
+      - CursorColumns.nextRenderTabStop
+      - Math.floor
+      - Math.max
+      - Math.min
+      - Math.round
+      - ViewGpuContext.decorationCssRuleExtractor.getStyleRules
+      - ViewGpuContext.decorationStyleCache.getOrCreateEntry
+      - cellBuffer.fill
+      - cellBuffer.set
+      - cellBuffer.subarray
+      - contentSegmenter.getSegmentAtIndex
+      - createContentSegmenter
+      - getActiveWindow
+      - new BugIndicatingError
+      - new Float32Array
+      - parseCssFontWeight
+      - parseCssOpacity
+      - parsedColor.toNumber32Bit
+      - queuedBufferUpdates.shift
+      - rule.styleMap.get
+      - rule.styleMap.get(r)?.toString
+      - this._device.queue.writeBuffer
+      - this._viewGpuContext.atlas.getGlyph
+      - this._viewGpuContext.canRender
+      - this.glyphRasterizer.getTextMetrics
+      - this.onScrollChanged
+      - tokens.getCount
+      - tokens.getEndOffset
+      - tokens.getMetadata
+      - upToDateLines.add
+      - upToDateLines.has
+      - viewportData.getViewLineRenderingData
+  - name: draw
+    sig: 'draw(pass: GPURenderPassEncoder, viewportData: ViewportData): void'
+    lines:
+    - 507
+    - 517
+    detail:
+      calls:
+      - new BugIndicatingError
+      - pass.draw
+  lines:
+  - 53
+  - 528
+functions:
+- name: parseCssFontWeight
+  sig: 'parseCssFontWeight(value: string)'
+  lines:
+  - 530
+  - 538
+  detail:
+    calls:
+    - parseInt
+- name: parseCssOpacity
+  sig: 'parseCssOpacity(value: string): number'
+  lines:
+  - 540
+  - 548
+  detail:
+    calls:
+    - parseFloat
+    - value.endsWith
+    - value.match
+    - value.substring
+exports:
+- name: Constants
+  kind: type
+- name: CellBufferInfo
+  kind: type
+- name: QueuedBufferEvent
+  kind: type
+- name: FullFileRenderStrategy
+  kind: type
+- name: parseCssFontWeight
+  kind: func
+- name: parseCssOpacity
+  kind: func

@@ -1,0 +1,195 @@
+## Roska File Descriptor — worker/textMateWorkerTokenizer.ts
+file: worker/textMateWorkerTokenizer.ts
+lines: 193
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: ../../../../../../amdX.js.importAMDNodeModule
+- sym: ../../../../../../base/common/async.js.RunOnceScheduler
+- sym: ../../../../../../base/common/observable.js.observableValue
+- sym: ../../../../../../base/common/platform.js.setTimeout0
+- sym: ../../../../../../base/common/uri.js.URI
+- sym: ../../../../../../editor/common/core/lineRange.js.LineRange
+- sym: ../../../../../../editor/common/encodedTokenAttributes.js.LanguageId
+- sym: ../../../../../../editor/common/model/mirrorTextModel.js.IModelChangedEvent
+- sym: ../../../../../../editor/common/model/mirrorTextModel.js.MirrorTextModel
+- sym: ../../../../../../editor/common/model/textModelTokens.js.TokenizerWithStateStore
+- sym: ../../../../../../editor/common/tokens/contiguousMultilineTokensBuilder.js.ContiguousMultilineTokensBuilder
+- sym: ../../../../../../editor/common/tokens/lineTokens.js.LineTokens
+- sym: ../../tokenizationSupport/textMateTokenizationSupport.js.TextMateTokenizationSupport
+- sym: ../../tokenizationSupport/tokenizationSupportWithLineLimit.js.TokenizationSupportWithLineLimit
+- sym: vscode-textmate.StackDiff
+  kind: typing
+- sym: vscode-textmate.StateStack
+  kind: typing
+- sym: vscode-textmate.diffStateStacksRefEq
+  kind: typing
+- sym: ../../../common/TMGrammarFactory.js.ICreateGrammarResult
+- sym: ./textMateTokenizationWorker.worker.js.StateDeltas
+- sym: ../../../../../../base/common/lifecycle.js.Disposable
+types:
+- name: TextMateModelTokenizerHost
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: getOrCreateGrammar
+    type: 'method: getOrCreateGrammar(languageId: string, encodedLanguageId: LanguageId): Promise<ICreateGrammarResult | null>'
+  - name: setTokensAndStates
+    type: 'method: setTokensAndStates(versionId: number, tokens: Uint8Array, stateDeltas: StateDeltas[]): void'
+  - name: reportTokenizationTime
+    type: 'method: reportTokenizationTime(timeMs: number, languageId: string, sourceExtensionId: string | undefined, lineLength: number, isRandomSample: boolean): void'
+  lines:
+  - 24
+  - 28
+- name: TextMateWorkerTokenizer
+  kind: model
+  bases:
+  - MirrorTextModel
+  fields:
+  - name: _tokenizerWithStateStore
+    type: TokenizerWithStateStore<StateStack> | null
+    default: 'null'
+  - name: _isDisposed
+    type: boolean
+    default: 'false'
+  - name: _maxTokenizationLineLength
+    type: any
+    default: observableValue(this, -1)
+  - name: _diffStateStacksRefEqFn
+    type: typeof diffStateStacksRefEq
+  - name: _tokenizeDebouncer
+    type: any
+    default: new RunOnceScheduler(() => this._tokenize(), 10)
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\turi: URI,\n\t\tlines: string[],\n\t\teol: string,\n\t\tversionId: number,\n\t\tprivate readonly _host: TextMateModelTokenizerHost,\n\t\tprivate _languageId: string,\n\t\tprivate _encodedLanguageId: LanguageId,\n\t\tmaxTokenizationLineLength: number,\n\t)"
+    lines:
+    - 37
+    - 50
+    detail:
+      calls:
+      - super
+      - this._maxTokenizationLineLength.set
+      - this._resetTokenization
+  - name: dispose
+    sig: 'dispose(): void'
+    lines:
+    - 52
+    - 55
+    detail:
+      calls:
+      - super.dispose
+  - name: onLanguageId
+    sig: 'onLanguageId(languageId: string, encodedLanguageId: LanguageId): void'
+    lines:
+    - 57
+    - 61
+    detail:
+      calls:
+      - this._resetTokenization
+  - name: onEvents
+    sig: 'onEvents(e: IModelChangedEvent): void'
+    lines:
+    - 63
+    - 68
+    detail:
+      calls:
+      - super.onEvents
+      - this._tokenizeDebouncer.schedule
+      - this._tokenizerWithStateStore?.store.acceptChanges
+  - name: acceptMaxTokenizationLineLength
+    sig: 'acceptMaxTokenizationLineLength(maxTokenizationLineLength: number): void'
+    lines:
+    - 70
+    - 72
+    detail:
+      calls:
+      - this._maxTokenizationLineLength.set
+  - name: retokenize
+    sig: 'retokenize(startLineNumber: number, endLineNumberExclusive: number)'
+    lines:
+    - 74
+    - 79
+    detail:
+      calls:
+      - new LineRange
+      - this._tokenizeDebouncer.schedule
+      - this._tokenizerWithStateStore.store.invalidateEndStateRange
+  - name: _resetTokenization
+    sig: _resetTokenization()
+    is_async: true
+    vis: private
+    lines:
+    - 81
+    - 110
+    detail:
+      calls:
+      - new TextMateTokenizationSupport
+      - new TokenizationSupportWithLineLimit
+      - new TokenizerWithStateStore
+      - this._host.getOrCreateGrammar
+      - this._tokenize
+  - name: _tokenize
+    sig: '_tokenize(): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 112
+    - 174
+    detail:
+      calls:
+      - LineTokens.convertToEndOffset
+      - import
+      - new ContiguousMultilineTokensBuilder
+      - new Date
+      - new Date().getTime
+      - new StateDeltaBuilder
+      - setTimeout0
+      - stateDeltaBuilder.getStateDeltas
+      - stateDeltaBuilder.setState
+      - this._diffStateStacksRefEqFn
+      - this._host.setTokensAndStates
+      - this._tokenizerWithStateStore.getFirstInvalidLine
+      - this._tokenizerWithStateStore.store.setEndState
+      - this._tokenizerWithStateStore.tokenizationSupport.tokenizeEncoded
+      - tokenBuilder.add
+      - tokenBuilder.serialize
+  lines:
+  - 30
+  - 175
+- name: StateDeltaBuilder
+  kind: struct
+  fields:
+  - name: _lastStartLineNumber
+    type: number
+    default: '-1'
+  - name: _stateDeltas
+    type: StateDeltas[]
+    default: '[]'
+  methods:
+  - name: setState
+    sig: 'setState(lineNumber: number, stackDiff: StackDiff | null): void'
+    lines:
+    - 181
+    - 188
+    detail:
+      calls:
+      - this._stateDeltas.push
+      - this._stateDeltas[this._stateDeltas.length - 1].stateDeltas.push
+  - name: getStateDeltas
+    sig: 'getStateDeltas(): StateDeltas[]'
+    lines:
+    - 190
+    - 192
+    detail: {}
+  lines:
+  - 177
+  - 193
+exports:
+- name: TextMateModelTokenizerHost
+  kind: type
+- name: TextMateWorkerTokenizer
+  kind: type
+- name: StateDeltaBuilder
+  kind: type

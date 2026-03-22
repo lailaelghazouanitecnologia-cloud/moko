@@ -1,0 +1,320 @@
+## Roska File Descriptor — common/extensionTipsService.ts
+file: common/extensionTipsService.ts
+lines: 404
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: ../../../base/common/arrays.js.isNonEmptyArray
+- sym: ../../../base/common/lifecycle.js.Disposable
+- sym: ../../../base/common/lifecycle.js.MutableDisposable
+- sym: ../../../base/common/product.js.IConfigBasedExtensionTip as IRawConfigBasedExtensionTip
+- sym: ../../../base/common/resources.js.joinPath
+- sym: ../../../base/common/uri.js.URI
+- sym: ./extensionManagement.js.IConfigBasedExtensionTip
+- sym: ./extensionManagement.js.IExecutableBasedExtensionTip
+- sym: ./extensionManagement.js.IExtensionManagementService
+- sym: ./extensionManagement.js.IExtensionTipsService
+- sym: ./extensionManagement.js.ILocalExtension
+- sym: ../../files/common/files.js.IFileService
+- sym: ../../product/common/productService.js.IProductService
+- sym: ../../../base/common/async.js.disposableTimeout
+- sym: ../../../base/common/collections.js.IStringDictionary
+- sym: ../../../base/common/event.js.Event
+- sym: ../../../base/common/path.js.join
+- sym: ../../../base/common/platform.js.isWindows
+- sym: ../../../base/common/process.js.env
+- sym: ./extensionManagementUtil.js.areSameExtensions
+- sym: ../../extensionRecommendations/common/extensionRecommendations.js.IExtensionRecommendationNotificationService
+- sym: ../../extensionRecommendations/common/extensionRecommendations.js.RecommendationsNotificationResult
+- sym: ../../extensionRecommendations/common/extensionRecommendations.js.RecommendationSource
+- sym: ../../extensions/common/extensions.js.ExtensionType
+- sym: ../../storage/common/storage.js.IStorageService
+- sym: ../../storage/common/storage.js.StorageScope
+- sym: ../../storage/common/storage.js.StorageTarget
+- sym: ../../telemetry/common/telemetry.js.ITelemetryService
+data:
+- name: promptedExecutableTipsStorageKey
+  type: string
+  val: '''extensionTips/promptedExecutableTips'''
+- name: lastPromptedMediumImpExeTimeStorageKey
+  type: string
+  val: '''extensionTips/lastPromptedMediumImpExeTime'''
+types:
+- name: ExtensionTipsService
+  kind: struct
+  bases:
+  - Disposable
+  - IExtensionTipsService
+  fields:
+  - name: _serviceBrand
+    type: any
+  - name: allConfigBasedTips
+    type: Map<string, IRawConfigBasedExtensionTip>
+    default: new Map<string, IRawConfigBasedExtensionTip>()
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\t@IFileService protected readonly fileService: IFileService,\n\t\t@IProductService private readonly productService: IProductService,\n\t)"
+    lines:
+    - 34
+    - 42
+    detail:
+      calls:
+      - Object.entries
+      - Object.entries(this.productService.configBasedExtensionTips).forEach
+      - super
+  - name: getConfigBasedTips
+    sig: 'getConfigBasedTips(folder: URI): Promise<IConfigBasedExtensionTip[]>'
+    lines:
+    - 44
+    - 46
+    detail:
+      calls:
+      - this.getValidConfigBasedTips
+  - name: getImportantExecutableBasedTips
+    sig: 'getImportantExecutableBasedTips(): Promise<IExecutableBasedExtensionTip[]>'
+    is_async: true
+    lines:
+    - 48
+    - 50
+    detail: {}
+  - name: getOtherExecutableBasedTips
+    sig: 'getOtherExecutableBasedTips(): Promise<IExecutableBasedExtensionTip[]>'
+    is_async: true
+    lines:
+    - 52
+    - 54
+    detail: {}
+  - name: getValidConfigBasedTips
+    sig: 'getValidConfigBasedTips(folder: URI): Promise<IConfigBasedExtensionTip[]>'
+    is_async: true
+    vis: private
+    lines:
+    - 56
+    - 79
+    detail:
+      calls:
+      - (await this.fileService.readFile(joinPath(folder, configPath))).value.toString
+      - Object.entries
+      - joinPath
+      - new RegExp
+      - new RegExp(value.contentPattern, 'mig').test
+      - result.push
+      - this.fileService.readFile
+  lines:
+  - 28
+  - 80
+- name: ExeExtensionRecommendationsClassification
+  kind: typealias
+  decorators:
+  - type
+  fields:
+  - name: owner
+    type: '''sandy081'''
+  - name: comment
+    type: '''Information about executable based extension recommendation'''
+  - name: extensionId
+    type: '{ classification: ''PublicNonPersonalData''; purpose: ''FeatureInsight''; comment: ''id of the recommended extension'' }'
+  - name: exeName
+    type: '{ classification: ''PublicNonPersonalData''; purpose: ''FeatureInsight''; comment: ''name of the executable for which extension is being recommended'' }'
+  lines:
+  - 86
+  - 91
+- name: IExeBasedExtensionTips
+  kind: typealias
+  decorators:
+  - type
+  fields:
+  - name: readonly
+    type: string
+  - name: readonly
+    type: string
+  - name: readonly
+    type: '{ extensionId: string; extensionName: string; isExtensionPack: boolean; whenNotInstalled?: string[] }[]'
+  lines:
+  - 93
+  - 97
+- name: AbstractNativeExtensionTipsService
+  kind: trait
+  ctx: High importance tips are prompted once per restart session
+  bases:
+  - ExtensionTipsService
+  decorators:
+  - abstract
+  fields:
+  - name: highImportanceExecutableTips
+    type: Map<string, IExeBasedExtensionTips>
+    default: new Map<string, IExeBasedExtensionTips>()
+  - name: mediumImportanceExecutableTips
+    type: Map<string, IExeBasedExtensionTips>
+    default: new Map<string, IExeBasedExtensionTips>()
+  - name: allOtherExecutableTips
+    type: Map<string, IExeBasedExtensionTips>
+    default: new Map<string, IExeBasedExtensionTips>()
+  - name: highImportanceTipsByExe
+    type: any
+    default: new Map<string, IExecutableBasedExtensionTip[]>()
+  - name: mediumImportanceTipsByExe
+    type: any
+    default: new Map<string, IExecutableBasedExtensionTip[]>()
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tprivate readonly userHome: URI,\n\t\tprivate readonly windowEvents: {\n\t\t\treadonly onDidOpenMainWindow: Event<unknown>;\n\t\t\treadonly onDidFocusMainWindow: Event<unknown>;\n\t\t},\n\t\tprivate readonly telemetryService: ITelemetryService,\n\t\tprivate readonly extensionManagementService: IExtensionManagementService,\n\t\tprivate readonly storageService: IStorageService,\n\t\tprivate readonly extensionRecommendationNotificationService: IExtensionRecommendationNotificationService,\n\t\tfileService: IFileService,\n\t\tproductService: IProductService\n\t)"
+    lines:
+    - 111
+    - 162
+    detail:
+      calls:
+      - Object.entries
+      - Object.entries(productService.exeBasedExtensionTips).forEach
+      - disposableTimeout
+      - super
+  - name: getImportantExecutableBasedTips
+    sig: 'getImportantExecutableBasedTips(): Promise<IExecutableBasedExtensionTip[]>'
+    is_async: true
+    lines:
+    - 164
+    - 168
+    detail:
+      calls:
+      - this.getValidExecutableBasedExtensionTips
+  - name: getOtherExecutableBasedTips
+    sig: 'getOtherExecutableBasedTips(): Promise<IExecutableBasedExtensionTip[]>'
+    lines:
+    - 170
+    - 172
+    detail:
+      calls:
+      - this.getValidExecutableBasedExtensionTips
+  - name: collectTips
+    sig: 'collectTips(): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 174
+    - 181
+    detail:
+      calls:
+      - this.extensionManagementService.getInstalled
+      - this.getValidExecutableBasedExtensionTips
+      - this.groupImportantTipsByExe
+  - name: groupImportantTipsByExe
+    sig: 'groupImportantTipsByExe(importantExeBasedTips: IExecutableBasedExtensionTip[], local: ILocalExtension[]): Map<string, IExecutableBasedExtensionTip[]>'
+    vis: private
+    lines:
+    - 183
+    - 218
+    detail:
+      calls:
+      - importantExeBasedRecommendations.get
+      - importantExeBasedRecommendations.keys
+      - importantExeBasedTips.forEach
+      - new Map
+      - promptedExecutableTips[tip.exeName].includes
+      - this.getPromptedExecutableTips
+      - this.groupByInstalled
+      - this.telemetryService.publicLog2
+      - tips.push
+      - tipsByExe.get
+      - tipsByExe.set
+  - name: promptHighImportanceExeBasedTip
+    sig: 'promptHighImportanceExeBasedTip(): void'
+    vis: private
+    lines:
+    - 223
+    - 252
+    detail:
+      calls:
+      - this.highImportanceTipsByExe.entries
+      - this.promptExeRecommendations
+      - "this.promptExeRecommendations(tips)\n\t\t\t.then"
+  - name: promptMediumImportanceExeBasedTip
+    sig: 'promptMediumImportanceExeBasedTip(): void'
+    vis: private
+    lines:
+    - 257
+    - 307
+    detail:
+      calls:
+      - Date.now
+      - disposableTimeout
+      - new MutableDisposable
+      - this._register
+      - this.getLastPromptedMediumExeTime
+      - this.mediumImportanceTipsByExe.entries
+      - this.promptExeRecommendations
+      - "this.promptExeRecommendations(tips)\n\t\t\t.then"
+  - name: promptExeRecommendations
+    sig: 'promptExeRecommendations(tips: IExecutableBasedExtensionTip[]): Promise<RecommendationsNotificationResult>'
+    is_async: true
+    vis: private
+    lines:
+    - 309
+    - 315
+    detail:
+      calls:
+      - this.extensionManagementService.getInstalled
+      - this.extensionRecommendationNotificationService.promptImportantExtensionsInstallNotification
+      - "tips\n\t\t\t.filter"
+      - "tips\n\t\t\t.filter(tip => !tip.whenNotInstalled || tip.whenNotInstalled.every(id => installed.every(loc..."
+  - name: getLastPromptedMediumExeTime
+    sig: 'getLastPromptedMediumExeTime(): number'
+    vis: private
+    lines:
+    - 317
+    - 324
+    detail:
+      calls:
+      - Date.now
+      - this.storageService.getNumber
+      - this.updateLastPromptedMediumExeTime
+  - name: addToRecommendedExecutables
+    sig: 'addToRecommendedExecutables(exeName: string, tips: IExecutableBasedExtensionTip[])'
+    vis: private
+    lines:
+    - 334
+    - 338
+    detail:
+      calls:
+      - JSON.stringify
+      - this.getPromptedExecutableTips
+      - this.storageService.store
+      - tips.map
+  - name: getValidExecutableBasedExtensionTips
+    sig: 'getValidExecutableBasedExtensionTips(executableTips: Map<string, IExeBasedExtensionTips>): Promise<IExecutableBasedExtensionTip[]>'
+    is_async: true
+    vis: private
+    lines:
+    - 353
+    - 401
+    detail:
+      calls:
+      - URI.file
+      - checkedExecutables.get
+      - checkedExecutables.set
+      - exePaths.push
+      - executableTips.get
+      - executableTips.keys
+      - extensionTip.windowsPath.replace
+      - "extensionTip.windowsPath.replace('%USERPROFILE%', () => env['USERPROFILE']!)\n\t\t\t\t\t\t.replace"
+      - "extensionTip.windowsPath.replace('%USERPROFILE%', () => env['USERPROFILE']!)\n\t\t\t\t\t\t.replace('%Progra..."
+      - isNonEmptyArray
+      - join
+      - new Map
+      - result.push
+      - this.fileService.exists
+  lines:
+  - 102
+  - 402
+exports:
+- name: ExtensionTipsService
+  kind: type
+- name: ExeExtensionRecommendationsClassification
+  kind: type
+- name: IExeBasedExtensionTips
+  kind: type
+- name: AbstractNativeExtensionTipsService
+  kind: type
+- name: promptedExecutableTipsStorageKey
+  kind: data
+- name: lastPromptedMediumImpExeTimeStorageKey
+  kind: data

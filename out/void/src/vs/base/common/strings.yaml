@@ -1,0 +1,1124 @@
+## Roska File Descriptor — common/strings.ts
+file: common/strings.ts
+lines: 1353
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: ./cache.js.LRUCachedFunction
+- sym: ./charCode.js.CharCode
+- sym: ./lazy.js.Lazy
+- sym: ./uint.js.Constants
+data:
+- name: _formatRegexp
+  type: any
+  val: /{(\d+)}/g
+- name: _format2Regexp
+  type: any
+  val: /{([^}]+)}/g
+- name: CONTAINS_RTL
+  type: RegExp | undefined
+  val: undefined
+- name: IS_BASIC_ASCII
+  type: any
+  val: /^[\t\n\r\x20-\x7E]*$/
+- name: UNUSUAL_LINE_TERMINATORS
+  type: any
+  val: /[\u2028\u2029]/
+- name: CSI_SEQUENCE
+  type: any
+  val: /(?:\x1b\[|\x9b)[=?>!]?[\d;:]*["$#'* ]?[a-zA-Z@^`{}|~]/
+- name: OSC_SEQUENCE
+  type: any
+  val: /(?:\x1b\]|\x9d).*?(?:\x1b\\|\x07|\x9c)/
+- name: ESC_SEQUENCE
+  type: any
+  val: '/\x1b(?:[ #%\(\)\*\+\-\.\/]?[a-zA-Z0-9\|}~@])/'
+- name: CONTROL_SEQUENCES
+  type: any
+  val: "new RegExp('(?:' + [\n\tCSI_SEQUENCE.source,\n\tOSC_SEQUENCE.source,\n\tESC_SEQUENCE.source,\n].join('|') + ')', 'g')"
+- name: PROMPT_NON_PRINTABLE
+  type: any
+  val: /\\\[.*?\\\]/g
+- name: UTF8_BOM_CHARACTER
+  type: any
+  val: String.fromCharCode(CharCode.UTF8_BOM)
+- name: noBreakWhitespace
+  type: string
+  val: '''\xa0'''
+types:
+- name: RegExpOptions
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: matchCase
+    type: boolean
+  - name: wholeWord
+    type: boolean
+  - name: multiline
+    type: boolean
+  - name: global
+    type: boolean
+  - name: unicode
+    type: boolean
+  lines:
+  - 199
+  - 205
+- name: CodePointIterator
+  kind: struct
+  fields:
+  - name: _str
+    type: string
+  - name: _len
+    type: number
+  - name: _offset
+    type: number
+  methods:
+  - name: offset
+    sig: 'offset(): number'
+    lines:
+    - 538
+    - 540
+    detail: {}
+  - name: constructor
+    sig: 'constructor(str: string, offset: number = 0)'
+    lines:
+    - 542
+    - 546
+    detail: {}
+  - name: setOffset
+    sig: 'setOffset(offset: number): void'
+    lines:
+    - 548
+    - 550
+    detail: {}
+  - name: prevCodePoint
+    sig: 'prevCodePoint(): number'
+    lines:
+    - 552
+    - 556
+    detail:
+      calls:
+      - getPrevCodePoint
+  - name: nextCodePoint
+    sig: 'nextCodePoint(): number'
+    lines:
+    - 558
+    - 562
+    detail:
+      calls:
+      - getNextCodePoint
+  - name: eol
+    sig: 'eol(): boolean'
+    lines:
+    - 564
+    - 566
+    detail: {}
+  lines:
+  - 532
+  - 567
+- name: GraphemeIterator
+  kind: struct
+  fields:
+  - name: _iterator
+    type: CodePointIterator
+  methods:
+  - name: offset
+    sig: 'offset(): number'
+    lines:
+    - 573
+    - 575
+    detail: {}
+  - name: constructor
+    sig: 'constructor(str: string, offset: number = 0)'
+    lines:
+    - 577
+    - 579
+    detail:
+      calls:
+      - new CodePointIterator
+  - name: nextGraphemeLength
+    sig: 'nextGraphemeLength(): number'
+    lines:
+    - 581
+    - 598
+    detail:
+      calls:
+      - GraphemeBreakTree.getInstance
+      - breakBetweenGraphemeBreakType
+      - graphemeBreakTree.getGraphemeBreakType
+      - iterator.eol
+      - iterator.nextCodePoint
+      - iterator.setOffset
+  - name: prevGraphemeLength
+    sig: 'prevGraphemeLength(): number'
+    lines:
+    - 600
+    - 617
+    detail:
+      calls:
+      - GraphemeBreakTree.getInstance
+      - breakBetweenGraphemeBreakType
+      - graphemeBreakTree.getGraphemeBreakType
+      - iterator.prevCodePoint
+      - iterator.setOffset
+  - name: eol
+    sig: 'eol(): boolean'
+    lines:
+    - 619
+    - 621
+    detail:
+      calls:
+      - this._iterator.eol
+  lines:
+  - 569
+  - 622
+- name: GraphemeBreakType
+  kind: enum
+  variants:
+  - name: Other
+    val: '0'
+  - name: Prepend
+    val: '1'
+  - name: CR
+    val: '2'
+  - name: LF
+    val: '3'
+  - name: Control
+    val: '4'
+  - name: Extend
+    val: '5'
+  - name: Regional_Indicator
+    val: '6'
+  - name: SpacingMark
+    val: '7'
+  - name: L
+    val: '8'
+  - name: V
+    val: '9'
+  - name: T
+    val: '10'
+  - name: LV
+    val: '11'
+  - name: LVT
+    val: '12'
+  - name: ZWJ
+    val: '13'
+  - name: Extended_Pictographic
+    val: '14'
+  lines:
+  - 1047
+  - 1063
+- name: GraphemeBreakTree
+  kind: struct
+  fields:
+  - name: _INSTANCE
+    type: GraphemeBreakTree | null
+    default: 'null'
+  - name: _data
+    type: number[]
+  methods:
+  - name: getInstance
+    sig: 'getInstance(): GraphemeBreakTree'
+    decorators:
+    - static
+    lines:
+    - 1068
+    - 1073
+    detail:
+      calls:
+      - new GraphemeBreakTree
+  - name: constructor
+    sig: constructor()
+    lines:
+    - 1077
+    - 1079
+    detail:
+      calls:
+      - getGraphemeBreakRawData
+  - name: getGraphemeBreakType
+    sig: 'getGraphemeBreakType(codePoint: number): GraphemeBreakType'
+    lines:
+    - 1081
+    - 1114
+    detail: {}
+  lines:
+  - 1065
+  - 1115
+- name: CodePoint
+  kind: enum
+  variants:
+  - name: zwj
+    val: '0x200D'
+  - name: emojiVariantSelector
+    val: '0xFE0F'
+  - name: enclosingKeyCap
+    val: '0x20E3'
+  - name: space
+    val: '0x0020'
+  lines:
+  - 1185
+  - 1199
+- name: AmbiguousCharacters
+  kind: struct
+  ctx: Returns the non basic ASCII code point that the given code point can be confused, or undefined if such code point does note exist.
+  fields:
+  - name: ambiguousCharacterData
+    type: any
+    default: "new Lazy<\n\t\tRecord<\n\t\t\tstring | '_common' | '_default',\n\t\t\t/* code point -> asci..."
+  - name: cache
+    type: any
+    default: "new LRUCachedFunction<\n\t\tstring[],\n\t\tAmbiguousCharacters\n\t>({ getCacheKey: JSON...."
+  - name: _locales
+    type: any
+    default: "new Lazy<string[]>(() =>\n\t\tObject.keys(AmbiguousCharacters.ambiguousCharacterDat..."
+  methods:
+  - name: getInstance
+    sig: 'getInstance(locales: Set<string>): AmbiguousCharacters'
+    decorators:
+    - static
+    lines:
+    - 1277
+    - 1279
+    detail:
+      calls:
+      - AmbiguousCharacters.cache.get
+      - Array.from
+  - name: getLocales
+    sig: 'getLocales(): string[]'
+    decorators:
+    - static
+    lines:
+    - 1286
+    - 1288
+    detail: {}
+  - name: isAmbiguous
+    sig: 'isAmbiguous(codePoint: number): boolean'
+    lines:
+    - 1294
+    - 1296
+    detail:
+      calls:
+      - this.confusableDictionary.has
+  - name: containsAmbiguousCharacter
+    sig: 'containsAmbiguousCharacter(str: string): boolean'
+    lines:
+    - 1298
+    - 1306
+    detail:
+      calls:
+      - str.codePointAt
+      - this.isAmbiguous
+  - name: getPrimaryConfusable
+    sig: 'getPrimaryConfusable(codePoint: number): number | undefined'
+    lines:
+    - 1312
+    - 1314
+    detail:
+      calls:
+      - this.confusableDictionary.get
+  - name: getConfusableCodePoints
+    sig: 'getConfusableCodePoints(): ReadonlySet<number>'
+    lines:
+    - 1316
+    - 1318
+    detail:
+      calls:
+      - new Set
+      - this.confusableDictionary.keys
+  lines:
+  - 1203
+  - 1319
+- name: InvisibleCharacters
+  kind: struct
+  fields:
+  - name: _data
+    type: Set<number> | undefined
+    default: undefined
+  methods:
+  - name: getData
+    sig: getData()
+    vis: private
+    decorators:
+    - static
+    lines:
+    - 1329
+    - 1334
+    detail:
+      calls:
+      - InvisibleCharacters.getRawData
+      - Object.values
+      - '[...Object.values(InvisibleCharacters.getRawData())].flat'
+      - new Set
+  - name: isInvisibleCharacter
+    sig: 'isInvisibleCharacter(codePoint: number): boolean'
+    decorators:
+    - static
+    lines:
+    - 1336
+    - 1338
+    detail:
+      calls:
+      - InvisibleCharacters.getData
+      - InvisibleCharacters.getData().has
+  - name: containsInvisibleCharacter
+    sig: 'containsInvisibleCharacter(str: string): boolean'
+    decorators:
+    - static
+    lines:
+    - 1340
+    - 1348
+    detail:
+      calls:
+      - InvisibleCharacters.isInvisibleCharacter
+      - str.codePointAt
+  - name: codePoints
+    sig: 'codePoints(): ReadonlySet<number>'
+    decorators:
+    - static
+    lines:
+    - 1350
+    - 1352
+    detail:
+      calls:
+      - InvisibleCharacters.getData
+  lines:
+  - 1321
+  - 1353
+functions:
+- name: isFalsyOrWhitespace
+  sig: 'isFalsyOrWhitespace(str: string | undefined): boolean'
+  lines:
+  - 11
+  - 16
+  detail:
+    calls:
+    - str.trim
+- name: format
+  sig: 'format(value: string, ...args: any[]): string'
+  lines:
+  - 26
+  - 36
+  detail:
+    calls:
+    - isNaN
+    - parseInt
+    - value.replace
+- name: format2
+  sig: 'format2(template: string, values: Record<string, unknown>): string'
+  lines:
+  - 44
+  - 49
+  detail:
+    calls:
+    - Object.keys
+    - template.replace
+- name: htmlAttributeEncodeValue
+  sig: 'htmlAttributeEncodeValue(value: string): string'
+  lines:
+  - 57
+  - 68
+  detail:
+    calls:
+    - value.replace
+- name: escape
+  sig: 'escape(html: string): string'
+  lines:
+  - 74
+  - 83
+  detail:
+    calls:
+    - html.replace
+- name: escapeRegExpCharacters
+  sig: 'escapeRegExpCharacters(value: string): string'
+  lines:
+  - 88
+  - 90
+  detail:
+    calls:
+    - value.replace
+- name: count
+  sig: 'count(value: string, substr: string): number'
+  lines:
+  - 95
+  - 103
+  detail:
+    calls:
+    - value.indexOf
+- name: truncate
+  sig: 'truncate(value: string, maxLength: number, suffix = ''…''): string'
+  lines:
+  - 105
+  - 111
+  detail:
+    calls:
+    - value.substr
+- name: truncateMiddle
+  sig: 'truncateMiddle(value: string, maxLength: number, suffix = ''…''): string'
+  lines:
+  - 113
+  - 122
+  detail:
+    calls:
+    - Math.ceil
+    - Math.floor
+    - value.substr
+- name: trim
+  sig: 'trim(haystack: string, needle: string = '' ''): string'
+  lines:
+  - 129
+  - 132
+- name: ltrim
+  sig: 'ltrim(haystack: string, needle: string): string'
+  lines:
+  - 139
+  - 155
+  detail:
+    calls:
+    - haystack.indexOf
+    - haystack.substring
+- name: rtrim
+  sig: 'rtrim(haystack: string, needle: string): string'
+  lines:
+  - 162
+  - 189
+  detail:
+    calls:
+    - haystack.lastIndexOf
+    - haystack.substring
+- name: convertSimple2RegExpPattern
+  sig: 'convertSimple2RegExpPattern(pattern: string): string'
+  lines:
+  - 191
+  - 193
+  detail:
+    calls:
+    - pattern.replace
+    - pattern.replace(/[\-\\\{\}\+\?\|\^\$\.\,\[\]\(\)\#\s]/g, '\\$&').replace
+- name: stripWildcards
+  sig: 'stripWildcards(pattern: string): string'
+  lines:
+  - 195
+  - 197
+  detail:
+    calls:
+    - pattern.replace
+- name: createRegExp
+  sig: 'createRegExp(searchString: string, isRegex: boolean, options: RegExpOptions = {}): RegExp'
+  lines:
+  - 207
+  - 237
+  detail:
+    calls:
+    - /\B/.test
+    - escapeRegExpCharacters
+    - new Error
+    - new RegExp
+    - searchString.charAt
+- name: regExpLeadsToEndlessLoop
+  sig: 'regExpLeadsToEndlessLoop(regexp: RegExp): boolean'
+  lines:
+  - 239
+  - 250
+  detail:
+    calls:
+    - regexp.exec
+- name: joinStrings
+  sig: 'joinStrings(items: (string | undefined | null | false)[], separator: string): string'
+  lines:
+  - 252
+  - 254
+  detail:
+    calls:
+    - items.filter
+    - items.filter(item => item !== undefined && item !== null && item !== false).join
+- name: splitLines
+  sig: 'splitLines(str: string): string[]'
+  lines:
+  - 256
+  - 258
+  detail:
+    calls:
+    - str.split
+- name: splitLinesIncludeSeparators
+  sig: 'splitLinesIncludeSeparators(str: string): string[]'
+  lines:
+  - 260
+  - 267
+  detail:
+    calls:
+    - Math.ceil
+    - linesWithSeparators.push
+    - str.split
+- name: firstNonWhitespaceIndex
+  sig: 'firstNonWhitespaceIndex(str: string): number'
+  lines:
+  - 273
+  - 281
+  detail:
+    calls:
+    - str.charCodeAt
+- name: getLeadingWhitespace
+  sig: 'getLeadingWhitespace(str: string, start: number = 0, end: number = str.length): string'
+  lines:
+  - 287
+  - 295
+  detail:
+    calls:
+    - str.charCodeAt
+    - str.substring
+- name: lastNonWhitespaceIndex
+  sig: 'lastNonWhitespaceIndex(str: string, startIndex: number = str.length - 1): number'
+  lines:
+  - 301
+  - 309
+  detail:
+    calls:
+    - str.charCodeAt
+- name: getIndentationLength
+  sig: 'getIndentationLength(str: string): number'
+  lines:
+  - 311
+  - 315
+  detail:
+    calls:
+    - firstNonWhitespaceIndex
+- name: replaceAsync
+  sig: 'replaceAsync(str: string, search: RegExp, replacer: (match: string, ...args: any[]) => Promise<string>): Promise<string>'
+  lines:
+  - 321
+  - 338
+  detail:
+    calls:
+    - Promise.all
+    - Promise.all(parts).then
+    - match.slice
+    - new Error
+    - parts.push
+    - replacer
+    - str.matchAll
+    - str.slice
+- name: compare
+  sig: 'compare(a: string, b: string): number'
+  lines:
+  - 340
+  - 348
+  detail: {}
+- name: compareSubstring
+  sig: 'compareSubstring(a: string, b: string, aStart: number = 0, aEnd: number = a.length, bStart: number = 0, bEnd: number = b.length): number'
+  lines:
+  - 350
+  - 368
+  detail:
+    calls:
+    - a.charCodeAt
+    - b.charCodeAt
+- name: compareIgnoreCase
+  sig: 'compareIgnoreCase(a: string, b: string): number'
+  lines:
+  - 370
+  - 372
+- name: compareSubstringIgnoreCase
+  sig: 'compareSubstringIgnoreCase(a: string, b: string, aStart: number = 0, aEnd: number = a.length, bStart: number = 0, bEnd: number = b.length): number'
+  lines:
+  - 374
+  - 419
+  detail:
+    calls:
+    - a.charCodeAt
+    - a.toLowerCase
+    - b.charCodeAt
+    - b.toLowerCase
+    - compareSubstring
+    - isLowerAsciiLetter
+- name: isAsciiDigit
+  sig: 'isAsciiDigit(code: number): boolean'
+  lines:
+  - 421
+  - 423
+- name: isLowerAsciiLetter
+  sig: 'isLowerAsciiLetter(code: number): boolean'
+  lines:
+  - 425
+  - 427
+- name: isUpperAsciiLetter
+  sig: 'isUpperAsciiLetter(code: number): boolean'
+  lines:
+  - 429
+  - 431
+- name: equalsIgnoreCase
+  sig: 'equalsIgnoreCase(a: string, b: string): boolean'
+  lines:
+  - 433
+  - 435
+- name: startsWithIgnoreCase
+  sig: 'startsWithIgnoreCase(str: string, candidate: string): boolean'
+  lines:
+  - 437
+  - 444
+  detail:
+    calls:
+    - compareSubstringIgnoreCase
+- name: commonPrefixLength
+  sig: 'commonPrefixLength(a: string, b: string): number'
+  lines:
+  - 449
+  - 461
+  detail:
+    calls:
+    - Math.min
+    - a.charCodeAt
+    - b.charCodeAt
+- name: commonSuffixLength
+  sig: 'commonSuffixLength(a: string, b: string): number'
+  lines:
+  - 466
+  - 481
+  detail:
+    calls:
+    - Math.min
+    - a.charCodeAt
+    - b.charCodeAt
+- name: isHighSurrogate
+  sig: 'isHighSurrogate(charCode: number): boolean'
+  lines:
+  - 486
+  - 488
+- name: isLowSurrogate
+  sig: 'isLowSurrogate(charCode: number): boolean'
+  lines:
+  - 493
+  - 495
+- name: computeCodePoint
+  sig: 'computeCodePoint(highSurrogate: number, lowSurrogate: number): number'
+  lines:
+  - 500
+  - 502
+- name: getNextCodePoint
+  sig: 'getNextCodePoint(str: string, len: number, offset: number): number'
+  lines:
+  - 507
+  - 516
+  detail:
+    calls:
+    - computeCodePoint
+    - isHighSurrogate
+    - isLowSurrogate
+    - str.charCodeAt
+- name: getPrevCodePoint
+  sig: 'getPrevCodePoint(str: string, offset: number): number'
+  lines:
+  - 521
+  - 530
+  detail:
+    calls:
+    - computeCodePoint
+    - isHighSurrogate
+    - isLowSurrogate
+    - str.charCodeAt
+- name: nextCharLength
+  sig: 'nextCharLength(str: string, initialOffset: number): number'
+  lines:
+  - 624
+  - 627
+  detail:
+    calls:
+    - iterator.nextGraphemeLength
+    - new GraphemeIterator
+- name: prevCharLength
+  sig: 'prevCharLength(str: string, initialOffset: number): number'
+  lines:
+  - 629
+  - 632
+  detail:
+    calls:
+    - iterator.prevGraphemeLength
+    - new GraphemeIterator
+- name: getCharContainingOffset
+  sig: 'getCharContainingOffset(str: string, offset: number): [number, number]'
+  lines:
+  - 634
+  - 641
+  detail:
+    calls:
+    - isLowSurrogate
+    - nextCharLength
+    - prevCharLength
+    - str.charCodeAt
+- name: charCount
+  sig: 'charCount(str: string): number'
+  lines:
+  - 643
+  - 651
+  detail:
+    calls:
+    - iterator.eol
+    - iterator.nextGraphemeLength
+    - new GraphemeIterator
+- name: makeContainsRtl
+  sig: makeContainsRtl()
+  lines:
+  - 655
+  - 658
+- name: containsRTL
+  sig: 'containsRTL(str: string): boolean'
+  lines:
+  - 663
+  - 669
+  detail:
+    calls:
+    - CONTAINS_RTL.test
+    - makeContainsRtl
+- name: isBasicASCII
+  sig: 'isBasicASCII(str: string): boolean'
+  lines:
+  - 675
+  - 677
+  detail:
+    calls:
+    - IS_BASIC_ASCII.test
+- name: containsUnusualLineTerminators
+  sig: 'containsUnusualLineTerminators(str: string): boolean'
+  lines:
+  - 683
+  - 685
+  detail:
+    calls:
+    - UNUSUAL_LINE_TERMINATORS.test
+- name: isFullWidthCharacter
+  sig: 'isFullWidthCharacter(charCode: number): boolean'
+  lines:
+  - 687
+  - 731
+  detail: {}
+- name: isEmojiImprecise
+  sig: 'isEmojiImprecise(x: number): boolean'
+  lines:
+  - 737
+  - 745
+  detail: {}
+- name: lcut
+  sig: 'lcut(text: string, n: number, prefix = ''''): string'
+  lines:
+  - 752
+  - 775
+  detail:
+    calls:
+    - re.test
+    - text.trimStart
+    - trimmed.substring
+    - trimmed.substring(i).trimStart
+- name: rcut
+  sig: 'rcut(text: string, n: number, suffix = ''''): string'
+  lines:
+  - 782
+  - 803
+  detail:
+    calls:
+    - result.trim
+    - result.trim().replace
+    - text.split
+    - text.trimEnd
+- name: removeAnsiEscapeCodes
+  sig: 'removeAnsiEscapeCodes(str: string): string'
+  lines:
+  - 840
+  - 846
+  detail:
+    calls:
+    - str.replace
+- name: removeAnsiEscapeCodesFromPrompt
+  sig: 'removeAnsiEscapeCodesFromPrompt(str: string): string'
+  lines:
+  - 858
+  - 860
+  detail:
+    calls:
+    - removeAnsiEscapeCodes
+    - removeAnsiEscapeCodes(str).replace
+- name: startsWithUTF8BOM
+  sig: 'startsWithUTF8BOM(str: string): boolean'
+  lines:
+  - 867
+  - 869
+  detail:
+    calls:
+    - str.charCodeAt
+- name: stripUTF8BOM
+  sig: 'stripUTF8BOM(str: string): string'
+  lines:
+  - 871
+  - 873
+  detail:
+    calls:
+    - startsWithUTF8BOM
+    - str.substr
+- name: fuzzyContains
+  sig: 'fuzzyContains(target: string, query: string): boolean'
+  lines:
+  - 879
+  - 905
+  detail:
+    calls:
+    - target.toLowerCase
+    - targetLower.indexOf
+- name: containsUppercaseCharacter
+  sig: 'containsUppercaseCharacter(target: string, ignoreEscapedChars = false): boolean'
+  lines:
+  - 907
+  - 917
+  detail:
+    calls:
+    - target.replace
+    - target.toLowerCase
+- name: uppercaseFirstLetter
+  sig: 'uppercaseFirstLetter(str: string): string'
+  lines:
+  - 919
+  - 921
+  detail:
+    calls:
+    - str.charAt
+    - str.charAt(0).toUpperCase
+    - str.slice
+- name: getNLines
+  sig: 'getNLines(str: string, n = 1): string'
+  lines:
+  - 923
+  - 943
+  detail:
+    calls:
+    - str.indexOf
+    - str.substr
+- name: singleLetterHash
+  sig: 'singleLetterHash(n: number): string'
+  lines:
+  - 948
+  - 958
+  detail:
+    calls:
+    - String.fromCharCode
+- name: getGraphemeBreakType
+  sig: 'getGraphemeBreakType(codePoint: number): GraphemeBreakType'
+  lines:
+  - 962
+  - 965
+  detail:
+    calls:
+    - GraphemeBreakTree.getInstance
+    - graphemeBreakTree.getGraphemeBreakType
+- name: breakBetweenGraphemeBreakType
+  sig: 'breakBetweenGraphemeBreakType(breakTypeA: GraphemeBreakType, breakTypeB: GraphemeBreakType): boolean'
+  lines:
+  - 967
+  - 1045
+  detail: {}
+- name: getGraphemeBreakRawData
+  sig: 'getGraphemeBreakRawData(): number[]'
+  lines:
+  - 1117
+  - 1120
+  detail:
+    calls:
+    - JSON.parse
+- name: getLeftDeleteOffset
+  sig: 'getLeftDeleteOffset(offset: number, str: string): number'
+  lines:
+  - 1128
+  - 1143
+  detail:
+    calls:
+    - getOffsetBeforeLastEmojiComponent
+    - iterator.prevCodePoint
+    - new CodePointIterator
+- name: getOffsetBeforeLastEmojiComponent
+  sig: 'getOffsetBeforeLastEmojiComponent(initialOffset: number, str: string): number | undefined'
+  lines:
+  - 1145
+  - 1179
+  detail:
+    calls:
+    - isEmojiImprecise
+    - isEmojiModifier
+    - iterator.prevCodePoint
+    - new CodePointIterator
+- name: isEmojiModifier
+  sig: 'isEmojiModifier(codePoint: number): boolean'
+  lines:
+  - 1181
+  - 1183
+exports:
+- name: RegExpOptions
+  kind: type
+- name: CodePointIterator
+  kind: type
+- name: GraphemeIterator
+  kind: type
+- name: GraphemeBreakType
+  kind: type
+- name: GraphemeBreakTree
+  kind: type
+- name: CodePoint
+  kind: type
+- name: AmbiguousCharacters
+  kind: type
+- name: InvisibleCharacters
+  kind: type
+- name: isFalsyOrWhitespace
+  kind: func
+- name: format
+  kind: func
+- name: format2
+  kind: func
+- name: htmlAttributeEncodeValue
+  kind: func
+- name: escape
+  kind: func
+- name: escapeRegExpCharacters
+  kind: func
+- name: count
+  kind: func
+- name: truncate
+  kind: func
+- name: truncateMiddle
+  kind: func
+- name: trim
+  kind: func
+- name: ltrim
+  kind: func
+- name: rtrim
+  kind: func
+- name: convertSimple2RegExpPattern
+  kind: func
+- name: stripWildcards
+  kind: func
+- name: createRegExp
+  kind: func
+- name: regExpLeadsToEndlessLoop
+  kind: func
+- name: joinStrings
+  kind: func
+- name: splitLines
+  kind: func
+- name: splitLinesIncludeSeparators
+  kind: func
+- name: firstNonWhitespaceIndex
+  kind: func
+- name: getLeadingWhitespace
+  kind: func
+- name: lastNonWhitespaceIndex
+  kind: func
+- name: getIndentationLength
+  kind: func
+- name: replaceAsync
+  kind: func
+- name: compare
+  kind: func
+- name: compareSubstring
+  kind: func
+- name: compareIgnoreCase
+  kind: func
+- name: compareSubstringIgnoreCase
+  kind: func
+- name: isAsciiDigit
+  kind: func
+- name: isLowerAsciiLetter
+  kind: func
+- name: isUpperAsciiLetter
+  kind: func
+- name: equalsIgnoreCase
+  kind: func
+- name: startsWithIgnoreCase
+  kind: func
+- name: commonPrefixLength
+  kind: func
+- name: commonSuffixLength
+  kind: func
+- name: isHighSurrogate
+  kind: func
+- name: isLowSurrogate
+  kind: func
+- name: computeCodePoint
+  kind: func
+- name: getNextCodePoint
+  kind: func
+- name: getPrevCodePoint
+  kind: func
+- name: nextCharLength
+  kind: func
+- name: prevCharLength
+  kind: func
+- name: getCharContainingOffset
+  kind: func
+- name: charCount
+  kind: func
+- name: makeContainsRtl
+  kind: func
+- name: containsRTL
+  kind: func
+- name: isBasicASCII
+  kind: func
+- name: containsUnusualLineTerminators
+  kind: func
+- name: isFullWidthCharacter
+  kind: func
+- name: isEmojiImprecise
+  kind: func
+- name: lcut
+  kind: func
+- name: rcut
+  kind: func
+- name: removeAnsiEscapeCodes
+  kind: func
+- name: removeAnsiEscapeCodesFromPrompt
+  kind: func
+- name: startsWithUTF8BOM
+  kind: func
+- name: stripUTF8BOM
+  kind: func
+- name: fuzzyContains
+  kind: func
+- name: containsUppercaseCharacter
+  kind: func
+- name: uppercaseFirstLetter
+  kind: func
+- name: getNLines
+  kind: func
+- name: singleLetterHash
+  kind: func
+- name: getGraphemeBreakType
+  kind: func
+- name: breakBetweenGraphemeBreakType
+  kind: func
+- name: getGraphemeBreakRawData
+  kind: func
+- name: getLeftDeleteOffset
+  kind: func
+- name: getOffsetBeforeLastEmojiComponent
+  kind: func
+- name: isEmojiModifier
+  kind: func
+- name: _formatRegexp
+  kind: data
+- name: _format2Regexp
+  kind: data
+- name: CONTAINS_RTL
+  kind: data
+- name: IS_BASIC_ASCII
+  kind: data
+- name: UNUSUAL_LINE_TERMINATORS
+  kind: data
+- name: CSI_SEQUENCE
+  kind: data
+- name: OSC_SEQUENCE
+  kind: data
+- name: ESC_SEQUENCE
+  kind: data
+- name: CONTROL_SEQUENCES
+  kind: data
+- name: PROMPT_NON_PRINTABLE
+  kind: data
+- name: UTF8_BOM_CHARACTER
+  kind: data
+- name: noBreakWhitespace
+  kind: data

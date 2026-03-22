@@ -1,0 +1,272 @@
+## Roska File Descriptor — browser/colorDetector.ts
+file: browser/colorDetector.ts
+lines: 291
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: ../../../../base/common/async.js.CancelablePromise
+- sym: ../../../../base/common/async.js.createCancelablePromise
+- sym: ../../../../base/common/async.js.TimeoutTimer
+- sym: ../../../../base/common/color.js.RGBA
+- sym: ../../../../base/common/errors.js.onUnexpectedError
+- sym: ../../../../base/common/event.js.Emitter
+- sym: ../../../../base/common/event.js.Event
+- sym: ../../../../base/common/lifecycle.js.Disposable
+- sym: ../../../../base/common/lifecycle.js.DisposableStore
+- sym: ../../../../base/common/stopwatch.js.StopWatch
+- sym: ../../../../base/common/strings.js.noBreakWhitespace
+- sym: ../../../browser/editorBrowser.js.ICodeEditor
+- sym: ../../../browser/editorDom.js.DynamicCssRules
+- sym: ../../../common/config/editorOptions.js.EditorOption
+- sym: ../../../common/core/position.js.Position
+- sym: ../../../common/core/range.js.Range
+- sym: ../../../common/editorCommon.js.IEditorContribution
+- sym: ../../../common/editorCommon.js.IEditorDecorationsCollection
+- sym: ../../../common/model.js.IModelDecoration
+- sym: ../../../common/model.js.IModelDeltaDecoration
+- sym: ../../../common/model/textModel.js.ModelDecorationOptions
+- sym: ../../../common/services/languageFeatureDebounce.js.IFeatureDebounceInformation
+- sym: ../../../common/services/languageFeatureDebounce.js.ILanguageFeatureDebounceService
+- sym: ../../../common/services/languageFeatures.js.ILanguageFeaturesService
+- sym: ./color.js.getColors
+- sym: ./color.js.IColorData
+- sym: ../../../../platform/configuration/common/configuration.js.IConfigurationService
+data:
+- name: ColorDecorationInjectedTextMarker
+  type: any
+  val: Object.create({})
+types:
+- name: ColorDetector
+  kind: struct
+  ctx: ms
+  bases:
+  - Disposable
+  - IEditorContribution
+  fields:
+  - name: ID
+    type: string
+    default: '''editor.contrib.colorDetector'''
+  - name: RECOMPUTE_TIME
+    type: any
+    default: '1000'
+  - name: _localToDispose
+    type: any
+    default: this._register(new DisposableStore())
+  - name: _computePromise
+    type: CancelablePromise<IColorData[]> | null
+  - name: _timeoutTimer
+    type: TimeoutTimer | null
+  - name: _debounceInformation
+    type: IFeatureDebounceInformation
+  - name: _decorationsIds
+    type: string[]
+    default: '[]'
+  - name: _colorDatas
+    type: any
+    default: new Map<string, IColorData>()
+  - name: _colorDecoratorIds
+    type: IEditorDecorationsCollection
+  - name: _isColorDecoratorsEnabled
+    type: boolean
+  - name: _defaultColorDecoratorsEnablement
+    type: '''auto'' | ''always'' | ''never'''
+  - name: _ruleFactory
+    type: DynamicCssRules
+  - name: _decoratorLimitReporter
+    type: any
+    default: new DecoratorLimitReporter()
+  - name: _colorDecorationClassRefs
+    type: any
+    default: this._register(new DisposableStore())
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tprivate readonly _editor: ICodeEditor,\n\t\t@IConfigurationService private readonly _configurationService: IConfigurationService,\n\t\t@ILanguageFeaturesService private readonly _languageFeaturesService: ILanguageFeaturesService,\n\t\t@ILanguageFeatureDebounceService languageFeatureDebounceService: ILanguageFeatureDebounceService,\n\t)"
+    lines:
+    - 52
+    - 89
+    detail:
+      calls:
+      - _editor.onDidChangeConfiguration
+      - _editor.onDidChangeModel
+      - _editor.onDidChangeModelLanguage
+      - _languageFeaturesService.colorProvider.onDidChange
+      - languageFeatureDebounceService.for
+      - new DynamicCssRules
+      - super
+      - this._editor.createDecorationsCollection
+      - this._editor.getOption
+      - this._register
+      - this.isEnabled
+      - this.updateColors
+  - name: isEnabled
+    sig: 'isEnabled(): boolean'
+    lines:
+    - 91
+    - 107
+    detail:
+      calls:
+      - model.getLanguageId
+      - this._configurationService.getValue
+      - this._editor.getModel
+      - this._editor.getOption
+  - name: limitReporter
+    sig: limitReporter()
+    lines:
+    - 109
+    - 111
+    detail: {}
+  - name: get
+    sig: 'get(editor: ICodeEditor): ColorDetector | null'
+    decorators:
+    - static
+    lines:
+    - 113
+    - 115
+    detail:
+      calls:
+      - editor.getContribution
+  - name: dispose
+    sig: 'dispose(): void'
+    lines:
+    - 117
+    - 121
+    detail:
+      calls:
+      - super.dispose
+      - this.removeAllDecorations
+      - this.stop
+  - name: updateColors
+    sig: 'updateColors(): void'
+    vis: private
+    lines:
+    - 123
+    - 145
+    detail:
+      calls:
+      - this._editor.getModel
+      - this._editor.onDidChangeModelContent
+      - this._languageFeaturesService.colorProvider.has
+      - this._localToDispose.add
+      - this.beginCompute
+      - this.stop
+  - name: beginCompute
+    sig: 'beginCompute(): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 147
+    - 166
+    detail:
+      calls:
+      - createCancelablePromise
+      - onUnexpectedError
+      - this.updateColorDecorators
+      - this.updateDecorations
+  - name: stop
+    sig: 'stop(): void'
+    vis: private
+    lines:
+    - 168
+    - 178
+    detail:
+      calls:
+      - this._computePromise.cancel
+      - this._localToDispose.clear
+      - this._timeoutTimer.cancel
+  - name: updateColorDecorators
+    sig: 'updateColorDecorators(colorData: IColorData[]): void'
+    vis: private
+    lines:
+    - 201
+    - 241
+    detail:
+      calls:
+      - Math.round
+      - decorations.push
+      - new RGBA
+      - this._colorDecorationClassRefs.add
+      - this._colorDecorationClassRefs.clear
+      - this._colorDecoratorIds.set
+      - this._decoratorLimitReporter.update
+      - this._editor.getOption
+      - this._ruleFactory.createClassNameRef
+  - name: removeAllDecorations
+    sig: 'removeAllDecorations(): void'
+    vis: private
+    lines:
+    - 243
+    - 248
+    detail:
+      calls:
+      - this._colorDecorationClassRefs.clear
+      - this._colorDecoratorIds.clear
+      - this._editor.removeDecorations
+  - name: getColorData
+    sig: 'getColorData(position: Position): IColorData | null'
+    lines:
+    - 250
+    - 265
+    detail:
+      calls:
+      - Range.fromPositions
+      - "model\n\t\t\t.getDecorationsInRange"
+      - "model\n\t\t\t.getDecorationsInRange(Range.fromPositions(position, position))\n\t\t\t.filter"
+      - this._colorDatas.get
+      - this._editor.getModel
+  - name: isColorDecoration
+    sig: 'isColorDecoration(decoration: IModelDecoration): boolean'
+    lines:
+    - 267
+    - 269
+    detail:
+      calls:
+      - this._colorDecoratorIds.has
+  lines:
+  - 29
+  - 270
+- name: DecoratorLimitReporter
+  kind: struct
+  fields:
+  - name: _onDidChange
+    type: any
+    default: new Emitter<void>()
+  - name: onDidChange
+    type: Event<void>
+    default: this._onDidChange.event
+  - name: _computed
+    type: number
+    default: '0'
+  - name: _limited
+    type: number | false
+    default: 'false'
+  methods:
+  - name: computed
+    sig: 'computed(): number'
+    lines:
+    - 278
+    - 280
+    detail: {}
+  - name: limited
+    sig: 'limited(): number | false'
+    lines:
+    - 281
+    - 283
+    detail: {}
+  - name: update
+    sig: 'update(computed: number, limited: number | false)'
+    lines:
+    - 284
+    - 290
+    detail:
+      calls:
+      - this._onDidChange.fire
+  lines:
+  - 272
+  - 291
+exports:
+- name: ColorDetector
+  kind: type
+- name: DecoratorLimitReporter
+  kind: type
+- name: ColorDecorationInjectedTextMarker
+  kind: data

@@ -1,0 +1,392 @@
+## Roska File Descriptor — browser/mainThreadFileSystem.ts
+file: browser/mainThreadFileSystem.ts
+lines: 283
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: ../../../base/common/event.js.Emitter
+- sym: ../../../base/common/event.js.Event
+- sym: ../../../base/common/lifecycle.js.IDisposable
+- sym: ../../../base/common/lifecycle.js.toDisposable
+- sym: ../../../base/common/lifecycle.js.DisposableStore
+- sym: ../../../base/common/lifecycle.js.DisposableMap
+- sym: ../../../base/common/uri.js.URI
+- sym: ../../../base/common/uri.js.UriComponents
+- sym: ../../../platform/files/common/files.js.IFileWriteOptions
+- sym: ../../../platform/files/common/files.js.FileSystemProviderCapabilities
+- sym: ../../../platform/files/common/files.js.IFileChange
+- sym: ../../../platform/files/common/files.js.IFileService
+- sym: ../../../platform/files/common/files.js.IStat
+- sym: ../../../platform/files/common/files.js.IWatchOptions
+- sym: ../../../platform/files/common/files.js.FileType
+- sym: ../../../platform/files/common/files.js.IFileOverwriteOptions
+- sym: ../../../platform/files/common/files.js.IFileDeleteOptions
+- sym: ../../../platform/files/common/files.js.IFileOpenOptions
+- sym: ../../../platform/files/common/files.js.FileOperationError
+- sym: ../../../platform/files/common/files.js.FileOperationResult
+- sym: ../../../platform/files/common/files.js.FileSystemProviderErrorCode
+- sym: ../../../platform/files/common/files.js.IFileSystemProviderWithOpenReadWriteCloseCapability
+- sym: ../../../platform/files/common/files.js.IFileSystemProviderWithFileReadWriteCapability
+- sym: ../../../platform/files/common/files.js.IFileSystemProviderWithFileFolderCopyCapability
+- sym: ../../../platform/files/common/files.js.FilePermission
+- sym: ../../../platform/files/common/files.js.toFileSystemProviderErrorCode
+- sym: ../../../platform/files/common/files.js.IFileStatWithPartialMetadata
+- sym: ../../../platform/files/common/files.js.IFileStat
+- sym: ../../services/extensions/common/extHostCustomers.js.extHostNamedCustomer
+- sym: ../../services/extensions/common/extHostCustomers.js.IExtHostContext
+- sym: ../common/extHost.protocol.js.ExtHostContext
+- sym: ../common/extHost.protocol.js.ExtHostFileSystemShape
+- sym: ../common/extHost.protocol.js.IFileChangeDto
+- sym: ../common/extHost.protocol.js.MainContext
+- sym: ../common/extHost.protocol.js.MainThreadFileSystemShape
+- sym: ../../../base/common/buffer.js.VSBuffer
+- sym: ../../../base/common/htmlContent.js.IMarkdownString
+types:
+- name: MainThreadFileSystem
+  kind: struct
+  ctx: '--- consumer fs, vscode.workspace.fs'
+  bases:
+  - MainThreadFileSystemShape
+  fields:
+  - name: _proxy
+    type: ExtHostFileSystemShape
+  - name: _fileProvider
+    type: any
+    default: new DisposableMap<number, RemoteFileSystemProvider>()
+  - name: _disposables
+    type: any
+    default: new DisposableStore()
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\textHostContext: IExtHostContext,\n\t\t@IFileService private readonly _fileService: IFileService\n\t)"
+    lines:
+    - 22
+    - 35
+    detail:
+      calls:
+      - URI.from
+      - _fileService.listCapabilities
+      - _fileService.onDidChangeFileSystemProviderCapabilities
+      - _fileService.onDidChangeFileSystemProviderRegistrations
+      - extHostContext.getProxy
+      - infoProxy.$acceptProviderInfos
+      - this._disposables.add
+  - name: dispose
+    sig: 'dispose(): void'
+    lines:
+    - 37
+    - 40
+    detail:
+      calls:
+      - this._disposables.dispose
+      - this._fileProvider.dispose
+  - name: $registerFileSystemProvider
+    sig: '$registerFileSystemProvider(handle: number, scheme: string, capabilities: FileSystemProviderCapabilities, readonlyMessage?: IMarkdownString): Promise<void>'
+    is_async: true
+    lines:
+    - 42
+    - 44
+    detail:
+      calls:
+      - new RemoteFileSystemProvider
+      - this._fileProvider.set
+  - name: $unregisterProvider
+    sig: '$unregisterProvider(handle: number): void'
+    lines:
+    - 46
+    - 48
+    detail:
+      calls:
+      - this._fileProvider.deleteAndDispose
+  - name: $onFileSystemChange
+    sig: '$onFileSystemChange(handle: number, changes: IFileChangeDto[]): void'
+    lines:
+    - 50
+    - 56
+    detail:
+      calls:
+      - fileProvider.$onFileSystemChange
+      - new Error
+      - this._fileProvider.get
+  - name: $stat
+    sig: '$stat(uri: UriComponents): Promise<IStat>'
+    is_async: true
+    lines:
+    - 61
+    - 74
+    detail:
+      calls:
+      - MainThreadFileSystem._asFileType
+      - MainThreadFileSystem._handleError
+      - URI.revive
+      - this._fileService.stat
+  - name: $readdir
+    sig: '$readdir(uri: UriComponents): Promise<[string, FileType][]>'
+    is_async: true
+    lines:
+    - 76
+    - 88
+    detail:
+      calls:
+      - MainThreadFileSystem._handleError
+      - URI.revive
+      - new Error
+      - stat.children.map
+      - this._fileService.resolve
+  - name: $readFile
+    sig: '$readFile(uri: UriComponents): Promise<VSBuffer>'
+    is_async: true
+    lines:
+    - 104
+    - 111
+    detail:
+      calls:
+      - MainThreadFileSystem._handleError
+      - URI.revive
+      - this._fileService.readFile
+  - name: $writeFile
+    sig: '$writeFile(uri: UriComponents, content: VSBuffer): Promise<void>'
+    is_async: true
+    lines:
+    - 113
+    - 119
+    detail:
+      calls:
+      - MainThreadFileSystem._handleError
+      - URI.revive
+      - this._fileService.writeFile
+  - name: $rename
+    sig: '$rename(source: UriComponents, target: UriComponents, opts: IFileOverwriteOptions): Promise<void>'
+    is_async: true
+    lines:
+    - 121
+    - 127
+    detail:
+      calls:
+      - MainThreadFileSystem._handleError
+      - URI.revive
+      - this._fileService.move
+  - name: $copy
+    sig: '$copy(source: UriComponents, target: UriComponents, opts: IFileOverwriteOptions): Promise<void>'
+    is_async: true
+    lines:
+    - 129
+    - 135
+    detail:
+      calls:
+      - MainThreadFileSystem._handleError
+      - URI.revive
+      - this._fileService.copy
+  - name: $mkdir
+    sig: '$mkdir(uri: UriComponents): Promise<void>'
+    is_async: true
+    lines:
+    - 137
+    - 143
+    detail:
+      calls:
+      - MainThreadFileSystem._handleError
+      - URI.revive
+      - this._fileService.createFolder
+  - name: $delete
+    sig: '$delete(uri: UriComponents, opts: IFileDeleteOptions): Promise<void>'
+    is_async: true
+    lines:
+    - 145
+    - 151
+    detail:
+      calls:
+      - MainThreadFileSystem._handleError
+      - URI.revive
+      - this._fileService.del
+  - name: _handleError
+    sig: '_handleError(err: any): never'
+    vis: private
+    decorators:
+    - static
+    lines:
+    - 153
+    - 177
+    detail:
+      calls:
+      - toFileSystemProviderErrorCode
+  - name: $ensureActivation
+    sig: '$ensureActivation(scheme: string): Promise<void>'
+    lines:
+    - 179
+    - 181
+    detail:
+      calls:
+      - this._fileService.activateProvider
+  lines:
+  - 16
+  - 182
+- name: RemoteFileSystemProvider
+  kind: struct
+  ctx: '--- forwarding calls'
+  bases:
+  - IFileSystemProviderWithFileReadWriteCapability
+  - IFileSystemProviderWithOpenReadWriteCloseCapability
+  - IFileSystemProviderWithFileFolderCopyCapability
+  fields:
+  - name: _onDidChange
+    type: any
+    default: new Emitter<readonly IFileChange[]>()
+  - name: _registration
+    type: IDisposable
+  - name: onDidChangeFile
+    type: Event<readonly IFileChange[]>
+    default: this._onDidChange.event
+  - name: capabilities
+    type: FileSystemProviderCapabilities
+  - name: onDidChangeCapabilities
+    type: Event<void>
+    default: Event.None
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tfileService: IFileService,\n\t\tscheme: string,\n\t\tcapabilities: FileSystemProviderCapabilities,\n\t\tpublic readonly readOnlyMessage: IMarkdownString | undefined,\n\t\tprivate readonly _handle: number,\n\t\tprivate readonly _proxy: ExtHostFileSystemShape\n\t)"
+    lines:
+    - 194
+    - 204
+    detail:
+      calls:
+      - fileService.registerProvider
+  - name: dispose
+    sig: 'dispose(): void'
+    lines:
+    - 206
+    - 209
+    detail:
+      calls:
+      - this._onDidChange.dispose
+      - this._registration.dispose
+  - name: watch
+    sig: 'watch(resource: URI, opts: IWatchOptions)'
+    lines:
+    - 211
+    - 217
+    detail:
+      calls:
+      - Math.random
+      - this._proxy.$watch
+      - toDisposable
+  - name: $onFileSystemChange
+    sig: '$onFileSystemChange(changes: IFileChangeDto[]): void'
+    lines:
+    - 219
+    - 221
+    detail:
+      calls:
+      - changes.map
+      - this._onDidChange.fire
+  - name: stat
+    sig: 'stat(resource: URI): Promise<IStat>'
+    is_async: true
+    lines:
+    - 229
+    - 235
+    detail:
+      calls:
+      - this._proxy.$stat
+  - name: readFile
+    sig: 'readFile(resource: URI): Promise<Uint8Array>'
+    is_async: true
+    lines:
+    - 237
+    - 240
+    detail:
+      calls:
+      - this._proxy.$readFile
+  - name: writeFile
+    sig: 'writeFile(resource: URI, content: Uint8Array, opts: IFileWriteOptions): Promise<void>'
+    lines:
+    - 242
+    - 244
+    detail:
+      calls:
+      - VSBuffer.wrap
+      - this._proxy.$writeFile
+  - name: delete
+    sig: 'delete(resource: URI, opts: IFileDeleteOptions): Promise<void>'
+    lines:
+    - 246
+    - 248
+    detail:
+      calls:
+      - this._proxy.$delete
+  - name: mkdir
+    sig: 'mkdir(resource: URI): Promise<void>'
+    lines:
+    - 250
+    - 252
+    detail:
+      calls:
+      - this._proxy.$mkdir
+  - name: readdir
+    sig: 'readdir(resource: URI): Promise<[string, FileType][]>'
+    lines:
+    - 254
+    - 256
+    detail:
+      calls:
+      - this._proxy.$readdir
+  - name: rename
+    sig: 'rename(resource: URI, target: URI, opts: IFileOverwriteOptions): Promise<void>'
+    lines:
+    - 258
+    - 260
+    detail:
+      calls:
+      - this._proxy.$rename
+  - name: copy
+    sig: 'copy(resource: URI, target: URI, opts: IFileOverwriteOptions): Promise<void>'
+    lines:
+    - 262
+    - 264
+    detail:
+      calls:
+      - this._proxy.$copy
+  - name: open
+    sig: 'open(resource: URI, opts: IFileOpenOptions): Promise<number>'
+    lines:
+    - 266
+    - 268
+    detail:
+      calls:
+      - this._proxy.$open
+  - name: close
+    sig: 'close(fd: number): Promise<void>'
+    lines:
+    - 270
+    - 272
+    detail:
+      calls:
+      - this._proxy.$close
+  - name: read
+    sig: 'read(fd: number, pos: number, data: Uint8Array, offset: number, length: number): Promise<number>'
+    is_async: true
+    lines:
+    - 274
+    - 278
+    detail:
+      calls:
+      - data.set
+      - this._proxy.$read
+  - name: write
+    sig: 'write(fd: number, pos: number, data: Uint8Array, offset: number, length: number): Promise<number>'
+    lines:
+    - 280
+    - 282
+    detail:
+      calls:
+      - VSBuffer.wrap
+      - VSBuffer.wrap(data).slice
+      - this._proxy.$write
+  lines:
+  - 184
+  - 283
+exports:
+- name: MainThreadFileSystem
+  kind: type
+- name: RemoteFileSystemProvider
+  kind: type

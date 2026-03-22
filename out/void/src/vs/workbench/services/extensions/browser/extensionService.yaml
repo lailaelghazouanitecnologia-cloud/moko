@@ -1,0 +1,239 @@
+## Roska File Descriptor — browser/extensionService.ts
+file: browser/extensionService.ts
+lines: 356
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: ../../../../base/browser/window.js.mainWindow
+- sym: ../../../../base/common/network.js.Schemas
+- sym: ../../../../platform/configuration/common/configuration.js.IConfigurationService
+- sym: ../../../../platform/dialogs/common/dialogs.js.IDialogService
+- sym: ../../../../platform/environment/common/environment.js.ExtensionKind
+- sym: ../../../../platform/extensions/common/extensions.js.ExtensionIdentifier
+- sym: ../../../../platform/extensions/common/extensions.js.IExtensionDescription
+- sym: ../../../../platform/files/common/files.js.IFileService
+- sym: ../../../../platform/instantiation/common/extensions.js.InstantiationType
+- sym: ../../../../platform/instantiation/common/extensions.js.registerSingleton
+- sym: ../../../../platform/instantiation/common/instantiation.js.IInstantiationService
+- sym: ../../../../platform/log/browser/log.js.IAutomatedWindow
+- sym: ../../../../platform/log/browser/log.js.getLogs
+- sym: ../../../../platform/log/common/log.js.ILogService
+- sym: ../../../../platform/notification/common/notification.js.INotificationService
+- sym: ../../../../platform/product/common/productService.js.IProductService
+- sym: ../../../../platform/remote/common/remoteAgentConnection.js.PersistentConnectionEventType
+- sym: ../../../../platform/remote/common/remoteAuthorityResolver.js.IRemoteAuthorityResolverService
+- sym: ../../../../platform/remote/common/remoteAuthorityResolver.js.RemoteAuthorityResolverError
+- sym: ../../../../platform/remote/common/remoteAuthorityResolver.js.ResolverResult
+- sym: ../../../../platform/remote/common/remoteExtensionsScanner.js.IRemoteExtensionsScannerService
+- sym: ../../../../platform/telemetry/common/telemetry.js.ITelemetryService
+- sym: ../../../../platform/workspace/common/workspace.js.IWorkspaceContextService
+- sym: ../../../../platform/workspace/common/workspaceTrust.js.IWorkspaceTrustManagementService
+- sym: ../../environment/browser/environmentService.js.IBrowserWorkbenchEnvironmentService
+- sym: ../../extensionManagement/common/extensionManagement.js.IWebExtensionsScannerService
+- sym: ../../extensionManagement/common/extensionManagement.js.IWorkbenchExtensionEnablementService
+- sym: ../../extensionManagement/common/extensionManagement.js.IWorkbenchExtensionManagementService
+- sym: ./webWorkerExtensionHost.js.IWebWorkerExtensionHostDataProvider
+- sym: ./webWorkerExtensionHost.js.IWebWorkerExtensionHostInitData
+- sym: ./webWorkerExtensionHost.js.WebWorkerExtensionHost
+- sym: ./webWorkerFileSystemProvider.js.FetchFileSystemProvider
+- sym: ../common/abstractExtensionService.js.AbstractExtensionService
+- sym: ../common/abstractExtensionService.js.IExtensionHostFactory
+- sym: ../common/abstractExtensionService.js.LocalExtensions
+- sym: ../common/abstractExtensionService.js.RemoteExtensions
+- sym: ../common/abstractExtensionService.js.ResolvedExtensions
+- sym: ../common/abstractExtensionService.js.ResolverExtensions
+- sym: ../common/abstractExtensionService.js.checkEnabledAndProposedAPI
+- sym: ../common/abstractExtensionService.js.isResolverExtension
+- sym: ../common/extensionDescriptionRegistry.js.ExtensionDescriptionRegistrySnapshot
+- sym: ../common/extensionHostKind.js.ExtensionHostKind
+- sym: ../common/extensionHostKind.js.ExtensionRunningPreference
+- sym: ../common/extensionHostKind.js.IExtensionHostKindPicker
+- sym: ../common/extensionHostKind.js.extensionHostKindToString
+- sym: ../common/extensionHostKind.js.extensionRunningPreferenceToString
+- sym: ../common/extensionManifestPropertiesService.js.IExtensionManifestPropertiesService
+- sym: ../common/extensionRunningLocation.js.ExtensionRunningLocation
+- sym: ../common/extensionRunningLocationTracker.js.ExtensionRunningLocationTracker
+- sym: ../common/extensionRunningLocationTracker.js.filterExtensionDescriptions
+- sym: ../common/extensions.js.ExtensionHostExtensions
+- sym: ../common/extensions.js.ExtensionHostStartup
+- sym: ../common/extensions.js.IExtensionHost
+- sym: ../common/extensions.js.IExtensionService
+- sym: ../common/extensions.js.toExtensionDescription
+- sym: ../common/extensionsProposedApi.js.ExtensionsProposedApi
+- sym: ../common/extensionsUtil.js.dedupExtensions
+- sym: ../common/remoteExtensionHost.js.IRemoteExtensionHostDataProvider
+- sym: ../common/remoteExtensionHost.js.IRemoteExtensionHostInitData
+- sym: ../common/remoteExtensionHost.js.RemoteExtensionHost
+- sym: ../../lifecycle/common/lifecycle.js.ILifecycleService
+- sym: ../../lifecycle/common/lifecycle.js.LifecyclePhase
+- sym: ../../remote/common/remoteAgentService.js.IRemoteAgentService
+- sym: ../../remote/common/remoteExplorerService.js.IRemoteExplorerService
+- sym: ../../userData/browser/userDataInit.js.IUserDataInitializationService
+- sym: ../../userDataProfile/common/userDataProfile.js.IUserDataProfileService
+- sym: ../../../../base/common/async.js.AsyncIterableEmitter
+- sym: ../../../../base/common/async.js.AsyncIterableObject
+types:
+- name: ExtensionService
+  kind: struct
+  bases:
+  - AbstractExtensionService
+  - IExtensionService
+  fields:
+  - name: _scanWebExtensionsPromise
+    type: Promise<IExtensionDescription[]> | undefined
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\t@IInstantiationService instantiationService: IInstantiationService,\n\t\t@INotificationService notificationService: INotificationService,\n\t\t@IBrowserWorkbenchEnvironmentService private readonly _browserEnvironmentService: IBrowserWorkbenchEnvironmentService,\n\t\t@ITelemetryService telemetryService: ITelemetryService,\n\t\t@IWorkbenchExtensionEnablementService extensionEnablementService: IWorkbenchExtensionEnablementService,\n\t\t@IFileService fileService: IFileService,\n\t\t@IProductService productService: IProductService,\n\t\t@IWorkbenchExtensionManagementService extensionManagementService: IWorkbenchExtensionManagementService,\n\t\t@IWorkspaceContextService contextService: IWorkspaceContextService,\n\t\t@IConfigurationService configurationService: IConfigurationService,\n\t\t@IExtensionManifestPropertiesService extensionManifestPropertiesService: IExtensionManifestPropertiesService,\n\t\t@IWebExtensionsScannerService private readonly _webExtensionsScannerService: IWebExtensionsScannerService,\n\t\t@ILogService logService: ILogService,\n\t\t@IRemoteAgentService remoteAgentService: IRemoteAgentService,\n\t\t@IRemoteExtensionsScannerService remoteExtensionsScannerService: IRemoteExtensionsScannerService,\n\t\t@ILifecycleService lifecycleService: ILifecycleService,\n\t\t@IRemoteAuthorityResolverService remoteAuthorityResolverService: IRemoteAuthorityResolverService,\n\t\t@IUserDataInitializationService private readonly _userDataInitializationService: IUserDataInitializationService,\n\t\t@IUserDataProfileService private readonly _userDataProfileService: IUserDataProfileService,\n\t\t@IWorkspaceTrustManagementService private readonly _workspaceTrustManagementService: IWorkspaceTrustManagementService,\n\t\t@IRemoteExplorerService private readonly _remoteExplorerService: IRemoteExplorerService,\n\t\t@IDialogService dialogService: IDialogService,\n\t)"
+    lines:
+    - 48
+    - 114
+    detail:
+      calls:
+      - instantiationService.createInstance
+      - lifecycleService.when
+      - lifecycleService.when(LifecyclePhase.Ready).then
+      - new BrowserExtensionHostFactory
+      - new BrowserExtensionHostKindPicker
+      - super
+      - this._initFetchFileSystem
+  - name: _scanWebExtensions
+    sig: '_scanWebExtensions(): Promise<IExtensionDescription[]>'
+    is_async: true
+    vis: private
+    lines:
+    - 123
+    - 140
+    detail:
+      calls:
+      - "(async () => {\n\t\t\t\tconst system: IExtensionDescription[] = [], user: IExtensionDescription[] = [], d..."
+  - name: _resolveExtensionsDefault
+    sig: '_resolveExtensionsDefault(emitter: AsyncIterableEmitter<ResolvedExtensions>)'
+    is_async: true
+    vis: private
+    lines:
+    - 142
+    - 152
+    detail:
+      calls:
+      - Promise.all
+      - emitter.emitOne
+      - new LocalExtensions
+      - new RemoteExtensions
+      - this._remoteExtensionsScannerService.scanExtensions
+      - this._scanWebExtensions
+  - name: _doResolveExtensions
+    sig: '_doResolveExtensions(emitter: AsyncIterableEmitter<ResolvedExtensions>): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 158
+    - 205
+    detail:
+      calls:
+      - RemoteAuthorityResolverError.isHandled
+      - connection.onDidStateChange
+      - connection.onReconnecting
+      - console.log
+      - emitter.emitOne
+      - localExtensions.filter
+      - new ResolverExtensions
+      - this._remoteAgentService.getConnection
+      - this._remoteAuthorityResolverService._setResolvedAuthority
+      - this._remoteAuthorityResolverService._setResolvedAuthorityError
+      - this._remoteExplorerService.setTunnelInformation
+      - this._resolveAuthorityInitial
+      - this._resolveExtensionsDefault
+      - this._scanWebExtensions
+  - name: _onExtensionHostExit
+    sig: '_onExtensionHostExit(code: number): Promise<void>'
+    is_async: true
+    vis: protected
+    lines:
+    - 207
+    - 216
+    detail:
+      calls:
+      - automatedWindow.codeAutomationExit
+      - getLogs
+      - this._doStopExtensionHosts
+  - name: _resolveAuthority
+    sig: '_resolveAuthority(remoteAuthority: string): Promise<ResolverResult>'
+    is_async: true
+    vis: protected
+    lines:
+    - 218
+    - 220
+    detail:
+      calls:
+      - this._resolveAuthorityOnExtensionHosts
+  lines:
+  - 46
+  - 221
+- name: BrowserExtensionHostFactory
+  kind: struct
+  bases:
+  - IExtensionHostFactory
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tprivate readonly _extensionsProposedApi: ExtensionsProposedApi,\n\t\tprivate readonly _scanWebExtensions: () => Promise<IExtensionDescription[]>,\n\t\tprivate readonly _getExtensionRegistrySnapshotWhenReady: () => Promise<ExtensionDescriptionRegistrySnapshot>,\n\t\t@IInstantiationService private readonly _instantiationService: IInstantiationService,\n\t\t@IRemoteAgentService private readonly _remoteAgentService: IRemoteAgentService,\n\t\t@IRemoteAuthorityResolverService private readonly _remoteAuthorityResolverService: IRemoteAuthorityResolverService,\n\t\t@IWorkbenchExtensionEnablementService private readonly _extensionEnablementService: IWorkbenchExtensionEnablementService,\n\t\t@ILogService private readonly _logService: ILogService,\n\t)"
+    lines:
+    - 225
+    - 234
+    detail: {}
+  - name: createExtensionHost
+    sig: 'createExtensionHost(runningLocations: ExtensionRunningLocationTracker, runningLocation: ExtensionRunningLocation, isInitialStart: boolean): IExtensionHost | null'
+    lines:
+    - 236
+    - 257
+    detail:
+      calls:
+      - this._createLocalExtensionHostDataProvider
+      - this._createRemoteExtensionHostDataProvider
+      - this._instantiationService.createInstance
+      - this._remoteAgentService.getConnection
+  lines:
+  - 223
+  - 306
+- name: BrowserExtensionHostKindPicker
+  kind: struct
+  bases:
+  - IExtensionHostKindPicker
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\t@ILogService private readonly _logService: ILogService,\n\t)"
+    lines:
+    - 310
+    - 312
+    detail: {}
+  - name: pickExtensionHostKind
+    sig: 'pickExtensionHostKind(extensionId: ExtensionIdentifier, extensionKinds: ExtensionKind[], isInstalledLocally: boolean, isInstalledRemotely: boolean, preference: ExtensionRunningPreference): ExtensionHostKind | null'
+    lines:
+    - 314
+    - 318
+    detail:
+      calls:
+      - BrowserExtensionHostKindPicker.pickRunningLocation
+      - extensionHostKindToString
+      - extensionKinds.join
+      - extensionRunningPreferenceToString
+      - this._logService.trace
+  - name: pickRunningLocation
+    sig: 'pickRunningLocation(extensionKinds: ExtensionKind[], isInstalledLocally: boolean, isInstalledRemotely: boolean, preference: ExtensionRunningPreference): ExtensionHostKind | null'
+    decorators:
+    - static
+    lines:
+    - 320
+    - 353
+    detail:
+      calls:
+      - result.push
+  lines:
+  - 308
+  - 354
+exports:
+- name: ExtensionService
+  kind: type
+- name: BrowserExtensionHostFactory
+  kind: type
+- name: BrowserExtensionHostKindPicker
+  kind: type

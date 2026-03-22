@@ -1,0 +1,753 @@
+## Roska File Descriptor — browser/viewDescriptorService.ts
+file: browser/viewDescriptorService.ts
+lines: 957
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: ../../../common/views.js.ViewContainerLocation
+- sym: ../../../common/views.js.IViewDescriptorService
+- sym: ../../../common/views.js.ViewContainer
+- sym: ../../../common/views.js.IViewsRegistry
+- sym: ../../../common/views.js.IViewContainersRegistry
+- sym: ../../../common/views.js.IViewDescriptor
+- sym: ../../../common/views.js.Extensions as ViewExtensions
+- sym: ../../../common/views.js.ViewVisibilityState
+- sym: ../../../common/views.js.defaultViewIcon
+- sym: ../../../common/views.js.ViewContainerLocationToString
+- sym: ../../../common/views.js.VIEWS_LOG_ID
+- sym: ../../../common/views.js.VIEWS_LOG_NAME
+- sym: ../../../../platform/contextkey/common/contextkey.js.IContextKey
+- sym: ../../../../platform/contextkey/common/contextkey.js.RawContextKey
+- sym: ../../../../platform/contextkey/common/contextkey.js.IContextKeyService
+- sym: ../../../../platform/contextkey/common/contextkey.js.ContextKeyExpr
+- sym: ../../../../platform/storage/common/storage.js.IStorageService
+- sym: ../../../../platform/storage/common/storage.js.StorageScope
+- sym: ../../../../platform/storage/common/storage.js.StorageTarget
+- sym: ../../extensions/common/extensions.js.IExtensionService
+- sym: ../../../../platform/registry/common/platform.js.Registry
+- sym: ../../../../base/common/lifecycle.js.toDisposable
+- sym: ../../../../base/common/lifecycle.js.DisposableStore
+- sym: ../../../../base/common/lifecycle.js.Disposable
+- sym: ../../../../base/common/lifecycle.js.IDisposable
+- sym: ../../../../base/common/lifecycle.js.DisposableMap
+- sym: ../../../browser/parts/views/viewPaneContainer.js.ViewPaneContainer
+- sym: ../../../browser/parts/views/viewPaneContainer.js.ViewPaneContainerAction
+- sym: ../../../browser/parts/views/viewPaneContainer.js.ViewsSubMenu
+- sym: ../../../../platform/instantiation/common/descriptors.js.SyncDescriptor
+- sym: ../../../../platform/instantiation/common/extensions.js.InstantiationType
+- sym: ../../../../platform/instantiation/common/extensions.js.registerSingleton
+- sym: ../../../../base/common/event.js.Event
+- sym: ../../../../base/common/event.js.Emitter
+- sym: ../../../../platform/telemetry/common/telemetry.js.ITelemetryService
+- sym: ../../../../base/common/uuid.js.generateUuid
+- sym: ../../../../platform/instantiation/common/instantiation.js.IInstantiationService
+- sym: ../../../../platform/instantiation/common/instantiation.js.ServicesAccessor
+- sym: ../common/viewContainerModel.js.getViewsStateStorageId
+- sym: ../common/viewContainerModel.js.ViewContainerModel
+- sym: ../../../../platform/actions/common/actions.js.registerAction2
+- sym: ../../../../platform/actions/common/actions.js.Action2
+- sym: ../../../../platform/actions/common/actions.js.MenuId
+- sym: ../../../../nls.js.localize
+- sym: ../../../../nls.js.localize2
+- sym: ../../../../base/common/collections.js.IStringDictionary
+- sym: ../../../../platform/log/common/log.js.ILogger
+- sym: ../../../../platform/log/common/log.js.ILoggerService
+- sym: ../../../../base/common/lazy.js.Lazy
+- sym: ../common/viewsService.js.IViewsService
+- sym: ../../log/common/logConstants.js.windowLogGroup
+types:
+- name: IViewsCustomizations
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: viewContainerLocations
+    type: IStringDictionary<ViewContainerLocation>
+  - name: viewLocations
+    type: IStringDictionary<string>
+  - name: viewContainerBadgeEnablementStates
+    type: IStringDictionary<boolean>
+  lines:
+  - 28
+  - 32
+- name: ViewDescriptorService
+  kind: struct
+  ctx: Generated Container Id Format
+  bases:
+  - Disposable
+  - IViewDescriptorService
+  fields:
+  - name: _serviceBrand
+    type: undefined
+  - name: VIEWS_CUSTOMIZATIONS
+    type: any
+    default: '''views.customizations'''
+  - name: COMMON_CONTAINER_ID_PREFIX
+    type: any
+    default: '''workbench.views.service'''
+  - name: _onDidChangeContainer
+    type: 'Emitter<{ views: IViewDescriptor[]; from: ViewContainer; to: ViewContainer }>'
+    default: 'this._register(new Emitter<{ views: IViewDescriptor[]; from: ViewContainer; to: ...'
+  - name: onDidChangeContainer
+    type: 'Event<{ views: IViewDescriptor[]; from: ViewContainer; to: ViewContainer }>'
+    default: this._onDidChangeContainer.event
+  - name: _onDidChangeLocation
+    type: 'Emitter<{ views: IViewDescriptor[]; from: ViewContainerLocation; to: ViewContainerLocation }>'
+    default: 'this._register(new Emitter<{ views: IViewDescriptor[]; from: ViewContainerLocati...'
+  - name: onDidChangeLocation
+    type: 'Event<{ views: IViewDescriptor[]; from: ViewContainerLocation; to: ViewContainerLocation }>'
+    default: this._onDidChangeLocation.event
+  - name: _onDidChangeContainerLocation
+    type: 'Emitter<{ viewContainer: ViewContainer; from: ViewContainerLocation; to: ViewContainerLocation }>'
+    default: 'this._register(new Emitter<{ viewContainer: ViewContainer; from: ViewContainerLo...'
+  - name: onDidChangeContainerLocation
+    type: 'Event<{ viewContainer: ViewContainer; from: ViewContainerLocation; to: ViewContainerLocation }>'
+    default: this._onDidChangeContainerLocation.event
+  - name: viewContainerModels
+    type: any
+    default: 'this._register(new DisposableMap<ViewContainer, { viewContainerModel: ViewContai...'
+  - name: viewsVisibilityActionDisposables
+    type: any
+    default: this._register(new DisposableMap<ViewContainer, IDisposable>())
+  - name: canRegisterViewsVisibilityActions
+    type: boolean
+    default: 'false'
+  - name: activeViewContextKeys
+    type: Map<string, IContextKey<boolean>>
+  - name: movableViewContextKeys
+    type: Map<string, IContextKey<boolean>>
+  - name: defaultViewLocationContextKeys
+    type: Map<string, IContextKey<boolean>>
+  - name: defaultViewContainerLocationContextKeys
+    type: Map<string, IContextKey<boolean>>
+  - name: viewsRegistry
+    type: IViewsRegistry
+  - name: viewContainersRegistry
+    type: IViewContainersRegistry
+  - name: viewContainersCustomLocations
+    type: Map<string, ViewContainerLocation>
+  - name: viewDescriptorsCustomLocations
+    type: Map<string, string>
+  - name: viewContainerBadgeEnablementStates
+    type: Map<string, boolean>
+  - name: _onDidChangeViewContainers
+    type: any
+    default: 'this._register(new Emitter<{ added: ReadonlyArray<{ container: ViewContainer; lo...'
+  - name: onDidChangeViewContainers
+    type: any
+    default: this._onDidChangeViewContainers.event
+  - name: logger
+    type: Lazy<ILogger>
+  - name: _viewCustomizations
+    type: IViewsCustomizations | undefined
+  methods:
+  - name: viewContainers
+    sig: 'viewContainers(): ReadonlyArray<ViewContainer>'
+    lines:
+    - 69
+    - 69
+    detail: {}
+  - name: constructor
+    sig: "constructor(\n\t\t@IInstantiationService private readonly instantiationService: IInstantiationService,\n\t\t@IContextKeyService private readonly contextKeyService: IContextKeyService,\n\t\t@IStorageService private readonly storageService: IStorageService,\n\t\t@IExtensionService private readonly extensionService: IExtensionService,\n\t\t@ITelemetryService private readonly telemetryService: ITelemetryService,\n\t\t@ILoggerService loggerService: ILoggerService,\n\t)"
+    lines:
+    - 73
+    - 120
+    detail:
+      calls:
+      - Object.entries
+      - Registry.as
+      - new Lazy
+      - new Map
+      - super
+      - this._register
+      - this.extensionService.whenInstalledExtensionsRegistered
+      - this.extensionService.whenInstalledExtensionsRegistered().then
+      - this.migrateToViewsCustomizationsStorage
+      - this.storageService.onDidChangeValue
+      - this.storageService.onDidChangeValue(StorageScope.PROFILE, ViewDescriptorService.VIEWS_CUSTOMIZATION...
+      - this.viewContainers.forEach
+      - this.viewContainersRegistry.onDidDeregister
+      - this.viewContainersRegistry.onDidRegister
+      - this.viewsRegistry.onDidChangeContainer
+      - this.viewsRegistry.onViewsDeregistered
+      - this.viewsRegistry.onViewsRegistered
+  - name: migrateToViewsCustomizationsStorage
+    sig: 'migrateToViewsCustomizationsStorage(): void'
+    vis: private
+    lines:
+    - 122
+    - 143
+    detail:
+      calls:
+      - JSON.parse
+      - JSON.stringify
+      - this.storageService.get
+      - this.storageService.remove
+      - this.storageService.store
+      - viewContainerLocations.reduce
+      - viewDescriptorLocations.reduce
+  - name: registerGroupedViews
+    sig: 'registerGroupedViews(groupedViews: Map<string, IViewDescriptor[]>): void'
+    vis: private
+    lines:
+    - 145
+    - 168
+    detail:
+      calls:
+      - groupedViews.entries
+      - this.addViews
+      - this.isGeneratedContainerId
+      - this.registerGeneratedViewContainer
+      - this.viewContainerModels.has
+      - this.viewContainersCustomLocations.get
+      - this.viewContainersRegistry.get
+      - views.filter
+  - name: deregisterGroupedViews
+    sig: 'deregisterGroupedViews(groupedViews: Map<string, IViewDescriptor[]>): void'
+    vis: private
+    lines:
+    - 170
+    - 181
+    detail:
+      calls:
+      - groupedViews.entries
+      - this.removeViews
+      - this.viewContainerModels.has
+      - this.viewContainersRegistry.get
+  - name: moveOrphanViewsToDefaultLocation
+    sig: 'moveOrphanViewsToDefaultLocation(): void'
+    vis: private
+    lines:
+    - 183
+    - 197
+    detail:
+      calls:
+      - this.addViews
+      - this.getViewDescriptorById
+      - this.viewContainersRegistry.get
+      - this.viewDescriptorsCustomLocations.entries
+      - this.viewsRegistry.getViewContainer
+  - name: whenExtensionsRegistered
+    sig: 'whenExtensionsRegistered(): void'
+    lines:
+    - 199
+    - 219
+    detail:
+      calls:
+      - this.cleanUpGeneratedViewContainer
+      - this.moveOrphanViewsToDefaultLocation
+      - this.registerViewsVisibilityActions
+      - this.saveViewCustomizations
+      - this.viewContainersCustomLocations.keys
+  - name: onDidDeregisterViews
+    sig: 'onDidDeregisterViews(views: IViewDescriptor[], viewContainer: ViewContainer): void'
+    vis: private
+    lines:
+    - 241
+    - 248
+    detail:
+      calls:
+      - this.contextKeyService.bufferChangeEvents
+      - this.deregisterGroupedViews
+      - this.regroupViews
+  - name: regroupViews
+    sig: 'regroupViews(containerId: string, views: IViewDescriptor[]): Map<string, IViewDescriptor[]>'
+    vis: private
+    lines:
+    - 250
+    - 263
+    detail:
+      calls:
+      - containerViews.push
+      - new Map
+      - this.viewDescriptorsCustomLocations.get
+      - viewsByContainer.get
+      - viewsByContainer.set
+  - name: getViewDescriptorById
+    sig: 'getViewDescriptorById(viewId: string): IViewDescriptor | null'
+    lines:
+    - 265
+    - 267
+    detail:
+      calls:
+      - this.viewsRegistry.getView
+  - name: getViewLocationById
+    sig: 'getViewLocationById(viewId: string): ViewContainerLocation | null'
+    lines:
+    - 269
+    - 276
+    detail:
+      calls:
+      - this.getViewContainerByViewId
+      - this.getViewContainerLocation
+  - name: getViewContainerByViewId
+    sig: 'getViewContainerByViewId(viewId: string): ViewContainer | null'
+    lines:
+    - 278
+    - 284
+    detail:
+      calls:
+      - this.getDefaultContainerById
+      - this.viewContainersRegistry.get
+      - this.viewDescriptorsCustomLocations.get
+  - name: getViewContainerLocation
+    sig: 'getViewContainerLocation(viewContainer: ViewContainer): ViewContainerLocation'
+    lines:
+    - 286
+    - 288
+    detail:
+      calls:
+      - this.getDefaultViewContainerLocation
+      - this.viewContainersCustomLocations.get
+  - name: getDefaultViewContainerLocation
+    sig: 'getDefaultViewContainerLocation(viewContainer: ViewContainer): ViewContainerLocation'
+    lines:
+    - 290
+    - 292
+    detail:
+      calls:
+      - this.viewContainersRegistry.getViewContainerLocation
+  - name: getDefaultContainerById
+    sig: 'getDefaultContainerById(viewId: string): ViewContainer | null'
+    lines:
+    - 294
+    - 296
+    detail:
+      calls:
+      - this.viewsRegistry.getViewContainer
+  - name: getViewContainerModel
+    sig: 'getViewContainerModel(container: ViewContainer): ViewContainerModel'
+    lines:
+    - 298
+    - 300
+    detail:
+      calls:
+      - this.getOrRegisterViewContainerModel
+  - name: getViewContainerById
+    sig: 'getViewContainerById(id: string): ViewContainer | null'
+    lines:
+    - 302
+    - 304
+    detail:
+      calls:
+      - this.viewContainersRegistry.get
+  - name: getViewContainersByLocation
+    sig: 'getViewContainersByLocation(location: ViewContainerLocation): ViewContainer[]'
+    lines:
+    - 306
+    - 308
+    detail:
+      calls:
+      - this.viewContainers.filter
+  - name: getDefaultViewContainer
+    sig: 'getDefaultViewContainer(location: ViewContainerLocation): ViewContainer | undefined'
+    lines:
+    - 310
+    - 312
+    detail:
+      calls:
+      - this.viewContainersRegistry.getDefaultViewContainer
+  - name: moveViewContainerToLocation
+    sig: 'moveViewContainerToLocation(viewContainer: ViewContainer, location: ViewContainerLocation, requestedIndex?: number, reason?: string): void'
+    lines:
+    - 314
+    - 318
+    detail:
+      calls:
+      - this.logger.value.info
+      - this.moveViewContainerToLocationWithoutSaving
+      - this.saveViewCustomizations
+  - name: getViewContainerBadgeEnablementState
+    sig: 'getViewContainerBadgeEnablementState(id: string): boolean'
+    lines:
+    - 320
+    - 322
+    detail:
+      calls:
+      - this.viewContainerBadgeEnablementStates.get
+  - name: setViewContainerBadgeEnablementState
+    sig: 'setViewContainerBadgeEnablementState(id: string, badgesEnabled: boolean): void'
+    lines:
+    - 324
+    - 327
+    detail:
+      calls:
+      - this.saveViewCustomizations
+      - this.viewContainerBadgeEnablementStates.set
+  - name: moveViewToLocation
+    sig: 'moveViewToLocation(view: IViewDescriptor, location: ViewContainerLocation, reason?: string): void'
+    lines:
+    - 329
+    - 333
+    detail:
+      calls:
+      - this.logger.value.info
+      - this.moveViewsToContainer
+      - this.registerGeneratedViewContainer
+  - name: moveViewsToContainer
+    sig: 'moveViewsToContainer(views: IViewDescriptor[], viewContainer: ViewContainer, visibilityState?: ViewVisibilityState, reason?: string): void'
+    lines:
+    - 335
+    - 356
+    detail:
+      calls:
+      - this.cleanUpGeneratedViewContainer
+      - this.getViewContainerByViewId
+      - this.logger.value.info
+      - this.moveViewsWithoutSaving
+      - this.reportMovedViews
+      - this.saveViewCustomizations
+      - views.map
+      - views.map(view => view.id).join
+  - name: reset
+    sig: 'reset(): void'
+    lines:
+    - 358
+    - 382
+    detail:
+      calls:
+      - this.cleanUpGeneratedViewContainer
+      - this.getDefaultContainerById
+      - this.getDefaultViewContainerLocation
+      - this.getViewContainerByViewId
+      - this.getViewContainerLocation
+      - this.getViewContainerModel
+      - this.moveViewContainerToLocationWithoutSaving
+      - this.moveViewsWithoutSaving
+      - this.saveViewCustomizations
+      - this.viewContainersCustomLocations.clear
+      - this.viewDescriptorsCustomLocations.clear
+  - name: isViewContainerRemovedPermanently
+    sig: 'isViewContainerRemovedPermanently(viewContainerId: string): boolean'
+    lines:
+    - 384
+    - 386
+    detail:
+      calls:
+      - this.isGeneratedContainerId
+      - this.viewContainersCustomLocations.has
+  - name: reportMovedViews
+    sig: 'reportMovedViews(views: IViewDescriptor[], from: ViewContainer, to: ViewContainer): void'
+    vis: private
+    lines:
+    - 398
+    - 438
+    detail:
+      calls:
+      - containerToString
+      - this.getViewContainerLocation
+      - this.telemetryService.publicLog2
+  - name: moveViewsWithoutSaving
+    sig: 'moveViewsWithoutSaving(views: IViewDescriptor[], from: ViewContainer, to: ViewContainer, visibilityState: ViewVisibilityState = ViewVisibilityState.Expand): void'
+    vis: private
+    lines:
+    - 440
+    - 452
+    detail:
+      calls:
+      - this._onDidChangeContainer.fire
+      - this._onDidChangeLocation.fire
+      - this.addViews
+      - this.getViewContainerLocation
+      - this.removeViews
+  - name: moveViewContainerToLocationWithoutSaving
+    sig: 'moveViewContainerToLocationWithoutSaving(viewContainer: ViewContainer, location: ViewContainerLocation, requestedIndex?: number): void'
+    vis: private
+    lines:
+    - 454
+    - 473
+    detail:
+      calls:
+      - this._onDidChangeContainerLocation.fire
+      - this._onDidChangeLocation.fire
+      - this.getDefaultViewContainerLocation
+      - this.getOrCreateDefaultViewContainerLocationContextKey
+      - this.getOrCreateDefaultViewContainerLocationContextKey(viewContainer).set
+      - this.getViewContainerLocation
+      - this.getViewsByContainer
+      - this.isGeneratedContainerId
+      - this.viewContainersCustomLocations.delete
+      - this.viewContainersCustomLocations.set
+  - name: cleanUpGeneratedViewContainer
+    sig: 'cleanUpGeneratedViewContainer(viewContainerId: string): void'
+    vis: private
+    lines:
+    - 475
+    - 502
+    detail:
+      calls:
+      - '[...this.viewDescriptorsCustomLocations.values()].includes'
+      - getViewContainerStorageId
+      - getViewsStateStorageId
+      - this.getViewContainerById
+      - this.getViewContainerModel
+      - this.isGeneratedContainerId
+      - this.storageService.remove
+      - this.viewContainerBadgeEnablementStates.delete
+      - this.viewContainersCustomLocations.delete
+      - this.viewContainersRegistry.deregisterViewContainer
+      - this.viewDescriptorsCustomLocations.values
+  - name: registerGeneratedViewContainer
+    sig: 'registerGeneratedViewContainer(location: ViewContainerLocation, existingId?: string): ViewContainer'
+    vis: private
+    lines:
+    - 504
+    - 523
+    detail:
+      calls:
+      - getViewContainerStorageId
+      - localize
+      - new SyncDescriptor
+      - this.generateContainerId
+      - this.getOrCreateDefaultViewContainerLocationContextKey
+      - this.getOrCreateDefaultViewContainerLocationContextKey(container).set
+      - this.viewContainersCustomLocations.get
+      - this.viewContainersCustomLocations.set
+      - this.viewContainersRegistry.registerViewContainer
+  - name: onDidStorageChange
+    sig: 'onDidStorageChange(): void'
+    vis: private
+    lines:
+    - 525
+    - 529
+    detail:
+      calls:
+      - JSON.stringify
+      - this.getStoredViewCustomizationsValue
+      - this.onDidViewCustomizationsStorageChange
+  - name: onDidViewCustomizationsStorageChange
+    sig: 'onDidViewCustomizationsStorageChange(): void'
+    vis: private
+    lines:
+    - 531
+    - 598
+    detail:
+      calls:
+      - Object.entries
+      - new Map
+      - newViewContainerCustomizations.entries
+      - newViewContainerCustomizations.has
+      - newViewDescriptorCustomizations.entries
+      - newViewDescriptorCustomizations.has
+      - this.getDefaultContainerById
+      - this.getDefaultViewContainerLocation
+      - this.getViewContainerById
+      - this.getViewContainerByViewId
+      - this.getViewContainerLocation
+      - this.getViewContainerModel
+      - this.getViewDescriptorById
+      - this.isGeneratedContainerId
+      - this.moveViewContainerToLocationWithoutSaving
+      - this.moveViewsWithoutSaving
+      - this.registerGeneratedViewContainer
+      - this.viewContainersRegistry.get
+      - viewContainersToMove.push
+      - viewsToMove.push
+  - name: saveViewCustomizations
+    sig: 'saveViewCustomizations(): void'
+    vis: private
+    lines:
+    - 608
+    - 640
+    detail:
+      calls:
+      - this.getDefaultContainerById
+      - this.getDefaultViewContainerLocation
+      - this.getViewContainerById
+      - this.isGeneratedContainerId
+  - name: getViewsByContainer
+    sig: 'getViewsByContainer(viewContainer: ViewContainer): IViewDescriptor[]'
+    vis: private
+    lines:
+    - 669
+    - 691
+    detail:
+      calls:
+      - result.push
+      - this.getViewDescriptorById
+      - this.viewDescriptorsCustomLocations.entries
+      - this.viewsRegistry.getViewContainer
+      - this.viewsRegistry.getViews
+      - this.viewsRegistry.getViews(viewContainer).filter
+  - name: onDidRegisterViewContainer
+    sig: 'onDidRegisterViewContainer(viewContainer: ViewContainer): void'
+    vis: private
+    lines:
+    - 693
+    - 697
+    detail:
+      calls:
+      - this.getDefaultViewContainerLocation
+      - this.getOrCreateDefaultViewContainerLocationContextKey
+      - this.getOrCreateDefaultViewContainerLocationContextKey(viewContainer).set
+      - this.getOrRegisterViewContainerModel
+      - this.getViewContainerLocation
+      - this.isGeneratedContainerId
+  - name: getOrRegisterViewContainerModel
+    sig: 'getOrRegisterViewContainerModel(viewContainer: ViewContainer): ViewContainerModel'
+    vis: private
+    lines:
+    - 699
+    - 740
+    detail:
+      calls:
+      - disposables.add
+      - new DisposableStore
+      - this.addViews
+      - this.contextKeyService.bufferChangeEvents
+      - this.getViewsByContainer
+      - this.getViewsByContainer(viewContainer).filter
+      - this.instantiationService.createInstance
+      - this.onDidChangeActiveViews
+      - this.onDidChangeVisibleViews
+      - this.onDidRegisterViews
+      - this.registerResetViewContainerAction
+      - this.registerViewsVisibilityActions
+      - this.viewContainerModels.get
+      - this.viewContainerModels.set
+      - this.viewsRegistry.getViews
+      - toDisposable
+      - viewContainerModel.onDidAddVisibleViewDescriptors
+      - viewContainerModel.onDidChangeActiveViewDescriptors
+      - viewContainerModel.onDidRemoveVisibleViewDescriptors
+  - name: registerViewsVisibilityActions
+    sig: 'registerViewsVisibilityActions(viewContainer: ViewContainer, { viewContainerModel, disposables }: { viewContainerModel: ViewContainerModel; disposables: DisposableStore }): void'
+    vis: private
+    lines:
+    - 761
+    - 773
+    detail:
+      calls:
+      - Event.any
+      - "Event.any(\n\t\t\tviewContainerModel.onDidChangeActiveViewDescriptors,\n\t\t\tviewContainerModel.onDidAddVis..."
+      - disposables.add
+      - this.registerViewsVisibilityActionsForContainer
+      - this.viewsVisibilityActionDisposables.deleteAndDispose
+      - this.viewsVisibilityActionDisposables.set
+  - name: registerViewsVisibilityActionsForContainer
+    sig: 'registerViewsVisibilityActionsForContainer(viewContainerModel: ViewContainerModel): IDisposable'
+    vis: private
+    lines:
+    - 775
+    - 841
+    detail:
+      calls:
+      - new DisposableStore
+      - viewContainerModel.activeViewDescriptors.forEach
+  - name: registerResetViewContainerAction
+    sig: 'registerResetViewContainerAction(viewContainer: ViewContainer): IDisposable'
+    vis: private
+    lines:
+    - 843
+    - 867
+    detail:
+      calls:
+      - ContextKeyExpr.and
+      - ContextKeyExpr.equals
+      - ContextKeyExpr.or
+      - accessor.get
+      - accessor.get(IViewsService).openViewContainer
+      - localize2
+      - registerAction2
+      - super
+      - that.getDefaultViewContainerLocation
+      - that.moveViewContainerToLocation
+  - name: addViews
+    sig: 'addViews(container: ViewContainer, views: IViewDescriptor[], visibilityState: ViewVisibilityState = ViewVisibilityState.Default): void'
+    vis: private
+    lines:
+    - 869
+    - 889
+    detail:
+      calls:
+      - this.contextKeyService.bufferChangeEvents
+      - this.getViewContainerModel
+      - this.getViewContainerModel(container).add
+      - views.map
+  - name: removeViews
+    sig: 'removeViews(container: ViewContainer, views: IViewDescriptor[]): void'
+    vis: private
+    lines:
+    - 891
+    - 904
+    detail:
+      calls:
+      - this.contextKeyService.bufferChangeEvents
+      - this.getViewContainerModel
+      - this.getViewContainerModel(container).remove
+  - name: getOrCreateActiveViewContextKey
+    sig: 'getOrCreateActiveViewContextKey(viewDescriptor: IViewDescriptor): IContextKey<boolean>'
+    vis: private
+    lines:
+    - 906
+    - 914
+    detail:
+      calls:
+      - new RawContextKey
+      - new RawContextKey(activeContextKeyId, false).bindTo
+      - this.activeViewContextKeys.get
+      - this.activeViewContextKeys.set
+  - name: getOrCreateVisibleViewContextKey
+    sig: 'getOrCreateVisibleViewContextKey(viewDescriptor: IViewDescriptor): IContextKey<boolean>'
+    vis: private
+    lines:
+    - 916
+    - 924
+    detail:
+      calls:
+      - new RawContextKey
+      - new RawContextKey(activeContextKeyId, false).bindTo
+      - this.activeViewContextKeys.get
+      - this.activeViewContextKeys.set
+  - name: getOrCreateMovableViewContextKey
+    sig: 'getOrCreateMovableViewContextKey(viewDescriptor: IViewDescriptor): IContextKey<boolean>'
+    vis: private
+    lines:
+    - 926
+    - 934
+    detail:
+      calls:
+      - new RawContextKey
+      - new RawContextKey(movableViewContextKeyId, false).bindTo
+      - this.movableViewContextKeys.get
+      - this.movableViewContextKeys.set
+  - name: getOrCreateDefaultViewLocationContextKey
+    sig: 'getOrCreateDefaultViewLocationContextKey(viewDescriptor: IViewDescriptor): IContextKey<boolean>'
+    vis: private
+    lines:
+    - 936
+    - 944
+    detail:
+      calls:
+      - new RawContextKey
+      - new RawContextKey(defaultViewLocationContextKeyId, false).bindTo
+      - this.defaultViewLocationContextKeys.get
+      - this.defaultViewLocationContextKeys.set
+  - name: getOrCreateDefaultViewContainerLocationContextKey
+    sig: 'getOrCreateDefaultViewContainerLocationContextKey(viewContainer: ViewContainer): IContextKey<boolean>'
+    vis: private
+    lines:
+    - 946
+    - 954
+    detail:
+      calls:
+      - new RawContextKey
+      - new RawContextKey(defaultViewContainerLocationContextKeyId, false).bindTo
+      - this.defaultViewContainerLocationContextKeys.get
+      - this.defaultViewContainerLocationContextKeys.set
+  lines:
+  - 36
+  - 955
+functions:
+- name: getViewContainerStorageId
+  sig: 'getViewContainerStorageId(viewContainerId: string): string'
+  lines:
+  - 34
+  - 34
+exports:
+- name: IViewsCustomizations
+  kind: type
+- name: ViewDescriptorService
+  kind: type
+- name: getViewContainerStorageId
+  kind: func

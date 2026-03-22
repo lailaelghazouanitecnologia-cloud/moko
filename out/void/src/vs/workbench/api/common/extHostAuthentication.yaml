@@ -1,0 +1,209 @@
+## Roska File Descriptor — common/extHostAuthentication.ts
+file: common/extHostAuthentication.ts
+lines: 149
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: vscode.vscode
+- sym: ../../../base/common/event.js.Emitter
+- sym: ../../../base/common/event.js.Event
+- sym: ./extHost.protocol.js.MainContext
+- sym: ./extHost.protocol.js.MainThreadAuthenticationShape
+- sym: ./extHost.protocol.js.ExtHostAuthenticationShape
+- sym: ./extHostTypes.js.Disposable
+- sym: ../../../platform/extensions/common/extensions.js.IExtensionDescription
+- sym: ../../../platform/extensions/common/extensions.js.ExtensionIdentifier
+- sym: ../../services/authentication/common/authentication.js.INTERNAL_AUTH_PROVIDER_PREFIX
+- sym: ../../../platform/instantiation/common/instantiation.js.createDecorator
+- sym: ./extHostRpcService.js.IExtHostRpcService
+data:
+- name: IExtHostAuthentication
+  type: any
+  val: createDecorator<IExtHostAuthentication>('IExtHostAuthentication')
+types:
+- name: IExtHostAuthentication
+  kind: trait
+  bases:
+  - ExtHostAuthentication
+  decorators:
+  - interface
+  lines:
+  - 15
+  - 15
+- name: ProviderWithMetadata
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: provider
+    type: vscode.AuthenticationProvider
+  - name: options
+    type: vscode.AuthenticationProviderOptions
+  lines:
+  - 18
+  - 22
+- name: ExtHostAuthentication
+  kind: struct
+  ctx: This sets up an event that will fire when the auth sessions change with a built-in filter for the extensionId if a session change only affects a specific extension.
+  bases:
+  - ExtHostAuthenticationShape
+  fields:
+  - name: _serviceBrand
+    type: undefined
+  - name: _proxy
+    type: MainThreadAuthenticationShape
+  - name: _authenticationProviders
+    type: Map<string, ProviderWithMetadata>
+    default: new Map<string, ProviderWithMetadata>()
+  - name: _onDidChangeSessions
+    type: any
+    default: 'new Emitter<vscode.AuthenticationSessionsChangeEvent & { extensionIdFilter?: str...'
+  - name: _getSessionTaskSingler
+    type: any
+    default: new TaskSingler<vscode.AuthenticationSession | undefined>()
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\t@IExtHostRpcService extHostRpc: IExtHostRpcService\n\t)"
+    lines:
+    - 34
+    - 38
+    detail:
+      calls:
+      - extHostRpc.getProxy
+  - name: getExtensionScopedSessionsEvent
+    sig: 'getExtensionScopedSessionsEvent(extensionId: string): Event<vscode.AuthenticationSessionsChangeEvent>'
+    lines:
+    - 46
+    - 52
+    detail:
+      calls:
+      - Event.chain
+      - extensionId.toLowerCase
+  - name: getSession
+    sig: 'getSession(requestingExtension: IExtensionDescription, providerId: string, scopes: readonly string[], options: vscode.AuthenticationGetSessionOptions = {}): Promise<vscode.AuthenticationSession | undefined>'
+    is_async: true
+    lines:
+    - 58
+    - 68
+    detail:
+      calls:
+      - ExtensionIdentifier.toKey
+      - Object.keys
+      - '[...scopes].sort'
+      - '[...scopes].sort().join'
+      - keys.sort
+      - keys.sort().map
+      - keys.sort().map(key => `${key}:${!!options[key]}`).join
+      - this._getSessionTaskSingler.getOrCreate
+  - name: getAccounts
+    sig: 'getAccounts(providerId: string)'
+    is_async: true
+    lines:
+    - 70
+    - 73
+    detail:
+      calls:
+      - this._proxy.$ensureProvider
+      - this._proxy.$getAccounts
+  - name: removeSession
+    sig: 'removeSession(providerId: string, sessionId: string): Promise<void>'
+    is_async: true
+    lines:
+    - 75
+    - 82
+    detail:
+      calls:
+      - providerData.provider.removeSession
+      - this._authenticationProviders.get
+      - this._proxy.$removeSession
+  - name: registerAuthenticationProvider
+    sig: 'registerAuthenticationProvider(id: string, label: string, provider: vscode.AuthenticationProvider, options?: vscode.AuthenticationProviderOptions): vscode.Disposable'
+    lines:
+    - 84
+    - 98
+    detail:
+      calls:
+      - new Disposable
+      - new Error
+      - provider.onDidChangeSessions
+      - this._authenticationProviders.get
+      - this._authenticationProviders.set
+      - this._proxy.$registerAuthenticationProvider
+  - name: $createSession
+    sig: '$createSession(providerId: string, scopes: string[], options: vscode.AuthenticationProviderSessionOptions): Promise<vscode.AuthenticationSession>'
+    is_async: true
+    lines:
+    - 100
+    - 107
+    detail:
+      calls:
+      - new Error
+      - providerData.provider.createSession
+      - this._authenticationProviders.get
+  - name: $removeSession
+    sig: '$removeSession(providerId: string, sessionId: string): Promise<void>'
+    is_async: true
+    lines:
+    - 109
+    - 116
+    detail:
+      calls:
+      - new Error
+      - providerData.provider.removeSession
+      - this._authenticationProviders.get
+  - name: $getSessions
+    sig: '$getSessions(providerId: string, scopes: ReadonlyArray<string> | undefined, options: vscode.AuthenticationProviderSessionOptions): Promise<ReadonlyArray<vscode.AuthenticationSession>>'
+    is_async: true
+    lines:
+    - 118
+    - 125
+    detail:
+      calls:
+      - new Error
+      - providerData.provider.getSessions
+      - this._authenticationProviders.get
+  - name: $onDidChangeAuthenticationSessions
+    sig: '$onDidChangeAuthenticationSessions(id: string, label: string, extensionIdFilter?: string[])'
+    lines:
+    - 127
+    - 133
+    detail:
+      calls:
+      - Promise.resolve
+      - id.startsWith
+      - this._onDidChangeSessions.fire
+  lines:
+  - 24
+  - 134
+- name: TaskSingler
+  kind: struct
+  fields:
+  - name: _inFlightPromises
+    type: any
+    default: new Map<string, Promise<T>>()
+  methods:
+  - name: getOrCreate
+    sig: 'getOrCreate(key: string, promiseFactory: () => Promise<T>)'
+    lines:
+    - 138
+    - 148
+    detail:
+      calls:
+      - promiseFactory
+      - promiseFactory().finally
+      - this._inFlightPromises.get
+      - this._inFlightPromises.set
+  lines:
+  - 136
+  - 149
+exports:
+- name: IExtHostAuthentication
+  kind: type
+- name: ProviderWithMetadata
+  kind: type
+- name: ExtHostAuthentication
+  kind: type
+- name: TaskSingler
+  kind: type
+- name: IExtHostAuthentication
+  kind: data

@@ -1,0 +1,842 @@
+## Roska File Descriptor — browser/unicodeHighlighter.ts
+file: browser/unicodeHighlighter.ts
+lines: 831
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: ../../../../base/common/async.js.RunOnceScheduler
+- sym: ../../../../base/common/charCode.js.CharCode
+- sym: ../../../../base/common/codicons.js.Codicon
+- sym: ../../../../base/common/htmlContent.js.MarkdownString
+- sym: ../../../../base/common/lifecycle.js.Disposable
+- sym: ../../../../base/common/platform.js.platform
+- sym: ../../../../base/common/strings.js.InvisibleCharacters
+- sym: ../../../../base/common/strings.js.isBasicASCII
+- sym: ../../../browser/editorBrowser.js.IActiveCodeEditor
+- sym: ../../../browser/editorBrowser.js.ICodeEditor
+- sym: ../../../browser/editorExtensions.js.EditorAction
+- sym: ../../../browser/editorExtensions.js.EditorContributionInstantiation
+- sym: ../../../browser/editorExtensions.js.registerEditorContribution
+- sym: ../../../browser/editorExtensions.js.ServicesAccessor
+- sym: ../../../common/config/editorOptions.js.InUntrustedWorkspace
+- sym: ../../../common/config/editorOptions.js.inUntrustedWorkspace
+- sym: ../../../common/config/editorOptions.js.EditorOption
+- sym: ../../../common/config/editorOptions.js.InternalUnicodeHighlightOptions
+- sym: ../../../common/config/editorOptions.js.unicodeHighlightConfigKeys
+- sym: ../../../common/core/range.js.Range
+- sym: ../../../common/editorCommon.js.IEditorContribution
+- sym: ../../../common/model.js.IModelDecoration
+- sym: ../../../common/model.js.IModelDeltaDecoration
+- sym: ../../../common/model.js.ITextModel
+- sym: ../../../common/model.js.TrackedRangeStickiness
+- sym: ../../../common/model/textModel.js.ModelDecorationOptions
+- sym: ../../../common/services/unicodeTextModelHighlighter.js.UnicodeHighlighterOptions
+- sym: ../../../common/services/unicodeTextModelHighlighter.js.UnicodeHighlighterReason
+- sym: ../../../common/services/unicodeTextModelHighlighter.js.UnicodeHighlighterReasonKind
+- sym: ../../../common/services/unicodeTextModelHighlighter.js.UnicodeTextModelHighlighter
+- sym: ../../../common/services/editorWorker.js.IEditorWorkerService
+- sym: ../../../common/services/editorWorker.js.IUnicodeHighlightsResult
+- sym: ../../../common/languages/language.js.ILanguageService
+- sym: ../../../common/viewModel/viewModelDecorations.js.isModelDecorationInComment
+- sym: ../../../common/viewModel/viewModelDecorations.js.isModelDecorationInString
+- sym: ../../../common/viewModel/viewModelDecorations.js.isModelDecorationVisible
+- sym: ../../hover/browser/hoverTypes.js.HoverAnchor
+- sym: ../../hover/browser/hoverTypes.js.HoverAnchorType
+- sym: ../../hover/browser/hoverTypes.js.HoverParticipantRegistry
+- sym: ../../hover/browser/hoverTypes.js.IEditorHoverParticipant
+- sym: ../../hover/browser/hoverTypes.js.IEditorHoverRenderContext
+- sym: ../../hover/browser/hoverTypes.js.IHoverPart
+- sym: ../../hover/browser/hoverTypes.js.IRenderedHoverParts
+- sym: ../../hover/browser/markdownHoverParticipant.js.MarkdownHover
+- sym: ../../hover/browser/markdownHoverParticipant.js.renderMarkdownHovers
+- sym: ./bannerController.js.BannerController
+- sym: ../../../../nls.js.nls
+- sym: ../../../../platform/configuration/common/configuration.js.ConfigurationTarget
+- sym: ../../../../platform/configuration/common/configuration.js.IConfigurationService
+- sym: ../../../../platform/instantiation/common/instantiation.js.IInstantiationService
+- sym: ../../../../platform/opener/common/opener.js.IOpenerService
+- sym: ../../../../platform/quickinput/common/quickInput.js.IQuickInputService
+- sym: ../../../../platform/quickinput/common/quickInput.js.IQuickPickItem
+- sym: ../../../../platform/theme/common/iconRegistry.js.registerIcon
+- sym: ../../../../platform/workspace/common/workspaceTrust.js.IWorkspaceTrustManagementService
+- sym: ../../../../platform/actions/common/actions.js.Action2
+- sym: ../../../../platform/actions/common/actions.js.registerAction2
+data:
+- name: warningIcon
+  type: any
+  val: registerIcon('extensions-warning-message', Codicon.warning, nls.localize('warningIcon', 'Icon shown with a warning messa...
+- name: configureUnicodeHighlightOptionsStr
+  type: any
+  val: nls.localize('unicodeHighlight.configureUnicodeHighlightOptions', 'Configure Unicode Highlight Options')
+types:
+- name: UnicodeHighlighter
+  kind: struct
+  bases:
+  - Disposable
+  - IEditorContribution
+  fields:
+  - name: ID
+    type: any
+    default: '''editor.contrib.unicodeHighlighter'''
+  - name: _highlighter
+    type: DocumentUnicodeHighlighter | ViewportUnicodeHighlighter | null
+    default: 'null'
+  - name: _options
+    type: InternalUnicodeHighlightOptions
+  - name: _bannerController
+    type: BannerController
+  - name: _bannerClosed
+    type: boolean
+    default: 'false'
+  - name: _updateState
+    type: any
+    default: "(state: IUnicodeHighlightsResult | null): void => {\n\t\tif (state && state.hasMore..."
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tprivate readonly _editor: ICodeEditor,\n\t\t@IEditorWorkerService private readonly _editorWorkerService: IEditorWorkerService,\n\t\t@IWorkspaceTrustManagementService private readonly _workspaceTrustService: IWorkspaceTrustManagementService,\n\t\t@IInstantiationService instantiationService: IInstantiationService,\n\t)"
+    lines:
+    - 48
+    - 77
+    detail:
+      calls:
+      - _editor.getOption
+      - _editor.onDidChangeConfiguration
+      - _workspaceTrustService.onDidChangeTrust
+      - instantiationService.createInstance
+      - super
+      - this._editor.onDidChangeModel
+      - this._register
+      - this._updateHighlighter
+  - name: dispose
+    sig: 'dispose(): void'
+    lines:
+    - 79
+    - 85
+    detail:
+      calls:
+      - super.dispose
+      - this._highlighter.dispose
+  - name: _updateHighlighter
+    sig: '_updateHighlighter(): void'
+    vis: private
+    lines:
+    - 135
+    - 181
+    detail:
+      calls:
+      - Object.keys
+      - Object.keys(options.allowedCharacters).map
+      - Object.keys(options.allowedLocales).map
+      - "[\n\t\t\t\toptions.nonBasicASCII,\n\t\t\t\toptions.ambiguousCharacters,\n\t\t\t\toptions.invisibleCharacters,\n\t\t\t]...."
+      - new DocumentUnicodeHighlighter
+      - new ViewportUnicodeHighlighter
+      - resolveOptions
+      - this._editor.getModel
+      - this._editor.hasModel
+      - this._editorWorkerService.canComputeUnicodeHighlights
+      - this._highlighter.dispose
+      - this._updateState
+      - this._workspaceTrustService.isWorkspaceTrusted
+  - name: getDecorationInfo
+    sig: 'getDecorationInfo(decoration: IModelDecoration): UnicodeHighlighterDecorationInfo | null'
+    lines:
+    - 183
+    - 188
+    detail:
+      calls:
+      - this._highlighter.getDecorationInfo
+  lines:
+  - 39
+  - 189
+- name: UnicodeHighlighterDecorationInfo
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: reason
+    type: UnicodeHighlighterReason
+  - name: inComment
+    type: boolean
+  - name: inString
+    type: boolean
+  lines:
+  - 191
+  - 195
+- name: Resolve
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 197
+  - 199
+- name: ResolvedOptions
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 201
+  - 201
+- name: DocumentUnicodeHighlighter
+  kind: struct
+  bases:
+  - Disposable
+  fields:
+  - name: _model
+    type: ITextModel
+    default: this._editor.getModel()
+  - name: _updateSoon
+    type: RunOnceScheduler
+  - name: _decorations
+    type: any
+    default: this._editor.createDecorationsCollection()
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tprivate readonly _editor: IActiveCodeEditor,\n\t\tprivate readonly _options: UnicodeHighlighterOptions,\n\t\tprivate readonly _updateState: (state: IUnicodeHighlightsResult | null) => void,\n\t\t@IEditorWorkerService private readonly _editorWorkerService: IEditorWorkerService,\n\t)"
+    lines:
+    - 220
+    - 234
+    detail:
+      calls:
+      - new RunOnceScheduler
+      - super
+      - this._editor.onDidChangeModelContent
+      - this._register
+      - this._updateSoon.schedule
+  - name: dispose
+    sig: dispose()
+    lines:
+    - 236
+    - 239
+    detail:
+      calls:
+      - super.dispose
+      - this._decorations.clear
+  - name: _update
+    sig: '_update(): void'
+    vis: private
+    lines:
+    - 241
+    - 277
+    detail:
+      calls:
+      - this._decorations.clear
+      - "this._editorWorkerService\n\t\t\t.computedUnicodeHighlights"
+      - "this._editorWorkerService\n\t\t\t.computedUnicodeHighlights(this._model.uri, this._options)\n\t\t\t.then"
+      - this._model.getVersionId
+      - this._model.isDisposed
+      - this._model.mightContainNonBasicASCII
+  - name: getDecorationInfo
+    sig: 'getDecorationInfo(decoration: IModelDecoration): UnicodeHighlighterDecorationInfo | null'
+    lines:
+    - 279
+    - 295
+    detail:
+      calls:
+      - computeReason
+      - isModelDecorationInComment
+      - isModelDecorationInString
+      - isModelDecorationVisible
+      - model.getValueInRange
+      - this._decorations.has
+      - this._editor.getModel
+  lines:
+  - 215
+  - 296
+- name: ViewportUnicodeHighlighter
+  kind: struct
+  bases:
+  - Disposable
+  fields:
+  - name: _model
+    type: ITextModel
+    default: this._editor.getModel()
+  - name: _updateSoon
+    type: RunOnceScheduler
+  - name: _decorations
+    type: any
+    default: this._editor.createDecorationsCollection()
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tprivate readonly _editor: IActiveCodeEditor,\n\t\tprivate readonly _options: UnicodeHighlighterOptions,\n\t\tprivate readonly _updateState: (state: IUnicodeHighlightsResult | null) => void,\n\t)"
+    lines:
+    - 304
+    - 327
+    detail:
+      calls:
+      - new RunOnceScheduler
+      - super
+      - this._editor.onDidChangeHiddenAreas
+      - this._editor.onDidChangeModelContent
+      - this._editor.onDidLayoutChange
+      - this._editor.onDidScrollChange
+      - this._register
+      - this._updateSoon.schedule
+  - name: dispose
+    sig: dispose()
+    lines:
+    - 329
+    - 332
+    detail:
+      calls:
+      - super.dispose
+      - this._decorations.clear
+  - name: _update
+    sig: '_update(): void'
+    vis: private
+    lines:
+    - 334
+    - 374
+    detail:
+      calls:
+      - Decorations.instance.getDecorationFromOptions
+      - UnicodeTextModelHighlighter.computeUnicodeHighlights
+      - decorations.push
+      - this._decorations.clear
+      - this._decorations.set
+      - this._editor.getVisibleRanges
+      - this._model.isDisposed
+      - this._model.mightContainNonBasicASCII
+      - this._updateState
+      - totalResult.ranges.push
+  - name: getDecorationInfo
+    sig: 'getDecorationInfo(decoration: IModelDecoration): UnicodeHighlighterDecorationInfo | null'
+    lines:
+    - 376
+    - 390
+    detail:
+      calls:
+      - computeReason
+      - isModelDecorationInComment
+      - isModelDecorationInString
+      - isModelDecorationVisible
+      - model.getValueInRange
+      - this._decorations.has
+      - this._editor.getModel
+  lines:
+  - 298
+  - 391
+- name: UnicodeHighlighterHover
+  kind: struct
+  bases:
+  - IHoverPart
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tpublic readonly owner: IEditorHoverParticipant<UnicodeHighlighterHover>,\n\t\tpublic readonly range: Range,\n\t\tpublic readonly decoration: IModelDecoration\n\t)"
+    lines:
+    - 394
+    - 398
+    detail: {}
+  - name: isValidForHoverAnchor
+    sig: 'isValidForHoverAnchor(anchor: HoverAnchor): boolean'
+    lines:
+    - 400
+    - 406
+    detail: {}
+  lines:
+  - 393
+  - 407
+- name: UnicodeHighlighterHoverParticipant
+  kind: struct
+  bases:
+  - IEditorHoverParticipant<MarkdownHover>
+  fields:
+  - name: hoverOrdinal
+    type: number
+    default: '5'
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tprivate readonly _editor: ICodeEditor,\n\t\t@ILanguageService private readonly _languageService: ILanguageService,\n\t\t@IOpenerService private readonly _openerService: IOpenerService,\n\t)"
+    lines:
+    - 415
+    - 420
+    detail: {}
+  - name: computeSync
+    sig: 'computeSync(anchor: HoverAnchor, lineDecorations: IModelDecoration[]): MarkdownHover[]'
+    lines:
+    - 422
+    - 508
+    detail:
+      calls:
+      - JSON.stringify
+      - char.codePointAt
+      - encodeURIComponent
+      - existedReason.add
+      - existedReason.has
+      - formatCodePointMarkdown
+      - highlightInfo.reason.confusableWith.codePointAt
+      - isBasicASCII
+      - model.getValueInRange
+      - new MarkdownHover
+      - new MarkdownString
+      - "new MarkdownString('', true)\n\t\t\t\t.appendMarkdown"
+      - "new MarkdownString('', true)\n\t\t\t\t.appendMarkdown(reason)\n\t\t\t\t.appendText"
+      - "new MarkdownString('', true)\n\t\t\t\t.appendMarkdown(reason)\n\t\t\t\t.appendText(' ')\n\t\t\t\t.appendLink"
+      - new Set
+      - nls.localize
+      - result.push
+      - this._editor.getContribution
+      - this._editor.getModel
+      - this._editor.hasModel
+      - unicodeHighlighter.getDecorationInfo
+  - name: renderHoverParts
+    sig: 'renderHoverParts(context: IEditorHoverRenderContext, hoverParts: MarkdownHover[]): IRenderedHoverParts<MarkdownHover>'
+    lines:
+    - 510
+    - 512
+    detail:
+      calls:
+      - renderMarkdownHovers
+  - name: getAccessibleContent
+    sig: 'getAccessibleContent(hoverPart: MarkdownHover): string'
+    lines:
+    - 514
+    - 516
+    detail:
+      calls:
+      - hoverPart.contents.map
+      - hoverPart.contents.map(c => c.value).join
+  lines:
+  - 411
+  - 517
+- name: Decorations
+  kind: struct
+  fields:
+  - name: instance
+    type: any
+    default: new Decorations()
+  - name: map
+    type: any
+    default: new Map<string, ModelDecorationOptions>()
+  methods:
+  - name: getDecorationFromOptions
+    sig: 'getDecorationFromOptions(options: UnicodeHighlighterOptions): ModelDecorationOptions'
+    lines:
+    - 548
+    - 550
+    detail:
+      calls:
+      - this.getDecoration
+  - name: getDecoration
+    sig: 'getDecoration(hideInComments: boolean, hideInStrings: boolean): ModelDecorationOptions'
+    vis: private
+    lines:
+    - 552
+    - 569
+    detail:
+      calls:
+      - ModelDecorationOptions.createDynamic
+      - this.map.get
+      - this.map.set
+  lines:
+  - 543
+  - 570
+- name: IDisableUnicodeHighlightAction
+  kind: trait
+  decorators:
+  - interface
+  lines:
+  - 572
+  - 574
+- name: DisableHighlightingInCommentsAction
+  kind: struct
+  bases:
+  - EditorAction
+  - IDisableUnicodeHighlightAction
+  fields:
+  - name: ID
+    type: any
+    default: '''editor.action.unicodeHighlight.disableHighlightingInComments'''
+  - name: shortLabel
+    type: any
+    default: nls.localize('unicodeHighlight.disableHighlightingInComments.shortLabel', 'Disab...
+  methods:
+  - name: constructor
+    sig: constructor()
+    lines:
+    - 579
+    - 585
+    detail:
+      calls:
+      - nls.localize2
+      - super
+  - name: run
+    sig: 'run(accessor: ServicesAccessor | undefined, editor: ICodeEditor, args: any): Promise<void>'
+    is_async: true
+    lines:
+    - 587
+    - 592
+    detail:
+      calls:
+      - accessor?.get
+      - this.runAction
+  - name: runAction
+    sig: 'runAction(configurationService: IConfigurationService): Promise<void>'
+    is_async: true
+    lines:
+    - 594
+    - 596
+    detail:
+      calls:
+      - configurationService.updateValue
+  lines:
+  - 576
+  - 597
+- name: DisableHighlightingInStringsAction
+  kind: struct
+  bases:
+  - EditorAction
+  - IDisableUnicodeHighlightAction
+  fields:
+  - name: ID
+    type: any
+    default: '''editor.action.unicodeHighlight.disableHighlightingInStrings'''
+  - name: shortLabel
+    type: any
+    default: nls.localize('unicodeHighlight.disableHighlightingInStrings.shortLabel', 'Disabl...
+  methods:
+  - name: constructor
+    sig: constructor()
+    lines:
+    - 602
+    - 608
+    detail:
+      calls:
+      - nls.localize2
+      - super
+  - name: run
+    sig: 'run(accessor: ServicesAccessor | undefined, editor: ICodeEditor, args: any): Promise<void>'
+    is_async: true
+    lines:
+    - 610
+    - 615
+    detail:
+      calls:
+      - accessor?.get
+      - this.runAction
+  - name: runAction
+    sig: 'runAction(configurationService: IConfigurationService): Promise<void>'
+    is_async: true
+    lines:
+    - 617
+    - 619
+    detail:
+      calls:
+      - configurationService.updateValue
+  lines:
+  - 599
+  - 620
+- name: DisableHighlightingOfAmbiguousCharactersAction
+  kind: struct
+  bases:
+  - Action2
+  - IDisableUnicodeHighlightAction
+  fields:
+  - name: ID
+    type: any
+    default: '''editor.action.unicodeHighlight.disableHighlightingOfAmbiguousCharacters'''
+  - name: shortLabel
+    type: any
+    default: nls.localize('unicodeHighlight.disableHighlightingOfAmbiguousCharacters.shortLab...
+  methods:
+  - name: constructor
+    sig: constructor()
+    lines:
+    - 625
+    - 632
+    detail:
+      calls:
+      - nls.localize2
+      - super
+  - name: run
+    sig: 'run(accessor: ServicesAccessor | undefined, editor: ICodeEditor, args: any): Promise<void>'
+    is_async: true
+    lines:
+    - 634
+    - 639
+    detail:
+      calls:
+      - accessor?.get
+      - this.runAction
+  - name: runAction
+    sig: 'runAction(configurationService: IConfigurationService): Promise<void>'
+    is_async: true
+    lines:
+    - 641
+    - 643
+    detail:
+      calls:
+      - configurationService.updateValue
+  lines:
+  - 622
+  - 644
+- name: DisableHighlightingOfInvisibleCharactersAction
+  kind: struct
+  bases:
+  - Action2
+  - IDisableUnicodeHighlightAction
+  fields:
+  - name: ID
+    type: any
+    default: '''editor.action.unicodeHighlight.disableHighlightingOfInvisibleCharacters'''
+  - name: shortLabel
+    type: any
+    default: nls.localize('unicodeHighlight.disableHighlightingOfInvisibleCharacters.shortLab...
+  methods:
+  - name: constructor
+    sig: constructor()
+    lines:
+    - 649
+    - 656
+    detail:
+      calls:
+      - nls.localize2
+      - super
+  - name: run
+    sig: 'run(accessor: ServicesAccessor | undefined, editor: ICodeEditor, args: any): Promise<void>'
+    is_async: true
+    lines:
+    - 658
+    - 663
+    detail:
+      calls:
+      - accessor?.get
+      - this.runAction
+  - name: runAction
+    sig: 'runAction(configurationService: IConfigurationService): Promise<void>'
+    is_async: true
+    lines:
+    - 665
+    - 667
+    detail:
+      calls:
+      - configurationService.updateValue
+  lines:
+  - 646
+  - 668
+- name: DisableHighlightingOfNonBasicAsciiCharactersAction
+  kind: struct
+  bases:
+  - Action2
+  - IDisableUnicodeHighlightAction
+  fields:
+  - name: ID
+    type: any
+    default: '''editor.action.unicodeHighlight.disableHighlightingOfNonBasicAsciiCharacters'''
+  - name: shortLabel
+    type: any
+    default: nls.localize('unicodeHighlight.disableHighlightingOfNonBasicAsciiCharacters.shor...
+  methods:
+  - name: constructor
+    sig: constructor()
+    lines:
+    - 673
+    - 680
+    detail:
+      calls:
+      - nls.localize2
+      - super
+  - name: run
+    sig: 'run(accessor: ServicesAccessor | undefined, editor: ICodeEditor, args: any): Promise<void>'
+    is_async: true
+    lines:
+    - 682
+    - 687
+    detail:
+      calls:
+      - accessor?.get
+      - this.runAction
+  - name: runAction
+    sig: 'runAction(configurationService: IConfigurationService): Promise<void>'
+    is_async: true
+    lines:
+    - 689
+    - 691
+    detail:
+      calls:
+      - configurationService.updateValue
+  lines:
+  - 670
+  - 692
+- name: ShowExcludeOptionsArgs
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: codePoint
+    type: number
+  - name: reason
+    type: UnicodeHighlighterReason
+  - name: inComment
+    type: boolean
+  - name: inString
+    type: boolean
+  lines:
+  - 694
+  - 699
+- name: ShowExcludeOptions
+  kind: struct
+  bases:
+  - Action2
+  fields:
+  - name: ID
+    type: any
+    default: '''editor.action.unicodeHighlight.showExcludeOptions'''
+  methods:
+  - name: constructor
+    sig: constructor()
+    lines:
+    - 703
+    - 710
+    detail:
+      calls:
+      - nls.localize2
+      - super
+  - name: run
+    sig: 'run(accessor: ServicesAccessor | undefined, args: any): Promise<void>'
+    is_async: true
+    lines:
+    - 712
+    - 784
+    detail:
+      calls:
+      - String.fromCodePoint
+      - accessor!.get
+      - expectNever
+      - getExcludeCharFromBeingHighlightedLabel
+      - getTitle
+      - new DisableHighlightingInCommentsAction
+      - new DisableHighlightingInStringsAction
+      - new DisableHighlightingOfAmbiguousCharactersAction
+      - new DisableHighlightingOfInvisibleCharactersAction
+      - new DisableHighlightingOfNonBasicAsciiCharactersAction
+      - nls.localize
+      - options.push
+      - quickPickService.pick
+      - result.run
+  lines:
+  - 701
+  - 785
+functions:
+- name: resolveOptions
+  sig: 'resolveOptions(trusted: boolean, options: InternalUnicodeHighlightOptions): ResolvedOptions'
+  lines:
+  - 203
+  - 213
+  detail: {}
+- name: codePointToHex
+  sig: 'codePointToHex(codePoint: number): string'
+  lines:
+  - 519
+  - 521
+  detail:
+    calls:
+    - codePoint.toString
+    - codePoint.toString(16).padStart
+- name: formatCodePointMarkdown
+  sig: 'formatCodePointMarkdown(codePoint: number)'
+  lines:
+  - 523
+  - 530
+  detail:
+    calls:
+    - InvisibleCharacters.isInvisibleCharacter
+    - codePointToHex
+    - renderCodePointAsInlineCode
+- name: renderCodePointAsInlineCode
+  sig: 'renderCodePointAsInlineCode(codePoint: number): string'
+  lines:
+  - 532
+  - 537
+  detail:
+    calls:
+    - String.fromCodePoint
+- name: computeReason
+  sig: 'computeReason(char: string, options: UnicodeHighlighterOptions): UnicodeHighlighterReason | null'
+  lines:
+  - 539
+  - 541
+  detail:
+    calls:
+    - UnicodeTextModelHighlighter.computeUnicodeHighlightReason
+- name: excludeCharFromBeingHighlighted
+  sig: 'excludeCharFromBeingHighlighted(configurationService: IConfigurationService, charCodes: number[])'
+  is_async: true
+  lines:
+  - 787
+  - 802
+  detail:
+    calls:
+    - String.fromCodePoint
+    - configurationService.getValue
+    - configurationService.updateValue
+- name: excludeLocaleFromBeingHighlighted
+  sig: 'excludeLocaleFromBeingHighlighted(configurationService: IConfigurationService, locales: string[])'
+  is_async: true
+  lines:
+  - 804
+  - 820
+  detail:
+    calls:
+    - Object.assign
+    - configurationService.inspect
+    - configurationService.updateValue
+- name: expectNever
+  sig: 'expectNever(value: never)'
+  lines:
+  - 822
+  - 824
+exports:
+- name: UnicodeHighlighter
+  kind: type
+- name: UnicodeHighlighterDecorationInfo
+  kind: type
+- name: Resolve
+  kind: type
+- name: ResolvedOptions
+  kind: type
+- name: DocumentUnicodeHighlighter
+  kind: type
+- name: ViewportUnicodeHighlighter
+  kind: type
+- name: UnicodeHighlighterHover
+  kind: type
+- name: UnicodeHighlighterHoverParticipant
+  kind: type
+- name: Decorations
+  kind: type
+- name: IDisableUnicodeHighlightAction
+  kind: type
+- name: DisableHighlightingInCommentsAction
+  kind: type
+- name: DisableHighlightingInStringsAction
+  kind: type
+- name: DisableHighlightingOfAmbiguousCharactersAction
+  kind: type
+- name: DisableHighlightingOfInvisibleCharactersAction
+  kind: type
+- name: DisableHighlightingOfNonBasicAsciiCharactersAction
+  kind: type
+- name: ShowExcludeOptionsArgs
+  kind: type
+- name: ShowExcludeOptions
+  kind: type
+- name: resolveOptions
+  kind: func
+- name: codePointToHex
+  kind: func
+- name: formatCodePointMarkdown
+  kind: func
+- name: renderCodePointAsInlineCode
+  kind: func
+- name: computeReason
+  kind: func
+- name: excludeCharFromBeingHighlighted
+  kind: func
+- name: excludeLocaleFromBeingHighlighted
+  kind: func
+- name: expectNever
+  kind: func
+- name: warningIcon
+  kind: data
+- name: configureUnicodeHighlightOptionsStr
+  kind: data

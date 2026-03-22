@@ -1,0 +1,362 @@
+## Roska File Descriptor — tsServer/serverProcess.electron.ts
+file: tsServer/serverProcess.electron.ts
+lines: 296
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: child_process.child_process
+- sym: fs.fs
+- sym: path.path
+- sym: stream.Readable
+  kind: typing
+- sym: vscode.vscode
+- sym: ../configuration/configuration.TypeScriptServiceConfiguration
+- sym: ../utils/dispose.Disposable
+- sym: ./api.API
+- sym: ./protocol/protocol.Proto
+- sym: ./server.TsServerLog
+- sym: ./server.TsServerProcess
+- sym: ./server.TsServerProcessFactory
+- sym: ./server.TsServerProcessKind
+- sym: ./versionManager.TypeScriptVersionManager
+- sym: ./versionProvider.TypeScriptVersion
+- sym: ./nodeManager.NodeVersionManager
+data:
+- name: defaultSize
+  type: number
+  val: '8192'
+- name: contentLength
+  type: string
+  val: '''Content-Length: '''
+- name: contentLengthSize
+  type: number
+  val: Buffer.byteLength(contentLength, 'utf8')
+- name: blank
+  type: number
+  val: Buffer.from(' ', 'utf8')[0]
+- name: backslashR
+  type: number
+  val: Buffer.from('\r', 'utf8')[0]
+- name: backslashN
+  type: number
+  val: Buffer.from('\n', 'utf8')[0]
+types:
+- name: ProtocolBuffer
+  kind: struct
+  fields:
+  - name: index
+    type: number
+    default: '0'
+  - name: buffer
+    type: Buffer
+    default: Buffer.allocUnsafe(defaultSize)
+  methods:
+  - name: append
+    sig: 'append(data: string | Buffer): void'
+    lines:
+    - 33
+    - 52
+    detail:
+      calls:
+      - Buffer.allocUnsafe
+      - Buffer.concat
+      - Buffer.from
+      - Buffer.isBuffer
+      - Math.ceil
+      - this.buffer.slice
+      - toAppend.copy
+  - name: tryReadContentLength
+    sig: 'tryReadContentLength(): number'
+    lines:
+    - 54
+    - 77
+    detail:
+      calls:
+      - parseInt
+      - this.buffer.slice
+      - this.buffer.toString
+  - name: tryReadContent
+    sig: 'tryReadContent(length: number): string | null'
+    lines:
+    - 79
+    - 91
+    detail:
+      calls:
+      - this.buffer.copy
+      - this.buffer.toString
+  lines:
+  - 28
+  - 92
+- name: Reader
+  kind: struct
+  bases:
+  - Disposable
+  fields:
+  - name: buffer
+    type: ProtocolBuffer
+    default: new ProtocolBuffer()
+  - name: nextMessageLength
+    type: number
+    default: '-1'
+  - name: _onError
+    type: any
+    default: this._register(new vscode.EventEmitter<Error>())
+  - name: onError
+    type: any
+    default: this._onError.event
+  - name: _onData
+    type: any
+    default: this._register(new vscode.EventEmitter<T>())
+  - name: onData
+    type: any
+    default: this._onData.event
+  methods:
+  - name: constructor
+    sig: 'constructor(readable: Readable)'
+    lines:
+    - 99
+    - 102
+    detail:
+      calls:
+      - readable.on
+      - super
+  - name: onLengthData
+    sig: 'onLengthData(data: Buffer | string): void'
+    vis: private
+    lines:
+    - 110
+    - 135
+    detail:
+      calls:
+      - JSON.parse
+      - this._onData.fire
+      - this._onError.fire
+      - this.buffer.append
+      - this.buffer.tryReadContent
+      - this.buffer.tryReadContentLength
+  lines:
+  - 94
+  - 136
+- name: IpcChildServerProcess
+  kind: struct
+  bases:
+  - Disposable
+  - TsServerProcess
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tprivate readonly _process: child_process.ChildProcess,\n\t)"
+    lines:
+    - 192
+    - 196
+    detail:
+      calls:
+      - super
+  - name: write
+    sig: 'write(serverRequest: Proto.Request): void'
+    lines:
+    - 198
+    - 200
+    detail:
+      calls:
+      - this._process.send
+  - name: onData
+    sig: 'onData(handler: (data: Proto.Response) => void): void'
+    lines:
+    - 202
+    - 204
+    detail:
+      calls:
+      - this._process.on
+  - name: onExit
+    sig: 'onExit(handler: (code: number | null, signal: string | null) => void): void'
+    lines:
+    - 206
+    - 208
+    detail:
+      calls:
+      - this._process.on
+  - name: onError
+    sig: 'onError(handler: (err: Error) => void): void'
+    lines:
+    - 210
+    - 212
+    detail:
+      calls:
+      - this._process.on
+  - name: kill
+    sig: 'kill(): void'
+    lines:
+    - 214
+    - 216
+    detail:
+      calls:
+      - this._process.kill
+  lines:
+  - 191
+  - 217
+- name: StdioChildServerProcess
+  kind: struct
+  bases:
+  - Disposable
+  - TsServerProcess
+  fields:
+  - name: _reader
+    type: Reader<Proto.Response>
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tprivate readonly _process: child_process.ChildProcess,\n\t)"
+    lines:
+    - 222
+    - 227
+    detail:
+      calls:
+      - new Reader
+      - super
+      - this._register
+  - name: write
+    sig: 'write(serverRequest: Proto.Request): void'
+    lines:
+    - 229
+    - 231
+    detail:
+      calls:
+      - JSON.stringify
+      - this._process.stdin!.write
+  - name: onData
+    sig: 'onData(handler: (data: Proto.Response) => void): void'
+    lines:
+    - 233
+    - 235
+    detail:
+      calls:
+      - this._reader.onData
+  - name: onExit
+    sig: 'onExit(handler: (code: number | null, signal: string | null) => void): void'
+    lines:
+    - 237
+    - 239
+    detail:
+      calls:
+      - this._process.on
+  - name: onError
+    sig: 'onError(handler: (err: Error) => void): void'
+    lines:
+    - 241
+    - 244
+    detail:
+      calls:
+      - this._process.on
+      - this._reader.onError
+  - name: kill
+    sig: 'kill(): void'
+    lines:
+    - 246
+    - 249
+    detail:
+      calls:
+      - this._process.kill
+      - this._reader.dispose
+  lines:
+  - 219
+  - 250
+- name: ElectronServiceProcessFactory
+  kind: struct
+  bases:
+  - TsServerProcessFactory
+  methods:
+  - name: fork
+    sig: "fork(\n\t\tversion: TypeScriptVersion,\n\t\targs: readonly string[],\n\t\tkind: TsServerProcessKind,\n\t\tconfiguration: TypeScriptServiceConfiguration,\n\t\tversionManager: TypeScriptVersionManager,\n\t\tnodeVersionManager: NodeVersionManager,\n\t\t_tsserverLog: TsServerLog | undefined,\n\t): TsServerProcess"
+    lines:
+    - 253
+    - 295
+    detail:
+      calls:
+      - child_process.fork
+      - child_process.spawn
+      - fs.existsSync
+      - generatePatchedEnv
+      - getExecArgv
+      - new IpcChildServerProcess
+      - new StdioChildServerProcess
+      - runtimeArgs.push
+      - version.apiVersion?.gte
+      - versionManager.reset
+      - vscode.l10n.t
+      - vscode.window.showWarningMessage
+  lines:
+  - 252
+  - 296
+functions:
+- name: generatePatchedEnv
+  sig: 'generatePatchedEnv(env: any, modulePath: string, hasExecPath: boolean): any'
+  lines:
+  - 138
+  - 150
+  detail:
+    calls:
+    - Object.assign
+    - path.join
+- name: getExecArgv
+  sig: 'getExecArgv(kind: TsServerProcessKind, configuration: TypeScriptServiceConfiguration): string[]'
+  lines:
+  - 152
+  - 166
+  detail:
+    calls:
+    - args.push
+    - getDebugPort
+    - getTssDebugBrk
+- name: getDebugPort
+  sig: 'getDebugPort(kind: TsServerProcessKind): number | undefined'
+  lines:
+  - 168
+  - 181
+  detail:
+    calls:
+    - getTssDebug
+    - getTssDebugBrk
+    - isNaN
+    - parseInt
+- name: getTssDebug
+  sig: 'getTssDebug(): string | undefined'
+  lines:
+  - 183
+  - 185
+- name: getTssDebugBrk
+  sig: 'getTssDebugBrk(): string | undefined'
+  lines:
+  - 187
+  - 189
+exports:
+- name: ProtocolBuffer
+  kind: type
+- name: Reader
+  kind: type
+- name: IpcChildServerProcess
+  kind: type
+- name: StdioChildServerProcess
+  kind: type
+- name: ElectronServiceProcessFactory
+  kind: type
+- name: generatePatchedEnv
+  kind: func
+- name: getExecArgv
+  kind: func
+- name: getDebugPort
+  kind: func
+- name: getTssDebug
+  kind: func
+- name: getTssDebugBrk
+  kind: func
+- name: defaultSize
+  kind: data
+- name: contentLength
+  kind: data
+- name: contentLengthSize
+  kind: data
+- name: blank
+  kind: data
+- name: backslashR
+  kind: data
+- name: backslashN
+  kind: data

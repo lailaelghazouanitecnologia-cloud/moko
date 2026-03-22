@@ -1,0 +1,439 @@
+## Roska File Descriptor — services/notebookKernelServiceImpl.ts
+file: services/notebookKernelServiceImpl.ts
+lines: 421
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: ../../../../../base/common/event.js.Event
+- sym: ../../../../../base/common/event.js.Emitter
+- sym: ../../../../../base/common/lifecycle.js.Disposable
+- sym: ../../../../../base/common/lifecycle.js.IDisposable
+- sym: ../../../../../base/common/lifecycle.js.toDisposable
+- sym: ../../common/notebookCommon.js.INotebookKernelSourceAction
+- sym: ../../common/notebookCommon.js.INotebookTextModel
+- sym: ../../common/notebookKernelService.js.INotebookKernel
+- sym: ../../common/notebookKernelService.js.ISelectedNotebooksChangeEvent
+- sym: ../../common/notebookKernelService.js.INotebookKernelMatchResult
+- sym: ../../common/notebookKernelService.js.INotebookKernelService
+- sym: ../../common/notebookKernelService.js.INotebookTextModelLike
+- sym: ../../common/notebookKernelService.js.ISourceAction
+- sym: ../../common/notebookKernelService.js.INotebookSourceActionChangeEvent
+- sym: ../../common/notebookKernelService.js.INotebookKernelDetectionTask
+- sym: ../../common/notebookKernelService.js.IKernelSourceActionProvider
+- sym: ../../../../../base/common/map.js.LRUCache
+- sym: ../../../../../base/common/map.js.ResourceMap
+- sym: ../../../../../platform/storage/common/storage.js.IStorageService
+- sym: ../../../../../platform/storage/common/storage.js.StorageScope
+- sym: ../../../../../platform/storage/common/storage.js.StorageTarget
+- sym: ../../../../../base/common/uri.js.URI
+- sym: ../../common/notebookService.js.INotebookService
+- sym: ../../../../../platform/actions/common/actions.js.IMenu
+- sym: ../../../../../platform/actions/common/actions.js.IMenuService
+- sym: ../../../../../platform/actions/common/actions.js.MenuId
+- sym: ../../../../../platform/contextkey/common/contextkey.js.IContextKeyService
+- sym: ../../../../../base/common/actions.js.IAction
+- sym: ../../../../../base/common/marshallingIds.js.MarshalledId
+- sym: ../../../../../base/common/network.js.Schemas
+- sym: ../../../../../base/browser/dom.js.getActiveWindow
+- sym: ../../../../../base/browser/dom.js.runWhenWindowIdle
+types:
+- name: KernelInfo
+  kind: struct
+  fields:
+  - name: _logicClock
+    type: any
+    default: '0'
+  - name: kernel
+    type: INotebookKernel
+  - name: score
+    type: number
+  - name: time
+    type: number
+  - name: notebookPriorities
+    type: any
+    default: new ResourceMap<number>()
+  methods:
+  - name: constructor
+    sig: 'constructor(kernel: INotebookKernel)'
+    lines:
+    - 31
+    - 35
+    detail: {}
+  lines:
+  - 21
+  - 36
+- name: NotebookTextModelLikeId
+  kind: struct
+  methods:
+  - name: str
+    sig: 'str(k: INotebookTextModelLike): string'
+    decorators:
+    - static
+    lines:
+    - 39
+    - 41
+    detail:
+      calls:
+      - k.uri.toString
+  - name: obj
+    sig: 'obj(s: string): INotebookTextModelLike'
+    decorators:
+    - static
+    lines:
+    - 42
+    - 48
+    detail:
+      calls:
+      - URI.parse
+      - s.indexOf
+      - s.substring
+  lines:
+  - 38
+  - 49
+- name: SourceAction
+  kind: struct
+  bases:
+  - Disposable
+  - ISourceAction
+  fields:
+  - name: execution
+    type: Promise<void> | undefined
+  - name: _onDidChangeState
+    type: any
+    default: this._register(new Emitter<void>())
+  - name: onDidChangeState
+    type: any
+    default: this._onDidChangeState.event
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\treadonly action: IAction,\n\t\treadonly model: INotebookTextModelLike,\n\t\treadonly isPrimary: boolean\n\t)"
+    lines:
+    - 56
+    - 62
+    detail:
+      calls:
+      - super
+  - name: runAction
+    sig: runAction()
+    is_async: true
+    lines:
+    - 64
+    - 74
+    detail:
+      calls:
+      - this._onDidChangeState.fire
+      - this._runAction
+  - name: _runAction
+    sig: '_runAction(): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 76
+    - 86
+    detail:
+      calls:
+      - console.warn
+      - this.action.run
+  lines:
+  - 51
+  - 87
+- name: IKernelInfoCache
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: menu
+    type: IMenu
+  - name: actions
+    type: '[ISourceAction, IDisposable][]'
+  lines:
+  - 89
+  - 93
+- name: NotebookKernelService
+  kind: struct
+  ctx: a notebook has one kernel, a kernel has N notebooks
+  bases:
+  - Disposable
+  - INotebookKernelService
+  fields:
+  - name: _serviceBrand
+    type: undefined
+  - name: _kernels
+    type: any
+    default: new Map<string, KernelInfo>()
+  - name: _notebookBindings
+    type: any
+    default: new LRUCache<string, string>(1000, 0.7)
+  - name: _onDidChangeNotebookKernelBinding
+    type: any
+    default: this._register(new Emitter<ISelectedNotebooksChangeEvent>())
+  - name: _onDidAddKernel
+    type: any
+    default: this._register(new Emitter<INotebookKernel>())
+  - name: _onDidRemoveKernel
+    type: any
+    default: this._register(new Emitter<INotebookKernel>())
+  - name: _onDidChangeNotebookAffinity
+    type: any
+    default: this._register(new Emitter<void>())
+  - name: _onDidChangeSourceActions
+    type: any
+    default: this._register(new Emitter<INotebookSourceActionChangeEvent>())
+  - name: _onDidNotebookVariablesChange
+    type: any
+    default: this._register(new Emitter<URI>())
+  - name: _kernelSources
+    type: any
+    default: new Map<string, IKernelInfoCache>()
+  - name: _kernelSourceActionsUpdates
+    type: any
+    default: new Map<string, IDisposable>()
+  - name: _kernelDetectionTasks
+    type: any
+    default: new Map<string, INotebookKernelDetectionTask[]>()
+  - name: _onDidChangeKernelDetectionTasks
+    type: any
+    default: this._register(new Emitter<string>())
+  - name: _kernelSourceActionProviders
+    type: any
+    default: new Map<string, IKernelSourceActionProvider[]>()
+  - name: onDidChangeSelectedNotebooks
+    type: Event<ISelectedNotebooksChangeEvent>
+    default: this._onDidChangeNotebookKernelBinding.event
+  - name: onDidAddKernel
+    type: Event<INotebookKernel>
+    default: this._onDidAddKernel.event
+  - name: onDidRemoveKernel
+    type: Event<INotebookKernel>
+    default: this._onDidRemoveKernel.event
+  - name: onDidChangeNotebookAffinity
+    type: Event<void>
+    default: this._onDidChangeNotebookAffinity.event
+  - name: onDidChangeSourceActions
+    type: Event<INotebookSourceActionChangeEvent>
+    default: this._onDidChangeSourceActions.event
+  - name: onDidChangeKernelDetectionTasks
+    type: Event<string>
+    default: this._onDidChangeKernelDetectionTasks.event
+  - name: onDidNotebookVariablesUpdate
+    type: Event<URI>
+    default: this._onDidNotebookVariablesChange.event
+  - name: _storageNotebookBinding
+    type: any
+    default: '''notebook.controller2NotebookBindings'''
+  - name: _persistSoonHandle
+    type: IDisposable
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\t@INotebookService private readonly _notebookService: INotebookService,\n\t\t@IStorageService private readonly _storageService: IStorageService,\n\t\t@IMenuService private readonly _menuService: IMenuService,\n\t\t@IContextKeyService private readonly _contextKeyService: IContextKeyService\n\t)"
+    lines:
+    - 126
+    - 154
+    detail:
+      calls:
+      - JSON.parse
+      - _notebookService.onDidAddNotebookDocument
+      - _notebookService.onWillRemoveNotebookDocument
+      - super
+      - this._notebookBindings.fromJSON
+      - this._register
+      - this._storageService.get
+  - name: dispose
+    sig: dispose()
+    lines:
+    - 156
+    - 167
+    detail:
+      calls:
+      - super.dispose
+      - this._kernelSourceActionsUpdates.clear
+      - this._kernelSourceActionsUpdates.forEach
+      - this._kernelSources.forEach
+      - this._kernels.clear
+  - name: _tryAutoBindNotebook
+    sig: '_tryAutoBindNotebook(notebook: INotebookTextModel, onlyThisKernel?: INotebookKernel): void'
+    vis: private
+    lines:
+    - 188
+    - 203
+    detail:
+      calls:
+      - NotebookKernelService._score
+      - NotebookTextModelLikeId.str
+      - this._kernels.get
+      - this._notebookBindings.get
+      - this._onDidChangeNotebookKernelBinding.fire
+  - name: notifyVariablesChange
+    sig: 'notifyVariablesChange(notebookUri: URI): void'
+    lines:
+    - 205
+    - 207
+    detail:
+      calls:
+      - this._onDidNotebookVariablesChange.fire
+  - name: registerKernel
+    sig: 'registerKernel(kernel: INotebookKernel): IDisposable'
+    lines:
+    - 209
+    - 233
+    detail:
+      calls:
+      - new Error
+      - new KernelInfo
+      - this._kernels.has
+      - this._kernels.set
+      - this._notebookService.getNotebookTextModels
+      - this._onDidAddKernel.fire
+      - this._tryAutoBindNotebook
+      - toDisposable
+  - name: getMatchingKernel
+    sig: 'getMatchingKernel(notebook: INotebookTextModelLike): INotebookKernelMatchResult'
+    lines:
+    - 235
+    - 260
+    detail:
+      calls:
+      - NotebookKernelService._score
+      - NotebookTextModelLikeId.str
+      - info.notebookPriorities.get
+      - "kernels\n\t\t\t.sort"
+      - kernels.filter
+      - kernels.filter(item => item.instanceAffinity < 0).map
+      - kernels.filter(item => item.instanceAffinity > 1).map
+      - kernels.map
+      - kernels.push
+      - this._kernels.get
+      - this._kernels.values
+      - this._notebookBindings.get
+  - name: getSelectedOrSuggestedKernel
+    sig: 'getSelectedOrSuggestedKernel(notebook: INotebookTextModel): INotebookKernel | undefined'
+    lines:
+    - 262
+    - 274
+    detail:
+      calls:
+      - info.all.filter
+      - this.getMatchingKernel
+  - name: selectKernelForNotebook
+    sig: 'selectKernelForNotebook(kernel: INotebookKernel | undefined, notebook: INotebookTextModelLike): void'
+    lines:
+    - 278
+    - 290
+    detail:
+      calls:
+      - NotebookTextModelLikeId.str
+      - this._notebookBindings.delete
+      - this._notebookBindings.get
+      - this._notebookBindings.set
+      - this._onDidChangeNotebookKernelBinding.fire
+      - this._persistMementos
+  - name: preselectKernelForNotebook
+    sig: 'preselectKernelForNotebook(kernel: INotebookKernel, notebook: INotebookTextModelLike): void'
+    lines:
+    - 292
+    - 299
+    detail:
+      calls:
+      - NotebookTextModelLikeId.str
+      - this._notebookBindings.get
+      - this._notebookBindings.set
+      - this._persistMementos
+  - name: updateKernelNotebookAffinity
+    sig: 'updateKernelNotebookAffinity(kernel: INotebookKernel, notebook: URI, preference: number | undefined): void'
+    lines:
+    - 301
+    - 312
+    detail:
+      calls:
+      - info.notebookPriorities.delete
+      - info.notebookPriorities.set
+      - new Error
+      - this._kernels.get
+      - this._onDidChangeNotebookAffinity.fire
+  - name: getRunningSourceActions
+    sig: 'getRunningSourceActions(notebook: INotebookTextModelLike)'
+    lines:
+    - 314
+    - 322
+    detail:
+      calls:
+      - NotebookTextModelLikeId.str
+      - existingInfo.actions.filter
+      - existingInfo.actions.filter(action => action[0].execution).map
+      - this._kernelSources.get
+  - name: getSourceActions
+    sig: 'getSourceActions(notebook: INotebookTextModelLike, contextKeyService: IContextKeyService | undefined): ISourceAction[]'
+    lines:
+    - 324
+    - 365
+    detail:
+      calls:
+      - NotebookTextModelLikeId.str
+      - existingInfo.actions.map
+      - info.actions.map
+      - loadActionsFromMenu
+      - sourceMenu.onDidChange
+      - this._kernelSourceActionsUpdates.get
+      - this._kernelSourceActionsUpdates.get(id)?.dispose
+      - this._kernelSourceActionsUpdates.set
+      - this._kernelSources.get
+      - this._menuService.createMenu
+      - this._register
+  - name: registerNotebookKernelDetectionTask
+    sig: 'registerNotebookKernelDetectionTask(task: INotebookKernelDetectionTask): IDisposable'
+    lines:
+    - 367
+    - 382
+    detail:
+      calls:
+      - all.push
+      - this._kernelDetectionTasks.get
+      - this._kernelDetectionTasks.set
+      - this._onDidChangeKernelDetectionTasks.fire
+      - toDisposable
+  - name: getKernelDetectionTasks
+    sig: 'getKernelDetectionTasks(notebook: INotebookTextModelLike): INotebookKernelDetectionTask[]'
+    lines:
+    - 384
+    - 386
+    detail:
+      calls:
+      - this._kernelDetectionTasks.get
+  - name: registerKernelSourceActionProvider
+    sig: 'registerKernelSourceActionProvider(viewType: string, provider: IKernelSourceActionProvider): IDisposable'
+    lines:
+    - 388
+    - 408
+    detail:
+      calls:
+      - provider.onDidChangeSourceActions
+      - providers.push
+      - this._kernelSourceActionProviders.get
+      - this._kernelSourceActionProviders.set
+      - this._onDidChangeSourceActions.fire
+      - toDisposable
+  - name: getKernelSourceActions2
+    sig: 'getKernelSourceActions2(notebook: INotebookTextModelLike): Promise<INotebookKernelSourceAction[]>'
+    lines:
+    - 413
+    - 420
+    detail:
+      calls:
+      - Promise.all
+      - Promise.all(promises).then
+      - providers.map
+      - this._kernelSourceActionProviders.get
+  lines:
+  - 95
+  - 421
+exports:
+- name: KernelInfo
+  kind: type
+- name: NotebookTextModelLikeId
+  kind: type
+- name: SourceAction
+  kind: type
+- name: IKernelInfoCache
+  kind: type
+- name: NotebookKernelService
+  kind: type

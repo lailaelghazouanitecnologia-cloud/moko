@@ -1,0 +1,535 @@
+## Roska File Descriptor — browser/accessibilitySignalService.ts
+file: browser/accessibilitySignalService.ts
+lines: 657
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: ../../../base/common/cache.js.CachedFunction
+- sym: ../../../base/common/equals.js.getStructuralKey
+- sym: ../../../base/common/event.js.Event
+- sym: ../../../base/common/event.js.IValueWithChangeEvent
+- sym: ../../../base/common/lifecycle.js.Disposable
+- sym: ../../../base/common/lifecycle.js.IDisposable
+- sym: ../../../base/common/lifecycle.js.toDisposable
+- sym: ../../../base/common/network.js.FileAccess
+- sym: ../../../base/common/observable.js.derived
+- sym: ../../../base/common/observable.js.observableFromEvent
+- sym: ../../../base/common/observable.js.ValueWithChangeEventFromObservable
+- sym: ../../../nls.js.localize
+- sym: ../../accessibility/common/accessibility.js.IAccessibilityService
+- sym: ../../configuration/common/configuration.js.IConfigurationService
+- sym: ../../instantiation/common/instantiation.js.createDecorator
+- sym: ../../observable/common/platformObservableUtils.js.observableConfigValue
+- sym: ../../telemetry/common/telemetry.js.ITelemetryService
+data:
+- name: IAccessibilitySignalService
+  type: any
+  val: createDecorator<IAccessibilitySignalService>('accessibilitySignalService')
+- name: AcknowledgeDocCommentsToken
+  type: any
+  val: Symbol('AcknowledgeDocCommentsToken')
+types:
+- name: IAccessibilitySignalService
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: readonly
+    type: undefined
+  - name: playSignal
+    type: 'method: playSignal(signal: AccessibilitySignal, options?: IAccessbilitySignalOptions): Promise<void>'
+  - name: playSignals
+    type: 'method: playSignals(signals: (AccessibilitySignal | { signal: AccessibilitySignal; source: string })[]): Promise<void>'
+  - name: playSignalLoop
+    type: 'method: playSignalLoop(signal: AccessibilitySignal, milliseconds: number): IDisposable'
+  - name: getEnabledState
+    type: 'method: getEnabledState(signal: AccessibilitySignal, userGesture: boolean, modality?: AccessibilityModality | undefined): IValueWithChangeEvent<boolean>'
+  - name: getDelayMs
+    type: 'method: getDelayMs(signal: AccessibilitySignal, modality: AccessibilityModality, mode: ''line'' | ''positional''): number'
+  - name: playSound
+    type: 'method: playSound(signal: Sound, allowManyInParallel: boolean, token: typeof AcknowledgeDocCommentsToken): Promise<void>'
+  - name: isSoundEnabled
+    type: 'method: isSoundEnabled(signal: AccessibilitySignal): boolean'
+  - name: isAnnouncementEnabled
+    type: 'method: isAnnouncementEnabled(signal: AccessibilitySignal): boolean'
+  - name: onSoundEnabledChanged
+    type: 'method: onSoundEnabledChanged(signal: AccessibilitySignal): Event<void>'
+  lines:
+  - 21
+  - 41
+- name: AccessibilityModality
+  kind: enum
+  decorators:
+  - type
+  variants:
+  - name: '''sound'''
+  - name: '''announcement'''
+  lines:
+  - 46
+  - 46
+- name: IAccessbilitySignalOptions
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: allowManyInParallel
+    type: boolean
+  - name: modality
+    type: AccessibilityModality
+  - name: source
+    type: string
+  - name: userGesture
+    type: boolean
+  lines:
+  - 48
+  - 64
+- name: AccessibilitySignalService
+  kind: struct
+  bases:
+  - Disposable
+  - IAccessibilitySignalService
+  fields:
+  - name: _serviceBrand
+    type: undefined
+  - name: sounds
+    type: Map<string, HTMLAudioElement>
+    default: new Map()
+  - name: screenReaderAttached
+    type: any
+    default: "observableFromEvent(this,\n\t\tthis.accessibilityService.onDidChangeScreenReaderOpt..."
+  - name: sentTelemetry
+    type: any
+    default: new Set<string>()
+  - name: playingSounds
+    type: any
+    default: new Set<Sound>()
+  - name: _signalConfigValue
+    type: any
+    default: "new CachedFunction((signal: AccessibilitySignal) => observableConfigValue<{\n\t\tso..."
+  - name: _signalEnabledState
+    type: any
+    default: "new CachedFunction(\n\t\t{ getCacheKey: getStructuralKey },\n\t\t(arg: { signal: Acces..."
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\t@IConfigurationService private readonly configurationService: IConfigurationService,\n\t\t@IAccessibilityService private readonly accessibilityService: IAccessibilityService,\n\t\t@ITelemetryService private readonly telemetryService: ITelemetryService,\n\t)"
+    lines:
+    - 75
+    - 81
+    detail:
+      calls:
+      - super
+  - name: getEnabledState
+    sig: 'getEnabledState(signal: AccessibilitySignal, userGesture: boolean, modality?: AccessibilityModality | undefined): IValueWithChangeEvent<boolean>'
+    lines:
+    - 83
+    - 85
+    detail:
+      calls:
+      - new ValueWithChangeEventFromObservable
+      - this._signalEnabledState.get
+  - name: playSignal
+    sig: 'playSignal(signal: AccessibilitySignal, options: IAccessbilitySignalOptions = {}): Promise<void>'
+    is_async: true
+    lines:
+    - 87
+    - 99
+    detail:
+      calls:
+      - signal.sound.getSound
+      - this.accessibilityService.status
+      - this.isAnnouncementEnabled
+      - this.isSoundEnabled
+      - this.playSound
+      - this.sendSignalTelemetry
+  - name: playSignals
+    sig: 'playSignals(signals: (AccessibilitySignal | { signal: AccessibilitySignal; source: string })[]): Promise<void>'
+    is_async: true
+    lines:
+    - 101
+    - 115
+    detail:
+      calls:
+      - Array.from
+      - Array.from(sounds).map
+      - Promise.all
+      - announcements.join
+      - new Set
+      - signalArray.filter
+      - signalArray.filter(signal => this.isAnnouncementEnabled(signal)).map
+      - signalArray.filter(signal => this.isSoundEnabled(signal)).map
+      - signals.map
+      - this.accessibilityService.status
+      - this.sendSignalTelemetry
+  - name: sendSignalTelemetry
+    sig: 'sendSignalTelemetry(signal: AccessibilitySignal, source: string | undefined): void'
+    vis: private
+    lines:
+    - 118
+    - 144
+    detail:
+      calls:
+      - this.accessibilityService.isScreenReaderOptimized
+      - this.getVolumeInPercent
+      - this.sentTelemetry.add
+      - this.sentTelemetry.has
+      - this.telemetryService.publicLog2
+  - name: getVolumeInPercent
+    sig: 'getVolumeInPercent(): number'
+    vis: private
+    lines:
+    - 146
+    - 153
+    detail:
+      calls:
+      - Math.max
+      - Math.min
+      - this.configurationService.getValue
+  - name: playSound
+    sig: 'playSound(sound: Sound, allowManyInParallel = false): Promise<void>'
+    is_async: true
+    lines:
+    - 157
+    - 182
+    detail:
+      calls:
+      - FileAccess.asBrowserUri
+      - FileAccess.asBrowserUri(`vs/platform/accessibilitySignal/browser/media/${sound.fileName}`).toString
+      - console.error
+      - e.message.includes
+      - playAudio
+      - sound.play
+      - this.getVolumeInPercent
+      - this.playingSounds.add
+      - this.playingSounds.delete
+      - this.playingSounds.has
+      - this.sounds.get
+      - this.sounds.set
+  - name: playSignalLoop
+    sig: 'playSignalLoop(signal: AccessibilitySignal, milliseconds: number): IDisposable'
+    lines:
+    - 184
+    - 199
+    detail:
+      calls:
+      - playSound
+      - toDisposable
+  - name: isAnnouncementEnabled
+    sig: 'isAnnouncementEnabled(signal: AccessibilitySignal, userGesture?: boolean): boolean'
+    lines:
+    - 228
+    - 233
+    detail:
+      calls:
+      - this._signalEnabledState.get
+      - 'this._signalEnabledState.get({ signal, userGesture: !!userGesture, modality: ''announcement'' }).get'
+  - name: isSoundEnabled
+    sig: 'isSoundEnabled(signal: AccessibilitySignal, userGesture?: boolean): boolean'
+    lines:
+    - 235
+    - 237
+    detail:
+      calls:
+      - this._signalEnabledState.get
+      - 'this._signalEnabledState.get({ signal, userGesture: !!userGesture, modality: ''sound'' }).get'
+  - name: onSoundEnabledChanged
+    sig: 'onSoundEnabledChanged(signal: AccessibilitySignal): Event<void>'
+    lines:
+    - 239
+    - 241
+    detail:
+      calls:
+      - this.getEnabledState
+  - name: getDelayMs
+    sig: 'getDelayMs(signal: AccessibilitySignal, modality: AccessibilityModality, mode: ''line'' | ''positional''): number'
+    lines:
+    - 243
+    - 256
+    detail:
+      calls:
+      - this.configurationService.getValue
+  lines:
+  - 66
+  - 257
+- name: EnabledState
+  kind: enum
+  decorators:
+  - type
+  variants:
+  - name: '''never'''
+  lines:
+  - 259
+  - 259
+- name: Sound
+  kind: struct
+  fields:
+  - name: error
+    type: any
+    default: 'Sound.register({ fileName: ''error.mp3'' })'
+  - name: warning
+    type: any
+    default: 'Sound.register({ fileName: ''warning.mp3'' })'
+  - name: success
+    type: any
+    default: 'Sound.register({ fileName: ''success.mp3'' })'
+  - name: foldedArea
+    type: any
+    default: 'Sound.register({ fileName: ''foldedAreas.mp3'' })'
+  - name: break
+    type: any
+    default: 'Sound.register({ fileName: ''break.mp3'' })'
+  - name: quickFixes
+    type: any
+    default: 'Sound.register({ fileName: ''quickFixes.mp3'' })'
+  - name: taskCompleted
+    type: any
+    default: 'Sound.register({ fileName: ''taskCompleted.mp3'' })'
+  - name: taskFailed
+    type: any
+    default: 'Sound.register({ fileName: ''taskFailed.mp3'' })'
+  - name: terminalBell
+    type: any
+    default: 'Sound.register({ fileName: ''terminalBell.mp3'' })'
+  - name: diffLineInserted
+    type: any
+    default: 'Sound.register({ fileName: ''diffLineInserted.mp3'' })'
+  - name: diffLineDeleted
+    type: any
+    default: 'Sound.register({ fileName: ''diffLineDeleted.mp3'' })'
+  - name: diffLineModified
+    type: any
+    default: 'Sound.register({ fileName: ''diffLineModified.mp3'' })'
+  - name: requestSent
+    type: any
+    default: 'Sound.register({ fileName: ''requestSent.mp3'' })'
+  - name: responseReceived1
+    type: any
+    default: 'Sound.register({ fileName: ''responseReceived1.mp3'' })'
+  - name: responseReceived2
+    type: any
+    default: 'Sound.register({ fileName: ''responseReceived2.mp3'' })'
+  - name: responseReceived3
+    type: any
+    default: 'Sound.register({ fileName: ''responseReceived3.mp3'' })'
+  - name: responseReceived4
+    type: any
+    default: 'Sound.register({ fileName: ''responseReceived4.mp3'' })'
+  - name: clear
+    type: any
+    default: 'Sound.register({ fileName: ''clear.mp3'' })'
+  - name: save
+    type: any
+    default: 'Sound.register({ fileName: ''save.mp3'' })'
+  - name: format
+    type: any
+    default: 'Sound.register({ fileName: ''format.mp3'' })'
+  - name: voiceRecordingStarted
+    type: any
+    default: 'Sound.register({ fileName: ''voiceRecordingStarted.mp3'' })'
+  - name: voiceRecordingStopped
+    type: any
+    default: 'Sound.register({ fileName: ''voiceRecordingStopped.mp3'' })'
+  - name: progress
+    type: any
+    default: 'Sound.register({ fileName: ''progress.mp3'' })'
+  - name: chatEditModifiedFile
+    type: any
+    default: 'Sound.register({ fileName: ''chatEditModifiedFile.mp3'' })'
+  - name: editsKept
+    type: any
+    default: 'Sound.register({ fileName: ''editsKept.mp3'' })'
+  - name: editsUndone
+    type: any
+    default: 'Sound.register({ fileName: ''editsUndone.mp3'' })'
+  lines:
+  - 289
+  - 323
+- name: SoundSource
+  kind: struct
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tpublic readonly randomOneOf: Sound[]\n\t)"
+    lines:
+    - 326
+    - 328
+    detail: {}
+  - name: getSound
+    sig: 'getSound(deterministic = false): Sound'
+    lines:
+    - 330
+    - 337
+    detail:
+      calls:
+      - Math.floor
+      - Math.random
+  lines:
+  - 325
+  - 338
+- name: AccessibilitySignal
+  kind: struct
+  fields:
+  - name: _signals
+    type: any
+    default: new Set<AccessibilitySignal>()
+  - name: errorAtPosition
+    type: any
+    default: "AccessibilitySignal.register({\n\t\tname: localize('accessibilitySignals.positionHa..."
+  - name: warningAtPosition
+    type: any
+    default: "AccessibilitySignal.register({\n\t\tname: localize('accessibilitySignals.positionHa..."
+  - name: errorOnLine
+    type: any
+    default: "AccessibilitySignal.register({\n\t\tname: localize('accessibilitySignals.lineHasErr..."
+  - name: warningOnLine
+    type: any
+    default: "AccessibilitySignal.register({\n\t\tname: localize('accessibilitySignals.lineHasWar..."
+  - name: foldedArea
+    type: any
+    default: "AccessibilitySignal.register({\n\t\tname: localize('accessibilitySignals.lineHasFol..."
+  - name: break
+    type: any
+    default: "AccessibilitySignal.register({\n\t\tname: localize('accessibilitySignals.lineHasBre..."
+  - name: inlineSuggestion
+    type: any
+    default: "AccessibilitySignal.register({\n\t\tname: localize('accessibilitySignals.lineHasInl..."
+  - name: terminalQuickFix
+    type: any
+    default: "AccessibilitySignal.register({\n\t\tname: localize('accessibilitySignals.terminalQu..."
+  - name: onDebugBreak
+    type: any
+    default: "AccessibilitySignal.register({\n\t\tname: localize('accessibilitySignals.onDebugBre..."
+  - name: noInlayHints
+    type: any
+    default: "AccessibilitySignal.register({\n\t\tname: localize('accessibilitySignals.noInlayHin..."
+  - name: taskCompleted
+    type: any
+    default: "AccessibilitySignal.register({\n\t\tname: localize('accessibilitySignals.taskComple..."
+  - name: taskFailed
+    type: any
+    default: "AccessibilitySignal.register({\n\t\tname: localize('accessibilitySignals.taskFailed..."
+  - name: terminalCommandFailed
+    type: any
+    default: "AccessibilitySignal.register({\n\t\tname: localize('accessibilitySignals.terminalCo..."
+  - name: terminalCommandSucceeded
+    type: any
+    default: "AccessibilitySignal.register({\n\t\tname: localize('accessibilitySignals.terminalCo..."
+  - name: terminalBell
+    type: any
+    default: "AccessibilitySignal.register({\n\t\tname: localize('accessibilitySignals.terminalBe..."
+  - name: notebookCellCompleted
+    type: any
+    default: "AccessibilitySignal.register({\n\t\tname: localize('accessibilitySignals.notebookCe..."
+  - name: notebookCellFailed
+    type: any
+    default: "AccessibilitySignal.register({\n\t\tname: localize('accessibilitySignals.notebookCe..."
+  - name: diffLineInserted
+    type: any
+    default: "AccessibilitySignal.register({\n\t\tname: localize('accessibilitySignals.diffLineIn..."
+  - name: diffLineDeleted
+    type: any
+    default: "AccessibilitySignal.register({\n\t\tname: localize('accessibilitySignals.diffLineDe..."
+  - name: diffLineModified
+    type: any
+    default: "AccessibilitySignal.register({\n\t\tname: localize('accessibilitySignals.diffLineMo..."
+  - name: chatEditModifiedFile
+    type: any
+    default: "AccessibilitySignal.register({\n\t\tname: localize('accessibilitySignals.chatEditMo..."
+  - name: chatRequestSent
+    type: any
+    default: "AccessibilitySignal.register({\n\t\tname: localize('accessibilitySignals.chatReques..."
+  - name: chatResponseReceived
+    type: any
+    default: "AccessibilitySignal.register({\n\t\tname: localize('accessibilitySignals.chatRespon..."
+  - name: codeActionTriggered
+    type: any
+    default: "AccessibilitySignal.register({\n\t\tname: localize('accessibilitySignals.codeAction..."
+  - name: codeActionApplied
+    type: any
+    default: "AccessibilitySignal.register({\n\t\tname: localize('accessibilitySignals.codeAction..."
+  - name: progress
+    type: any
+    default: "AccessibilitySignal.register({\n\t\tname: localize('accessibilitySignals.progress',..."
+  - name: clear
+    type: any
+    default: "AccessibilitySignal.register({\n\t\tname: localize('accessibilitySignals.clear', 'C..."
+  - name: save
+    type: any
+    default: "AccessibilitySignal.register({\n\t\tname: localize('accessibilitySignals.save', 'Sa..."
+  - name: format
+    type: any
+    default: "AccessibilitySignal.register({\n\t\tname: localize('accessibilitySignals.format', '..."
+  - name: voiceRecordingStarted
+    type: any
+    default: "AccessibilitySignal.register({\n\t\tname: localize('accessibilitySignals.voiceRecor..."
+  - name: voiceRecordingStopped
+    type: any
+    default: "AccessibilitySignal.register({\n\t\tname: localize('accessibilitySignals.voiceRecor..."
+  - name: editsKept
+    type: any
+    default: "AccessibilitySignal.register({\n\t\tname: localize('accessibilitySignals.editsKept'..."
+  - name: editsUndone
+    type: any
+    default: "AccessibilitySignal.register({\n\t\tname: localize('accessibilitySignals.editsUndon..."
+  methods:
+  - name: register
+    sig: "register(options: {\n\t\tname: string;\n\t\tsound: Sound | {\n\t\t\t/**\n\t\t\t * Gaming and other apps often play a sound variant when the same event happens again\n\t\t\t * for an improved experience. This option enables playing a random sound.\n\t\t\t */\n\t\t\trandomOneOf: Sound[];\n\t\t};\n\t\tlegacySoundSettingsKey?: string;\n\t\tsettingsKey: string;\n\t\tlegacyAnnouncementSettingsKey?: string;\n\t\tannouncementMessage?: string;\n\t\tdelaySettingsKey?: string;\n\t}): AccessibilitySignal"
+    vis: private
+    decorators:
+    - static
+    lines:
+    - 351
+    - 377
+    detail:
+      calls:
+      - AccessibilitySignal._signals.add
+      - new AccessibilitySignal
+      - new SoundSource
+  - name: allAccessibilitySignals
+    sig: allAccessibilitySignals()
+    decorators:
+    - static
+    lines:
+    - 379
+    - 381
+    detail: {}
+  lines:
+  - 340
+  - 657
+functions:
+- name: checkEnabledState
+  sig: 'checkEnabledState(state: EnabledState, getScreenReaderAttached: () => boolean, isTriggeredByUserGesture: boolean): boolean'
+  lines:
+  - 260
+  - 262
+- name: playAudio
+  sig: 'playAudio(url: string, volume: number): Promise<HTMLAudioElement>'
+  lines:
+  - 268
+  - 284
+  detail:
+    calls:
+    - new Promise
+exports:
+- name: IAccessibilitySignalService
+  kind: type
+- name: AccessibilityModality
+  kind: type
+- name: IAccessbilitySignalOptions
+  kind: type
+- name: AccessibilitySignalService
+  kind: type
+- name: EnabledState
+  kind: type
+- name: Sound
+  kind: type
+- name: SoundSource
+  kind: type
+- name: AccessibilitySignal
+  kind: type
+- name: checkEnabledState
+  kind: func
+- name: playAudio
+  kind: func
+- name: IAccessibilitySignalService
+  kind: data
+- name: AcknowledgeDocCommentsToken
+  kind: data

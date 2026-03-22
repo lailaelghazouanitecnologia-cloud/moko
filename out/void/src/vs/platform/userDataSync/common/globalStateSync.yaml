@@ -1,0 +1,461 @@
+## Roska File Descriptor — common/globalStateSync.ts
+file: common/globalStateSync.ts
+lines: 522
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: ../../../base/common/buffer.js.VSBuffer
+- sym: ../../../base/common/cancellation.js.CancellationToken
+- sym: ../../../base/common/collections.js.IStringDictionary
+- sym: ../../../base/common/errors.js.getErrorMessage
+- sym: ../../../base/common/event.js.Event
+- sym: ../../../base/common/json.js.parse
+- sym: ../../../base/common/jsonFormatter.js.toFormattedString
+- sym: ../../../base/common/platform.js.isWeb
+- sym: ../../../base/common/uri.js.URI
+- sym: ../../../base/common/uuid.js.generateUuid
+- sym: ../../../base/parts/request/common/request.js.IHeaders
+- sym: ../../configuration/common/configuration.js.IConfigurationService
+- sym: ../../environment/common/environment.js.IEnvironmentService
+- sym: ../../files/common/files.js.IFileService
+- sym: ../../log/common/log.js.ILogService
+- sym: ../../externalServices/common/serviceMachineId.js.getServiceMachineId
+- sym: ../../storage/common/storage.js.IStorageEntry
+- sym: ../../storage/common/storage.js.IStorageService
+- sym: ../../storage/common/storage.js.StorageScope
+- sym: ../../storage/common/storage.js.StorageTarget
+- sym: ../../telemetry/common/telemetry.js.ITelemetryService
+- sym: ../../uriIdentity/common/uriIdentity.js.IUriIdentityService
+- sym: ./abstractSynchronizer.js.AbstractInitializer
+- sym: ./abstractSynchronizer.js.AbstractSynchroniser
+- sym: ./abstractSynchronizer.js.getSyncResourceLogLabel
+- sym: ./abstractSynchronizer.js.IAcceptResult
+- sym: ./abstractSynchronizer.js.IMergeResult
+- sym: ./abstractSynchronizer.js.IResourcePreview
+- sym: ./abstractSynchronizer.js.isSyncData
+- sym: ./content.js.edit
+- sym: ./globalStateMerge.js.merge
+- sym: ./userDataSync.js.ALL_SYNC_RESOURCES
+- sym: ./userDataSync.js.Change
+- sym: ./userDataSync.js.createSyncHeaders
+- sym: ./userDataSync.js.getEnablementKey
+- sym: ./userDataSync.js.IGlobalState
+- sym: ./userDataSync.js.IRemoteUserData
+- sym: ./userDataSync.js.IStorageValue
+- sym: ./userDataSync.js.ISyncData
+- sym: ./userDataSync.js.IUserData
+- sym: ./userDataSync.js.IUserDataSyncLocalStoreService
+- sym: ./userDataSync.js.IUserDataSynchroniser
+- sym: ./userDataSync.js.IUserDataSyncLogService
+- sym: ./userDataSync.js.IUserDataSyncEnablementService
+- sym: ./userDataSync.js.IUserDataSyncStoreService
+- sym: ./userDataSync.js.SyncResource
+- sym: ./userDataSync.js.SYNC_SERVICE_URL_TYPE
+- sym: ./userDataSync.js.UserDataSyncError
+- sym: ./userDataSync.js.UserDataSyncErrorCode
+- sym: ./userDataSync.js.UserDataSyncStoreType
+- sym: ./userDataSync.js.USER_DATA_SYNC_SCHEME
+- sym: ./userDataSyncStoreService.js.UserDataSyncStoreClient
+- sym: ../../userDataProfile/common/userDataProfile.js.IUserDataProfile
+- sym: ../../userDataProfile/common/userDataProfile.js.IUserDataProfilesService
+- sym: ../../userDataProfile/common/userDataProfileStorageService.js.IUserDataProfileStorageService
+- sym: ../../instantiation/common/instantiation.js.IInstantiationService
+data:
+- name: argvStoragePrefx
+  type: string
+  val: '''globalState.argv.'''
+- name: argvProperties
+  type: string[]
+  val: '[''locale'']'
+- name: GLOBAL_STATE_DATA_VERSION
+  type: number
+  val: '1'
+types:
+- name: StorageKeys
+  kind: typealias
+  decorators:
+  - type
+  fields:
+  - name: machine
+    type: string[]
+  - name: user
+    type: string[]
+  - name: unregistered
+    type: string[]
+  lines:
+  - 37
+  - 37
+- name: IGlobalStateResourceMergeResult
+  kind: trait
+  bases:
+  - IAcceptResult
+  decorators:
+  - interface
+  fields:
+  - name: readonly
+    type: '{ added: IStringDictionary<IStorageValue>; removed: string[]; updated: IStringDictionary<IStorageValue> }'
+  - name: readonly
+    type: '{ added: string[]; removed: string[]; updated: string[]; all: IStringDictionary<IStorageValue> | null }'
+  lines:
+  - 39
+  - 42
+- name: IGlobalStateResourcePreview
+  kind: trait
+  bases:
+  - IResourcePreview
+  decorators:
+  - interface
+  fields:
+  - name: readonly
+    type: IGlobalState
+  - name: readonly
+    type: IGlobalStateResourceMergeResult
+  - name: readonly
+    type: StorageKeys
+  lines:
+  - 44
+  - 48
+- name: GlobalStateSynchroniser
+  kind: struct
+  bases:
+  - AbstractSynchroniser
+  - IUserDataSynchroniser
+  fields:
+  - name: version
+    type: number
+    default: GLOBAL_STATE_DATA_VERSION
+  - name: previewResource
+    type: URI
+    default: this.extUri.joinPath(this.syncPreviewFolder, 'globalState.json')
+  - name: baseResource
+    type: URI
+    default: 'this.previewResource.with({ scheme: USER_DATA_SYNC_SCHEME, authority: ''base'' })'
+  - name: localResource
+    type: URI
+    default: 'this.previewResource.with({ scheme: USER_DATA_SYNC_SCHEME, authority: ''local'' })'
+  - name: remoteResource
+    type: URI
+    default: 'this.previewResource.with({ scheme: USER_DATA_SYNC_SCHEME, authority: ''remote'' }...'
+  - name: acceptedResource
+    type: URI
+    default: 'this.previewResource.with({ scheme: USER_DATA_SYNC_SCHEME, authority: ''accepted''...'
+  - name: localGlobalStateProvider
+    type: LocalGlobalStateProvider
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tprofile: IUserDataProfile,\n\t\tcollection: string | undefined,\n\t\t@IUserDataProfileStorageService private readonly userDataProfileStorageService: IUserDataProfileStorageService,\n\t\t@IFileService fileService: IFileService,\n\t\t@IUserDataSyncStoreService userDataSyncStoreService: IUserDataSyncStoreService,\n\t\t@IUserDataSyncLocalStoreService userDataSyncLocalStoreService: IUserDataSyncLocalStoreService,\n\t\t@IUserDataSyncLogService logService: IUserDataSyncLogService,\n\t\t@IEnvironmentService environmentService: IEnvironmentService,\n\t\t@IUserDataSyncEnablementService userDataSyncEnablementService: IUserDataSyncEnablementService,\n\t\t@ITelemetryService telemetryService: ITelemetryService,\n\t\t@IConfigurationService configurationService: IConfigurationService,\n\t\t@IStorageService storageService: IStorageService,\n\t\t@IUriIdentityService uriIdentityService: IUriIdentityService,\n\t\t@IInstantiationService instantiationService: IInstantiationService,\n\t)"
+    lines:
+    - 80
+    - 116
+    detail:
+      calls:
+      - Event.any
+      - "Event.any(\n\t\t\t\t/* Locale change */\n\t\t\t\tEvent.filter(fileService.onDidFilesChange, e => e.contains(th..."
+      - Event.filter
+      - fileService.watch
+      - instantiationService.createInstance
+      - super
+      - this._register
+      - this.extUri.dirname
+  - name: generateSyncPreview
+    sig: 'generateSyncPreview(remoteUserData: IRemoteUserData, lastSyncUserData: IRemoteUserData | null, isRemoteDataFromCurrentMachine: boolean): Promise<IGlobalStateResourcePreview[]>'
+    is_async: true
+    vis: protected
+    lines:
+    - 118
+    - 159
+    detail:
+      calls:
+      - JSON.parse
+      - Object.keys
+      - merge
+      - stringify
+      - this.getStorageKeys
+      - this.localGlobalStateProvider.getLocalGlobalState
+      - this.logService.trace
+  - name: hasRemoteChanged
+    sig: 'hasRemoteChanged(lastSyncUserData: IRemoteUserData): Promise<boolean>'
+    is_async: true
+    vis: protected
+    lines:
+    - 161
+    - 170
+    detail:
+      calls:
+      - JSON.parse
+      - merge
+      - this.getStorageKeys
+      - this.localGlobalStateProvider.getLocalGlobalState
+  - name: getAcceptResult
+    sig: 'getAcceptResult(resourcePreview: IGlobalStateResourcePreview, resource: URI, content: string | null | undefined, token: CancellationToken): Promise<IGlobalStateResourceMergeResult>'
+    is_async: true
+    vis: protected
+    lines:
+    - 176
+    - 194
+    detail:
+      calls:
+      - new Error
+      - resource.toString
+      - this.acceptLocal
+      - this.acceptRemote
+      - this.extUri.isEqual
+  - name: acceptLocal
+    sig: 'acceptLocal(resourcePreview: IGlobalStateResourcePreview): Promise<IGlobalStateResourceMergeResult>'
+    is_async: true
+    vis: private
+    lines:
+    - 196
+    - 216
+    detail:
+      calls:
+      - JSON.parse
+      - Object.keys
+      - merge
+  - name: acceptRemote
+    sig: 'acceptRemote(resourcePreview: IGlobalStateResourcePreview): Promise<IGlobalStateResourceMergeResult>'
+    is_async: true
+    vis: private
+    lines:
+    - 218
+    - 238
+    detail:
+      calls:
+      - JSON.parse
+      - Object.keys
+      - merge
+  - name: applyResult
+    sig: 'applyResult(remoteUserData: IRemoteUserData, lastSyncUserData: IRemoteUserData | null, resourcePreviews: [IGlobalStateResourcePreview, IGlobalStateResourceMergeResult][], force: boolean): Promise<void>'
+    is_async: true
+    vis: protected
+    lines:
+    - 240
+    - 270
+    detail:
+      calls:
+      - JSON.stringify
+      - this.backupLocal
+      - this.localGlobalStateProvider.writeLocalGlobalState
+      - this.logService.info
+      - this.logService.trace
+      - this.updateLastSyncUserData
+      - this.updateRemoteUserData
+  - name: resolveContent
+    sig: 'resolveContent(uri: URI): Promise<string | null>'
+    is_async: true
+    lines:
+    - 272
+    - 282
+    detail:
+      calls:
+      - JSON.parse
+      - stringify
+      - this.extUri.isEqual
+      - this.resolvePreviewContent
+  - name: hasLocalData
+    sig: 'hasLocalData(): Promise<boolean>'
+    is_async: true
+    lines:
+    - 284
+    - 294
+    detail:
+      calls:
+      - Object.keys
+      - this.localGlobalStateProvider.getLocalGlobalState
+  - name: getStorageKeys
+    sig: 'getStorageKeys(lastSyncGlobalState: IGlobalState | null): Promise<StorageKeys>'
+    is_async: true
+    vis: private
+    lines:
+    - 296
+    - 317
+    detail:
+      calls:
+      - ALL_SYNC_RESOURCES.map
+      - Object.keys
+      - Object.keys(lastSyncGlobalState.storage).filter
+      - machine.push
+      - this.userDataProfileStorageService.readStorageData
+      - unregistered.push
+      - user.push
+  lines:
+  - 69
+  - 318
+- name: LocalGlobalStateProvider
+  kind: struct
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\t@IFileService private readonly fileService: IFileService,\n\t\t@IEnvironmentService private readonly environmentService: IEnvironmentService,\n\t\t@IUserDataProfileStorageService private readonly userDataProfileStorageService: IUserDataProfileStorageService,\n\t\t@IUserDataSyncLogService private readonly logService: IUserDataSyncLogService\n\t)"
+    lines:
+    - 321
+    - 326
+    detail: {}
+  - name: getLocalGlobalState
+    sig: 'getLocalGlobalState(profile: IUserDataProfile): Promise<IGlobalState>'
+    is_async: true
+    lines:
+    - 328
+    - 346
+    detail:
+      calls:
+      - parse
+      - this.getLocalArgvContent
+      - this.userDataProfileStorageService.readStorageData
+  - name: getLocalArgvContent
+    sig: 'getLocalArgvContent(): Promise<string>'
+    is_async: true
+    vis: private
+    lines:
+    - 348
+    - 358
+    detail:
+      calls:
+      - content.value.toString
+      - getErrorMessage
+      - this.fileService.readFile
+      - this.logService.debug
+  - name: writeLocalGlobalState
+    sig: 'writeLocalGlobalState({ added, removed, updated }: { added: IStringDictionary<IStorageValue>; updated: IStringDictionary<IStorageValue>; removed: string[] }, profile: IUserDataProfile): Promise<void>'
+    is_async: true
+    lines:
+    - 360
+    - 407
+    detail:
+      calls:
+      - Object.keys
+      - VSBuffer.fromString
+      - edit
+      - getSyncResourceLogLabel
+      - handleUpdatedStorage
+      - new Map
+      - this.fileService.writeFile
+      - this.getLocalArgvContent
+      - this.logService.info
+      - this.logService.trace
+      - this.userDataProfileStorageService.readStorageData
+      - this.userDataProfileStorageService.updateStorageData
+      - updatedStorage.keys
+  lines:
+  - 320
+  - 408
+- name: GlobalStateInitializer
+  kind: struct
+  bases:
+  - AbstractInitializer
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\t@IStorageService storageService: IStorageService,\n\t\t@IFileService fileService: IFileService,\n\t\t@IUserDataProfilesService userDataProfilesService: IUserDataProfilesService,\n\t\t@IEnvironmentService environmentService: IEnvironmentService,\n\t\t@IUserDataSyncLogService logService: IUserDataSyncLogService,\n\t\t@IUriIdentityService uriIdentityService: IUriIdentityService,\n\t)"
+    lines:
+    - 412
+    - 421
+    detail:
+      calls:
+      - super
+  - name: doInitialize
+    sig: 'doInitialize(remoteUserData: IRemoteUserData): Promise<void>'
+    is_async: true
+    vis: protected
+    lines:
+    - 423
+    - 461
+    detail:
+      calls:
+      - JSON.parse
+      - Object.keys
+      - VSBuffer.fromString
+      - edit
+      - fileContent.value.toString
+      - key.startsWith
+      - key.substring
+      - storageEntries.push
+      - this.fileService.readFile
+      - this.fileService.writeFile
+      - this.logService.info
+      - this.storageService.get
+      - this.storageService.storeAll
+  lines:
+  - 410
+  - 463
+- name: UserDataSyncStoreTypeSynchronizer
+  kind: struct
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tprivate readonly userDataSyncStoreClient: UserDataSyncStoreClient,\n\t\t@IStorageService private readonly storageService: IStorageService,\n\t\t@IEnvironmentService private readonly environmentService: IEnvironmentService,\n\t\t@IFileService private readonly fileService: IFileService,\n\t\t@ILogService private readonly logService: ILogService,\n\t)"
+    lines:
+    - 467
+    - 474
+    detail: {}
+  - name: getSyncStoreType
+    sig: 'getSyncStoreType(userData: IUserData): UserDataSyncStoreType | undefined'
+    lines:
+    - 476
+    - 479
+    detail:
+      calls:
+      - this.parseGlobalState
+  - name: sync
+    sig: 'sync(userDataSyncStoreType: UserDataSyncStoreType): Promise<void>'
+    is_async: true
+    lines:
+    - 481
+    - 495
+    detail:
+      calls:
+      - createSyncHeaders
+      - generateUuid
+      - this.doSync
+      - this.logService.info
+  - name: doSync
+    sig: 'doSync(userDataSyncStoreType: UserDataSyncStoreType, syncHeaders: IHeaders): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 497
+    - 509
+    detail:
+      calls:
+      - JSON.stringify
+      - getServiceMachineId
+      - stringify
+      - this.parseGlobalState
+      - this.userDataSyncStoreClient.readResource
+      - this.userDataSyncStoreClient.writeResource
+  lines:
+  - 465
+  - 522
+functions:
+- name: stringify
+  sig: 'stringify(globalState: IGlobalState, format: boolean): string'
+  lines:
+  - 50
+  - 56
+  detail:
+    calls:
+    - JSON.stringify
+    - Object.keys
+    - Object.keys(globalState.storage).sort
+    - storageKeys.forEach
+    - toFormattedString
+exports:
+- name: StorageKeys
+  kind: type
+- name: IGlobalStateResourceMergeResult
+  kind: type
+- name: IGlobalStateResourcePreview
+  kind: type
+- name: GlobalStateSynchroniser
+  kind: type
+- name: LocalGlobalStateProvider
+  kind: type
+- name: GlobalStateInitializer
+  kind: type
+- name: UserDataSyncStoreTypeSynchronizer
+  kind: type
+- name: stringify
+  kind: func
+- name: argvStoragePrefx
+  kind: data
+- name: argvProperties
+  kind: data
+- name: GLOBAL_STATE_DATA_VERSION
+  kind: data

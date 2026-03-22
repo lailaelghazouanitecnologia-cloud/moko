@@ -1,0 +1,413 @@
+## Roska File Descriptor — browser/copyPasteController.ts
+file: browser/copyPasteController.ts
+lines: 691
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: ../../../../base/browser/dom.js.addDisposableListener
+- sym: ../../../../base/common/actions.js.IAction
+- sym: ../../../../base/common/arrays.js.coalesce
+- sym: ../../../../base/common/async.js.CancelablePromise
+- sym: ../../../../base/common/async.js.createCancelablePromise
+- sym: ../../../../base/common/async.js.DeferredPromise
+- sym: ../../../../base/common/async.js.raceCancellation
+- sym: ../../../../base/common/cancellation.js.CancellationToken
+- sym: ../../../../base/common/cancellation.js.CancellationTokenSource
+- sym: ../../../../base/common/dataTransfer.js.createStringDataTransferItem
+- sym: ../../../../base/common/dataTransfer.js.IReadonlyVSDataTransfer
+- sym: ../../../../base/common/dataTransfer.js.matchesMimeType
+- sym: ../../../../base/common/dataTransfer.js.UriList
+- sym: ../../../../base/common/dataTransfer.js.VSDataTransfer
+- sym: ../../../../base/common/errors.js.isCancellationError
+- sym: ../../../../base/common/hierarchicalKind.js.HierarchicalKind
+- sym: ../../../../base/common/lifecycle.js.Disposable
+- sym: ../../../../base/common/lifecycle.js.DisposableStore
+- sym: ../../../../base/common/mime.js.Mimes
+- sym: ../../../../base/common/platform.js.platform
+- sym: ../../../../base/common/types.js.upcast
+- sym: ../../../../base/common/uuid.js.generateUuid
+- sym: ../../../../nls.js.localize
+- sym: ../../../../platform/clipboard/common/clipboardService.js.IClipboardService
+- sym: ../../../../platform/commands/common/commands.js.ICommandService
+- sym: ../../../../platform/configuration/common/configuration.js.IConfigurationService
+- sym: ../../../../platform/contextkey/common/contextkey.js.RawContextKey
+- sym: ../../../../platform/instantiation/common/instantiation.js.IInstantiationService
+- sym: ../../../../platform/progress/common/progress.js.IProgressService
+- sym: ../../../../platform/progress/common/progress.js.ProgressLocation
+- sym: ../../../../platform/quickinput/common/quickInput.js.IQuickInputService
+- sym: ../../../../platform/quickinput/common/quickInput.js.IQuickPickItem
+- sym: ../../../../platform/quickinput/common/quickInput.js.IQuickPickSeparator
+- sym: ../../../browser/controller/editContext/clipboardUtils.js.ClipboardEventUtils
+- sym: ../../../browser/dnd.js.toExternalVSDataTransfer
+- sym: ../../../browser/dnd.js.toVSDataTransfer
+- sym: ../../../browser/editorBrowser.js.ICodeEditor
+- sym: ../../../browser/editorBrowser.js.PastePayload
+- sym: ../../../browser/services/bulkEditService.js.IBulkEditService
+- sym: ../../../common/config/editorOptions.js.EditorOption
+- sym: ../../../common/core/range.js.IRange
+- sym: ../../../common/core/range.js.Range
+- sym: ../../../common/core/selection.js.Selection
+- sym: ../../../common/editorCommon.js.Handler
+- sym: ../../../common/editorCommon.js.IEditorContribution
+- sym: ../../../common/languages.js.DocumentPasteContext
+- sym: ../../../common/languages.js.DocumentPasteEdit
+- sym: ../../../common/languages.js.DocumentPasteEditProvider
+- sym: ../../../common/languages.js.DocumentPasteTriggerKind
+- sym: ../../../common/model.js.ITextModel
+- sym: ../../../common/services/languageFeatures.js.ILanguageFeaturesService
+- sym: ../../editorState/browser/editorState.js.CodeEditorStateFlag
+- sym: ../../editorState/browser/editorState.js.EditorStateCancellationTokenSource
+- sym: ../../inlineProgress/browser/inlineProgress.js.InlineProgressManager
+- sym: ../../message/browser/messageController.js.MessageController
+- sym: ./copyPasteContribution.js.PreferredPasteConfiguration
+- sym: ./defaultProviders.js.DefaultTextPasteOrDropEditProvider
+- sym: ./edit.js.createCombinedWorkspaceEdit
+- sym: ./edit.js.sortEditsByYieldTo
+- sym: ./postEditWidget.js.PostEditWidgetManager
+data:
+- name: changePasteTypeCommandId
+  type: string
+  val: '''editor.changePasteType'''
+- name: pasteAsPreferenceConfig
+  type: string
+  val: '''editor.pasteAs.preferences'''
+- name: pasteWidgetVisibleCtx
+  type: any
+  val: new RawContextKey<boolean>('pasteWidgetVisible', false, localize('pasteWidgetVisible', "Whether the paste widget is show...
+- name: vscodeClipboardMime
+  type: string
+  val: '''application/vnd.code.copymetadata'''
+types:
+- name: CopyMetadata
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: readonly
+    type: string
+  - name: readonly
+    type: readonly string[]
+  - name: readonly
+    type: Omit<PastePayload, 'text'>
+  lines:
+  - 54
+  - 59
+- name: PasteEditWithProvider
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 61
+  - 63
+- name: DocumentPasteWithProviderEditsSession
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: edits
+    type: readonly PasteEditWithProvider[]
+  - name: dispose
+    type: 'method: dispose(): void'
+  lines:
+  - 66
+  - 69
+- name: PastePreference
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 71
+  - 75
+- name: CopyOperation
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: readonly
+    type: readonly string[]
+  - name: readonly
+    type: CancelablePromise<IReadonlyVSDataTransfer | undefined>
+  lines:
+  - 77
+  - 80
+- name: CopyPasteController
+  kind: struct
+  ctx: 'Global tracking the last copy operation. This is shared across all editors so that you can copy and paste between groups. TODO: figure out how to make this work with multiple windows'
+  bases:
+  - Disposable
+  - IEditorContribution
+  fields:
+  - name: ID
+    type: any
+    default: '''editor.contrib.copyPasteActionController'''
+  - name: _configureDefaultAction
+    type: IAction
+  - name: _currentCopyOperation
+    type: "{\n\t\treadonly handle: string;\n\t\treadonly operations: ReadonlyArray<CopyOperation>;\n\t}"
+  - name: _editor
+    type: ICodeEditor
+  - name: _currentPasteOperation
+    type: CancelablePromise<void>
+  - name: _pasteAsActionContext
+    type: '{ readonly preferred?: PastePreference }'
+  - name: _pasteProgressManager
+    type: InlineProgressManager
+  - name: _postPasteWidgetManager
+    type: PostEditWidgetManager<PasteEditWithProvider>
+  methods:
+  - name: get
+    sig: 'get(editor: ICodeEditor): CopyPasteController | null'
+    decorators:
+    - static
+    lines:
+    - 86
+    - 88
+    detail:
+      calls:
+      - editor.getContribution
+  - name: setConfigureDefaultAction
+    sig: 'setConfigureDefaultAction(action: IAction)'
+    decorators:
+    - static
+    lines:
+    - 90
+    - 92
+    detail: {}
+  - name: constructor
+    sig: "constructor(\n\t\teditor: ICodeEditor,\n\t\t@IInstantiationService instantiationService: IInstantiationService,\n\t\t@IBulkEditService private readonly _bulkEditService: IBulkEditService,\n\t\t@IClipboardService private readonly _clipboardService: IClipboardService,\n\t\t@ICommandService private readonly _commandService: ICommandService,\n\t\t@IConfigurationService private readonly _configService: IConfigurationService,\n\t\t@ILanguageFeaturesService private readonly _languageFeaturesService: ILanguageFeaturesService,\n\t\t@IQuickInputService private readonly _quickInputService: IQuickInputService,\n\t\t@IProgressService private readonly _progressService: IProgressService,\n\t)"
+    lines:
+    - 116
+    - 142
+    detail:
+      calls:
+      - addDisposableListener
+      - editor.getContainerDomNode
+      - instantiationService.createInstance
+      - localize
+      - new InlineProgressManager
+      - super
+      - this._register
+  - name: changePasteType
+    sig: changePasteType()
+    lines:
+    - 144
+    - 146
+    detail:
+      calls:
+      - this._postPasteWidgetManager.tryShowSelector
+  - name: pasteAs
+    sig: 'pasteAs(preferred?: PastePreference)'
+    lines:
+    - 148
+    - 156
+    detail:
+      calls:
+      - this._commandService.executeCommand
+      - this._editor.focus
+  - name: clearWidgets
+    sig: clearWidgets()
+    lines:
+    - 158
+    - 160
+    detail:
+      calls:
+      - this._postPasteWidgetManager.clear
+  - name: finishedPaste
+    sig: 'finishedPaste(): Promise<void>'
+    is_async: true
+    lines:
+    - 166
+    - 168
+    detail: {}
+  - name: handleCopy
+    sig: 'handleCopy(e: ClipboardEvent)'
+    vis: private
+    lines:
+    - 170
+    - 244
+    detail:
+      calls:
+      - Array.isArray
+      - CopyPasteController._currentCopyOperation?.operations.forEach
+      - generateUuid
+      - model.getLineLength
+      - new Range
+      - providers.flatMap
+      - providers.map
+      - selections[0].isEmpty
+      - this._clipboardService.clearInternalState
+      - this._editor._getViewModel
+      - this._editor._getViewModel()?.getPlainTextToCopy
+      - this._editor.getModel
+      - this._editor.getOption
+      - this._editor.getSelections
+      - this._editor.hasTextFocus
+      - "this._languageFeaturesService.documentPasteEditProvider\n\t\t\t.ordered"
+      - "this._languageFeaturesService.documentPasteEditProvider\n\t\t\t.ordered(model)\n\t\t\t.filter"
+      - this.isPasteAsEnabled
+      - this.setCopyMetadata
+      - toVSDataTransfer
+  - name: handlePaste
+    sig: 'handlePaste(e: ClipboardEvent)'
+    is_async: true
+    vis: private
+    lines:
+    - 246
+    - 320
+    detail:
+      calls:
+      - Array.from
+      - Array.from(e.clipboardData.files).map
+      - MessageController.get
+      - MessageController.get(this._editor)?.closeMessage
+      - dataTransfer.delete
+      - e.preventDefault
+      - e.stopImmediatePropagation
+      - this._currentPasteOperation?.cancel
+      - this._editor.getModel
+      - this._editor.getOption
+      - this._editor.getSelections
+      - this._editor.hasTextFocus
+      - "this._languageFeaturesService.documentPasteEditProvider\n\t\t\t.ordered"
+      - "this._languageFeaturesService.documentPasteEditProvider\n\t\t\t.ordered(model)\n\t\t\t.filter"
+      - this.doPasteInline
+      - this.fetchCopyMetadata
+      - this.isPasteAsEnabled
+      - this.showPasteAsNoEditMessage
+      - this.showPasteAsPick
+      - toExternalVSDataTransfer
+  - name: showPasteAsNoEditMessage
+    sig: 'showPasteAsNoEditMessage(selections: readonly Selection[], preference: PastePreference)'
+    vis: private
+    lines:
+    - 322
+    - 330
+    detail:
+      calls:
+      - MessageController.get
+      - MessageController.get(this._editor)?.showMessage
+      - localize
+      - preference.preferences.map
+      - preference.preferences.map(preference => preference.value).join
+      - selections[0].getStartPosition
+  - name: doPasteInline
+    sig: 'doPasteInline(allProviders: readonly DocumentPasteEditProvider[], selections: readonly Selection[], dataTransfer: VSDataTransfer, metadata: CopyMetadata | undefined, clipboardEvent: ClipboardEvent): void'
+    vis: private
+    lines:
+    - 332
+    - 428
+    detail:
+      calls:
+      - createCancelablePromise
+      - editor.hasModel
+      - localize
+      - new EditorStateCancellationTokenSource
+      - selections[0].getEndPosition
+      - this._pasteProgressManager.showWhile
+      - this._pasteProgressManager.showWhile(selections[0].getEndPosition(), localize('pasteIntoEditorProgre...
+  - name: showPasteAsPick
+    sig: 'showPasteAsPick(preference: PastePreference | undefined, allProviders: readonly DocumentPasteEditProvider[], selections: readonly Selection[], dataTransfer: VSDataTransfer, metadata: CopyMetadata | undefined): void'
+    vis: private
+    lines:
+    - 430
+    - 540
+    detail:
+      calls:
+      - createCancelablePromise
+      - localize
+      - this._progressService.withProgress
+  - name: fetchCopyMetadata
+    sig: 'fetchCopyMetadata(e: ClipboardEvent): CopyMetadata | undefined'
+    vis: private
+    lines:
+    - 546
+    - 574
+    detail:
+      calls:
+      - ClipboardEventUtils.getTextData
+      - JSON.parse
+      - e.clipboardData.getData
+  - name: mergeInDataFromCopy
+    sig: 'mergeInDataFromCopy(allProviders: readonly DocumentPasteEditProvider[], dataTransfer: VSDataTransfer, metadata: CopyMetadata | undefined, token: CancellationToken): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 576
+    - 609
+    detail:
+      calls:
+      - "CopyPasteController._currentCopyOperation.operations\n\t\t\t\t.filter"
+      - "CopyPasteController._currentCopyOperation.operations\n\t\t\t\t.filter(op => allProviders.some(provider =>..."
+      - Promise.all
+      - UriList.create
+      - createStringDataTransferItem
+      - dataTransfer.append
+      - dataTransfer.has
+      - dataTransfer.replace
+      - this._clipboardService.readResources
+      - toMergeResults.reverse
+  - name: getPasteEdits
+    sig: 'getPasteEdits(providers: readonly DocumentPasteEditProvider[], dataTransfer: VSDataTransfer, model: ITextModel, selections: readonly Selection[], context: DocumentPasteContext, token: CancellationToken): Promise<DocumentPasteWithProviderEditsSession>'
+    is_async: true
+    vis: private
+    lines:
+    - 611
+    - 637
+    detail:
+      calls:
+      - Promise.all
+      - coalesce
+      - coalesce(results ?? []).flat
+      - coalesce(results ?? []).flat().filter
+      - new DisposableStore
+      - providers.map
+      - raceCancellation
+      - sortEditsByYieldTo
+  - name: applyDefaultPasteHandler
+    sig: 'applyDefaultPasteHandler(dataTransfer: VSDataTransfer, metadata: CopyMetadata | undefined, token: CancellationToken, clipboardEvent: ClipboardEvent)'
+    is_async: true
+    vis: private
+    lines:
+    - 639
+    - 654
+    detail:
+      calls:
+      - dataTransfer.get
+      - textDataTransfer?.asString
+      - this._editor.trigger
+  - name: getInitialActiveEditIndex
+    sig: 'getInitialActiveEditIndex(model: ITextModel, edits: readonly DocumentPasteEdit[]): number'
+    vis: private
+    lines:
+    - 679
+    - 690
+    detail:
+      calls:
+      - Array.isArray
+      - edits.findIndex
+      - new HierarchicalKind
+      - this._configService.getValue
+  lines:
+  - 82
+  - 691
+exports:
+- name: CopyMetadata
+  kind: type
+- name: PasteEditWithProvider
+  kind: type
+- name: DocumentPasteWithProviderEditsSession
+  kind: type
+- name: PastePreference
+  kind: type
+- name: CopyOperation
+  kind: type
+- name: CopyPasteController
+  kind: type
+- name: changePasteTypeCommandId
+  kind: data
+- name: pasteAsPreferenceConfig
+  kind: data
+- name: pasteWidgetVisibleCtx
+  kind: data
+- name: vscodeClipboardMime
+  kind: data

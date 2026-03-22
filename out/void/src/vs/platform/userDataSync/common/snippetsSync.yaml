@@ -1,0 +1,317 @@
+## Roska File Descriptor — common/snippetsSync.ts
+file: common/snippetsSync.ts
+lines: 552
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: ../../../base/common/buffer.js.VSBuffer
+- sym: ../../../base/common/cancellation.js.CancellationToken
+- sym: ../../../base/common/collections.js.IStringDictionary
+- sym: ../../../base/common/event.js.Event
+- sym: ../../../base/common/objects.js.deepClone
+- sym: ../../../base/common/uri.js.URI
+- sym: ../../configuration/common/configuration.js.IConfigurationService
+- sym: ../../environment/common/environment.js.IEnvironmentService
+- sym: ../../files/common/files.js.FileOperationError
+- sym: ../../files/common/files.js.FileOperationResult
+- sym: ../../files/common/files.js.IFileContent
+- sym: ../../files/common/files.js.IFileService
+- sym: ../../files/common/files.js.IFileStat
+- sym: ../../storage/common/storage.js.IStorageService
+- sym: ../../telemetry/common/telemetry.js.ITelemetryService
+- sym: ../../uriIdentity/common/uriIdentity.js.IUriIdentityService
+- sym: ../../userDataProfile/common/userDataProfile.js.IUserDataProfile
+- sym: ../../userDataProfile/common/userDataProfile.js.IUserDataProfilesService
+- sym: ./abstractSynchronizer.js.AbstractInitializer
+- sym: ./abstractSynchronizer.js.AbstractSynchroniser
+- sym: ./abstractSynchronizer.js.IAcceptResult
+- sym: ./abstractSynchronizer.js.IFileResourcePreview
+- sym: ./abstractSynchronizer.js.IMergeResult
+- sym: ./snippetsMerge.js.areSame
+- sym: ./snippetsMerge.js.IMergeResult as ISnippetsMergeResult
+- sym: ./snippetsMerge.js.merge
+- sym: ./userDataSync.js.Change
+- sym: ./userDataSync.js.IRemoteUserData
+- sym: ./userDataSync.js.ISyncData
+- sym: ./userDataSync.js.IUserDataSyncLocalStoreService
+- sym: ./userDataSync.js.IUserDataSynchroniser
+- sym: ./userDataSync.js.IUserDataSyncLogService
+- sym: ./userDataSync.js.IUserDataSyncEnablementService
+- sym: ./userDataSync.js.IUserDataSyncStoreService
+- sym: ./userDataSync.js.SyncResource
+- sym: ./userDataSync.js.USER_DATA_SYNC_SCHEME
+types:
+- name: ISnippetsResourcePreview
+  kind: trait
+  bases:
+  - IFileResourcePreview
+  decorators:
+  - interface
+  fields:
+  - name: previewResult
+    type: IMergeResult
+  lines:
+  - 23
+  - 25
+- name: ISnippetsAcceptedResourcePreview
+  kind: trait
+  bases:
+  - IFileResourcePreview
+  decorators:
+  - interface
+  fields:
+  - name: acceptResult
+    type: IAcceptResult
+  lines:
+  - 27
+  - 29
+- name: SnippetsSynchroniser
+  kind: struct
+  bases:
+  - AbstractSynchroniser
+  - IUserDataSynchroniser
+  fields:
+  - name: version
+    type: number
+    default: '1'
+  - name: snippetsFolder
+    type: URI
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tprofile: IUserDataProfile,\n\t\tcollection: string | undefined,\n\t\t@IEnvironmentService environmentService: IEnvironmentService,\n\t\t@IFileService fileService: IFileService,\n\t\t@IStorageService storageService: IStorageService,\n\t\t@IUserDataSyncStoreService userDataSyncStoreService: IUserDataSyncStoreService,\n\t\t@IUserDataSyncLocalStoreService userDataSyncLocalStoreService: IUserDataSyncLocalStoreService,\n\t\t@IUserDataSyncLogService logService: IUserDataSyncLogService,\n\t\t@IConfigurationService configurationService: IConfigurationService,\n\t\t@IUserDataSyncEnablementService userDataSyncEnablementService: IUserDataSyncEnablementService,\n\t\t@ITelemetryService telemetryService: ITelemetryService,\n\t\t@IUriIdentityService uriIdentityService: IUriIdentityService,\n\t)"
+    lines:
+    - 40
+    - 59
+    detail:
+      calls:
+      - Event.filter
+      - Event.filter(this.fileService.onDidFilesChange, e => e.affects(this.snippetsFolder))
+      - super
+      - this._register
+      - this.fileService.watch
+  - name: generateSyncPreview
+    sig: 'generateSyncPreview(remoteUserData: IRemoteUserData, lastSyncUserData: IRemoteUserData | null, isRemoteDataFromCurrentMachine: boolean): Promise<ISnippetsResourcePreview[]>'
+    is_async: true
+    vis: protected
+    lines:
+    - 61
+    - 78
+    detail:
+      calls:
+      - merge
+      - this.getResourcePreviews
+      - this.getSnippetsFileContents
+      - this.logService.trace
+      - this.parseSnippets
+      - this.toSnippetsContents
+  - name: hasRemoteChanged
+    sig: 'hasRemoteChanged(lastSyncUserData: IRemoteUserData): Promise<boolean>'
+    is_async: true
+    vis: protected
+    lines:
+    - 80
+    - 89
+    detail:
+      calls:
+      - Object.keys
+      - merge
+      - this.getSnippetsFileContents
+      - this.parseSnippets
+      - this.toSnippetsContents
+  - name: getAcceptResult
+    sig: 'getAcceptResult(resourcePreview: ISnippetsResourcePreview, resource: URI, content: string | null | undefined, token: CancellationToken): Promise<IAcceptResult>'
+    is_async: true
+    vis: protected
+    lines:
+    - 95
+    - 141
+    detail:
+      calls:
+      - new Error
+      - resource.toString
+      - resourcePreview.fileContent.value.toString
+      - this.extUri.isEqualOrParent
+      - this.syncPreviewFolder.with
+  - name: applyResult
+    sig: 'applyResult(remoteUserData: IRemoteUserData, lastSyncUserData: IRemoteUserData | null, resourcePreviews: [ISnippetsResourcePreview, IAcceptResult][], force: boolean): Promise<void>'
+    is_async: true
+    vis: protected
+    lines:
+    - 143
+    - 173
+    detail:
+      calls:
+      - accptedResourcePreviews.every
+      - accptedResourcePreviews.some
+      - resourcePreviews.map
+      - this.fileService.del
+      - this.logService.info
+      - this.logService.trace
+      - this.updateLastSyncUserData
+      - this.updateLocalBackup
+      - this.updateLocalSnippets
+      - this.updateRemoteSnippets
+  - name: getResourcePreviews
+    sig: 'getResourcePreviews(snippetsMergeResult: ISnippetsMergeResult, localFileContent: IStringDictionary<IFileContent>, remoteSnippets: IStringDictionary<string>, baseSnippets: IStringDictionary<string>): ISnippetsResourcePreview[]'
+    vis: private
+    lines:
+    - 175
+    - 379
+    detail:
+      calls:
+      - Object.keys
+      - localFileContent[key].value.toString
+      - new Map
+      - resourcePreviews.has
+      - resourcePreviews.set
+      - resourcePreviews.values
+      - this.extUri.joinPath
+      - this.extUri.joinPath(this.syncPreviewFolder, key).with
+  - name: resolveContent
+    sig: 'resolveContent(uri: URI): Promise<string | null>'
+    is_async: true
+    lines:
+    - 381
+    - 389
+    detail:
+      calls:
+      - this.extUri.isEqualOrParent
+      - this.resolvePreviewContent
+      - this.syncPreviewFolder.with
+  - name: hasLocalData
+    sig: 'hasLocalData(): Promise<boolean>'
+    is_async: true
+    lines:
+    - 391
+    - 401
+    detail:
+      calls:
+      - Object.keys
+      - this.getSnippetsFileContents
+  - name: updateLocalBackup
+    sig: 'updateLocalBackup(resourcePreviews: IFileResourcePreview[]): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 403
+    - 411
+    detail:
+      calls:
+      - JSON.stringify
+      - this.backupLocal
+      - this.extUri.basename
+      - this.toSnippetsContents
+  - name: updateLocalSnippets
+    sig: 'updateLocalSnippets(resourcePreviews: ISnippetsAcceptedResourcePreview[], force: boolean): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 413
+    - 441
+    detail:
+      calls:
+      - VSBuffer.fromString
+      - this.extUri.basename
+      - this.extUri.joinPath
+      - this.fileService.createFile
+      - this.fileService.del
+      - this.fileService.writeFile
+      - this.logService.info
+      - this.logService.trace
+  - name: updateRemoteSnippets
+    sig: 'updateRemoteSnippets(resourcePreviews: ISnippetsAcceptedResourcePreview[], remoteUserData: IRemoteUserData, forcePush: boolean): Promise<IRemoteUserData>'
+    is_async: true
+    vis: private
+    lines:
+    - 443
+    - 465
+    detail:
+      calls:
+      - JSON.stringify
+      - areSame
+      - deepClone
+      - this.extUri.basename
+      - this.logService.info
+      - this.logService.trace
+      - this.parseSnippets
+      - this.updateRemoteUserData
+  - name: getSnippetsFileContents
+    sig: 'getSnippetsFileContents(): Promise<IStringDictionary<IFileContent>>'
+    is_async: true
+    vis: private
+    lines:
+    - 479
+    - 502
+    detail:
+      calls:
+      - this.extUri.extname
+      - this.extUri.relativePath
+      - this.fileService.readFile
+      - this.fileService.resolve
+  lines:
+  - 35
+  - 503
+- name: SnippetsInitializer
+  kind: struct
+  bases:
+  - AbstractInitializer
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\t@IFileService fileService: IFileService,\n\t\t@IUserDataProfilesService userDataProfilesService: IUserDataProfilesService,\n\t\t@IEnvironmentService environmentService: IEnvironmentService,\n\t\t@IUserDataSyncLogService logService: IUserDataSyncLogService,\n\t\t@IStorageService storageService: IStorageService,\n\t\t@IUriIdentityService uriIdentityService: IUriIdentityService,\n\t)"
+    lines:
+    - 507
+    - 516
+    detail:
+      calls:
+      - super
+  - name: doInitialize
+    sig: 'doInitialize(remoteUserData: IRemoteUserData): Promise<void>'
+    is_async: true
+    vis: protected
+    lines:
+    - 518
+    - 541
+    detail:
+      calls:
+      - JSON.parse
+      - Object.keys
+      - VSBuffer.fromString
+      - this.extUri.basename
+      - this.extUri.joinPath
+      - this.fileService.createFile
+      - this.isEmpty
+      - this.logService.info
+      - this.updateLastSyncUserData
+  - name: isEmpty
+    sig: 'isEmpty(): Promise<boolean>'
+    is_async: true
+    vis: private
+    lines:
+    - 543
+    - 550
+    detail:
+      calls:
+      - this.fileService.resolve
+  lines:
+  - 505
+  - 552
+functions:
+- name: parseSnippets
+  sig: 'parseSnippets(syncData: ISyncData): IStringDictionary<string>'
+  lines:
+  - 31
+  - 33
+  detail:
+    calls:
+    - JSON.parse
+exports:
+- name: ISnippetsResourcePreview
+  kind: type
+- name: ISnippetsAcceptedResourcePreview
+  kind: type
+- name: SnippetsSynchroniser
+  kind: type
+- name: SnippetsInitializer
+  kind: type
+- name: parseSnippets
+  kind: func

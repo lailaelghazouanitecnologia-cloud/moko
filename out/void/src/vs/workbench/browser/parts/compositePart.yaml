@@ -1,0 +1,397 @@
+## Roska File Descriptor — parts/compositePart.ts
+file: parts/compositePart.ts
+lines: 546
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: ../../../nls.js.localize
+- sym: ../../../base/common/idGenerator.js.defaultGenerator
+- sym: ../../../base/common/lifecycle.js.IDisposable
+- sym: ../../../base/common/lifecycle.js.dispose
+- sym: ../../../base/common/lifecycle.js.DisposableStore
+- sym: ../../../base/common/lifecycle.js.MutableDisposable
+- sym: ../../../base/common/event.js.Emitter
+- sym: ../../../base/common/errors.js.isCancellationError
+- sym: ../../../base/browser/ui/actionbar/actionbar.js.ActionsOrientation
+- sym: ../../../base/browser/ui/actionbar/actionbar.js.IActionViewItem
+- sym: ../../../base/browser/ui/actionbar/actionbar.js.prepareActions
+- sym: ../../../base/browser/ui/progressbar/progressbar.js.ProgressBar
+- sym: ../../../base/common/actions.js.IAction
+- sym: ../part.js.Part
+- sym: ../part.js.IPartOptions
+- sym: ../composite.js.Composite
+- sym: ../composite.js.CompositeRegistry
+- sym: ../../common/composite.js.IComposite
+- sym: ../../services/layout/browser/layoutService.js.IWorkbenchLayoutService
+- sym: ../../../platform/storage/common/storage.js.IStorageService
+- sym: ../../../platform/storage/common/storage.js.StorageScope
+- sym: ../../../platform/storage/common/storage.js.StorageTarget
+- sym: ../../../platform/contextview/browser/contextView.js.IContextMenuService
+- sym: ../../../platform/instantiation/common/instantiation.js.IInstantiationService
+- sym: ../../../platform/instantiation/common/serviceCollection.js.ServiceCollection
+- sym: ../../../platform/progress/common/progress.js.IProgressIndicator
+- sym: ../../../platform/progress/common/progress.js.IEditorProgressService
+- sym: ../../../platform/keybinding/common/keybinding.js.IKeybindingService
+- sym: ../../../platform/theme/common/themeService.js.IThemeService
+- sym: ../../../platform/notification/common/notification.js.INotificationService
+- sym: ../../../base/browser/dom.js.Dimension
+- sym: ../../../base/browser/dom.js.append
+- sym: ../../../base/browser/dom.js.$
+- sym: ../../../base/browser/dom.js.hide
+- sym: ../../../base/browser/dom.js.show
+- sym: ../../../base/browser/ui/contextview/contextview.js.AnchorAlignment
+- sym: ../../../base/common/types.js.assertIsDefined
+- sym: ../../../platform/actions/browser/menuEntryActionViewItem.js.createActionViewItem
+- sym: ../../services/progress/browser/progressIndicator.js.AbstractProgressScope
+- sym: ../../services/progress/browser/progressIndicator.js.ScopedProgressIndicator
+- sym: ../../../platform/actions/browser/toolbar.js.WorkbenchToolBar
+- sym: ../../../platform/theme/browser/defaultStyles.js.defaultProgressBarStyles
+- sym: ../../../base/browser/ui/sash/sash.js.IBoundarySashes
+- sym: ../../../base/browser/ui/actionbar/actionViewItems.js.IBaseActionViewItemOptions
+- sym: ../../../base/browser/ui/hover/hoverDelegate.js.IHoverDelegate
+- sym: ../../../base/browser/ui/hover/hoverDelegateFactory.js.createInstantHoverDelegate
+- sym: ../../../base/browser/ui/hover/hoverDelegateFactory.js.getDefaultHoverDelegate
+- sym: ../../../platform/hover/browser/hover.js.IHoverService
+  kind: typing
+types:
+- name: ICompositeTitleLabel
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: updateTitle
+    type: 'method: updateTitle(id: string, title: string, keybinding?: string): void'
+  - name: updateStyles
+    type: 'method: updateStyles(): void'
+  lines:
+  - 40
+  - 51
+- name: CompositeItem
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: readonly
+    type: Composite
+  - name: readonly
+    type: IDisposable
+  - name: readonly
+    type: IProgressIndicator
+  lines:
+  - 53
+  - 57
+- name: CompositePart
+  kind: trait
+  bases:
+  - Part
+  decorators:
+  - abstract
+  fields:
+  - name: onDidCompositeOpen
+    type: any
+    default: 'this._register(new Emitter<{ composite: IComposite; focus: boolean }>())'
+  - name: onDidCompositeClose
+    type: any
+    default: this._register(new Emitter<IComposite>())
+  - name: toolBar
+    type: WorkbenchToolBar | undefined
+  - name: titleLabelElement
+    type: HTMLElement | undefined
+  - name: toolbarHoverDelegate
+    type: IHoverDelegate
+  - name: mapCompositeToCompositeContainer
+    type: any
+    default: new Map<string, HTMLElement>()
+  - name: mapActionsBindingToComposite
+    type: any
+    default: new Map<string, () => void>()
+  - name: activeComposite
+    type: Composite | undefined
+  - name: lastActiveCompositeId
+    type: string
+  - name: instantiatedCompositeItems
+    type: any
+    default: new Map<string, CompositeItem>()
+  - name: titleLabel
+    type: ICompositeTitleLabel | undefined
+  - name: progressBar
+    type: ProgressBar | undefined
+  - name: contentAreaSize
+    type: Dimension | undefined
+  - name: actionsListener
+    type: any
+    default: this._register(new MutableDisposable())
+  - name: currentCompositeOpenToken
+    type: string | undefined
+  - name: boundarySashes
+    type: IBoundarySashes | undefined
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tprivate readonly notificationService: INotificationService,\n\t\tprotected readonly storageService: IStorageService,\n\t\tprotected readonly contextMenuService: IContextMenuService,\n\t\tlayoutService: IWorkbenchLayoutService,\n\t\tprotected readonly keybindingService: IKeybindingService,\n\t\tprivate readonly hoverService: IHoverService,\n\t\tprotected readonly instantiationService: IInstantiationService,\n\t\tthemeService: IThemeService,\n\t\tprotected readonly registry: CompositeRegistry<T>,\n\t\tprivate readonly activeCompositeSettingsKey: string,\n\t\tprivate readonly defaultCompositeId: string,\n\t\tprivate readonly nameForTelemetry: string,\n\t\tprivate readonly compositeCSSClass: string,\n\t\tprivate readonly titleForegroundColor: string | undefined,\n\t\tprivate readonly titleBorderColor: string | undefined,\n\t\tid: string,\n\t\toptions: IPartOptions\n\t)"
+    lines:
+    - 80
+    - 103
+    detail:
+      calls:
+      - createInstantHoverDelegate
+      - storageService.get
+      - super
+      - this._register
+  - name: openComposite
+    sig: 'openComposite(id: string, focus?: boolean): Composite | undefined'
+    vis: protected
+    lines:
+    - 105
+    - 124
+    detail:
+      calls:
+      - this.activeComposite.focus
+      - this.activeComposite?.getId
+      - this.doOpenComposite
+  - name: doOpenComposite
+    sig: 'doOpenComposite(id: string, focus: boolean = false): Composite | undefined'
+    vis: private
+    lines:
+    - 126
+    - 170
+    detail:
+      calls:
+      - composite.focus
+      - composite.getId
+      - defaultGenerator.nextId
+      - this.activeComposite.getId
+      - this.activeComposite?.getId
+      - this.createComposite
+      - this.hideActiveComposite
+      - this.onDidCompositeOpen.fire
+      - this.showComposite
+      - this.updateTitle
+  - name: createComposite
+    sig: 'createComposite(id: string, isActive?: boolean): Composite'
+    vis: protected
+    lines:
+    - 172
+    - 209
+    detail:
+      calls:
+      - assertIsDefined
+      - composite.onTitleAreaUpdate
+      - compositeDescriptor.instantiate
+      - disposable.add
+      - new DisposableStore
+      - new Error
+      - new ScopedProgressIndicator
+      - new ServiceCollection
+      - "new class extends AbstractProgressScope {\n\t\t\t\tconstructor() {\n\t\t\t\t\tsuper(compositeDescriptor!.id, !!isActive);\n\t\t\t\t\tthis._register(that.onDidCompositeOpen.event(e => this.onScopeOpened(e.composite.getId())));\n\t\t\t\t\tthis._register(that.onDidCompositeClose.event(e => this.onScopeClosed(e.getId())));\n\t\t\t\t}\n\t\t\t}"
+      - super
+      - that.onDidCompositeClose.event
+      - that.onDidCompositeOpen.event
+      - this._register
+      - this.instantiatedCompositeItems.get
+      - this.instantiatedCompositeItems.set
+      - this.instantiationService.createChild
+      - this.registry.getComposite
+  - name: showComposite
+    sig: 'showComposite(composite: Composite): void'
+    vis: protected
+    lines:
+    - 211
+    - 298
+    detail:
+      calls:
+      - $
+      - actionsBinding
+      - assertIsDefined
+      - composite.create
+      - composite.getActionRunner
+      - composite.getId
+      - composite.getTitle
+      - composite.layout
+      - composite.setBoundarySashes
+      - composite.setVisible
+      - composite.updateStyles
+      - compositeContainer.classList.add
+      - contentArea?.appendChild
+      - show
+      - this.activeComposite.getId
+      - this.collectCompositeActions
+      - this.compositeCSSClass.split
+      - this.getContentArea
+      - this.mapActionsBindingToComposite.get
+      - this.mapActionsBindingToComposite.set
+      - this.mapCompositeToCompositeContainer.get
+      - this.mapCompositeToCompositeContainer.set
+      - this.registry.getComposite
+      - this.storageService.remove
+      - this.storageService.store
+      - this.updateTitle
+      - toolBar.actionRunner.onDidRun
+  - name: onTitleAreaUpdate
+    sig: 'onTitleAreaUpdate(compositeId: string): void'
+    vis: protected
+    lines:
+    - 300
+    - 320
+    detail:
+      calls:
+      - actionsBinding
+      - composite.composite.getTitle
+      - this.activeComposite.getId
+      - this.activeComposite?.getId
+      - this.collectCompositeActions
+      - this.instantiatedCompositeItems.get
+      - this.mapActionsBindingToComposite.delete
+      - this.mapActionsBindingToComposite.set
+      - this.updateTitle
+  - name: updateTitle
+    sig: 'updateTitle(compositeId: string, compositeTitle?: string): void'
+    vis: private
+    lines:
+    - 322
+    - 338
+    detail:
+      calls:
+      - assertIsDefined
+      - keybinding?.getLabel
+      - localize
+      - this.keybindingService.lookupKeybinding
+      - this.registry.getComposite
+      - this.titleLabel.updateTitle
+      - toolBar.setAriaLabel
+  - name: collectCompositeActions
+    sig: 'collectCompositeActions(composite?: Composite): () => void'
+    vis: private
+    lines:
+    - 340
+    - 353
+    detail:
+      calls:
+      - assertIsDefined
+      - composite?.getActions
+      - composite?.getActions().slice
+      - composite?.getMenuIds
+      - composite?.getSecondaryActions
+      - composite?.getSecondaryActions().slice
+      - this.actionsContextProvider
+  - name: hideActiveComposite
+    sig: 'hideActiveComposite(): Composite | undefined'
+    vis: protected
+    lines:
+    - 363
+    - 392
+    detail:
+      calls:
+      - composite.getId
+      - composite.setVisible
+      - compositeContainer.remove
+      - hide
+      - this.collectCompositeActions
+      - this.collectCompositeActions()
+      - this.mapCompositeToCompositeContainer.get
+      - this.onDidCompositeClose.fire
+      - this.progressBar?.stop
+      - this.progressBar?.stop().hide
+  - name: createTitleArea
+    sig: 'createTitleArea(parent: HTMLElement): HTMLElement'
+    vis: protected
+    lines:
+    - 394
+    - 420
+    detail:
+      calls:
+      - $
+      - append
+      - localize
+      - this._register
+      - this.collectCompositeActions
+      - this.collectCompositeActions()
+      - this.createTitleLabel
+      - this.instantiationService.createInstance
+      - titleArea.classList.add
+  - name: createTitleLabel
+    sig: 'createTitleLabel(parent: HTMLElement): ICompositeTitleLabel'
+    vis: protected
+    lines:
+    - 422
+    - 444
+    detail:
+      calls:
+      - $
+      - append
+      - getDefaultHoverDelegate
+      - this._register
+      - this.hoverService.setupManagedHover
+  - name: updateStyles
+    sig: 'updateStyles(): void'
+    lines:
+    - 454
+    - 460
+    detail:
+      calls:
+      - assertIsDefined
+      - super.updateStyles
+      - titleLabel.updateStyles
+  - name: getProgressIndicator
+    sig: 'getProgressIndicator(id: string): IProgressIndicator | undefined'
+    lines:
+    - 491
+    - 495
+    detail:
+      calls:
+      - this.instantiatedCompositeItems.get
+  - name: layout
+    sig: 'layout(width: number, height: number, top: number, left: number): void'
+    lines:
+    - 501
+    - 509
+    detail:
+      calls:
+      - Dimension.lift
+      - super.layout
+      - super.layoutContents
+      - this.activeComposite?.layout
+  - name: setBoundarySashes
+    sig: 'setBoundarySashes(sashes: IBoundarySashes): void'
+    lines:
+    - 511
+    - 514
+    detail:
+      calls:
+      - this.activeComposite?.setBoundarySashes
+  - name: removeComposite
+    sig: 'removeComposite(compositeId: string): boolean'
+    vis: protected
+    lines:
+    - 516
+    - 531
+    detail:
+      calls:
+      - compositeItem.composite.dispose
+      - dispose
+      - this.activeComposite?.getId
+      - this.instantiatedCompositeItems.delete
+      - this.instantiatedCompositeItems.get
+      - this.mapActionsBindingToComposite.delete
+      - this.mapCompositeToCompositeContainer.delete
+  - name: dispose
+    sig: 'dispose(): void'
+    lines:
+    - 533
+    - 545
+    detail:
+      calls:
+      - super.dispose
+      - this.instantiatedCompositeItems.clear
+      - this.instantiatedCompositeItems.forEach
+      - this.mapActionsBindingToComposite.clear
+      - this.mapCompositeToCompositeContainer.clear
+  lines:
+  - 59
+  - 546
+exports:
+- name: ICompositeTitleLabel
+  kind: type
+- name: CompositeItem
+  kind: type
+- name: CompositePart
+  kind: type

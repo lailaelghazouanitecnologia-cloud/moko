@@ -1,0 +1,58 @@
+## Roska File Descriptor — src/extension.ts
+file: src/extension.ts
+lines: 234
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: vscode.vscode
+- sym: typescript.ts
+- sym: path.path
+functions:
+- name: activate
+  sig: 'activate(context: vscode.ExtensionContext)'
+  is_async: true
+  lines:
+  - 10
+  - 234
+  detail:
+    calls:
+    - Array.from
+    - Promise.race
+    - context.subscriptions.push
+    - disposable.dispose
+    - document.getText
+    - document.getText().lastIndexOf
+    - document.positionAt
+    - fileIndex.all
+    - findImportAt
+    - item.path.endsWith
+    - new ImportCodeActions
+    - new Map
+    - new Promise
+    - "new class implements vscode.CompletionItemProvider {\n\t\tasync provideCompletionItems(document: vscode.TextDocument, position: vscode.Position, token: vscode.CancellationToken): Promise<vscode.CompletionList | undefined> {\n\n\t\t\tconst index = document.getText().lastIndexOf(' from \\'');\n\t\t\tif (index < 0 || document.positionAt(index).line < position.line) {\n\t\t\t\t// line after last import is before position\n\t\t\t\t// -> no completion, safe a parse call\n\t\t\t\treturn undefined;\n\t\t\t}\n\n\t\t\tconst node = findImportAt(document, position);\n\t\t\tif (!node) {\n\t\t\t\treturn undefined;\n\t\t\t}\n\n\t\t\tconst range = new vscode.Range(document.positionAt(node.moduleSpecifier.pos), document.positionAt(node.moduleSpecifier.end));\n\t\t\tconst uris = await fileIndex.all(token);\n\n\t\t\tif (!uris) {\n\t\t\t\treturn undefined;\n\t\t\t}\n\n\t\t\tconst result = new vscode.CompletionList();\n\t\t\tresult.isIncomplete = true;\n\n\t\t\tfor (const item of uris) {\n\n\t\t\t\tif (!item.path.endsWith('.ts')) {\n\t\t\t\t\tcontinue;\n\t\t\t\t}\n\n\t\t\t\tlet relativePath = path.relative(path.dirname(document.uri.path), item.path);\n\t\t\t\trelativePath = relativePath.startsWith('.') ? relativePath : `./${relativePath}`;\n\n\t\t\t\tconst label = path.basename(item.path, path.extname(item.path));\n\t\t\t\tconst insertText = ` '${relativePath.replace(/\\.ts$/, '.js')}'`;\n\t\t\t\tconst filterText = ` '${label}'`;\n\n\t\t\t\tconst completion = new vscode.CompletionItem({\n\t\t\t\t\tlabel: label,\n\t\t\t\t\tdescription: vscode.workspace.asRelativePath(item),\n\t\t\t\t});\n\t\t\t\tcompletion.kind = vscode.CompletionItemKind.File;\n\t\t\t\tcompletion.insertText = insertText;\n\t\t\t\tcompletion.filterText = filterText;\n\t\t\t\tcompletion.range = range;\n\n\t\t\t\tresult.items.push(completion);\n\t\t\t}\n\n\t\t\treturn result;\n\t\t}\n\t}"
+    - "new class {\n\n\t\tprivate _currentRun?: Thenable<void>;\n\n\t\tprivate _disposables: vscode.Disposable[] = [];\n\n\t\tprivate readonly _index = new Map<string, vscode.Uri>();\n\n\t\tconstructor() {\n\t\t\tconst watcher = vscode.workspace.createFileSystemWatcher('**/*.ts', false, true, false);\n\t\t\tthis._disposables.push(watcher.onDidChange(e => { this._index.set(e.toString(), e); }));\n\t\t\tthis._disposables.push(watcher.onDidDelete(e => { this._index.delete(e.toString()); }));\n\t\t\tthis._disposables.push(watcher);\n\n\t\t\tthis._refresh(false);\n\t\t}\n\n\t\tdispose(): void {\n\t\t\tfor (const disposable of this._disposables) {\n\t\t\t\tdisposable.dispose();\n\t\t\t}\n\t\t\tthis._disposables = [];\n\t\t\tthis._index.clear();\n\t\t}\n\n\t\tasync all(token: vscode.CancellationToken) {\n\n\t\t\tawait Promise.race([this._currentRun, new Promise<void>(resolve => token.onCancellationRequested(resolve))]);\n\n\t\t\tif (token.isCancellationRequested) {\n\t\t\t\treturn undefined;\n\t\t\t}\n\n\t\t\treturn Array.from(this._index.values());\n\t\t}\n\n\t\tprivate _refresh(clear: boolean) {\n\t\t\t// TODO@jrieken LATEST API! findFiles2New\n\t\t\tthis._currentRun = vscode.workspace.findFiles('src/vs/**/*.ts', '{**/node_modules/**,**/extensions/**}').then(all => {\n\t\t\t\tif (clear) {\n\t\t\t\t\tthis._index.clear();\n\t\t\t\t}\n\t\t\t\tfor (const item of all) {\n\t\t\t\t\tthis._index.set(item.toString(), item);\n\t\t\t\t}\n\t\t\t});\n\t\t}\n\t}"
+    - new vscode.CompletionItem
+    - new vscode.CompletionList
+    - new vscode.Range
+    - path.basename
+    - path.dirname
+    - path.extname
+    - path.relative
+    - relativePath.replace
+    - relativePath.startsWith
+    - result.items.push
+    - this._disposables.push
+    - this._index.clear
+    - this._index.values
+    - this._refresh
+    - vscode.languages.registerCodeActionsProvider
+    - vscode.languages.registerCompletionItemProvider
+    - vscode.workspace.asRelativePath
+    - vscode.workspace.createFileSystemWatcher
+    - vscode.workspace.findFiles
+    - vscode.workspace.findFiles('src/vs/**/*.ts', '{**/node_modules/**,**/extensions/**}').then
+    - watcher.onDidChange
+    - watcher.onDidDelete
+exports:
+- name: activate
+  kind: func

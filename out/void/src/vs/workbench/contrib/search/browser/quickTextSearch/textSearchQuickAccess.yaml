@@ -1,0 +1,262 @@
+## Roska File Descriptor — quickTextSearch/textSearchQuickAccess.ts
+file: quickTextSearch/textSearchQuickAccess.ts
+lines: 401
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: ../../../../../base/common/cancellation.js.CancellationToken
+- sym: ../../../../../base/common/cancellation.js.CancellationTokenSource
+- sym: ../../../../../base/common/lifecycle.js.DisposableStore
+- sym: ../../../../../base/common/lifecycle.js.IDisposable
+- sym: ../../../../../base/common/map.js.ResourceSet
+- sym: ../../../../../base/common/resources.js.basenameOrAuthority
+- sym: ../../../../../base/common/resources.js.dirname
+- sym: ../../../../../base/common/themables.js.ThemeIcon
+- sym: ../../../../../editor/common/core/range.js.IRange
+- sym: ../../../../../nls.js.localize
+- sym: ../../../../../platform/configuration/common/configuration.js.IConfigurationService
+- sym: ../../../../../platform/editor/common/editor.js.ITextEditorSelection
+- sym: ../../../../../platform/instantiation/common/instantiation.js.IInstantiationService
+- sym: ../../../../../platform/label/common/label.js.ILabelService
+- sym: ../../../../../platform/list/browser/listService.js.WorkbenchCompressibleAsyncDataTree
+- sym: ../../../../../platform/list/browser/listService.js.getSelectionKeyboardEvent
+- sym: ../../../../../platform/quickinput/browser/pickerQuickAccess.js.FastAndSlowPicks
+- sym: ../../../../../platform/quickinput/browser/pickerQuickAccess.js.IPickerQuickAccessItem
+- sym: ../../../../../platform/quickinput/browser/pickerQuickAccess.js.IPickerQuickAccessSeparator
+- sym: ../../../../../platform/quickinput/browser/pickerQuickAccess.js.PickerQuickAccessProvider
+- sym: ../../../../../platform/quickinput/browser/pickerQuickAccess.js.Picks
+- sym: ../../../../../platform/quickinput/browser/pickerQuickAccess.js.TriggerAction
+- sym: ../../../../../platform/quickinput/common/quickAccess.js.DefaultQuickAccessFilterValue
+- sym: ../../../../../platform/quickinput/common/quickAccess.js.IQuickAccessProviderRunOptions
+- sym: ../../../../../platform/quickinput/common/quickInput.js.IKeyMods
+- sym: ../../../../../platform/quickinput/common/quickInput.js.IQuickPick
+- sym: ../../../../../platform/quickinput/common/quickInput.js.IQuickPickItem
+- sym: ../../../../../platform/quickinput/common/quickInput.js.QuickInputButtonLocation
+- sym: ../../../../../platform/quickinput/common/quickInput.js.QuickInputHideReason
+- sym: ../../../../../platform/workspace/common/workspace.js.IWorkspaceContextService
+- sym: ../../../../../platform/workspace/common/workspace.js.IWorkspaceFolder
+- sym: ../../../../common/editor.js.IWorkbenchEditorConfiguration
+- sym: ../searchIcons.js.searchDetailsIcon
+- sym: ../searchIcons.js.searchOpenInFileIcon
+- sym: ../searchIcons.js.searchActivityBarIcon
+- sym: ../searchView.js.SearchView
+- sym: ../searchView.js.getEditorSelectionFromMatch
+- sym: ../../common/search.js.IWorkbenchSearchConfiguration
+- sym: ../../common/search.js.getOutOfWorkspaceEditorResources
+- sym: ../../../../services/editor/common/editorService.js.ACTIVE_GROUP
+- sym: ../../../../services/editor/common/editorService.js.IEditorService
+- sym: ../../../../services/editor/common/editorService.js.SIDE_GROUP
+- sym: ../../../../services/search/common/queryBuilder.js.ITextQueryBuilderOptions
+- sym: ../../../../services/search/common/queryBuilder.js.QueryBuilder
+- sym: ../../../../services/search/common/search.js.IPatternInfo
+- sym: ../../../../services/search/common/search.js.ISearchComplete
+- sym: ../../../../services/search/common/search.js.ITextQuery
+- sym: ../../../../services/search/common/search.js.VIEW_ID
+- sym: ../../../../../base/common/event.js.Event
+- sym: ../../../../browser/quickaccess.js.PickerEditorState
+- sym: ../../../../services/views/common/viewsService.js.IViewsService
+- sym: ../../../../../base/common/async.js.Sequencer
+- sym: ../../../../../base/common/uri.js.URI
+- sym: ../../../../../base/common/codicons.js.Codicon
+- sym: ../searchTreeModel/searchModel.js.SearchModelImpl
+- sym: ../searchTreeModel/searchTreeCommon.js.SearchModelLocation
+- sym: ../searchTreeModel/searchTreeCommon.js.RenderableMatch
+- sym: ../searchTreeModel/searchTreeCommon.js.ISearchTreeFileMatch
+- sym: ../searchTreeModel/searchTreeCommon.js.ISearchTreeMatch
+- sym: ../searchTreeModel/searchTreeCommon.js.ISearchResult
+- sym: ../searchCompare.js.searchComparer
+- sym: ../../../../../base/common/filters.js.IMatch
+data:
+- name: TEXT_SEARCH_QUICK_ACCESS_PREFIX
+  type: string
+  val: '''%'''
+- name: DEFAULT_TEXT_QUERY_BUILDER_OPTIONS
+  type: ITextQueryBuilderOptions
+  val: "{\n\t_reason: 'quickAccessSearch',\n\tdisregardIgnoreFiles: false,\n\tdisregardExcludeSettings: false,\n\tonlyOpenEditors: false..."
+- name: MAX_FILES_SHOWN
+  type: number
+  val: '30'
+- name: MAX_RESULTS_PER_FILE
+  type: number
+  val: '10'
+- name: DEBOUNCE_DELAY
+  type: number
+  val: '75'
+types:
+- name: ITextSearchQuickAccessItem
+  kind: trait
+  bases:
+  - IPickerQuickAccessItem
+  decorators:
+  - interface
+  fields:
+  - name: match
+    type: ISearchTreeMatch
+  lines:
+  - 53
+  - 55
+- name: TextSearchQuickAccess
+  kind: struct
+  bases:
+  - PickerQuickAccessProvider
+  fields:
+  - name: editorSequencer
+    type: Sequencer
+  - name: queryBuilder
+    type: QueryBuilder
+  - name: searchModel
+    type: SearchModelImpl
+  - name: currentAsyncSearch
+    type: Promise<ISearchComplete>
+    default: "Promise.resolve({\n\t\tresults: [],\n\t\tmessages: []\n\t})"
+  - name: editorViewState
+    type: PickerEditorState
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\t@IInstantiationService private readonly _instantiationService: IInstantiationService,\n\t\t@IWorkspaceContextService private readonly _contextService: IWorkspaceContextService,\n\t\t@IEditorService private readonly _editorService: IEditorService,\n\t\t@ILabelService private readonly _labelService: ILabelService,\n\t\t@IViewsService private readonly _viewsService: IViewsService,\n\t\t@IConfigurationService private readonly _configurationService: IConfigurationService\n\t)"
+    lines:
+    - 83
+    - 98
+    detail:
+      calls:
+      - new Sequencer
+      - super
+      - this._instantiationService.createInstance
+      - this._register
+  - name: dispose
+    sig: 'dispose(): void'
+    lines:
+    - 100
+    - 103
+    detail:
+      calls:
+      - super.dispose
+      - this.searchModel.dispose
+  - name: provide
+    sig: 'provide(picker: IQuickPick<ITextSearchQuickAccessItem, { useSeparators: true }>, token: CancellationToken, runOptions?: IQuickAccessProviderRunOptions): IDisposable'
+    lines:
+    - 105
+    - 159
+    detail:
+      calls:
+      - Event.debounce
+      - Event.debounce(picker.onDidChangeActive, (last, event) => event, DEBOUNCE_DELAY, true)
+      - Event.once
+      - Event.once(picker.onDidHide)
+      - Event.once(picker.onWillHide)
+      - ThemeIcon.asClassName
+      - disposables.add
+      - localize
+      - new DisposableStore
+      - picker.onDidAccept
+      - picker.onDidTriggerButton
+      - super.provide
+      - this.editorViewState.reset
+  - name: defaultFilterValue
+    sig: 'defaultFilterValue(): DefaultQuickAccessFilterValue | undefined'
+    lines:
+    - 174
+    - 180
+    detail: {}
+  - name: doSearch
+    sig: "doSearch(contentPattern: string, token: CancellationToken): {\n\t\tsyncResults: ISearchTreeFileMatch[];\n\t\tasyncResults: Promise<ISearchTreeFileMatch[]>;\n\t} | undefined"
+    vis: private
+    lines:
+    - 182
+    - 211
+    detail:
+      calls:
+      - folderResources.map
+      - getAsyncResults
+      - this._contextService.getWorkspace
+      - this._getTextQueryBuilderOptions
+      - this.queryBuilder.text
+      - this.searchModel.search
+      - this.searchModel.searchResult.matches
+      - this.searchModel.searchResult.toggleHighlights
+  - name: moveToSearchViewlet
+    sig: 'moveToSearchViewlet(currentElem: RenderableMatch | undefined)'
+    is_async: true
+    vis: private
+    lines:
+    - 213
+    - 231
+    detail:
+      calls:
+      - getSelectionKeyboardEvent
+      - this._instantiationService.createInstance
+      - this._viewsService.getActiveViewWithId
+      - this._viewsService.openView
+      - viewer.reveal
+      - viewer.setFocus
+      - viewer.setSelection
+      - viewlet.replaceSearchModel
+      - viewlet.searchAndReplaceWidget.focus
+      - viewlet?.getControl
+  - name: _getPicksFromMatches
+    sig: '_getPicksFromMatches(matches: ISearchTreeFileMatch[], limit: number, firstFile?: URI): (IPickerQuickAccessSeparator | ITextSearchQuickAccessItem)[]'
+    vis: private
+    lines:
+    - 234
+    - 334
+    detail:
+      calls:
+      - (preview.before + preview.inside + preview.after).trim
+      - (preview.before + preview.inside + preview.after).trim().substring
+      - ThemeIcon.asClassName
+      - basenameOrAuthority
+      - dirname
+      - element.preview
+      - element.range
+      - iFileInstanceMatch.matches
+      - localize
+      - matches.slice
+      - matches.sort
+      - picks.push
+      - this._labelService.getUriLabel
+  - name: handleAccept
+    sig: 'handleAccept(iFileInstanceMatch: ISearchTreeFileMatch, options: { keyMods?: IKeyMods; selection?: ITextEditorSelection; preserveFocus?: boolean; range?: IRange; forcePinned?: boolean; forceOpenSideBySide?: boolean }): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 336
+    - 350
+    detail:
+      calls:
+      - this._editorService.openEditor
+  - name: _getPicks
+    sig: '_getPicks(contentPattern: string, disposables: DisposableStore, token: CancellationToken): Picks<IQuickPickItem> | Promise<Picks<IQuickPickItem> | FastAndSlowPicks<IQuickPickItem>> | FastAndSlowPicks<IQuickPickItem> | null'
+    vis: protected
+    lines:
+    - 352
+    - 400
+    detail:
+      calls:
+      - "allMatches.asyncResults\n\t\t\t\t.then"
+      - "allMatches.asyncResults\n\t\t\t\t.then(asyncResults => (asyncResults.length + syncResult.length === 0) ? ..."
+      - disposables.add
+      - localize
+      - new CancellationTokenSource
+      - this._getPicksFromMatches
+      - this.doSearch
+      - this.searchModel.searchResult.clear
+      - this.searchModel.searchResult.toggleHighlights
+      - token.onCancellationRequested
+  lines:
+  - 56
+  - 401
+exports:
+- name: ITextSearchQuickAccessItem
+  kind: type
+- name: TextSearchQuickAccess
+  kind: type
+- name: TEXT_SEARCH_QUICK_ACCESS_PREFIX
+  kind: data
+- name: DEFAULT_TEXT_QUERY_BUILDER_OPTIONS
+  kind: data
+- name: MAX_FILES_SHOWN
+  kind: data
+- name: MAX_RESULTS_PER_FILE
+  kind: data
+- name: DEBOUNCE_DELAY
+  kind: data

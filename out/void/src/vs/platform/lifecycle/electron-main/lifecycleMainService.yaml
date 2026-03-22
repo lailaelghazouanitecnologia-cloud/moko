@@ -1,0 +1,437 @@
+## Roska File Descriptor — electron-main/lifecycleMainService.ts
+file: electron-main/lifecycleMainService.ts
+lines: 750
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: electron.electron
+- sym: ../../../base/parts/ipc/electron-main/ipcMain.js.validatedIpcMain
+- sym: ../../../base/common/async.js.Barrier
+- sym: ../../../base/common/async.js.Promises
+- sym: ../../../base/common/async.js.timeout
+- sym: ../../../base/common/event.js.Emitter
+- sym: ../../../base/common/event.js.Event
+- sym: ../../../base/common/lifecycle.js.Disposable
+- sym: ../../../base/common/lifecycle.js.DisposableStore
+- sym: ../../../base/common/platform.js.isMacintosh
+- sym: ../../../base/common/platform.js.isWindows
+- sym: ../../../base/common/process.js.cwd
+- sym: ../../../base/common/types.js.assertIsDefined
+- sym: ../../environment/common/argv.js.NativeParsedArgs
+- sym: ../../instantiation/common/instantiation.js.createDecorator
+- sym: ../../log/common/log.js.ILogService
+- sym: ../../state/node/state.js.IStateService
+- sym: ../../window/electron-main/window.js.ICodeWindow
+- sym: ../../window/electron-main/window.js.LoadReason
+- sym: ../../window/electron-main/window.js.UnloadReason
+- sym: ../../workspace/common/workspace.js.ISingleFolderWorkspaceIdentifier
+- sym: ../../workspace/common/workspace.js.IWorkspaceIdentifier
+- sym: ../../environment/electron-main/environmentMainService.js.IEnvironmentMainService
+- sym: ../../auxiliaryWindow/electron-main/auxiliaryWindow.js.IAuxiliaryWindow
+- sym: ../../windows/electron-main/windows.js.getAllWindowsExcludingOffscreen
+data:
+- name: ILifecycleMainService
+  type: any
+  val: createDecorator<ILifecycleMainService>('lifecycleMainService')
+types:
+- name: WindowLoadEvent
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: readonly
+    type: ICodeWindow
+  - name: readonly
+    type: IWorkspaceIdentifier | ISingleFolderWorkspaceIdentifier | undefined
+  - name: readonly
+    type: LoadReason
+  lines:
+  - 26
+  - 42
+- name: ShutdownReason
+  kind: enum
+  variants:
+  - name: QUIT
+    val: '1'
+  - name: KILL
+  lines:
+  - 44
+  - 57
+- name: ShutdownEvent
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: reason
+    type: ShutdownReason
+  - name: join
+    type: 'method: join(id: string, promise: Promise<void>): void'
+  lines:
+  - 59
+  - 71
+- name: IRelaunchHandler
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: handleRelaunch
+    type: 'method: handleRelaunch(options?: IRelaunchOptions): boolean'
+  lines:
+  - 73
+  - 80
+- name: IRelaunchOptions
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: readonly
+    type: string[]
+  - name: readonly
+    type: string[]
+  lines:
+  - 82
+  - 85
+- name: ILifecycleMainService
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: readonly
+    type: undefined
+  - name: readonly
+    type: boolean
+  - name: readonly
+    type: boolean
+  - name: phase
+    type: LifecycleMainPhase
+  - name: readonly
+    type: Event<void>
+  - name: readonly
+    type: Event<ShutdownEvent>
+  - name: readonly
+    type: Event<WindowLoadEvent>
+  - name: readonly
+    type: Event<ICodeWindow>
+  - name: registerWindow
+    type: 'method: registerWindow(window: ICodeWindow): void'
+  - name: registerAuxWindow
+    type: 'method: registerAuxWindow(auxWindow: IAuxiliaryWindow): void'
+  - name: reload
+    type: 'method: reload(window: ICodeWindow, cli?: NativeParsedArgs): Promise<void>'
+  - name: unload
+    type: 'method: unload(window: ICodeWindow, reason: UnloadReason): Promise<boolean /* veto */>'
+  - name: relaunch
+    type: 'method: relaunch(options?: IRelaunchOptions): Promise<void>'
+  - name: setRelaunchHandler
+    type: 'method: setRelaunchHandler(handler: IRelaunchHandler): void'
+  - name: quit
+    type: 'method: quit(willRestart?: boolean): Promise<boolean /* veto */>'
+  - name: kill
+    type: 'method: kill(code?: number): Promise<void>'
+  - name: when
+    type: 'method: when(phase: LifecycleMainPhase): Promise<void>'
+  lines:
+  - 87
+  - 185
+- name: LifecycleMainPhase
+  kind: enum
+  variants:
+  - name: Starting
+    val: '1'
+  - name: Ready
+    val: '2'
+  - name: AfterWindowOpen
+    val: '3'
+  - name: Eventually
+    val: '4'
+  lines:
+  - 187
+  - 211
+- name: LifecycleMainService
+  kind: struct
+  bases:
+  - Disposable
+  - ILifecycleMainService
+  fields:
+  - name: _serviceBrand
+    type: undefined
+  - name: QUIT_AND_RESTART_KEY
+    type: any
+    default: '''lifecycle.quitAndRestart'''
+  - name: _onBeforeShutdown
+    type: any
+    default: this._register(new Emitter<void>())
+  - name: onBeforeShutdown
+    type: any
+    default: this._onBeforeShutdown.event
+  - name: _onWillShutdown
+    type: any
+    default: this._register(new Emitter<ShutdownEvent>())
+  - name: onWillShutdown
+    type: any
+    default: this._onWillShutdown.event
+  - name: _onWillLoadWindow
+    type: any
+    default: this._register(new Emitter<WindowLoadEvent>())
+  - name: onWillLoadWindow
+    type: any
+    default: this._onWillLoadWindow.event
+  - name: _onBeforeCloseWindow
+    type: any
+    default: this._register(new Emitter<ICodeWindow>())
+  - name: onBeforeCloseWindow
+    type: any
+    default: this._onBeforeCloseWindow.event
+  - name: _quitRequested
+    type: any
+    default: 'false'
+  - name: _wasRestarted
+    type: boolean
+    default: 'false'
+  - name: _phase
+    type: any
+    default: LifecycleMainPhase.Starting
+  - name: windowToCloseRequest
+    type: any
+    default: new Set<number>()
+  - name: oneTimeListenerTokenGenerator
+    type: any
+    default: '0'
+  - name: windowCounter
+    type: any
+    default: '0'
+  - name: pendingQuitPromise
+    type: Promise<boolean> | undefined
+    default: undefined
+  - name: pendingQuitPromiseResolve
+    type: '{ (veto: boolean): void } | undefined'
+    default: undefined
+  - name: pendingWillShutdownPromise
+    type: Promise<void> | undefined
+    default: undefined
+  - name: mapWindowIdToPendingUnload
+    type: any
+    default: new Map<number, Promise<boolean>>()
+  - name: phaseWhen
+    type: any
+    default: new Map<LifecycleMainPhase, Barrier>()
+  - name: relaunchHandler
+    type: IRelaunchHandler | undefined
+    default: undefined
+  methods:
+  - name: quitRequested
+    sig: 'quitRequested(): boolean'
+    lines:
+    - 232
+    - 232
+    detail: {}
+  - name: wasRestarted
+    sig: 'wasRestarted(): boolean'
+    lines:
+    - 235
+    - 235
+    detail: {}
+  - name: phase
+    sig: 'phase(): LifecycleMainPhase'
+    lines:
+    - 238
+    - 238
+    detail: {}
+  - name: constructor
+    sig: "constructor(\n\t\t@ILogService private readonly logService: ILogService,\n\t\t@IStateService private readonly stateService: IStateService,\n\t\t@IEnvironmentMainService private readonly environmentMainService: IEnvironmentMainService\n\t)"
+    lines:
+    - 255
+    - 264
+    detail:
+      calls:
+      - super
+      - this.resolveRestarted
+      - this.when
+      - this.when(LifecycleMainPhase.Ready).then
+  - name: registerListeners
+    sig: 'registerListeners(): void'
+    vis: private
+    lines:
+    - 275
+    - 344
+    detail:
+      calls:
+      - electron.app.addListener
+      - electron.app.once
+  - name: fireOnWillShutdown
+    sig: 'fireOnWillShutdown(reason: ShutdownReason): Promise<void>'
+    vis: private
+    lines:
+    - 346
+    - 385
+    detail:
+      calls:
+      - "(async () => {\n\n\t\t\t// Settle all shutdown event joiners\n\t\t\ttry {\n\t\t\t\tawait Promises.settled(joiners)..."
+      - joiners.push
+      - logService.trace
+      - promise.finally
+      - this._onWillShutdown.fire
+      - this.trace
+  - name: phase
+    sig: 'phase(value: LifecycleMainPhase)'
+    lines:
+    - 387
+    - 405
+    detail:
+      calls:
+      - barrier.open
+      - new Error
+      - this.phaseWhen.delete
+      - this.phaseWhen.get
+      - this.trace
+  - name: when
+    sig: 'when(phase: LifecycleMainPhase): Promise<void>'
+    is_async: true
+    lines:
+    - 407
+    - 419
+    detail:
+      calls:
+      - barrier.wait
+      - new Barrier
+      - this.phaseWhen.get
+      - this.phaseWhen.set
+  - name: registerWindow
+    sig: 'registerWindow(window: ICodeWindow): void'
+    lines:
+    - 421
+    - 478
+    detail:
+      calls:
+      - Event.fromNodeEventEmitter
+      - Event.fromNodeEventEmitter<electron.Event>(win, 'close')
+      - Event.fromNodeEventEmitter<electron.Event>(win, 'closed')
+      - assertIsDefined
+      - new DisposableStore
+      - window.onWillLoad
+      - windowListeners.add
+  - name: registerAuxWindow
+    sig: 'registerAuxWindow(auxWindow: IAuxiliaryWindow): void'
+    lines:
+    - 480
+    - 508
+    detail:
+      calls:
+      - Event.fromNodeEventEmitter
+      - Event.fromNodeEventEmitter<electron.Event>(win, 'close')
+      - Event.fromNodeEventEmitter<electron.Event>(win, 'closed')
+      - assertIsDefined
+      - new DisposableStore
+      - windowListeners.add
+  - name: reload
+    sig: 'reload(window: ICodeWindow, cli?: NativeParsedArgs): Promise<void>'
+    is_async: true
+    lines:
+    - 510
+    - 517
+    detail:
+      calls:
+      - this.unload
+      - window.reload
+  - name: unload
+    sig: 'unload(window: ICodeWindow, reason: UnloadReason): Promise<boolean /* veto */>'
+    lines:
+    - 519
+    - 534
+    detail:
+      calls:
+      - this.doUnload
+      - this.doUnload(window, reason).finally
+      - this.mapWindowIdToPendingUnload.get
+      - this.mapWindowIdToPendingUnload.set
+  - name: doUnload
+    sig: 'doUnload(window: ICodeWindow, reason: UnloadReason): Promise<boolean /* veto */>'
+    is_async: true
+    vis: private
+    lines:
+    - 536
+    - 558
+    detail:
+      calls:
+      - this.handleWindowUnloadVeto
+      - this.onBeforeUnloadWindowInRenderer
+      - this.onWillUnloadWindowInRenderer
+      - this.trace
+  - name: quit
+    sig: 'quit(willRestart?: boolean): Promise<boolean /* veto */>'
+    lines:
+    - 611
+    - 632
+    detail:
+      calls:
+      - this.doQuit
+      - this.doQuit(willRestart).then
+  - name: doQuit
+    sig: 'doQuit(willRestart?: boolean): Promise<boolean /* veto */>'
+    vis: private
+    lines:
+    - 634
+    - 660
+    detail:
+      calls:
+      - new Promise
+      - this.stateService.setItem
+      - this.trace
+  - name: setRelaunchHandler
+    sig: 'setRelaunchHandler(handler: IRelaunchHandler): void'
+    lines:
+    - 670
+    - 672
+    detail: {}
+  - name: relaunch
+    sig: 'relaunch(options?: IRelaunchOptions): Promise<void>'
+    is_async: true
+    lines:
+    - 674
+    - 705
+    detail:
+      calls:
+      - args.indexOf
+      - args.push
+      - args.splice
+      - electron.app.once
+      - electron.app.removeListener
+      - process.argv.slice
+      - this.quit
+      - this.trace
+  - name: kill
+    sig: 'kill(code?: number): Promise<void>'
+    is_async: true
+    lines:
+    - 707
+    - 749
+    detail:
+      calls:
+      - "(async () => {\n\t\t\t\tfor (const window of getAllWindowsExcludingOffscreen()) {\n\t\t\t\t\tif (window && !win..."
+      - Promise.race
+      - electron.app.exit
+      - this.fireOnWillShutdown
+      - this.trace
+      - timeout
+  lines:
+  - 213
+  - 750
+exports:
+- name: WindowLoadEvent
+  kind: type
+- name: ShutdownReason
+  kind: type
+- name: ShutdownEvent
+  kind: type
+- name: IRelaunchHandler
+  kind: type
+- name: IRelaunchOptions
+  kind: type
+- name: ILifecycleMainService
+  kind: type
+- name: LifecycleMainPhase
+  kind: type
+- name: LifecycleMainService
+  kind: type
+- name: ILifecycleMainService
+  kind: data

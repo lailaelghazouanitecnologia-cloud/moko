@@ -1,0 +1,735 @@
+## Roska File Descriptor — node/ipc.net.ts
+file: node/ipc.net.ts
+lines: 892
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: crypto.createHash
+- sym: net.Server as NetServer
+- sym: net.Socket
+- sym: net.createServer
+- sym: net.createConnection
+- sym: zlib.createDeflateRaw
+- sym: zlib.ZlibOptions
+- sym: zlib.InflateRaw
+- sym: zlib.DeflateRaw
+- sym: zlib.createInflateRaw
+- sym: ../../../common/buffer.js.VSBuffer
+- sym: ../../../common/errors.js.onUnexpectedError
+- sym: ../../../common/event.js.Emitter
+- sym: ../../../common/event.js.Event
+- sym: ../../../common/lifecycle.js.Disposable
+- sym: ../../../common/lifecycle.js.IDisposable
+- sym: ../../../common/path.js.join
+- sym: ../../../common/platform.js.Platform
+- sym: ../../../common/platform.js.platform
+- sym: ../../../common/uuid.js.generateUuid
+- sym: ../common/ipc.js.ClientConnectionEvent
+- sym: ../common/ipc.js.IPCServer
+- sym: ../common/ipc.net.js.ChunkStream
+- sym: ../common/ipc.net.js.Client
+- sym: ../common/ipc.net.js.ISocket
+- sym: ../common/ipc.net.js.Protocol
+- sym: ../common/ipc.net.js.SocketCloseEvent
+- sym: ../common/ipc.net.js.SocketCloseEventType
+- sym: ../common/ipc.net.js.SocketDiagnostics
+- sym: ../common/ipc.net.js.SocketDiagnosticsEventType
+data:
+- name: socketEndTimeoutMs
+  type: any
+  val: 30_000
+- name: XDG_RUNTIME_DIR
+  type: any
+  val: <string | undefined>process.env['XDG_RUNTIME_DIR']
+- name: safeIpcPathLengths
+  type: '{ [platform: number]: number }'
+  val: "{\n\t[Platform.Linux]: 107,\n\t[Platform.Mac]: 103\n}"
+types:
+- name: NodeSocket
+  kind: struct
+  bases:
+  - ISocket
+  fields:
+  - name: socket
+    type: Socket
+  - name: _errorListener
+    type: '(err: any) => void'
+  - name: _closeListener
+    type: '(hadError: boolean) => void'
+  - name: _endListener
+    type: () => void
+  - name: _canWrite
+    type: any
+    default: 'true'
+  methods:
+  - name: traceSocketEvent
+    sig: 'traceSocketEvent(type: SocketDiagnosticsEventType, data?: VSBuffer | Uint8Array | ArrayBuffer | ArrayBufferView | any): void'
+    lines:
+    - 38
+    - 40
+    detail:
+      calls:
+      - SocketDiagnostics.traceSocketEvent
+  - name: constructor
+    sig: 'constructor(socket: Socket, debugLabel: string = '''')'
+    lines:
+    - 42
+    - 79
+    detail:
+      calls:
+      - this.socket.on
+      - this.traceSocketEvent
+  - name: dispose
+    sig: 'dispose(): void'
+    lines:
+    - 81
+    - 86
+    detail:
+      calls:
+      - this.socket.destroy
+      - this.socket.off
+  - name: onData
+    sig: 'onData(_listener: (e: VSBuffer) => void): IDisposable'
+    lines:
+    - 88
+    - 97
+    detail:
+      calls:
+      - this.socket.on
+  - name: onClose
+    sig: 'onClose(listener: (e: SocketCloseEvent) => void): IDisposable'
+    lines:
+    - 99
+    - 111
+    detail:
+      calls:
+      - this.socket.on
+  - name: onEnd
+    sig: 'onEnd(listener: () => void): IDisposable'
+    lines:
+    - 113
+    - 121
+    detail:
+      calls:
+      - this.socket.on
+  - name: write
+    sig: 'write(buffer: VSBuffer): void'
+    lines:
+    - 123
+    - 162
+    detail:
+      calls:
+      - onUnexpectedError
+      - this.socket.write
+      - this.traceSocketEvent
+  - name: end
+    sig: 'end(): void'
+    lines:
+    - 164
+    - 167
+    detail:
+      calls:
+      - this.socket.end
+      - this.traceSocketEvent
+  - name: drain
+    sig: 'drain(): Promise<void>'
+    lines:
+    - 169
+    - 192
+    detail:
+      calls:
+      - new Promise
+      - this.traceSocketEvent
+  lines:
+  - 29
+  - 193
+- name: Constants
+  kind: enum
+  variants:
+  - name: MinHeaderByteSize
+    val: '2'
+  - name: MaxWebSocketMessageLength
+    val: 256 * 1024
+  lines:
+  - 195
+  - 205
+- name: ReadState
+  kind: enum
+  variants:
+  - name: PeekHeader
+    val: '1'
+  - name: ReadHeader
+    val: '2'
+  - name: ReadBody
+    val: '3'
+  - name: Fin
+    val: '4'
+  lines:
+  - 207
+  - 212
+- name: ISocketTracer
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: traceSocketEvent
+    type: 'method: traceSocketEvent(type: SocketDiagnosticsEventType, data?: VSBuffer | Uint8Array | ArrayBuffer | ArrayBufferView | any): void'
+  lines:
+  - 214
+  - 216
+- name: FrameOptions
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: compressed
+    type: boolean
+  - name: opcode
+    type: number
+  lines:
+  - 218
+  - 221
+- name: WebSocketNodeSocket
+  kind: struct
+  ctx: 'Create a socket which can communicate using WebSocket frames. **NOTE**: When using the permessage-deflate WebSocket extension, if parts of inflating was done in a different zlib instance, we need to pass all those bytes into zlib, otherwise the inflate might hit an inflated portion referencing a distance too far back.'
+  bases:
+  - Disposable
+  - ISocket
+  - ISocketTracer
+  fields:
+  - name: socket
+    type: NodeSocket
+  - name: _flowManager
+    type: WebSocketFlowManager
+  - name: _incomingData
+    type: ChunkStream
+  - name: _onData
+    type: any
+    default: this._register(new Emitter<VSBuffer>())
+  - name: _onClose
+    type: any
+    default: this._register(new Emitter<SocketCloseEvent>())
+  - name: _isEnded
+    type: boolean
+    default: 'false'
+  - name: _state
+    type: any
+    default: "{\n\t\tstate: ReadState.PeekHeader,\n\t\treadLen: Constants.MinHeaderByteSize,\n\t\tfin: ..."
+  methods:
+  - name: permessageDeflate
+    sig: 'permessageDeflate(): boolean'
+    lines:
+    - 245
+    - 247
+    detail: {}
+  - name: recordedInflateBytes
+    sig: 'recordedInflateBytes(): VSBuffer'
+    lines:
+    - 249
+    - 251
+    detail: {}
+  - name: traceSocketEvent
+    sig: 'traceSocketEvent(type: SocketDiagnosticsEventType, data?: VSBuffer | Uint8Array | ArrayBuffer | ArrayBufferView | any): void'
+    lines:
+    - 253
+    - 255
+    detail:
+      calls:
+      - this.socket.traceSocketEvent
+  - name: constructor
+    sig: 'constructor(socket: NodeSocket, permessageDeflate: boolean, inflateBytes: VSBuffer | null, recordInflateBytes: boolean)'
+    lines:
+    - 269
+    - 301
+    detail:
+      calls:
+      - new ChunkStream
+      - new WebSocketFlowManager
+      - super
+      - this._flowManager.onError
+      - this._register
+      - this.socket.onClose
+      - this.socket.onData
+      - this.traceSocketEvent
+  - name: dispose
+    sig: 'dispose(): void'
+    lines:
+    - 303
+    - 313
+    detail:
+      calls:
+      - super.dispose
+      - this._flowManager.isProcessingWriteQueue
+      - this._flowManager.onDidFinishProcessingWriteQueue
+      - this._register
+      - this.socket.dispose
+  - name: onData
+    sig: 'onData(listener: (e: VSBuffer) => void): IDisposable'
+    lines:
+    - 315
+    - 317
+    detail:
+      calls:
+      - this._onData.event
+  - name: onClose
+    sig: 'onClose(listener: (e: SocketCloseEvent) => void): IDisposable'
+    lines:
+    - 319
+    - 321
+    detail:
+      calls:
+      - this._onClose.event
+  - name: onEnd
+    sig: 'onEnd(listener: () => void): IDisposable'
+    lines:
+    - 323
+    - 325
+    detail:
+      calls:
+      - this.socket.onEnd
+  - name: write
+    sig: 'write(buffer: VSBuffer): void'
+    lines:
+    - 327
+    - 345
+    detail:
+      calls:
+      - Math.min
+      - buffer.slice
+      - this._flowManager.writeMessage
+  - name: _write
+    sig: '_write(buffer: VSBuffer, { compressed, opcode }: FrameOptions): void'
+    vis: private
+    lines:
+    - 347
+    - 389
+    detail:
+      calls:
+      - VSBuffer.alloc
+      - VSBuffer.concat
+      - header.writeUInt8
+      - this.socket.write
+      - this.traceSocketEvent
+  - name: end
+    sig: 'end(): void'
+    lines:
+    - 391
+    - 394
+    detail:
+      calls:
+      - this.socket.end
+  - name: _acceptChunk
+    sig: '_acceptChunk(data: VSBuffer): void'
+    vis: private
+    lines:
+    - 396
+    - 493
+    detail:
+      calls:
+      - Boolean
+      - header.readUInt8
+      - peekHeader.readUInt8
+      - this._flowManager.acceptFrame
+      - this._flowManager.writeMessage
+      - this._incomingData.acceptChunk
+      - this._incomingData.peek
+      - this._incomingData.read
+      - this.traceSocketEvent
+      - unmask
+  - name: drain
+    sig: 'drain(): Promise<void>'
+    is_async: true
+    lines:
+    - 495
+    - 502
+    detail:
+      calls:
+      - Event.toPromise
+      - this._flowManager.isProcessingWriteQueue
+      - this.socket.drain
+      - this.traceSocketEvent
+  lines:
+  - 226
+  - 503
+- name: WebSocketFlowManager
+  kind: struct
+  ctx: Subsequent calls should wait for the previous `_deflateBuffer` call to complete.
+  bases:
+  - Disposable
+  fields:
+  - name: _onError
+    type: any
+    default: this._register(new Emitter<Error>())
+  - name: onError
+    type: any
+    default: this._onError.event
+  - name: _zlibInflateStream
+    type: ZlibInflateStream | null
+  - name: _zlibDeflateStream
+    type: ZlibDeflateStream | null
+  - name: _writeQueue
+    type: '{ data: VSBuffer; options: FrameOptions }[]'
+    default: '[]'
+  - name: _readQueue
+    type: '{ data: VSBuffer; isCompressed: boolean; isLastFrameOfMessage: boolean }[]'
+    default: '[]'
+  - name: _onDidFinishProcessingReadQueue
+    type: any
+    default: this._register(new Emitter<void>())
+  - name: onDidFinishProcessingReadQueue
+    type: any
+    default: this._onDidFinishProcessingReadQueue.event
+  - name: _onDidFinishProcessingWriteQueue
+    type: any
+    default: this._register(new Emitter<void>())
+  - name: onDidFinishProcessingWriteQueue
+    type: any
+    default: this._onDidFinishProcessingWriteQueue.event
+  - name: _isProcessingWriteQueue
+    type: any
+    default: 'false'
+  - name: _isProcessingReadQueue
+    type: any
+    default: 'false'
+  methods:
+  - name: permessageDeflate
+    sig: 'permessageDeflate(): boolean'
+    lines:
+    - 521
+    - 523
+    detail:
+      calls:
+      - Boolean
+  - name: recordedInflateBytes
+    sig: 'recordedInflateBytes(): VSBuffer'
+    lines:
+    - 525
+    - 530
+    detail:
+      calls:
+      - VSBuffer.alloc
+  - name: constructor
+    sig: "constructor(\n\t\tprivate readonly _tracer: ISocketTracer,\n\t\tpermessageDeflate: boolean,\n\t\tinflateBytes: VSBuffer | null,\n\t\trecordInflateBytes: boolean,\n\t\tprivate readonly _onData: Emitter<VSBuffer>,\n\t\tprivate readonly _writeFn: (data: VSBuffer, options: FrameOptions) => void\n\t)"
+    lines:
+    - 532
+    - 553
+    detail:
+      calls:
+      - new ZlibDeflateStream
+      - new ZlibInflateStream
+      - super
+      - this._register
+      - this._zlibDeflateStream.onError
+      - this._zlibInflateStream.onError
+  - name: writeMessage
+    sig: 'writeMessage(data: VSBuffer, options: FrameOptions): void'
+    lines:
+    - 555
+    - 558
+    detail:
+      calls:
+      - this._processWriteQueue
+      - this._writeQueue.push
+  - name: _processWriteQueue
+    sig: '_processWriteQueue(): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 561
+    - 577
+    detail:
+      calls:
+      - this._deflateMessage
+      - this._onDidFinishProcessingWriteQueue.fire
+      - this._writeFn
+      - this._writeQueue.shift
+  - name: isProcessingWriteQueue
+    sig: 'isProcessingWriteQueue(): boolean'
+    lines:
+    - 579
+    - 581
+    detail: {}
+  - name: acceptFrame
+    sig: 'acceptFrame(data: VSBuffer, isCompressed: boolean, isLastFrameOfMessage: boolean): void'
+    lines:
+    - 593
+    - 596
+    detail:
+      calls:
+      - this._processReadQueue
+      - this._readQueue.push
+  - name: _processReadQueue
+    sig: '_processReadQueue(): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 599
+    - 619
+    detail:
+      calls:
+      - this._inflateFrame
+      - this._onData.fire
+      - this._onDidFinishProcessingReadQueue.fire
+      - this._readQueue.shift
+  - name: isProcessingReadQueue
+    sig: 'isProcessingReadQueue(): boolean'
+    lines:
+    - 621
+    - 623
+    detail: {}
+  lines:
+  - 505
+  - 638
+- name: ZlibInflateStream
+  kind: struct
+  bases:
+  - Disposable
+  fields:
+  - name: _onError
+    type: any
+    default: this._register(new Emitter<Error>())
+  - name: onError
+    type: any
+    default: this._onError.event
+  - name: _zlibInflate
+    type: InflateRaw
+  - name: _recordedInflateBytes
+    type: VSBuffer[]
+    default: '[]'
+  - name: _pendingInflateData
+    type: VSBuffer[]
+    default: '[]'
+  methods:
+  - name: recordedInflateBytes
+    sig: 'recordedInflateBytes(): VSBuffer'
+    lines:
+    - 649
+    - 654
+    detail:
+      calls:
+      - VSBuffer.alloc
+      - VSBuffer.concat
+  - name: constructor
+    sig: "constructor(\n\t\tprivate readonly _tracer: ISocketTracer,\n\t\tprivate readonly _recordInflateBytes: boolean,\n\t\tinflateBytes: VSBuffer | null,\n\t\toptions: ZlibOptions\n\t)"
+    lines:
+    - 656
+    - 680
+    detail:
+      calls:
+      - createInflateRaw
+      - super
+      - this._tracer.traceSocketEvent
+      - this._zlibInflate.flush
+      - this._zlibInflate.on
+      - this._zlibInflate.write
+  - name: write
+    sig: 'write(buffer: VSBuffer): void'
+    lines:
+    - 682
+    - 688
+    detail:
+      calls:
+      - buffer.clone
+      - this._recordedInflateBytes.push
+      - this._tracer.traceSocketEvent
+      - this._zlibInflate.write
+  - name: flush
+    sig: 'flush(callback: (data: VSBuffer) => void): void'
+    lines:
+    - 690
+    - 697
+    detail:
+      calls:
+      - this._zlibInflate.flush
+  lines:
+  - 640
+  - 698
+- name: ZlibDeflateStream
+  kind: struct
+  bases:
+  - Disposable
+  fields:
+  - name: _onError
+    type: any
+    default: this._register(new Emitter<Error>())
+  - name: onError
+    type: any
+    default: this._onError.event
+  - name: _zlibDeflate
+    type: DeflateRaw
+  - name: _pendingDeflateData
+    type: VSBuffer[]
+    default: '[]'
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tprivate readonly _tracer: ISocketTracer,\n\t\toptions: ZlibOptions\n\t)"
+    lines:
+    - 708
+    - 725
+    detail:
+      calls:
+      - createDeflateRaw
+      - super
+      - this._zlibDeflate.on
+  - name: write
+    sig: 'write(buffer: VSBuffer): void'
+    lines:
+    - 727
+    - 730
+    detail:
+      calls:
+      - this._tracer.traceSocketEvent
+      - this._zlibDeflate.write
+  - name: flush
+    sig: 'flush(callback: (data: VSBuffer) => void): void'
+    lines:
+    - 732
+    - 745
+    detail:
+      calls:
+      - this._zlibDeflate.flush
+  lines:
+  - 700
+  - 746
+- name: Server
+  kind: struct
+  bases:
+  - IPCServer
+  fields:
+  - name: server
+    type: NetServer | null
+  methods:
+  - name: toClientConnectionEvent
+    sig: 'toClientConnectionEvent(server: NetServer): Event<ClientConnectionEvent>'
+    vis: private
+    decorators:
+    - static
+    lines:
+    - 841
+    - 848
+    detail:
+      calls:
+      - Event.fromNodeEventEmitter
+      - Event.map
+  - name: constructor
+    sig: 'constructor(server: NetServer)'
+    lines:
+    - 852
+    - 855
+    detail:
+      calls:
+      - Server.toClientConnectionEvent
+      - super
+  - name: dispose
+    sig: 'dispose(): void'
+    lines:
+    - 857
+    - 863
+    detail:
+      calls:
+      - super.dispose
+      - this.server.close
+  lines:
+  - 839
+  - 864
+functions:
+- name: unmask
+  sig: 'unmask(buffer: VSBuffer, mask: number): void'
+  lines:
+  - 748
+  - 771
+  detail:
+    calls:
+    - buffer.readUInt32BE
+    - buffer.readUInt8
+    - buffer.writeUInt32BE
+    - buffer.writeUInt8
+- name: createRandomIPCHandle
+  sig: 'createRandomIPCHandle(): string'
+  lines:
+  - 782
+  - 799
+  detail:
+    calls:
+    - generateUuid
+    - join
+    - tmpdir
+    - validateIPCHandleLength
+- name: createStaticIPCHandle
+  sig: 'createStaticIPCHandle(directoryPath: string, type: string, version: string): string'
+  lines:
+  - 801
+  - 829
+  detail:
+    calls:
+    - createHash
+    - createHash('sha256').update
+    - createHash('sha256').update(directoryPath).digest
+    - join
+    - scope.substr
+    - type.substr
+    - validateIPCHandleLength
+    - version.substr
+- name: validateIPCHandleLength
+  sig: 'validateIPCHandleLength(handle: string): void'
+  lines:
+  - 831
+  - 837
+  detail:
+    calls:
+    - console.warn
+- name: serve
+  sig: 'serve(hook: any): Promise<Server>'
+  lines:
+  - 868
+  - 878
+  detail:
+    calls:
+    - new Promise
+- name: connect
+  sig: 'connect(hook: any, clientId: string): Promise<Client>'
+  lines:
+  - 883
+  - 892
+  detail:
+    calls:
+    - new Promise
+exports:
+- name: NodeSocket
+  kind: type
+- name: Constants
+  kind: type
+- name: ReadState
+  kind: type
+- name: ISocketTracer
+  kind: type
+- name: FrameOptions
+  kind: type
+- name: WebSocketNodeSocket
+  kind: type
+- name: WebSocketFlowManager
+  kind: type
+- name: ZlibInflateStream
+  kind: type
+- name: ZlibDeflateStream
+  kind: type
+- name: Server
+  kind: type
+- name: unmask
+  kind: func
+- name: createRandomIPCHandle
+  kind: func
+- name: createStaticIPCHandle
+  kind: func
+- name: validateIPCHandleLength
+  kind: func
+- name: serve
+  kind: func
+- name: connect
+  kind: func
+- name: socketEndTimeoutMs
+  kind: data
+- name: XDG_RUNTIME_DIR
+  kind: data
+- name: safeIpcPathLengths
+  kind: data

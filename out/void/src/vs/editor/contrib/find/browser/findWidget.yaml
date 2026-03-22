@@ -1,0 +1,848 @@
+## Roska File Descriptor — browser/findWidget.ts
+file: browser/findWidget.ts
+lines: 1424
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: ../../../../base/browser/dom.js.dom
+- sym: ../../../../base/browser/keyboardEvent.js.IKeyboardEvent
+- sym: ../../../../base/browser/mouseEvent.js.IMouseEvent
+- sym: ../../../../base/browser/ui/aria/aria.js.alert as alertFn
+- sym: ../../../../base/browser/ui/toggle/toggle.js.Toggle
+- sym: ../../../../base/browser/ui/contextview/contextview.js.IContextViewProvider
+- sym: ../../../../base/browser/ui/findinput/findInput.js.FindInput
+- sym: ../../../../base/browser/ui/findinput/replaceInput.js.ReplaceInput
+- sym: ../../../../base/browser/ui/inputbox/inputBox.js.IMessage as InputBoxMessage
+- sym: ../../../../base/browser/ui/sash/sash.js.ISashEvent
+- sym: ../../../../base/browser/ui/sash/sash.js.IVerticalSashLayoutProvider
+- sym: ../../../../base/browser/ui/sash/sash.js.Orientation
+- sym: ../../../../base/browser/ui/sash/sash.js.Sash
+- sym: ../../../../base/browser/ui/widget.js.Widget
+- sym: ../../../../base/common/async.js.Delayer
+- sym: ../../../../base/common/codicons.js.Codicon
+- sym: ../../../../base/common/errors.js.onUnexpectedError
+- sym: ../../../../base/common/keyCodes.js.KeyCode
+- sym: ../../../../base/common/keyCodes.js.KeyMod
+- sym: ../../../../base/common/lifecycle.js.toDisposable
+- sym: ../../../../base/common/platform.js.platform
+- sym: ../../../../base/common/strings.js.strings
+- sym: ../../../browser/editorBrowser.js.ICodeEditor
+- sym: ../../../browser/editorBrowser.js.IOverlayWidget
+- sym: ../../../browser/editorBrowser.js.IOverlayWidgetPosition
+- sym: ../../../browser/editorBrowser.js.IViewZone
+- sym: ../../../browser/editorBrowser.js.OverlayWidgetPositionPreference
+- sym: ../../../common/config/editorOptions.js.ConfigurationChangedEvent
+- sym: ../../../common/config/editorOptions.js.EditorOption
+- sym: ../../../common/core/range.js.Range
+- sym: ./findModel.js.CONTEXT_FIND_INPUT_FOCUSED
+- sym: ./findModel.js.CONTEXT_REPLACE_INPUT_FOCUSED
+- sym: ./findModel.js.FIND_IDS
+- sym: ./findModel.js.MATCHES_LIMIT
+- sym: ./findState.js.FindReplaceState
+- sym: ./findState.js.FindReplaceStateChangedEvent
+- sym: ../../../../nls.js.nls
+- sym: ../../../../platform/accessibility/common/accessibility.js.AccessibilitySupport
+- sym: ../../../../platform/history/browser/contextScopedHistoryWidget.js.ContextScopedFindInput
+- sym: ../../../../platform/history/browser/contextScopedHistoryWidget.js.ContextScopedReplaceInput
+- sym: ../../../../platform/history/browser/historyWidgetKeybindingHint.js.showHistoryKeybindingHint
+- sym: ../../../../platform/contextkey/common/contextkey.js.IContextKey
+- sym: ../../../../platform/contextkey/common/contextkey.js.IContextKeyService
+- sym: ../../../../platform/keybinding/common/keybinding.js.IKeybindingService
+- sym: ../../../../platform/notification/common/notification.js.INotificationService
+- sym: ../../../../platform/storage/common/storage.js.IStorageService
+- sym: ../../../../platform/storage/common/storage.js.StorageScope
+- sym: ../../../../platform/storage/common/storage.js.StorageTarget
+- sym: ../../../../platform/theme/common/colorRegistry.js.asCssVariable
+- sym: ../../../../platform/theme/common/colorRegistry.js.contrastBorder
+- sym: ../../../../platform/theme/common/colorRegistry.js.editorFindMatchForeground
+- sym: ../../../../platform/theme/common/colorRegistry.js.editorFindMatchHighlightBorder
+- sym: ../../../../platform/theme/common/colorRegistry.js.editorFindMatchHighlightForeground
+- sym: ../../../../platform/theme/common/colorRegistry.js.editorFindRangeHighlightBorder
+- sym: ../../../../platform/theme/common/colorRegistry.js.inputActiveOptionBackground
+- sym: ../../../../platform/theme/common/colorRegistry.js.inputActiveOptionBorder
+- sym: ../../../../platform/theme/common/colorRegistry.js.inputActiveOptionForeground
+- sym: ../../../../platform/theme/common/iconRegistry.js.registerIcon
+- sym: ../../../../platform/theme/common/iconRegistry.js.widgetClose
+- sym: ../../../../platform/theme/common/themeService.js.IThemeService
+- sym: ../../../../platform/theme/common/themeService.js.registerThemingParticipant
+- sym: ../../../../base/common/themables.js.ThemeIcon
+- sym: ../../../../platform/theme/common/theme.js.isHighContrast
+- sym: ../../../../base/common/types.js.assertIsDefined
+- sym: ../../../../platform/theme/browser/defaultStyles.js.defaultInputBoxStyles
+- sym: ../../../../platform/theme/browser/defaultStyles.js.defaultToggleStyles
+- sym: ../../../common/core/selection.js.Selection
+- sym: ../../../../base/browser/ui/hover/hoverDelegateFactory.js.createInstantHoverDelegate
+- sym: ../../../../base/browser/ui/hover/hoverDelegateFactory.js.getDefaultHoverDelegate
+- sym: ../../../../base/browser/ui/hover/hoverDelegate.js.IHoverDelegate
+- sym: ../../../../platform/hover/browser/hover.js.IHoverService
+- sym: ../../../../base/common/history.js.IHistory
+data:
+- name: findCollapsedIcon
+  type: any
+  val: registerIcon('find-collapsed', Codicon.chevronRight, nls.localize('findCollapsedIcon', 'Icon to indicate that the editor...
+- name: findExpandedIcon
+  type: any
+  val: registerIcon('find-expanded', Codicon.chevronDown, nls.localize('findExpandedIcon', 'Icon to indicate that the editor fi...
+- name: findSelectionIcon
+  type: any
+  val: registerIcon('find-selection', Codicon.selection, nls.localize('findSelectionIcon', 'Icon for \'Find in Selection\' in t...
+- name: findReplaceIcon
+  type: any
+  val: registerIcon('find-replace', Codicon.replace, nls.localize('findReplaceIcon', 'Icon for \'Replace\' in the editor find w...
+- name: findReplaceAllIcon
+  type: any
+  val: registerIcon('find-replace-all', Codicon.replaceAll, nls.localize('findReplaceAllIcon', 'Icon for \'Replace All\' in the...
+- name: findPreviousMatchIcon
+  type: any
+  val: registerIcon('find-previous-match', Codicon.arrowUp, nls.localize('findPreviousMatchIcon', 'Icon for \'Find Previous\' i...
+- name: findNextMatchIcon
+  type: any
+  val: registerIcon('find-next-match', Codicon.arrowDown, nls.localize('findNextMatchIcon', 'Icon for \'Find Next\' in the edit...
+- name: NLS_FIND_DIALOG_LABEL
+  type: any
+  val: nls.localize('label.findDialog', "Find / Replace")
+- name: NLS_FIND_INPUT_LABEL
+  type: any
+  val: nls.localize('label.find', "Find")
+- name: NLS_FIND_INPUT_PLACEHOLDER
+  type: any
+  val: nls.localize('placeholder.find', "Find")
+- name: NLS_PREVIOUS_MATCH_BTN_LABEL
+  type: any
+  val: nls.localize('label.previousMatchButton', "Previous Match")
+- name: NLS_NEXT_MATCH_BTN_LABEL
+  type: any
+  val: nls.localize('label.nextMatchButton', "Next Match")
+- name: NLS_TOGGLE_SELECTION_FIND_TITLE
+  type: any
+  val: nls.localize('label.toggleSelectionFind', "Find in Selection")
+- name: NLS_CLOSE_BTN_LABEL
+  type: any
+  val: nls.localize('label.closeButton', "Close")
+- name: NLS_REPLACE_INPUT_LABEL
+  type: any
+  val: nls.localize('label.replace', "Replace")
+- name: NLS_REPLACE_INPUT_PLACEHOLDER
+  type: any
+  val: nls.localize('placeholder.replace', "Replace")
+- name: NLS_REPLACE_BTN_LABEL
+  type: any
+  val: nls.localize('label.replaceButton', "Replace")
+- name: NLS_REPLACE_ALL_BTN_LABEL
+  type: any
+  val: nls.localize('label.replaceAllButton', "Replace All")
+- name: NLS_TOGGLE_REPLACE_MODE_BTN_LABEL
+  type: any
+  val: nls.localize('label.toggleReplaceButton', "Toggle Replace")
+- name: NLS_MATCHES_COUNT_LIMIT_TITLE
+  type: any
+  val: nls.localize('title.matchesCountLimit', "Only the first {0} results are highlighted, but all find operations work on the...
+- name: NLS_MATCHES_LOCATION
+  type: any
+  val: nls.localize('label.matchesLocation', "{0} of {1}")
+- name: NLS_NO_RESULTS
+  type: any
+  val: nls.localize('label.noResults', "No results")
+- name: FIND_WIDGET_INITIAL_WIDTH
+  type: number
+  val: '419'
+- name: PART_WIDTH
+  type: number
+  val: '275'
+- name: FIND_INPUT_AREA_WIDTH
+  type: any
+  val: PART_WIDTH - 54
+- name: MAX_MATCHES_COUNT_WIDTH
+  type: number
+  val: '69'
+- name: FIND_INPUT_AREA_HEIGHT
+  type: number
+  val: '33'
+- name: ctrlEnterReplaceAllWarningPromptedKey
+  type: string
+  val: '''ctrlEnterReplaceAll.windows.donotask'''
+- name: ctrlKeyMod
+  type: any
+  val: '(platform.isMacintosh ? KeyMod.WinCtrl : KeyMod.CtrlCmd)'
+types:
+- name: IFindController
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: replace
+    type: 'method: replace(): void'
+  - name: replaceAll
+    type: 'method: replaceAll(): void'
+  - name: getGlobalBufferTerm
+    type: 'method: getGlobalBufferTerm(): Promise<string>'
+  lines:
+  - 60
+  - 64
+- name: FindWidgetViewZone
+  kind: struct
+  bases:
+  - IViewZone
+  fields:
+  - name: afterLineNumber
+    type: number
+  - name: heightInPx
+    type: number
+  - name: suppressMouseDown
+    type: boolean
+  - name: domNode
+    type: HTMLElement
+  methods:
+  - name: constructor
+    sig: 'constructor(afterLineNumber: number)'
+    lines:
+    - 99
+    - 106
+    detail:
+      calls:
+      - document.createElement
+  lines:
+  - 93
+  - 107
+- name: FindWidget
+  kind: struct
+  ctx: '----- IOverlayWidget API'
+  bases:
+  - Widget
+  - IOverlayWidget
+  - IVerticalSashLayoutProvider
+  fields:
+  - name: ID
+    type: any
+    default: '''editor.contrib.findWidget'''
+  - name: _codeEditor
+    type: ICodeEditor
+  - name: _state
+    type: FindReplaceState
+  - name: _controller
+    type: IFindController
+  - name: _contextViewProvider
+    type: IContextViewProvider
+  - name: _keybindingService
+    type: IKeybindingService
+  - name: _contextKeyService
+    type: IContextKeyService
+  - name: _storageService
+    type: IStorageService
+  - name: _notificationService
+    type: INotificationService
+  - name: _domNode
+    type: HTMLElement
+  - name: _cachedHeight
+    type: number | null
+    default: 'null'
+  - name: _findInput
+    type: FindInput
+  - name: _replaceInput
+    type: ReplaceInput
+  - name: _toggleReplaceBtn
+    type: SimpleButton
+  - name: _matchesCount
+    type: HTMLElement
+  - name: _prevBtn
+    type: SimpleButton
+  - name: _nextBtn
+    type: SimpleButton
+  - name: _toggleSelectionFind
+    type: Toggle
+  - name: _closeBtn
+    type: SimpleButton
+  - name: _replaceBtn
+    type: SimpleButton
+  - name: _replaceAllBtn
+    type: SimpleButton
+  - name: _isVisible
+    type: boolean
+  - name: _isReplaceVisible
+    type: boolean
+  - name: _ignoreChangeEvent
+    type: boolean
+  - name: _ctrlEnterReplaceAllWarningPrompted
+    type: boolean
+  - name: _findFocusTracker
+    type: dom.IFocusTracker
+  - name: _findInputFocused
+    type: IContextKey<boolean>
+  - name: _replaceFocusTracker
+    type: dom.IFocusTracker
+  - name: _replaceInputFocused
+    type: IContextKey<boolean>
+  - name: _viewZone
+    type: FindWidgetViewZone
+  - name: _viewZoneId
+    type: string
+  - name: _resizeSash
+    type: Sash
+  - name: _resized
+    type: boolean
+  - name: _updateHistoryDelayer
+    type: Delayer<void>
+  - name: _revealTimeouts
+    type: any[]
+    default: '[]'
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tcodeEditor: ICodeEditor,\n\t\tcontroller: IFindController,\n\t\tstate: FindReplaceState,\n\t\tcontextViewProvider: IContextViewProvider,\n\t\tkeybindingService: IKeybindingService,\n\t\tcontextKeyService: IContextKeyService,\n\t\tthemeService: IThemeService,\n\t\tstorageService: IStorageService,\n\t\tnotificationService: INotificationService,\n\t\tprivate readonly _hoverService: IHoverService,\n\t\tprivate readonly _findWidgetSearchHistory: IHistory<string> | undefined,\n\t\tprivate readonly _replaceWidgetHistory: IHistory<string> | undefined,\n\t)"
+    lines:
+    - 166
+    - 292
+    detail:
+      calls:
+      - CONTEXT_FIND_INPUT_FOCUSED.bindTo
+      - CONTEXT_REPLACE_INPUT_FOCUSED.bindTo
+      - dom.trackFocus
+      - new Delayer
+      - new FindWidgetViewZone
+      - storageService.getBoolean
+      - super
+      - this._buildDomNode
+      - this._codeEditor.addOverlayWidget
+      - this._codeEditor.getOption
+      - this._codeEditor.onDidChangeConfiguration
+      - this._codeEditor.onDidChangeCursorSelection
+      - this._codeEditor.onDidChangeModel
+      - this._codeEditor.onDidFocusEditorWidget
+      - this._codeEditor.onDidScrollChange
+      - this._findFocusTracker.onDidBlur
+      - this._findFocusTracker.onDidFocus
+      - this._findInput.inputBox.layout
+      - this._register
+      - this._replaceFocusTracker.onDidBlur
+      - this._replaceFocusTracker.onDidFocus
+      - this._state.onFindReplaceStateChange
+      - this._tryUpdateWidgetWidth
+      - this._updateButtons
+      - this.updateAccessibilitySupport
+      - toDisposable
+  - name: getId
+    sig: 'getId(): string'
+    lines:
+    - 296
+    - 298
+    detail: {}
+  - name: getDomNode
+    sig: 'getDomNode(): HTMLElement'
+    lines:
+    - 300
+    - 302
+    detail: {}
+  - name: getPosition
+    sig: 'getPosition(): IOverlayWidgetPosition | null'
+    lines:
+    - 304
+    - 311
+    detail: {}
+  - name: _onStateChanged
+    sig: '_onStateChanged(e: FindReplaceStateChangedEvent): void'
+    vis: private
+    lines:
+    - 315
+    - 392
+    detail:
+      calls:
+      - dom.getTotalWidth
+      - this._codeEditor.getOption
+      - this._delayedUpdateHistory
+      - this._domNode.classList.toggle
+      - this._findInput.setCaseSensitive
+      - this._findInput.setRegex
+      - this._findInput.setValue
+      - this._findInput.setWholeWords
+      - this._hide
+      - this._layoutViewZone
+      - this._replaceInput.inputBox.layout
+      - this._replaceInput.setPreserveCase
+      - this._reveal
+      - this._showViewZone
+      - this._tryUpdateHeight
+      - this._updateButtons
+      - this._updateMatchesCount
+      - this._updateToggleSelectionFindButton
+  - name: _delayedUpdateHistory
+    sig: _delayedUpdateHistory()
+    vis: private
+    lines:
+    - 394
+    - 396
+    detail:
+      calls:
+      - this._updateHistory.bind
+      - this._updateHistoryDelayer.trigger
+      - this._updateHistoryDelayer.trigger(this._updateHistory.bind(this)).then
+  - name: _updateMatchesCount
+    sig: '_updateMatchesCount(): void'
+    vis: private
+    lines:
+    - 407
+    - 437
+    detail:
+      calls:
+      - Math.max
+      - String
+      - alertFn
+      - document.createTextNode
+      - strings.format
+      - this._getAriaLabel
+      - this._matchesCount.appendChild
+      - this._matchesCount.firstChild?.remove
+  - name: _getAriaLabel
+    sig: '_getAriaLabel(label: string, currentMatch: Range | null, searchString: string): string'
+    vis: private
+    lines:
+    - 441
+    - 459
+    detail:
+      calls:
+      - model.getLineContent
+      - model.getLineCount
+      - nls.localize
+      - this._codeEditor.getModel
+  - name: _updateToggleSelectionFindButton
+    sig: '_updateToggleSelectionFindButton(): void'
+    vis: private
+    lines:
+    - 465
+    - 475
+    detail:
+      calls:
+      - this._codeEditor.getSelection
+      - this._toggleSelectionFind.disable
+      - this._toggleSelectionFind.enable
+  - name: _updateButtons
+    sig: '_updateButtons(): void'
+    vis: private
+    lines:
+    - 477
+    - 495
+    detail:
+      calls:
+      - this._closeBtn.setEnabled
+      - this._codeEditor.getOption
+      - this._domNode.classList.toggle
+      - this._findInput.setEnabled
+      - this._nextBtn.setEnabled
+      - this._prevBtn.setEnabled
+      - this._replaceAllBtn.setEnabled
+      - this._replaceBtn.setEnabled
+      - this._replaceInput.setEnabled
+      - this._state.canNavigateBack
+      - this._state.canNavigateForward
+      - this._toggleReplaceBtn.setEnabled
+      - this._toggleReplaceBtn.setExpanded
+      - this._updateToggleSelectionFindButton
+  - name: _reveal
+    sig: '_reveal(): void'
+    vis: private
+    lines:
+    - 499
+    - 570
+    detail:
+      calls:
+      - dom.getDomNodePagePosition
+      - dom.getTopLeftOffset
+      - selection.getEndPosition
+      - selection.getStartPosition
+      - setTimeout
+      - this._codeEditor.getDomNode
+      - this._codeEditor.getOption
+      - this._codeEditor.getScrolledVisiblePosition
+      - this._codeEditor.getSelection
+      - this._codeEditor.layoutOverlayWidget
+      - this._revealTimeouts.forEach
+      - this._revealTimeouts.push
+      - this._showViewZone
+      - this._tryUpdateWidgetWidth
+      - this._updateButtons
+  - name: _hide
+    sig: '_hide(focusTheEditor: boolean): void'
+    vis: private
+    lines:
+    - 572
+    - 593
+    detail:
+      calls:
+      - this._codeEditor.focus
+      - this._codeEditor.layoutOverlayWidget
+      - this._domNode.classList.remove
+      - this._domNode.setAttribute
+      - this._findInput.clearMessage
+      - this._removeViewZone
+      - this._revealTimeouts.forEach
+      - this._updateButtons
+  - name: _layoutViewZone
+    sig: '_layoutViewZone(targetScrollTop?: number)'
+    vis: private
+    lines:
+    - 595
+    - 617
+    detail:
+      calls:
+      - this._codeEditor.changeViewZones
+      - this._codeEditor.getOption
+      - this._removeViewZone
+  - name: _showViewZone
+    sig: '_showViewZone(adjustScroll: boolean = true)'
+    vis: private
+    lines:
+    - 619
+    - 670
+    detail:
+      calls:
+      - new FindWidgetViewZone
+      - this._codeEditor.changeViewZones
+      - this._codeEditor.getOption
+  - name: _tryUpdateWidgetWidth
+    sig: _tryUpdateWidgetWidth()
+    vis: private
+    lines:
+    - 685
+    - 749
+    detail:
+      calls:
+      - dom.getTotalWidth
+      - this._codeEditor.getLayoutInfo
+      - this._domNode.classList.add
+      - this._domNode.classList.contains
+      - this._domNode.classList.remove
+      - this._domNode.classList.toggle
+      - this._findInput.layout
+  - name: focusFindInput
+    sig: 'focusFindInput(): void'
+    lines:
+    - 786
+    - 790
+    detail:
+      calls:
+      - this._findInput.focus
+      - this._findInput.select
+  - name: focusReplaceInput
+    sig: 'focusReplaceInput(): void'
+    lines:
+    - 792
+    - 796
+    detail:
+      calls:
+      - this._replaceInput.focus
+      - this._replaceInput.select
+  - name: highlightFindOptions
+    sig: 'highlightFindOptions(): void'
+    lines:
+    - 798
+    - 800
+    detail:
+      calls:
+      - this._findInput.highlightFindOptions
+  - name: _updateSearchScope
+    sig: '_updateSearchScope(): void'
+    vis: private
+    lines:
+    - 802
+    - 830
+    detail:
+      calls:
+      - selections.map
+      - "selections.map(selection => {\n\t\t\t\tif (selection.endColumn === 1 && selection.endLineNumber > selecti..."
+      - this._codeEditor.getSelections
+      - this._codeEditor.hasModel
+      - this._state.change
+  - name: _onFindInputKeyDown
+    sig: '_onFindInputKeyDown(e: IKeyboardEvent): void'
+    vis: private
+    lines:
+    - 839
+    - 874
+    detail:
+      calls:
+      - e.equals
+      - e.preventDefault
+      - stopPropagationForMultiLineDownwards
+      - stopPropagationForMultiLineUpwards
+      - this._codeEditor.focus
+      - this._findInput.domNode.querySelector
+      - this._findInput.focusOnCaseSensitive
+      - this._findInput.getValue
+      - this._findInput.inputBox.insertAtCursor
+      - this._keybindingService.dispatchEvent
+      - this._replaceInput.focus
+  - name: _onReplaceInputKeyDown
+    sig: '_onReplaceInputKeyDown(e: IKeyboardEvent): void'
+    vis: private
+    lines:
+    - 876
+    - 925
+    detail:
+      calls:
+      - e.equals
+      - e.preventDefault
+      - nls.localize
+      - stopPropagationForMultiLineDownwards
+      - stopPropagationForMultiLineUpwards
+      - this._codeEditor.focus
+      - this._findInput.focus
+      - this._findInput.focusOnCaseSensitive
+      - this._keybindingService.dispatchEvent
+      - this._notificationService.info
+      - this._replaceInput.inputBox.element.querySelector
+      - this._replaceInput.inputBox.insertAtCursor
+      - this._storageService.store
+  - name: getVerticalSashLeft
+    sig: 'getVerticalSashLeft(_sash: Sash): number'
+    lines:
+    - 928
+    - 930
+    detail: {}
+  - name: _buildDomNode
+    sig: '_buildDomNode(): void'
+    vis: private
+    lines:
+    - 941
+    - 1287
+    detail:
+      calls:
+      - actionsContainer.appendChild
+      - asCssVariable
+      - createInstantHoverDelegate
+      - document.createElement
+      - findPart.appendChild
+      - new ContextScopedFindInput
+      - new ContextScopedReplaceInput
+      - new Sash
+      - new Set
+      - new SimpleButton
+      - new Toggle
+      - replaceActionsContainer.appendChild
+      - replacePart.appendChild
+      - this._codeEditor.getOption
+      - this._domNode.appendChild
+      - this._domNode.setAttribute
+      - this._findInput.inputBox.onDidChange
+      - this._findInput.inputBox.onDidHeightChange
+      - this._findInput.onCaseSensitiveKeyDown
+      - this._findInput.onDidOptionChange
+      - this._findInput.onKeyDown
+      - this._findInput.onMouseDown
+      - this._findInput.onRegexKeyDown
+      - this._findInput.setCaseSensitive
+      - this._findInput.setRegex
+      - this._findInput.setWholeWords
+      - this._keybindingLabelFor
+      - this._register
+      - this._replaceInput.inputBox.onDidChange
+      - this._replaceInput.inputBox.onDidHeightChange
+      - this._replaceInput.onDidOptionChange
+      - this._replaceInput.onKeyDown
+      - this._replaceInput.onPreserveCaseKeyDown
+      - this._replaceInput.setPreserveCase
+      - this._resizeSash.onDidChange
+      - this._resizeSash.onDidReset
+      - this._resizeSash.onDidStart
+      - this._toggleReplaceBtn.setExpanded
+      - this._toggleSelectionFind.onChange
+      - this._updateMatchesCount
+  - name: getViewState
+    sig: getViewState()
+    lines:
+    - 1294
+    - 1304
+    detail:
+      calls:
+      - this._codeEditor.getScrollTop
+  - name: setViewState
+    sig: 'setViewState(state?: { widgetViewZoneVisible: boolean; scrollTop: number })'
+    lines:
+    - 1306
+    - 1315
+    detail:
+      calls:
+      - this._layoutViewZone
+  lines:
+  - 125
+  - 1316
+- name: ISimpleButtonOpts
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: readonly
+    type: string
+  - name: readonly
+    type: string
+  - name: readonly
+    type: ThemeIcon
+  - name: readonly
+    type: IHoverDelegate
+  - name: readonly
+    type: () => void
+  - name: readonly
+    type: '(e: IKeyboardEvent) => void'
+  lines:
+  - 1318
+  - 1325
+- name: SimpleButton
+  kind: struct
+  bases:
+  - Widget
+  fields:
+  - name: _opts
+    type: ISimpleButtonOpts
+  - name: _domNode
+    type: HTMLElement
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\topts: ISimpleButtonOpts,\n\t\thoverService: IHoverService\n\t)"
+    lines:
+    - 1332
+    - 1367
+    detail:
+      calls:
+      - ThemeIcon.asClassName
+      - document.createElement
+      - getDefaultHoverDelegate
+      - hoverService.setupManagedHover
+      - super
+      - this._domNode.setAttribute
+      - this._register
+      - this.onclick
+      - this.onkeydown
+  - name: domNode
+    sig: 'domNode(): HTMLElement'
+    lines:
+    - 1369
+    - 1371
+    detail: {}
+  - name: isEnabled
+    sig: 'isEnabled(): boolean'
+    lines:
+    - 1373
+    - 1375
+    detail: {}
+  - name: focus
+    sig: 'focus(): void'
+    lines:
+    - 1377
+    - 1379
+    detail:
+      calls:
+      - this._domNode.focus
+  - name: setEnabled
+    sig: 'setEnabled(enabled: boolean): void'
+    lines:
+    - 1381
+    - 1385
+    detail:
+      calls:
+      - String
+      - this._domNode.classList.toggle
+      - this._domNode.setAttribute
+  - name: setExpanded
+    sig: 'setExpanded(expanded: boolean): void'
+    lines:
+    - 1387
+    - 1396
+    detail:
+      calls:
+      - String
+      - ThemeIcon.asClassNameArray
+      - this._domNode.classList.add
+      - this._domNode.classList.remove
+      - this._domNode.setAttribute
+  lines:
+  - 1327
+  - 1397
+functions:
+- name: stopPropagationForMultiLineUpwards
+  sig: 'stopPropagationForMultiLineUpwards(event: IKeyboardEvent, value: string, textarea: HTMLTextAreaElement | null)'
+  lines:
+  - 109
+  - 115
+  detail:
+    calls:
+    - event.stopPropagation
+    - value.match
+- name: stopPropagationForMultiLineDownwards
+  sig: 'stopPropagationForMultiLineDownwards(event: IKeyboardEvent, value: string, textarea: HTMLTextAreaElement | null)'
+  lines:
+  - 117
+  - 123
+  detail:
+    calls:
+    - event.stopPropagation
+    - value.match
+exports:
+- name: IFindController
+  kind: type
+- name: FindWidgetViewZone
+  kind: type
+- name: FindWidget
+  kind: type
+- name: ISimpleButtonOpts
+  kind: type
+- name: SimpleButton
+  kind: type
+- name: stopPropagationForMultiLineUpwards
+  kind: func
+- name: stopPropagationForMultiLineDownwards
+  kind: func
+- name: findCollapsedIcon
+  kind: data
+- name: findExpandedIcon
+  kind: data
+- name: findSelectionIcon
+  kind: data
+- name: findReplaceIcon
+  kind: data
+- name: findReplaceAllIcon
+  kind: data
+- name: findPreviousMatchIcon
+  kind: data
+- name: findNextMatchIcon
+  kind: data
+- name: NLS_FIND_DIALOG_LABEL
+  kind: data
+- name: NLS_FIND_INPUT_LABEL
+  kind: data
+- name: NLS_FIND_INPUT_PLACEHOLDER
+  kind: data
+- name: NLS_PREVIOUS_MATCH_BTN_LABEL
+  kind: data
+- name: NLS_NEXT_MATCH_BTN_LABEL
+  kind: data
+- name: NLS_TOGGLE_SELECTION_FIND_TITLE
+  kind: data
+- name: NLS_CLOSE_BTN_LABEL
+  kind: data
+- name: NLS_REPLACE_INPUT_LABEL
+  kind: data
+- name: NLS_REPLACE_INPUT_PLACEHOLDER
+  kind: data
+- name: NLS_REPLACE_BTN_LABEL
+  kind: data
+- name: NLS_REPLACE_ALL_BTN_LABEL
+  kind: data
+- name: NLS_TOGGLE_REPLACE_MODE_BTN_LABEL
+  kind: data
+- name: NLS_MATCHES_COUNT_LIMIT_TITLE
+  kind: data
+- name: NLS_MATCHES_LOCATION
+  kind: data
+- name: NLS_NO_RESULTS
+  kind: data
+- name: FIND_WIDGET_INITIAL_WIDTH
+  kind: data
+- name: PART_WIDTH
+  kind: data
+- name: FIND_INPUT_AREA_WIDTH
+  kind: data
+- name: MAX_MATCHES_COUNT_WIDTH
+  kind: data
+- name: FIND_INPUT_AREA_HEIGHT
+  kind: data
+- name: ctrlEnterReplaceAllWarningPromptedKey
+  kind: data
+- name: ctrlKeyMod
+  kind: data

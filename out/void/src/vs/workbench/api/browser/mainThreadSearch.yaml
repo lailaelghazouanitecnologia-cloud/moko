@@ -1,0 +1,272 @@
+## Roska File Descriptor — browser/mainThreadSearch.ts
+file: browser/mainThreadSearch.ts
+lines: 196
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: ../../../base/common/cancellation.js.CancellationToken
+- sym: ../../../base/common/lifecycle.js.DisposableStore
+- sym: ../../../base/common/lifecycle.js.dispose
+- sym: ../../../base/common/lifecycle.js.IDisposable
+- sym: ../../../base/common/uri.js.URI
+- sym: ../../../base/common/uri.js.UriComponents
+- sym: ../../../platform/configuration/common/configuration.js.IConfigurationService
+- sym: ../../../platform/telemetry/common/telemetry.js.ITelemetryService
+- sym: ../../services/extensions/common/extHostCustomers.js.extHostNamedCustomer
+- sym: ../../services/extensions/common/extHostCustomers.js.IExtHostContext
+- sym: ../../services/search/common/search.js.IFileMatch
+- sym: ../../services/search/common/search.js.IFileQuery
+- sym: ../../services/search/common/search.js.IRawFileMatch2
+- sym: ../../services/search/common/search.js.ISearchComplete
+- sym: ../../services/search/common/search.js.ISearchCompleteStats
+- sym: ../../services/search/common/search.js.ISearchProgressItem
+- sym: ../../services/search/common/search.js.ISearchQuery
+- sym: ../../services/search/common/search.js.ISearchResultProvider
+- sym: ../../services/search/common/search.js.ISearchService
+- sym: ../../services/search/common/search.js.ITextQuery
+- sym: ../../services/search/common/search.js.QueryType
+- sym: ../../services/search/common/search.js.SearchProviderType
+- sym: ../common/extHost.protocol.js.ExtHostContext
+- sym: ../common/extHost.protocol.js.ExtHostSearchShape
+- sym: ../common/extHost.protocol.js.MainContext
+- sym: ../common/extHost.protocol.js.MainThreadSearchShape
+- sym: ../../../base/common/marshalling.js.revive
+- sym: ../../contrib/search/common/constants.js.Constants
+- sym: ../../../platform/contextkey/common/contextkey.js.IContextKeyService
+types:
+- name: MainThreadSearch
+  kind: struct
+  bases:
+  - MainThreadSearchShape
+  fields:
+  - name: _proxy
+    type: ExtHostSearchShape
+  - name: _searchProvider
+    type: any
+    default: new Map<number, RemoteSearchProvider>()
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\textHostContext: IExtHostContext,\n\t\t@ISearchService private readonly _searchService: ISearchService,\n\t\t@ITelemetryService private readonly _telemetryService: ITelemetryService,\n\t\t@IConfigurationService _configurationService: IConfigurationService,\n\t\t@IContextKeyService protected contextKeyService: IContextKeyService,\n\t)"
+    lines:
+    - 24
+    - 33
+    detail:
+      calls:
+      - extHostContext.getProxy
+      - this._proxy.$enableExtensionHostSearch
+  - name: dispose
+    sig: 'dispose(): void'
+    lines:
+    - 35
+    - 38
+    detail:
+      calls:
+      - this._searchProvider.clear
+      - this._searchProvider.forEach
+  - name: $registerTextSearchProvider
+    sig: '$registerTextSearchProvider(handle: number, scheme: string): void'
+    lines:
+    - 40
+    - 42
+    detail:
+      calls:
+      - new RemoteSearchProvider
+      - this._searchProvider.set
+  - name: $registerAITextSearchProvider
+    sig: '$registerAITextSearchProvider(handle: number, scheme: string): void'
+    lines:
+    - 44
+    - 47
+    detail:
+      calls:
+      - Constants.SearchContext.hasAIResultProvider.bindTo
+      - Constants.SearchContext.hasAIResultProvider.bindTo(this.contextKeyService).set
+      - new RemoteSearchProvider
+      - this._searchProvider.set
+  - name: $registerFileSearchProvider
+    sig: '$registerFileSearchProvider(handle: number, scheme: string): void'
+    lines:
+    - 49
+    - 51
+    detail:
+      calls:
+      - new RemoteSearchProvider
+      - this._searchProvider.set
+  - name: $unregisterProvider
+    sig: '$unregisterProvider(handle: number): void'
+    lines:
+    - 53
+    - 56
+    detail:
+      calls:
+      - dispose
+      - this._searchProvider.delete
+      - this._searchProvider.get
+  - name: $handleFileMatch
+    sig: '$handleFileMatch(handle: number, session: number, data: UriComponents[]): void'
+    lines:
+    - 58
+    - 65
+    detail:
+      calls:
+      - new Error
+      - provider.handleFindMatch
+      - this._searchProvider.get
+  - name: $handleTextMatch
+    sig: '$handleTextMatch(handle: number, session: number, data: IRawFileMatch2[]): void'
+    lines:
+    - 67
+    - 74
+    detail:
+      calls:
+      - new Error
+      - provider.handleFindMatch
+      - this._searchProvider.get
+  - name: $handleTelemetry
+    sig: '$handleTelemetry(eventName: string, data: any): void'
+    lines:
+    - 75
+    - 77
+    detail:
+      calls:
+      - this._telemetryService.publicLog
+  lines:
+  - 19
+  - 78
+- name: SearchOperation
+  kind: struct
+  fields:
+  - name: _idPool
+    type: any
+    default: '0'
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\treadonly progress?: (match: IFileMatch) => any,\n\t\treadonly id: number = ++SearchOperation._idPool,\n\t\treadonly matches = new Map<string, IFileMatch>()\n\t)"
+    lines:
+    - 84
+    - 90
+    detail: {}
+  - name: addMatch
+    sig: 'addMatch(match: IFileMatch): void'
+    lines:
+    - 92
+    - 106
+    detail:
+      calls:
+      - existingMatch.results.push
+      - match.resource.toString
+      - this.matches.get
+      - this.matches.set
+      - this.progress
+  lines:
+  - 80
+  - 107
+- name: RemoteSearchProvider
+  kind: struct
+  bases:
+  - ISearchResultProvider
+  - IDisposable
+  fields:
+  - name: _registrations
+    type: any
+    default: new DisposableStore()
+  - name: _searches
+    type: any
+    default: new Map<number, SearchOperation>()
+  - name: cachedAIName
+    type: string | undefined
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tsearchService: ISearchService,\n\t\ttype: SearchProviderType,\n\t\tprivate readonly _scheme: string,\n\t\tprivate readonly _handle: number,\n\t\tprivate readonly _proxy: ExtHostSearchShape\n\t)"
+    lines:
+    - 115
+    - 123
+    detail:
+      calls:
+      - searchService.registerSearchResultProvider
+      - this._registrations.add
+  - name: getAIName
+    sig: 'getAIName(): Promise<string | undefined>'
+    is_async: true
+    lines:
+    - 125
+    - 130
+    detail:
+      calls:
+      - this._proxy.$getAIName
+  - name: dispose
+    sig: 'dispose(): void'
+    lines:
+    - 132
+    - 134
+    detail:
+      calls:
+      - this._registrations.dispose
+  - name: fileSearch
+    sig: 'fileSearch(query: IFileQuery, token: CancellationToken = CancellationToken.None): Promise<ISearchComplete>'
+    lines:
+    - 136
+    - 138
+    detail:
+      calls:
+      - this.doSearch
+  - name: textSearch
+    sig: 'textSearch(query: ITextQuery, onProgress?: (p: ISearchProgressItem) => void, token: CancellationToken = CancellationToken.None): Promise<ISearchComplete>'
+    lines:
+    - 140
+    - 142
+    detail:
+      calls:
+      - this.doSearch
+  - name: doSearch
+    sig: 'doSearch(query: ISearchQuery, onProgress?: (p: ISearchProgressItem) => void, token: CancellationToken = CancellationToken.None): Promise<ISearchComplete>'
+    lines:
+    - 144
+    - 161
+    detail:
+      calls:
+      - Promise.resolve
+      - Promise.resolve(searchP).then
+      - new Error
+      - new SearchOperation
+      - this._provideSearchResults
+      - this._searches.set
+  - name: clearCache
+    sig: 'clearCache(cacheKey: string): Promise<void>'
+    lines:
+    - 163
+    - 165
+    detail:
+      calls:
+      - Promise.resolve
+      - this._proxy.$clearCache
+  - name: handleFindMatch
+    sig: 'handleFindMatch(session: number, dataOrUri: Array<UriComponents | IRawFileMatch2>): void'
+    lines:
+    - 167
+    - 184
+    detail:
+      calls:
+      - dataOrUri.forEach
+      - this._searches.get
+  - name: _provideSearchResults
+    sig: '_provideSearchResults(query: ISearchQuery, session: number, token: CancellationToken): Promise<ISearchCompleteStats>'
+    vis: private
+    lines:
+    - 186
+    - 195
+    detail:
+      calls:
+      - this._proxy.$provideAITextSearchResults
+      - this._proxy.$provideFileSearchResults
+      - this._proxy.$provideTextSearchResults
+  lines:
+  - 109
+  - 196
+exports:
+- name: MainThreadSearch
+  kind: type
+- name: SearchOperation
+  kind: type
+- name: RemoteSearchProvider
+  kind: type

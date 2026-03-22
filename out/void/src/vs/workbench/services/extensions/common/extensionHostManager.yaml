@@ -1,0 +1,661 @@
+## Roska File Descriptor — common/extensionHostManager.ts
+file: common/extensionHostManager.ts
+lines: 660
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: ../../../../base/common/async.js.IntervalTimer
+- sym: ../../../../base/common/buffer.js.VSBuffer
+- sym: ../../../../base/common/errors.js.errors
+- sym: ../../../../base/common/event.js.Emitter
+- sym: ../../../../base/common/event.js.Event
+- sym: ../../../../base/common/lifecycle.js.Disposable
+- sym: ../../../../base/common/lifecycle.js.IDisposable
+- sym: ../../../../base/common/stopwatch.js.StopWatch
+- sym: ../../../../base/common/uri.js.URI
+- sym: ../../../../base/parts/ipc/common/ipc.js.IMessagePassingProtocol
+- sym: ../../../../nls.js.nls
+- sym: ../../../../platform/action/common/actionCommonCategories.js.Categories
+- sym: ../../../../platform/actions/common/actions.js.Action2
+- sym: ../../../../platform/actions/common/actions.js.registerAction2
+- sym: ../../../../platform/extensions/common/extensions.js.ExtensionIdentifier
+- sym: ../../../../platform/extensions/common/extensions.js.IExtensionDescription
+- sym: ../../../../platform/instantiation/common/instantiation.js.IInstantiationService
+- sym: ../../../../platform/instantiation/common/instantiation.js.ServicesAccessor
+- sym: ../../../../platform/log/common/log.js.ILogService
+- sym: ../../../../platform/remote/common/remoteAuthorityResolver.js.RemoteAuthorityResolverErrorCode
+- sym: ../../../../platform/remote/common/remoteAuthorityResolver.js.getRemoteAuthorityPrefix
+- sym: ../../../../platform/telemetry/common/telemetry.js.ITelemetryService
+- sym: ../../editor/common/editorService.js.IEditorService
+- sym: ../../environment/common/environmentService.js.IWorkbenchEnvironmentService
+- sym: ./extHostCustomers.js.ExtHostCustomersRegistry
+- sym: ./extHostCustomers.js.IInternalExtHostContext
+- sym: ./extensionHostKind.js.ExtensionHostKind
+- sym: ./extensionHostKind.js.extensionHostKindToString
+- sym: ./extensionHostManagers.js.IExtensionHostManager
+- sym: ./extensionHostProtocol.js.IExtensionDescriptionDelta
+- sym: ./extensionHostProxy.js.IExtensionHostProxy
+- sym: ./extensionHostProxy.js.IResolveAuthorityResult
+- sym: ./extensionRunningLocation.js.ExtensionRunningLocation
+- sym: ./extensions.js.ActivationKind
+- sym: ./extensions.js.ExtensionActivationReason
+- sym: ./extensions.js.ExtensionHostStartup
+- sym: ./extensions.js.IExtensionHost
+- sym: ./extensions.js.IInternalExtensionService
+- sym: ./proxyIdentifier.js.Proxied
+- sym: ./proxyIdentifier.js.ProxyIdentifier
+- sym: ./rpcProtocol.js.IRPCProtocolLogger
+- sym: ./rpcProtocol.js.RPCProtocol
+- sym: ./rpcProtocol.js.RequestInitiator
+- sym: ./rpcProtocol.js.ResponsiveState
+data:
+- name: LOG_EXTENSION_HOST_COMMUNICATION
+  type: boolean
+  val: 'false'
+- name: LOG_USE_COLORS
+  type: boolean
+  val: 'true'
+- name: colorTables
+  type: array
+  val: "[\n\t['#2977B1', '#FC802D', '#34A13A', '#D3282F', '#9366BA'],\n\t['#8B564C', '#E177C0', '#7F7F7F', '#BBBE3D', '#2EBECD']\n]"
+- name: providers
+  type: ExtHostLatencyProvider[]
+  val: '[]'
+types:
+- name: ExtensionHostStartupClassification
+  kind: typealias
+  decorators:
+  - type
+  fields:
+  - name: owner
+    type: '''alexdima'''
+  - name: comment
+    type: '''The startup state of the extension host'''
+  - name: time
+    type: '{ classification: ''SystemMetaData''; purpose: ''PerformanceAndHealth''; comment: ''The time reported by Date.now().'' }'
+  - name: action
+    type: '{ classification: ''SystemMetaData''; purpose: ''PerformanceAndHealth''; comment: ''The action: starting, success or error.'' }'
+  - name: kind
+    type: '{ classification: ''SystemMetaData''; purpose: ''PerformanceAndHealth''; comment: ''The extension host kind: LocalProcess, LocalWebWorker or Remote.'' }'
+  - name: errorName
+    type: '{ classification: ''SystemMetaData''; purpose: ''PerformanceAndHealth''; comment: ''The error name.'' }'
+  - name: errorMessage
+    type: '{ classification: ''SystemMetaData''; purpose: ''PerformanceAndHealth''; comment: ''The error message.'' }'
+  - name: errorStack
+    type: '{ classification: ''SystemMetaData''; purpose: ''PerformanceAndHealth''; comment: ''The error stack.'' }'
+  lines:
+  - 38
+  - 47
+- name: ExtensionHostStartupEvent
+  kind: typealias
+  decorators:
+  - type
+  fields:
+  - name: time
+    type: number
+  - name: action
+    type: '''starting'' | ''success'' | ''error'''
+  - name: kind
+    type: string
+  - name: errorMessage
+    type: string
+  - name: errorStack
+    type: string
+  lines:
+  - 49
+  - 56
+- name: ExtensionHostManager
+  kind: struct
+  ctx: A map of already requested activation events to speed things up if the same activation event is triggered multiple times.
+  bases:
+  - Disposable
+  - IExtensionHostManager
+  fields:
+  - name: onDidExit
+    type: Event<[number, string | null]>
+  - name: _onDidChangeResponsiveState
+    type: Emitter<ResponsiveState>
+    default: this._register(new Emitter<ResponsiveState>())
+  - name: onDidChangeResponsiveState
+    type: Event<ResponsiveState>
+    default: this._onDidChangeResponsiveState.event
+  - name: _cachedActivationEvents
+    type: Map<string, Promise<void>>
+  - name: _resolvedActivationEvents
+    type: Set<string>
+  - name: _rpcProtocol
+    type: RPCProtocol | null
+  - name: _customers
+    type: IDisposable[]
+  - name: _extensionHost
+    type: IExtensionHost
+  - name: _proxy
+    type: Promise<IExtensionHostProxy | null> | null
+  - name: _hasStarted
+    type: any
+    default: 'false'
+  methods:
+  - name: pid
+    sig: 'pid(): number | null'
+    lines:
+    - 76
+    - 78
+    detail: {}
+  - name: kind
+    sig: 'kind(): ExtensionHostKind'
+    lines:
+    - 80
+    - 82
+    detail: {}
+  - name: startup
+    sig: 'startup(): ExtensionHostStartup'
+    lines:
+    - 84
+    - 86
+    detail: {}
+  - name: friendyName
+    sig: 'friendyName(): string'
+    lines:
+    - 88
+    - 90
+    detail:
+      calls:
+      - friendlyExtHostName
+  - name: constructor
+    sig: "constructor(\n\t\textensionHost: IExtensionHost,\n\t\tinitialActivationEvents: string[],\n\t\tprivate readonly _internalExtensionService: IInternalExtensionService,\n\t\t@IInstantiationService private readonly _instantiationService: IInstantiationService,\n\t\t@IWorkbenchEnvironmentService private readonly _environmentService: IWorkbenchEnvironmentService,\n\t\t@ITelemetryService private readonly _telemetryService: ITelemetryService,\n\t\t@ILogService private readonly _logService: ILogService,\n\t)"
+    lines:
+    - 92
+    - 162
+    detail:
+      calls:
+      - Date.now
+      - extensionHostKindToString
+      - new Map
+      - new Set
+      - super
+      - this._extensionHost.start
+      - this._extensionHost.start().then
+      - this._proxy.then
+      - this._telemetryService.publicLog2
+  - name: disconnect
+    sig: 'disconnect(): Promise<void>'
+    is_async: true
+    lines:
+    - 164
+    - 166
+    detail:
+      calls:
+      - this._extensionHost?.disconnect
+  - name: dispose
+    sig: 'dispose(): void'
+    lines:
+    - 168
+    - 183
+    detail:
+      calls:
+      - customer.dispose
+      - errors.onUnexpectedError
+      - super.dispose
+      - this._extensionHost?.dispose
+      - this._rpcProtocol?.dispose
+  - name: measure
+    sig: 'measure(): Promise<ExtHostLatencyResult | null>'
+    is_async: true
+    vis: private
+    lines:
+    - 185
+    - 199
+    detail:
+      calls:
+      - this._measureDown
+      - this._measureLatency
+      - this._measureUp
+  - name: ready
+    sig: 'ready(): Promise<void>'
+    is_async: true
+    lines:
+    - 201
+    - 203
+    detail: {}
+  - name: _measureLatency
+    sig: '_measureLatency(proxy: IExtensionHostProxy): Promise<number>'
+    is_async: true
+    vis: private
+    lines:
+    - 205
+    - 216
+    detail:
+      calls:
+      - StopWatch.create
+      - proxy.test_latency
+      - sw.elapsed
+      - sw.stop
+  - name: _measureUp
+    sig: '_measureUp(proxy: IExtensionHostProxy): Promise<number>'
+    is_async: true
+    vis: private
+    lines:
+    - 222
+    - 234
+    detail:
+      calls:
+      - ExtensionHostManager._convert
+      - Math.ceil
+      - Math.random
+      - StopWatch.create
+      - VSBuffer.alloc
+      - buff.writeUInt8
+      - proxy.test_up
+      - sw.elapsed
+      - sw.stop
+  - name: _measureDown
+    sig: '_measureDown(proxy: IExtensionHostProxy): Promise<number>'
+    is_async: true
+    vis: private
+    lines:
+    - 236
+    - 243
+    detail:
+      calls:
+      - ExtensionHostManager._convert
+      - StopWatch.create
+      - proxy.test_down
+      - sw.elapsed
+      - sw.stop
+  - name: _createExtensionHostCustomers
+    sig: '_createExtensionHostCustomers(kind: ExtensionHostKind, protocol: IMessagePassingProtocol): IExtensionHostProxy'
+    vis: private
+    lines:
+    - 245
+    - 313
+    detail:
+      calls:
+      - ExtHostCustomersRegistry.getCustomers
+      - ExtHostCustomersRegistry.getNamedCustomers
+      - TelemetryRPCLogger.isEnabled
+      - errors.onUnexpectedError
+      - new Error
+      - new RPCLogger
+      - new RPCProtocol
+      - new TelemetryRPCLogger
+      - this._customers.push
+      - this._instantiationService.createInstance
+      - this._logService.error
+      - this._register
+      - this._rpcProtocol.assertRegistered
+      - this._rpcProtocol.onDidChangeResponsiveState
+      - this._rpcProtocol.set
+  - name: activate
+    sig: 'activate(extension: ExtensionIdentifier, reason: ExtensionActivationReason): Promise<boolean>'
+    is_async: true
+    lines:
+    - 315
+    - 321
+    detail:
+      calls:
+      - proxy.activate
+  - name: activateByEvent
+    sig: 'activateByEvent(activationEvent: string, activationKind: ActivationKind): Promise<void>'
+    lines:
+    - 323
+    - 332
+    detail:
+      calls:
+      - Promise.resolve
+      - this._activateByEvent
+      - this._cachedActivationEvents.get
+      - this._cachedActivationEvents.has
+      - this._cachedActivationEvents.set
+  - name: activationEventIsDone
+    sig: 'activationEventIsDone(activationEvent: string): boolean'
+    lines:
+    - 334
+    - 336
+    detail:
+      calls:
+      - this._resolvedActivationEvents.has
+  - name: _activateByEvent
+    sig: '_activateByEvent(activationEvent: string, activationKind: ActivationKind): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 338
+    - 356
+    detail:
+      calls:
+      - '!this._extensionHost.extensions!.containsActivationEvent'
+      - proxy.activateByEvent
+      - this._resolvedActivationEvents.add
+  - name: getInspectPort
+    sig: 'getInspectPort(tryEnableInspector: boolean): Promise<{ port: number; host: string } | undefined>'
+    is_async: true
+    lines:
+    - 358
+    - 370
+    detail:
+      calls:
+      - this._extensionHost.enableInspectPort
+      - this._extensionHost.getInspectPort
+  - name: resolveAuthority
+    sig: 'resolveAuthority(remoteAuthority: string, resolveAttempt: number): Promise<IResolveAuthorityResult>'
+    is_async: true
+    lines:
+    - 372
+    - 415
+    detail:
+      calls:
+      - StopWatch.create
+      - intervalLogger.cancelAndSet
+      - intervalLogger.dispose
+      - logError
+      - logInfo
+      - new IntervalTimer
+      - proxy.resolveAuthority
+  - name: getCanonicalURI
+    sig: 'getCanonicalURI(remoteAuthority: string, uri: URI): Promise<URI | null>'
+    is_async: true
+    lines:
+    - 417
+    - 423
+    detail:
+      calls:
+      - new Error
+      - proxy.getCanonicalURI
+  - name: start
+    sig: 'start(extensionRegistryVersionId: number, allExtensions: IExtensionDescription[], myExtensions: ExtensionIdentifier[]): Promise<void>'
+    is_async: true
+    lines:
+    - 425
+    - 432
+    detail:
+      calls:
+      - proxy.startExtensionHost
+      - this._extensionHost.extensions!.set
+  - name: extensionTestsExecute
+    sig: 'extensionTestsExecute(): Promise<number>'
+    is_async: true
+    lines:
+    - 434
+    - 440
+    detail:
+      calls:
+      - new Error
+      - proxy.extensionTestsExecute
+  - name: representsRunningLocation
+    sig: 'representsRunningLocation(runningLocation: ExtensionRunningLocation): boolean'
+    lines:
+    - 442
+    - 444
+    detail:
+      calls:
+      - this._extensionHost.runningLocation.equals
+  - name: deltaExtensions
+    sig: 'deltaExtensions(incomingExtensionsDelta: IExtensionDescriptionDelta): Promise<void>'
+    is_async: true
+    lines:
+    - 446
+    - 457
+    detail:
+      calls:
+      - proxy.deltaExtensions
+      - this._extensionHost.extensions!.delta
+  - name: containsExtension
+    sig: 'containsExtension(extensionId: ExtensionIdentifier): boolean'
+    lines:
+    - 459
+    - 461
+    detail:
+      calls:
+      - this._extensionHost.extensions?.containsExtension
+  - name: setRemoteEnvironment
+    sig: 'setRemoteEnvironment(env: { [key: string]: string | null }): Promise<void>'
+    is_async: true
+    lines:
+    - 463
+    - 470
+    detail:
+      calls:
+      - proxy.setRemoteEnvironment
+  lines:
+  - 58
+  - 471
+- name: RPCLogger
+  kind: struct
+  bases:
+  - IRPCProtocolLogger
+  fields:
+  - name: _totalIncoming
+    type: any
+    default: '0'
+  - name: _totalOutgoing
+    type: any
+    default: '0'
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tprivate readonly _kind: ExtensionHostKind\n\t)"
+    lines:
+    - 510
+    - 512
+    detail: {}
+  - name: _log
+    sig: '_log(direction: string, totalLength: number, msgLength: number, req: number, initiator: RequestInitiator, str: string, data: any): void'
+    vis: private
+    lines:
+    - 514
+    - 527
+    detail:
+      calls:
+      - /\($/.test
+      - String
+      - String(msgLength).padStart
+      - String(req).padStart
+      - String(totalLength).padStart
+      - args.concat
+      - args.push
+      - console.log.apply
+      - extensionHostKindToString
+      - pretty
+  - name: logIncoming
+    sig: 'logIncoming(msgLength: number, req: number, initiator: RequestInitiator, str: string, data?: any): void'
+    lines:
+    - 529
+    - 532
+    detail:
+      calls:
+      - this._log
+  - name: logOutgoing
+    sig: 'logOutgoing(msgLength: number, req: number, initiator: RequestInitiator, str: string, data?: any): void'
+    lines:
+    - 534
+    - 537
+    detail:
+      calls:
+      - this._log
+  lines:
+  - 505
+  - 538
+- name: RPCTelemetryData
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: type
+    type: string
+  - name: length
+    type: number
+  lines:
+  - 540
+  - 543
+- name: RPCTelemetryDataClassification
+  kind: typealias
+  decorators:
+  - type
+  fields:
+  - name: owner
+    type: '''jrieken'''
+  - name: comment
+    type: '''Insights about RPC message sizes'''
+  - name: type
+    type: '{ classification: ''SystemMetaData''; purpose: ''PerformanceAndHealth''; comment: ''The type of the RPC message'' }'
+  - name: length
+    type: '{ classification: ''SystemMetaData''; purpose: ''PerformanceAndHealth''; comment: ''The byte-length of the RPC message'' }'
+  lines:
+  - 545
+  - 550
+- name: TelemetryRPCLogger
+  kind: struct
+  bases:
+  - IRPCProtocolLogger
+  fields:
+  - name: _pendingRequests
+    type: any
+    default: new Map<number, string>()
+  methods:
+  - name: isEnabled
+    sig: 'isEnabled(): boolean'
+    decorators:
+    - static
+    lines:
+    - 554
+    - 556
+    detail:
+      calls:
+      - Math.random
+  - name: constructor
+    sig: 'constructor(@ITelemetryService private readonly _telemetryService: ITelemetryService)'
+    lines:
+    - 560
+    - 560
+    detail: {}
+  - name: logIncoming
+    sig: 'logIncoming(msgLength: number, req: number, initiator: RequestInitiator, str: string): void'
+    lines:
+    - 562
+    - 581
+    detail:
+      calls:
+      - /^receiveReply(Err)?:/.test
+      - /^receiveRequest /.test
+      - this._pendingRequests.delete
+      - this._pendingRequests.get
+      - this._telemetryService.publicLog2
+  - name: logOutgoing
+    sig: 'logOutgoing(msgLength: number, req: number, initiator: RequestInitiator, str: string): void'
+    lines:
+    - 583
+    - 592
+    detail:
+      calls:
+      - str.startsWith
+      - this._pendingRequests.set
+      - this._telemetryService.publicLog2
+  lines:
+  - 552
+  - 593
+- name: ExtHostLatencyResult
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: remoteAuthority
+    type: string | null
+  - name: up
+    type: number
+  - name: down
+    type: number
+  - name: latency
+    type: number
+  lines:
+  - 595
+  - 600
+- name: ExtHostLatencyProvider
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: measure
+    type: 'method: measure(): Promise<ExtHostLatencyResult | null>'
+  lines:
+  - 602
+  - 604
+functions:
+- name: friendlyExtHostName
+  sig: 'friendlyExtHostName(kind: ExtensionHostKind, pid: number | null)'
+  lines:
+  - 473
+  - 478
+  detail:
+    calls:
+    - extensionHostKindToString
+- name: prettyWithoutArrays
+  sig: 'prettyWithoutArrays(data: any): any'
+  lines:
+  - 485
+  - 496
+  detail:
+    calls:
+    - Array.isArray
+    - data.toString
+- name: pretty
+  sig: 'pretty(data: any): any'
+  lines:
+  - 498
+  - 503
+  detail:
+    calls:
+    - Array.isArray
+    - data.map
+    - prettyWithoutArrays
+- name: registerLatencyTestProvider
+  sig: 'registerLatencyTestProvider(provider: ExtHostLatencyProvider): IDisposable'
+  lines:
+  - 607
+  - 619
+  detail:
+    calls:
+    - providers.push
+- name: getLatencyTestProviders
+  sig: 'getLatencyTestProviders(): ExtHostLatencyProvider[]'
+  lines:
+  - 621
+  - 623
+  detail:
+    calls:
+    - providers.slice
+exports:
+- name: ExtensionHostStartupClassification
+  kind: type
+- name: ExtensionHostStartupEvent
+  kind: type
+- name: ExtensionHostManager
+  kind: type
+- name: RPCLogger
+  kind: type
+- name: RPCTelemetryData
+  kind: type
+- name: RPCTelemetryDataClassification
+  kind: type
+- name: TelemetryRPCLogger
+  kind: type
+- name: ExtHostLatencyResult
+  kind: type
+- name: ExtHostLatencyProvider
+  kind: type
+- name: friendlyExtHostName
+  kind: func
+- name: prettyWithoutArrays
+  kind: func
+- name: pretty
+  kind: func
+- name: registerLatencyTestProvider
+  kind: func
+- name: getLatencyTestProviders
+  kind: func
+- name: LOG_EXTENSION_HOST_COMMUNICATION
+  kind: data
+- name: LOG_USE_COLORS
+  kind: data
+- name: colorTables
+  kind: data
+- name: providers
+  kind: data

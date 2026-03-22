@@ -1,0 +1,661 @@
+## Roska File Descriptor — common/workingCopyHistoryService.ts
+file: common/workingCopyHistoryService.ts
+lines: 906
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: ../../../../nls.js.localize
+- sym: ../../../../base/common/event.js.Event
+- sym: ../../../../base/common/event.js.Emitter
+- sym: ../../../../base/common/types.js.assertIsDefined
+- sym: ../../../../platform/registry/common/platform.js.Registry
+- sym: ../../../common/contributions.js.IWorkbenchContributionsRegistry
+- sym: ../../../common/contributions.js.Extensions as WorkbenchExtensions
+- sym: ../../lifecycle/common/lifecycle.js.ILifecycleService
+- sym: ../../lifecycle/common/lifecycle.js.LifecyclePhase
+- sym: ../../lifecycle/common/lifecycle.js.WillShutdownEvent
+- sym: ./workingCopyHistoryTracker.js.WorkingCopyHistoryTracker
+- sym: ../../../../base/common/lifecycle.js.Disposable
+- sym: ./workingCopyHistory.js.IWorkingCopyHistoryEntry
+- sym: ./workingCopyHistory.js.IWorkingCopyHistoryEntryDescriptor
+- sym: ./workingCopyHistory.js.IWorkingCopyHistoryEvent
+- sym: ./workingCopyHistory.js.IWorkingCopyHistoryService
+- sym: ./workingCopyHistory.js.MAX_PARALLEL_HISTORY_IO_OPS
+- sym: ../../../../platform/files/common/files.js.FileOperationError
+- sym: ../../../../platform/files/common/files.js.FileOperationResult
+- sym: ../../../../platform/files/common/files.js.IFileService
+- sym: ../../../../platform/files/common/files.js.IFileStatWithMetadata
+- sym: ../../remote/common/remoteAgentService.js.IRemoteAgentService
+- sym: ../../../../base/common/uri.js.URI
+- sym: ../../../../base/common/async.js.DeferredPromise
+- sym: ../../../../base/common/async.js.Limiter
+- sym: ../../../../base/common/async.js.RunOnceScheduler
+- sym: ../../../../base/common/resources.js.dirname
+- sym: ../../../../base/common/resources.js.extname
+- sym: ../../../../base/common/resources.js.isEqual
+- sym: ../../../../base/common/resources.js.joinPath
+- sym: ../../environment/common/environmentService.js.IWorkbenchEnvironmentService
+- sym: ../../../../base/common/hash.js.hash
+- sym: ../../../../base/common/extpath.js.indexOfPath
+- sym: ../../../../base/common/extpath.js.randomPath
+- sym: ../../../../base/common/cancellation.js.CancellationToken
+- sym: ../../../../base/common/cancellation.js.CancellationTokenSource
+- sym: ../../../../base/common/map.js.ResourceMap
+- sym: ../../../../platform/uriIdentity/common/uriIdentity.js.IUriIdentityService
+- sym: ../../../../platform/label/common/label.js.ILabelService
+- sym: ../../../../base/common/buffer.js.VSBuffer
+- sym: ../../../../platform/log/common/log.js.ILogService
+- sym: ../../../common/editor.js.SaveSource
+- sym: ../../../common/editor.js.SaveSourceRegistry
+- sym: ../../../../platform/configuration/common/configuration.js.IConfigurationService
+- sym: ../../../../base/common/arrays.js.distinct
+- sym: ../../../../base/common/strings.js.escapeRegExpCharacters
+types:
+- name: ISerializedWorkingCopyHistoryModel
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: readonly
+    type: number
+  - name: readonly
+    type: string
+  - name: readonly
+    type: ISerializedWorkingCopyHistoryModelEntry[]
+  lines:
+  - 34
+  - 38
+- name: ISerializedWorkingCopyHistoryModelEntry
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: readonly
+    type: string
+  - name: readonly
+    type: number
+  - name: readonly
+    type: SaveSource
+  - name: readonly
+    type: string
+  lines:
+  - 40
+  - 45
+- name: IWorkingCopyHistoryModelOptions
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: flushOnChange
+    type: boolean
+  lines:
+  - 47
+  - 55
+- name: WorkingCopyHistoryModel
+  kind: struct
+  fields:
+  - name: ENTRIES_FILE
+    type: any
+    default: '''entries.json'''
+  - name: FILE_SAVED_SOURCE
+    type: any
+    default: SaveSourceRegistry.registerSource('default.source', localize('default.source', "...
+  - name: SETTINGS
+    type: any
+    default: "{\n\t\tMAX_ENTRIES: 'workbench.localHistory.maxFileEntries',\n\t\tMERGE_PERIOD: 'workb..."
+  - name: entries
+    type: IWorkingCopyHistoryEntry[]
+    default: '[]'
+  - name: whenResolved
+    type: Promise<void> | undefined
+    default: undefined
+  - name: workingCopyResource
+    type: URI | undefined
+    default: undefined
+  - name: workingCopyName
+    type: string | undefined
+    default: undefined
+  - name: historyEntriesFolder
+    type: URI | undefined
+    default: undefined
+  - name: historyEntriesListingFile
+    type: URI | undefined
+    default: undefined
+  - name: historyEntriesNameMatcher
+    type: RegExp | undefined
+    default: undefined
+  - name: versionId
+    type: any
+    default: '0'
+  - name: storedVersionId
+    type: any
+    default: this.versionId
+  - name: storeLimiter
+    type: any
+    default: new Limiter(1)
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tworkingCopyResource: URI,\n\t\tprivate readonly historyHome: URI,\n\t\tprivate readonly entryAddedEmitter: Emitter<IWorkingCopyHistoryEvent>,\n\t\tprivate readonly entryChangedEmitter: Emitter<IWorkingCopyHistoryEvent>,\n\t\tprivate readonly entryReplacedEmitter: Emitter<IWorkingCopyHistoryEvent>,\n\t\tprivate readonly entryRemovedEmitter: Emitter<IWorkingCopyHistoryEvent>,\n\t\tprivate readonly options: IWorkingCopyHistoryModelOptions,\n\t\tprivate readonly fileService: IFileService,\n\t\tprivate readonly labelService: ILabelService,\n\t\tprivate readonly logService: ILogService,\n\t\tprivate readonly configurationService: IConfigurationService\n\t)"
+    lines:
+    - 85
+    - 99
+    detail:
+      calls:
+      - this.setWorkingCopy
+  - name: addEntry
+    sig: 'addEntry(source = WorkingCopyHistoryModel.FILE_SAVED_SOURCE, sourceDescription: string | undefined = undefined, timestamp = Date.now(), token: CancellationToken): Promise<IWorkingCopyHistoryEntry>'
+    is_async: true
+    lines:
+    - 122
+    - 155
+    detail:
+      calls:
+      - this.configurationService.getValue
+      - this.doAddEntry
+      - this.doReplaceEntry
+      - this.entries.at
+      - this.store
+  - name: doAddEntry
+    sig: 'doAddEntry(source: SaveSource, sourceDescription: string | undefined = undefined, timestamp: number, token: CancellationToken): Promise<IWorkingCopyHistoryEntry>'
+    is_async: true
+    vis: private
+    lines:
+    - 157
+    - 185
+    detail:
+      calls:
+      - assertIsDefined
+      - extname
+      - joinPath
+      - randomPath
+      - this.entries.push
+      - this.entryAddedEmitter.fire
+      - this.fileService.cloneFile
+  - name: doReplaceEntry
+    sig: 'doReplaceEntry(entry: IWorkingCopyHistoryEntry, source: SaveSource, sourceDescription: string | undefined = undefined, timestamp: number, token: CancellationToken): Promise<IWorkingCopyHistoryEntry>'
+    is_async: true
+    vis: private
+    lines:
+    - 187
+    - 205
+    detail:
+      calls:
+      - assertIsDefined
+      - this.entryReplacedEmitter.fire
+      - this.fileService.cloneFile
+  - name: removeEntry
+    sig: 'removeEntry(entry: IWorkingCopyHistoryEntry, token: CancellationToken): Promise<boolean>'
+    is_async: true
+    lines:
+    - 207
+    - 239
+    detail:
+      calls:
+      - this.deleteEntry
+      - this.entries.indexOf
+      - this.entries.splice
+      - this.entryRemovedEmitter.fire
+      - this.resolveEntriesOnce
+      - this.store
+  - name: updateEntry
+    sig: 'updateEntry(entry: IWorkingCopyHistoryEntry, properties: { source: SaveSource }, token: CancellationToken): Promise<void>'
+    is_async: true
+    lines:
+    - 241
+    - 268
+    detail:
+      calls:
+      - this.entries.indexOf
+      - this.entryChangedEmitter.fire
+      - this.resolveEntriesOnce
+      - this.store
+  - name: getEntries
+    sig: 'getEntries(): Promise<readonly IWorkingCopyHistoryEntry[]>'
+    is_async: true
+    lines:
+    - 270
+    - 282
+    detail:
+      calls:
+      - this.configurationService.getValue
+      - this.entries.slice
+      - this.resolveEntriesOnce
+  - name: hasEntries
+    sig: 'hasEntries(skipResolve: boolean): Promise<boolean>'
+    is_async: true
+    lines:
+    - 284
+    - 292
+    detail:
+      calls:
+      - this.resolveEntriesOnce
+  - name: doResolveEntries
+    sig: 'doResolveEntries(): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 302
+    - 317
+    detail:
+      calls:
+      - Array.from
+      - Array.from(entries.values()).sort
+      - entries.set
+      - entries.values
+      - this.resolveEntriesFromDisk
+  - name: resolveEntriesFromDisk
+    sig: 'resolveEntriesFromDisk(): Promise<Map<string /* ID */, IWorkingCopyHistoryEntry>>'
+    is_async: true
+    vis: private
+    lines:
+    - 319
+    - 363
+    detail:
+      calls:
+      - Promise.all
+      - assertIsDefined
+      - entries.get
+      - entries.set
+      - new Map
+      - this.readEntriesFile
+      - this.readEntriesFolder
+  - name: moveEntries
+    sig: 'moveEntries(target: WorkingCopyHistoryModel, source: SaveSource, token: CancellationToken): Promise<void>'
+    is_async: true
+    lines:
+    - 365
+    - 420
+    detail:
+      calls:
+      - Date.now
+      - assertIsDefined
+      - distinct
+      - distinct([...this.entries, ...target.entries], entry => entry.id).sort
+      - joinPath
+      - this.addEntry
+      - this.entries.push
+      - this.fileService.del
+      - this.fileService.move
+      - this.isFileNotFound
+      - this.labelService.getUriLabel
+      - this.setWorkingCopy
+      - this.store
+      - this.traceError
+  - name: store
+    sig: 'store(token: CancellationToken): Promise<void>'
+    is_async: true
+    lines:
+    - 422
+    - 437
+    detail:
+      calls:
+      - this.shouldStore
+      - this.storeLimiter.queue
+  - name: doStore
+    sig: 'doStore(token: CancellationToken): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 443
+    - 473
+    detail:
+      calls:
+      - assertIsDefined
+      - this.cleanUpEntries
+      - this.fileService.del
+      - this.resolveEntriesOnce
+      - this.traceError
+      - this.writeEntriesFile
+  - name: cleanUpEntries
+    sig: 'cleanUpEntries(): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 475
+    - 497
+    detail:
+      calls:
+      - this.configurationService.getValue
+      - this.deleteEntry
+      - this.entries.slice
+      - this.entryRemovedEmitter.fire
+  - name: deleteEntry
+    sig: 'deleteEntry(entry: IWorkingCopyHistoryEntry): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 499
+    - 505
+    detail:
+      calls:
+      - this.fileService.del
+      - this.traceError
+  - name: writeEntriesFile
+    sig: 'writeEntriesFile(): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 507
+    - 525
+    detail:
+      calls:
+      - JSON.stringify
+      - VSBuffer.fromString
+      - assertIsDefined
+      - this.entries.map
+      - this.fileService.writeFile
+      - workingCopyResource.toString
+  - name: readEntriesFile
+    sig: 'readEntriesFile(): Promise<ISerializedWorkingCopyHistoryModel | undefined>'
+    is_async: true
+    vis: private
+    lines:
+    - 527
+    - 540
+    detail:
+      calls:
+      - (await this.fileService.readFile(historyEntriesListingFile)).value.toString
+      - JSON.parse
+      - assertIsDefined
+      - this.fileService.readFile
+      - this.isFileNotFound
+      - this.traceError
+  - name: readEntriesFolder
+    sig: 'readEntriesFolder(): Promise<IFileStatWithMetadata[] | undefined>'
+    is_async: true
+    vis: private
+    lines:
+    - 542
+    - 566
+    detail:
+      calls:
+      - assertIsDefined
+      - rawEntries.filter
+      - this.fileService.resolve
+      - this.isFileNotFound
+      - this.traceError
+  lines:
+  - 57
+  - 575
+- name: WorkingCopyHistoryService
+  kind: trait
+  bases:
+  - Disposable
+  - IWorkingCopyHistoryService
+  decorators:
+  - abstract
+  fields:
+  - name: FILE_MOVED_SOURCE
+    type: any
+    default: SaveSourceRegistry.registerSource('moved.source', localize('moved.source', "File...
+  - name: FILE_RENAMED_SOURCE
+    type: any
+    default: SaveSourceRegistry.registerSource('renamed.source', localize('renamed.source', "...
+  - name: _serviceBrand
+    type: undefined
+  - name: _onDidAddEntry
+    type: any
+    default: this._register(new Emitter<IWorkingCopyHistoryEvent>())
+  - name: onDidAddEntry
+    type: any
+    default: this._onDidAddEntry.event
+  - name: _onDidChangeEntry
+    type: any
+    default: this._register(new Emitter<IWorkingCopyHistoryEvent>())
+  - name: onDidChangeEntry
+    type: any
+    default: this._onDidChangeEntry.event
+  - name: _onDidReplaceEntry
+    type: any
+    default: this._register(new Emitter<IWorkingCopyHistoryEvent>())
+  - name: onDidReplaceEntry
+    type: any
+    default: this._onDidReplaceEntry.event
+  - name: _onDidMoveEntries
+    type: any
+    default: this._register(new Emitter<void>())
+  - name: onDidMoveEntries
+    type: any
+    default: this._onDidMoveEntries.event
+  - name: _onDidRemoveEntry
+    type: any
+    default: this._register(new Emitter<IWorkingCopyHistoryEvent>())
+  - name: onDidRemoveEntry
+    type: any
+    default: this._onDidRemoveEntry.event
+  - name: _onDidRemoveEntries
+    type: any
+    default: this._register(new Emitter<void>())
+  - name: onDidRemoveEntries
+    type: any
+    default: this._onDidRemoveEntries.event
+  - name: localHistoryHome
+    type: any
+    default: new DeferredPromise<URI>()
+  - name: models
+    type: any
+    default: new ResourceMap<WorkingCopyHistoryModel>(resource => this.uriIdentityService.ext...
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\t@IFileService protected readonly fileService: IFileService,\n\t\t@IRemoteAgentService protected readonly remoteAgentService: IRemoteAgentService,\n\t\t@IWorkbenchEnvironmentService protected readonly environmentService: IWorkbenchEnvironmentService,\n\t\t@IUriIdentityService protected readonly uriIdentityService: IUriIdentityService,\n\t\t@ILabelService protected readonly labelService: ILabelService,\n\t\t@ILogService protected readonly logService: ILogService,\n\t\t@IConfigurationService protected readonly configurationService: IConfigurationService\n\t)"
+    lines:
+    - 606
+    - 618
+    detail:
+      calls:
+      - super
+      - this.resolveLocalHistoryHome
+  - name: resolveLocalHistoryHome
+    sig: 'resolveLocalHistoryHome(): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 620
+    - 639
+    detail:
+      calls:
+      - this.localHistoryHome.complete
+      - this.logService.trace
+      - this.remoteAgentService.getEnvironment
+  - name: moveEntries
+    sig: 'moveEntries(source: URI, target: URI): Promise<URI[]>'
+    is_async: true
+    lines:
+    - 641
+    - 682
+    detail:
+      calls:
+      - Promise.all
+      - dirname
+      - indexOfPath
+      - joinPath
+      - limiter.queue
+      - new Limiter
+      - promises.push
+      - resource.path.substr
+      - this._onDidMoveEntries.fire
+      - this.uriIdentityService.extUri.isEqual
+      - this.uriIdentityService.extUri.isEqualOrParent
+  - name: doMoveEntries
+    sig: 'doMoveEntries(source: WorkingCopyHistoryModel, saveSource: SaveSource, sourceWorkingCopyResource: URI, targetWorkingCopyResource: URI): Promise<URI>'
+    is_async: true
+    vis: private
+    lines:
+    - 684
+    - 695
+    detail:
+      calls:
+      - source.moveEntries
+      - this.getModel
+      - this.models.delete
+      - this.models.set
+  - name: addEntry
+    sig: 'addEntry({ resource, source, timestamp }: IWorkingCopyHistoryEntryDescriptor, token: CancellationToken): Promise<IWorkingCopyHistoryEntry | undefined>'
+    is_async: true
+    lines:
+    - 697
+    - 710
+    detail:
+      calls:
+      - model.addEntry
+      - this.fileService.hasProvider
+      - this.getModel
+  - name: updateEntry
+    sig: 'updateEntry(entry: IWorkingCopyHistoryEntry, properties: { source: SaveSource }, token: CancellationToken): Promise<void>'
+    is_async: true
+    lines:
+    - 712
+    - 722
+    detail:
+      calls:
+      - model.updateEntry
+      - this.getModel
+  - name: removeEntry
+    sig: 'removeEntry(entry: IWorkingCopyHistoryEntry, token: CancellationToken): Promise<boolean>'
+    is_async: true
+    lines:
+    - 724
+    - 734
+    detail:
+      calls:
+      - model.removeEntry
+      - this.getModel
+  - name: removeAll
+    sig: 'removeAll(token: CancellationToken): Promise<void>'
+    is_async: true
+    lines:
+    - 736
+    - 750
+    detail:
+      calls:
+      - this._onDidRemoveEntries.fire
+      - this.fileService.del
+      - this.models.clear
+  - name: getEntries
+    sig: 'getEntries(resource: URI, token: CancellationToken): Promise<readonly IWorkingCopyHistoryEntry[]>'
+    is_async: true
+    lines:
+    - 752
+    - 760
+    detail:
+      calls:
+      - model.getEntries
+      - this.getModel
+  - name: getAll
+    sig: 'getAll(token: CancellationToken): Promise<readonly URI[]>'
+    is_async: true
+    lines:
+    - 762
+    - 809
+    detail:
+      calls:
+      - Array.from
+      - Promise.all
+      - all.keys
+      - all.set
+      - limiter.queue
+      - model.hasEntries
+      - new Limiter
+      - new ResourceMap
+      - promises.push
+      - this.fileService.resolve
+  - name: getModel
+    sig: 'getModel(resource: URI): Promise<WorkingCopyHistoryModel>'
+    is_async: true
+    vis: private
+    lines:
+    - 811
+    - 821
+    detail:
+      calls:
+      - new WorkingCopyHistoryModel
+      - this.getModelOptions
+      - this.models.get
+      - this.models.set
+  lines:
+  - 577
+  - 825
+- name: NativeWorkingCopyHistoryService
+  kind: struct
+  ctx: 5min
+  bases:
+  - WorkingCopyHistoryService
+  fields:
+  - name: STORE_ALL_INTERVAL
+    type: any
+    default: 5 * 60 * 1000
+  - name: isRemotelyStored
+    type: any
+    default: typeof this.environmentService.remoteAuthority === 'string'
+  - name: storeAllCts
+    type: any
+    default: this._register(new CancellationTokenSource())
+  - name: storeAllScheduler
+    type: any
+    default: this._register(new RunOnceScheduler(() => this.storeAll(this.storeAllCts.token),...
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\t@IFileService fileService: IFileService,\n\t\t@IRemoteAgentService remoteAgentService: IRemoteAgentService,\n\t\t@IWorkbenchEnvironmentService environmentService: IWorkbenchEnvironmentService,\n\t\t@IUriIdentityService uriIdentityService: IUriIdentityService,\n\t\t@ILabelService labelService: ILabelService,\n\t\t@ILifecycleService private readonly lifecycleService: ILifecycleService,\n\t\t@ILogService logService: ILogService,\n\t\t@IConfigurationService configurationService: IConfigurationService\n\t)"
+    lines:
+    - 836
+    - 849
+    detail:
+      calls:
+      - super
+      - this.registerListeners
+  - name: registerListeners
+    sig: 'registerListeners(): void'
+    vis: private
+    lines:
+    - 851
+    - 860
+    detail:
+      calls:
+      - Event.any
+      - Event.any(this.onDidAddEntry, this.onDidChangeEntry, this.onDidReplaceEntry, this.onDidRemoveEntry)
+      - this._register
+      - this.lifecycleService.onWillShutdown
+  - name: onWillShutdown
+    sig: 'onWillShutdown(e: WillShutdownEvent): void'
+    vis: private
+    lines:
+    - 866
+    - 874
+    detail:
+      calls:
+      - e.join
+      - localize
+      - this.storeAll
+      - this.storeAllCts.dispose
+      - this.storeAllScheduler.dispose
+  - name: storeAll
+    sig: 'storeAll(token: CancellationToken): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 882
+    - 902
+    detail:
+      calls:
+      - Array.from
+      - Promise.all
+      - limiter.queue
+      - new Limiter
+      - promises.push
+      - this.models.values
+  lines:
+  - 827
+  - 903
+exports:
+- name: ISerializedWorkingCopyHistoryModel
+  kind: type
+- name: ISerializedWorkingCopyHistoryModelEntry
+  kind: type
+- name: IWorkingCopyHistoryModelOptions
+  kind: type
+- name: WorkingCopyHistoryModel
+  kind: type
+- name: WorkingCopyHistoryService
+  kind: type
+- name: NativeWorkingCopyHistoryService
+  kind: type

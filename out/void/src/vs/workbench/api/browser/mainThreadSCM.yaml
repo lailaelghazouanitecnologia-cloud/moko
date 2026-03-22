@@ -1,0 +1,878 @@
+## Roska File Descriptor — browser/mainThreadSCM.ts
+file: browser/mainThreadSCM.ts
+lines: 741
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: ../../../base/common/async.js.Barrier
+- sym: ../../../base/common/uri.js.isUriComponents
+- sym: ../../../base/common/uri.js.URI
+- sym: ../../../base/common/uri.js.UriComponents
+- sym: ../../../base/common/event.js.Event
+- sym: ../../../base/common/event.js.Emitter
+- sym: ../../../base/common/observable.js.IObservable
+- sym: ../../../base/common/observable.js.observableValue
+- sym: ../../../base/common/observable.js.observableValueOpts
+- sym: ../../../base/common/observable.js.transaction
+- sym: ../../../base/common/lifecycle.js.IDisposable
+- sym: ../../../base/common/lifecycle.js.DisposableStore
+- sym: ../../../base/common/lifecycle.js.combinedDisposable
+- sym: ../../../base/common/lifecycle.js.dispose
+- sym: ../../../base/common/lifecycle.js.Disposable
+- sym: ../../contrib/scm/common/scm.js.ISCMService
+- sym: ../../contrib/scm/common/scm.js.ISCMRepository
+- sym: ../../contrib/scm/common/scm.js.ISCMProvider
+- sym: ../../contrib/scm/common/scm.js.ISCMResource
+- sym: ../../contrib/scm/common/scm.js.ISCMResourceGroup
+- sym: ../../contrib/scm/common/scm.js.ISCMResourceDecorations
+- sym: ../../contrib/scm/common/scm.js.IInputValidation
+- sym: ../../contrib/scm/common/scm.js.ISCMViewService
+- sym: ../../contrib/scm/common/scm.js.InputValidationType
+- sym: ../../contrib/scm/common/scm.js.ISCMActionButtonDescriptor
+- sym: ../common/extHost.protocol.js.ExtHostContext
+- sym: ../common/extHost.protocol.js.MainThreadSCMShape
+- sym: ../common/extHost.protocol.js.ExtHostSCMShape
+- sym: ../common/extHost.protocol.js.SCMProviderFeatures
+- sym: ../common/extHost.protocol.js.SCMRawResourceSplices
+- sym: ../common/extHost.protocol.js.SCMGroupFeatures
+- sym: ../common/extHost.protocol.js.MainContext
+- sym: ../common/extHost.protocol.js.SCMHistoryItemDto
+- sym: ../common/extHost.protocol.js.SCMHistoryItemRefsChangeEventDto
+- sym: ../common/extHost.protocol.js.SCMHistoryItemRefDto
+- sym: ../../../editor/common/languages.js.Command
+- sym: ../../services/extensions/common/extHostCustomers.js.extHostNamedCustomer
+- sym: ../../services/extensions/common/extHostCustomers.js.IExtHostContext
+- sym: ../../../base/common/cancellation.js.CancellationToken
+- sym: ../../../base/common/marshallingIds.js.MarshalledId
+- sym: ../../../base/common/themables.js.ThemeIcon
+- sym: ../../../base/common/htmlContent.js.IMarkdownString
+- sym: ../../contrib/scm/common/quickDiff.js.IQuickDiffService
+- sym: ../../contrib/scm/common/quickDiff.js.QuickDiffProvider
+- sym: ../../contrib/scm/common/history.js.ISCMHistoryItem
+- sym: ../../contrib/scm/common/history.js.ISCMHistoryItemChange
+- sym: ../../contrib/scm/common/history.js.ISCMHistoryItemRef
+- sym: ../../contrib/scm/common/history.js.ISCMHistoryItemRefsChangeEvent
+- sym: ../../contrib/scm/common/history.js.ISCMHistoryOptions
+- sym: ../../contrib/scm/common/history.js.ISCMHistoryProvider
+- sym: ../../../base/common/resourceTree.js.ResourceTree
+- sym: ../../../platform/uriIdentity/common/uriIdentity.js.IUriIdentityService
+- sym: ../../../platform/workspace/common/workspace.js.IWorkspaceContextService
+- sym: ../../../base/common/resources.js.basename
+- sym: ../../../editor/common/languages/language.js.ILanguageService
+- sym: ../../../editor/common/services/model.js.IModelService
+- sym: ../../../editor/common/services/resolverService.js.ITextModelContentProvider
+- sym: ../../../editor/common/services/resolverService.js.ITextModelService
+- sym: ../../../base/common/network.js.Schemas
+- sym: ../../../editor/common/model.js.ITextModel
+- sym: ../../../base/common/equals.js.structuralEquals
+- sym: ../../contrib/scm/browser/scmHistory.js.historyItemBaseRefColor
+- sym: ../../contrib/scm/browser/scmHistory.js.historyItemRefColor
+- sym: ../../contrib/scm/browser/scmHistory.js.historyItemRemoteRefColor
+- sym: ../../../platform/theme/common/colorUtils.js.ColorIdentifier
+types:
+- name: SCMInputBoxContentProvider
+  kind: model
+  bases:
+  - Disposable
+  - ITextModelContentProvider
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\ttextModelService: ITextModelService,\n\t\tprivate readonly modelService: IModelService,\n\t\tprivate readonly languageService: ILanguageService,\n\t)"
+    lines:
+    - 62
+    - 69
+    detail:
+      calls:
+      - super
+      - textModelService.registerTextModelContentProvider
+      - this._register
+  - name: provideTextContent
+    sig: 'provideTextContent(resource: URI): Promise<ITextModel | null>'
+    is_async: true
+    lines:
+    - 71
+    - 77
+    detail:
+      calls:
+      - this.languageService.createById
+      - this.modelService.createModel
+      - this.modelService.getModel
+  lines:
+  - 61
+  - 78
+- name: MainThreadSCMResourceGroup
+  kind: struct
+  bases:
+  - ISCMResourceGroup
+  fields:
+  - name: resources
+    type: ISCMResource[]
+    default: '[]'
+  - name: _resourceTree
+    type: ResourceTree<ISCMResource, ISCMResourceGroup> | undefined
+  - name: _onDidChange
+    type: any
+    default: new Emitter<void>()
+  - name: onDidChange
+    type: Event<void>
+    default: this._onDidChange.event
+  - name: _onDidChangeResources
+    type: any
+    default: new Emitter<void>()
+  - name: onDidChangeResources
+    type: any
+    default: this._onDidChangeResources.event
+  methods:
+  - name: resourceTree
+    sig: 'resourceTree(): ResourceTree<ISCMResource, ISCMResourceGroup>'
+    lines:
+    - 85
+    - 95
+    detail:
+      calls:
+      - URI.file
+      - new ResourceTree
+      - this._resourceTree.add
+  - name: hideWhenEmpty
+    sig: 'hideWhenEmpty(): boolean'
+    lines:
+    - 103
+    - 103
+    detail: {}
+  - name: contextValue
+    sig: 'contextValue(): string | undefined'
+    lines:
+    - 105
+    - 105
+    detail: {}
+  - name: constructor
+    sig: "constructor(\n\t\tprivate readonly sourceControlHandle: number,\n\t\tprivate readonly handle: number,\n\t\tpublic provider: ISCMProvider,\n\t\tpublic features: SCMGroupFeatures,\n\t\tpublic label: string,\n\t\tpublic id: string,\n\t\tpublic readonly multiDiffEditorEnableViewChanges: boolean,\n\t\tprivate readonly _uriIdentService: IUriIdentityService\n\t)"
+    lines:
+    - 107
+    - 116
+    detail: {}
+  - name: toJSON
+    sig: 'toJSON(): any'
+    lines:
+    - 118
+    - 124
+    detail: {}
+  - name: splice
+    sig: 'splice(start: number, deleteCount: number, toInsert: ISCMResource[])'
+    lines:
+    - 126
+    - 131
+    detail:
+      calls:
+      - this._onDidChangeResources.fire
+      - this.resources.splice
+  - name: $updateGroup
+    sig: '$updateGroup(features: SCMGroupFeatures): void'
+    lines:
+    - 133
+    - 136
+    detail:
+      calls:
+      - this._onDidChange.fire
+  - name: $updateGroupLabel
+    sig: '$updateGroupLabel(label: string): void'
+    lines:
+    - 138
+    - 141
+    detail:
+      calls:
+      - this._onDidChange.fire
+  lines:
+  - 80
+  - 142
+- name: MainThreadSCMResource
+  kind: struct
+  bases:
+  - ISCMResource
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tprivate readonly proxy: ExtHostSCMShape,\n\t\tprivate readonly sourceControlHandle: number,\n\t\tprivate readonly groupHandle: number,\n\t\tprivate readonly handle: number,\n\t\treadonly sourceUri: URI,\n\t\treadonly resourceGroup: ISCMResourceGroup,\n\t\treadonly decorations: ISCMResourceDecorations,\n\t\treadonly contextValue: string | undefined,\n\t\treadonly command: Command | undefined,\n\t\treadonly multiDiffEditorOriginalUri: URI | undefined,\n\t\treadonly multiDiffEditorModifiedUri: URI | undefined,\n\t)"
+    lines:
+    - 146
+    - 158
+    detail: {}
+  - name: open
+    sig: 'open(preserveFocus: boolean): Promise<void>'
+    lines:
+    - 160
+    - 162
+    detail:
+      calls:
+      - this.proxy.$executeResourceCommand
+  - name: toJSON
+    sig: 'toJSON(): any'
+    lines:
+    - 164
+    - 171
+    detail: {}
+  lines:
+  - 144
+  - 172
+- name: MainThreadSCMHistoryProvider
+  kind: struct
+  bases:
+  - ISCMHistoryProvider
+  fields:
+  - name: _historyItemRef
+    type: any
+    default: "observableValueOpts<ISCMHistoryItemRef | undefined>({\n\t\towner: this,\n\t\tequalsFn:..."
+  - name: _historyItemRemoteRef
+    type: any
+    default: "observableValueOpts<ISCMHistoryItemRef | undefined>({\n\t\towner: this,\n\t\tequalsFn:..."
+  - name: _historyItemBaseRef
+    type: any
+    default: "observableValueOpts<ISCMHistoryItemRef | undefined>({\n\t\towner: this,\n\t\tequalsFn:..."
+  - name: _historyItemRefChanges
+    type: any
+    default: 'observableValue<ISCMHistoryItemRefsChangeEvent>(this, { added: [], modified: [],...'
+  methods:
+  - name: historyItemRef
+    sig: 'historyItemRef(): IObservable<ISCMHistoryItemRef | undefined>'
+    lines:
+    - 179
+    - 179
+    detail: {}
+  - name: historyItemRemoteRef
+    sig: 'historyItemRemoteRef(): IObservable<ISCMHistoryItemRef | undefined>'
+    lines:
+    - 185
+    - 185
+    detail: {}
+  - name: historyItemBaseRef
+    sig: 'historyItemBaseRef(): IObservable<ISCMHistoryItemRef | undefined>'
+    lines:
+    - 191
+    - 191
+    detail: {}
+  - name: historyItemRefChanges
+    sig: 'historyItemRefChanges(): IObservable<ISCMHistoryItemRefsChangeEvent>'
+    lines:
+    - 194
+    - 194
+    detail: {}
+  - name: constructor
+    sig: 'constructor(private readonly proxy: ExtHostSCMShape, private readonly handle: number)'
+    lines:
+    - 196
+    - 196
+    detail: {}
+  - name: resolveHistoryItemRefsCommonAncestor
+    sig: 'resolveHistoryItemRefsCommonAncestor(historyItemRefs: string[]): Promise<string | undefined>'
+    is_async: true
+    lines:
+    - 198
+    - 200
+    detail:
+      calls:
+      - this.proxy.$resolveHistoryItemRefsCommonAncestor
+  - name: provideHistoryItemRefs
+    sig: 'provideHistoryItemRefs(historyItemsRefs?: string[]): Promise<ISCMHistoryItemRef[] | undefined>'
+    is_async: true
+    lines:
+    - 202
+    - 205
+    detail:
+      calls:
+      - historyItemRefs?.map
+      - this.proxy.$provideHistoryItemRefs
+  - name: provideHistoryItems
+    sig: 'provideHistoryItems(options: ISCMHistoryOptions): Promise<ISCMHistoryItem[] | undefined>'
+    is_async: true
+    lines:
+    - 207
+    - 210
+    detail:
+      calls:
+      - historyItems?.map
+      - this.proxy.$provideHistoryItems
+  - name: provideHistoryItemChanges
+    sig: 'provideHistoryItemChanges(historyItemId: string, historyItemParentId: string | undefined): Promise<ISCMHistoryItemChange[] | undefined>'
+    is_async: true
+    lines:
+    - 212
+    - 219
+    detail:
+      calls:
+      - changes?.map
+      - this.proxy.$provideHistoryItemChanges
+  - name: $onDidChangeCurrentHistoryItemRefs
+    sig: '$onDidChangeCurrentHistoryItemRefs(historyItemRef?: SCMHistoryItemRefDto, historyItemRemoteRef?: SCMHistoryItemRefDto, historyItemBaseRef?: SCMHistoryItemRefDto): void'
+    lines:
+    - 221
+    - 227
+    detail:
+      calls:
+      - transaction
+  - name: $onDidChangeHistoryItemRefs
+    sig: '$onDidChangeHistoryItemRefs(historyItemRefs: SCMHistoryItemRefsChangeEventDto): void'
+    lines:
+    - 229
+    - 235
+    detail:
+      calls:
+      - historyItemRefs.added.map
+      - historyItemRefs.modified.map
+      - historyItemRefs.removed.map
+      - this._historyItemRefChanges.set
+  lines:
+  - 174
+  - 236
+- name: MainThreadSCMProvider
+  kind: struct
+  ctx: 'get groups(): ISequence<ISCMResourceGroup> {'
+  bases:
+  - ISCMProvider
+  - QuickDiffProvider
+  fields:
+  - name: ID_HANDLE
+    type: any
+    default: '0'
+  - name: _id
+    type: any
+    default: '`scm${MainThreadSCMProvider.ID_HANDLE++}`'
+  - name: groups
+    type: MainThreadSCMResourceGroup[]
+    default: '[]'
+  - name: _onDidChangeResourceGroups
+    type: any
+    default: new Emitter<void>()
+  - name: onDidChangeResourceGroups
+    type: any
+    default: this._onDidChangeResourceGroups.event
+  - name: _onDidChangeResources
+    type: any
+    default: new Emitter<void>()
+  - name: onDidChangeResources
+    type: any
+    default: this._onDidChangeResources.event
+  - name: _groupsByHandle
+    type: '{ [handle: number]: MainThreadSCMResourceGroup }'
+    default: Object.create(null)
+  - name: features
+    type: SCMProviderFeatures
+    default: '{}'
+  - name: _count
+    type: any
+    default: observableValue<number | undefined>(this, undefined)
+  - name: _statusBarCommands
+    type: any
+    default: observableValue<readonly Command[] | undefined>(this, undefined)
+  - name: _name
+    type: string | undefined
+  - name: _commitTemplate
+    type: any
+    default: observableValue<string>(this, '')
+  - name: _actionButton
+    type: any
+    default: observableValue<ISCMActionButtonDescriptor | undefined>(this, undefined)
+  - name: _quickDiff
+    type: IDisposable | undefined
+  - name: isSCM
+    type: boolean
+    default: 'true'
+  - name: visible
+    type: boolean
+    default: 'true'
+  - name: _historyProvider
+    type: any
+    default: observableValue<MainThreadSCMHistoryProvider | undefined>(this, undefined)
+  methods:
+  - name: id
+    sig: 'id(): string'
+    lines:
+    - 242
+    - 242
+    detail: {}
+  - name: handle
+    sig: 'handle(): number'
+    lines:
+    - 266
+    - 266
+    detail: {}
+  - name: label
+    sig: 'label(): string'
+    lines:
+    - 267
+    - 267
+    detail: {}
+  - name: rootUri
+    sig: 'rootUri(): URI | undefined'
+    lines:
+    - 268
+    - 268
+    detail: {}
+  - name: inputBoxTextModel
+    sig: 'inputBoxTextModel(): ITextModel'
+    lines:
+    - 269
+    - 269
+    detail: {}
+  - name: contextValue
+    sig: 'contextValue(): string'
+    lines:
+    - 270
+    - 270
+    detail: {}
+  - name: acceptInputCommand
+    sig: 'acceptInputCommand(): Command | undefined'
+    lines:
+    - 272
+    - 272
+    detail: {}
+  - name: count
+    sig: count()
+    lines:
+    - 275
+    - 275
+    detail: {}
+  - name: statusBarCommands
+    sig: statusBarCommands()
+    lines:
+    - 278
+    - 278
+    detail: {}
+  - name: name
+    sig: 'name(): string'
+    lines:
+    - 281
+    - 281
+    detail: {}
+  - name: commitTemplate
+    sig: commitTemplate()
+    lines:
+    - 284
+    - 284
+    detail: {}
+  - name: actionButton
+    sig: 'actionButton(): IObservable<ISCMActionButtonDescriptor | undefined>'
+    lines:
+    - 287
+    - 287
+    detail: {}
+  - name: historyProvider
+    sig: historyProvider()
+    lines:
+    - 294
+    - 294
+    detail: {}
+  - name: constructor
+    sig: "constructor(\n\t\tprivate readonly proxy: ExtHostSCMShape,\n\t\tprivate readonly _handle: number,\n\t\tprivate readonly _providerId: string,\n\t\tprivate readonly _label: string,\n\t\tprivate readonly _rootUri: URI | undefined,\n\t\tprivate readonly _inputBoxTextModel: ITextModel,\n\t\tprivate readonly _quickDiffService: IQuickDiffService,\n\t\tprivate readonly _uriIdentService: IUriIdentityService,\n\t\tprivate readonly _workspaceContextService: IWorkspaceContextService\n\t)"
+    lines:
+    - 296
+    - 315
+    detail:
+      calls:
+      - _rootUri.toString
+      - basename
+      - folder?.uri.toString
+      - this._workspaceContextService.getWorkspaceFolder
+  - name: $updateSourceControl
+    sig: '$updateSourceControl(features: SCMProviderFeatures): void'
+    lines:
+    - 317
+    - 355
+    detail:
+      calls:
+      - new MainThreadSCMHistoryProvider
+      - this._actionButton.set
+      - this._commitTemplate.set
+      - this._count.set
+      - this._historyProvider.set
+      - this._quickDiff.dispose
+      - this._quickDiffService.addQuickDiffProvider
+      - this._statusBarCommands.set
+      - this.historyProvider.get
+  - name: $registerGroups
+    sig: '$registerGroups(_groups: [number /*handle*/, string /*id*/, string /*label*/, SCMGroupFeatures, /* multiDiffEditorEnableViewChanges */ boolean][]): void'
+    lines:
+    - 357
+    - 376
+    detail:
+      calls:
+      - _groups.map
+      - this._onDidChangeResourceGroups.fire
+      - this.groups.splice
+  - name: $updateGroup
+    sig: '$updateGroup(handle: number, features: SCMGroupFeatures): void'
+    lines:
+    - 378
+    - 386
+    detail:
+      calls:
+      - group.$updateGroup
+  - name: $updateGroupLabel
+    sig: '$updateGroupLabel(handle: number, label: string): void'
+    lines:
+    - 388
+    - 396
+    detail:
+      calls:
+      - group.$updateGroupLabel
+  - name: $spliceGroupResourceStates
+    sig: '$spliceGroupResourceStates(splices: SCMRawResourceSplices[]): void'
+    lines:
+    - 398
+    - 446
+    detail:
+      calls:
+      - console.warn
+      - group.splice
+      - groupSlices.reverse
+      - rawResources.map
+      - this._onDidChangeResources.fire
+  - name: $unregisterGroup
+    sig: '$unregisterGroup(handle: number): void'
+    lines:
+    - 448
+    - 458
+    detail:
+      calls:
+      - this._onDidChangeResourceGroups.fire
+      - this.groups.indexOf
+      - this.groups.splice
+  - name: getOriginalResource
+    sig: 'getOriginalResource(uri: URI): Promise<URI | null>'
+    is_async: true
+    lines:
+    - 460
+    - 467
+    detail:
+      calls:
+      - URI.revive
+      - this.proxy.$provideOriginalResource
+  - name: $onDidChangeHistoryProviderCurrentHistoryItemRefs
+    sig: '$onDidChangeHistoryProviderCurrentHistoryItemRefs(historyItemRef?: SCMHistoryItemRefDto, historyItemRemoteRef?: SCMHistoryItemRefDto, historyItemBaseRef?: SCMHistoryItemRefDto): void'
+    lines:
+    - 469
+    - 475
+    detail:
+      calls:
+      - this._historyProvider.get
+      - this._historyProvider.get()?.$onDidChangeCurrentHistoryItemRefs
+      - this.historyProvider.get
+  - name: $onDidChangeHistoryProviderHistoryItemRefs
+    sig: '$onDidChangeHistoryProviderHistoryItemRefs(historyItemRefs: SCMHistoryItemRefsChangeEventDto): void'
+    lines:
+    - 477
+    - 483
+    detail:
+      calls:
+      - this._historyProvider.get
+      - this._historyProvider.get()?.$onDidChangeHistoryItemRefs
+      - this.historyProvider.get
+  - name: toJSON
+    sig: 'toJSON(): any'
+    lines:
+    - 485
+    - 490
+    detail: {}
+  - name: dispose
+    sig: 'dispose(): void'
+    lines:
+    - 492
+    - 494
+    detail:
+      calls:
+      - this._quickDiff?.dispose
+  lines:
+  - 238
+  - 495
+- name: MainThreadSCM
+  kind: struct
+  bases:
+  - MainThreadSCMShape
+  fields:
+  - name: _proxy
+    type: ExtHostSCMShape
+  - name: _repositories
+    type: any
+    default: new Map<number, ISCMRepository>()
+  - name: _repositoryBarriers
+    type: any
+    default: new Map<number, Barrier>()
+  - name: _repositoryDisposables
+    type: any
+    default: new Map<number, IDisposable>()
+  - name: _disposables
+    type: any
+    default: new DisposableStore()
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\textHostContext: IExtHostContext,\n\t\t@ISCMService private readonly scmService: ISCMService,\n\t\t@ISCMViewService private readonly scmViewService: ISCMViewService,\n\t\t@ILanguageService private readonly languageService: ILanguageService,\n\t\t@IModelService private readonly modelService: IModelService,\n\t\t@ITextModelService private readonly textModelService: ITextModelService,\n\t\t@IQuickDiffService private readonly quickDiffService: IQuickDiffService,\n\t\t@IUriIdentityService private readonly _uriIdentService: IUriIdentityService,\n\t\t@IWorkspaceContextService private readonly workspaceContextService: IWorkspaceContextService\n\t)"
+    lines:
+    - 506
+    - 520
+    detail:
+      calls:
+      - extHostContext.getProxy
+      - new SCMInputBoxContentProvider
+      - this._disposables.add
+  - name: dispose
+    sig: 'dispose(): void'
+    lines:
+    - 522
+    - 530
+    detail:
+      calls:
+      - dispose
+      - this._disposables.dispose
+      - this._repositories.clear
+      - this._repositories.values
+      - this._repositoryDisposables.clear
+      - this._repositoryDisposables.values
+  - name: $registerSourceControl
+    sig: '$registerSourceControl(handle: number, id: string, label: string, rootUri: UriComponents | undefined, inputBoxDocumentUri: UriComponents): Promise<void>'
+    is_async: true
+    lines:
+    - 532
+    - 556
+    detail:
+      calls:
+      - Event.filter
+      - Event.filter(this.scmViewService.onDidFocusRepository, r => r === repository)
+      - URI.revive
+      - combinedDisposable
+      - new Barrier
+      - new MainThreadSCMProvider
+      - repository.input.onDidChange
+      - setTimeout
+      - this._repositories.set
+      - this._repositoryBarriers.get
+      - this._repositoryBarriers.get(handle)?.open
+      - this._repositoryBarriers.set
+      - this._repositoryDisposables.set
+      - this.scmService.registerSCMProvider
+      - this.textModelService.createModelReference
+  - name: $updateSourceControl
+    sig: '$updateSourceControl(handle: number, features: SCMProviderFeatures): Promise<void>'
+    is_async: true
+    lines:
+    - 558
+    - 568
+    detail:
+      calls:
+      - provider.$updateSourceControl
+      - this._repositories.get
+      - this._repositoryBarriers.get
+      - this._repositoryBarriers.get(handle)?.wait
+  - name: $unregisterSourceControl
+    sig: '$unregisterSourceControl(handle: number): Promise<void>'
+    is_async: true
+    lines:
+    - 570
+    - 583
+    detail:
+      calls:
+      - repository.dispose
+      - this._repositories.delete
+      - this._repositories.get
+      - this._repositoryBarriers.get
+      - this._repositoryBarriers.get(handle)?.wait
+      - this._repositoryDisposables.delete
+      - this._repositoryDisposables.get
+      - this._repositoryDisposables.get(handle)!.dispose
+  - name: $registerGroups
+    sig: '$registerGroups(sourceControlHandle: number, groups: [number /*handle*/, string /*id*/, string /*label*/, SCMGroupFeatures, /* multiDiffEditorEnableViewChanges */ boolean][], splices: SCMRawResourceSplices[]): Promise<void>'
+    is_async: true
+    lines:
+    - 585
+    - 596
+    detail:
+      calls:
+      - provider.$registerGroups
+      - provider.$spliceGroupResourceStates
+      - this._repositories.get
+      - this._repositoryBarriers.get
+      - this._repositoryBarriers.get(sourceControlHandle)?.wait
+  - name: $updateGroup
+    sig: '$updateGroup(sourceControlHandle: number, groupHandle: number, features: SCMGroupFeatures): Promise<void>'
+    is_async: true
+    lines:
+    - 598
+    - 608
+    detail:
+      calls:
+      - provider.$updateGroup
+      - this._repositories.get
+      - this._repositoryBarriers.get
+      - this._repositoryBarriers.get(sourceControlHandle)?.wait
+  - name: $updateGroupLabel
+    sig: '$updateGroupLabel(sourceControlHandle: number, groupHandle: number, label: string): Promise<void>'
+    is_async: true
+    lines:
+    - 610
+    - 620
+    detail:
+      calls:
+      - provider.$updateGroupLabel
+      - this._repositories.get
+      - this._repositoryBarriers.get
+      - this._repositoryBarriers.get(sourceControlHandle)?.wait
+  - name: $spliceResourceStates
+    sig: '$spliceResourceStates(sourceControlHandle: number, splices: SCMRawResourceSplices[]): Promise<void>'
+    is_async: true
+    lines:
+    - 622
+    - 632
+    detail:
+      calls:
+      - provider.$spliceGroupResourceStates
+      - this._repositories.get
+      - this._repositoryBarriers.get
+      - this._repositoryBarriers.get(sourceControlHandle)?.wait
+  - name: $unregisterGroup
+    sig: '$unregisterGroup(sourceControlHandle: number, handle: number): Promise<void>'
+    is_async: true
+    lines:
+    - 634
+    - 644
+    detail:
+      calls:
+      - provider.$unregisterGroup
+      - this._repositories.get
+      - this._repositoryBarriers.get
+      - this._repositoryBarriers.get(sourceControlHandle)?.wait
+  - name: $setInputBoxValue
+    sig: '$setInputBoxValue(sourceControlHandle: number, value: string): Promise<void>'
+    is_async: true
+    lines:
+    - 646
+    - 655
+    detail:
+      calls:
+      - repository.input.setValue
+      - this._repositories.get
+      - this._repositoryBarriers.get
+      - this._repositoryBarriers.get(sourceControlHandle)?.wait
+  - name: $setInputBoxPlaceholder
+    sig: '$setInputBoxPlaceholder(sourceControlHandle: number, placeholder: string): Promise<void>'
+    is_async: true
+    lines:
+    - 657
+    - 666
+    detail:
+      calls:
+      - this._repositories.get
+      - this._repositoryBarriers.get
+      - this._repositoryBarriers.get(sourceControlHandle)?.wait
+  - name: $setInputBoxEnablement
+    sig: '$setInputBoxEnablement(sourceControlHandle: number, enabled: boolean): Promise<void>'
+    is_async: true
+    lines:
+    - 668
+    - 677
+    detail:
+      calls:
+      - this._repositories.get
+      - this._repositoryBarriers.get
+      - this._repositoryBarriers.get(sourceControlHandle)?.wait
+  - name: $setInputBoxVisibility
+    sig: '$setInputBoxVisibility(sourceControlHandle: number, visible: boolean): Promise<void>'
+    is_async: true
+    lines:
+    - 679
+    - 688
+    detail:
+      calls:
+      - this._repositories.get
+      - this._repositoryBarriers.get
+      - this._repositoryBarriers.get(sourceControlHandle)?.wait
+  - name: $showValidationMessage
+    sig: '$showValidationMessage(sourceControlHandle: number, message: string | IMarkdownString, type: InputValidationType): Promise<void>'
+    is_async: true
+    lines:
+    - 690
+    - 698
+    detail:
+      calls:
+      - repository.input.showValidationMessage
+      - this._repositories.get
+      - this._repositoryBarriers.get
+      - this._repositoryBarriers.get(sourceControlHandle)?.wait
+  - name: $setValidationProviderIsEnabled
+    sig: '$setValidationProviderIsEnabled(sourceControlHandle: number, enabled: boolean): Promise<void>'
+    is_async: true
+    lines:
+    - 700
+    - 716
+    detail:
+      calls:
+      - this._repositories.get
+      - this._repositoryBarriers.get
+      - this._repositoryBarriers.get(sourceControlHandle)?.wait
+  - name: $onDidChangeHistoryProviderCurrentHistoryItemRefs
+    sig: '$onDidChangeHistoryProviderCurrentHistoryItemRefs(sourceControlHandle: number, historyItemRef?: SCMHistoryItemRefDto, historyItemRemoteRef?: SCMHistoryItemRefDto, historyItemBaseRef?: SCMHistoryItemRefDto): Promise<void>'
+    is_async: true
+    lines:
+    - 718
+    - 728
+    detail:
+      calls:
+      - provider.$onDidChangeHistoryProviderCurrentHistoryItemRefs
+      - this._repositories.get
+      - this._repositoryBarriers.get
+      - this._repositoryBarriers.get(sourceControlHandle)?.wait
+  - name: $onDidChangeHistoryProviderHistoryItemRefs
+    sig: '$onDidChangeHistoryProviderHistoryItemRefs(sourceControlHandle: number, historyItemRefs: SCMHistoryItemRefsChangeEventDto): Promise<void>'
+    is_async: true
+    lines:
+    - 730
+    - 740
+    detail:
+      calls:
+      - provider.$onDidChangeHistoryProviderHistoryItemRefs
+      - this._repositories.get
+      - this._repositoryBarriers.get
+      - this._repositoryBarriers.get(sourceControlHandle)?.wait
+  lines:
+  - 498
+  - 741
+functions:
+- name: getIconFromIconDto
+  sig: 'getIconFromIconDto(iconDto?: UriComponents | { light: UriComponents; dark: UriComponents } | ThemeIcon): URI | { light: URI; dark: URI } | ThemeIcon | undefined'
+  lines:
+  - 34
+  - 45
+  detail:
+    calls:
+    - ThemeIcon.isThemeIcon
+    - URI.revive
+    - isUriComponents
+- name: toISCMHistoryItem
+  sig: 'toISCMHistoryItem(historyItemDto: SCMHistoryItemDto): ISCMHistoryItem'
+  lines:
+  - 47
+  - 55
+  detail:
+    calls:
+    - getIconFromIconDto
+    - historyItemDto.references?.map
+- name: toISCMHistoryItemRef
+  sig: 'toISCMHistoryItemRef(historyItemRefDto?: SCMHistoryItemRefDto, color?: ColorIdentifier): ISCMHistoryItemRef | undefined'
+  lines:
+  - 57
+  - 59
+exports:
+- name: SCMInputBoxContentProvider
+  kind: type
+- name: MainThreadSCMResourceGroup
+  kind: type
+- name: MainThreadSCMResource
+  kind: type
+- name: MainThreadSCMHistoryProvider
+  kind: type
+- name: MainThreadSCMProvider
+  kind: type
+- name: MainThreadSCM
+  kind: type
+- name: getIconFromIconDto
+  kind: func
+- name: toISCMHistoryItem
+  kind: func
+- name: toISCMHistoryItemRef
+  kind: func

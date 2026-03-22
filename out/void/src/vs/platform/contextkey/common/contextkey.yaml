@@ -1,0 +1,2258 @@
+## Roska File Descriptor — common/contextkey.ts
+file: common/contextkey.ts
+lines: 2164
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: ../../../base/common/charCode.js.CharCode
+- sym: ../../../base/common/event.js.Event
+- sym: ../../../base/common/platform.js.isChrome
+- sym: ../../../base/common/platform.js.isEdge
+- sym: ../../../base/common/platform.js.isFirefox
+- sym: ../../../base/common/platform.js.isLinux
+- sym: ../../../base/common/platform.js.isMacintosh
+- sym: ../../../base/common/platform.js.isSafari
+- sym: ../../../base/common/platform.js.isWeb
+- sym: ../../../base/common/platform.js.isWindows
+- sym: ../../../base/common/strings.js.isFalsyOrWhitespace
+- sym: ./scanner.js.Scanner
+- sym: ./scanner.js.LexingError
+- sym: ./scanner.js.Token
+- sym: ./scanner.js.TokenType
+- sym: ../../instantiation/common/instantiation.js.createDecorator
+- sym: ../../../nls.js.localize
+- sym: ../../../base/common/lifecycle.js.IDisposable
+- sym: ../../../base/common/errors.js.illegalArgument
+data:
+- name: CONSTANT_VALUES
+  type: any
+  val: new Map<string, boolean>()
+- name: hasOwnProperty
+  type: any
+  val: Object.prototype.hasOwnProperty
+- name: defaultConfig
+  type: ParserConfig
+  val: "{\n\tregexParsingWithErrorRecovery: true\n}"
+- name: errorEmptyString
+  type: any
+  val: localize('contextkey.parser.error.emptyString', "Empty context key expression")
+- name: hintEmptyString
+  type: any
+  val: localize('contextkey.parser.error.emptyString.hint', "Did you forget to write an expression? You can also put 'false' or...
+- name: errorNoInAfterNot
+  type: any
+  val: localize('contextkey.parser.error.noInAfterNot', "'in' after 'not'.")
+- name: errorClosingParenthesis
+  type: any
+  val: localize('contextkey.parser.error.closingParenthesis', "closing parenthesis ')'")
+- name: errorUnexpectedToken
+  type: any
+  val: localize('contextkey.parser.error.unexpectedToken', "Unexpected token")
+- name: hintUnexpectedToken
+  type: any
+  val: localize('contextkey.parser.error.unexpectedToken.hint', "Did you forget to put && or || before the token?")
+- name: errorUnexpectedEOF
+  type: any
+  val: localize('contextkey.parser.error.unexpectedEOF', "Unexpected end of expression")
+- name: hintUnexpectedEOF
+  type: any
+  val: localize('contextkey.parser.error.unexpectedEOF.hint', "Did you forget to put a context key?")
+- name: IContextKeyService
+  type: any
+  val: createDecorator<IContextKeyService>('contextKeyService')
+types:
+- name: ContextKeyExprType
+  kind: enum
+  variants:
+  - name: 'False'
+    val: '0'
+  - name: 'True'
+    val: '1'
+  - name: Defined
+    val: '2'
+  - name: Not
+    val: '3'
+  - name: Equals
+    val: '4'
+  - name: NotEquals
+    val: '5'
+  - name: And
+    val: '6'
+  - name: Regex
+    val: '7'
+  - name: NotRegex
+    val: '8'
+  - name: Or
+    val: '9'
+  - name: In
+    val: '10'
+  - name: NotIn
+    val: '11'
+  - name: Greater
+    val: '12'
+  - name: GreaterEquals
+    val: '13'
+  - name: Smaller
+    val: '14'
+  - name: SmallerEquals
+    val: '15'
+  lines:
+  - 38
+  - 55
+- name: IContextKeyExprMapper
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: mapDefined
+    type: 'method: mapDefined(key: string): ContextKeyExpression'
+  - name: mapNot
+    type: 'method: mapNot(key: string): ContextKeyExpression'
+  - name: mapEquals
+    type: 'method: mapEquals(key: string, value: any): ContextKeyExpression'
+  - name: mapNotEquals
+    type: 'method: mapNotEquals(key: string, value: any): ContextKeyExpression'
+  - name: mapGreater
+    type: 'method: mapGreater(key: string, value: any): ContextKeyExpression'
+  - name: mapGreaterEquals
+    type: 'method: mapGreaterEquals(key: string, value: any): ContextKeyExpression'
+  - name: mapSmaller
+    type: 'method: mapSmaller(key: string, value: any): ContextKeyExpression'
+  - name: mapSmallerEquals
+    type: 'method: mapSmallerEquals(key: string, value: any): ContextKeyExpression'
+  - name: mapRegex
+    type: 'method: mapRegex(key: string, regexp: RegExp | null): ContextKeyRegexExpr'
+  - name: mapIn
+    type: 'method: mapIn(key: string, valueKey: string): ContextKeyInExpr'
+  - name: mapNotIn
+    type: 'method: mapNotIn(key: string, valueKey: string): ContextKeyNotInExpr'
+  lines:
+  - 57
+  - 69
+- name: IContextKeyExpression
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: cmp
+    type: 'method: cmp(other: ContextKeyExpression): number'
+  - name: equals
+    type: 'method: equals(other: ContextKeyExpression): boolean'
+  - name: substituteConstants
+    type: 'method: substituteConstants(): ContextKeyExpression | undefined'
+  - name: evaluate
+    type: 'method: evaluate(context: IContext): boolean'
+  - name: serialize
+    type: 'method: serialize(): string'
+  - name: keys
+    type: 'method: keys(): string[]'
+  - name: map
+    type: 'method: map(mapFnc: IContextKeyExprMapper): ContextKeyExpression'
+  - name: negate
+    type: 'method: negate(): ContextKeyExpression'
+  lines:
+  - 71
+  - 81
+- name: ContextKeyExpression
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 83
+  - 89
+- name: ParserConfig
+  kind: typealias
+  decorators:
+  - type
+  fields:
+  - name: regexParsingWithErrorRecovery
+    type: boolean
+  lines:
+  - 129
+  - 134
+- name: ParsingError
+  kind: typealias
+  decorators:
+  - type
+  fields:
+  - name: message
+    type: string
+  - name: offset
+    type: number
+  - name: lexeme
+    type: string
+  - name: additionalInfo
+    type: string
+  lines:
+  - 140
+  - 145
+- name: Parser
+  kind: struct
+  ctx: 'Note: this doesn''t produce an exact syntax tree but a normalized one'
+  fields:
+  - name: _parseError
+    type: any
+    default: new Error()
+  - name: _scanner
+    type: any
+    default: new Scanner()
+  - name: _tokens
+    type: Token[]
+    default: '[]'
+  - name: _current
+    type: any
+    default: '0'
+  - name: _parsingErrors
+    type: ParsingError[]
+    default: '[]'
+  - name: _flagsGYRe
+    type: any
+    default: /g|y/g
+  methods:
+  - name: lexingErrors
+    sig: 'lexingErrors(): Readonly<LexingError[]>'
+    lines:
+    - 187
+    - 189
+    detail: {}
+  - name: parsingErrors
+    sig: 'parsingErrors(): Readonly<ParsingError[]>'
+    lines:
+    - 191
+    - 193
+    detail: {}
+  - name: constructor
+    sig: 'constructor(private readonly _config: ParserConfig = defaultConfig)'
+    lines:
+    - 195
+    - 196
+    detail: {}
+  - name: parse
+    sig: 'parse(input: string): ContextKeyExpression | undefined'
+    lines:
+    - 204
+    - 232
+    detail:
+      calls:
+      - Scanner.getLexeme
+      - this._expr
+      - this._isAtEnd
+      - this._parsingErrors.push
+      - this._peek
+      - this._scanner.reset
+      - this._scanner.reset(input).scan
+  - name: _or
+    sig: '_or(): ContextKeyExpression | undefined'
+    vis: private
+    lines:
+    - 238
+    - 247
+    detail:
+      calls:
+      - ContextKeyExpr.or
+      - expr.push
+      - this._and
+      - this._matchOne
+  - name: _and
+    sig: '_and(): ContextKeyExpression | undefined'
+    vis: private
+    lines:
+    - 249
+    - 258
+    detail:
+      calls:
+      - ContextKeyExpr.and
+      - expr.push
+      - this._matchOne
+      - this._term
+  - name: _term
+    sig: '_term(): ContextKeyExpression | undefined'
+    vis: private
+    lines:
+    - 260
+    - 284
+    detail:
+      calls:
+      - ContextKeyNotExpr.create
+      - expr?.negate
+      - this._advance
+      - this._consume
+      - this._errExpectedButGot
+      - this._expr
+      - this._matchOne
+      - this._peek
+      - this._primary
+  - name: _primary
+    sig: '_primary(): ContextKeyExpression | undefined'
+    vis: private
+    lines:
+    - 286
+    - 499
+    detail:
+      calls:
+      - ContextKeyExpr.equals
+      - ContextKeyExpr.false
+      - ContextKeyExpr.has
+      - ContextKeyExpr.in
+      - ContextKeyExpr.not
+      - ContextKeyExpr.notEquals
+      - ContextKeyExpr.notIn
+      - ContextKeyExpr.regex
+      - ContextKeyExpr.true
+      - ContextKeyGreaterEqualsExpr.create
+      - ContextKeyGreaterExpr.create
+      - ContextKeyRegexExpr.create
+      - ContextKeySmallerEqualsExpr.create
+      - ContextKeySmallerExpr.create
+      - Scanner.getLexeme
+      - expr.lexeme.charCodeAt
+      - followingToken.lexeme.charCodeAt
+      - isFalsyOrWhitespace
+      - lexemeReconstruction.join
+      - lexemeReconstruction.push
+      - new RegExp
+      - regexLexeme.lastIndexOf
+      - regexLexeme.substring
+      - serializedValue.indexOf
+      - serializedValue.lastIndexOf
+      - serializedValue.slice
+      - this._advance
+      - this._consume
+      - this._errExpectedButGot
+      - this._expr
+      - this._isAtEnd
+      - this._matchOne
+      - this._parsingErrors.push
+      - this._peek
+      - this._previous
+      - this._removeFlagsGY
+      - this._value
+  - name: _value
+    sig: '_value(): string'
+    vis: private
+    lines:
+    - 501
+    - 522
+    detail:
+      calls:
+      - this._advance
+      - this._peek
+  - name: _consume
+    sig: '_consume(type: TokenType, message: string)'
+    vis: private
+    lines:
+    - 550
+    - 556
+    detail:
+      calls:
+      - this._advance
+      - this._check
+      - this._errExpectedButGot
+      - this._peek
+  lines:
+  - 173
+  - 577
+- name: ContextKeyExpr
+  kind: trait
+  decorators:
+  - abstract
+  fields:
+  - name: _parser
+    type: any
+    default: 'new Parser({ regexParsingWithErrorRecovery: false })'
+  methods:
+  - name: 'false'
+    sig: 'false(): ContextKeyExpression'
+    decorators:
+    - static
+    lines:
+    - 581
+    - 583
+    detail: {}
+  - name: 'true'
+    sig: 'true(): ContextKeyExpression'
+    decorators:
+    - static
+    lines:
+    - 584
+    - 586
+    detail: {}
+  - name: has
+    sig: 'has(key: string): ContextKeyExpression'
+    decorators:
+    - static
+    lines:
+    - 587
+    - 589
+    detail:
+      calls:
+      - ContextKeyDefinedExpr.create
+  - name: equals
+    sig: 'equals(key: string, value: any): ContextKeyExpression'
+    decorators:
+    - static
+    lines:
+    - 590
+    - 592
+    detail:
+      calls:
+      - ContextKeyEqualsExpr.create
+  - name: notEquals
+    sig: 'notEquals(key: string, value: any): ContextKeyExpression'
+    decorators:
+    - static
+    lines:
+    - 593
+    - 595
+    detail:
+      calls:
+      - ContextKeyNotEqualsExpr.create
+  - name: regex
+    sig: 'regex(key: string, value: RegExp): ContextKeyExpression'
+    decorators:
+    - static
+    lines:
+    - 596
+    - 598
+    detail:
+      calls:
+      - ContextKeyRegexExpr.create
+  - name: in
+    sig: 'in(key: string, value: string): ContextKeyExpression'
+    decorators:
+    - static
+    lines:
+    - 599
+    - 601
+    detail:
+      calls:
+      - ContextKeyInExpr.create
+  - name: notIn
+    sig: 'notIn(key: string, value: string): ContextKeyExpression'
+    decorators:
+    - static
+    lines:
+    - 602
+    - 604
+    detail:
+      calls:
+      - ContextKeyNotInExpr.create
+  - name: not
+    sig: 'not(key: string): ContextKeyExpression'
+    decorators:
+    - static
+    lines:
+    - 605
+    - 607
+    detail:
+      calls:
+      - ContextKeyNotExpr.create
+  - name: and
+    sig: 'and(...expr: Array<ContextKeyExpression | undefined | null>): ContextKeyExpression | undefined'
+    decorators:
+    - static
+    lines:
+    - 608
+    - 610
+    detail:
+      calls:
+      - ContextKeyAndExpr.create
+  - name: or
+    sig: 'or(...expr: Array<ContextKeyExpression | undefined | null>): ContextKeyExpression | undefined'
+    decorators:
+    - static
+    lines:
+    - 611
+    - 613
+    detail:
+      calls:
+      - ContextKeyOrExpr.create
+  - name: greater
+    sig: 'greater(key: string, value: number): ContextKeyExpression'
+    decorators:
+    - static
+    lines:
+    - 614
+    - 616
+    detail:
+      calls:
+      - ContextKeyGreaterExpr.create
+  - name: greaterEquals
+    sig: 'greaterEquals(key: string, value: number): ContextKeyExpression'
+    decorators:
+    - static
+    lines:
+    - 617
+    - 619
+    detail:
+      calls:
+      - ContextKeyGreaterEqualsExpr.create
+  - name: smaller
+    sig: 'smaller(key: string, value: number): ContextKeyExpression'
+    decorators:
+    - static
+    lines:
+    - 620
+    - 622
+    detail:
+      calls:
+      - ContextKeySmallerExpr.create
+  - name: smallerEquals
+    sig: 'smallerEquals(key: string, value: number): ContextKeyExpression'
+    decorators:
+    - static
+    lines:
+    - 623
+    - 625
+    detail:
+      calls:
+      - ContextKeySmallerEqualsExpr.create
+  - name: deserialize
+    sig: 'deserialize(serialized: string | null | undefined): ContextKeyExpression | undefined'
+    decorators:
+    - static
+    lines:
+    - 628
+    - 635
+    detail:
+      calls:
+      - this._parser.parse
+  lines:
+  - 579
+  - 637
+- name: ContextKeyFalseExpr
+  kind: struct
+  bases:
+  - IContextKeyExpression
+  fields:
+  - name: INSTANCE
+    type: any
+    default: new ContextKeyFalseExpr()
+  - name: type
+    type: any
+    default: ContextKeyExprType.False
+  methods:
+  - name: cmp
+    sig: 'cmp(other: ContextKeyExpression): number'
+    lines:
+    - 691
+    - 693
+    detail: {}
+  - name: equals
+    sig: 'equals(other: ContextKeyExpression): boolean'
+    lines:
+    - 695
+    - 697
+    detail: {}
+  - name: substituteConstants
+    sig: 'substituteConstants(): ContextKeyExpression | undefined'
+    lines:
+    - 699
+    - 701
+    detail: {}
+  - name: evaluate
+    sig: 'evaluate(context: IContext): boolean'
+    lines:
+    - 703
+    - 705
+    detail: {}
+  - name: serialize
+    sig: 'serialize(): string'
+    lines:
+    - 707
+    - 709
+    detail: {}
+  - name: keys
+    sig: 'keys(): string[]'
+    lines:
+    - 711
+    - 713
+    detail: {}
+  - name: map
+    sig: 'map(mapFnc: IContextKeyExprMapper): ContextKeyExpression'
+    lines:
+    - 715
+    - 717
+    detail: {}
+  - name: negate
+    sig: 'negate(): ContextKeyExpression'
+    lines:
+    - 719
+    - 721
+    detail: {}
+  lines:
+  - 683
+  - 722
+- name: ContextKeyTrueExpr
+  kind: struct
+  bases:
+  - IContextKeyExpression
+  fields:
+  - name: INSTANCE
+    type: any
+    default: new ContextKeyTrueExpr()
+  - name: type
+    type: any
+    default: ContextKeyExprType.True
+  methods:
+  - name: cmp
+    sig: 'cmp(other: ContextKeyExpression): number'
+    lines:
+    - 732
+    - 734
+    detail: {}
+  - name: equals
+    sig: 'equals(other: ContextKeyExpression): boolean'
+    lines:
+    - 736
+    - 738
+    detail: {}
+  - name: substituteConstants
+    sig: 'substituteConstants(): ContextKeyExpression | undefined'
+    lines:
+    - 740
+    - 742
+    detail: {}
+  - name: evaluate
+    sig: 'evaluate(context: IContext): boolean'
+    lines:
+    - 744
+    - 746
+    detail: {}
+  - name: serialize
+    sig: 'serialize(): string'
+    lines:
+    - 748
+    - 750
+    detail: {}
+  - name: keys
+    sig: 'keys(): string[]'
+    lines:
+    - 752
+    - 754
+    detail: {}
+  - name: map
+    sig: 'map(mapFnc: IContextKeyExprMapper): ContextKeyExpression'
+    lines:
+    - 756
+    - 758
+    detail: {}
+  - name: negate
+    sig: 'negate(): ContextKeyExpression'
+    lines:
+    - 760
+    - 762
+    detail: {}
+  lines:
+  - 724
+  - 763
+- name: ContextKeyDefinedExpr
+  kind: struct
+  bases:
+  - IContextKeyExpression
+  fields:
+  - name: type
+    type: any
+    default: ContextKeyExprType.Defined
+  methods:
+  - name: create
+    sig: 'create(key: string, negated: ContextKeyExpression | null = null): ContextKeyExpression'
+    decorators:
+    - static
+    lines:
+    - 766
+    - 772
+    detail:
+      calls:
+      - CONSTANT_VALUES.get
+      - new ContextKeyDefinedExpr
+  - name: cmp
+    sig: 'cmp(other: ContextKeyExpression): number'
+    lines:
+    - 782
+    - 787
+    detail:
+      calls:
+      - cmp1
+  - name: equals
+    sig: 'equals(other: ContextKeyExpression): boolean'
+    lines:
+    - 789
+    - 794
+    detail: {}
+  - name: substituteConstants
+    sig: 'substituteConstants(): ContextKeyExpression | undefined'
+    lines:
+    - 796
+    - 802
+    detail:
+      calls:
+      - CONSTANT_VALUES.get
+  - name: evaluate
+    sig: 'evaluate(context: IContext): boolean'
+    lines:
+    - 804
+    - 806
+    detail:
+      calls:
+      - context.getValue
+  - name: serialize
+    sig: 'serialize(): string'
+    lines:
+    - 808
+    - 810
+    detail: {}
+  - name: keys
+    sig: 'keys(): string[]'
+    lines:
+    - 812
+    - 814
+    detail: {}
+  - name: map
+    sig: 'map(mapFnc: IContextKeyExprMapper): ContextKeyExpression'
+    lines:
+    - 816
+    - 818
+    detail:
+      calls:
+      - mapFnc.mapDefined
+  - name: negate
+    sig: 'negate(): ContextKeyExpression'
+    lines:
+    - 820
+    - 825
+    detail:
+      calls:
+      - ContextKeyNotExpr.create
+  lines:
+  - 765
+  - 826
+- name: ContextKeyEqualsExpr
+  kind: struct
+  bases:
+  - IContextKeyExpression
+  fields:
+  - name: type
+    type: any
+    default: ContextKeyExprType.Equals
+  methods:
+  - name: create
+    sig: 'create(key: string, value: any, negated: ContextKeyExpression | null = null): ContextKeyExpression'
+    decorators:
+    - static
+    lines:
+    - 830
+    - 840
+    detail:
+      calls:
+      - CONSTANT_VALUES.get
+      - ContextKeyDefinedExpr.create
+      - ContextKeyNotExpr.create
+      - new ContextKeyEqualsExpr
+  - name: cmp
+    sig: 'cmp(other: ContextKeyExpression): number'
+    lines:
+    - 851
+    - 856
+    detail:
+      calls:
+      - cmp2
+  - name: equals
+    sig: 'equals(other: ContextKeyExpression): boolean'
+    lines:
+    - 858
+    - 863
+    detail: {}
+  - name: substituteConstants
+    sig: 'substituteConstants(): ContextKeyExpression | undefined'
+    lines:
+    - 865
+    - 872
+    detail:
+      calls:
+      - CONSTANT_VALUES.get
+  - name: evaluate
+    sig: 'evaluate(context: IContext): boolean'
+    lines:
+    - 874
+    - 878
+    detail:
+      calls:
+      - context.getValue
+  - name: serialize
+    sig: 'serialize(): string'
+    lines:
+    - 880
+    - 882
+    detail: {}
+  - name: keys
+    sig: 'keys(): string[]'
+    lines:
+    - 884
+    - 886
+    detail: {}
+  - name: map
+    sig: 'map(mapFnc: IContextKeyExprMapper): ContextKeyExpression'
+    lines:
+    - 888
+    - 890
+    detail:
+      calls:
+      - mapFnc.mapEquals
+  - name: negate
+    sig: 'negate(): ContextKeyExpression'
+    lines:
+    - 892
+    - 897
+    detail:
+      calls:
+      - ContextKeyNotEqualsExpr.create
+  lines:
+  - 828
+  - 898
+- name: ContextKeyInExpr
+  kind: struct
+  bases:
+  - IContextKeyExpression
+  fields:
+  - name: type
+    type: any
+    default: ContextKeyExprType.In
+  - name: negated
+    type: ContextKeyExpression | null
+    default: 'null'
+  methods:
+  - name: create
+    sig: 'create(key: string, valueKey: string): ContextKeyInExpr'
+    decorators:
+    - static
+    lines:
+    - 902
+    - 904
+    detail:
+      calls:
+      - new ContextKeyInExpr
+  - name: cmp
+    sig: 'cmp(other: ContextKeyExpression): number'
+    lines:
+    - 915
+    - 920
+    detail:
+      calls:
+      - cmp2
+  - name: equals
+    sig: 'equals(other: ContextKeyExpression): boolean'
+    lines:
+    - 922
+    - 927
+    detail: {}
+  - name: substituteConstants
+    sig: 'substituteConstants(): ContextKeyExpression | undefined'
+    lines:
+    - 929
+    - 931
+    detail: {}
+  - name: evaluate
+    sig: 'evaluate(context: IContext): boolean'
+    lines:
+    - 933
+    - 946
+    detail:
+      calls:
+      - Array.isArray
+      - context.getValue
+      - hasOwnProperty.call
+      - source.includes
+  - name: serialize
+    sig: 'serialize(): string'
+    lines:
+    - 948
+    - 950
+    detail: {}
+  - name: keys
+    sig: 'keys(): string[]'
+    lines:
+    - 952
+    - 954
+    detail: {}
+  - name: map
+    sig: 'map(mapFnc: IContextKeyExprMapper): ContextKeyInExpr'
+    lines:
+    - 956
+    - 958
+    detail:
+      calls:
+      - mapFnc.mapIn
+  - name: negate
+    sig: 'negate(): ContextKeyExpression'
+    lines:
+    - 960
+    - 965
+    detail:
+      calls:
+      - ContextKeyNotInExpr.create
+  lines:
+  - 900
+  - 966
+- name: ContextKeyNotInExpr
+  kind: struct
+  bases:
+  - IContextKeyExpression
+  fields:
+  - name: type
+    type: any
+    default: ContextKeyExprType.NotIn
+  - name: _negated
+    type: ContextKeyInExpr
+  methods:
+  - name: create
+    sig: 'create(key: string, valueKey: string): ContextKeyNotInExpr'
+    decorators:
+    - static
+    lines:
+    - 970
+    - 972
+    detail:
+      calls:
+      - new ContextKeyNotInExpr
+  - name: cmp
+    sig: 'cmp(other: ContextKeyExpression): number'
+    lines:
+    - 985
+    - 990
+    detail:
+      calls:
+      - this._negated.cmp
+  - name: equals
+    sig: 'equals(other: ContextKeyExpression): boolean'
+    lines:
+    - 992
+    - 997
+    detail:
+      calls:
+      - this._negated.equals
+  - name: substituteConstants
+    sig: 'substituteConstants(): ContextKeyExpression | undefined'
+    lines:
+    - 999
+    - 1001
+    detail: {}
+  - name: evaluate
+    sig: 'evaluate(context: IContext): boolean'
+    lines:
+    - 1003
+    - 1005
+    detail:
+      calls:
+      - this._negated.evaluate
+  - name: serialize
+    sig: 'serialize(): string'
+    lines:
+    - 1007
+    - 1009
+    detail: {}
+  - name: keys
+    sig: 'keys(): string[]'
+    lines:
+    - 1011
+    - 1013
+    detail:
+      calls:
+      - this._negated.keys
+  - name: map
+    sig: 'map(mapFnc: IContextKeyExprMapper): ContextKeyExpression'
+    lines:
+    - 1015
+    - 1017
+    detail:
+      calls:
+      - mapFnc.mapNotIn
+  - name: negate
+    sig: 'negate(): ContextKeyExpression'
+    lines:
+    - 1019
+    - 1021
+    detail: {}
+  lines:
+  - 968
+  - 1022
+- name: ContextKeyNotEqualsExpr
+  kind: struct
+  bases:
+  - IContextKeyExpression
+  fields:
+  - name: type
+    type: any
+    default: ContextKeyExprType.NotEquals
+  methods:
+  - name: create
+    sig: 'create(key: string, value: any, negated: ContextKeyExpression | null = null): ContextKeyExpression'
+    decorators:
+    - static
+    lines:
+    - 1026
+    - 1039
+    detail:
+      calls:
+      - CONSTANT_VALUES.get
+      - ContextKeyDefinedExpr.create
+      - ContextKeyNotExpr.create
+      - new ContextKeyNotEqualsExpr
+  - name: cmp
+    sig: 'cmp(other: ContextKeyExpression): number'
+    lines:
+    - 1050
+    - 1055
+    detail:
+      calls:
+      - cmp2
+  - name: equals
+    sig: 'equals(other: ContextKeyExpression): boolean'
+    lines:
+    - 1057
+    - 1062
+    detail: {}
+  - name: substituteConstants
+    sig: 'substituteConstants(): ContextKeyExpression | undefined'
+    lines:
+    - 1064
+    - 1071
+    detail:
+      calls:
+      - CONSTANT_VALUES.get
+  - name: evaluate
+    sig: 'evaluate(context: IContext): boolean'
+    lines:
+    - 1073
+    - 1077
+    detail:
+      calls:
+      - context.getValue
+  - name: serialize
+    sig: 'serialize(): string'
+    lines:
+    - 1079
+    - 1081
+    detail: {}
+  - name: keys
+    sig: 'keys(): string[]'
+    lines:
+    - 1083
+    - 1085
+    detail: {}
+  - name: map
+    sig: 'map(mapFnc: IContextKeyExprMapper): ContextKeyExpression'
+    lines:
+    - 1087
+    - 1089
+    detail:
+      calls:
+      - mapFnc.mapNotEquals
+  - name: negate
+    sig: 'negate(): ContextKeyExpression'
+    lines:
+    - 1091
+    - 1096
+    detail:
+      calls:
+      - ContextKeyEqualsExpr.create
+  lines:
+  - 1024
+  - 1097
+- name: ContextKeyNotExpr
+  kind: struct
+  bases:
+  - IContextKeyExpression
+  fields:
+  - name: type
+    type: any
+    default: ContextKeyExprType.Not
+  methods:
+  - name: create
+    sig: 'create(key: string, negated: ContextKeyExpression | null = null): ContextKeyExpression'
+    decorators:
+    - static
+    lines:
+    - 1101
+    - 1107
+    detail:
+      calls:
+      - CONSTANT_VALUES.get
+      - new ContextKeyNotExpr
+  - name: cmp
+    sig: 'cmp(other: ContextKeyExpression): number'
+    lines:
+    - 1117
+    - 1122
+    detail:
+      calls:
+      - cmp1
+  - name: equals
+    sig: 'equals(other: ContextKeyExpression): boolean'
+    lines:
+    - 1124
+    - 1129
+    detail: {}
+  - name: substituteConstants
+    sig: 'substituteConstants(): ContextKeyExpression | undefined'
+    lines:
+    - 1131
+    - 1137
+    detail:
+      calls:
+      - CONSTANT_VALUES.get
+  - name: evaluate
+    sig: 'evaluate(context: IContext): boolean'
+    lines:
+    - 1139
+    - 1141
+    detail:
+      calls:
+      - context.getValue
+  - name: serialize
+    sig: 'serialize(): string'
+    lines:
+    - 1143
+    - 1145
+    detail: {}
+  - name: keys
+    sig: 'keys(): string[]'
+    lines:
+    - 1147
+    - 1149
+    detail: {}
+  - name: map
+    sig: 'map(mapFnc: IContextKeyExprMapper): ContextKeyExpression'
+    lines:
+    - 1151
+    - 1153
+    detail:
+      calls:
+      - mapFnc.mapNot
+  - name: negate
+    sig: 'negate(): ContextKeyExpression'
+    lines:
+    - 1155
+    - 1160
+    detail:
+      calls:
+      - ContextKeyDefinedExpr.create
+  lines:
+  - 1099
+  - 1161
+- name: ContextKeyGreaterExpr
+  kind: struct
+  bases:
+  - IContextKeyExpression
+  fields:
+  - name: type
+    type: any
+    default: ContextKeyExprType.Greater
+  methods:
+  - name: create
+    sig: 'create(key: string, _value: any, negated: ContextKeyExpression | null = null): ContextKeyExpression'
+    decorators:
+    - static
+    lines:
+    - 1178
+    - 1180
+    detail:
+      calls:
+      - withFloatOrStr
+  - name: cmp
+    sig: 'cmp(other: ContextKeyExpression): number'
+    lines:
+    - 1190
+    - 1195
+    detail:
+      calls:
+      - cmp2
+  - name: equals
+    sig: 'equals(other: ContextKeyExpression): boolean'
+    lines:
+    - 1197
+    - 1202
+    detail: {}
+  - name: substituteConstants
+    sig: 'substituteConstants(): ContextKeyExpression | undefined'
+    lines:
+    - 1204
+    - 1206
+    detail: {}
+  - name: evaluate
+    sig: 'evaluate(context: IContext): boolean'
+    lines:
+    - 1208
+    - 1213
+    detail:
+      calls:
+      - context.getValue
+      - parseFloat
+  - name: serialize
+    sig: 'serialize(): string'
+    lines:
+    - 1215
+    - 1217
+    detail: {}
+  - name: keys
+    sig: 'keys(): string[]'
+    lines:
+    - 1219
+    - 1221
+    detail: {}
+  - name: map
+    sig: 'map(mapFnc: IContextKeyExprMapper): ContextKeyExpression'
+    lines:
+    - 1223
+    - 1225
+    detail:
+      calls:
+      - mapFnc.mapGreater
+  - name: negate
+    sig: 'negate(): ContextKeyExpression'
+    lines:
+    - 1227
+    - 1232
+    detail:
+      calls:
+      - ContextKeySmallerEqualsExpr.create
+  lines:
+  - 1176
+  - 1233
+- name: ContextKeyGreaterEqualsExpr
+  kind: struct
+  bases:
+  - IContextKeyExpression
+  fields:
+  - name: type
+    type: any
+    default: ContextKeyExprType.GreaterEquals
+  methods:
+  - name: create
+    sig: 'create(key: string, _value: any, negated: ContextKeyExpression | null = null): ContextKeyExpression'
+    decorators:
+    - static
+    lines:
+    - 1237
+    - 1239
+    detail:
+      calls:
+      - withFloatOrStr
+  - name: cmp
+    sig: 'cmp(other: ContextKeyExpression): number'
+    lines:
+    - 1249
+    - 1254
+    detail:
+      calls:
+      - cmp2
+  - name: equals
+    sig: 'equals(other: ContextKeyExpression): boolean'
+    lines:
+    - 1256
+    - 1261
+    detail: {}
+  - name: substituteConstants
+    sig: 'substituteConstants(): ContextKeyExpression | undefined'
+    lines:
+    - 1263
+    - 1265
+    detail: {}
+  - name: evaluate
+    sig: 'evaluate(context: IContext): boolean'
+    lines:
+    - 1267
+    - 1272
+    detail:
+      calls:
+      - context.getValue
+      - parseFloat
+  - name: serialize
+    sig: 'serialize(): string'
+    lines:
+    - 1274
+    - 1276
+    detail: {}
+  - name: keys
+    sig: 'keys(): string[]'
+    lines:
+    - 1278
+    - 1280
+    detail: {}
+  - name: map
+    sig: 'map(mapFnc: IContextKeyExprMapper): ContextKeyExpression'
+    lines:
+    - 1282
+    - 1284
+    detail:
+      calls:
+      - mapFnc.mapGreaterEquals
+  - name: negate
+    sig: 'negate(): ContextKeyExpression'
+    lines:
+    - 1286
+    - 1291
+    detail:
+      calls:
+      - ContextKeySmallerExpr.create
+  lines:
+  - 1235
+  - 1292
+- name: ContextKeySmallerExpr
+  kind: struct
+  bases:
+  - IContextKeyExpression
+  fields:
+  - name: type
+    type: any
+    default: ContextKeyExprType.Smaller
+  methods:
+  - name: create
+    sig: 'create(key: string, _value: any, negated: ContextKeyExpression | null = null): ContextKeyExpression'
+    decorators:
+    - static
+    lines:
+    - 1296
+    - 1298
+    detail:
+      calls:
+      - withFloatOrStr
+  - name: cmp
+    sig: 'cmp(other: ContextKeyExpression): number'
+    lines:
+    - 1309
+    - 1314
+    detail:
+      calls:
+      - cmp2
+  - name: equals
+    sig: 'equals(other: ContextKeyExpression): boolean'
+    lines:
+    - 1316
+    - 1321
+    detail: {}
+  - name: substituteConstants
+    sig: 'substituteConstants(): ContextKeyExpression | undefined'
+    lines:
+    - 1323
+    - 1325
+    detail: {}
+  - name: evaluate
+    sig: 'evaluate(context: IContext): boolean'
+    lines:
+    - 1327
+    - 1332
+    detail:
+      calls:
+      - context.getValue
+      - parseFloat
+  - name: serialize
+    sig: 'serialize(): string'
+    lines:
+    - 1334
+    - 1336
+    detail: {}
+  - name: keys
+    sig: 'keys(): string[]'
+    lines:
+    - 1338
+    - 1340
+    detail: {}
+  - name: map
+    sig: 'map(mapFnc: IContextKeyExprMapper): ContextKeyExpression'
+    lines:
+    - 1342
+    - 1344
+    detail:
+      calls:
+      - mapFnc.mapSmaller
+  - name: negate
+    sig: 'negate(): ContextKeyExpression'
+    lines:
+    - 1346
+    - 1351
+    detail:
+      calls:
+      - ContextKeyGreaterEqualsExpr.create
+  lines:
+  - 1294
+  - 1352
+- name: ContextKeySmallerEqualsExpr
+  kind: struct
+  bases:
+  - IContextKeyExpression
+  fields:
+  - name: type
+    type: any
+    default: ContextKeyExprType.SmallerEquals
+  methods:
+  - name: create
+    sig: 'create(key: string, _value: any, negated: ContextKeyExpression | null = null): ContextKeyExpression'
+    decorators:
+    - static
+    lines:
+    - 1356
+    - 1358
+    detail:
+      calls:
+      - withFloatOrStr
+  - name: cmp
+    sig: 'cmp(other: ContextKeyExpression): number'
+    lines:
+    - 1369
+    - 1374
+    detail:
+      calls:
+      - cmp2
+  - name: equals
+    sig: 'equals(other: ContextKeyExpression): boolean'
+    lines:
+    - 1376
+    - 1381
+    detail: {}
+  - name: substituteConstants
+    sig: 'substituteConstants(): ContextKeyExpression | undefined'
+    lines:
+    - 1383
+    - 1385
+    detail: {}
+  - name: evaluate
+    sig: 'evaluate(context: IContext): boolean'
+    lines:
+    - 1387
+    - 1392
+    detail:
+      calls:
+      - context.getValue
+      - parseFloat
+  - name: serialize
+    sig: 'serialize(): string'
+    lines:
+    - 1394
+    - 1396
+    detail: {}
+  - name: keys
+    sig: 'keys(): string[]'
+    lines:
+    - 1398
+    - 1400
+    detail: {}
+  - name: map
+    sig: 'map(mapFnc: IContextKeyExprMapper): ContextKeyExpression'
+    lines:
+    - 1402
+    - 1404
+    detail:
+      calls:
+      - mapFnc.mapSmallerEquals
+  - name: negate
+    sig: 'negate(): ContextKeyExpression'
+    lines:
+    - 1406
+    - 1411
+    detail:
+      calls:
+      - ContextKeyGreaterExpr.create
+  lines:
+  - 1354
+  - 1412
+- name: ContextKeyRegexExpr
+  kind: struct
+  bases:
+  - IContextKeyExpression
+  fields:
+  - name: type
+    type: any
+    default: ContextKeyExprType.Regex
+  - name: negated
+    type: ContextKeyExpression | null
+    default: 'null'
+  methods:
+  - name: create
+    sig: 'create(key: string, regexp: RegExp | null): ContextKeyRegexExpr'
+    decorators:
+    - static
+    lines:
+    - 1416
+    - 1418
+    detail:
+      calls:
+      - new ContextKeyRegexExpr
+  - name: cmp
+    sig: 'cmp(other: ContextKeyExpression): number'
+    lines:
+    - 1430
+    - 1449
+    detail: {}
+  - name: equals
+    sig: 'equals(other: ContextKeyExpression): boolean'
+    lines:
+    - 1451
+    - 1458
+    detail: {}
+  - name: substituteConstants
+    sig: 'substituteConstants(): ContextKeyExpression | undefined'
+    lines:
+    - 1460
+    - 1462
+    detail: {}
+  - name: evaluate
+    sig: 'evaluate(context: IContext): boolean'
+    lines:
+    - 1464
+    - 1467
+    detail:
+      calls:
+      - context.getValue
+      - this.regexp.test
+  - name: serialize
+    sig: 'serialize(): string'
+    lines:
+    - 1469
+    - 1474
+    detail: {}
+  - name: keys
+    sig: 'keys(): string[]'
+    lines:
+    - 1476
+    - 1478
+    detail: {}
+  - name: map
+    sig: 'map(mapFnc: IContextKeyExprMapper): ContextKeyRegexExpr'
+    lines:
+    - 1480
+    - 1482
+    detail:
+      calls:
+      - mapFnc.mapRegex
+  - name: negate
+    sig: 'negate(): ContextKeyExpression'
+    lines:
+    - 1484
+    - 1489
+    detail:
+      calls:
+      - ContextKeyNotRegexExpr.create
+  lines:
+  - 1414
+  - 1490
+- name: ContextKeyNotRegexExpr
+  kind: struct
+  bases:
+  - IContextKeyExpression
+  fields:
+  - name: type
+    type: any
+    default: ContextKeyExprType.NotRegex
+  methods:
+  - name: create
+    sig: 'create(actual: ContextKeyRegexExpr): ContextKeyExpression'
+    decorators:
+    - static
+    lines:
+    - 1494
+    - 1496
+    detail:
+      calls:
+      - new ContextKeyNotRegexExpr
+  - name: cmp
+    sig: 'cmp(other: ContextKeyExpression): number'
+    lines:
+    - 1504
+    - 1509
+    detail:
+      calls:
+      - this._actual.cmp
+  - name: equals
+    sig: 'equals(other: ContextKeyExpression): boolean'
+    lines:
+    - 1511
+    - 1516
+    detail:
+      calls:
+      - this._actual.equals
+  - name: substituteConstants
+    sig: 'substituteConstants(): ContextKeyExpression | undefined'
+    lines:
+    - 1518
+    - 1520
+    detail: {}
+  - name: evaluate
+    sig: 'evaluate(context: IContext): boolean'
+    lines:
+    - 1522
+    - 1524
+    detail:
+      calls:
+      - this._actual.evaluate
+  - name: serialize
+    sig: 'serialize(): string'
+    lines:
+    - 1526
+    - 1528
+    detail:
+      calls:
+      - this._actual.serialize
+  - name: keys
+    sig: 'keys(): string[]'
+    lines:
+    - 1530
+    - 1532
+    detail:
+      calls:
+      - this._actual.keys
+  - name: map
+    sig: 'map(mapFnc: IContextKeyExprMapper): ContextKeyExpression'
+    lines:
+    - 1534
+    - 1536
+    detail:
+      calls:
+      - new ContextKeyNotRegexExpr
+      - this._actual.map
+  - name: negate
+    sig: 'negate(): ContextKeyExpression'
+    lines:
+    - 1538
+    - 1540
+    detail: {}
+  lines:
+  - 1492
+  - 1541
+- name: ContextKeyAndExpr
+  kind: struct
+  bases:
+  - IContextKeyExpression
+  fields:
+  - name: type
+    type: any
+    default: ContextKeyExprType.And
+  methods:
+  - name: create
+    sig: 'create(_expr: ReadonlyArray<ContextKeyExpression | null | undefined>, negated: ContextKeyExpression | null, extraRedundantCheck: boolean): ContextKeyExpression | undefined'
+    decorators:
+    - static
+    lines:
+    - 1577
+    - 1579
+    detail:
+      calls:
+      - ContextKeyAndExpr._normalizeArr
+  - name: cmp
+    sig: 'cmp(other: ContextKeyExpression): number'
+    lines:
+    - 1589
+    - 1606
+    detail:
+      calls:
+      - cmp
+  - name: equals
+    sig: 'equals(other: ContextKeyExpression): boolean'
+    lines:
+    - 1608
+    - 1621
+    detail:
+      calls:
+      - this.expr[i].equals
+  - name: substituteConstants
+    sig: 'substituteConstants(): ContextKeyExpression | undefined'
+    lines:
+    - 1623
+    - 1630
+    detail:
+      calls:
+      - ContextKeyAndExpr.create
+      - eliminateConstantsInArray
+  - name: evaluate
+    sig: 'evaluate(context: IContext): boolean'
+    lines:
+    - 1632
+    - 1639
+    detail:
+      calls:
+      - this.expr[i].evaluate
+  - name: _normalizeArr
+    sig: '_normalizeArr(arr: ReadonlyArray<ContextKeyExpression | null | undefined>, negated: ContextKeyExpression | null, extraRedundantCheck: boolean): ContextKeyExpression | undefined'
+    vis: private
+    decorators:
+    - static
+    lines:
+    - 1641
+    - 1744
+    detail:
+      calls:
+      - ContextKeyOrExpr.create
+      - expr.pop
+      - expr.push
+      - expr.sort
+      - expr.splice
+      - expr[i - 1].equals
+      - expr[i].negate
+      - expr[i].negate().equals
+      - lastElement.expr.map
+      - new ContextKeyAndExpr
+  - name: serialize
+    sig: 'serialize(): string'
+    lines:
+    - 1746
+    - 1748
+    detail:
+      calls:
+      - this.expr.map
+      - this.expr.map(e => e.serialize()).join
+  - name: keys
+    sig: 'keys(): string[]'
+    lines:
+    - 1750
+    - 1756
+    detail:
+      calls:
+      - expr.keys
+      - result.push
+  - name: map
+    sig: 'map(mapFnc: IContextKeyExprMapper): ContextKeyExpression'
+    lines:
+    - 1758
+    - 1760
+    detail:
+      calls:
+      - new ContextKeyAndExpr
+      - this.expr.map
+  - name: negate
+    sig: 'negate(): ContextKeyExpression'
+    lines:
+    - 1762
+    - 1771
+    detail:
+      calls:
+      - ContextKeyOrExpr.create
+      - expr.negate
+      - result.push
+  lines:
+  - 1575
+  - 1772
+- name: ContextKeyOrExpr
+  kind: struct
+  bases:
+  - IContextKeyExpression
+  fields:
+  - name: type
+    type: any
+    default: ContextKeyExprType.Or
+  methods:
+  - name: create
+    sig: 'create(_expr: ReadonlyArray<ContextKeyExpression | null | undefined>, negated: ContextKeyExpression | null, extraRedundantCheck: boolean): ContextKeyExpression | undefined'
+    decorators:
+    - static
+    lines:
+    - 1776
+    - 1778
+    detail:
+      calls:
+      - ContextKeyOrExpr._normalizeArr
+  - name: cmp
+    sig: 'cmp(other: ContextKeyExpression): number'
+    lines:
+    - 1788
+    - 1805
+    detail:
+      calls:
+      - cmp
+  - name: equals
+    sig: 'equals(other: ContextKeyExpression): boolean'
+    lines:
+    - 1807
+    - 1820
+    detail:
+      calls:
+      - this.expr[i].equals
+  - name: substituteConstants
+    sig: 'substituteConstants(): ContextKeyExpression | undefined'
+    lines:
+    - 1822
+    - 1829
+    detail:
+      calls:
+      - ContextKeyOrExpr.create
+      - eliminateConstantsInArray
+  - name: evaluate
+    sig: 'evaluate(context: IContext): boolean'
+    lines:
+    - 1831
+    - 1838
+    detail:
+      calls:
+      - this.expr[i].evaluate
+  - name: _normalizeArr
+    sig: '_normalizeArr(arr: ReadonlyArray<ContextKeyExpression | null | undefined>, negated: ContextKeyExpression | null, extraRedundantCheck: boolean): ContextKeyExpression | undefined'
+    vis: private
+    decorators:
+    - static
+    lines:
+    - 1840
+    - 1914
+    detail:
+      calls:
+      - expr.concat
+      - expr.push
+      - expr.sort
+      - expr.splice
+      - expr[i - 1].equals
+      - expr[i].negate
+      - expr[i].negate().equals
+      - new ContextKeyOrExpr
+  - name: serialize
+    sig: 'serialize(): string'
+    lines:
+    - 1916
+    - 1918
+    detail:
+      calls:
+      - this.expr.map
+      - this.expr.map(e => e.serialize()).join
+  - name: keys
+    sig: 'keys(): string[]'
+    lines:
+    - 1920
+    - 1926
+    detail:
+      calls:
+      - expr.keys
+      - result.push
+  - name: map
+    sig: 'map(mapFnc: IContextKeyExprMapper): ContextKeyExpression'
+    lines:
+    - 1928
+    - 1930
+    detail:
+      calls:
+      - new ContextKeyOrExpr
+      - this.expr.map
+  - name: negate
+    sig: 'negate(): ContextKeyExpression'
+    lines:
+    - 1932
+    - 1958
+    detail:
+      calls:
+      - ContextKeyAndExpr.create
+      - ContextKeyOrExpr.create
+      - all.push
+      - expr.negate
+      - getTerminals
+      - result.push
+      - result.shift
+      - result.unshift
+  lines:
+  - 1774
+  - 1959
+- name: ContextKeyInfo
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: readonly
+    type: string
+  - name: readonly
+    type: string
+  - name: readonly
+    type: string
+  lines:
+  - 1961
+  - 1965
+- name: RawContextKey
+  kind: struct
+  bases:
+  - ContextKeyDefinedExpr
+  fields:
+  - name: _info
+    type: ContextKeyInfo[]
+    default: '[]'
+  - name: _defaultValue
+    type: T | undefined
+  methods:
+  - name: all
+    sig: 'all(): IterableIterator<ContextKeyInfo>'
+    decorators:
+    - static
+    lines:
+    - 1971
+    - 1973
+    detail:
+      calls:
+      - RawContextKey._info.values
+  - name: constructor
+    sig: 'constructor(key: string, defaultValue: T | undefined, metaOrHide?: string | true | { type: string; description: string })'
+    lines:
+    - 1977
+    - 1987
+    detail:
+      calls:
+      - RawContextKey._info.push
+      - super
+  - name: bindTo
+    sig: 'bindTo(target: IContextKeyService): IContextKey<T>'
+    lines:
+    - 1989
+    - 1991
+    detail:
+      calls:
+      - target.createKey
+  - name: getValue
+    sig: 'getValue(target: IContextKeyService): T | undefined'
+    lines:
+    - 1993
+    - 1995
+    detail:
+      calls:
+      - target.getContextKeyValue
+  - name: toNegated
+    sig: 'toNegated(): ContextKeyExpression'
+    lines:
+    - 1997
+    - 1999
+    detail:
+      calls:
+      - this.negate
+  - name: isEqualTo
+    sig: 'isEqualTo(value: any): ContextKeyExpression'
+    lines:
+    - 2001
+    - 2003
+    detail:
+      calls:
+      - ContextKeyEqualsExpr.create
+  - name: notEqualsTo
+    sig: 'notEqualsTo(value: any): ContextKeyExpression'
+    lines:
+    - 2005
+    - 2007
+    detail:
+      calls:
+      - ContextKeyNotEqualsExpr.create
+  - name: greater
+    sig: 'greater(value: any): ContextKeyExpression'
+    lines:
+    - 2009
+    - 2011
+    detail:
+      calls:
+      - ContextKeyGreaterExpr.create
+  lines:
+  - 1967
+  - 2012
+- name: ContextKeyValue
+  kind: enum
+  decorators:
+  - type
+  variants:
+  - name: Record<string, null | undefined | boolean | number | string>
+  lines:
+  - 2014
+  - 2016
+- name: IContext
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: getValue
+    type: 'method: getValue<T extends ContextKeyValue = ContextKeyValue>(key: string): T | undefined'
+  lines:
+  - 2018
+  - 2020
+- name: IContextKey
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: set
+    type: 'method: set(value: T): void'
+  - name: reset
+    type: 'method: reset(): void'
+  - name: get
+    type: 'method: get(): T | undefined'
+  lines:
+  - 2022
+  - 2026
+- name: IContextKeyServiceTarget
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: parentElement
+    type: IContextKeyServiceTarget | null
+  - name: setAttribute
+    type: 'method: setAttribute(attr: string, value: string): void'
+  - name: removeAttribute
+    type: 'method: removeAttribute(attr: string): void'
+  - name: hasAttribute
+    type: 'method: hasAttribute(attr: string): boolean'
+  - name: getAttribute
+    type: 'method: getAttribute(attr: string): string | null'
+  lines:
+  - 2028
+  - 2034
+- name: IReadableSet
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: has
+    type: 'method: has(value: T): boolean'
+  lines:
+  - 2038
+  - 2040
+- name: IContextKeyChangeEvent
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: affectsSome
+    type: 'method: affectsSome(keys: IReadableSet<string>): boolean'
+  - name: allKeysContainedIn
+    type: 'method: allKeysContainedIn(keys: IReadableSet<string>): boolean'
+  lines:
+  - 2042
+  - 2045
+- name: IScopedContextKeyService
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 2047
+  - 2047
+- name: IContextKeyService
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: readonly
+    type: undefined
+  - name: onDidChangeContext
+    type: Event<IContextKeyChangeEvent>
+  - name: bufferChangeEvents
+    type: 'method: bufferChangeEvents(callback: Function): void'
+  - name: createKey
+    type: 'method: createKey<T extends ContextKeyValue>(key: string, defaultValue: T | undefined): IContextKey<T>'
+  - name: contextMatchesRules
+    type: 'method: contextMatchesRules(rules: ContextKeyExpression | undefined): boolean'
+  - name: getContextKeyValue
+    type: 'method: getContextKeyValue<T>(key: string): T | undefined'
+  - name: createScoped
+    type: 'method: createScoped(target: IContextKeyServiceTarget): IScopedContextKeyService'
+  - name: createOverlay
+    type: 'method: createOverlay(overlay: Iterable<[string, any]>): IContextKeyService'
+  - name: getContext
+    type: 'method: getContext(target: IContextKeyServiceTarget | null): IContext'
+  - name: updateParent
+    type: 'method: updateParent(parentContextKeyService: IContextKeyService): void'
+  lines:
+  - 2049
+  - 2064
+functions:
+- name: setConstant
+  sig: 'setConstant(key: string, value: boolean)'
+  lines:
+  - 30
+  - 34
+  detail:
+    calls:
+    - CONSTANT_VALUES.get
+    - CONSTANT_VALUES.set
+    - illegalArgument
+- name: validateWhenClauses
+  sig: 'validateWhenClauses(whenClauses: string[]): any'
+  lines:
+  - 640
+  - 665
+  detail:
+    calls:
+    - new Parser
+    - whenClauses.map
+- name: expressionsAreEqualWithConstantSubstitution
+  sig: 'expressionsAreEqualWithConstantSubstitution(a: ContextKeyExpression | null | undefined, b: ContextKeyExpression | null | undefined): boolean'
+  lines:
+  - 667
+  - 677
+  detail:
+    calls:
+    - a.substituteConstants
+    - aExpr.equals
+    - b.substituteConstants
+- name: cmp
+  sig: 'cmp(a: ContextKeyExpression, b: ContextKeyExpression): number'
+  lines:
+  - 679
+  - 681
+  detail:
+    calls:
+    - a.cmp
+- name: withFloatOrStr
+  sig: 'withFloatOrStr(value: any, callback: (value: number | string) => T): T | ContextKeyFalseExpr'
+  lines:
+  - 1163
+  - 1174
+  detail:
+    calls:
+    - callback
+    - isNaN
+    - parseFloat
+- name: eliminateConstantsInArray
+  sig: 'eliminateConstantsInArray(arr: ContextKeyExpression[]): (ContextKeyExpression | undefined)[]'
+  lines:
+  - 1546
+  - 1573
+  detail:
+    calls:
+    - arr[i].substituteConstants
+- name: cmp1
+  sig: 'cmp1(key1: string, key2: string): number'
+  lines:
+  - 2066
+  - 2074
+  detail: {}
+- name: cmp2
+  sig: 'cmp2(key1: string, value1: any, key2: string, value2: any): number'
+  lines:
+  - 2076
+  - 2090
+  detail: {}
+- name: implies
+  sig: 'implies(p: ContextKeyExpression, q: ContextKeyExpression): boolean'
+  lines:
+  - 2095
+  - 2134
+  detail:
+    calls:
+    - allElementsIncluded
+    - implies
+    - p.equals
+- name: allElementsIncluded
+  sig: 'allElementsIncluded(p: ContextKeyExpression[], q: ContextKeyExpression[]): boolean'
+  lines:
+  - 2140
+  - 2157
+  detail:
+    calls:
+    - p[pIndex].cmp
+- name: getTerminals
+  sig: 'getTerminals(node: ContextKeyExpression)'
+  lines:
+  - 2159
+  - 2164
+  detail: {}
+exports:
+- name: ContextKeyExprType
+  kind: type
+- name: IContextKeyExprMapper
+  kind: type
+- name: IContextKeyExpression
+  kind: type
+- name: ContextKeyExpression
+  kind: type
+- name: ParserConfig
+  kind: type
+- name: ParsingError
+  kind: type
+- name: Parser
+  kind: type
+- name: ContextKeyExpr
+  kind: type
+- name: ContextKeyFalseExpr
+  kind: type
+- name: ContextKeyTrueExpr
+  kind: type
+- name: ContextKeyDefinedExpr
+  kind: type
+- name: ContextKeyEqualsExpr
+  kind: type
+- name: ContextKeyInExpr
+  kind: type
+- name: ContextKeyNotInExpr
+  kind: type
+- name: ContextKeyNotEqualsExpr
+  kind: type
+- name: ContextKeyNotExpr
+  kind: type
+- name: ContextKeyGreaterExpr
+  kind: type
+- name: ContextKeyGreaterEqualsExpr
+  kind: type
+- name: ContextKeySmallerExpr
+  kind: type
+- name: ContextKeySmallerEqualsExpr
+  kind: type
+- name: ContextKeyRegexExpr
+  kind: type
+- name: ContextKeyNotRegexExpr
+  kind: type
+- name: ContextKeyAndExpr
+  kind: type
+- name: ContextKeyOrExpr
+  kind: type
+- name: ContextKeyInfo
+  kind: type
+- name: RawContextKey
+  kind: type
+- name: ContextKeyValue
+  kind: type
+- name: IContext
+  kind: type
+- name: IContextKey
+  kind: type
+- name: IContextKeyServiceTarget
+  kind: type
+- name: IReadableSet
+  kind: type
+- name: IContextKeyChangeEvent
+  kind: type
+- name: IScopedContextKeyService
+  kind: type
+- name: IContextKeyService
+  kind: type
+- name: setConstant
+  kind: func
+- name: validateWhenClauses
+  kind: func
+- name: expressionsAreEqualWithConstantSubstitution
+  kind: func
+- name: cmp
+  kind: func
+- name: withFloatOrStr
+  kind: func
+- name: eliminateConstantsInArray
+  kind: func
+- name: cmp1
+  kind: func
+- name: cmp2
+  kind: func
+- name: implies
+  kind: func
+- name: allElementsIncluded
+  kind: func
+- name: getTerminals
+  kind: func
+- name: CONSTANT_VALUES
+  kind: data
+- name: hasOwnProperty
+  kind: data
+- name: defaultConfig
+  kind: data
+- name: errorEmptyString
+  kind: data
+- name: hintEmptyString
+  kind: data
+- name: errorNoInAfterNot
+  kind: data
+- name: errorClosingParenthesis
+  kind: data
+- name: errorUnexpectedToken
+  kind: data
+- name: hintUnexpectedToken
+  kind: data
+- name: errorUnexpectedEOF
+  kind: data
+- name: hintUnexpectedEOF
+  kind: data
+- name: IContextKeyService
+  kind: data

@@ -1,0 +1,568 @@
+## Roska File Descriptor — browser/simpleSuggestWidget.ts
+file: browser/simpleSuggestWidget.ts
+lines: 886
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: ../../../../base/browser/dom.js.dom
+- sym: ../../../../base/browser/ui/list/list.js.IListEvent
+- sym: ../../../../base/browser/ui/list/list.js.IListGestureEvent
+- sym: ../../../../base/browser/ui/list/list.js.IListMouseEvent
+- sym: ../../../../base/browser/ui/list/listWidget.js.List
+- sym: ../../../../base/browser/ui/resizable/resizable.js.ResizableHTMLElement
+- sym: ./simpleCompletionItem.js.SimpleCompletionItem
+- sym: ./simpleCompletionModel.js.LineContext
+- sym: ./simpleCompletionModel.js.SimpleCompletionModel
+- sym: ./simpleSuggestWidgetRenderer.js.getAriaId
+- sym: ./simpleSuggestWidgetRenderer.js.SimpleSuggestWidgetItemRenderer
+- sym: ./simpleSuggestWidgetRenderer.js.type ISimpleSuggestWidgetFontInfo
+- sym: ../../../../base/common/async.js.CancelablePromise
+- sym: ../../../../base/common/async.js.createCancelablePromise
+- sym: ../../../../base/common/async.js.disposableTimeout
+- sym: ../../../../base/common/async.js.TimeoutTimer
+- sym: ../../../../base/common/event.js.Emitter
+- sym: ../../../../base/common/event.js.Event
+- sym: ../../../../base/common/event.js.PauseableEmitter
+- sym: ../../../../base/common/lifecycle.js.MutableDisposable
+- sym: ../../../../base/common/lifecycle.js.Disposable
+- sym: ../../../../base/common/numbers.js.clamp
+- sym: ../../../../nls.js.localize
+- sym: ../../../../platform/instantiation/common/instantiation.js.IInstantiationService
+- sym: ../../../../editor/contrib/suggest/browser/suggestWidgetStatus.js.SuggestWidgetStatus
+- sym: ../../../../platform/actions/common/actions.js.MenuId
+- sym: ../../../../platform/configuration/common/configuration.js.IConfigurationService
+- sym: ../../../../platform/storage/common/storage.js.IStorageService
+- sym: ../../../../platform/storage/common/storage.js.StorageScope
+- sym: ../../../../platform/storage/common/storage.js.StorageTarget
+- sym: ./simpleSuggestWidgetDetails.js.canExpandCompletionItem
+- sym: ./simpleSuggestWidgetDetails.js.SimpleSuggestDetailsOverlay
+- sym: ./simpleSuggestWidgetDetails.js.SimpleSuggestDetailsWidget
+- sym: ../../../../platform/contextkey/common/contextkey.js.IContextKey
+- sym: ../../../../platform/contextkey/common/contextkey.js.IContextKeyService
+- sym: ../../../../platform/contextkey/common/contextkey.js.RawContextKey
+- sym: ../../../../base/common/strings.js.strings
+- sym: ../../../../base/browser/ui/aria/aria.js.status
+data:
+- name: $
+  type: any
+  val: dom.$
+- name: SimpleSuggestContext
+  type: object
+  val: "{\n\tHasFocusedSuggestion: new RawContextKey<boolean>('simpleSuggestWidgetHasFocusedSuggestion', false, localize('simpleSu..."
+types:
+- name: State
+  kind: enum
+  variants:
+  - name: Hidden
+  - name: Loading
+  - name: Empty
+  - name: Open
+  - name: Frozen
+  - name: Details
+  lines:
+  - 31
+  - 38
+- name: ISimpleSelectedSuggestion
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: item
+    type: T
+  - name: index
+    type: number
+  - name: model
+    type: SimpleCompletionModel<T>
+  lines:
+  - 40
+  - 44
+- name: IPersistedWidgetSizeDelegate
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: restore
+    type: 'method: restore(): dom.Dimension | undefined'
+  - name: store
+    type: 'method: store(size: dom.Dimension): void'
+  - name: reset
+    type: 'method: reset(): void'
+  lines:
+  - 46
+  - 50
+- name: WidgetPositionPreference
+  kind: enum
+  variants:
+  - name: Above
+  - name: Below
+  lines:
+  - 52
+  - 55
+- name: IWorkbenchSuggestWidgetOptions
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: statusBarMenuId
+    type: MenuId
+  - name: showStatusBarSettingId
+    type: string
+  lines:
+  - 62
+  - 73
+- name: SimpleSuggestWidget
+  kind: struct
+  bases:
+  - Disposable
+  fields:
+  - name: LOADING_MESSAGE
+    type: string
+    default: localize('suggestWidget.loading', "Loading...")
+  - name: NO_SUGGESTIONS_MESSAGE
+    type: string
+    default: localize('suggestWidget.noSuggestions', "No suggestions.")
+  - name: _state
+    type: State
+    default: State.Hidden
+  - name: _completionModel
+    type: TModel
+  - name: _cappedHeight
+    type: '{ wanted: number; capped: number }'
+  - name: _forceRenderingAbove
+    type: boolean
+    default: 'false'
+  - name: _explainMode
+    type: boolean
+    default: 'false'
+  - name: _preference
+    type: WidgetPositionPreference
+  - name: _pendingShowDetails
+    type: any
+    default: this._register(new MutableDisposable())
+  - name: _pendingLayout
+    type: any
+    default: this._register(new MutableDisposable())
+  - name: _currentSuggestionDetails
+    type: CancelablePromise<void>
+  - name: _focusedItem
+    type: TItem
+  - name: _ignoreFocusEvents
+    type: boolean
+    default: 'false'
+  - name: element
+    type: ResizableHTMLElement
+  - name: _messageElement
+    type: HTMLElement
+  - name: _listElement
+    type: HTMLElement
+  - name: _list
+    type: List<TItem>
+  - name: _status
+    type: SuggestWidgetStatus
+  - name: _details
+    type: SimpleSuggestDetailsOverlay
+  - name: _showTimeout
+    type: any
+    default: this._register(new TimeoutTimer())
+  - name: _onDidSelect
+    type: any
+    default: this._register(new Emitter<ISimpleSelectedSuggestion<TItem>>())
+  - name: onDidSelect
+    type: Event<ISimpleSelectedSuggestion<TItem>>
+    default: this._onDidSelect.event
+  - name: _onDidHide
+    type: any
+    default: this._register(new Emitter<this>())
+  - name: onDidHide
+    type: Event<this>
+    default: this._onDidHide.event
+  - name: _onDidShow
+    type: any
+    default: this._register(new Emitter<this>())
+  - name: onDidShow
+    type: Event<this>
+    default: this._onDidShow.event
+  - name: _onDidFocus
+    type: any
+    default: new PauseableEmitter<ISimpleSelectedSuggestion<TItem>>()
+  - name: onDidFocus
+    type: Event<ISimpleSelectedSuggestion<TItem>>
+    default: this._onDidFocus.event
+  - name: _onDidBlurDetails
+    type: any
+    default: this._register(new Emitter<FocusEvent>())
+  - name: onDidBlurDetails
+    type: any
+    default: this._onDidBlurDetails.event
+  - name: _ctxSuggestWidgetHasFocusedSuggestion
+    type: IContextKey<boolean>
+  - name: _ctxSuggestWidgetHasBeenNavigated
+    type: IContextKey<boolean>
+  - name: _cursorPosition
+    type: '{ top: number; left: number; height: number }'
+  methods:
+  - name: list
+    sig: 'list(): List<TItem>'
+    lines:
+    - 112
+    - 112
+    detail: {}
+  - name: constructor
+    sig: "constructor(\n\t\tprivate readonly _container: HTMLElement,\n\t\tprivate readonly _persistedSize: IPersistedWidgetSizeDelegate,\n\t\tprivate readonly _options: IWorkbenchSuggestWidgetOptions,\n\t\tprivate readonly _getFontInfo: () => ISimpleSuggestWidgetFontInfo,\n\t\tprivate readonly _onDidFontConfigurationChange: Event<void>,\n\t\tprivate readonly _getAdvancedExplainModeDetails: () => string | undefined,\n\t\t@IInstantiationService private readonly _instantiationService: IInstantiationService,\n\t\t@IConfigurationService private readonly _configurationService: IConfigurationService,\n\t\t@IStorageService private readonly _storageService: IStorageService,\n\t\t@IContextKeyService _contextKeyService: IContextKeyService\n\t)"
+    lines:
+    - 117
+    - 273
+    detail:
+      calls:
+      - $
+      - SimpleSuggestContext.HasFocusedSuggestion.bindTo
+      - SimpleSuggestContext.HasNavigated.bindTo
+      - _configurationService.getValue
+      - _configurationService.onDidChangeConfiguration
+      - _instantiationService.createInstance
+      - applyIconStyle
+      - details.onDidClose
+      - dom.$
+      - dom.addDisposableListener
+      - dom.append
+      - new List
+      - new ResizableHTMLElement
+      - new SimpleSuggestDetailsOverlay
+      - super
+      - this._container.appendChild
+      - this._getAdvancedExplainModeDetails.bind
+      - this._getFontInfo.bind
+      - this._instantiationService.createInstance
+      - this._list.onDidChangeFocus
+      - this._list.onDidChangeSelection
+      - this._list.onMouseDown
+      - this._list.onTap
+      - this._onDidFontConfigurationChange
+      - this._onDidFontConfigurationChange.bind
+      - this._register
+      - this.element.domNode.classList.add
+      - this.element.domNode.classList.toggle
+      - this.element.onDidResize
+      - this.element.onDidWillResize
+  - name: _onListFocus
+    sig: '_onListFocus(e: IListEvent<TItem>): void'
+    vis: private
+    lines:
+    - 275
+    - 360
+    detail:
+      calls:
+      - createCancelablePromise
+      - dom.getActiveWindow
+      - getAriaId
+      - node.setAttribute
+      - this._clearAriaActiveDescendant
+      - this._ctxSuggestWidgetHasFocusedSuggestion.set
+      - this._currentSuggestionDetails.cancel
+      - this._currentSuggestionDetails.then
+      - "this._currentSuggestionDetails.then(() => {\n\t\t\t\tif (index >= this._list.length || item !== this._lis..."
+      - this._currentSuggestionDetails?.cancel
+      - this._list.reveal
+      - this._onDidFocus.fire
+      - this._setState
+  - name: _clearAriaActiveDescendant
+    sig: '_clearAriaActiveDescendant(): void'
+    vis: private
+    lines:
+    - 362
+    - 370
+    detail:
+      calls:
+      - dom.getActiveWindow
+      - node.removeAttribute
+      - node.setAttribute
+  - name: setCompletionModel
+    sig: 'setCompletionModel(completionModel: TModel)'
+    lines:
+    - 374
+    - 376
+    detail: {}
+  - name: hasCompletions
+    sig: 'hasCompletions(): boolean'
+    lines:
+    - 378
+    - 380
+    detail: {}
+  - name: resetWidgetSize
+    sig: 'resetWidgetSize(): void'
+    lines:
+    - 382
+    - 384
+    detail:
+      calls:
+      - this._persistedSize.reset
+  - name: showSuggestions
+    sig: 'showSuggestions(selectionIndex: number, isFrozen: boolean, isAuto: boolean, cursorPosition: { top: number; left: number; height: number }): void'
+    lines:
+    - 386
+    - 436
+    detail:
+      calls:
+      - dom.getWindow
+      - dom.runAtThisOrScheduleAtNextAnimationFrame
+      - this._afterRender
+      - this._list.reveal
+      - this._list.setFocus
+      - this._list.splice
+      - this._setState
+  - name: setLineContext
+    sig: 'setLineContext(lineContext: LineContext): void'
+    lines:
+    - 438
+    - 442
+    detail: {}
+  - name: _setState
+    sig: '_setState(state: State): void'
+    vis: private
+    lines:
+    - 444
+    - 516
+    detail:
+      calls:
+      - dom.hide
+      - dom.show
+      - status
+      - this._ctxSuggestWidgetHasFocusedSuggestion.reset
+      - this._details.hide
+      - this._details.show
+      - this._list.splice
+      - this._show
+      - this._showListAndStatus
+      - this._showTimeout.cancel
+      - this._status?.hide
+      - this.element.domNode.classList.add
+      - this.element.domNode.classList.remove
+      - this.element.domNode.classList.toggle
+  - name: _show
+    sig: '_show(): void'
+    vis: private
+    lines:
+    - 526
+    - 542
+    detail:
+      calls:
+      - dom.show
+      - this._layout
+      - this._onDidShow.fire
+      - this._persistedSize.restore
+      - this._showTimeout.cancelAndSet
+      - this._status?.show
+  - name: toggleDetailsFocus
+    sig: 'toggleDetailsFocus(): void'
+    lines:
+    - 545
+    - 558
+    detail:
+      calls:
+      - this._details.widget.focus
+      - this._isDetailsVisible
+      - this._list.getFocus
+      - this._list.setFocus
+      - this._setState
+      - this.toggleDetails
+  - name: toggleDetails
+    sig: 'toggleDetails(focused: boolean = false): void'
+    lines:
+    - 560
+    - 577
+    detail:
+      calls:
+      - canExpandCompletionItem
+      - this._details.hide
+      - this._isDetailsVisible
+      - this._list.getFocusedElements
+      - this._pendingShowDetails.clear
+      - this._setDetailsVisible
+      - this._showDetails
+      - this.element.domNode.classList.remove
+  - name: _showDetails
+    sig: '_showDetails(loading: boolean, focused: boolean): void'
+    vis: private
+    lines:
+    - 579
+    - 603
+    detail:
+      calls:
+      - dom.getWindow
+      - dom.runAtThisOrScheduleAtNextAnimationFrame
+  - name: toggleExplainMode
+    sig: 'toggleExplainMode(): void'
+    lines:
+    - 605
+    - 614
+    detail:
+      calls:
+      - this._isDetailsVisible
+      - this._list.getFocusedElements
+      - this._showDetails
+      - this.toggleDetails
+  - name: hide
+    sig: 'hide(): void'
+    lines:
+    - 616
+    - 632
+    detail:
+      calls:
+      - Math.ceil
+      - dim.with
+      - dom.hide
+      - this._ctxSuggestWidgetHasBeenNavigated.reset
+      - this._getLayoutInfo
+      - this._onDidHide.fire
+      - this._pendingLayout.clear
+      - this._pendingShowDetails.clear
+      - this._persistedSize.restore
+      - this._persistedSize.store
+      - this._setState
+      - this.element.clearSashHoverState
+  - name: _layout
+    sig: '_layout(size: dom.Dimension | undefined): void'
+    vis: private
+    lines:
+    - 634
+    - 733
+    detail:
+      calls:
+      - Math.max
+      - Math.min
+      - dom.getClientArea
+      - dom.getDomNodePagePosition
+      - new dom.Dimension
+      - this._getLayoutInfo
+      - this._resize
+      - this.element.enableSashes
+  - name: _afterRender
+    sig: _afterRender()
+    lines:
+    - 735
+    - 750
+    detail:
+      calls:
+      - this._details.show
+      - this._isDetailsVisible
+      - this._positionDetails
+  - name: _resize
+    sig: '_resize(width: number, height: number): void'
+    vis: private
+    lines:
+    - 752
+    - 769
+    detail:
+      calls:
+      - Math.min
+      - this._getLayoutInfo
+      - this._list.layout
+      - this._positionDetails
+      - this.element.layout
+  - name: _getLayoutInfo
+    sig: _getLayoutInfo()
+    vis: private
+    lines:
+    - 777
+    - 794
+    detail:
+      calls:
+      - clamp
+      - new dom.Dimension
+      - this._configurationService.getValue
+      - this._getFontInfo
+  - name: _onListMouseDownOrTap
+    sig: '_onListMouseDownOrTap(e: IListMouseEvent<TItem> | IListGestureEvent<TItem>): void'
+    vis: private
+    lines:
+    - 796
+    - 806
+    detail:
+      calls:
+      - e.browserEvent.preventDefault
+      - e.browserEvent.stopPropagation
+      - this._select
+  - name: selectNext
+    sig: 'selectNext(): boolean'
+    lines:
+    - 821
+    - 828
+    detail:
+      calls:
+      - this._list.focusNext
+      - this._list.getFocus
+      - this._list.reveal
+  - name: selectNextPage
+    sig: 'selectNextPage(): boolean'
+    lines:
+    - 830
+    - 837
+    detail:
+      calls:
+      - this._list.focusNextPage
+      - this._list.getFocus
+      - this._list.reveal
+  - name: selectPrevious
+    sig: 'selectPrevious(): boolean'
+    lines:
+    - 839
+    - 846
+    detail:
+      calls:
+      - this._list.focusPrevious
+      - this._list.getFocus
+      - this._list.reveal
+  - name: selectPreviousPage
+    sig: 'selectPreviousPage(): boolean'
+    lines:
+    - 848
+    - 855
+    detail:
+      calls:
+      - this._list.focusPreviousPage
+      - this._list.getFocus
+      - this._list.reveal
+  - name: getFocusedItem
+    sig: 'getFocusedItem(): ISimpleSelectedSuggestion<TItem> | undefined'
+    lines:
+    - 857
+    - 866
+    detail:
+      calls:
+      - this._list.getFocus
+      - this._list.getFocusedElements
+  - name: forceRenderingAbove
+    sig: forceRenderingAbove()
+    lines:
+    - 876
+    - 881
+    detail:
+      calls:
+      - this._layout
+      - this._persistedSize.restore
+  - name: stopForceRenderingAbove
+    sig: stopForceRenderingAbove()
+    lines:
+    - 883
+    - 885
+    detail: {}
+  lines:
+  - 75
+  - 886
+exports:
+- name: State
+  kind: type
+- name: ISimpleSelectedSuggestion
+  kind: type
+- name: IPersistedWidgetSizeDelegate
+  kind: type
+- name: WidgetPositionPreference
+  kind: type
+- name: IWorkbenchSuggestWidgetOptions
+  kind: type
+- name: SimpleSuggestWidget
+  kind: type
+- name: $
+  kind: data
+- name: SimpleSuggestContext
+  kind: data

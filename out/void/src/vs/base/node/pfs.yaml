@@ -1,0 +1,398 @@
+## Roska File Descriptor — node/pfs.ts
+file: node/pfs.ts
+lines: 750
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: fs.fs
+- sym: util.promisify
+- sym: ../common/async.js.ResourceQueue
+- sym: ../common/async.js.timeout
+- sym: ../common/extpath.js.isEqualOrParent
+- sym: ../common/extpath.js.isRootOrDriveLetter
+- sym: ../common/extpath.js.randomPath
+- sym: ../common/normalization.js.normalizeNFC
+- sym: ../common/path.js.join
+- sym: ../common/platform.js.isLinux
+- sym: ../common/platform.js.isMacintosh
+- sym: ../common/platform.js.isWindows
+- sym: ../common/resources.js.extUriBiasedIgnorePathCase
+- sym: ../common/uri.js.URI
+data:
+- name: writeQueues
+  type: any
+  val: new ResourceQueue()
+- name: canFlush
+  type: boolean
+  val: 'true'
+- name: COPY_MODE_MASK
+  type: any
+  val: '0o777'
+- name: Promises
+  type: any
+  val: "new class {\n\n\t//#region Implemented by node.js\n\n\tget read() {\n\n\t\t// Not using `promisify` here for a reason: the return\n..."
+types:
+- name: RimRafMode
+  kind: enum
+  variants:
+  - name: UNLINK
+  - name: MOVE
+  lines:
+  - 19
+  - 32
+- name: IDirent
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: isFile
+    type: 'method: isFile(): boolean'
+  - name: isDirectory
+    type: 'method: isDirectory(): boolean'
+  - name: isSymbolicLink
+    type: 'method: isSymbolicLink(): boolean'
+  lines:
+  - 97
+  - 103
+- name: IWriteFileOptions
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: mode
+    type: number
+  - name: flag
+    type: string
+  lines:
+  - 382
+  - 385
+- name: IEnsuredWriteFileOptions
+  kind: trait
+  bases:
+  - IWriteFileOptions
+  decorators:
+  - interface
+  fields:
+  - name: mode
+    type: number
+  - name: flag
+    type: string
+  lines:
+  - 387
+  - 390
+- name: ICopyPayload
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: readonly
+    type: '{ source: string; target: string }'
+  - name: readonly
+    type: '{ preserveSymlinks: boolean }'
+  - name: readonly
+    type: Set<string>
+  lines:
+  - 557
+  - 561
+functions:
+- name: rimraf
+  sig: 'rimraf(path: string, mode = RimRafMode.UNLINK, moveToPath?: string): Promise<void>'
+  is_async: true
+  lines:
+  - 46
+  - 58
+  detail:
+    calls:
+    - isRootOrDriveLetter
+    - new Error
+    - rimrafMove
+    - rimrafUnlink
+- name: rimrafMove
+  sig: 'rimrafMove(path: string, moveToPath = randomPath(tmpdir())): Promise<void>'
+  is_async: true
+  lines:
+  - 60
+  - 79
+  detail:
+    calls:
+    - fs.promises.rename
+    - rimrafUnlink
+    - rimrafUnlink(moveToPath).catch
+- name: rimrafUnlink
+  sig: 'rimrafUnlink(path: string): Promise<void>'
+  is_async: true
+  lines:
+  - 81
+  - 83
+  detail:
+    calls:
+    - fs.promises.rm
+- name: rimrafSync
+  sig: 'rimrafSync(path: string): void'
+  lines:
+  - 85
+  - 91
+  detail:
+    calls:
+    - fs.rmSync
+    - isRootOrDriveLetter
+    - new Error
+- name: readdir
+  sig: 'readdir(path: string, options?: { withFileTypes: true }): Promise<(string | IDirent)[]>'
+  is_async: true
+  lines:
+  - 112
+  - 114
+  detail:
+    calls:
+    - fs.promises.readdir
+    - handleDirectoryChildren
+    - safeReaddirWithFileTypes
+- name: safeReaddirWithFileTypes
+  sig: 'safeReaddirWithFileTypes(path: string): Promise<IDirent[]>'
+  is_async: true
+  lines:
+  - 116
+  - 155
+  detail:
+    calls:
+    - console.warn
+    - fs.promises.lstat
+    - fs.promises.readdir
+    - join
+    - lstat.isDirectory
+    - lstat.isFile
+    - lstat.isSymbolicLink
+    - readdir
+    - result.push
+- name: readdirSync
+  sig: 'readdirSync(path: string): string[]'
+  lines:
+  - 162
+  - 164
+  detail:
+    calls:
+    - fs.readdirSync
+    - handleDirectoryChildren
+- name: handleDirectoryChildren
+  sig: 'handleDirectoryChildren(children: (string | IDirent)[]): (string | IDirent)[]'
+  lines:
+  - 169
+  - 183
+  detail:
+    calls:
+    - children.map
+- name: readDirsInDir
+  sig: 'readDirsInDir(dirPath: string): Promise<string[]>'
+  is_async: true
+  lines:
+  - 189
+  - 200
+  detail:
+    calls:
+    - SymlinkSupport.existsDirectory
+    - directories.push
+    - join
+    - readdir
+- name: whenDeleted
+  sig: 'whenDeleted(path: string, intervalMs = 1000): Promise<void>'
+  lines:
+  - 210
+  - 227
+  detail:
+    calls:
+    - new Promise
+- name: writeFile
+  sig: 'writeFile(path: string, data: string | Buffer | Uint8Array, options?: IWriteFileOptions): Promise<void>'
+  lines:
+  - 374
+  - 380
+  detail:
+    calls:
+    - URI.file
+    - writeQueues.queueFor
+- name: configureFlushOnWrite
+  sig: 'configureFlushOnWrite(enabled: boolean): void'
+  lines:
+  - 393
+  - 395
+- name: doWriteFileAndFlush
+  sig: 'doWriteFileAndFlush(path: string, data: string | Buffer | Uint8Array, options: IEnsuredWriteFileOptions, callback: (error: Error | null) => void): void'
+  lines:
+  - 402
+  - 434
+  detail:
+    calls:
+    - fs.open
+    - fs.writeFile
+- name: writeFileSync
+  sig: 'writeFileSync(path: string, data: string | Buffer, options?: IWriteFileOptions): void'
+  lines:
+  - 441
+  - 466
+  detail:
+    calls:
+    - configureFlushOnWrite
+    - console.warn
+    - ensureWriteOptions
+    - fs.closeSync
+    - fs.fdatasyncSync
+    - fs.openSync
+    - fs.writeFileSync
+- name: ensureWriteOptions
+  sig: 'ensureWriteOptions(options?: IWriteFileOptions): IEnsuredWriteFileOptions'
+  lines:
+  - 468
+  - 477
+  detail: {}
+- name: rename
+  sig: 'rename(source: string, target: string, windowsRetryTimeout: number | false = 60000): Promise<void>'
+  is_async: true
+  lines:
+  - 488
+  - 517
+  detail:
+    calls:
+    - Date.now
+    - copy
+    - fs.promises.rename
+    - renameWithRetry
+    - rimraf
+    - source.endsWith
+    - source.toLowerCase
+    - target.toLowerCase
+- name: renameWithRetry
+  sig: 'renameWithRetry(source: string, target: string, startTime: number, retryTimeout: number, attempt = 0): Promise<void>'
+  is_async: true
+  lines:
+  - 519
+  - 555
+  detail:
+    calls:
+    - Date.now
+    - Math.min
+    - SymlinkSupport.stat
+    - console.error
+    - fs.promises.rename
+    - renameWithRetry
+    - stat.isFile
+    - timeout
+- name: copy
+  sig: 'copy(source: string, target: string, options: { preserveSymlinks: boolean }): Promise<void>'
+  is_async: true
+  lines:
+  - 570
+  - 572
+- name: doCopy
+  sig: 'doCopy(source: string, target: string, payload: ICopyPayload): Promise<void>'
+  is_async: true
+  lines:
+  - 580
+  - 618
+  detail:
+    calls:
+    - SymlinkSupport.stat
+    - doCopyDirectory
+    - doCopyFile
+    - doCopySymlink
+    - payload.handledSourcePaths.add
+    - payload.handledSourcePaths.has
+    - stat.isDirectory
+- name: doCopyDirectory
+  sig: 'doCopyDirectory(source: string, target: string, mode: number, payload: ICopyPayload): Promise<void>'
+  is_async: true
+  lines:
+  - 620
+  - 630
+  detail:
+    calls:
+    - doCopy
+    - fs.promises.mkdir
+    - join
+    - readdir
+- name: doCopyFile
+  sig: 'doCopyFile(source: string, target: string, mode: number): Promise<void>'
+  is_async: true
+  lines:
+  - 632
+  - 639
+  detail:
+    calls:
+    - fs.promises.chmod
+    - fs.promises.copyFile
+- name: doCopySymlink
+  sig: 'doCopySymlink(source: string, target: string, payload: ICopyPayload): Promise<void>'
+  is_async: true
+  lines:
+  - 641
+  - 656
+  detail:
+    calls:
+    - fs.promises.readlink
+    - fs.promises.symlink
+    - isEqualOrParent
+    - join
+    - linkTarget.substr
+exports:
+- name: RimRafMode
+  kind: type
+- name: IDirent
+  kind: type
+- name: IWriteFileOptions
+  kind: type
+- name: IEnsuredWriteFileOptions
+  kind: type
+- name: ICopyPayload
+  kind: type
+- name: rimraf
+  kind: func
+- name: rimrafMove
+  kind: func
+- name: rimrafUnlink
+  kind: func
+- name: rimrafSync
+  kind: func
+- name: readdir
+  kind: func
+- name: safeReaddirWithFileTypes
+  kind: func
+- name: readdirSync
+  kind: func
+- name: handleDirectoryChildren
+  kind: func
+- name: readDirsInDir
+  kind: func
+- name: whenDeleted
+  kind: func
+- name: writeFile
+  kind: func
+- name: configureFlushOnWrite
+  kind: func
+- name: doWriteFileAndFlush
+  kind: func
+- name: writeFileSync
+  kind: func
+- name: ensureWriteOptions
+  kind: func
+- name: rename
+  kind: func
+- name: renameWithRetry
+  kind: func
+- name: copy
+  kind: func
+- name: doCopy
+  kind: func
+- name: doCopyDirectory
+  kind: func
+- name: doCopyFile
+  kind: func
+- name: doCopySymlink
+  kind: func
+- name: writeQueues
+  kind: data
+- name: canFlush
+  kind: data
+- name: COPY_MODE_MASK
+  kind: data
+- name: Promises
+  kind: data

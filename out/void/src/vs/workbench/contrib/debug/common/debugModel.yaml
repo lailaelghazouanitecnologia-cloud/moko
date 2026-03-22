@@ -1,0 +1,2039 @@
+## Roska File Descriptor — common/debugModel.ts
+file: common/debugModel.ts
+lines: 2075
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: ../../../../base/common/arrays.js.distinct
+- sym: ../../../../base/common/arraysFind.js.findLastIdx
+- sym: ../../../../base/common/async.js.DeferredPromise
+- sym: ../../../../base/common/async.js.RunOnceScheduler
+- sym: ../../../../base/common/buffer.js.VSBuffer
+- sym: ../../../../base/common/buffer.js.decodeBase64
+- sym: ../../../../base/common/buffer.js.encodeBase64
+- sym: ../../../../base/common/cancellation.js.CancellationTokenSource
+- sym: ../../../../base/common/event.js.Emitter
+- sym: ../../../../base/common/event.js.Event
+- sym: ../../../../base/common/event.js.trackSetChanges
+- sym: ../../../../base/common/hash.js.stringHash
+- sym: ../../../../base/common/lifecycle.js.Disposable
+- sym: ../../../../base/common/objects.js.mixin
+- sym: ../../../../base/common/observable.js.autorun
+- sym: ../../../../base/common/resources.js.resources
+- sym: ../../../../base/common/types.js.isString
+- sym: ../../../../base/common/types.js.isUndefinedOrNull
+- sym: ../../../../base/common/uri.js.URI
+- sym: ../../../../base/common/uri.js.URI as uri
+- sym: ../../../../base/common/uuid.js.generateUuid
+- sym: ../../../../editor/common/core/range.js.IRange
+- sym: ../../../../editor/common/core/range.js.Range
+- sym: ../../../../nls.js.nls
+- sym: ../../../../platform/log/common/log.js.ILogService
+- sym: ../../../../platform/uriIdentity/common/uriIdentity.js.IUriIdentityService
+- sym: ../../../common/editor.js.IEditorPane
+- sym: ./debug.js.DEBUG_MEMORY_SCHEME
+- sym: ./debug.js.DataBreakpointSetType
+- sym: ./debug.js.DataBreakpointSource
+- sym: ./debug.js.DebugTreeItemCollapsibleState
+- sym: ./debug.js.IBaseBreakpoint
+- sym: ./debug.js.IBreakpoint
+- sym: ./debug.js.IBreakpointData
+- sym: ./debug.js.IBreakpointUpdateData
+- sym: ./debug.js.IBreakpointsChangeEvent
+- sym: ./debug.js.IDataBreakpoint
+- sym: ./debug.js.IDebugEvaluatePosition
+- sym: ./debug.js.IDebugModel
+- sym: ./debug.js.IDebugSession
+- sym: ./debug.js.IDebugVisualizationTreeItem
+- sym: ./debug.js.IEnablement
+- sym: ./debug.js.IExceptionBreakpoint
+- sym: ./debug.js.IExceptionInfo
+- sym: ./debug.js.IExpression
+- sym: ./debug.js.IExpressionContainer
+- sym: ./debug.js.IFunctionBreakpoint
+- sym: ./debug.js.IInstructionBreakpoint
+- sym: ./debug.js.IMemoryInvalidationEvent
+- sym: ./debug.js.IMemoryRegion
+- sym: ./debug.js.IRawModelUpdate
+- sym: ./debug.js.IRawStoppedDetails
+- sym: ./debug.js.IScope
+- sym: ./debug.js.IStackFrame
+- sym: ./debug.js.IThread
+- sym: ./debug.js.ITreeElement
+- sym: ./debug.js.MemoryRange
+- sym: ./debug.js.MemoryRangeType
+- sym: ./debug.js.State
+- sym: ./debug.js.isFrameDeemphasized
+- sym: ./debugSource.js.Source
+- sym: ./debugSource.js.UNKNOWN_SOURCE_LABEL
+- sym: ./debugSource.js.getUriFromSource
+- sym: ./debugStorage.js.DebugStorage
+- sym: ./debugVisualizers.js.IDebugVisualizerService
+- sym: ./disassemblyViewInput.js.DisassemblyViewInput
+- sym: ../../../services/editor/common/editorService.js.IEditorService
+- sym: ../../../services/textfile/common/textfiles.js.ITextFileService
+data:
+- name: KEEP_SUBTLE_FRAME_AT_TOP_REASONS
+  type: readonly string[]
+  val: '[''breakpoint'', ''step'', ''function breakpoint'']'
+types:
+- name: IDebugProtocolVariableWithContext
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: __vscodeVariableMenuContext
+    type: string
+  lines:
+  - 33
+  - 35
+- name: ExpressionContainer
+  kind: struct
+  ctx: 'Use chunks to support variable paging #9537'
+  bases:
+  - IExpressionContainer
+  fields:
+  - name: allValues
+    type: any
+    default: new Map<string, string>()
+  - name: BASE_CHUNK_SIZE
+    type: any
+    default: '100'
+  - name: type
+    type: string | undefined
+  - name: valueChanged
+    type: any
+    default: 'false'
+  - name: _value
+    type: string
+    default: ''''''
+  - name: children
+    type: Promise<IExpression[]>
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tprotected session: IDebugSession | undefined,\n\t\tprotected readonly threadId: number | undefined,\n\t\tprivate _reference: number | undefined,\n\t\tprivate readonly id: string,\n\t\tpublic namedVariables: number | undefined = 0,\n\t\tpublic indexedVariables: number | undefined = 0,\n\t\tpublic memoryReference: string | undefined = undefined,\n\t\tprivate startOfVariables: number | undefined = 0,\n\t\tpublic presentationHint: DebugProtocol.VariablePresentationHint | undefined = undefined,\n\t\tpublic valueLocationReference: number | undefined = undefined,\n\t)"
+    lines:
+    - 48
+    - 59
+    detail: {}
+  - name: reference
+    sig: 'reference(): number | undefined'
+    lines:
+    - 61
+    - 63
+    detail: {}
+  - name: reference
+    sig: 'reference(value: number | undefined)'
+    lines:
+    - 65
+    - 68
+    detail: {}
+  - name: evaluateLazy
+    sig: 'evaluateLazy(): Promise<void>'
+    is_async: true
+    lines:
+    - 70
+    - 90
+    detail:
+      calls:
+      - this.adoptLazyResponse
+      - this.session!.variables
+  - name: getChildren
+    sig: 'getChildren(): Promise<IExpression[]>'
+    lines:
+    - 95
+    - 101
+    detail:
+      calls:
+      - this.doGetChildren
+  - name: doGetChildren
+    sig: 'doGetChildren(): Promise<IExpression[]>'
+    is_async: true
+    vis: private
+    lines:
+    - 103
+    - 135
+    detail:
+      calls:
+      - Math.ceil
+      - Math.min
+      - children.concat
+      - children.push
+      - new Variable
+      - this.fetchVariables
+  - name: getId
+    sig: 'getId(): string'
+    lines:
+    - 137
+    - 139
+    detail: {}
+  - name: getSession
+    sig: 'getSession(): IDebugSession | undefined'
+    lines:
+    - 141
+    - 143
+    detail: {}
+  - name: value
+    sig: 'value(): string'
+    lines:
+    - 145
+    - 147
+    detail: {}
+  - name: hasChildren
+    sig: 'hasChildren(): boolean'
+    lines:
+    - 149
+    - 152
+    detail: {}
+  - name: fetchVariables
+    sig: 'fetchVariables(start: number | undefined, count: number | undefined, filter: ''indexed'' | ''named'' | undefined): Promise<Variable[]>'
+    is_async: true
+    vis: private
+    lines:
+    - 154
+    - 180
+    detail:
+      calls:
+      - Promise.all
+      - new Map
+      - new Variable
+      - response.body.variables.filter
+      - response.body.variables.filter(v => !!v).map
+      - this.session!.variables
+      - vars.map
+  - name: value
+    sig: 'value(value: string)'
+    lines:
+    - 187
+    - 192
+    detail:
+      calls:
+      - ExpressionContainer.allValues.get
+      - ExpressionContainer.allValues.set
+      - this.getId
+  - name: toString
+    sig: 'toString(): string'
+    lines:
+    - 194
+    - 196
+    detail: {}
+  - name: evaluateExpression
+    sig: "evaluateExpression(\n\t\texpression: string,\n\t\tsession: IDebugSession | undefined,\n\t\tstackFrame: IStackFrame | undefined,\n\t\tcontext: string,\n\t\tkeepLazyVars = false,\n\t\tlocation?: IDebugEvaluatePosition,\n\t): Promise<boolean>"
+    is_async: true
+    lines:
+    - 198
+    - 239
+    detail:
+      calls:
+      - nls.localize
+      - session.evaluate
+      - this.evaluateLazy
+  lines:
+  - 37
+  - 240
+- name: VisualizedExpression
+  kind: struct
+  ctx: Edits the value, sets the {@link errorMessage} and returns false if unsuccessful
+  bases:
+  - IExpression
+  fields:
+  - name: errorMessage
+    type: string
+  - name: id
+    type: any
+    default: generateUuid()
+  methods:
+  - name: evaluateLazy
+    sig: 'evaluateLazy(): Promise<void>'
+    lines:
+    - 257
+    - 259
+    detail:
+      calls:
+      - Promise.resolve
+  - name: getChildren
+    sig: 'getChildren(): Promise<IExpression[]>'
+    lines:
+    - 260
+    - 262
+    detail:
+      calls:
+      - this.visualizer.getVisualizedChildren
+  - name: getId
+    sig: 'getId(): string'
+    lines:
+    - 264
+    - 266
+    detail: {}
+  - name: name
+    sig: name()
+    lines:
+    - 268
+    - 270
+    detail: {}
+  - name: value
+    sig: value()
+    lines:
+    - 272
+    - 274
+    detail: {}
+  - name: hasChildren
+    sig: hasChildren()
+    lines:
+    - 276
+    - 278
+    detail: {}
+  - name: constructor
+    sig: "constructor(\n\t\tprivate readonly session: IDebugSession | undefined,\n\t\tprivate readonly visualizer: IDebugVisualizerService,\n\t\tpublic readonly treeId: string,\n\t\tpublic readonly treeItem: IDebugVisualizationTreeItem,\n\t\tpublic readonly original?: Variable,\n\t)"
+    lines:
+    - 280
+    - 286
+    detail: {}
+  - name: getSession
+    sig: 'getSession(): IDebugSession | undefined'
+    lines:
+    - 288
+    - 290
+    detail: {}
+  - name: edit
+    sig: 'edit(newValue: string)'
+    is_async: true
+    lines:
+    - 293
+    - 301
+    detail:
+      calls:
+      - this.visualizer.editTreeItem
+  lines:
+  - 253
+  - 302
+- name: Expression
+  kind: struct
+  bases:
+  - ExpressionContainer
+  - IExpression
+  fields:
+  - name: DEFAULT_VALUE
+    type: any
+    default: nls.localize('notAvailable', "not available")
+  - name: available
+    type: boolean
+  - name: _onDidChangeValue
+    type: any
+    default: new Emitter<IExpression>()
+  - name: onDidChangeValue
+    type: Event<IExpression>
+    default: this._onDidChangeValue.event
+  methods:
+  - name: constructor
+    sig: 'constructor(public name: string, id = generateUuid())'
+    lines:
+    - 312
+    - 320
+    detail:
+      calls:
+      - super
+  - name: evaluate
+    sig: 'evaluate(session: IDebugSession | undefined, stackFrame: IStackFrame | undefined, context: string, keepLazyVars?: boolean, location?: IDebugEvaluatePosition): Promise<void>'
+    is_async: true
+    lines:
+    - 322
+    - 328
+    detail:
+      calls:
+      - this._onDidChangeValue.fire
+      - this.evaluateExpression
+  - name: toString
+    sig: 'toString(): string'
+    lines:
+    - 330
+    - 332
+    detail: {}
+  - name: setExpression
+    sig: 'setExpression(value: string, stackFrame: IStackFrame): Promise<void>'
+    is_async: true
+    lines:
+    - 334
+    - 341
+    detail:
+      calls:
+      - handleSetResponse
+      - this.session.setExpression
+  lines:
+  - 304
+  - 342
+- name: Variable
+  kind: struct
+  ctx: 'Used to show the error message coming from the adapter when setting the value #7807'
+  bases:
+  - ExpressionContainer
+  - IExpression
+  fields:
+  - name: errorMessage
+    type: string | undefined
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tsession: IDebugSession | undefined,\n\t\tthreadId: number | undefined,\n\t\tpublic readonly parent: IExpressionContainer,\n\t\treference: number | undefined,\n\t\tpublic readonly name: string,\n\t\tpublic evaluateName: string | undefined,\n\t\tvalue: string | undefined,\n\t\tnamedVariables: number | undefined,\n\t\tindexedVariables: number | undefined,\n\t\tmemoryReference: string | undefined,\n\t\tpresentationHint: DebugProtocol.VariablePresentationHint | undefined,\n\t\ttype: string | undefined = undefined,\n\t\tpublic readonly variableMenuContext: string | undefined = undefined,\n\t\tpublic readonly available = true,\n\t\tstartOfVariables = 0,\n\t\tidDuplicationIndex = '',\n\t\tpublic readonly declarationLocationReference: number | undefined = undefined,\n\t\tvalueLocationReference: number | undefined = undefined,\n\t)"
+    lines:
+    - 349
+    - 372
+    detail:
+      calls:
+      - parent.getId
+      - super
+  - name: getThreadId
+    sig: getThreadId()
+    lines:
+    - 374
+    - 376
+    detail: {}
+  - name: setVariable
+    sig: 'setVariable(value: string, stackFrame: IStackFrame): Promise<any>'
+    is_async: true
+    lines:
+    - 378
+    - 394
+    detail:
+      calls:
+      - handleSetResponse
+      - this.session.setVariable
+      - this.setExpression
+  - name: setExpression
+    sig: 'setExpression(value: string, stackFrame: IStackFrame): Promise<void>'
+    is_async: true
+    lines:
+    - 396
+    - 403
+    detail:
+      calls:
+      - handleSetResponse
+      - this.session.setExpression
+  - name: toString
+    sig: 'toString(): string'
+    lines:
+    - 405
+    - 407
+    detail: {}
+  - name: toDebugProtocolObject
+    sig: 'toDebugProtocolObject(): DebugProtocol.Variable'
+    lines:
+    - 413
+    - 421
+    detail: {}
+  lines:
+  - 344
+  - 422
+- name: Scope
+  kind: struct
+  bases:
+  - ExpressionContainer
+  - IScope
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tpublic readonly stackFrame: IStackFrame,\n\t\tid: number,\n\t\tpublic readonly name: string,\n\t\treference: number,\n\t\tpublic expensive: boolean,\n\t\tnamedVariables?: number,\n\t\tindexedVariables?: number,\n\t\tpublic readonly range?: IRange\n\t)"
+    lines:
+    - 426
+    - 437
+    detail:
+      calls:
+      - super
+  - name: toString
+    sig: 'toString(): string'
+    lines:
+    - 439
+    - 441
+    detail: {}
+  - name: toDebugProtocolObject
+    sig: 'toDebugProtocolObject(): DebugProtocol.Scope'
+    lines:
+    - 443
+    - 449
+    detail: {}
+  lines:
+  - 424
+  - 450
+- name: ErrorScope
+  kind: struct
+  bases:
+  - Scope
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tstackFrame: IStackFrame,\n\t\tindex: number,\n\t\tmessage: string,\n\t)"
+    lines:
+    - 454
+    - 460
+    detail:
+      calls:
+      - super
+  - name: toString
+    sig: 'toString(): string'
+    lines:
+    - 462
+    - 464
+    detail: {}
+  lines:
+  - 452
+  - 465
+- name: StackFrame
+  kind: struct
+  bases:
+  - IStackFrame
+  fields:
+  - name: scopes
+    type: Promise<Scope[]> | undefined
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tpublic readonly thread: Thread,\n\t\tpublic readonly frameId: number,\n\t\tpublic readonly source: Source,\n\t\tpublic readonly name: string,\n\t\tpublic readonly presentationHint: string | undefined,\n\t\tpublic readonly range: IRange,\n\t\tprivate readonly index: number,\n\t\tpublic readonly canRestart: boolean,\n\t\tpublic readonly instructionPointerReference?: string\n\t)"
+    lines:
+    - 471
+    - 481
+    detail: {}
+  - name: getId
+    sig: 'getId(): string'
+    lines:
+    - 483
+    - 485
+    detail:
+      calls:
+      - this.thread.getId
+  - name: getScopes
+    sig: 'getScopes(): Promise<IScope[]>'
+    lines:
+    - 487
+    - 512
+    detail:
+      calls:
+      - this.thread.session.scopes
+      - this.thread.session.scopes(this.frameId, this.thread.threadId).then
+  - name: getMostSpecificScopes
+    sig: 'getMostSpecificScopes(range: IRange): Promise<IScope[]>'
+    is_async: true
+    lines:
+    - 514
+    - 525
+    detail:
+      calls:
+      - nonExpensiveScopes.filter
+      - "nonExpensiveScopes.filter(scope => scope.range && Range.containsRange(scope.range, range))\n\t\t\t.sort"
+      - nonExpensiveScopes.some
+      - scopes.filter
+      - this.getScopes
+  - name: restart
+    sig: 'restart(): Promise<void>'
+    lines:
+    - 527
+    - 529
+    detail:
+      calls:
+      - this.thread.session.restartFrame
+  - name: forgetScopes
+    sig: 'forgetScopes(): void'
+    lines:
+    - 531
+    - 533
+    detail: {}
+  - name: toString
+    sig: 'toString(): string'
+    lines:
+    - 535
+    - 540
+    detail: {}
+  - name: openInEditor
+    sig: 'openInEditor(editorService: IEditorService, preserveFocus?: boolean, sideBySide?: boolean, pinned?: boolean): Promise<IEditorPane | undefined>'
+    is_async: true
+    lines:
+    - 542
+    - 555
+    detail:
+      calls:
+      - editorService.openEditor
+      - this.source.openInEditor
+  - name: equals
+    sig: 'equals(other: IStackFrame): boolean'
+    lines:
+    - 557
+    - 559
+    detail:
+      calls:
+      - Range.equalsRange
+  lines:
+  - 467
+  - 560
+- name: Thread
+  kind: struct
+  ctx: Queries the debug adapter for the callstack and returns a promise which completes once the call stack has been retrieved. If the thread is not stopped, it returns a promise to an empty array. Only fetches the first stack frame for performance reasons. Calling this method consecutive times gets the remainder of the call stack.
+  bases:
+  - IThread
+  fields:
+  - name: callStack
+    type: IStackFrame[]
+  - name: staleCallStack
+    type: IStackFrame[]
+  - name: callStackCancellationTokens
+    type: CancellationTokenSource[]
+    default: '[]'
+  - name: stoppedDetails
+    type: IRawStoppedDetails | undefined
+  - name: stopped
+    type: boolean
+  - name: reachedEndOfCallStack
+    type: any
+    default: 'false'
+  - name: lastSteppingGranularity
+    type: DebugProtocol.SteppingGranularity | undefined
+  methods:
+  - name: constructor
+    sig: 'constructor(public readonly session: IDebugSession, public name: string, public readonly threadId: number)'
+    lines:
+    - 573
+    - 577
+    detail: {}
+  - name: getId
+    sig: 'getId(): string'
+    lines:
+    - 579
+    - 581
+    detail:
+      calls:
+      - this.session.getId
+  - name: clearCallStack
+    sig: 'clearCallStack(): void'
+    lines:
+    - 583
+    - 590
+    detail:
+      calls:
+      - this.callStackCancellationTokens.forEach
+  - name: getCallStack
+    sig: 'getCallStack(): IStackFrame[]'
+    lines:
+    - 592
+    - 594
+    detail: {}
+  - name: getStaleCallStack
+    sig: 'getStaleCallStack(): ReadonlyArray<IStackFrame>'
+    lines:
+    - 596
+    - 598
+    detail: {}
+  - name: getTopStackFrame
+    sig: 'getTopStackFrame(): IStackFrame | undefined'
+    lines:
+    - 600
+    - 608
+    detail:
+      calls:
+      - callStack.find
+      - this.getCallStack
+  - name: stateLabel
+    sig: 'stateLabel(): string'
+    lines:
+    - 610
+    - 617
+    detail:
+      calls:
+      - nls.localize
+  - name: fetchCallStack
+    sig: 'fetchCallStack(levels = 20): Promise<void>'
+    is_async: true
+    lines:
+    - 626
+    - 640
+    detail:
+      calls:
+      - this.callStack.concat
+      - this.callStack.splice
+      - this.getCallStackImpl
+  - name: getCallStackImpl
+    sig: 'getCallStackImpl(startFrame: number, levels: number): Promise<IStackFrame[]>'
+    is_async: true
+    vis: private
+    lines:
+    - 642
+    - 672
+    detail:
+      calls:
+      - new CancellationTokenSource
+      - response.body.stackFrames.map
+      - this.callStackCancellationTokens.push
+      - this.session.stackTrace
+  - name: exceptionInfo
+    sig: 'exceptionInfo(): Promise<IExceptionInfo | undefined>'
+    lines:
+    - 677
+    - 688
+    detail:
+      calls:
+      - Promise.resolve
+      - this.session.exceptionInfo
+  - name: next
+    sig: 'next(granularity?: DebugProtocol.SteppingGranularity): Promise<any>'
+    lines:
+    - 690
+    - 692
+    detail:
+      calls:
+      - this.session.next
+  - name: stepIn
+    sig: 'stepIn(granularity?: DebugProtocol.SteppingGranularity): Promise<any>'
+    lines:
+    - 694
+    - 696
+    detail:
+      calls:
+      - this.session.stepIn
+  - name: stepOut
+    sig: 'stepOut(granularity?: DebugProtocol.SteppingGranularity): Promise<any>'
+    lines:
+    - 698
+    - 700
+    detail:
+      calls:
+      - this.session.stepOut
+  - name: stepBack
+    sig: 'stepBack(granularity?: DebugProtocol.SteppingGranularity): Promise<any>'
+    lines:
+    - 702
+    - 704
+    detail:
+      calls:
+      - this.session.stepBack
+  - name: continue
+    sig: 'continue(): Promise<any>'
+    lines:
+    - 706
+    - 708
+    detail:
+      calls:
+      - this.session.continue
+  - name: pause
+    sig: 'pause(): Promise<any>'
+    lines:
+    - 710
+    - 712
+    detail:
+      calls:
+      - this.session.pause
+  - name: terminate
+    sig: 'terminate(): Promise<any>'
+    lines:
+    - 714
+    - 716
+    detail:
+      calls:
+      - this.session.terminateThreads
+  - name: reverseContinue
+    sig: 'reverseContinue(): Promise<any>'
+    lines:
+    - 718
+    - 720
+    detail:
+      calls:
+      - this.session.reverseContinue
+  lines:
+  - 564
+  - 721
+- name: MemoryRegion
+  kind: struct
+  ctx: ''
+  bases:
+  - Disposable
+  - IMemoryRegion
+  fields:
+  - name: invalidateEmitter
+    type: any
+    default: this._register(new Emitter<IMemoryInvalidationEvent>())
+  - name: onDidInvalidate
+    type: any
+    default: this.invalidateEmitter.event
+  - name: writable
+    type: any
+    default: '!!this.session.capabilities.supportsWriteMemoryRequest'
+  methods:
+  - name: constructor
+    sig: 'constructor(private readonly memoryReference: string, private readonly session: IDebugSession)'
+    lines:
+    - 749
+    - 756
+    detail:
+      calls:
+      - session.onDidInvalidateMemory
+      - super
+      - this._register
+  - name: read
+    sig: 'read(fromOffset: number, toOffset: number): Promise<MemoryRange[]>'
+    is_async: true
+    lines:
+    - 758
+    - 792
+    detail:
+      calls:
+      - VSBuffer.alloc
+      - VSBuffer.concat
+      - data.slice
+      - decodeBase64
+      - pad.buffer.fill
+      - this.session.readMemory
+  - name: write
+    sig: 'write(offset: number, data: VSBuffer): Promise<number>'
+    is_async: true
+    lines:
+    - 794
+    - 799
+    detail:
+      calls:
+      - encodeBase64
+      - this.invalidate
+      - this.session.writeMemory
+  - name: dispose
+    sig: dispose()
+    lines:
+    - 801
+    - 803
+    detail:
+      calls:
+      - super.dispose
+  lines:
+  - 740
+  - 808
+- name: Enablement
+  kind: struct
+  bases:
+  - IEnablement
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tpublic enabled: boolean,\n\t\tprivate readonly id: string\n\t)"
+    lines:
+    - 811
+    - 814
+    detail: {}
+  - name: getId
+    sig: 'getId(): string'
+    lines:
+    - 816
+    - 818
+    detail: {}
+  lines:
+  - 810
+  - 819
+- name: IBreakpointSessionData
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: supportsConditionalBreakpoints
+    type: boolean
+  - name: supportsHitConditionalBreakpoints
+    type: boolean
+  - name: supportsLogPoints
+    type: boolean
+  - name: supportsFunctionBreakpoints
+    type: boolean
+  - name: supportsDataBreakpoints
+    type: boolean
+  - name: supportsInstructionBreakpoints
+    type: boolean
+  - name: sessionId
+    type: string
+  lines:
+  - 821
+  - 829
+- name: IBaseBreakpointOptions
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: enabled
+    type: boolean
+  - name: hitCondition
+    type: string
+  - name: condition
+    type: string
+  - name: logMessage
+    type: string
+  - name: mode
+    type: string
+  lines:
+  - 842
+  - 849
+- name: BaseBreakpoint
+  kind: trait
+  bases:
+  - Enablement
+  - IBaseBreakpoint
+  decorators:
+  - abstract
+  fields:
+  - name: sessionData
+    type: any
+    default: new Map<string, IBreakpointSessionData>()
+  - name: data
+    type: IBreakpointSessionData | undefined
+  - name: hitCondition
+    type: string | undefined
+  - name: condition
+    type: string | undefined
+  - name: logMessage
+    type: string | undefined
+  - name: mode
+    type: string | undefined
+  - name: modeLabel
+    type: string | undefined
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tid: string,\n\t\topts: IBaseBreakpointOptions\n\t)"
+    lines:
+    - 861
+    - 871
+    detail:
+      calls:
+      - super
+  - name: setSessionData
+    sig: 'setSessionData(sessionId: string, data: IBreakpointSessionData | undefined): void'
+    lines:
+    - 873
+    - 890
+    detail:
+      calls:
+      - Array.from
+      - allData.filter
+      - distinct
+      - this.sessionData.delete
+      - this.sessionData.set
+      - this.sessionData.values
+  - name: message
+    sig: 'message(): string | undefined'
+    lines:
+    - 892
+    - 898
+    detail: {}
+  - name: verified
+    sig: 'verified(): boolean'
+    lines:
+    - 900
+    - 902
+    detail: {}
+  - name: sessionsThatVerified
+    sig: sessionsThatVerified()
+    lines:
+    - 904
+    - 913
+    detail:
+      calls:
+      - sessionIds.push
+  - name: getIdFromAdapter
+    sig: 'getIdFromAdapter(sessionId: string): number | undefined'
+    lines:
+    - 917
+    - 920
+    detail:
+      calls:
+      - this.sessionData.get
+  - name: getDebugProtocolBreakpoint
+    sig: 'getDebugProtocolBreakpoint(sessionId: string): DebugProtocol.Breakpoint | undefined'
+    lines:
+    - 922
+    - 940
+    detail:
+      calls:
+      - this.sessionData.get
+  - name: toJSON
+    sig: 'toJSON(): IBaseBreakpointOptions & { id: string }'
+    lines:
+    - 942
+    - 952
+    detail:
+      calls:
+      - this.getId
+  lines:
+  - 851
+  - 953
+- name: IBreakpointOptions
+  kind: trait
+  bases:
+  - IBaseBreakpointOptions
+  decorators:
+  - interface
+  fields:
+  - name: uri
+    type: uri
+  - name: lineNumber
+    type: number
+  - name: column
+    type: number | undefined
+  - name: adapterData
+    type: any
+  - name: triggeredBy
+    type: string | undefined
+  lines:
+  - 955
+  - 961
+- name: Breakpoint
+  kind: struct
+  bases:
+  - BaseBreakpoint
+  - IBreakpoint
+  fields:
+  - name: sessionsDidTrigger
+    type: Set<string>
+  - name: _uri
+    type: uri
+  - name: _adapterData
+    type: any
+  - name: _lineNumber
+    type: number
+  - name: _column
+    type: number | undefined
+  - name: triggeredBy
+    type: string | undefined
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\topts: IBreakpointOptions,\n\t\tprivate readonly textFileService: ITextFileService,\n\t\tprivate readonly uriIdentityService: IUriIdentityService,\n\t\tprivate readonly logService: ILogService,\n\t\tid = generateUuid(),\n\t)"
+    lines:
+    - 971
+    - 984
+    detail:
+      calls:
+      - super
+  - name: toDAP
+    sig: 'toDAP(): DebugProtocol.SourceBreakpoint'
+    lines:
+    - 986
+    - 995
+    detail: {}
+  - name: originalUri
+    sig: originalUri()
+    lines:
+    - 997
+    - 999
+    detail: {}
+  - name: lineNumber
+    sig: 'lineNumber(): number'
+    lines:
+    - 1001
+    - 1003
+    detail: {}
+  - name: verified
+    sig: 'verified(): boolean'
+    lines:
+    - 1005
+    - 1011
+    detail:
+      calls:
+      - this.textFileService.isDirty
+  - name: pending
+    sig: 'pending(): boolean'
+    lines:
+    - 1013
+    - 1018
+    detail: {}
+  - name: uri
+    sig: 'uri(): uri'
+    lines:
+    - 1020
+    - 1022
+    detail:
+      calls:
+      - getUriFromSource
+  - name: column
+    sig: 'column(): number | undefined'
+    lines:
+    - 1024
+    - 1026
+    detail: {}
+  - name: message
+    sig: 'message(): string | undefined'
+    lines:
+    - 1028
+    - 1034
+    detail:
+      calls:
+      - nls.localize
+      - this.textFileService.isDirty
+  - name: adapterData
+    sig: 'adapterData(): any'
+    lines:
+    - 1036
+    - 1038
+    detail: {}
+  - name: endLineNumber
+    sig: 'endLineNumber(): number | undefined'
+    lines:
+    - 1040
+    - 1042
+    detail: {}
+  - name: endColumn
+    sig: 'endColumn(): number | undefined'
+    lines:
+    - 1044
+    - 1046
+    detail: {}
+  - name: sessionAgnosticData
+    sig: 'sessionAgnosticData(): { lineNumber: number; column: number | undefined }'
+    lines:
+    - 1048
+    - 1053
+    detail: {}
+  - name: supported
+    sig: 'supported(): boolean'
+    lines:
+    - 1055
+    - 1070
+    detail: {}
+  - name: setSessionData
+    sig: 'setSessionData(sessionId: string, data: IBreakpointSessionData | undefined): void'
+    lines:
+    - 1072
+    - 1077
+    detail:
+      calls:
+      - super.setSessionData
+  - name: toJSON
+    sig: 'toJSON(): IBreakpointOptions & { id: string }'
+    lines:
+    - 1079
+    - 1088
+    detail:
+      calls:
+      - super.toJSON
+  - name: toString
+    sig: 'toString(): string'
+    lines:
+    - 1090
+    - 1092
+    detail:
+      calls:
+      - resources.basenameOrAuthority
+  - name: setSessionDidTrigger
+    sig: 'setSessionDidTrigger(sessionId: string, didTrigger = true): void'
+    lines:
+    - 1094
+    - 1101
+    detail:
+      calls:
+      - new Set
+      - this.sessionsDidTrigger.add
+      - this.sessionsDidTrigger?.delete
+  - name: getSessionDidTrigger
+    sig: 'getSessionDidTrigger(sessionId: string): boolean'
+    lines:
+    - 1103
+    - 1105
+    detail:
+      calls:
+      - this.sessionsDidTrigger?.has
+  - name: update
+    sig: 'update(data: IBreakpointUpdateData): void'
+    lines:
+    - 1107
+    - 1131
+    detail:
+      calls:
+      - data.hasOwnProperty
+      - isUndefinedOrNull
+  lines:
+  - 963
+  - 1132
+- name: IFunctionBreakpointOptions
+  kind: trait
+  bases:
+  - IBaseBreakpointOptions
+  decorators:
+  - interface
+  lines:
+  - 1134
+  - 1136
+- name: FunctionBreakpoint
+  kind: struct
+  bases:
+  - BaseBreakpoint
+  - IFunctionBreakpoint
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\topts: IFunctionBreakpointOptions,\n\t\tid = generateUuid()\n\t)"
+    lines:
+    - 1141
+    - 1147
+    detail:
+      calls:
+      - super
+  - name: toDAP
+    sig: 'toDAP(): DebugProtocol.FunctionBreakpoint'
+    lines:
+    - 1149
+    - 1155
+    detail: {}
+  - name: toJSON
+    sig: 'toJSON(): IFunctionBreakpointOptions & { id: string }'
+    lines:
+    - 1157
+    - 1162
+    detail:
+      calls:
+      - super.toJSON
+  - name: supported
+    sig: 'supported(): boolean'
+    lines:
+    - 1164
+    - 1170
+    detail: {}
+  - name: toString
+    sig: 'toString(): string'
+    lines:
+    - 1172
+    - 1174
+    detail: {}
+  lines:
+  - 1138
+  - 1175
+- name: IDataBreakpointOptions
+  kind: trait
+  bases:
+  - IBaseBreakpointOptions
+  decorators:
+  - interface
+  fields:
+  - name: description
+    type: string
+  - name: src
+    type: DataBreakpointSource
+  - name: canPersist
+    type: boolean
+  - name: initialSessionData
+    type: '{ session: IDebugSession; dataId: string }'
+  - name: accessTypes
+    type: DebugProtocol.DataBreakpointAccessType[] | undefined
+  - name: accessType
+    type: DebugProtocol.DataBreakpointAccessType
+  lines:
+  - 1177
+  - 1184
+- name: DataBreakpoint
+  kind: struct
+  bases:
+  - BaseBreakpoint
+  - IDataBreakpoint
+  fields:
+  - name: sessionDataIdForAddr
+    type: any
+    default: new WeakMap<IDebugSession, string | null>()
+  - name: description
+    type: string
+  - name: src
+    type: DataBreakpointSource
+  - name: canPersist
+    type: boolean
+  - name: accessTypes
+    type: DebugProtocol.DataBreakpointAccessType[] | undefined
+  - name: accessType
+    type: DebugProtocol.DataBreakpointAccessType
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\topts: IDataBreakpointOptions,\n\t\tid = generateUuid()\n\t)"
+    lines:
+    - 1195
+    - 1211
+    detail:
+      calls:
+      - super
+      - this.sessionDataIdForAddr.set
+  - name: toDAP
+    sig: 'toDAP(session: IDebugSession): Promise<DebugProtocol.DataBreakpoint | undefined>'
+    is_async: true
+    lines:
+    - 1213
+    - 1235
+    detail:
+      calls:
+      - session.dataBytesBreakpointInfo
+      - this.sessionDataIdForAddr.get
+      - this.sessionDataIdForAddr.set
+  - name: toJSON
+    sig: 'toJSON(): IDataBreakpointOptions & { id: string }'
+    lines:
+    - 1237
+    - 1246
+    detail:
+      calls:
+      - super.toJSON
+  - name: supported
+    sig: 'supported(): boolean'
+    lines:
+    - 1248
+    - 1254
+    detail: {}
+  - name: toString
+    sig: 'toString(): string'
+    lines:
+    - 1256
+    - 1258
+    detail: {}
+  lines:
+  - 1186
+  - 1259
+- name: IExceptionBreakpointOptions
+  kind: trait
+  bases:
+  - IBaseBreakpointOptions
+  decorators:
+  - interface
+  fields:
+  - name: filter
+    type: string
+  - name: supportsCondition
+    type: boolean
+  - name: description
+    type: string | undefined
+  - name: conditionDescription
+    type: string | undefined
+  - name: fallback
+    type: boolean
+  lines:
+  - 1261
+  - 1268
+- name: ExceptionBreakpoint
+  kind: struct
+  ctx: Used to specify which breakpoints to show when no session is specified. Useful when no session is active and we want to show the exception breakpoints from the last session.
+  bases:
+  - BaseBreakpoint
+  - IExceptionBreakpoint
+  fields:
+  - name: supportedSessions
+    type: Set<string>
+    default: new Set()
+  - name: filter
+    type: string
+  - name: supportsCondition
+    type: boolean
+  - name: description
+    type: string | undefined
+  - name: conditionDescription
+    type: string | undefined
+  - name: fallback
+    type: boolean
+    default: 'false'
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\topts: IExceptionBreakpointOptions,\n\t\tid = generateUuid(),\n\t)"
+    lines:
+    - 1281
+    - 1292
+    detail:
+      calls:
+      - super
+  - name: toJSON
+    sig: 'toJSON(): IExceptionBreakpointOptions & { id: string }'
+    lines:
+    - 1294
+    - 1306
+    detail:
+      calls:
+      - super.toJSON
+  - name: setSupportedSession
+    sig: 'setSupportedSession(sessionId: string, supported: boolean): void'
+    lines:
+    - 1308
+    - 1315
+    detail:
+      calls:
+      - this.supportedSessions.add
+      - this.supportedSessions.delete
+  - name: setFallback
+    sig: 'setFallback(isFallback: boolean)'
+    lines:
+    - 1321
+    - 1323
+    detail: {}
+  - name: supported
+    sig: 'supported(): boolean'
+    lines:
+    - 1325
+    - 1327
+    detail: {}
+  - name: isSupportedSession
+    sig: 'isSupportedSession(sessionId?: string): boolean'
+    lines:
+    - 1333
+    - 1335
+    detail:
+      calls:
+      - this.supportedSessions.has
+  - name: matches
+    sig: 'matches(filter: DebugProtocol.ExceptionBreakpointsFilter)'
+    lines:
+    - 1337
+    - 1343
+    detail: {}
+  - name: toString
+    sig: 'toString(): string'
+    lines:
+    - 1345
+    - 1347
+    detail: {}
+  lines:
+  - 1270
+  - 1348
+- name: IInstructionBreakpointOptions
+  kind: trait
+  bases:
+  - IBaseBreakpointOptions
+  decorators:
+  - interface
+  fields:
+  - name: instructionReference
+    type: string
+  - name: offset
+    type: number
+  - name: canPersist
+    type: boolean
+  - name: address
+    type: bigint
+  lines:
+  - 1350
+  - 1355
+- name: InstructionBreakpoint
+  kind: struct
+  bases:
+  - BaseBreakpoint
+  - IInstructionBreakpoint
+  fields:
+  - name: instructionReference
+    type: string
+  - name: offset
+    type: number
+  - name: canPersist
+    type: boolean
+  - name: address
+    type: bigint
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\topts: IInstructionBreakpointOptions,\n\t\tid = generateUuid()\n\t)"
+    lines:
+    - 1363
+    - 1372
+    detail:
+      calls:
+      - super
+  - name: toDAP
+    sig: 'toDAP(): DebugProtocol.InstructionBreakpoint'
+    lines:
+    - 1374
+    - 1382
+    detail: {}
+  - name: toJSON
+    sig: 'toJSON(): IInstructionBreakpointOptions & { id: string }'
+    lines:
+    - 1384
+    - 1392
+    detail:
+      calls:
+      - super.toJSON
+  - name: supported
+    sig: 'supported(): boolean'
+    lines:
+    - 1394
+    - 1400
+    detail: {}
+  - name: toString
+    sig: 'toString(): string'
+    lines:
+    - 1402
+    - 1404
+    detail: {}
+  lines:
+  - 1357
+  - 1405
+- name: ThreadAndSessionIds
+  kind: struct
+  bases:
+  - ITreeElement
+  methods:
+  - name: constructor
+    sig: 'constructor(public sessionId: string, public threadId: number)'
+    lines:
+    - 1408
+    - 1408
+    detail: {}
+  - name: getId
+    sig: 'getId(): string'
+    lines:
+    - 1410
+    - 1412
+    detail: {}
+  lines:
+  - 1407
+  - 1413
+- name: IBreakpointModeInternal
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: firstFromDebugType
+    type: string
+  lines:
+  - 1415
+  - 1417
+- name: DebugModel
+  kind: model
+  ctx: Update the call stack and notify the call stack view that changes have occurred.
+  bases:
+  - Disposable
+  - IDebugModel
+  fields:
+  - name: sessions
+    type: IDebugSession[]
+  - name: schedulers
+    type: any
+    default: 'new Map<string, { scheduler: RunOnceScheduler; completeDeferred: DeferredPromise...'
+  - name: breakpointsActivated
+    type: any
+    default: 'true'
+  - name: _onDidChangeBreakpoints
+    type: any
+    default: this._register(new Emitter<IBreakpointsChangeEvent | undefined>())
+  - name: _onDidChangeCallStack
+    type: any
+    default: this._register(new Emitter<void>())
+  - name: _onDidChangeWatchExpressions
+    type: any
+    default: this._register(new Emitter<IExpression | undefined>())
+  - name: _onDidChangeWatchExpressionValue
+    type: any
+    default: this._register(new Emitter<IExpression | undefined>())
+  - name: _breakpointModes
+    type: any
+    default: new Map<string, IBreakpointModeInternal>()
+  - name: breakpoints
+    type: Breakpoint[]
+  - name: functionBreakpoints
+    type: FunctionBreakpoint[]
+  - name: exceptionBreakpoints
+    type: ExceptionBreakpoint[]
+  - name: dataBreakpoints
+    type: DataBreakpoint[]
+  - name: watchExpressions
+    type: Expression[]
+  - name: instructionBreakpoints
+    type: InstructionBreakpoint[]
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tdebugStorage: DebugStorage,\n\t\t@ITextFileService private readonly textFileService: ITextFileService,\n\t\t@IUriIdentityService private readonly uriIdentityService: IUriIdentityService,\n\t\t@ILogService private readonly logService: ILogService\n\t)"
+    lines:
+    - 1436
+    - 1465
+    detail:
+      calls:
+      - autorun
+      - super
+      - this._register
+      - trackSetChanges
+  - name: getId
+    sig: 'getId(): string'
+    lines:
+    - 1467
+    - 1469
+    detail: {}
+  - name: getSession
+    sig: 'getSession(sessionId: string | undefined, includeInactive = false): IDebugSession | undefined'
+    lines:
+    - 1471
+    - 1476
+    detail:
+      calls:
+      - this.getSessions
+      - this.getSessions(includeInactive).find
+  - name: getSessions
+    sig: 'getSessions(includeInactive = false): IDebugSession[]'
+    lines:
+    - 1478
+    - 1482
+    detail:
+      calls:
+      - this.sessions.filter
+  - name: addSession
+    sig: 'addSession(session: IDebugSession): void'
+    lines:
+    - 1484
+    - 1514
+    detail:
+      calls:
+      - findLastIdx
+      - session.setName
+      - this._onDidChangeCallStack.fire
+      - this.sessions.filter
+      - this.sessions.push
+      - this.sessions.some
+      - this.sessions.splice
+  - name: onDidChangeBreakpoints
+    sig: 'onDidChangeBreakpoints(): Event<IBreakpointsChangeEvent | undefined>'
+    lines:
+    - 1516
+    - 1518
+    detail: {}
+  - name: onDidChangeCallStack
+    sig: 'onDidChangeCallStack(): Event<void>'
+    lines:
+    - 1520
+    - 1522
+    detail: {}
+  - name: onDidChangeWatchExpressions
+    sig: 'onDidChangeWatchExpressions(): Event<IExpression | undefined>'
+    lines:
+    - 1524
+    - 1526
+    detail: {}
+  - name: onDidChangeWatchExpressionValue
+    sig: 'onDidChangeWatchExpressionValue(): Event<IExpression | undefined>'
+    lines:
+    - 1528
+    - 1530
+    detail: {}
+  - name: rawUpdate
+    sig: 'rawUpdate(data: IRawModelUpdate): void'
+    lines:
+    - 1532
+    - 1538
+    detail:
+      calls:
+      - session.rawUpdate
+      - this._onDidChangeCallStack.fire
+      - this.sessions.find
+  - name: clearThreads
+    sig: 'clearThreads(id: string, removeThreads: boolean, reference: number | undefined = undefined): void'
+    lines:
+    - 1540
+    - 1552
+    detail:
+      calls:
+      - session.clearThreads
+      - this._onDidChangeCallStack.fire
+      - this.schedulers.clear
+      - this.schedulers.forEach
+      - this.sessions.find
+  - name: fetchCallstack
+    sig: 'fetchCallstack(thread: IThread, levels?: number): Promise<void>'
+    is_async: true
+    lines:
+    - 1557
+    - 1576
+    detail:
+      calls:
+      - (<Thread>thread).fetchCallStack
+      - this._onDidChangeCallStack.fire
+      - thread.getCallStack
+  - name: refreshTopOfCallstack
+    sig: 'refreshTopOfCallstack(thread: Thread, fetchFullStack = true): { topCallStack: Promise<void>; wholeCallStack: Promise<void> }'
+    lines:
+    - 1578
+    - 1626
+    detail:
+      calls:
+      - Promise.resolve
+      - new Promise
+      - thread.fetchCallStack
+  - name: getBreakpoints
+    sig: 'getBreakpoints(filter?: { uri?: uri; originalUri?: uri; lineNumber?: number; column?: number; enabledOnly?: boolean; triggeredOnly?: boolean }): IBreakpoint[]'
+    lines:
+    - 1628
+    - 1657
+    detail:
+      calls:
+      - filter.originalUri?.toString
+      - filter.uri?.toString
+      - this.breakpoints.filter
+  - name: getFunctionBreakpoints
+    sig: 'getFunctionBreakpoints(): IFunctionBreakpoint[]'
+    lines:
+    - 1659
+    - 1661
+    detail: {}
+  - name: getDataBreakpoints
+    sig: 'getDataBreakpoints(): IDataBreakpoint[]'
+    lines:
+    - 1663
+    - 1665
+    detail: {}
+  - name: getExceptionBreakpoints
+    sig: 'getExceptionBreakpoints(): IExceptionBreakpoint[]'
+    lines:
+    - 1667
+    - 1669
+    detail: {}
+  - name: getExceptionBreakpointsForSession
+    sig: 'getExceptionBreakpointsForSession(sessionId?: string): IExceptionBreakpoint[]'
+    lines:
+    - 1671
+    - 1673
+    detail:
+      calls:
+      - this.exceptionBreakpoints.filter
+  - name: getInstructionBreakpoints
+    sig: 'getInstructionBreakpoints(): IInstructionBreakpoint[]'
+    lines:
+    - 1675
+    - 1677
+    detail: {}
+  - name: setExceptionBreakpointsForSession
+    sig: 'setExceptionBreakpointsForSession(sessionId: string, filters: DebugProtocol.ExceptionBreakpointsFilter[]): void'
+    lines:
+    - 1679
+    - 1707
+    detail:
+      calls:
+      - filters.forEach
+      - this._onDidChangeBreakpoints.fire
+  - name: removeExceptionBreakpointsForSession
+    sig: 'removeExceptionBreakpointsForSession(sessionId: string): void'
+    lines:
+    - 1709
+    - 1711
+    detail:
+      calls:
+      - this.exceptionBreakpoints.forEach
+  - name: setExceptionBreakpointFallbackSession
+    sig: 'setExceptionBreakpointFallbackSession(sessionId: string): void'
+    lines:
+    - 1715
+    - 1717
+    detail:
+      calls:
+      - this.exceptionBreakpoints.forEach
+  - name: setExceptionBreakpointCondition
+    sig: 'setExceptionBreakpointCondition(exceptionBreakpoint: IExceptionBreakpoint, condition: string | undefined): void'
+    lines:
+    - 1719
+    - 1722
+    detail:
+      calls:
+      - this._onDidChangeBreakpoints.fire
+  - name: areBreakpointsActivated
+    sig: 'areBreakpointsActivated(): boolean'
+    lines:
+    - 1724
+    - 1726
+    detail: {}
+  - name: setBreakpointsActivated
+    sig: 'setBreakpointsActivated(activated: boolean): void'
+    lines:
+    - 1728
+    - 1731
+    detail:
+      calls:
+      - this._onDidChangeBreakpoints.fire
+  - name: addBreakpoints
+    sig: 'addBreakpoints(uri: uri, rawData: IBreakpointData[], fireEvent = true): IBreakpoint[]'
+    lines:
+    - 1733
+    - 1758
+    detail:
+      calls:
+      - rawData.map
+      - this._onDidChangeBreakpoints.fire
+      - this.breakpoints.concat
+      - this.sortAndDeDup
+  - name: removeBreakpoints
+    sig: 'removeBreakpoints(toRemove: IBreakpoint[]): void'
+    lines:
+    - 1760
+    - 1763
+    detail:
+      calls:
+      - this._onDidChangeBreakpoints.fire
+      - this.breakpoints.filter
+  - name: updateBreakpoints
+    sig: 'updateBreakpoints(data: Map<string, IBreakpointUpdateData>): void'
+    lines:
+    - 1765
+    - 1776
+    detail:
+      calls:
+      - this._onDidChangeBreakpoints.fire
+      - this.breakpoints.forEach
+      - this.sortAndDeDup
+  - name: setBreakpointSessionData
+    sig: 'setBreakpointSessionData(sessionId: string, capabilites: DebugProtocol.Capabilities, data: Map<string, DebugProtocol.Breakpoint> | undefined): void'
+    lines:
+    - 1778
+    - 1833
+    detail:
+      calls:
+      - this._onDidChangeBreakpoints.fire
+      - this.breakpoints.forEach
+      - this.dataBreakpoints.forEach
+      - this.exceptionBreakpoints.forEach
+      - this.functionBreakpoints.forEach
+      - this.instructionBreakpoints.forEach
+  - name: getDebugProtocolBreakpoint
+    sig: 'getDebugProtocolBreakpoint(breakpointId: string, sessionId: string): DebugProtocol.Breakpoint | undefined'
+    lines:
+    - 1835
+    - 1841
+    detail:
+      calls:
+      - bp.getDebugProtocolBreakpoint
+      - this.breakpoints.find
+  - name: getBreakpointModes
+    sig: 'getBreakpointModes(forBreakpointType: ''source'' | ''exception'' | ''data'' | ''instruction''): DebugProtocol.BreakpointMode[]'
+    lines:
+    - 1843
+    - 1845
+    detail:
+      calls:
+      - '[...this._breakpointModes.values()].filter'
+      - this._breakpointModes.values
+  - name: registerBreakpointModes
+    sig: 'registerBreakpointModes(debugType: string, modes: DebugProtocol.BreakpointMode[])'
+    lines:
+    - 1847
+    - 1872
+    detail:
+      calls:
+      - '[...this._breakpointModes.values()].find'
+      - mode.appliesTo.slice
+      - rec.appliesTo.includes
+      - rec.appliesTo.push
+      - this._breakpointModes.get
+      - this._breakpointModes.set
+      - this._breakpointModes.values
+  - name: setEnablement
+    sig: 'setEnablement(element: IEnablement, enable: boolean): void'
+    lines:
+    - 1891
+    - 1905
+    detail:
+      calls:
+      - changed.push
+      - this._onDidChangeBreakpoints.fire
+  - name: enableOrDisableAllBreakpoints
+    sig: 'enableOrDisableAllBreakpoints(enable: boolean): void'
+    lines:
+    - 1907
+    - 1940
+    detail:
+      calls:
+      - this._onDidChangeBreakpoints.fire
+      - this.breakpoints.forEach
+      - this.dataBreakpoints.forEach
+      - this.functionBreakpoints.forEach
+      - this.instructionBreakpoints.forEach
+  - name: addFunctionBreakpoint
+    sig: 'addFunctionBreakpoint(opts: IFunctionBreakpointOptions, id?: string): IFunctionBreakpoint'
+    lines:
+    - 1942
+    - 1948
+    detail:
+      calls:
+      - new FunctionBreakpoint
+      - this._onDidChangeBreakpoints.fire
+      - this.functionBreakpoints.push
+  - name: updateFunctionBreakpoint
+    sig: 'updateFunctionBreakpoint(id: string, update: { name?: string; hitCondition?: string; condition?: string }): void'
+    lines:
+    - 1950
+    - 1964
+    detail:
+      calls:
+      - this._onDidChangeBreakpoints.fire
+      - this.functionBreakpoints.find
+  - name: removeFunctionBreakpoints
+    sig: 'removeFunctionBreakpoints(id?: string): void'
+    lines:
+    - 1966
+    - 1976
+    detail:
+      calls:
+      - this._onDidChangeBreakpoints.fire
+      - this.functionBreakpoints.filter
+  - name: addDataBreakpoint
+    sig: 'addDataBreakpoint(opts: IDataBreakpointOptions, id?: string): void'
+    lines:
+    - 1978
+    - 1982
+    detail:
+      calls:
+      - new DataBreakpoint
+      - this._onDidChangeBreakpoints.fire
+      - this.dataBreakpoints.push
+  - name: updateDataBreakpoint
+    sig: 'updateDataBreakpoint(id: string, update: { hitCondition?: string; condition?: string }): void'
+    lines:
+    - 1984
+    - 1995
+    detail:
+      calls:
+      - this._onDidChangeBreakpoints.fire
+      - this.dataBreakpoints.find
+  - name: removeDataBreakpoints
+    sig: 'removeDataBreakpoints(id?: string): void'
+    lines:
+    - 1997
+    - 2007
+    detail:
+      calls:
+      - this._onDidChangeBreakpoints.fire
+      - this.dataBreakpoints.filter
+  - name: addInstructionBreakpoint
+    sig: 'addInstructionBreakpoint(opts: IInstructionBreakpointOptions): void'
+    lines:
+    - 2009
+    - 2013
+    detail:
+      calls:
+      - new InstructionBreakpoint
+      - this._onDidChangeBreakpoints.fire
+      - this.instructionBreakpoints.push
+  - name: removeInstructionBreakpoints
+    sig: 'removeInstructionBreakpoints(instructionReference?: string, offset?: number): void'
+    lines:
+    - 2015
+    - 2030
+    detail:
+      calls:
+      - removed.push
+      - this._onDidChangeBreakpoints.fire
+      - this.instructionBreakpoints.splice
+  - name: getWatchExpressions
+    sig: 'getWatchExpressions(): Expression[]'
+    lines:
+    - 2032
+    - 2034
+    detail: {}
+  - name: addWatchExpression
+    sig: 'addWatchExpression(name?: string): IExpression'
+    lines:
+    - 2036
+    - 2042
+    detail:
+      calls:
+      - new Expression
+      - this._onDidChangeWatchExpressions.fire
+      - this.watchExpressions.push
+  - name: renameWatchExpression
+    sig: 'renameWatchExpression(id: string, newName: string): void'
+    lines:
+    - 2044
+    - 2050
+    detail:
+      calls:
+      - this._onDidChangeWatchExpressions.fire
+      - this.watchExpressions.filter
+  - name: removeWatchExpressions
+    sig: 'removeWatchExpressions(id: string | null = null): void'
+    lines:
+    - 2052
+    - 2055
+    detail:
+      calls:
+      - this._onDidChangeWatchExpressions.fire
+      - this.watchExpressions.filter
+  - name: moveWatchExpression
+    sig: 'moveWatchExpression(id: string, position: number): void'
+    lines:
+    - 2057
+    - 2064
+    detail:
+      calls:
+      - this._onDidChangeWatchExpressions.fire
+      - this.watchExpressions.filter
+      - this.watchExpressions.find
+      - this.watchExpressions.slice
+      - this.watchExpressions.slice(0, position).concat
+  - name: sourceIsNotAvailable
+    sig: 'sourceIsNotAvailable(uri: uri): void'
+    lines:
+    - 2066
+    - 2074
+    detail:
+      calls:
+      - this._onDidChangeCallStack.fire
+      - this.sessions.forEach
+  lines:
+  - 1419
+  - 2075
+functions:
+- name: handleSetResponse
+  sig: 'handleSetResponse(expression: ExpressionContainer, response: DebugProtocol.SetVariableResponse | DebugProtocol.SetExpressionResponse | undefined): void'
+  lines:
+  - 242
+  - 251
+  detail: {}
+- name: getUriForDebugMemory
+  sig: "getUriForDebugMemory(\n\tsessionId: string,\n\tmemoryReference: string,\n\trange?: { fromOffset: number; toOffset: number },\n\tdisplayName = 'memory'\n)"
+  lines:
+  - 726
+  - 738
+  detail:
+    calls:
+    - URI.from
+    - encodeURIComponent
+- name: toBreakpointSessionData
+  sig: 'toBreakpointSessionData(data: DebugProtocol.Breakpoint, capabilities: DebugProtocol.Capabilities): IBreakpointSessionData'
+  lines:
+  - 831
+  - 840
+  detail:
+    calls:
+    - mixin
+exports:
+- name: IDebugProtocolVariableWithContext
+  kind: type
+- name: ExpressionContainer
+  kind: type
+- name: VisualizedExpression
+  kind: type
+- name: Expression
+  kind: type
+- name: Variable
+  kind: type
+- name: Scope
+  kind: type
+- name: ErrorScope
+  kind: type
+- name: StackFrame
+  kind: type
+- name: Thread
+  kind: type
+- name: MemoryRegion
+  kind: type
+- name: Enablement
+  kind: type
+- name: IBreakpointSessionData
+  kind: type
+- name: IBaseBreakpointOptions
+  kind: type
+- name: BaseBreakpoint
+  kind: type
+- name: IBreakpointOptions
+  kind: type
+- name: Breakpoint
+  kind: type
+- name: IFunctionBreakpointOptions
+  kind: type
+- name: FunctionBreakpoint
+  kind: type
+- name: IDataBreakpointOptions
+  kind: type
+- name: DataBreakpoint
+  kind: type
+- name: IExceptionBreakpointOptions
+  kind: type
+- name: ExceptionBreakpoint
+  kind: type
+- name: IInstructionBreakpointOptions
+  kind: type
+- name: InstructionBreakpoint
+  kind: type
+- name: ThreadAndSessionIds
+  kind: type
+- name: IBreakpointModeInternal
+  kind: type
+- name: DebugModel
+  kind: type
+- name: handleSetResponse
+  kind: func
+- name: getUriForDebugMemory
+  kind: func
+- name: toBreakpointSessionData
+  kind: func
+- name: KEEP_SUBTLE_FRAME_AT_TOP_REASONS
+  kind: data

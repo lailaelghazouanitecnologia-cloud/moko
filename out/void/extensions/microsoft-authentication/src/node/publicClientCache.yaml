@@ -1,0 +1,299 @@
+## Roska File Descriptor — node/publicClientCache.ts
+file: node/publicClientCache.ts
+lines: 307
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: '@azure/msal-node.AccountInfo'
+- sym: vscode.SecretStorage
+- sym: vscode.LogOutputChannel
+- sym: vscode.Disposable
+- sym: vscode.EventEmitter
+- sym: vscode.Memento
+- sym: vscode.Event
+- sym: ../common/publicClientCache.ICachedPublicClientApplication
+- sym: ../common/publicClientCache.ICachedPublicClientApplicationManager
+- sym: ./cachedPublicClientApplication.CachedPublicClientApplication
+- sym: ../common/accountAccess.IAccountAccess
+- sym: ../common/accountAccess.ScopedAccountAccess
+types:
+- name: IPublicClientApplicationInfo
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: clientId
+    type: string
+  - name: authority
+    type: string
+  lines:
+  - 12
+  - 15
+- name: CachedPublicClientApplicationManager
+  kind: struct
+  ctx: The key is the clientId
+  bases:
+  - ICachedPublicClientApplicationManager
+  fields:
+  - name: _pcas
+    type: any
+    default: new Map<string, ICachedPublicClientApplication>()
+  - name: _pcaDisposables
+    type: any
+    default: new Map<string, Disposable>()
+  - name: _disposable
+    type: Disposable
+  - name: _onDidAccountsChangeEmitter
+    type: any
+    default: 'new EventEmitter<{ added: AccountInfo[]; changed: AccountInfo[]; deleted: Accoun...'
+  - name: onDidAccountsChange
+    type: any
+    default: this._onDidAccountsChangeEmitter.event
+  methods:
+  - name: create
+    sig: "create(\n\t\tsecretStorage: SecretStorage,\n\t\tlogger: LogOutputChannel,\n\t\tcloudName: string\n\t): Promise<CachedPublicClientApplicationManager>"
+    is_async: true
+    decorators:
+    - static
+    lines:
+    - 41
+    - 53
+    detail:
+      calls:
+      - PublicClientApplicationsSecretStorage.create
+      - ScopedAccountAccess.create
+      - manager.initialize
+      - new CachedPublicClientApplicationManager
+      - pcasSecretStorage.getOldValue
+  - name: initialize
+    sig: initialize()
+    is_async: true
+    vis: private
+    lines:
+    - 59
+    - 103
+    detail:
+      calls:
+      - Promise.allSettled
+      - new Array
+      - promises.push
+      - this._doCreatePublicClientApplication
+      - this._logger.debug
+      - this._logger.error
+      - this._pcaDisposables.delete
+      - this._pcaDisposables.get
+      - this._pcaDisposables.get(clientId)?.dispose
+      - this._pcas.delete
+      - this._pcasSecretStorage.delete
+      - this._pcasSecretStorage.get
+      - this._storePublicClientApplications
+  - name: dispose
+    sig: dispose()
+    lines:
+    - 105
+    - 108
+    detail:
+      calls:
+      - Disposable.from
+      - Disposable.from(...this._pcaDisposables.values()).dispose
+      - this._disposable.dispose
+      - this._pcaDisposables.values
+  - name: getOrCreate
+    sig: 'getOrCreate(clientId: string, refreshTokensToMigrate?: string[]): Promise<ICachedPublicClientApplication>'
+    is_async: true
+    lines:
+    - 110
+    - 138
+    detail:
+      calls:
+      - pca.acquireTokenByRefreshToken
+      - this._doCreatePublicClientApplication
+      - this._logger.debug
+      - this._logger.error
+      - this._pcas.get
+      - this._storePublicClientApplications
+  - name: _doCreatePublicClientApplication
+    sig: '_doCreatePublicClientApplication(clientId: string): Promise<ICachedPublicClientApplication>'
+    is_async: true
+    vis: private
+    lines:
+    - 140
+    - 162
+    detail:
+      calls:
+      - CachedPublicClientApplication.create
+      - Disposable.from
+      - pca.onDidAccountsChange
+      - pca.onDidRemoveLastAccount
+      - this._onDidAccountsChangeEmitter.fire
+      - this._pcaDisposables.set
+      - this._pcas.set
+  - name: getAll
+    sig: 'getAll(): ICachedPublicClientApplication[]'
+    lines:
+    - 164
+    - 166
+    detail:
+      calls:
+      - Array.from
+      - this._pcas.values
+  - name: _handleSecretStorageChange
+    sig: _handleSecretStorageChange()
+    is_async: true
+    vis: private
+    lines:
+    - 168
+    - 210
+    detail:
+      calls:
+      - Disposable.from
+      - Disposable.from(...this._pcaDisposables.values()).dispose
+      - new Set
+      - pcaKeysFromStorage.delete
+      - this._doCreatePublicClientApplication
+      - this._logger.debug
+      - this._logger.error
+      - this._pcaDisposables.clear
+      - this._pcaDisposables.values
+      - this._pcas.clear
+      - this._pcas.keys
+      - this._pcasSecretStorage.get
+      - this._storePublicClientApplications
+  - name: _storePublicClientApplications
+    sig: _storePublicClientApplications()
+    vis: private
+    lines:
+    - 212
+    - 214
+    detail:
+      calls:
+      - Array.from
+      - this._pcas.keys
+      - this._pcasSecretStorage.store
+  lines:
+  - 17
+  - 215
+- name: IPublicClientApplicationSecretStorage
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: get
+    type: 'method: get(): Promise<string[] | undefined>'
+  - name: getOldValue
+    type: 'method: getOldValue(): Promise<{ clientId: string; authority: string }[] | undefined>'
+  - name: store
+    type: 'method: store(value: string[]): Thenable<void>'
+  - name: delete
+    type: 'method: delete(): Thenable<void>'
+  - name: onDidChange
+    type: Event<void>
+  lines:
+  - 217
+  - 223
+- name: PublicClientApplicationsSecretStorage
+  kind: struct
+  ctx: 'Runs the migration. TODO: Remove this after a version.'
+  bases:
+  - IPublicClientApplicationSecretStorage
+  - Disposable
+  fields:
+  - name: _disposable
+    type: Disposable
+  - name: _onDidChangeEmitter
+    type: any
+    default: new EventEmitter<void>
+  - name: onDidChange
+    type: Event<void>
+    default: this._onDidChangeEmitter.event
+  - name: _oldKey
+    type: any
+    default: '`publicClientApplications-${this._cloudName}`'
+  - name: _key
+    type: any
+    default: '`publicClients-${this._cloudName}`'
+  methods:
+  - name: create
+    sig: 'create(secretStorage: SecretStorage, cloudName: string): Promise<PublicClientApplicationsSecretStorage>'
+    is_async: true
+    decorators:
+    - static
+    lines:
+    - 245
+    - 249
+    detail:
+      calls:
+      - new PublicClientApplicationsSecretStorage
+      - storage.initialize
+  - name: initialize
+    sig: initialize()
+    is_async: true
+    vis: private
+    lines:
+    - 255
+    - 267
+    detail:
+      calls:
+      - newValue.includes
+      - newValue.push
+      - this.get
+      - this.getOldValue
+      - this.store
+  - name: get
+    sig: 'get(): Promise<string[] | undefined>'
+    is_async: true
+    lines:
+    - 269
+    - 275
+    detail:
+      calls:
+      - JSON.parse
+      - this._secretStorage.get
+  - name: getOldValue
+    sig: 'getOldValue(): Promise<{ clientId: string; authority: string }[] | undefined>'
+    is_async: true
+    lines:
+    - 281
+    - 294
+    detail:
+      calls:
+      - JSON.parse
+      - result.push
+      - this._secretStorage.get
+  - name: store
+    sig: 'store(value: string[]): Thenable<void>'
+    lines:
+    - 296
+    - 298
+    detail:
+      calls:
+      - JSON.stringify
+      - this._secretStorage.store
+  - name: delete
+    sig: 'delete(): Thenable<void>'
+    lines:
+    - 300
+    - 302
+    detail:
+      calls:
+      - this._secretStorage.delete
+  - name: dispose
+    sig: dispose()
+    lines:
+    - 304
+    - 306
+    detail:
+      calls:
+      - this._disposable.dispose
+  lines:
+  - 225
+  - 307
+exports:
+- name: IPublicClientApplicationInfo
+  kind: type
+- name: CachedPublicClientApplicationManager
+  kind: type
+- name: IPublicClientApplicationSecretStorage
+  kind: type
+- name: PublicClientApplicationsSecretStorage
+  kind: type

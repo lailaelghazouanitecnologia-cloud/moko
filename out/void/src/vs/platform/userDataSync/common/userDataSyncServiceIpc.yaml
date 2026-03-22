@@ -1,0 +1,440 @@
+## Roska File Descriptor — common/userDataSyncServiceIpc.ts
+file: common/userDataSyncServiceIpc.ts
+lines: 297
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: ../../../base/common/cancellation.js.CancellationToken
+- sym: ../../../base/common/event.js.Emitter
+- sym: ../../../base/common/event.js.Event
+- sym: ../../../base/common/lifecycle.js.Disposable
+- sym: ../../../base/common/uri.js.URI
+- sym: ../../../base/parts/ipc/common/ipc.js.IChannel
+- sym: ../../../base/parts/ipc/common/ipc.js.IServerChannel
+- sym: ../../log/common/log.js.ILogService
+- sym: ../../userDataProfile/common/userDataProfile.js.IUserDataProfilesService
+- sym: ../../userDataProfile/common/userDataProfile.js.reviveProfile
+- sym: ./userDataSync.js.IUserDataManualSyncTask
+- sym: ./userDataSync.js.IUserDataSyncResourceConflicts
+- sym: ./userDataSync.js.IUserDataSyncResourceError
+- sym: ./userDataSync.js.IUserDataSyncResource
+- sym: ./userDataSync.js.ISyncResourceHandle
+- sym: ./userDataSync.js.IUserDataSyncTask
+- sym: ./userDataSync.js.IUserDataSyncService
+- sym: ./userDataSync.js.SyncResource
+- sym: ./userDataSync.js.SyncStatus
+- sym: ./userDataSync.js.UserDataSyncError
+types:
+- name: ManualSyncTaskEvent
+  kind: typealias
+  decorators:
+  - type
+  fields:
+  - name: manualSyncTaskId
+    type: string
+  - name: data
+    type: T
+  lines:
+  - 18
+  - 18
+- name: UserDataSyncServiceChannel
+  kind: struct
+  bases:
+  - IServerChannel
+  fields:
+  - name: manualSyncTasks
+    type: any
+    default: new Map<string, IUserDataManualSyncTask>()
+  - name: onManualSynchronizeResources
+    type: any
+    default: new Emitter<ManualSyncTaskEvent<[SyncResource, URI[]][]>>()
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tprivate readonly service: IUserDataSyncService,\n\t\tprivate readonly userDataProfilesService: IUserDataProfilesService,\n\t\tprivate readonly logService: ILogService\n\t)"
+    lines:
+    - 33
+    - 37
+    detail: {}
+  - name: listen
+    sig: 'listen(_: unknown, event: string): Event<any>'
+    lines:
+    - 39
+    - 55
+    detail:
+      calls:
+      - new Error
+  - name: call
+    sig: 'call(context: any, command: string, args?: any): Promise<any>'
+    is_async: true
+    lines:
+    - 57
+    - 65
+    detail:
+      calls:
+      - this._call
+      - this.logService.error
+  - name: _call
+    sig: '_call(context: any, command: string, args?: any): Promise<any>'
+    is_async: true
+    vis: private
+    lines:
+    - 67
+    - 102
+    detail:
+      calls:
+      - (<Array<any>>args).slice
+      - Promise.resolve
+      - URI.revive
+      - command.startsWith
+      - command.substring
+      - manualSyncTask.apply
+      - manualSyncTask.apply().then
+      - manualSyncTask.merge
+      - manualSyncTask.stop
+      - manualSyncTask.stop().finally
+      - new Error
+      - reviewSyncResource
+      - reviewSyncResourceHandle
+      - this.createManualSyncTask
+      - this.getManualSyncTask
+      - this.service.accept
+      - this.service.cleanUpRemoteData
+      - this.service.extractActivityData
+      - this.service.hasLocalData
+      - this.service.hasPreviouslySynced
+      - this.service.replace
+      - this.service.reset
+      - this.service.resetLocal
+      - this.service.resetRemote
+      - this.service.resolveContent
+      - this.service.saveRemoteActivityData
+  - name: createManualSyncTask
+    sig: 'createManualSyncTask(): Promise<string>'
+    is_async: true
+    vis: private
+    lines:
+    - 112
+    - 116
+    detail:
+      calls:
+      - this.createKey
+      - this.manualSyncTasks.set
+      - this.service.createManualSyncTask
+  lines:
+  - 28
+  - 120
+- name: UserDataSyncServiceChannelClient
+  kind: struct
+  bases:
+  - Disposable
+  - IUserDataSyncService
+  fields:
+  - name: _serviceBrand
+    type: undefined
+  - name: channel
+    type: IChannel
+  - name: _status
+    type: SyncStatus
+    default: SyncStatus.Uninitialized
+  - name: _onDidChangeStatus
+    type: Emitter<SyncStatus>
+    default: this._register(new Emitter<SyncStatus>())
+  - name: onDidChangeStatus
+    type: Event<SyncStatus>
+    default: this._onDidChangeStatus.event
+  - name: _conflicts
+    type: IUserDataSyncResourceConflicts[]
+    default: '[]'
+  - name: _onDidChangeConflicts
+    type: any
+    default: this._register(new Emitter<IUserDataSyncResourceConflicts[]>())
+  - name: onDidChangeConflicts
+    type: any
+    default: this._onDidChangeConflicts.event
+  - name: _lastSyncTime
+    type: number | undefined
+    default: undefined
+  - name: _onDidChangeLastSyncTime
+    type: Emitter<number>
+    default: this._register(new Emitter<number>())
+  - name: onDidChangeLastSyncTime
+    type: Event<number>
+    default: this._onDidChangeLastSyncTime.event
+  - name: _onSyncErrors
+    type: any
+    default: this._register(new Emitter<IUserDataSyncResourceError[]>())
+  - name: onSyncErrors
+    type: any
+    default: this._onSyncErrors.event
+  methods:
+  - name: status
+    sig: 'status(): SyncStatus'
+    lines:
+    - 129
+    - 129
+    detail: {}
+  - name: onDidChangeLocal
+    sig: 'onDidChangeLocal(): Event<SyncResource>'
+    lines:
+    - 133
+    - 133
+    detail:
+      calls:
+      - this.channel.listen
+  - name: conflicts
+    sig: 'conflicts(): IUserDataSyncResourceConflicts[]'
+    lines:
+    - 136
+    - 136
+    detail: {}
+  - name: lastSyncTime
+    sig: 'lastSyncTime(): number | undefined'
+    lines:
+    - 141
+    - 141
+    detail: {}
+  - name: onDidResetLocal
+    sig: 'onDidResetLocal(): Event<void>'
+    lines:
+    - 148
+    - 148
+    detail:
+      calls:
+      - this.channel.listen
+  - name: onDidResetRemote
+    sig: 'onDidResetRemote(): Event<void>'
+    lines:
+    - 149
+    - 149
+    detail:
+      calls:
+      - this.channel.listen
+  - name: constructor
+    sig: "constructor(\n\t\tuserDataSyncChannel: IChannel,\n\t\t@IUserDataProfilesService private readonly userDataProfilesService: IUserDataProfilesService,\n\t)"
+    lines:
+    - 151
+    - 176
+    detail:
+      calls:
+      - super
+      - this._register
+      - this.channel.call
+      - this.channel.call<[SyncStatus, IUserDataSyncResourceConflicts[], number | undefined]>('_getInitialDa...
+      - this.channel.listen
+      - this.channel.listen<IUserDataSyncResourceConflicts[]>('onDidChangeConflicts')
+      - this.channel.listen<IUserDataSyncResourceError[]>('onSyncErrors')
+      - userDataSyncChannel.call
+      - "userDataSyncChannel.call(command, arg, cancellationToken)\n\t\t\t\t\t.then"
+      - userDataSyncChannel.listen
+  - name: createSyncTask
+    sig: 'createSyncTask(): Promise<IUserDataSyncTask>'
+    lines:
+    - 178
+    - 180
+    detail:
+      calls:
+      - new Error
+  - name: createManualSyncTask
+    sig: 'createManualSyncTask(): Promise<IUserDataManualSyncTask>'
+    is_async: true
+    lines:
+    - 182
+    - 194
+    detail:
+      calls:
+      - Array.isArray
+      - await this.channel.call
+      - new Error
+      - new ManualSyncTaskChannelClient
+      - that.channel.call
+  - name: reset
+    sig: 'reset(): Promise<void>'
+    lines:
+    - 196
+    - 198
+    detail:
+      calls:
+      - this.channel.call
+  - name: resetRemote
+    sig: 'resetRemote(): Promise<void>'
+    lines:
+    - 200
+    - 202
+    detail:
+      calls:
+      - this.channel.call
+  - name: resetLocal
+    sig: 'resetLocal(): Promise<void>'
+    lines:
+    - 204
+    - 206
+    detail:
+      calls:
+      - this.channel.call
+  - name: hasPreviouslySynced
+    sig: 'hasPreviouslySynced(): Promise<boolean>'
+    lines:
+    - 208
+    - 210
+    detail:
+      calls:
+      - this.channel.call
+  - name: hasLocalData
+    sig: 'hasLocalData(): Promise<boolean>'
+    lines:
+    - 212
+    - 214
+    detail:
+      calls:
+      - this.channel.call
+  - name: accept
+    sig: 'accept(syncResource: IUserDataSyncResource, resource: URI, content: string | null, apply: boolean | { force: boolean }): Promise<void>'
+    lines:
+    - 216
+    - 218
+    detail:
+      calls:
+      - this.channel.call
+  - name: resolveContent
+    sig: 'resolveContent(resource: URI): Promise<string | null>'
+    lines:
+    - 220
+    - 222
+    detail:
+      calls:
+      - this.channel.call
+  - name: cleanUpRemoteData
+    sig: 'cleanUpRemoteData(): Promise<void>'
+    lines:
+    - 224
+    - 226
+    detail:
+      calls:
+      - this.channel.call
+  - name: replace
+    sig: 'replace(syncResourceHandle: ISyncResourceHandle): Promise<void>'
+    lines:
+    - 228
+    - 230
+    detail:
+      calls:
+      - this.channel.call
+  - name: saveRemoteActivityData
+    sig: 'saveRemoteActivityData(location: URI): Promise<void>'
+    lines:
+    - 232
+    - 234
+    detail:
+      calls:
+      - this.channel.call
+  - name: extractActivityData
+    sig: 'extractActivityData(activityDataResource: URI, location: URI): Promise<void>'
+    lines:
+    - 236
+    - 238
+    detail:
+      calls:
+      - this.channel.call
+  - name: updateStatus
+    sig: 'updateStatus(status: SyncStatus): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 240
+    - 243
+    detail:
+      calls:
+      - this._onDidChangeStatus.fire
+  - name: updateConflicts
+    sig: 'updateConflicts(conflicts: IUserDataSyncResourceConflicts[]): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 245
+    - 261
+    detail:
+      calls:
+      - conflicts.map
+      - this._onDidChangeConflicts.fire
+  lines:
+  - 122
+  - 269
+- name: ManualSyncTaskChannelClient
+  kind: struct
+  bases:
+  - Disposable
+  - IUserDataManualSyncTask
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\treadonly id: string,\n\t\tprivate readonly channel: IChannel,\n\t)"
+    lines:
+    - 273
+    - 278
+    detail:
+      calls:
+      - super
+  - name: merge
+    sig: 'merge(): Promise<void>'
+    is_async: true
+    lines:
+    - 280
+    - 282
+    detail:
+      calls:
+      - this.channel.call
+  - name: apply
+    sig: 'apply(): Promise<void>'
+    is_async: true
+    lines:
+    - 284
+    - 286
+    detail:
+      calls:
+      - this.channel.call
+  - name: stop
+    sig: 'stop(): Promise<void>'
+    lines:
+    - 288
+    - 290
+    detail:
+      calls:
+      - this.channel.call
+  - name: dispose
+    sig: 'dispose(): void'
+    lines:
+    - 292
+    - 295
+    detail:
+      calls:
+      - super.dispose
+      - this.channel.call
+  lines:
+  - 271
+  - 297
+functions:
+- name: reviewSyncResource
+  sig: 'reviewSyncResource(syncResource: IUserDataSyncResource, userDataProfilesService: IUserDataProfilesService): IUserDataSyncResource'
+  lines:
+  - 20
+  - 22
+- name: reviewSyncResourceHandle
+  sig: 'reviewSyncResourceHandle(syncResourceHandle: ISyncResourceHandle): ISyncResourceHandle'
+  lines:
+  - 24
+  - 26
+  detail:
+    calls:
+    - URI.revive
+exports:
+- name: ManualSyncTaskEvent
+  kind: type
+- name: UserDataSyncServiceChannel
+  kind: type
+- name: UserDataSyncServiceChannelClient
+  kind: type
+- name: ManualSyncTaskChannelClient
+  kind: type
+- name: reviewSyncResource
+  kind: func
+- name: reviewSyncResourceHandle
+  kind: func

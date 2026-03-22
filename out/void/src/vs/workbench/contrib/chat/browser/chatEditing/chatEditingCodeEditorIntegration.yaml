@@ -1,0 +1,571 @@
+## Roska File Descriptor — chatEditing/chatEditingCodeEditorIntegration.ts
+file: chatEditing/chatEditingCodeEditorIntegration.ts
+lines: 844
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: ../../../../../base/browser/dom.js.getTotalWidth
+- sym: ../../../../../base/common/event.js.Event
+- sym: ../../../../../base/common/lifecycle.js.DisposableStore
+- sym: ../../../../../base/common/lifecycle.js.dispose
+- sym: ../../../../../base/common/lifecycle.js.toDisposable
+- sym: ../../../../../base/common/observable.js.autorun
+- sym: ../../../../../base/common/observable.js.autorunWithStore
+- sym: ../../../../../base/common/observable.js.constObservable
+- sym: ../../../../../base/common/observable.js.derived
+- sym: ../../../../../base/common/observable.js.IObservable
+- sym: ../../../../../base/common/observable.js.observableFromEvent
+- sym: ../../../../../base/common/observable.js.observableValue
+- sym: ../../../../../base/common/resources.js.basename
+- sym: ../../../../../base/common/resources.js.isEqual
+- sym: ../../../../../base/common/themables.js.themeColorFromId
+- sym: ../../../../../editor/browser/editorBrowser.js.ICodeEditor
+- sym: ../../../../../editor/browser/editorBrowser.js.IOverlayWidget
+- sym: ../../../../../editor/browser/editorBrowser.js.IOverlayWidgetPosition
+- sym: ../../../../../editor/browser/editorBrowser.js.IOverlayWidgetPositionCoordinates
+- sym: ../../../../../editor/browser/editorBrowser.js.IViewZone
+- sym: ../../../../../editor/browser/editorBrowser.js.MouseTargetType
+- sym: ../../../../../editor/browser/observableCodeEditor.js.observableCodeEditor
+- sym: ../../../../../editor/browser/widget/diffEditor/components/accessibleDiffViewer.js.AccessibleDiffViewer
+- sym: ../../../../../editor/browser/widget/diffEditor/components/accessibleDiffViewer.js.IAccessibleDiffViewerModel
+- sym: ../../../../../editor/browser/widget/diffEditor/components/diffEditorViewZones/renderLines.js.RenderOptions
+- sym: ../../../../../editor/browser/widget/diffEditor/components/diffEditorViewZones/renderLines.js.LineSource
+- sym: ../../../../../editor/browser/widget/diffEditor/components/diffEditorViewZones/renderLines.js.renderLines
+- sym: ../../../../../editor/browser/widget/diffEditor/registrations.contribution.js.diffAddDecoration
+- sym: ../../../../../editor/browser/widget/diffEditor/registrations.contribution.js.diffWholeLineAddDecoration
+- sym: ../../../../../editor/browser/widget/diffEditor/registrations.contribution.js.diffDeleteDecoration
+- sym: ../../../../../editor/common/config/editorOptions.js.EditorOption
+- sym: ../../../../../editor/common/config/editorOptions.js.IEditorOptions
+- sym: ../../../../../editor/common/core/lineRange.js.LineRange
+- sym: ../../../../../editor/common/core/position.js.Position
+- sym: ../../../../../editor/common/core/range.js.Range
+- sym: ../../../../../editor/common/core/selection.js.Selection
+- sym: ../../../../../editor/common/diff/documentDiffProvider.js.IDocumentDiff
+- sym: ../../../../../editor/common/diff/rangeMapping.js.DetailedLineRangeMapping
+- sym: ../../../../../editor/common/model.js.IModelDeltaDecoration
+- sym: ../../../../../editor/common/model.js.ITextModel
+- sym: ../../../../../editor/common/model.js.MinimapPosition
+- sym: ../../../../../editor/common/model.js.OverviewRulerLane
+- sym: ../../../../../editor/common/model.js.TrackedRangeStickiness
+- sym: ../../../../../editor/common/model/textModel.js.ModelDecorationOptions
+- sym: ../../../../../editor/common/viewModel.js.InlineDecoration
+- sym: ../../../../../editor/common/viewModel.js.InlineDecorationType
+- sym: ../../../../../nls.js.localize
+- sym: ../../../../../platform/accessibilitySignal/browser/accessibilitySignalService.js.AccessibilitySignal
+- sym: ../../../../../platform/accessibilitySignal/browser/accessibilitySignalService.js.IAccessibilitySignalService
+- sym: ../../../../../platform/actions/browser/toolbar.js.MenuWorkbenchToolBar
+- sym: ../../../../../platform/actions/browser/toolbar.js.HiddenItemStrategy
+- sym: ../../../../../platform/actions/common/actions.js.MenuId
+- sym: ../../../../../platform/editor/common/editor.js.TextEditorSelectionRevealType
+- sym: ../../../../../platform/instantiation/common/instantiation.js.IInstantiationService
+- sym: ../../../../common/editor.js.EditorsOrder
+- sym: ../../../../common/editor.js.IEditorIdentifier
+- sym: ../../../../common/editor.js.isDiffEditorInput
+- sym: ../../../../services/editor/common/editorService.js.IEditorService
+- sym: ../../../scm/common/quickDiff.js.overviewRulerModifiedForeground
+- sym: ../../../scm/common/quickDiff.js.minimapGutterModifiedBackground
+- sym: ../../../scm/common/quickDiff.js.overviewRulerAddedForeground
+- sym: ../../../scm/common/quickDiff.js.minimapGutterAddedBackground
+- sym: ../../../scm/common/quickDiff.js.overviewRulerDeletedForeground
+- sym: ../../../scm/common/quickDiff.js.minimapGutterDeletedBackground
+- sym: ../../common/chatAgents.js.IChatAgentService
+- sym: ../../common/chatEditingService.js.IModifiedFileEntry
+- sym: ../../common/chatEditingService.js.IModifiedFileEntryChangeHunk
+- sym: ../../common/chatEditingService.js.IModifiedFileEntryEditorIntegration
+- sym: ../../common/chatEditingService.js.WorkingSetEntryState
+- sym: ./chatEditing.js.isTextDiffEditorForEntry
+- sym: ../../../../../editor/common/editorCommon.js.IEditorDecorationsCollection
+- sym: ../../common/constants.js.ChatAgentLocation
+types:
+- name: IDocumentDiff2
+  kind: trait
+  bases:
+  - IDocumentDiff
+  decorators:
+  - interface
+  fields:
+  - name: originalModel
+    type: ITextModel
+  - name: modifiedModel
+    type: ITextModel
+  - name: keep
+    type: 'method: keep(changes: DetailedLineRangeMapping): Promise<boolean>'
+  - name: undo
+    type: 'method: undo(changes: DetailedLineRangeMapping): Promise<boolean>'
+  lines:
+  - 44
+  - 51
+- name: ChatEditingCodeEditorIntegration
+  kind: struct
+  ctx: '---- diff rendering logic'
+  bases:
+  - IModifiedFileEntryEditorIntegration
+  fields:
+  - name: _diffLineDecorationData
+    type: any
+    default: 'ModelDecorationOptions.register({ description: ''diff-line-decoration'' })'
+  - name: _currentIndex
+    type: any
+    default: observableValue(this, -1)
+  - name: currentIndex
+    type: IObservable<number>
+    default: this._currentIndex
+  - name: _store
+    type: any
+    default: new DisposableStore()
+  - name: _diffLineDecorations
+    type: IEditorDecorationsCollection
+  - name: _diffVisualDecorations
+    type: IEditorDecorationsCollection
+  - name: _diffHunksRenderStore
+    type: any
+    default: this._store.add(new DisposableStore())
+  - name: _diffHunkWidgets
+    type: DiffHunkWidget[]
+    default: '[]'
+  - name: _viewZones
+    type: string[]
+    default: '[]'
+  - name: _accessibleDiffViewVisible
+    type: any
+    default: observableValue<boolean>(this, false)
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tprivate readonly _entry: IModifiedFileEntry,\n\t\tprivate readonly _editor: ICodeEditor,\n\t\tdocumentDiffInfo: IObservable<IDocumentDiff2>,\n\t\t@IChatAgentService private readonly _chatAgentService: IChatAgentService,\n\t\t@IEditorService private readonly _editorService: IEditorService,\n\t\t@IAccessibilitySignalService private readonly _accessibilitySignalsService: IAccessibilitySignalService,\n\t\t@IInstantiationService instantiationService: IInstantiationService,\n\t)"
+    lines:
+    - 69
+    - 251
+    detail:
+      calls:
+      - _editor.createDecorationsCollection
+      - autorun
+      - autorunWithStore
+      - derived
+      - observableCodeEditor
+      - this._editor.createDecorationsCollection
+      - this._store.add
+      - toDisposable
+  - name: dispose
+    sig: 'dispose(): void'
+    lines:
+    - 253
+    - 256
+    detail:
+      calls:
+      - this._clear
+      - this._store.dispose
+  - name: _clear
+    sig: _clear()
+    vis: private
+    lines:
+    - 258
+    - 262
+    detail:
+      calls:
+      - this._clearDiffRendering
+      - this._currentIndex.set
+      - this._diffLineDecorations.clear
+  - name: _clearDiffRendering
+    sig: _clearDiffRendering()
+    vis: private
+    lines:
+    - 266
+    - 275
+    detail:
+      calls:
+      - this._diffHunksRenderStore.clear
+      - this._diffVisualDecorations.clear
+      - this._editor.changeViewZones
+  - name: _updateDiffRendering
+    sig: '_updateDiffRendering(diff: IDocumentDiff2, reviewMode: boolean): void'
+    vis: private
+    lines:
+    - 277
+    - 481
+    detail:
+      calls:
+      - Event.any
+      - Event.any(this._editor.onDidScrollChange, this._editor.onDidLayoutChange)
+      - ModelDecorationOptions.createDynamic
+      - autorun
+      - createOverviewDecoration
+      - derived
+      - observableFromEvent
+      - this._diffHunksRenderStore.add
+      - this._diffHunksRenderStore.clear
+      - this._editor.changeViewZones
+      - this._editor.createDecorationsCollection
+      - this._editor.onMouseMove
+      - toDisposable
+  - name: enableAccessibleDiffView
+    sig: 'enableAccessibleDiffView(): void'
+    lines:
+    - 483
+    - 485
+    detail:
+      calls:
+      - this._accessibleDiffViewVisible.set
+  - name: reveal
+    sig: 'reveal(firstOrLast: boolean): void'
+    lines:
+    - 489
+    - 503
+    detail:
+      calls:
+      - decorations.at
+      - range.getStartPosition
+      - this._currentIndex.set
+      - "this._diffLineDecorations\n\t\t\t.getRanges"
+      - "this._diffLineDecorations\n\t\t\t.getRanges()\n\t\t\t.sort"
+      - this._editor.focus
+      - this._editor.revealRange
+      - this._editor.setPosition
+  - name: next
+    sig: 'next(wrap: boolean): boolean'
+    lines:
+    - 505
+    - 507
+    detail:
+      calls:
+      - this._reveal
+  - name: previous
+    sig: 'previous(wrap: boolean): boolean'
+    lines:
+    - 509
+    - 511
+    detail:
+      calls:
+      - this._reveal
+  - name: _reveal
+    sig: '_reveal(next: boolean, strict: boolean)'
+    vis: private
+    lines:
+    - 513
+    - 558
+    detail:
+      calls:
+      - Position.isBefore
+      - range.containsPosition
+      - range.getStartPosition
+      - targetRange.getEndPosition
+      - targetRange.getStartPosition
+      - this._currentIndex.set
+      - "this._diffLineDecorations\n\t\t\t.getRanges"
+      - "this._diffLineDecorations\n\t\t\t.getRanges()\n\t\t\t.sort"
+      - this._editor.focus
+      - this._editor.getPosition
+      - this._editor.revealPositionInCenter
+      - this._editor.setPosition
+  - name: _findClosestWidget
+    sig: '_findClosestWidget(): DiffHunkWidget | undefined'
+    vis: private
+    lines:
+    - 562
+    - 582
+    detail:
+      calls:
+      - Math.abs
+      - this._editor.getPosition
+      - this._editor.getScrollTop
+      - this._editor.getTopForLineNumber
+      - this._editor.hasModel
+      - widget.getPosition
+  - name: rejectNearestChange
+    sig: 'rejectNearestChange(closestWidget: IModifiedFileEntryChangeHunk | undefined): void'
+    lines:
+    - 584
+    - 590
+    detail:
+      calls:
+      - closestWidget.reject
+      - this._findClosestWidget
+      - this.next
+  - name: acceptNearestChange
+    sig: 'acceptNearestChange(closestWidget: IModifiedFileEntryChangeHunk | undefined): void'
+    lines:
+    - 592
+    - 598
+    detail:
+      calls:
+      - closestWidget.accept
+      - this._findClosestWidget
+      - this.next
+  - name: toggleDiff
+    sig: 'toggleDiff(widget: IModifiedFileEntryChangeHunk | undefined): Promise<void>'
+    is_async: true
+    lines:
+    - 600
+    - 663
+    detail:
+      calls:
+      - Selection.fromPositions
+      - autorun
+      - basename
+      - diffEditor.getControl
+      - diffEditor.getControl()?.setSelection
+      - localize
+      - new Position
+      - selection.containsPosition
+      - this._chatAgentService.getDefaultAgent
+      - this._editor.getOption
+      - this._editor.getSelection
+      - this._editor.hasModel
+      - this._editorService.openEditor
+      - widget.getStartLineNumber
+  lines:
+  - 53
+  - 664
+- name: DiffHunkWidget
+  kind: struct
+  ctx: '---'
+  bases:
+  - IOverlayWidget
+  - IModifiedFileEntryChangeHunk
+  fields:
+  - name: _idPool
+    type: any
+    default: '0'
+  - name: _id
+    type: string
+    default: '`diff-change-widget-${DiffHunkWidget._idPool++}`'
+  - name: _domNode
+    type: HTMLElement
+  - name: _store
+    type: any
+    default: new DisposableStore()
+  - name: _position
+    type: IOverlayWidgetPosition | undefined
+  - name: _lastStartLineNumber
+    type: number | undefined
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tprivate readonly _diffInfo: IDocumentDiff2,\n\t\tprivate readonly _change: DetailedLineRangeMapping,\n\t\tprivate readonly _versionId: number,\n\t\tprivate readonly _editor: ICodeEditor,\n\t\tprivate readonly _lineDelta: number,\n\t\t@IInstantiationService instaService: IInstantiationService,\n\t)"
+    lines:
+    - 677
+    - 701
+    detail:
+      calls:
+      - document.createElement
+      - instaService.createInstance
+      - this._editor.addOverlayWidget
+      - this._store.add
+      - toolbar.actionRunner.onWillRun
+  - name: dispose
+    sig: 'dispose(): void'
+    lines:
+    - 703
+    - 706
+    detail:
+      calls:
+      - this._editor.removeOverlayWidget
+      - this._store.dispose
+  - name: getId
+    sig: 'getId(): string'
+    lines:
+    - 708
+    - 710
+    detail: {}
+  - name: layout
+    sig: 'layout(startLineNumber: number): void'
+    lines:
+    - 712
+    - 728
+    detail:
+      calls:
+      - getTotalWidth
+      - this._editor.getLayoutInfo
+      - this._editor.getOption
+      - this._editor.getScrollTop
+      - this._editor.getTopForLineNumber
+      - this._editor.layoutOverlayWidget
+  - name: toggle
+    sig: 'toggle(show: boolean)'
+    lines:
+    - 730
+    - 735
+    detail:
+      calls:
+      - this._domNode.classList.toggle
+      - this.layout
+  - name: getDomNode
+    sig: 'getDomNode(): HTMLElement'
+    lines:
+    - 737
+    - 739
+    detail: {}
+  - name: getPosition
+    sig: 'getPosition(): IOverlayWidgetPosition | null'
+    lines:
+    - 741
+    - 743
+    detail: {}
+  - name: getStartLineNumber
+    sig: 'getStartLineNumber(): number | undefined'
+    lines:
+    - 745
+    - 747
+    detail: {}
+  - name: reject
+    sig: 'reject(): Promise<boolean>'
+    is_async: true
+    lines:
+    - 751
+    - 756
+    detail:
+      calls:
+      - this._diffInfo.undo
+      - this._editor.getModel
+      - this._editor.getModel()?.getVersionId
+  - name: accept
+    sig: 'accept(): Promise<boolean>'
+    is_async: true
+    lines:
+    - 758
+    - 763
+    detail:
+      calls:
+      - this._diffInfo.keep
+      - this._editor.getModel
+      - this._editor.getModel()?.getVersionId
+  lines:
+  - 666
+  - 764
+- name: AccessibleDiffViewContainer
+  kind: struct
+  bases:
+  - IOverlayWidget
+  fields:
+  - name: _domNode
+    type: HTMLElement
+  methods:
+  - name: constructor
+    sig: constructor()
+    lines:
+    - 771
+    - 776
+    detail:
+      calls:
+      - document.createElement
+  - name: getId
+    sig: 'getId(): string'
+    lines:
+    - 778
+    - 780
+    detail: {}
+  - name: getDomNode
+    sig: 'getDomNode(): HTMLElement'
+    lines:
+    - 782
+    - 784
+    detail: {}
+  - name: getPosition
+    sig: 'getPosition(): IOverlayWidgetPosition | null'
+    lines:
+    - 786
+    - 791
+    detail: {}
+  lines:
+  - 767
+  - 792
+- name: AccessibleDiffViewerModel
+  kind: model
+  bases:
+  - IAccessibleDiffViewerModel
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tprivate readonly _documentDiffInfo: IObservable<IDocumentDiff2>,\n\t\tprivate readonly _editor: ICodeEditor,\n\t)"
+    lines:
+    - 795
+    - 798
+    detail: {}
+  - name: getOriginalModel
+    sig: getOriginalModel()
+    lines:
+    - 800
+    - 802
+    detail:
+      calls:
+      - this._documentDiffInfo.get
+  - name: getOriginalOptions
+    sig: getOriginalOptions()
+    lines:
+    - 804
+    - 806
+    detail:
+      calls:
+      - this._editor.getOptions
+  - name: originalReveal
+    sig: 'originalReveal(range: Range)'
+    lines:
+    - 808
+    - 815
+    detail:
+      calls:
+      - changes.findIndex
+      - changes[idx].modified.toInclusiveRange
+      - this._documentDiffInfo.get
+      - this.modifiedReveal
+  - name: getModifiedModel
+    sig: getModifiedModel()
+    lines:
+    - 817
+    - 819
+    detail:
+      calls:
+      - this._editor.getModel
+  - name: getModifiedOptions
+    sig: getModifiedOptions()
+    lines:
+    - 821
+    - 823
+    detail:
+      calls:
+      - this._editor.getOptions
+  - name: modifiedReveal
+    sig: 'modifiedReveal(range: Range)'
+    lines:
+    - 825
+    - 831
+    detail:
+      calls:
+      - this._editor.focus
+      - this._editor.revealRange
+      - this._editor.setSelection
+  - name: modifiedSetSelection
+    sig: 'modifiedSetSelection(range: Range)'
+    lines:
+    - 833
+    - 835
+    detail:
+      calls:
+      - this._editor.setSelection
+  - name: modifiedFocus
+    sig: modifiedFocus()
+    lines:
+    - 837
+    - 839
+    detail:
+      calls:
+      - this._editor.focus
+  - name: getModifiedPosition
+    sig: getModifiedPosition()
+    lines:
+    - 841
+    - 843
+    detail:
+      calls:
+      - this._editor.getPosition
+  lines:
+  - 794
+  - 844
+exports:
+- name: IDocumentDiff2
+  kind: type
+- name: ChatEditingCodeEditorIntegration
+  kind: type
+- name: DiffHunkWidget
+  kind: type
+- name: AccessibleDiffViewContainer
+  kind: type
+- name: AccessibleDiffViewerModel
+  kind: type

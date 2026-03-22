@@ -1,0 +1,480 @@
+## Roska File Descriptor — common/queryBuilder.ts
+file: common/queryBuilder.ts
+lines: 741
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: ../../../../base/common/arrays.js.arrays
+- sym: ../../../../base/common/collections.js.collections
+- sym: ../../../../base/common/glob.js.glob
+- sym: ../../../../base/common/labels.js.untildify
+- sym: ../../../../base/common/map.js.ResourceMap
+- sym: ../../../../base/common/network.js.Schemas
+- sym: ../../../../base/common/path.js.path
+- sym: ../../../../base/common/resources.js.isEqual
+- sym: ../../../../base/common/resources.js.basename
+- sym: ../../../../base/common/resources.js.relativePath
+- sym: ../../../../base/common/resources.js.isAbsolutePath
+- sym: ../../../../base/common/strings.js.strings
+- sym: ../../../../base/common/types.js.assertIsDefined
+- sym: ../../../../base/common/types.js.isDefined
+- sym: ../../../../base/common/uri.js.URI
+- sym: ../../../../base/common/uri.js.URI as uri
+- sym: ../../../../base/common/uri.js.UriComponents
+- sym: ../../../../editor/common/model/textModelSearch.js.isMultilineRegexSource
+- sym: ../../../../nls.js.nls
+- sym: ../../../../platform/configuration/common/configuration.js.IConfigurationService
+- sym: ../../../../platform/log/common/log.js.ILogService
+- sym: ../../../../platform/uriIdentity/common/uriIdentity.js.IUriIdentityService
+- sym: ../../../../platform/workspace/common/workspace.js.IWorkspaceContextService
+- sym: ../../../../platform/workspace/common/workspace.js.IWorkspaceFolderData
+- sym: ../../../../platform/workspace/common/workspace.js.toWorkspaceFolder
+- sym: ../../../../platform/workspace/common/workspace.js.WorkbenchState
+- sym: ../../editor/common/editorGroupsService.js.IEditorGroupsService
+- sym: ../../path/common/pathService.js.IPathService
+- sym: ./search.js.ExcludeGlobPattern
+- sym: ./search.js.getExcludes
+- sym: ./search.js.IAITextQuery
+- sym: ./search.js.ICommonQueryProps
+- sym: ./search.js.IFileQuery
+- sym: ./search.js.IFolderQuery
+- sym: ./search.js.IPatternInfo
+- sym: ./search.js.ISearchConfiguration
+- sym: ./search.js.ITextQuery
+- sym: ./search.js.ITextSearchPreviewOptions
+- sym: ./search.js.pathIncludedInQuery
+- sym: ./search.js.QueryType
+- sym: ./searchExtTypes.js.GlobPattern
+types:
+- name: IOneSearchPathPattern
+  kind: trait
+  ctx: One folder to search and a glob expression that should be applied.
+  decorators:
+  - interface
+  fields:
+  - name: searchPath
+    type: uri
+  - name: pattern
+    type: string
+  lines:
+  - 31
+  - 34
+- name: ISearchPathPattern
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: searchPath
+    type: uri
+  - name: pattern
+    type: glob.IExpression
+  lines:
+  - 39
+  - 42
+- name: ISearchPathPatternBuilder
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 44
+  - 44
+- name: ISearchPatternBuilder
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: uri
+    type: U
+  - name: pattern
+    type: ISearchPathPatternBuilder
+  lines:
+  - 46
+  - 49
+- name: ISearchPathsInfo
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: searchPaths
+    type: ISearchPathPattern[]
+  - name: pattern
+    type: glob.IExpression
+  lines:
+  - 72
+  - 75
+- name: ICommonQueryBuilderOptions
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: _reason
+    type: string
+  - name: excludePattern
+    type: ISearchPatternBuilder<U>[]
+  - name: includePattern
+    type: ISearchPathPatternBuilder
+  - name: extraFileResources
+    type: U[]
+  - name: expandPatterns
+    type: boolean
+  - name: maxResults
+    type: number
+  - name: maxFileSize
+    type: number
+  - name: disregardIgnoreFiles
+    type: boolean
+  - name: disregardGlobalIgnoreFiles
+    type: boolean
+  - name: disregardParentIgnoreFiles
+    type: boolean
+  - name: disregardExcludeSettings
+    type: boolean
+  - name: disregardSearchExcludeSettings
+    type: boolean
+  - name: ignoreSymlinks
+    type: boolean
+  - name: onlyOpenEditors
+    type: boolean
+  - name: onlyFileScheme
+    type: boolean
+  lines:
+  - 77
+  - 96
+- name: IFileQueryBuilderOptions
+  kind: trait
+  bases:
+  - ICommonQueryBuilderOptions<U>
+  decorators:
+  - interface
+  fields:
+  - name: filePattern
+    type: string
+  - name: exists
+    type: boolean
+  - name: sortByScore
+    type: boolean
+  - name: cacheKey
+    type: string
+  - name: shouldGlobSearch
+    type: boolean
+  lines:
+  - 98
+  - 104
+- name: ITextQueryBuilderOptions
+  kind: trait
+  bases:
+  - ICommonQueryBuilderOptions<U>
+  decorators:
+  - interface
+  fields:
+  - name: previewOptions
+    type: ITextSearchPreviewOptions
+  - name: fileEncoding
+    type: string
+  - name: surroundingContext
+    type: number
+  - name: isSmartCase
+    type: boolean
+  - name: notebookSearchConfig
+    type: "{\n\t\tincludeMarkupInput: boolean;\n\t\tincludeMarkupPreview: boolean;\n\t\tincludeCodeInput: boolean;\n\t\tincludeOutput: boolean;\n\t}"
+  lines:
+  - 106
+  - 117
+- name: QueryBuilder
+  kind: struct
+  ctx: Adjusts input pattern for config
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\t@IConfigurationService private readonly configurationService: IConfigurationService,\n\t\t@IWorkspaceContextService private readonly workspaceContextService: IWorkspaceContextService,\n\t\t@IEditorGroupsService private readonly editorGroupsService: IEditorGroupsService,\n\t\t@ILogService private readonly logService: ILogService,\n\t\t@IPathService private readonly pathService: IPathService,\n\t\t@IUriIdentityService private readonly uriIdentityService: IUriIdentityService\n\t)"
+    lines:
+    - 121
+    - 129
+    detail: {}
+  - name: aiText
+    sig: 'aiText(contentPattern: string, folderResources?: uri[], options: ITextQueryBuilderOptions = {}): IAITextQuery'
+    lines:
+    - 131
+    - 138
+    detail:
+      calls:
+      - folderResources?.map
+      - this.commonQuery
+  - name: text
+    sig: 'text(contentPattern: IPatternInfo, folderResources?: uri[], options: ITextQueryBuilderOptions = {}): ITextQuery'
+    lines:
+    - 140
+    - 161
+    detail:
+      calls:
+      - folderResources.some
+      - folderResources?.map
+      - this.commonQuery
+      - this.configurationService.getValue
+      - this.getContentPattern
+  - name: getContentPattern
+    sig: 'getContentPattern(inputPattern: IPatternInfo, options: ITextQueryBuilderOptions): IPatternInfo'
+    vis: private
+    lines:
+    - 166
+    - 215
+    detail:
+      calls:
+      - inputPattern.pattern.replace
+      - this.configurationService.getValue
+      - this.isCaseSensitive
+      - this.isMultiline
+  - name: file
+    sig: 'file(folders: (IWorkspaceFolderData | URI)[], options: IFileQueryBuilderOptions = {}): IFileQuery'
+    lines:
+    - 217
+    - 230
+    detail:
+      calls:
+      - options.filePattern.trim
+      - this.commonQuery
+  - name: handleIncludeExclude
+    sig: 'handleIncludeExclude(pattern: string | string[] | undefined, expandPatterns: boolean | undefined): ISearchPathsInfo'
+    vis: private
+    lines:
+    - 232
+    - 248
+    detail:
+      calls:
+      - Array.isArray
+      - normalizeSlashes
+      - pattern.filter
+      - pattern.filter(p => p.length > 0).map
+      - patternListToIExpression
+      - this.parseSearchPaths
+  - name: commonQuery
+    sig: 'commonQuery(folderResources: (IWorkspaceFolderData | URI)[] = [], options: ICommonQueryBuilderOptions = {}): ICommonQueryProps<uri>'
+    vis: private
+    lines:
+    - 250
+    - 291
+    detail:
+      calls:
+      - "(includeSearchPathsInfo.searchPaths && includeSearchPathsInfo.searchPaths.length ?\n\t\t\tincludeSearchP..."
+      - Array.isArray
+      - JSON.stringify
+      - arrays.coalesce
+      - folderResources.map
+      - includeSearchPathsInfo.searchPaths.map
+      - openEditors.filter
+      - options.excludePattern.map
+      - options.excludePattern.map(p => p.pattern).flat
+      - options.extraFileResources.filter
+      - this.commonQueryFromFileList
+      - this.editorGroupsService.groups.flatMap
+      - this.handleIncludeExclude
+      - this.logService.trace
+  - name: commonQueryFromFileList
+    sig: 'commonQueryFromFileList(files: URI[]): ICommonQueryProps<URI>'
+    vis: private
+    lines:
+    - 293
+    - 331
+    detail:
+      calls:
+      - files.forEach
+      - new ResourceMap
+  - name: parseSearchPaths
+    sig: 'parseSearchPaths(pattern: string | string[]): ISearchPathsInfo'
+    lines:
+    - 373
+    - 416
+    detail:
+      calls:
+      - "(groups.exprSegments || [])\n\t\t\t.map"
+      - "(groups.exprSegments || [])\n\t\t\t.map(s => strings.rtrim(s, '/'))\n\t\t\t.map"
+      - "(groups.exprSegments || [])\n\t\t\t.map(s => strings.rtrim(s, '/'))\n\t\t\t.map(s => strings.rtrim(s, '\\\\'))..."
+      - Array.isArray
+      - collections.groupBy
+      - expandedExprSegments.flat
+      - patternListToIExpression
+      - "patterns\n\t\t\t.map"
+      - splitGlobPattern
+      - this.expandSearchPathPatterns
+  - name: expandSearchPathPatterns
+    sig: 'expandSearchPathPatterns(searchPaths: string[]): ISearchPathPattern[]'
+    vis: private
+    lines:
+    - 427
+    - 466
+    detail:
+      calls:
+      - Array.from
+      - expandedSearchPaths.forEach
+      - new Map
+      - searchPathPatternMap.values
+      - searchPaths.flatMap
+  - name: expandOneSearchPath
+    sig: 'expandOneSearchPath(searchPath: string): IOneSearchPathPattern[]'
+    vis: private
+    lines:
+    - 471
+    - 533
+    detail:
+      calls:
+      - folderMatches.map
+      - folders.map
+      - "folders.map(folder => {\n\t\t\t\tconst match = searchPathWithoutDotSlash.match(new RegExp(`^${strings.esc..."
+      - new Error
+      - nls.localize
+      - normalizeGlobPattern
+      - normalizeSlashes
+      - path.isAbsolute
+      - path.normalize
+      - path.posix.resolve
+      - searchPath.match
+      - searchPath.replace
+      - searchPath.startsWith
+      - this.workspaceContextService.getWorkbenchState
+      - this.workspaceContextService.getWorkspace
+      - uri.file
+      - workspaceFolders[0].uri.with
+      - workspaceUri.with
+  - name: getFolderQueryForRoot
+    sig: 'getFolderQueryForRoot(folder: (IWorkspaceFolderData | URI), options: ICommonQueryBuilderOptions, searchPathExcludes: ISearchPathsInfo, includeFolderName: boolean): IFolderQuery | null'
+    vis: private
+    lines:
+    - 570
+    - 621
+    detail:
+      calls:
+      - URI.isUri
+      - basename
+      - excludeFolderRoots.map
+      - "excludeFolderRoots.map(excludeFolderRoot => {\n\t\t\treturn Object.keys(excludePattern).length > 0 ? {\n\t..."
+      - options.excludePattern?.map
+      - searchPathExcludes.searchPaths.filter
+      - this.configurationService.getValue
+      - this.getExcludesForFolder
+  lines:
+  - 119
+  - 622
+functions:
+- name: isISearchPatternBuilder
+  sig: 'isISearchPatternBuilder(object: ISearchPatternBuilder<U> | ISearchPathPatternBuilder)'
+  lines:
+  - 51
+  - 53
+- name: globPatternToISearchPatternBuilder
+  sig: 'globPatternToISearchPatternBuilder(globPattern: GlobPattern): ISearchPatternBuilder<URI>'
+  lines:
+  - 55
+  - 67
+  detail: {}
+- name: splitGlobFromPath
+  sig: 'splitGlobFromPath(searchPath: string): { pathPortion: string; globPortion?: string }'
+  lines:
+  - 624
+  - 647
+  detail:
+    calls:
+    - pathPortion.match
+    - searchPath.match
+    - searchPath.substr
+    - searchPath.substr(0, globCharIdx).match
+- name: patternListToIExpression
+  sig: 'patternListToIExpression(...patterns: string[]): glob.IExpression | undefined'
+  lines:
+  - 649
+  - 653
+  detail:
+    calls:
+    - Object.create
+    - patterns.reduce
+- name: splitGlobPattern
+  sig: 'splitGlobPattern(pattern: string): string[]'
+  lines:
+  - 655
+  - 659
+  detail:
+    calls:
+    - glob.splitGlobAware
+    - "glob.splitGlobAware(pattern, ',')\n\t\t.map"
+    - "glob.splitGlobAware(pattern, ',')\n\t\t.map(s => s.trim())\n\t\t.filter"
+- name: expandGlobalGlob
+  sig: 'expandGlobalGlob(pattern: string): string[]'
+  lines:
+  - 664
+  - 671
+  detail:
+    calls:
+    - patterns.map
+- name: normalizeSlashes
+  sig: 'normalizeSlashes(pattern: string): string'
+  lines:
+  - 673
+  - 675
+  detail:
+    calls:
+    - pattern.replace
+- name: normalizeGlobPattern
+  sig: 'normalizeGlobPattern(pattern: string): string'
+  lines:
+  - 680
+  - 684
+  detail:
+    calls:
+    - normalizeSlashes
+    - "normalizeSlashes(pattern)\n\t\t.replace"
+    - "normalizeSlashes(pattern)\n\t\t.replace(/^\\.\\//, '')\n\t\t.replace"
+- name: escapeGlobPattern
+  sig: 'escapeGlobPattern(path: string): string'
+  lines:
+  - 694
+  - 696
+  detail:
+    calls:
+    - path.replace
+- name: resolveResourcesForSearchIncludes
+  sig: 'resolveResourcesForSearchIncludes(resources: URI[], contextService: IWorkspaceContextService): string[]'
+  lines:
+  - 701
+  - 741
+  detail:
+    calls:
+    - arrays.distinct
+    - contextService.getWorkspace
+    - resources.forEach
+exports:
+- name: IOneSearchPathPattern
+  kind: type
+- name: ISearchPathPattern
+  kind: type
+- name: ISearchPathPatternBuilder
+  kind: type
+- name: ISearchPatternBuilder
+  kind: type
+- name: ISearchPathsInfo
+  kind: type
+- name: ICommonQueryBuilderOptions
+  kind: type
+- name: IFileQueryBuilderOptions
+  kind: type
+- name: ITextQueryBuilderOptions
+  kind: type
+- name: QueryBuilder
+  kind: type
+- name: isISearchPatternBuilder
+  kind: func
+- name: globPatternToISearchPatternBuilder
+  kind: func
+- name: splitGlobFromPath
+  kind: func
+- name: patternListToIExpression
+  kind: func
+- name: splitGlobPattern
+  kind: func
+- name: expandGlobalGlob
+  kind: func
+- name: normalizeSlashes
+  kind: func
+- name: normalizeGlobPattern
+  kind: func
+- name: escapeGlobPattern
+  kind: func
+- name: resolveResourcesForSearchIncludes
+  kind: func

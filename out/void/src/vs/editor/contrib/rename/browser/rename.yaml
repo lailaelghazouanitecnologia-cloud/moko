@@ -1,0 +1,329 @@
+## Roska File Descriptor — browser/rename.ts
+file: browser/rename.ts
+lines: 589
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: ../../../../base/browser/ui/aria/aria.js.alert
+- sym: ../../../../base/common/async.js.raceCancellation
+- sym: ../../../../base/common/cancellation.js.CancellationToken
+- sym: ../../../../base/common/cancellation.js.CancellationTokenSource
+- sym: ../../../../base/common/errors.js.CancellationError
+- sym: ../../../../base/common/errors.js.onUnexpectedError
+- sym: ../../../../base/common/htmlContent.js.isMarkdownString
+- sym: ../../../../base/common/keyCodes.js.KeyCode
+- sym: ../../../../base/common/keyCodes.js.KeyMod
+- sym: ../../../../base/common/lifecycle.js.DisposableStore
+- sym: ../../../../base/common/types.js.assertType
+- sym: ../../../../base/common/uri.js.URI
+- sym: ../../../browser/editorBrowser.js.ICodeEditor
+- sym: ../../../browser/editorExtensions.js.EditorAction
+- sym: ../../../browser/editorExtensions.js.EditorCommand
+- sym: ../../../browser/editorExtensions.js.EditorContributionInstantiation
+- sym: ../../../browser/editorExtensions.js.ServicesAccessor
+- sym: ../../../browser/editorExtensions.js.registerEditorAction
+- sym: ../../../browser/editorExtensions.js.registerEditorCommand
+- sym: ../../../browser/editorExtensions.js.registerEditorContribution
+- sym: ../../../browser/editorExtensions.js.registerModelAndPositionCommand
+- sym: ../../../browser/services/bulkEditService.js.IBulkEditService
+- sym: ../../../browser/services/codeEditorService.js.ICodeEditorService
+- sym: ../../../common/core/position.js.IPosition
+- sym: ../../../common/core/position.js.Position
+- sym: ../../../common/core/range.js.Range
+- sym: ../../../common/editorCommon.js.IEditorContribution
+- sym: ../../../common/editorContextKeys.js.EditorContextKeys
+- sym: ../../../common/languageFeatureRegistry.js.LanguageFeatureRegistry
+- sym: ../../../common/languages.js.NewSymbolNameTriggerKind
+- sym: ../../../common/languages.js.Rejection
+- sym: ../../../common/languages.js.RenameLocation
+- sym: ../../../common/languages.js.RenameProvider
+- sym: ../../../common/languages.js.WorkspaceEdit
+- sym: ../../../common/model.js.ITextModel
+- sym: ../../../common/services/languageFeatures.js.ILanguageFeaturesService
+- sym: ../../../common/services/textResourceConfiguration.js.ITextResourceConfigurationService
+- sym: ../../editorState/browser/editorState.js.CodeEditorStateFlag
+- sym: ../../editorState/browser/editorState.js.EditorStateCancellationTokenSource
+- sym: ../../message/browser/messageController.js.MessageController
+- sym: ../../../../nls.js.nls
+- sym: ../../../../platform/actions/common/actions.js.Action2
+- sym: ../../../../platform/actions/common/actions.js.registerAction2
+- sym: ../../../../platform/configuration/common/configurationRegistry.js.ConfigurationScope
+- sym: ../../../../platform/configuration/common/configurationRegistry.js.Extensions
+- sym: ../../../../platform/configuration/common/configurationRegistry.js.IConfigurationRegistry
+- sym: ../../../../platform/contextkey/common/contextkey.js.ContextKeyExpr
+- sym: ../../../../platform/instantiation/common/instantiation.js.IInstantiationService
+- sym: ../../../../platform/keybinding/common/keybindingsRegistry.js.KeybindingWeight
+- sym: ../../../../platform/log/common/log.js.ILogService
+- sym: ../../../../platform/notification/common/notification.js.INotificationService
+- sym: ../../../../platform/progress/common/progress.js.IEditorProgressService
+- sym: ../../../../platform/registry/common/platform.js.Registry
+- sym: ../../../../platform/telemetry/common/telemetry.js.ITelemetryService
+- sym: ./renameWidget.js.CONTEXT_RENAME_INPUT_VISIBLE
+- sym: ./renameWidget.js.NewNameSource
+- sym: ./renameWidget.js.RenameWidget
+- sym: ./renameWidget.js.RenameWidgetResult
+data:
+- name: RenameCommand
+  type: any
+  val: EditorCommand.bindToContribution<RenameController>(RenameController.get)
+types:
+- name: RenameSkeleton
+  kind: struct
+  fields:
+  - name: _providers
+    type: RenameProvider[]
+  - name: _providerRenameIdx
+    type: number
+    default: '0'
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tprivate readonly model: ITextModel,\n\t\tprivate readonly position: Position,\n\t\tregistry: LanguageFeatureRegistry<RenameProvider>\n\t)"
+    lines:
+    - 48
+    - 54
+    detail:
+      calls:
+      - registry.ordered
+  - name: hasProvider
+    sig: hasProvider()
+    lines:
+    - 56
+    - 58
+    detail: {}
+  - name: resolveRenameLocation
+    sig: 'resolveRenameLocation(token: CancellationToken): Promise<RenameLocation & Rejection | undefined>'
+    is_async: true
+    lines:
+    - 60
+    - 97
+    detail:
+      calls:
+      - Range.fromPositions
+      - new Range
+      - provider.resolveRenameLocation
+      - rejects.join
+      - rejects.push
+      - this.model.getWordAtPosition
+  - name: provideRenameEdits
+    sig: 'provideRenameEdits(newName: string, token: CancellationToken): Promise<WorkspaceEdit & Rejection>'
+    is_async: true
+    lines:
+    - 99
+    - 101
+    detail:
+      calls:
+      - this._provideRenameEdits
+  - name: _provideRenameEdits
+    sig: '_provideRenameEdits(newName: string, i: number, rejects: string[], token: CancellationToken): Promise<WorkspaceEdit & Rejection>'
+    is_async: true
+    vis: private
+    lines:
+    - 103
+    - 119
+    detail:
+      calls:
+      - nls.localize
+      - provider.provideRenameEdits
+      - rejects.concat
+      - rejects.join
+      - this._provideRenameEdits
+  lines:
+  - 43
+  - 120
+- name: RenameController
+  kind: struct
+  bases:
+  - IEditorContribution
+  fields:
+  - name: ID
+    type: any
+    default: '''editor.contrib.renameController'''
+  - name: _renameWidget
+    type: RenameWidget
+  - name: _disposableStore
+    type: any
+    default: new DisposableStore()
+  - name: _cts
+    type: CancellationTokenSource
+    default: new CancellationTokenSource()
+  methods:
+  - name: get
+    sig: 'get(editor: ICodeEditor): RenameController | null'
+    decorators:
+    - static
+    lines:
+    - 137
+    - 139
+    detail:
+      calls:
+      - editor.getContribution
+  - name: constructor
+    sig: "constructor(\n\t\tprivate readonly editor: ICodeEditor,\n\t\t@IInstantiationService private readonly _instaService: IInstantiationService,\n\t\t@INotificationService private readonly _notificationService: INotificationService,\n\t\t@IBulkEditService private readonly _bulkEditService: IBulkEditService,\n\t\t@IEditorProgressService private readonly _progressService: IEditorProgressService,\n\t\t@ILogService private readonly _logService: ILogService,\n\t\t@ITextResourceConfigurationService private readonly _configService: ITextResourceConfigurationService,\n\t\t@ILanguageFeaturesService private readonly _languageFeaturesService: ILanguageFeaturesService,\n\t\t@ITelemetryService private readonly _telemetryService: ITelemetryService,\n\t)"
+    lines:
+    - 145
+    - 157
+    detail:
+      calls:
+      - this._disposableStore.add
+      - this._instaService.createInstance
+  - name: dispose
+    sig: 'dispose(): void'
+    lines:
+    - 159
+    - 162
+    detail:
+      calls:
+      - this._cts.dispose
+      - this._disposableStore.dispose
+  - name: run
+    sig: 'run(): Promise<void>'
+    is_async: true
+    lines:
+    - 164
+    - 329
+    detail:
+      calls:
+      - JSON.stringify
+      - MessageController.get
+      - MessageController.get(this.editor)?.showMessage
+      - Promise.all
+      - cts1.dispose
+      - cts2.dispose
+      - isMarkdownString
+      - model.getLanguageId
+      - new CancellationTokenSource
+      - new EditorStateCancellationTokenSource
+      - new RenameSkeleton
+      - newSymbolNamesProviders.map
+      - nls.localize
+      - raceCancellation
+      - raceCancellation(skeleton.provideRenameEdits(inputFieldResult.newName, cts2.token), cts2.token).then
+      - raceCancellation(skeleton.provideRenameEdits(inputFieldResult.newName, cts2.token), cts2.token).then...
+      - skeleton.hasProvider
+      - skeleton.provideRenameEdits
+      - skeleton.resolveRenameLocation
+      - this._bulkEditService.hasPreviewHandler
+      - this._configService.getValue
+      - this._cts.dispose
+      - this._languageFeaturesService.newSymbolNamesProvider.all
+      - this._logService.trace.bind
+      - this._progressService.showWhile
+      - this._renameWidget.getInput
+      - this._reportTelemetry
+      - this.editor.focus
+      - this.editor.getModel
+      - this.editor.getPosition
+      - this.editor.hasModel
+      - trace
+  - name: acceptRenameInput
+    sig: 'acceptRenameInput(wantsPreview: boolean): void'
+    lines:
+    - 331
+    - 333
+    detail:
+      calls:
+      - this._renameWidget.acceptInput
+  - name: cancelRenameInput
+    sig: 'cancelRenameInput(): void'
+    lines:
+    - 335
+    - 337
+    detail:
+      calls:
+      - this._renameWidget.cancelInput
+  - name: focusNextRenameSuggestion
+    sig: 'focusNextRenameSuggestion(): void'
+    lines:
+    - 339
+    - 341
+    detail:
+      calls:
+      - this._renameWidget.focusNextRenameSuggestion
+  - name: focusPreviousRenameSuggestion
+    sig: 'focusPreviousRenameSuggestion(): void'
+    lines:
+    - 343
+    - 345
+    detail:
+      calls:
+      - this._renameWidget.focusPreviousRenameSuggestion
+  - name: _reportTelemetry
+    sig: '_reportTelemetry(nRenameSuggestionProviders: number, languageId: string, inputFieldResult: boolean | RenameWidgetResult)'
+    vis: private
+    lines:
+    - 347
+    - 405
+    detail:
+      calls:
+      - this._telemetryService.publicLog2
+  lines:
+  - 133
+  - 406
+- name: RenameAction
+  kind: struct
+  bases:
+  - EditorAction
+  methods:
+  - name: constructor
+    sig: constructor()
+    lines:
+    - 412
+    - 427
+    detail:
+      calls:
+      - ContextKeyExpr.and
+      - nls.localize2
+      - super
+  - name: runCommand
+    sig: 'runCommand(accessor: ServicesAccessor, args: [URI, IPosition]): void | Promise<void>'
+    lines:
+    - 429
+    - 447
+    detail:
+      calls:
+      - Array.isArray
+      - Position.isIPosition
+      - URI.isUri
+      - accessor.get
+      - editorService.getActiveCodeEditor
+      - editorService.openCodeEditor
+      - 'editorService.openCodeEditor({ resource: uri }, editorService.getActiveCodeEditor()).then'
+      - super.runCommand
+  - name: run
+    sig: 'run(accessor: ServicesAccessor, editor: ICodeEditor): Promise<void>'
+    lines:
+    - 449
+    - 460
+    detail:
+      calls:
+      - Promise.resolve
+      - RenameController.get
+      - accessor.get
+      - controller.run
+      - logService.trace
+  lines:
+  - 410
+  - 461
+functions:
+- name: rename
+  sig: 'rename(registry: LanguageFeatureRegistry<RenameProvider>, model: ITextModel, position: Position, newName: string): Promise<WorkspaceEdit & Rejection>'
+  is_async: true
+  lines:
+  - 122
+  - 129
+  detail:
+    calls:
+    - new RenameSkeleton
+    - skeleton.provideRenameEdits
+    - skeleton.resolveRenameLocation
+exports:
+- name: RenameSkeleton
+  kind: type
+- name: RenameController
+  kind: type
+- name: RenameAction
+  kind: type
+- name: rename
+  kind: func
+- name: RenameCommand
+  kind: data

@@ -1,0 +1,332 @@
+## Roska File Descriptor — browser/observableCodeEditor.ts
+file: browser/observableCodeEditor.ts
+lines: 384
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: ../../base/common/equals.js.equalsIfDefined
+- sym: ../../base/common/equals.js.itemsEquals
+- sym: ../../base/common/lifecycle.js.Disposable
+- sym: ../../base/common/lifecycle.js.DisposableStore
+- sym: ../../base/common/lifecycle.js.IDisposable
+- sym: ../../base/common/lifecycle.js.toDisposable
+- sym: ../../base/common/observable.js.IObservable
+- sym: ../../base/common/observable.js.IObservableWithChange
+- sym: ../../base/common/observable.js.ITransaction
+- sym: ../../base/common/observable.js.TransactionImpl
+- sym: ../../base/common/observable.js.autorun
+- sym: ../../base/common/observable.js.autorunOpts
+- sym: ../../base/common/observable.js.derived
+- sym: ../../base/common/observable.js.derivedOpts
+- sym: ../../base/common/observable.js.derivedWithSetter
+- sym: ../../base/common/observable.js.observableFromEvent
+- sym: ../../base/common/observable.js.observableSignal
+- sym: ../../base/common/observable.js.observableValue
+- sym: ../../base/common/observable.js.observableValueOpts
+- sym: ../common/config/editorOptions.js.EditorOption
+- sym: ../common/config/editorOptions.js.FindComputedEditorOptionValueById
+- sym: ../common/core/lineRange.js.LineRange
+- sym: ../common/core/offsetRange.js.OffsetRange
+- sym: ../common/core/position.js.Position
+- sym: ../common/core/selection.js.Selection
+- sym: ../common/cursorEvents.js.ICursorSelectionChangedEvent
+- sym: ../common/model.js.IModelDeltaDecoration
+- sym: ../common/model.js.ITextModel
+- sym: ../common/textModelEvents.js.IModelContentChangedEvent
+- sym: ./editorBrowser.js.ContentWidgetPositionPreference
+- sym: ./editorBrowser.js.ICodeEditor
+- sym: ./editorBrowser.js.IContentWidget
+- sym: ./editorBrowser.js.IContentWidgetPosition
+- sym: ./editorBrowser.js.IEditorMouseEvent
+- sym: ./editorBrowser.js.IOverlayWidget
+- sym: ./editorBrowser.js.IOverlayWidgetPosition
+- sym: ./editorBrowser.js.IPasteEvent
+- sym: ./point.js.Point
+types:
+- name: ObservableCodeEditor
+  kind: struct
+  ctx: Make sure that editor is not disposed yet!
+  bases:
+  - Disposable
+  fields:
+  - name: _map
+    type: any
+    default: new Map<ICodeEditor, ObservableCodeEditor>()
+  - name: _updateCounter
+    type: any
+    default: '0'
+  - name: _currentTransaction
+    type: TransactionImpl | undefined
+    default: undefined
+  - name: _model
+    type: any
+    default: observableValue(this, this.editor.getModel())
+  - name: model
+    type: IObservable<ITextModel | null>
+    default: this._model
+  - name: isReadonly
+    type: any
+    default: observableFromEvent(this, this.editor.onDidChangeConfiguration, () => this.edito...
+  - name: _versionId
+    type: any
+    default: observableValueOpts<number | null, IModelContentChangedEvent | undefined>({ owne...
+  - name: versionId
+    type: IObservableWithChange<number | null, IModelContentChangedEvent | undefined>
+    default: this._versionId
+  - name: _selections
+    type: any
+    default: observableValueOpts<Selection[] | null, ICursorSelectionChangedEvent | undefined...
+  - name: selections
+    type: IObservableWithChange<Selection[] | null, ICursorSelectionChangedEvent | undefined>
+    default: this._selections
+  - name: positions
+    type: any
+    default: "derivedOpts<readonly Position[] | null>(\n\t\t{ owner: this, equalsFn: equalsIfDefi..."
+  - name: isFocused
+    type: any
+    default: "observableFromEvent(this, e => {\n\t\tconst d1 = this.editor.onDidFocusEditorWidget..."
+  - name: isTextFocused
+    type: any
+    default: "observableFromEvent(this, e => {\n\t\tconst d1 = this.editor.onDidFocusEditorText(e..."
+  - name: inComposition
+    type: any
+    default: "observableFromEvent(this, e => {\n\t\tconst d1 = this.editor.onDidCompositionStart(..."
+  - name: value
+    type: any
+    default: "derivedWithSetter(this,\n\t\treader => { this.versionId.read(reader); return this.m..."
+  - name: valueIsEmpty
+    type: any
+    default: derived(this, reader => { this.versionId.read(reader); return this.editor.getMod...
+  - name: cursorSelection
+    type: any
+    default: 'derivedOpts({ owner: this, equalsFn: equalsIfDefined(Selection.selectionsEqual) ...'
+  - name: cursorPosition
+    type: any
+    default: 'derivedOpts({ owner: this, equalsFn: Position.equals }, reader => this.selection...'
+  - name: cursorLineNumber
+    type: any
+    default: derived<number | null>(this, reader => this.cursorPosition.read(reader)?.lineNum...
+  - name: onDidType
+    type: any
+    default: observableSignal<string>(this)
+  - name: onDidPaste
+    type: any
+    default: observableSignal<IPasteEvent>(this)
+  - name: scrollTop
+    type: any
+    default: observableFromEvent(this.editor.onDidScrollChange, () => this.editor.getScrollTo...
+  - name: scrollLeft
+    type: any
+    default: observableFromEvent(this.editor.onDidScrollChange, () => this.editor.getScrollLe...
+  - name: layoutInfo
+    type: any
+    default: observableFromEvent(this.editor.onDidLayoutChange, () => this.editor.getLayoutIn...
+  - name: layoutInfoContentLeft
+    type: any
+    default: this.layoutInfo.map(l => l.contentLeft)
+  - name: layoutInfoDecorationsLeft
+    type: any
+    default: this.layoutInfo.map(l => l.decorationsLeft)
+  - name: layoutInfoWidth
+    type: any
+    default: this.layoutInfo.map(l => l.width)
+  - name: layoutInfoMinimap
+    type: any
+    default: this.layoutInfo.map(l => l.minimap)
+  - name: layoutInfoVerticalScrollbarWidth
+    type: any
+    default: this.layoutInfo.map(l => l.verticalScrollbarWidth)
+  - name: contentWidth
+    type: any
+    default: observableFromEvent(this.editor.onDidContentSizeChange, () => this.editor.getCon...
+  - name: _widgetCounter
+    type: any
+    default: '0'
+  - name: openedPeekWidgets
+    type: any
+    default: observableValue(this, 0)
+  methods:
+  - name: get
+    sig: 'get(editor: ICodeEditor): ObservableCodeEditor'
+    decorators:
+    - static
+    lines:
+    - 33
+    - 48
+    detail:
+      calls:
+      - ObservableCodeEditor._map.get
+      - ObservableCodeEditor._map.set
+      - editor.onDidDispose
+      - new ObservableCodeEditor
+  - name: constructor
+    sig: 'constructor(public readonly editor: ICodeEditor)'
+    vis: private
+    lines:
+    - 71
+    - 126
+    detail:
+      calls:
+      - super
+      - this._register
+      - this.editor.onBeginUpdate
+      - this.editor.onDidChangeCursorSelection
+      - this.editor.onDidChangeModel
+      - this.editor.onDidChangeModelContent
+      - this.editor.onDidPaste
+      - this.editor.onDidType
+      - this.editor.onEndUpdate
+  - name: forceUpdate
+    sig: 'forceUpdate(cb?: (tx: ITransaction) => T): T'
+    lines:
+    - 130
+    - 139
+    detail:
+      calls:
+      - cb
+      - this._beginUpdate
+      - this._endUpdate
+      - this._forceUpdate
+  - name: _forceUpdate
+    sig: '_forceUpdate(): void'
+    vis: private
+    lines:
+    - 141
+    - 150
+    detail:
+      calls:
+      - this._beginUpdate
+      - this._endUpdate
+      - this._model.set
+      - this._selections.set
+      - this._versionId.set
+      - this.editor.getModel
+      - this.editor.getModel()?.getVersionId
+      - this.editor.getSelections
+  - name: getOption
+    sig: 'getOption(id: T): IObservable<FindComputedEditorOptionValueById<T>>'
+    lines:
+    - 240
+    - 244
+    detail:
+      calls:
+      - observableFromEvent
+  - name: setDecorations
+    sig: 'setDecorations(decorations: IObservable<IModelDeltaDecoration[]>): IDisposable'
+    lines:
+    - 246
+    - 259
+    detail:
+      calls:
+      - autorunOpts
+      - d.add
+      - new DisposableStore
+      - this.editor.createDecorationsCollection
+  - name: createOverlayWidget
+    sig: 'createOverlayWidget(widget: IObservableOverlayWidget): IDisposable'
+    lines:
+    - 263
+    - 282
+    detail:
+      calls:
+      - autorun
+      - this.editor.addOverlayWidget
+      - toDisposable
+  - name: createContentWidget
+    sig: 'createContentWidget(widget: IObservableContentWidget): IDisposable'
+    lines:
+    - 284
+    - 301
+    detail:
+      calls:
+      - autorun
+      - this.editor.addContentWidget
+      - toDisposable
+  - name: observeLineOffsetRange
+    sig: 'observeLineOffsetRange(lineRange: IObservable<LineRange>, store: DisposableStore): IObservable<OffsetRange>'
+    lines:
+    - 303
+    - 322
+    detail:
+      calls:
+      - derived
+      - lineRange.map
+      - this.observePosition
+  - name: observePosition
+    sig: 'observePosition(position: IObservable<Position | null>, store: DisposableStore): IObservable<Point | null>'
+    lines:
+    - 324
+    - 355
+    detail:
+      calls:
+      - autorun
+      - document.createElement
+      - equalsIfDefined
+      - new Point
+      - observableValueOpts
+      - position.get
+      - store.add
+      - this.editor.addContentWidget
+      - toDisposable
+  - name: isTargetHovered
+    sig: 'isTargetHovered(predicate: (target: IEditorMouseEvent) => boolean, store: DisposableStore): IObservable<boolean>'
+    lines:
+    - 359
+    - 370
+    detail:
+      calls:
+      - observableValue
+      - store.add
+      - this.editor.onMouseLeave
+      - this.editor.onMouseMove
+  lines:
+  - 27
+  - 371
+- name: IObservableOverlayWidget
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: get
+    type: 'method: get domNode(): HTMLElement'
+  - name: readonly
+    type: IObservable<IOverlayWidgetPosition | null>
+  - name: readonly
+    type: IObservable<number>
+  - name: get
+    type: 'method: get allowEditorOverflow(): boolean'
+  lines:
+  - 373
+  - 378
+- name: IObservableContentWidget
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: get
+    type: 'method: get domNode(): HTMLElement'
+  - name: readonly
+    type: IObservable<IContentWidgetPosition | null>
+  - name: get
+    type: 'method: get allowEditorOverflow(): boolean'
+  lines:
+  - 380
+  - 384
+functions:
+- name: observableCodeEditor
+  sig: 'observableCodeEditor(editor: ICodeEditor): ObservableCodeEditor'
+  lines:
+  - 23
+  - 25
+  detail:
+    calls:
+    - ObservableCodeEditor.get
+exports:
+- name: ObservableCodeEditor
+  kind: type
+- name: IObservableOverlayWidget
+  kind: type
+- name: IObservableContentWidget
+  kind: type
+- name: observableCodeEditor
+  kind: func

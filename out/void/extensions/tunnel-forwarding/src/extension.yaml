@@ -1,0 +1,276 @@
+## Roska File Descriptor — src/extension.ts
+file: src/extension.ts
+lines: 331
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: child_process.ChildProcessWithoutNullStreams
+- sym: child_process.spawn
+- sym: path.path
+- sym: vscode.vscode
+- sym: ./deferredPromise.DeferredPromise
+- sym: ./split.splitNewLines
+data:
+- name: CLEANUP_TIMEOUT
+  type: any
+  val: 10_000
+- name: cliPath
+  type: any
+  val: "process.env.VSCODE_FORWARDING_IS_DEV\n\t? path.join(__dirname, '../../../cli/target/debug/code')\n\t: path.join(\n\t\tvscode.en..."
+- name: didWarnPublicKey
+  type: string
+  val: '''didWarnPublic'''
+types:
+- name: TunnelPrivacyId
+  kind: enum
+  variants:
+  - name: Private
+    val: '''private'''
+  - name: Public
+    val: '''public'''
+  lines:
+  - 12
+  - 15
+- name: Tunnel
+  kind: struct
+  fields:
+  - name: disposeEmitter
+    type: any
+    default: new vscode.EventEmitter<void>()
+  - name: onDidDispose
+    type: any
+    default: this.disposeEmitter.event
+  - name: localAddress
+    type: string
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tpublic readonly remoteAddress: { port: number; host: string },\n\t\tpublic readonly privacy: TunnelPrivacyId,\n\t\tpublic readonly protocol: 'http' | 'https',\n\t)"
+    lines:
+    - 37
+    - 41
+    detail: {}
+  - name: setPortFormat
+    sig: 'setPortFormat(formatString: string)'
+    lines:
+    - 43
+    - 45
+    detail:
+      calls:
+      - String
+      - formatString.replace
+  - name: dispose
+    sig: dispose()
+    lines:
+    - 47
+    - 49
+    detail:
+      calls:
+      - this.disposeEmitter.fire
+  lines:
+  - 32
+  - 50
+- name: State
+  kind: enum
+  variants:
+  - name: Starting
+  - name: Active
+  - name: Inactive
+  - name: Error
+  lines:
+  - 52
+  - 57
+- name: StateT
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 59
+  - 63
+- name: Logger
+  kind: struct
+  fields:
+  - name: outputChannel
+    type: vscode.LogOutputChannel
+  methods:
+  - name: constructor
+    sig: 'constructor(private readonly label: string)'
+    lines:
+    - 102
+    - 102
+    detail: {}
+  - name: show
+    sig: 'show(): void'
+    lines:
+    - 104
+    - 106
+    detail:
+      calls:
+      - this.outputChannel?.show
+  - name: clear
+    sig: clear()
+    lines:
+    - 108
+    - 110
+    detail:
+      calls:
+      - this.outputChannel?.clear
+  - name: log
+    sig: "log(\n\t\tlogLevel: 'trace' | 'debug' | 'info' | 'warn' | 'error',\n\t\tmessage: string,\n\t\t...args: unknown[]\n\t)"
+    lines:
+    - 112
+    - 122
+    detail:
+      calls:
+      - this.outputChannel[logLevel]
+      - vscode.commands.executeCommand
+      - vscode.window.createOutputChannel
+  lines:
+  - 99
+  - 123
+- name: TunnelProvider
+  kind: struct
+  ctx: ''
+  fields:
+  - name: tunnels
+    type: any
+    default: new Set<Tunnel>()
+  - name: stateChange
+    type: any
+    default: new vscode.EventEmitter<StateT>()
+  - name: _state
+    type: StateT
+    default: '{ state: State.Inactive }'
+  - name: onDidStateChange
+    type: any
+    default: this.stateChange.event
+  methods:
+  - name: constructor
+    sig: 'constructor(private readonly logger: Logger, private readonly context: vscode.ExtensionContext)'
+    lines:
+    - 143
+    - 143
+    detail: {}
+  - name: provideTunnel
+    sig: 'provideTunnel(tunnelOptions: vscode.TunnelOptions): Promise<vscode.Tunnel | undefined>'
+    is_async: true
+    lines:
+    - 146
+    - 189
+    detail:
+      calls:
+      - new Promise
+      - new Tunnel
+      - this.consentPublicPort
+      - this.setupPortForwardingProcess
+      - this.tunnels.add
+      - this.updateActivePortsIfRunning
+      - tunnel.onDidDispose
+      - tunnel.setPortFormat
+  - name: restart
+    sig: restart()
+    is_async: true
+    lines:
+    - 192
+    - 196
+    detail:
+      calls:
+      - this.killRunningProcess
+      - this.setupPortForwardingProcess
+      - this.updateActivePortsIfRunning
+  - name: consentPublicPort
+    sig: 'consentPublicPort(portNumber: number)'
+    is_async: true
+    vis: private
+    lines:
+    - 198
+    - 221
+    detail:
+      calls:
+      - this.context.globalState.get
+      - this.context.globalState.update
+      - vscode.l10n.t
+      - vscode.window.showWarningMessage
+  - name: updateActivePortsIfRunning
+    sig: updateActivePortsIfRunning()
+    vis: private
+    lines:
+    - 238
+    - 252
+    detail:
+      calls:
+      - JSON.stringify
+      - '[...this.tunnels].map'
+      - clearTimeout
+      - setTimeout
+      - this.state.process.stdin.write
+  - name: setupPortForwardingProcess
+    sig: setupPortForwardingProcess()
+    is_async: true
+    vis: private
+    lines:
+    - 254
+    - 330
+    detail:
+      calls:
+      - child.on
+      - "child.stderr\n\t\t\t.pipe"
+      - "child.stderr\n\t\t\t.pipe(splitNewLines())\n\t\t\t.on"
+      - "child.stderr\n\t\t\t.pipe(splitNewLines())\n\t\t\t.on('data', line => {\n\t\t\t\ttry {\n\t\t\t\t\tconst l: { port_forma..."
+      - "child.stdout\n\t\t\t.pipe"
+      - "child.stdout\n\t\t\t.pipe(splitNewLines())\n\t\t\t.on"
+      - "child.stdout\n\t\t\t.pipe(splitNewLines())\n\t\t\t.on('data', line => this.logger.log('info', `[forwarding] ..."
+      - new DeferredPromise
+      - new Promise
+      - spawn
+      - splitNewLines
+      - this.logger.log
+      - vscode.authentication.getSession
+      - vscode.l10n.t
+      - vscode.window.withProgress
+  lines:
+  - 127
+  - 331
+functions:
+- name: activate
+  sig: 'activate(context: vscode.ExtensionContext)'
+  is_async: true
+  lines:
+  - 65
+  - 95
+  detail:
+    calls:
+    - context.subscriptions.push
+    - new Logger
+    - new TunnelProvider
+    - provider.onDidStateChange
+    - vscode.commands.registerCommand
+    - vscode.l10n.t
+    - vscode.workspace.registerTunnelProvider
+- name: deactivate
+  sig: deactivate()
+  lines:
+  - 97
+  - 97
+exports:
+- name: TunnelPrivacyId
+  kind: type
+- name: Tunnel
+  kind: type
+- name: State
+  kind: type
+- name: StateT
+  kind: type
+- name: Logger
+  kind: type
+- name: TunnelProvider
+  kind: type
+- name: activate
+  kind: func
+- name: deactivate
+  kind: func
+- name: CLEANUP_TIMEOUT
+  kind: data
+- name: cliPath
+  kind: data
+- name: didWarnPublicKey
+  kind: data

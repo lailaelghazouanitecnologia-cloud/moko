@@ -1,0 +1,547 @@
+## Roska File Descriptor — editor/breadcrumbsControl.ts
+file: editor/breadcrumbsControl.ts
+lines: 922
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: ../../../../base/browser/dom.js.dom
+- sym: ../../../../base/browser/mouseEvent.js.StandardMouseEvent
+- sym: ../../../../base/browser/pixelRatio.js.PixelRatio
+- sym: ../../../../base/browser/ui/breadcrumbs/breadcrumbsWidget.js.BreadcrumbsItem
+- sym: ../../../../base/browser/ui/breadcrumbs/breadcrumbsWidget.js.BreadcrumbsWidget
+- sym: ../../../../base/browser/ui/breadcrumbs/breadcrumbsWidget.js.IBreadcrumbsItemEvent
+- sym: ../../../../base/browser/ui/breadcrumbs/breadcrumbsWidget.js.IBreadcrumbsWidgetStyles
+- sym: ../../../../base/browser/ui/dnd/dnd.js.applyDragImage
+- sym: ../../../../base/browser/ui/hover/hoverDelegate.js.IHoverDelegate
+- sym: ../../../../base/browser/ui/hover/hoverDelegateFactory.js.getDefaultHoverDelegate
+- sym: ../../../../base/common/async.js.timeout
+- sym: ../../../../base/common/codicons.js.Codicon
+- sym: ../../../../base/common/event.js.Emitter
+- sym: ../../../../base/common/keyCodes.js.KeyCode
+- sym: ../../../../base/common/keyCodes.js.KeyMod
+- sym: ../../../../base/common/lifecycle.js.combinedDisposable
+- sym: ../../../../base/common/lifecycle.js.DisposableStore
+- sym: ../../../../base/common/lifecycle.js.IDisposable
+- sym: ../../../../base/common/lifecycle.js.MutableDisposable
+- sym: ../../../../base/common/lifecycle.js.toDisposable
+- sym: ../../../../base/common/resources.js.basename
+- sym: ../../../../base/common/resources.js.extUri
+- sym: ../../../../base/common/uri.js.URI
+- sym: ../../../../editor/common/languages.js.DocumentSymbol
+- sym: ../../../../editor/contrib/documentSymbols/browser/outlineModel.js.OutlineElement
+- sym: ../../../../nls.js.localize
+- sym: ../../../../nls.js.localize2
+- sym: ../../../../platform/action/common/actionCommonCategories.js.Categories
+- sym: ../../../../platform/actions/common/actions.js.Action2
+- sym: ../../../../platform/actions/common/actions.js.MenuId
+- sym: ../../../../platform/actions/common/actions.js.registerAction2
+- sym: ../../../../platform/configuration/common/configuration.js.IConfigurationService
+- sym: ../../../../platform/contextkey/common/contextkey.js.ContextKeyExpr
+- sym: ../../../../platform/contextkey/common/contextkey.js.IContextKey
+- sym: ../../../../platform/contextkey/common/contextkey.js.IContextKeyService
+- sym: ../../../../platform/contextkey/common/contextkey.js.RawContextKey
+- sym: ../../../../platform/contextview/browser/contextView.js.IContextViewService
+- sym: ../../../../platform/dnd/browser/dnd.js.fillInSymbolsDragData
+- sym: ../../../../platform/dnd/browser/dnd.js.LocalSelectionTransfer
+- sym: ../../../../platform/files/common/files.js.FileKind
+- sym: ../../../../platform/files/common/files.js.IFileService
+- sym: ../../../../platform/files/common/files.js.IFileStat
+- sym: ../../../../platform/instantiation/common/instantiation.js.IInstantiationService
+- sym: ../../../../platform/instantiation/common/instantiation.js.ServicesAccessor
+- sym: ../../../../platform/instantiation/common/instantiationService.js.InstantiationService
+- sym: ../../../../platform/keybinding/common/keybindingsRegistry.js.KeybindingsRegistry
+- sym: ../../../../platform/keybinding/common/keybindingsRegistry.js.KeybindingWeight
+- sym: ../../../../platform/label/common/label.js.ILabelService
+- sym: ../../../../platform/list/browser/listService.js.IListService
+- sym: ../../../../platform/list/browser/listService.js.WorkbenchAsyncDataTree
+- sym: ../../../../platform/list/browser/listService.js.WorkbenchDataTree
+- sym: ../../../../platform/list/browser/listService.js.WorkbenchListFocusContextKey
+- sym: ../../../../platform/quickinput/common/quickInput.js.IQuickInputService
+- sym: ../../../../platform/theme/browser/defaultStyles.js.defaultBreadcrumbsWidgetStyles
+- sym: ../../../../platform/theme/common/iconRegistry.js.registerIcon
+- sym: ../../../common/editor.js.EditorResourceAccessor
+- sym: ../../../common/editor.js.IEditorPartOptions
+- sym: ../../../common/editor.js.SideBySideEditor
+- sym: ../../../services/editor/common/editorGroupsService.js.IEditorGroupsService
+- sym: ../../../services/editor/common/editorService.js.ACTIVE_GROUP
+- sym: ../../../services/editor/common/editorService.js.ACTIVE_GROUP_TYPE
+- sym: ../../../services/editor/common/editorService.js.IEditorService
+- sym: ../../../services/editor/common/editorService.js.SIDE_GROUP
+- sym: ../../../services/editor/common/editorService.js.SIDE_GROUP_TYPE
+- sym: ../../../services/outline/browser/outline.js.IOutline
+- sym: ../../dnd.js.DraggedEditorIdentifier
+- sym: ../../dnd.js.fillEditorsDragData
+- sym: ../../labels.js.DEFAULT_LABELS_CONTAINER
+- sym: ../../labels.js.ResourceLabels
+- sym: ./breadcrumbs.js.BreadcrumbsConfig
+- sym: ./breadcrumbs.js.IBreadcrumbsService
+- sym: ./breadcrumbsModel.js.BreadcrumbsModel
+- sym: ./breadcrumbsModel.js.FileElement
+- sym: ./breadcrumbsModel.js.OutlineElement2
+- sym: ./breadcrumbsPicker.js.BreadcrumbsFilePicker
+- sym: ./breadcrumbsPicker.js.BreadcrumbsOutlinePicker
+- sym: ./breadcrumbsPicker.js.BreadcrumbsPicker
+- sym: ./editor.js.IEditorGroupView
+data:
+- name: separatorIcon
+  type: any
+  val: registerIcon('breadcrumb-separator', Codicon.chevronRight, localize('separatorIcon', 'Icon for the separator in the brea...
+types:
+- name: OutlineItem
+  kind: struct
+  bases:
+  - BreadcrumbsItem
+  fields:
+  - name: _disposables
+    type: any
+    default: new DisposableStore()
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\treadonly model: BreadcrumbsModel,\n\t\treadonly element: OutlineElement2,\n\t\treadonly options: IBreadcrumbsControlOptions,\n\t\t@IInstantiationService private readonly _instantiationService: InstantiationService,\n\t)"
+    lines:
+    - 54
+    - 61
+    detail:
+      calls:
+      - super
+  - name: dispose
+    sig: 'dispose(): void'
+    lines:
+    - 63
+    - 65
+    detail:
+      calls:
+      - this._disposables.dispose
+  - name: equals
+    sig: 'equals(other: BreadcrumbsItem): boolean'
+    lines:
+    - 67
+    - 74
+    detail: {}
+  - name: render
+    sig: 'render(container: HTMLElement): void'
+    lines:
+    - 76
+    - 110
+    detail:
+      calls:
+      - container.appendChild
+      - dom.$
+      - outline.config.delegate.getTemplateId
+      - outline.config.renderers.find
+      - renderer.renderElement
+      - renderer.renderTemplate
+      - this._disposables.add
+      - this._instantiationService.invokeFunction
+      - toDisposable
+  lines:
+  - 50
+  - 111
+- name: FileItem
+  kind: struct
+  bases:
+  - BreadcrumbsItem
+  fields:
+  - name: _disposables
+    type: any
+    default: new DisposableStore()
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\treadonly model: BreadcrumbsModel,\n\t\treadonly element: FileElement,\n\t\treadonly options: IBreadcrumbsControlOptions,\n\t\tprivate readonly _labels: ResourceLabels,\n\t\tprivate readonly _hoverDelegate: IHoverDelegate,\n\t\t@IInstantiationService private readonly _instantiationService: InstantiationService,\n\t)"
+    lines:
+    - 117
+    - 126
+    detail:
+      calls:
+      - super
+  - name: dispose
+    sig: 'dispose(): void'
+    lines:
+    - 128
+    - 130
+    detail:
+      calls:
+      - this._disposables.dispose
+  - name: equals
+    sig: 'equals(other: BreadcrumbsItem): boolean'
+    lines:
+    - 132
+    - 140
+    detail:
+      calls:
+      - extUri.isEqual
+  - name: render
+    sig: 'render(container: HTMLElement): void'
+    lines:
+    - 142
+    - 155
+    detail:
+      calls:
+      - FileKind[this.element.kind].toLowerCase
+      - container.classList.add
+      - label.setFile
+      - this._disposables.add
+      - this._instantiationService.invokeFunction
+      - this._labels.create
+  lines:
+  - 113
+  - 156
+- name: IBreadcrumbsControlOptions
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: readonly
+    type: boolean
+  - name: readonly
+    type: boolean
+  - name: readonly
+    type: boolean
+  - name: readonly
+    type: boolean
+  - name: readonly
+    type: boolean
+  - name: readonly
+    type: IBreadcrumbsWidgetStyles
+  lines:
+  - 198
+  - 205
+- name: BreadcrumbsControl
+  kind: struct
+  fields:
+  - name: HEIGHT
+    type: any
+    default: '22'
+  - name: SCROLLBAR_SIZES
+    type: any
+    default: "{\n\t\tdefault: 3,\n\t\tlarge: 8\n\t}"
+  - name: Payload_Reveal
+    type: any
+    default: '{}'
+  - name: Payload_RevealAside
+    type: any
+    default: '{}'
+  - name: Payload_Pick
+    type: any
+    default: '{}'
+  - name: CK_BreadcrumbsPossible
+    type: any
+    default: new RawContextKey('breadcrumbsPossible', false, localize('breadcrumbsPossible', ...
+  - name: CK_BreadcrumbsVisible
+    type: any
+    default: new RawContextKey('breadcrumbsVisible', false, localize('breadcrumbsVisible', "W...
+  - name: CK_BreadcrumbsActive
+    type: any
+    default: new RawContextKey('breadcrumbsActive', false, localize('breadcrumbsActive', "Whe...
+  - name: _ckBreadcrumbsPossible
+    type: IContextKey<boolean>
+  - name: _ckBreadcrumbsVisible
+    type: IContextKey<boolean>
+  - name: _ckBreadcrumbsActive
+    type: IContextKey<boolean>
+  - name: _cfUseQuickPick
+    type: BreadcrumbsConfig<boolean>
+  - name: _cfShowIcons
+    type: BreadcrumbsConfig<boolean>
+  - name: _cfTitleScrollbarSizing
+    type: BreadcrumbsConfig<IEditorPartOptions['titleScrollbarSizing']>
+  - name: domNode
+    type: HTMLDivElement
+  - name: _widget
+    type: BreadcrumbsWidget
+  - name: _disposables
+    type: any
+    default: new DisposableStore()
+  - name: _breadcrumbsDisposables
+    type: any
+    default: new DisposableStore()
+  - name: _labels
+    type: ResourceLabels
+  - name: _model
+    type: any
+    default: new MutableDisposable<BreadcrumbsModel>()
+  - name: _breadcrumbsPickerShowing
+    type: any
+    default: 'false'
+  - name: _breadcrumbsPickerIgnoreOnceItem
+    type: BreadcrumbsItem | undefined
+  - name: _hoverDelegate
+    type: IHoverDelegate
+  - name: _onDidVisibilityChange
+    type: any
+    default: this._disposables.add(new Emitter<void>())
+  methods:
+  - name: onDidVisibilityChange
+    sig: onDidVisibilityChange()
+    lines:
+    - 247
+    - 247
+    detail: {}
+  - name: constructor
+    sig: "constructor(\n\t\tcontainer: HTMLElement,\n\t\tprivate readonly _options: IBreadcrumbsControlOptions,\n\t\tprivate readonly _editorGroup: IEditorGroupView,\n\t\t@IContextKeyService private readonly _contextKeyService: IContextKeyService,\n\t\t@IContextViewService private readonly _contextViewService: IContextViewService,\n\t\t@IInstantiationService private readonly _instantiationService: IInstantiationService,\n\t\t@IQuickInputService private readonly _quickInputService: IQuickInputService,\n\t\t@IFileService private readonly _fileService: IFileService,\n\t\t@IEditorService private readonly _editorService: IEditorService,\n\t\t@ILabelService private readonly _labelService: ILabelService,\n\t\t@IConfigurationService configurationService: IConfigurationService,\n\t\t@IBreadcrumbsService breadcrumbsService: IBreadcrumbsService\n\t)"
+    lines:
+    - 249
+    - 288
+    detail:
+      calls:
+      - BreadcrumbsConfig.Icons.bindTo
+      - BreadcrumbsConfig.TitleScrollbarSizing.bindTo
+      - BreadcrumbsConfig.UseQuickPick.bindTo
+      - BreadcrumbsControl.CK_BreadcrumbsActive.bindTo
+      - BreadcrumbsControl.CK_BreadcrumbsPossible.bindTo
+      - BreadcrumbsControl.CK_BreadcrumbsVisible.bindTo
+      - breadcrumbsService.register
+      - document.createElement
+      - dom.append
+      - getDefaultHoverDelegate
+      - new BreadcrumbsWidget
+      - this._cfTitleScrollbarSizing.getValue
+      - this._disposables.add
+      - this._instantiationService.createInstance
+      - this._widget.onDidChangeFocus
+      - this._widget.onDidFocusItem
+      - this._widget.onDidSelectItem
+      - this.domNode.classList.add
+      - this.hide
+  - name: dispose
+    sig: 'dispose(): void'
+    lines:
+    - 290
+    - 301
+    detail:
+      calls:
+      - this._breadcrumbsDisposables.dispose
+      - this._cfShowIcons.dispose
+      - this._cfUseQuickPick.dispose
+      - this._ckBreadcrumbsActive.reset
+      - this._ckBreadcrumbsPossible.reset
+      - this._ckBreadcrumbsVisible.reset
+      - this._disposables.dispose
+      - this._labels.dispose
+      - this._widget.dispose
+      - this.domNode.remove
+  - name: model
+    sig: 'model(): BreadcrumbsModel | undefined'
+    lines:
+    - 303
+    - 305
+    detail: {}
+  - name: layout
+    sig: 'layout(dim: dom.Dimension | undefined): void'
+    lines:
+    - 307
+    - 309
+    detail:
+      calls:
+      - this._widget.layout
+  - name: isHidden
+    sig: 'isHidden(): boolean'
+    lines:
+    - 311
+    - 313
+    detail:
+      calls:
+      - this.domNode.classList.contains
+  - name: hide
+    sig: 'hide(): void'
+    lines:
+    - 315
+    - 325
+    detail:
+      calls:
+      - this._breadcrumbsDisposables.clear
+      - this._ckBreadcrumbsVisible.set
+      - this._onDidVisibilityChange.fire
+      - this.domNode.classList.toggle
+      - this.isHidden
+  - name: show
+    sig: 'show(): void'
+    vis: private
+    lines:
+    - 327
+    - 336
+    detail:
+      calls:
+      - this._ckBreadcrumbsVisible.set
+      - this._onDidVisibilityChange.fire
+      - this.domNode.classList.toggle
+      - this.isHidden
+  - name: revealLast
+    sig: 'revealLast(): void'
+    lines:
+    - 338
+    - 340
+    detail:
+      calls:
+      - this._widget.revealLast
+  - name: update
+    sig: 'update(): boolean'
+    lines:
+    - 342
+    - 432
+    detail:
+      calls:
+      - EditorResourceAccessor.getCanonicalUri
+      - EditorResourceAccessor.getOriginalUri
+      - model.onDidUpdate
+      - this._breadcrumbsDisposables.add
+      - this._breadcrumbsDisposables.clear
+      - this._cfShowIcons.onDidChange
+      - this._cfTitleScrollbarSizing.onDidChange
+      - this._ckBreadcrumbsPossible.set
+      - this._fileService.hasProvider
+      - this._instantiationService.createInstance
+      - this._labelService.getSeparator
+      - this.domNode.classList.toggle
+      - this.hide
+      - this.isHidden
+      - this.show
+      - toDisposable
+      - updateBreadcrumbs
+      - updateScrollbarSizing
+  - name: _onSelectEvent
+    sig: '_onSelectEvent(event: IBreadcrumbsItemEvent): void'
+    vis: private
+    lines:
+    - 441
+    - 554
+    detail:
+      calls:
+      - this._cfUseQuickPick.getValue
+      - this._contextViewService.showContextView
+      - this._editorGroup.focus
+      - this._getEditorGroup
+      - this._quickInputService.quickAccess.show
+      - this._revealInEditor
+      - this._widget.setFocused
+      - this._widget.setSelection
+  - name: _revealInEditor
+    sig: '_revealInEditor(event: IBreadcrumbsItemEvent, element: FileElement | OutlineElement2, group: SIDE_GROUP_TYPE | ACTIVE_GROUP_TYPE | undefined, pinned: boolean = false): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 561
+    - 576
+    detail:
+      calls:
+      - element.outline.reveal
+      - items.indexOf
+      - this._editorService.openEditor
+      - this._widget.getItems
+      - this._widget.setFocused
+      - this._widget.setSelection
+  lines:
+  - 209
+  - 587
+- name: BreadcrumbsControlFactory
+  kind: struct
+  fields:
+  - name: _disposables
+    type: any
+    default: new DisposableStore()
+  - name: _controlDisposables
+    type: any
+    default: new DisposableStore()
+  - name: _control
+    type: BreadcrumbsControl | undefined
+  - name: _onDidEnablementChange
+    type: any
+    default: this._disposables.add(new Emitter<void>())
+  - name: _onDidVisibilityChange
+    type: any
+    default: this._disposables.add(new Emitter<void>())
+  methods:
+  - name: control
+    sig: control()
+    lines:
+    - 595
+    - 595
+    detail: {}
+  - name: onDidEnablementChange
+    sig: onDidEnablementChange()
+    lines:
+    - 598
+    - 598
+    detail: {}
+  - name: onDidVisibilityChange
+    sig: onDidVisibilityChange()
+    lines:
+    - 601
+    - 601
+    detail: {}
+  - name: constructor
+    sig: "constructor(\n\t\tprivate readonly _container: HTMLElement,\n\t\tprivate readonly _editorGroup: IEditorGroupView,\n\t\tprivate readonly _options: IBreadcrumbsControlOptions,\n\t\t@IConfigurationService configurationService: IConfigurationService,\n\t\t@IInstantiationService private readonly _instantiationService: IInstantiationService,\n\t\t@IFileService fileService: IFileService\n\t)"
+    lines:
+    - 603
+    - 638
+    detail:
+      calls:
+      - BreadcrumbsConfig.IsEnabled.bindTo
+      - config.getValue
+      - config.onDidChange
+      - fileService.onDidChangeFileSystemProviderRegistrations
+      - this._disposables.add
+      - this.createControl
+  - name: createControl
+    sig: 'createControl(): BreadcrumbsControl'
+    vis: private
+    lines:
+    - 640
+    - 645
+    detail:
+      calls:
+      - control.onDidVisibilityChange
+      - this._controlDisposables.add
+      - this._instantiationService.createInstance
+  - name: dispose
+    sig: 'dispose(): void'
+    lines:
+    - 647
+    - 650
+    detail:
+      calls:
+      - this._controlDisposables.dispose
+      - this._disposables.dispose
+  lines:
+  - 589
+  - 651
+functions:
+- name: createBreadcrumbDndObserver
+  sig: 'createBreadcrumbDndObserver(accessor: ServicesAccessor, container: HTMLElement, label: string, item: URI | { symbol: DocumentSymbol; uri: URI }, model: BreadcrumbsModel, dragEditor: boolean): IDisposable'
+  lines:
+  - 159
+  - 196
+  detail:
+    calls:
+    - accessor.get
+    - new dom.DragAndDropObserver
+- name: focusAndSelectHandler
+  sig: 'focusAndSelectHandler(accessor: ServicesAccessor, select: boolean): void'
+  lines:
+  - 691
+  - 703
+  detail:
+    calls:
+    - accessor.get
+    - breadcrumbs.getWidget
+    - widget.getItems
+    - widget.getItems().at
+    - widget.setFocused
+    - widget.setSelection
+exports:
+- name: OutlineItem
+  kind: type
+- name: FileItem
+  kind: type
+- name: IBreadcrumbsControlOptions
+  kind: type
+- name: BreadcrumbsControl
+  kind: type
+- name: BreadcrumbsControlFactory
+  kind: type
+- name: createBreadcrumbDndObserver
+  kind: func
+- name: focusAndSelectHandler
+  kind: func
+- name: separatorIcon
+  kind: data

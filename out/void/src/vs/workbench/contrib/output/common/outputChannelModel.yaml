@@ -1,0 +1,838 @@
+## Roska File Descriptor — common/outputChannelModel.ts
+file: common/outputChannelModel.ts
+lines: 846
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: ../../../../platform/instantiation/common/instantiation.js.IInstantiationService
+- sym: ../../../../base/common/resources.js.resources
+- sym: ../../../../editor/common/model.js.ITextModel
+- sym: ../../../../editor/common/services/editorWorker.js.IEditorWorkerService
+- sym: ../../../../base/common/event.js.Emitter
+- sym: ../../../../base/common/event.js.Event
+- sym: ../../../../base/common/uri.js.URI
+- sym: ../../../../base/common/async.js.Promises
+- sym: ../../../../base/common/async.js.ThrottledDelayer
+- sym: ../../../../platform/files/common/files.js.FileOperationResult
+- sym: ../../../../platform/files/common/files.js.IFileService
+- sym: ../../../../platform/files/common/files.js.toFileOperationResult
+- sym: ../../../../editor/common/services/model.js.IModelService
+- sym: ../../../../editor/common/languages/language.js.ILanguageSelection
+- sym: ../../../../base/common/lifecycle.js.Disposable
+- sym: ../../../../base/common/lifecycle.js.toDisposable
+- sym: ../../../../base/common/lifecycle.js.IDisposable
+- sym: ../../../../base/common/lifecycle.js.MutableDisposable
+- sym: ../../../../base/common/lifecycle.js.DisposableStore
+- sym: ../../../../base/common/types.js.isNumber
+- sym: ../../../../editor/common/core/editOperation.js.EditOperation
+- sym: ../../../../editor/common/core/editOperation.js.ISingleEditOperation
+- sym: ../../../../editor/common/core/position.js.Position
+- sym: ../../../../editor/common/core/range.js.Range
+- sym: ../../../../base/common/buffer.js.VSBuffer
+- sym: ../../../../platform/log/common/log.js.ILogger
+- sym: ../../../../platform/log/common/log.js.ILoggerService
+- sym: ../../../../platform/log/common/log.js.ILogService
+- sym: ../../../../platform/log/common/log.js.LogLevel
+- sym: ../../../../base/common/cancellation.js.CancellationToken
+- sym: ../../../../base/common/cancellation.js.CancellationTokenSource
+- sym: ../../../services/output/common/output.js.ILogEntry
+- sym: ../../../services/output/common/output.js.IOutputContentSource
+- sym: ../../../services/output/common/output.js.LOG_MIME
+- sym: ../../../services/output/common/output.js.OutputChannelUpdateMode
+- sym: ../../../../base/common/errors.js.isCancellationError
+- sym: ../../../../editor/common/model/textModel.js.TextModel
+- sym: ../../../../base/common/arrays.js.binarySearch
+- sym: ../../../../base/common/arrays.js.sortedDiff
+data:
+- name: LOG_ENTRY_REGEX
+  type: any
+  val: /^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3})\s(\[(info|trace|debug|error|warning)\])\s(\[(.*?)\])?/
+types:
+- name: IOutputChannelModel
+  kind: trait
+  bases:
+  - IDisposable
+  decorators:
+  - interface
+  fields:
+  - name: readonly
+    type: Event<void>
+  - name: readonly
+    type: IOutputContentSource | ReadonlyArray<IOutputContentSource>
+  - name: getLogEntries
+    type: 'method: getLogEntries(): ReadonlyArray<ILogEntry>'
+  - name: append
+    type: 'method: append(output: string): void'
+  - name: update
+    type: 'method: update(mode: OutputChannelUpdateMode, till: number | undefined, immediate: boolean): void'
+  - name: updateChannelSources
+    type: 'method: updateChannelSources(sources: ReadonlyArray<IOutputContentSource>): void'
+  - name: loadModel
+    type: 'method: loadModel(): Promise<ITextModel>'
+  - name: clear
+    type: 'method: clear(): void'
+  - name: replace
+    type: 'method: replace(value: string): void'
+  lines:
+  - 94
+  - 104
+- name: IContentProvider
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: readonly
+    type: Event<void>
+  - name: readonly
+    type: Event<void>
+  - name: reset
+    type: 'method: reset(): void'
+  - name: watch
+    type: 'method: watch(): void'
+  - name: unwatch
+    type: 'method: unwatch(): void'
+  - name: getContent
+    type: 'method: getContent(): Promise<{ readonly content: string; readonly consume: () => void }>'
+  - name: getLogEntries
+    type: 'method: getLogEntries(): ReadonlyArray<ILogEntry>'
+  lines:
+  - 106
+  - 114
+- name: FileContentProvider
+  kind: struct
+  bases:
+  - Disposable
+  - IContentProvider
+  fields:
+  - name: _onDidAppend
+    type: any
+    default: new Emitter<void>()
+  - name: onDidAppend
+    type: any
+    default: this._onDidAppend.event
+  - name: _onDidReset
+    type: any
+    default: new Emitter<void>()
+  - name: onDidReset
+    type: any
+    default: this._onDidReset.event
+  - name: watching
+    type: boolean
+    default: 'false'
+  - name: syncDelayer
+    type: ThrottledDelayer<void>
+  - name: etag
+    type: string | undefined
+    default: ''''''
+  - name: logEntries
+    type: ILogEntry[]
+    default: '[]'
+  - name: startOffset
+    type: number
+    default: '0'
+  - name: endOffset
+    type: number
+    default: '0'
+  - name: resource
+    type: URI
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\t{ name, resource }: IOutputContentSource,\n\t\t@IFileService private readonly fileService: IFileService,\n\t\t@IInstantiationService private readonly instantiationService: IInstantiationService,\n\t\t@ILogService private readonly logService: ILogService,\n\t)"
+    lines:
+    - 135
+    - 147
+    detail:
+      calls:
+      - new ThrottledDelayer
+      - super
+      - this._register
+      - toDisposable
+  - name: reset
+    sig: 'reset(offset?: number): void'
+    lines:
+    - 149
+    - 152
+    detail: {}
+  - name: resetToEnd
+    sig: 'resetToEnd(): void'
+    lines:
+    - 154
+    - 157
+    detail: {}
+  - name: watch
+    sig: 'watch(): void'
+    lines:
+    - 159
+    - 165
+    detail:
+      calls:
+      - this.logService.trace
+      - this.poll
+      - this.resource.toString
+  - name: unwatch
+    sig: 'unwatch(): void'
+    lines:
+    - 167
+    - 173
+    detail:
+      calls:
+      - this.logService.trace
+      - this.resource.toString
+      - this.syncDelayer.cancel
+  - name: doWatch
+    sig: 'doWatch(): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 184
+    - 204
+    detail:
+      calls:
+      - isNumber
+      - this._onDidAppend.fire
+      - this._onDidReset.fire
+      - this.fileService.hasProvider
+      - this.fileService.stat
+      - this.reset
+      - toFileOperationResult
+  - name: getLogEntries
+    sig: 'getLogEntries(): ReadonlyArray<ILogEntry>'
+    lines:
+    - 206
+    - 208
+    detail: {}
+  - name: getContent
+    sig: 'getContent(donotConsumeLogEntries?: boolean): Promise<{ readonly name: string; readonly content: string; readonly consume: () => void }>'
+    is_async: true
+    lines:
+    - 210
+    - 245
+    detail:
+      calls:
+      - fileContent.value.toString
+      - this.fileService.hasProvider
+      - this.fileService.readFile
+      - this.parseLogEntries
+      - toFileOperationResult
+  - name: parseLogEntries
+    sig: 'parseLogEntries(content: string, lastLogEntry: ILogEntry | undefined): ILogEntry[]'
+    vis: private
+    lines:
+    - 247
+    - 263
+    detail:
+      calls:
+      - logEntries.push
+      - logEntryIterator
+      - model.dispose
+      - parseLogEntryAt
+      - this.instantiationService.createInstance
+  lines:
+  - 116
+  - 264
+- name: MultiFileContentProvider
+  kind: struct
+  bases:
+  - Disposable
+  - IContentProvider
+  fields:
+  - name: _onDidAppend
+    type: any
+    default: this._register(new Emitter<void>())
+  - name: onDidAppend
+    type: any
+    default: this._onDidAppend.event
+  - name: onDidReset
+    type: any
+    default: Event.None
+  - name: logEntries
+    type: ILogEntry[]
+    default: '[]'
+  - name: fileContentProviderItems
+    type: '[FileContentProvider, DisposableStore][]'
+    default: '[]'
+  - name: watching
+    type: boolean
+    default: 'false'
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tfilesInfos: IOutputContentSource[],\n\t\t@IInstantiationService private readonly instantiationService: IInstantiationService,\n\t\t@IFileService private readonly fileService: IFileService,\n\t\t@ILogService private readonly logService: ILogService,\n\t)"
+    lines:
+    - 277
+    - 292
+    detail:
+      calls:
+      - super
+      - this._register
+      - this.createFileContentProvider
+      - this.fileContentProviderItems.push
+      - toDisposable
+  - name: watch
+    sig: 'watch(): void'
+    lines:
+    - 301
+    - 308
+    detail:
+      calls:
+      - output.watch
+  - name: unwatch
+    sig: 'unwatch(): void'
+    lines:
+    - 310
+    - 317
+    detail:
+      calls:
+      - output.unwatch
+  - name: updateFiles
+    sig: 'updateFiles(files: IOutputContentSource[]): void'
+    lines:
+    - 319
+    - 337
+    detail:
+      calls:
+      - disposables.dispose
+      - sortedDiff
+      - this.fileContentProviderItems.map
+      - this.fileContentProviderItems.splice
+      - this.unwatch
+      - this.watch
+      - toInsert.map
+  - name: reset
+    sig: 'reset(): void'
+    lines:
+    - 339
+    - 344
+    detail:
+      calls:
+      - output.reset
+  - name: resetToEnd
+    sig: 'resetToEnd(): void'
+    lines:
+    - 346
+    - 351
+    detail:
+      calls:
+      - output.resetToEnd
+  - name: getLogEntries
+    sig: 'getLogEntries(): ReadonlyArray<ILogEntry>'
+    lines:
+    - 353
+    - 355
+    detail: {}
+  - name: getContent
+    sig: 'getContent(): Promise<{ readonly content: string; readonly consume: () => void }>'
+    is_async: true
+    lines:
+    - 357
+    - 371
+    detail:
+      calls:
+      - Promise.all
+      - this.combineLogEntries
+      - this.fileContentProviderItems.map
+  - name: combineLogEntries
+    sig: 'combineLogEntries(outputs: { content: string; name: string }[], lastEntry: ILogEntry | undefined): { logEntries: ILogEntry[]; content: string }'
+    vis: private
+    lines:
+    - 373
+    - 462
+    detail:
+      calls:
+      - binarySearch
+      - changeStartLineNumber
+      - contents.push
+      - contents.splice
+      - contentsToAdd.push
+      - iterator.next
+      - logEntries.push
+      - logEntries.splice
+      - logEntriesToAdd.push
+      - logEntryIterator
+      - model.dispose
+      - outputs.filter
+      - this.instantiationService.createInstance
+      - updatedLogEntries.push
+  lines:
+  - 266
+  - 464
+- name: AbstractFileOutputChannelModel
+  kind: trait
+  bases:
+  - Disposable
+  - IOutputChannelModel
+  decorators:
+  - abstract
+  fields:
+  - name: _onDispose
+    type: any
+    default: this._register(new Emitter<void>())
+  - name: onDispose
+    type: Event<void>
+    default: this._onDispose.event
+  - name: loadModelPromise
+    type: Promise<ITextModel> | null
+    default: 'null'
+  - name: modelDisposable
+    type: any
+    default: this._register(new MutableDisposable<DisposableStore>())
+  - name: model
+    type: ITextModel | null
+    default: 'null'
+  - name: modelUpdateInProgress
+    type: boolean
+    default: 'false'
+  - name: modelUpdateCancellationSource
+    type: any
+    default: this._register(new MutableDisposable<CancellationTokenSource>())
+  - name: appendThrottler
+    type: any
+    default: this._register(new ThrottledDelayer(300))
+  - name: replacePromise
+    type: Promise<void> | undefined
+  - name: source
+    type: IOutputContentSource | ReadonlyArray<IOutputContentSource>
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tprivate readonly modelUri: URI,\n\t\tprivate readonly language: ILanguageSelection,\n\t\tprivate readonly outputContentProvider: IContentProvider,\n\t\t@IModelService protected readonly modelService: IModelService,\n\t\t@IEditorWorkerService private readonly editorWorkerService: IEditorWorkerService,\n\t)"
+    lines:
+    - 482
+    - 490
+    detail:
+      calls:
+      - super
+  - name: loadModel
+    sig: 'loadModel(): Promise<ITextModel>'
+    is_async: true
+    lines:
+    - 492
+    - 516
+    detail:
+      calls:
+      - Promises.withAsyncBody
+  - name: getLogEntries
+    sig: 'getLogEntries(): readonly ILogEntry[]'
+    lines:
+    - 518
+    - 520
+    detail:
+      calls:
+      - this.outputContentProvider.getLogEntries
+  - name: doUpdate
+    sig: 'doUpdate(mode: OutputChannelUpdateMode, immediate: boolean): void'
+    vis: protected
+    lines:
+    - 529
+    - 554
+    detail:
+      calls:
+      - new CancellationTokenSource
+      - this.appendContent
+      - this.cancelModelUpdate
+      - this.clearContent
+      - this.replaceContent
+      - this.replaceContent(this.model, token).finally
+  - name: clearContent
+    sig: 'clearContent(model: ITextModel): void'
+    vis: private
+    lines:
+    - 556
+    - 559
+    detail:
+      calls:
+      - EditOperation.delete
+      - model.applyEdits
+      - model.getFullModelRange
+  - name: appendContent
+    sig: 'appendContent(model: ITextModel, immediate: boolean, token: CancellationToken): void'
+    vis: private
+    lines:
+    - 561
+    - 593
+    detail:
+      calls:
+      - this.appendThrottler.trigger
+      - "this.appendThrottler.trigger(async () => {\n\t\t\t/* Abort if operation is cancelled */\n\t\t\tif (token.isC..."
+  - name: doAppendContent
+    sig: 'doAppendContent(model: ITextModel, content: string): void'
+    vis: private
+    lines:
+    - 595
+    - 599
+    detail:
+      calls:
+      - EditOperation.insert
+      - model.applyEdits
+      - model.getLineCount
+      - model.getLineMaxColumn
+      - new Position
+  - name: replaceContent
+    sig: 'replaceContent(model: ITextModel, token: CancellationToken): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 601
+    - 622
+    detail:
+      calls:
+      - consume
+      - content.toString
+      - model.applyEdits
+      - this.getReplaceEdits
+      - this.outputContentProvider.getContent
+  - name: getReplaceEdits
+    sig: 'getReplaceEdits(model: ITextModel, contentToReplace: string): Promise<ISingleEditOperation[]>'
+    is_async: true
+    vis: private
+    lines:
+    - 624
+    - 635
+    detail:
+      calls:
+      - EditOperation.delete
+      - contentToReplace.toString
+      - edits.map
+      - model.getFullModelRange
+      - model.getValue
+      - this.editorWorkerService.computeMoreMinimalEdits
+  - name: dispose
+    sig: 'dispose(): void'
+    lines:
+    - 649
+    - 652
+    detail:
+      calls:
+      - super.dispose
+      - this._onDispose.fire
+  - name: append
+    sig: 'append(message: string): void'
+    lines:
+    - 654
+    - 654
+    detail:
+      calls:
+      - new Error
+  - name: replace
+    sig: 'replace(message: string): void'
+    lines:
+    - 655
+    - 655
+    detail:
+      calls:
+      - new Error
+  lines:
+  - 466
+  - 660
+- name: FileOutputChannelModel
+  kind: model
+  bases:
+  - AbstractFileOutputChannelModel
+  - IOutputChannelModel
+  fields:
+  - name: fileOutput
+    type: FileContentProvider
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tmodelUri: URI,\n\t\tlanguage: ILanguageSelection,\n\t\treadonly source: IOutputContentSource,\n\t\t@IFileService fileService: IFileService,\n\t\t@IModelService modelService: IModelService,\n\t\t@IInstantiationService instantiationService: IInstantiationService,\n\t\t@ILogService logService: ILogService,\n\t\t@IEditorWorkerService editorWorkerService: IEditorWorkerService,\n\t)"
+    lines:
+    - 666
+    - 679
+    detail:
+      calls:
+      - new FileContentProvider
+      - super
+      - this._register
+  - name: clear
+    sig: 'clear(): void'
+    lines:
+    - 681
+    - 683
+    detail:
+      calls:
+      - this.update
+  - name: update
+    sig: 'update(mode: OutputChannelUpdateMode, till: number | undefined, immediate: boolean): void'
+    lines:
+    - 685
+    - 697
+    detail:
+      calls:
+      - Promise.resolve
+      - loadModelPromise.then
+  - name: updateChannelSources
+    sig: 'updateChannelSources(files: IOutputContentSource[]): void'
+    lines:
+    - 699
+    - 699
+    detail:
+      calls:
+      - new Error
+  lines:
+  - 662
+  - 700
+- name: MultiFileOutputChannelModel
+  kind: model
+  bases:
+  - AbstractFileOutputChannelModel
+  - IOutputChannelModel
+  fields:
+  - name: multifileOutput
+    type: MultiFileContentProvider
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tmodelUri: URI,\n\t\tlanguage: ILanguageSelection,\n\t\treadonly source: IOutputContentSource[],\n\t\t@IFileService fileService: IFileService,\n\t\t@IModelService modelService: IModelService,\n\t\t@ILogService logService: ILogService,\n\t\t@IEditorWorkerService editorWorkerService: IEditorWorkerService,\n\t\t@IInstantiationService instantiationService: IInstantiationService,\n\t)"
+    lines:
+    - 706
+    - 719
+    detail:
+      calls:
+      - new MultiFileContentProvider
+      - super
+      - this._register
+  - name: updateChannelSources
+    sig: 'updateChannelSources(files: IOutputContentSource[]): void'
+    lines:
+    - 721
+    - 729
+    detail:
+      calls:
+      - this.doUpdate
+      - this.isVisible
+      - this.multifileOutput.reset
+      - this.multifileOutput.unwatch
+      - this.multifileOutput.updateFiles
+      - this.multifileOutput.watch
+  - name: clear
+    sig: 'clear(): void'
+    lines:
+    - 731
+    - 737
+    detail:
+      calls:
+      - Promise.resolve
+      - loadModelPromise.then
+  - name: update
+    sig: 'update(mode: OutputChannelUpdateMode, till: number | undefined, immediate: boolean): void'
+    lines:
+    - 739
+    - 739
+    detail:
+      calls:
+      - new Error
+  lines:
+  - 702
+  - 740
+- name: OutputChannelBackedByFile
+  kind: model
+  bases:
+  - FileOutputChannelModel
+  - IOutputChannelModel
+  fields:
+  - name: logger
+    type: ILogger
+  - name: _offset
+    type: number
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tid: string,\n\t\tmodelUri: URI,\n\t\tlanguage: ILanguageSelection,\n\t\tfile: URI,\n\t\t@IFileService fileService: IFileService,\n\t\t@IModelService modelService: IModelService,\n\t\t@ILoggerService loggerService: ILoggerService,\n\t\t@IInstantiationService instantiationService: IInstantiationService,\n\t\t@ILogService logService: ILogService,\n\t\t@IEditorWorkerService editorWorkerService: IEditorWorkerService\n\t)"
+    lines:
+    - 747
+    - 764
+    detail:
+      calls:
+      - loggerService.createLogger
+      - super
+  - name: append
+    sig: 'append(message: string): void'
+    lines:
+    - 766
+    - 769
+    detail:
+      calls:
+      - this.isVisible
+      - this.update
+      - this.write
+  - name: replace
+    sig: 'replace(message: string): void'
+    lines:
+    - 771
+    - 775
+    detail:
+      calls:
+      - this.update
+      - this.write
+  - name: write
+    sig: 'write(content: string): void'
+    vis: private
+    lines:
+    - 777
+    - 783
+    detail:
+      calls:
+      - VSBuffer.fromString
+      - this.isVisible
+      - this.logger.flush
+      - this.logger.info
+  lines:
+  - 742
+  - 785
+- name: DelegatedOutputChannelModel
+  kind: model
+  bases:
+  - Disposable
+  - IOutputChannelModel
+  fields:
+  - name: _onDispose
+    type: Emitter<void>
+    default: this._register(new Emitter<void>())
+  - name: onDispose
+    type: Event<void>
+    default: this._onDispose.event
+  - name: outputChannelModel
+    type: Promise<IOutputChannelModel>
+  - name: source
+    type: IOutputContentSource
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tid: string,\n\t\tmodelUri: URI,\n\t\tlanguage: ILanguageSelection,\n\t\toutputDir: URI,\n\t\toutputDirCreationPromise: Promise<void>,\n\t\t@IInstantiationService private readonly instantiationService: IInstantiationService,\n\t\t@IFileService private readonly fileService: IFileService,\n\t)"
+    lines:
+    - 795
+    - 808
+    detail:
+      calls:
+      - id.replace
+      - resources.joinPath
+      - super
+      - this.createOutputChannelModel
+  - name: createOutputChannelModel
+    sig: 'createOutputChannelModel(id: string, modelUri: URI, language: ILanguageSelection, outputDir: URI, outputDirPromise: Promise<void>): Promise<IOutputChannelModel>'
+    is_async: true
+    vis: private
+    lines:
+    - 810
+    - 817
+    detail:
+      calls:
+      - id.replace
+      - outputChannelModel.onDispose
+      - resources.joinPath
+      - this._register
+      - this.fileService.createFile
+      - this.instantiationService.createInstance
+  - name: getLogEntries
+    sig: 'getLogEntries(): readonly ILogEntry[]'
+    lines:
+    - 819
+    - 821
+    detail: {}
+  - name: append
+    sig: 'append(output: string): void'
+    lines:
+    - 823
+    - 825
+    detail:
+      calls:
+      - this.outputChannelModel.then
+  - name: update
+    sig: 'update(mode: OutputChannelUpdateMode, till: number | undefined, immediate: boolean): void'
+    lines:
+    - 827
+    - 829
+    detail:
+      calls:
+      - this.outputChannelModel.then
+  - name: loadModel
+    sig: 'loadModel(): Promise<ITextModel>'
+    lines:
+    - 831
+    - 833
+    detail:
+      calls:
+      - this.outputChannelModel.then
+  - name: clear
+    sig: 'clear(): void'
+    lines:
+    - 835
+    - 837
+    detail:
+      calls:
+      - this.outputChannelModel.then
+  - name: replace
+    sig: 'replace(value: string): void'
+    lines:
+    - 839
+    - 841
+    detail:
+      calls:
+      - this.outputChannelModel.then
+  - name: updateChannelSources
+    sig: 'updateChannelSources(files: IOutputContentSource[]): void'
+    lines:
+    - 843
+    - 845
+    detail:
+      calls:
+      - this.outputChannelModel.then
+  lines:
+  - 787
+  - 846
+functions:
+- name: parseLogEntryAt
+  sig: 'parseLogEntryAt(model: ITextModel, lineNumber: number): ILogEntry | null'
+  lines:
+  - 31
+  - 56
+  detail:
+    calls:
+    - LOG_ENTRY_REGEX.exec
+    - LOG_ENTRY_REGEX.test
+    - model.getLineContent
+    - model.getLineCount
+    - model.getLineMaxColumn
+    - new Date
+    - new Date(match[1]).getTime
+    - new Range
+    - parseLogLevel
+- name: changeStartLineNumber
+  sig: 'changeStartLineNumber(logEntry: ILogEntry, lineNumber: number): ILogEntry'
+  lines:
+  - 68
+  - 75
+  detail:
+    calls:
+    - new Range
+- name: parseLogLevel
+  sig: 'parseLogLevel(level: string): LogLevel'
+  lines:
+  - 77
+  - 92
+  detail:
+    calls:
+    - level.toLowerCase
+    - new Error
+exports:
+- name: IOutputChannelModel
+  kind: type
+- name: IContentProvider
+  kind: type
+- name: FileContentProvider
+  kind: type
+- name: MultiFileContentProvider
+  kind: type
+- name: AbstractFileOutputChannelModel
+  kind: type
+- name: FileOutputChannelModel
+  kind: type
+- name: MultiFileOutputChannelModel
+  kind: type
+- name: OutputChannelBackedByFile
+  kind: type
+- name: DelegatedOutputChannelModel
+  kind: type
+- name: parseLogEntryAt
+  kind: func
+- name: changeStartLineNumber
+  kind: func
+- name: parseLogLevel
+  kind: func
+- name: LOG_ENTRY_REGEX
+  kind: data

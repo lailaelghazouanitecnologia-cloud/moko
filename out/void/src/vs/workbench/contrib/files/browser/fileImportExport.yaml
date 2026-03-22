@@ -1,0 +1,516 @@
+## Roska File Descriptor — browser/fileImportExport.ts
+file: browser/fileImportExport.ts
+lines: 878
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: ../../../../nls.js.localize
+- sym: ../../../../base/common/cancellation.js.CancellationToken
+- sym: ../../../../base/common/cancellation.js.CancellationTokenSource
+- sym: ../../../../platform/dialogs/common/dialogs.js.getFileNamesMessage
+- sym: ../../../../platform/dialogs/common/dialogs.js.IConfirmation
+- sym: ../../../../platform/dialogs/common/dialogs.js.IDialogService
+- sym: ../../../../platform/dialogs/common/dialogs.js.IFileDialogService
+- sym: ../../../../platform/dialogs/common/dialogs.js.IPromptButton
+- sym: ../../../../platform/files/common/files.js.ByteSize
+- sym: ../../../../platform/files/common/files.js.FileSystemProviderCapabilities
+- sym: ../../../../platform/files/common/files.js.IFileService
+- sym: ../../../../platform/files/common/files.js.IFileStatWithMetadata
+- sym: ../../../../platform/notification/common/notification.js.INotificationService
+- sym: ../../../../platform/notification/common/notification.js.Severity
+- sym: ../../../../platform/progress/common/progress.js.IProgress
+- sym: ../../../../platform/progress/common/progress.js.IProgressService
+- sym: ../../../../platform/progress/common/progress.js.IProgressStep
+- sym: ../../../../platform/progress/common/progress.js.ProgressLocation
+- sym: ./files.js.IExplorerService
+- sym: ../common/files.js.IFilesConfiguration
+- sym: ../common/files.js.UndoConfirmLevel
+- sym: ../common/files.js.VIEW_ID
+- sym: ../../../services/editor/common/editorService.js.IEditorService
+- sym: ../../../../base/common/async.js.Limiter
+- sym: ../../../../base/common/async.js.Promises
+- sym: ../../../../base/common/async.js.RunOnceWorker
+- sym: ../../../../base/common/buffer.js.newWriteableBufferStream
+- sym: ../../../../base/common/buffer.js.VSBuffer
+- sym: ../../../../base/common/resources.js.basename
+- sym: ../../../../base/common/resources.js.dirname
+- sym: ../../../../base/common/resources.js.joinPath
+- sym: ../../../../editor/browser/services/bulkEditService.js.ResourceFileEdit
+- sym: ../common/explorerModel.js.ExplorerItem
+- sym: ../../../../base/common/uri.js.URI
+- sym: ../../../services/host/browser/host.js.IHostService
+- sym: ../../../../platform/workspace/common/workspace.js.IWorkspaceContextService
+- sym: ../../../../platform/dnd/browser/dnd.js.extractEditorsAndFilesDropData
+- sym: ../../../services/workspaces/common/workspaceEditing.js.IWorkspaceEditingService
+- sym: ../../../../base/common/platform.js.isWeb
+- sym: ../../../../base/browser/dom.js.getActiveWindow
+- sym: ../../../../base/browser/dom.js.isDragEvent
+- sym: ../../../../base/browser/dom.js.triggerDownload
+- sym: ../../../../platform/log/common/log.js.ILogService
+- sym: ../../../../base/common/network.js.FileAccess
+- sym: ../../../../base/common/network.js.Schemas
+- sym: ../../../../base/common/stream.js.listenStream
+- sym: ../../../../base/common/lifecycle.js.DisposableStore
+- sym: ../../../../base/common/lifecycle.js.toDisposable
+- sym: ../../../../base/common/functional.js.createSingleCallFunction
+- sym: ../../../../base/common/arrays.js.coalesce
+- sym: ../../../../base/common/errors.js.canceled
+- sym: ../../../../platform/configuration/common/configuration.js.IConfigurationService
+- sym: ../../../../platform/files/browser/webFileSystemAccess.js.WebFileSystemAccess
+- sym: ../../../../platform/instantiation/common/instantiation.js.IInstantiationService
+- sym: ../../../../platform/storage/common/storage.js.IStorageService
+- sym: ../../../../platform/storage/common/storage.js.StorageScope
+- sym: ../../../../platform/storage/common/storage.js.StorageTarget
+types:
+- name: IBrowserUploadOperation
+  kind: trait
+  ctx: '#region Browser File Upload (drag and drop, input element)'
+  decorators:
+  - interface
+  fields:
+  - name: startTime
+    type: number
+  - name: progressScheduler
+    type: RunOnceWorker<IProgressStep>
+  - name: filesTotal
+    type: number
+  - name: filesUploaded
+    type: number
+  - name: totalBytesUploaded
+    type: number
+  lines:
+  - 41
+  - 49
+- name: IWebkitDataTransfer
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: items
+    type: IWebkitDataTransferItem[]
+  lines:
+  - 51
+  - 53
+- name: IWebkitDataTransferItem
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: webkitGetAsEntry
+    type: 'method: webkitGetAsEntry(): IWebkitDataTransferItemEntry'
+  lines:
+  - 55
+  - 57
+- name: IWebkitDataTransferItemEntry
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: name
+    type: string | undefined
+  - name: isFile
+    type: boolean
+  - name: isDirectory
+    type: boolean
+  - name: file
+    type: 'method: file(resolve: (file: File) => void, reject: () => void): void'
+  - name: createReader
+    type: 'method: createReader(): IWebkitDataTransferItemEntryReader'
+  lines:
+  - 59
+  - 66
+- name: IWebkitDataTransferItemEntryReader
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: readEntries
+    type: 'method: readEntries(resolve: (file: IWebkitDataTransferItemEntry[]) => void, reject: () => void): void'
+  lines:
+  - 68
+  - 70
+- name: BrowserFileUpload
+  kind: struct
+  fields:
+  - name: MAX_PARALLEL_UPLOADS
+    type: any
+    default: '20'
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\t@IProgressService private readonly progressService: IProgressService,\n\t\t@IDialogService private readonly dialogService: IDialogService,\n\t\t@IExplorerService private readonly explorerService: IExplorerService,\n\t\t@IEditorService private readonly editorService: IEditorService,\n\t\t@IFileService private readonly fileService: IFileService\n\t)"
+    lines:
+    - 76
+    - 83
+    detail: {}
+  - name: upload
+    sig: 'upload(target: ExplorerItem, source: DragEvent | FileList): Promise<void>'
+    lines:
+    - 85
+    - 104
+    detail:
+      calls:
+      - localize
+      - new CancellationTokenSource
+      - this.progressService.withProgress
+  - name: toTransfer
+    sig: 'toTransfer(source: DragEvent | FileList): IWebkitDataTransfer'
+    vis: private
+    lines:
+    - 106
+    - 132
+    detail:
+      calls:
+      - isDragEvent
+      - transfer.items.push
+  - name: doUpload
+    sig: 'doUpload(target: ExplorerItem, source: IWebkitDataTransfer, progress: IProgress<IProgressStep>, token: CancellationToken): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 134
+    - 197
+    detail:
+      calls:
+      - Date.now
+      - Promises.settled
+      - entries.map
+      - entries.push
+      - item.webkitGetAsEntry
+      - new Limiter
+      - new RunOnceWorker
+      - operation.progressScheduler.dispose
+      - this.editorService.openEditor
+  - name: doUploadEntry
+    sig: 'doUploadEntry(entry: IWebkitDataTransferItemEntry, parentResource: URI, target: ExplorerItem | undefined, progress: IProgress<IProgressStep>, operation: IBrowserUploadOperation, token: CancellationToken): Promise<{ isFile: boolean; resource: URI } | undefined>'
+    is_async: true
+    vis: private
+    lines:
+    - 199
+    - 307
+    detail:
+      calls:
+      - Promises.settled
+      - childEntries.push
+      - entry.createReader
+      - fileChildEntries.map
+      - fileChildEntries.push
+      - folderChildEntries.push
+      - joinPath
+      - new Limiter
+      - new Promise
+      - reportProgress
+      - target.getChild
+      - this.doUploadEntry
+      - this.doUploadFileBuffered
+      - this.doUploadFileUnbuffered
+      - this.fileService.createFolder
+  - name: doUploadFileBuffered
+    sig: 'doUploadFileBuffered(resource: URI, file: File, progressReporter: (fileSize: number, bytesUploaded: number) => void, token: CancellationToken): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 309
+    - 354
+    detail:
+      calls:
+      - VSBuffer.wrap
+      - file.stream
+      - file.stream().getReader
+      - newWriteableBufferStream
+      - progressReporter
+      - reader.read
+      - this.fileService.writeFile
+      - writeableStream.end
+      - writeableStream.error
+      - writeableStream.write
+  lines:
+  - 72
+  - 381
+- name: ExternalFileImport
+  kind: struct
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\t@IFileService private readonly fileService: IFileService,\n\t\t@IHostService private readonly hostService: IHostService,\n\t\t@IWorkspaceContextService private readonly contextService: IWorkspaceContextService,\n\t\t@IConfigurationService private readonly configurationService: IConfigurationService,\n\t\t@IDialogService private readonly dialogService: IDialogService,\n\t\t@IWorkspaceEditingService private readonly workspaceEditingService: IWorkspaceEditingService,\n\t\t@IExplorerService private readonly explorerService: IExplorerService,\n\t\t@IEditorService private readonly editorService: IEditorService,\n\t\t@IProgressService private readonly progressService: IProgressService,\n\t\t@INotificationService private readonly notificationService: INotificationService,\n\t\t@IInstantiationService private readonly instantiationService: IInstantiationService\n\t)"
+    lines:
+    - 389
+    - 402
+    detail: {}
+  - name: import
+    sig: 'import(target: ExplorerItem, source: DragEvent, targetWindow: Window): Promise<void>'
+    is_async: true
+    lines:
+    - 404
+    - 423
+    detail:
+      calls:
+      - localize
+      - new CancellationTokenSource
+      - this.progressService.withProgress
+  - name: doImport
+    sig: 'doImport(target: ExplorerItem, source: DragEvent, targetWindow: Window, token: CancellationToken): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 425
+    - 501
+    detail:
+      calls:
+      - (await this.instantiationService.invokeFunction(accessor => extractEditorsAndFilesDropData(accessor,...
+      - Promise.all
+      - basename
+      - buttons.unshift
+      - candidateFiles.filter
+      - candidateFiles.map
+      - coalesce
+      - files.map
+      - folders.some
+      - localize
+      - resolvedFiles.filter
+      - resolvedFiles.filter(resolvedFile => resolvedFile.success && resolvedFile.stat?.isDirectory).map
+      - this.contextService.getWorkspace
+      - this.contextService.getWorkspace().folders.map
+      - this.dialogService.prompt
+      - this.fileService.resolveAll
+      - this.hostService.focus
+      - this.importResources
+      - this.instantiationService.invokeFunction
+      - this.workspaceEditingService.addFolders
+  - name: importResources
+    sig: 'importResources(target: ExplorerItem, resources: URI[], token: CancellationToken): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 503
+    - 574
+    detail:
+      calls:
+      - Promises.settled
+      - basename
+      - coalesce
+      - localize
+      - new Set
+      - resources.map
+      - resourcesFiltered.map
+      - targetStat.children.forEach
+      - this.configurationService.getValue
+      - this.editorService.openEditor
+      - this.explorerService.applyBulkEdit
+      - this.explorerService.findClosest
+      - this.fileService.hasCapability
+      - this.fileService.resolve
+      - this.notificationService.error
+  lines:
+  - 387
+  - 575
+- name: IDownloadOperation
+  kind: trait
+  ctx: '#region Download (web, native)'
+  decorators:
+  - interface
+  fields:
+  - name: startTime
+    type: number
+  - name: progressScheduler
+    type: RunOnceWorker<IProgressStep>
+  - name: filesTotal
+    type: number
+  - name: filesDownloaded
+    type: number
+  - name: totalBytesDownloaded
+    type: number
+  - name: fileBytesDownloaded
+    type: number
+  lines:
+  - 581
+  - 590
+- name: FileDownload
+  kind: struct
+  fields:
+  - name: LAST_USED_DOWNLOAD_PATH_STORAGE_KEY
+    type: any
+    default: '''workbench.explorer.downloadPath'''
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\t@IFileService private readonly fileService: IFileService,\n\t\t@IExplorerService private readonly explorerService: IExplorerService,\n\t\t@IProgressService private readonly progressService: IProgressService,\n\t\t@ILogService private readonly logService: ILogService,\n\t\t@IFileDialogService private readonly fileDialogService: IFileDialogService,\n\t\t@IStorageService private readonly storageService: IStorageService\n\t)"
+    lines:
+    - 596
+    - 604
+    detail: {}
+  - name: download
+    sig: 'download(source: ExplorerItem[]): Promise<void>'
+    lines:
+    - 606
+    - 625
+    detail:
+      calls:
+      - localize
+      - new CancellationTokenSource
+      - this.progressService.withProgress
+  - name: doDownload
+    sig: 'doDownload(sources: ExplorerItem[], progress: IProgress<IProgressStep>, cts: CancellationTokenSource): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 627
+    - 644
+    detail:
+      calls:
+      - this.doDownloadBrowser
+      - this.doDownloadNative
+  - name: doDownloadBrowser
+    sig: 'doDownloadBrowser(resource: URI, progress: IProgress<IProgressStep>, cts: CancellationTokenSource): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 646
+    - 699
+    detail:
+      calls:
+      - Date.now
+      - FileAccess.uriToBrowserUri
+      - WebFileSystemAccess.supported
+      - activeWindow.showDirectoryPicker
+      - cts.cancel
+      - getActiveWindow
+      - new RunOnceWorker
+      - operation.progressScheduler.dispose
+      - parentFolder.getDirectoryHandle
+      - this.downloadFileBrowser
+      - this.downloadFolderBrowser
+      - this.fileService.readFile
+      - this.fileService.resolve
+      - this.logService.warn
+      - triggerDownload
+  - name: downloadFileBufferedBrowser
+    sig: 'downloadFileBufferedBrowser(resource: URI, target: FileSystemWritableFileStream, operation: IDownloadOperation, token: CancellationToken): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 701
+    - 734
+    detail:
+      calls:
+      - new Promise
+      - target.close
+      - this.fileService.readFileStream
+  - name: downloadFileUnbufferedBrowser
+    sig: 'downloadFileUnbufferedBrowser(resource: URI, target: FileSystemWritableFileStream, operation: IDownloadOperation, token: CancellationToken): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 736
+    - 744
+    detail:
+      calls:
+      - target.close
+      - target.write
+      - this.fileService.readFile
+      - this.reportProgress
+  - name: downloadFileBrowser
+    sig: 'downloadFileBrowser(targetFolder: FileSystemDirectoryHandle, file: IFileStatWithMetadata, operation: IDownloadOperation, token: CancellationToken): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 746
+    - 764
+    detail:
+      calls:
+      - targetFile.createWritable
+      - targetFolder.getFileHandle
+      - this.downloadFileBufferedBrowser
+      - this.downloadFileUnbufferedBrowser
+      - this.reportProgress
+  - name: downloadFolderBrowser
+    sig: 'downloadFolderBrowser(folder: IFileStatWithMetadata, targetFolder: FileSystemDirectoryHandle, operation: IDownloadOperation, token: CancellationToken): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 766
+    - 785
+    detail:
+      calls:
+      - folder.children.map
+      - targetFolder.getDirectoryHandle
+      - this.downloadFileBrowser
+      - this.downloadFolderBrowser
+      - this.fileService.resolve
+  - name: reportProgress
+    sig: 'reportProgress(name: string, fileSize: number, bytesDownloaded: number, operation: IDownloadOperation): void'
+    vis: private
+    lines:
+    - 787
+    - 810
+    detail:
+      calls:
+      - ByteSize.formatSize
+      - Date.now
+      - localize
+      - operation.progressScheduler.work
+  - name: doDownloadNative
+    sig: 'doDownloadNative(explorerItem: ExplorerItem, progress: IProgress<IProgressStep>, cts: CancellationTokenSource): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 812
+    - 849
+    detail:
+      calls:
+      - URI.file
+      - cts.cancel
+      - dirname
+      - joinPath
+      - localize
+      - new ResourceFileEdit
+      - progress.report
+      - this.explorerService.applyBulkEdit
+      - this.fileDialogService.defaultFilePath
+      - this.fileDialogService.defaultFolderPath
+      - this.fileDialogService.showSaveDialog
+      - this.storageService.get
+      - this.storageService.store
+  lines:
+  - 592
+  - 850
+functions:
+- name: getFileOverwriteConfirm
+  sig: 'getFileOverwriteConfirm(name: string): IConfirmation'
+  lines:
+  - 856
+  - 863
+  detail:
+    calls:
+    - localize
+- name: getMultipleFilesOverwriteConfirm
+  sig: 'getMultipleFilesOverwriteConfirm(files: URI[]): IConfirmation'
+  lines:
+  - 865
+  - 876
+  detail:
+    calls:
+    - basename
+    - getFileNamesMessage
+    - getFileOverwriteConfirm
+    - localize
+exports:
+- name: IBrowserUploadOperation
+  kind: type
+- name: IWebkitDataTransfer
+  kind: type
+- name: IWebkitDataTransferItem
+  kind: type
+- name: IWebkitDataTransferItemEntry
+  kind: type
+- name: IWebkitDataTransferItemEntryReader
+  kind: type
+- name: BrowserFileUpload
+  kind: type
+- name: ExternalFileImport
+  kind: type
+- name: IDownloadOperation
+  kind: type
+- name: FileDownload
+  kind: type
+- name: getFileOverwriteConfirm
+  kind: func
+- name: getMultipleFilesOverwriteConfirm
+  kind: func

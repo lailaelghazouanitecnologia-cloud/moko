@@ -1,0 +1,258 @@
+## Roska File Descriptor — preview/previewManager.ts
+file: preview/previewManager.ts
+lines: 320
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: vscode.vscode
+- sym: ../logging.ILogger
+- sym: ../markdownExtensions.MarkdownContributionProvider
+- sym: ../util/dispose.Disposable
+- sym: ../util/dispose.disposeAll
+- sym: ../util/file.isMarkdownFile
+- sym: ../util/openDocumentLink.MdLinkOpener
+- sym: ./documentRenderer.MdDocumentRenderer
+- sym: ./preview.DynamicMarkdownPreview
+- sym: ./preview.IManagedMarkdownPreview
+- sym: ./preview.StaticMarkdownPreview
+- sym: ./previewConfig.MarkdownPreviewConfigurationManager
+- sym: ./scrolling.scrollEditorToLine
+- sym: ./scrolling.StartingScrollFragment
+- sym: ./topmostLineMonitor.TopmostLineMonitor
+types:
+- name: DynamicPreviewSettings
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: readonly
+    type: vscode.ViewColumn
+  - name: readonly
+    type: vscode.ViewColumn
+  - name: readonly
+    type: boolean
+  lines:
+  - 19
+  - 23
+- name: PreviewStore
+  kind: struct
+  bases:
+  - Disposable
+  fields:
+  - name: _previews
+    type: any
+    default: new Set<T>()
+  methods:
+  - name: dispose
+    sig: 'dispose(): void'
+    lines:
+    - 29
+    - 35
+    detail:
+      calls:
+      - preview.dispose
+      - super.dispose
+      - this._previews.clear
+  - name: unknown
+    sig: 'unknown(): Iterator<T>'
+    lines:
+    - 37
+    - 39
+    detail:
+      calls:
+      - this._previews[Symbol.iterator]
+  - name: get
+    sig: 'get(resource: vscode.Uri, previewSettings: DynamicPreviewSettings): T | undefined'
+    lines:
+    - 41
+    - 49
+    detail:
+      calls:
+      - preview.matchesResource
+      - this._resolvePreviewColumn
+  - name: add
+    sig: 'add(preview: T)'
+    lines:
+    - 51
+    - 53
+    detail:
+      calls:
+      - this._previews.add
+  - name: delete
+    sig: 'delete(preview: T)'
+    lines:
+    - 55
+    - 57
+    detail:
+      calls:
+      - this._previews.delete
+  lines:
+  - 25
+  - 70
+- name: MarkdownPreviewManager
+  kind: struct
+  bases:
+  - Disposable
+  fields:
+  - name: _topmostLineMonitor
+    type: any
+    default: new TopmostLineMonitor()
+  - name: _previewConfigurations
+    type: any
+    default: new MarkdownPreviewConfigurationManager()
+  - name: _dynamicPreviews
+    type: any
+    default: this._register(new PreviewStore<DynamicMarkdownPreview>())
+  - name: _staticPreviews
+    type: any
+    default: this._register(new PreviewStore<StaticMarkdownPreview>())
+  - name: _activePreview
+    type: IManagedMarkdownPreview | undefined
+    default: undefined
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tprivate readonly _contentProvider: MdDocumentRenderer,\n\t\tprivate readonly _logger: ILogger,\n\t\tprivate readonly _contributions: MarkdownContributionProvider,\n\t\tprivate readonly _opener: MdLinkOpener,\n\t)"
+    lines:
+    - 82
+    - 105
+    detail:
+      calls:
+      - super
+      - this._register
+      - vscode.window.onDidChangeActiveTextEditor
+      - vscode.window.registerCustomEditorProvider
+      - vscode.window.registerWebviewPanelSerializer
+  - name: refresh
+    sig: refresh()
+    lines:
+    - 107
+    - 114
+    detail:
+      calls:
+      - preview.refresh
+  - name: updateConfiguration
+    sig: updateConfiguration()
+    lines:
+    - 116
+    - 123
+    detail:
+      calls:
+      - preview.updateConfiguration
+  - name: openDynamicPreview
+    sig: "openDynamicPreview(\n\t\tresource: vscode.Uri,\n\t\tsettings: DynamicPreviewSettings\n\t): void"
+    lines:
+    - 125
+    - 140
+    detail:
+      calls:
+      - new StartingScrollFragment
+      - preview.reveal
+      - preview.update
+      - this._createNewDynamicPreview
+      - this._dynamicPreviews.get
+  - name: activePreviewResource
+    sig: activePreviewResource()
+    lines:
+    - 142
+    - 144
+    detail: {}
+  - name: activePreviewResourceColumn
+    sig: activePreviewResourceColumn()
+    lines:
+    - 146
+    - 148
+    detail: {}
+  - name: findPreview
+    sig: 'findPreview(resource: vscode.Uri): IManagedMarkdownPreview | undefined'
+    lines:
+    - 150
+    - 157
+    detail: {}
+  - name: toggleLock
+    sig: toggleLock()
+    lines:
+    - 159
+    - 171
+    detail:
+      calls:
+      - otherPreview.dispose
+      - preview.matches
+      - preview.toggleLock
+  - name: openDocumentLink
+    sig: 'openDocumentLink(linkText: string, fromResource: vscode.Uri)'
+    lines:
+    - 173
+    - 176
+    detail:
+      calls:
+      - this._opener.openDocumentLink
+      - this.findPreview
+  - name: deserializeWebviewPanel
+    sig: "deserializeWebviewPanel(\n\t\twebview: vscode.WebviewPanel,\n\t\tstate: any\n\t): Promise<void>"
+    is_async: true
+    lines:
+    - 178
+    - 234
+    detail:
+      calls:
+      - DynamicMarkdownPreview.revive
+      - console.error
+      - this._registerDynamicPreview
+      - vscode.Uri.parse
+      - vscode.l10n.t
+  - name: resolveCustomTextEditor
+    sig: "resolveCustomTextEditor(\n\t\tdocument: vscode.TextDocument,\n\t\twebview: vscode.WebviewPanel\n\t): Promise<void>"
+    is_async: true
+    lines:
+    - 236
+    - 254
+    detail:
+      calls:
+      - StaticMarkdownPreview.revive
+      - this._registerStaticPreview
+      - this._topmostLineMonitor.getPreviousStaticTextEditorLineByUri
+  - name: _createNewDynamicPreview
+    sig: "_createNewDynamicPreview(\n\t\tresource: vscode.Uri,\n\t\tpreviewSettings: DynamicPreviewSettings\n\t): DynamicMarkdownPreview"
+    vis: private
+    lines:
+    - 256
+    - 279
+    detail:
+      calls:
+      - DynamicMarkdownPreview.create
+      - activeTextEditorURI?.toString
+      - resource.toString
+      - this._registerDynamicPreview
+  - name: _registerDynamicPreview
+    sig: '_registerDynamicPreview(preview: DynamicMarkdownPreview): DynamicMarkdownPreview'
+    vis: private
+    lines:
+    - 281
+    - 295
+    detail:
+      calls:
+      - preview.onDidChangeViewState
+      - preview.onDispose
+      - this._dynamicPreviews.add
+      - this._trackActive
+  - name: _registerStaticPreview
+    sig: '_registerStaticPreview(preview: StaticMarkdownPreview): StaticMarkdownPreview'
+    vis: private
+    lines:
+    - 297
+    - 306
+    detail:
+      calls:
+      - preview.onDispose
+      - this._staticPreviews.add
+      - this._trackActive
+  lines:
+  - 72
+  - 320
+exports:
+- name: DynamicPreviewSettings
+  kind: type
+- name: PreviewStore
+  kind: type
+- name: MarkdownPreviewManager
+  kind: type

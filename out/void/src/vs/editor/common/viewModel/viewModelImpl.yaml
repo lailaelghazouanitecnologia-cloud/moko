@@ -1,0 +1,1203 @@
+## Roska File Descriptor — viewModel/viewModelImpl.ts
+file: viewModel/viewModelImpl.ts
+lines: 1320
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: ../../../base/common/arrays.js.ArrayQueue
+- sym: ../../../base/common/async.js.RunOnceScheduler
+- sym: ../../../base/common/color.js.Color
+- sym: ../../../base/common/event.js.Event
+- sym: ../../../base/common/lifecycle.js.Disposable
+- sym: ../../../base/common/lifecycle.js.IDisposable
+- sym: ../../../base/common/platform.js.platform
+- sym: ../../../base/common/strings.js.strings
+- sym: ../config/editorOptions.js.ConfigurationChangedEvent
+- sym: ../config/editorOptions.js.EditorOption
+- sym: ../config/editorOptions.js.EDITOR_FONT_DEFAULTS
+- sym: ../config/editorOptions.js.filterValidationDecorations
+- sym: ../cursor/cursor.js.CursorsController
+- sym: ../cursorCommon.js.CursorConfiguration
+- sym: ../cursorCommon.js.CursorState
+- sym: ../cursorCommon.js.EditOperationType
+- sym: ../cursorCommon.js.IColumnSelectData
+- sym: ../cursorCommon.js.PartialCursorState
+- sym: ../cursorEvents.js.CursorChangeReason
+- sym: ../core/position.js.IPosition
+- sym: ../core/position.js.Position
+- sym: ../core/range.js.Range
+- sym: ../core/selection.js.ISelection
+- sym: ../core/selection.js.Selection
+- sym: ../editorCommon.js.ICommand
+- sym: ../editorCommon.js.ICursorState
+- sym: ../editorCommon.js.IViewState
+- sym: ../editorCommon.js.ScrollType
+- sym: ../config/editorConfiguration.js.IEditorConfiguration
+- sym: ../model.js.EndOfLinePreference
+- sym: ../model.js.IAttachedView
+- sym: ../model.js.ICursorStateComputer
+- sym: ../model.js.IGlyphMarginLanesModel
+- sym: ../model.js.IIdentifiedSingleEditOperation
+- sym: ../model.js.ITextModel
+- sym: ../model.js.PositionAffinity
+- sym: ../model.js.TrackedRangeStickiness
+- sym: ../textModelGuides.js.IActiveIndentGuideInfo
+- sym: ../textModelGuides.js.BracketGuideOptions
+- sym: ../textModelGuides.js.IndentGuide
+- sym: ../model/textModel.js.ModelDecorationMinimapOptions
+- sym: ../model/textModel.js.ModelDecorationOptions
+- sym: ../model/textModel.js.ModelDecorationOverviewRulerOptions
+- sym: ../textModelEvents.js.textModelEvents
+- sym: ../languages.js.TokenizationRegistry
+- sym: ../encodedTokenAttributes.js.ColorId
+- sym: ../languages/languageConfigurationRegistry.js.ILanguageConfigurationService
+- sym: ../languages/modesRegistry.js.PLAINTEXT_LANGUAGE_ID
+- sym: ../languages/textToHtmlTokenizer.js.tokenizeLineToHTML
+- sym: ../editorTheme.js.EditorTheme
+- sym: ../viewEvents.js.viewEvents
+- sym: ../viewLayout/viewLayout.js.ViewLayout
+- sym: ./minimapTokensColorTracker.js.MinimapTokensColorTracker
+- sym: ../modelLineProjectionData.js.ILineBreaksComputer
+- sym: ../modelLineProjectionData.js.ILineBreaksComputerFactory
+- sym: ../modelLineProjectionData.js.InjectedText
+- sym: ../viewEventHandler.js.ViewEventHandler
+- sym: ../viewModel.js.ICoordinatesConverter
+- sym: ../viewModel.js.InlineDecoration
+- sym: ../viewModel.js.IViewModel
+- sym: ../viewModel.js.IWhitespaceChangeAccessor
+- sym: ../viewModel.js.MinimapLinesRenderingData
+- sym: ../viewModel.js.OverviewRulerDecorationsGroup
+- sym: ../viewModel.js.ViewLineData
+- sym: ../viewModel.js.ViewLineRenderingData
+- sym: ../viewModel.js.ViewModelDecoration
+- sym: ./viewModelDecorations.js.ViewModelDecorations
+- sym: ../viewModelEventDispatcher.js.FocusChangedEvent
+- sym: ../viewModelEventDispatcher.js.HiddenAreasChangedEvent
+- sym: ../viewModelEventDispatcher.js.ModelContentChangedEvent
+- sym: ../viewModelEventDispatcher.js.ModelDecorationsChangedEvent
+- sym: ../viewModelEventDispatcher.js.ModelLanguageChangedEvent
+- sym: ../viewModelEventDispatcher.js.ModelLanguageConfigurationChangedEvent
+- sym: ../viewModelEventDispatcher.js.ModelOptionsChangedEvent
+- sym: ../viewModelEventDispatcher.js.ModelTokensChangedEvent
+- sym: ../viewModelEventDispatcher.js.OutgoingViewModelEvent
+- sym: ../viewModelEventDispatcher.js.ReadOnlyEditAttemptEvent
+- sym: ../viewModelEventDispatcher.js.ScrollChangedEvent
+- sym: ../viewModelEventDispatcher.js.ViewModelEventDispatcher
+- sym: ../viewModelEventDispatcher.js.ViewModelEventsCollector
+- sym: ../viewModelEventDispatcher.js.ViewZonesChangedEvent
+- sym: ../viewModelEventDispatcher.js.WidgetFocusChangedEvent
+- sym: ./viewModelLines.js.IViewModelLines
+- sym: ./viewModelLines.js.ViewModelLinesFromModelAsIs
+- sym: ./viewModelLines.js.ViewModelLinesFromProjectedModel
+- sym: ../../../platform/theme/common/themeService.js.IThemeService
+- sym: ./glyphLanesModel.js.GlyphMarginLanesModel
+data:
+- name: USE_IDENTITY_LINES_COLLECTION
+  type: boolean
+  val: 'true'
+types:
+- name: ViewModel
+  kind: model
+  ctx: This is because the model might have changed, which resets the hidden areas, but not the last cached value. This needs a better fix in the future.
+  bases:
+  - Disposable
+  - IViewModel
+  fields:
+  - name: _editorId
+    type: number
+  - name: _configuration
+    type: IEditorConfiguration
+  - name: model
+    type: ITextModel
+  - name: _eventDispatcher
+    type: ViewModelEventDispatcher
+  - name: onEvent
+    type: Event<OutgoingViewModelEvent>
+  - name: cursorConfig
+    type: CursorConfiguration
+  - name: _updateConfigurationViewLineCount
+    type: RunOnceScheduler
+  - name: _hasFocus
+    type: boolean
+  - name: _viewportStart
+    type: ViewportStart
+  - name: _lines
+    type: IViewModelLines
+  - name: coordinatesConverter
+    type: ICoordinatesConverter
+  - name: viewLayout
+    type: ViewLayout
+  - name: _cursor
+    type: CursorsController
+  - name: _decorations
+    type: ViewModelDecorations
+  - name: glyphLanes
+    type: IGlyphMarginLanesModel
+  - name: hiddenAreasModel
+    type: any
+    default: new HiddenAreasModel()
+  - name: previousHiddenAreas
+    type: readonly Range[]
+    default: '[]'
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\teditorId: number,\n\t\tconfiguration: IEditorConfiguration,\n\t\tmodel: ITextModel,\n\t\tdomLineBreaksComputerFactory: ILineBreaksComputerFactory,\n\t\tmonospaceLineBreaksComputerFactory: ILineBreaksComputerFactory,\n\t\tscheduleAtNextAnimationFrame: (callback: () => void) => IDisposable,\n\t\tprivate readonly languageConfigurationService: ILanguageConfigurationService,\n\t\tprivate readonly _themeService: IThemeService,\n\t\tprivate readonly _attachedView: IAttachedView,\n\t\tprivate readonly _transactionalTarget: IBatchableTarget,\n\t)"
+    lines:
+    - 64
+    - 162
+    detail:
+      calls:
+      - MinimapTokensColorTracker.getInstance
+      - MinimapTokensColorTracker.getInstance().onDidChange
+      - ViewportStart.create
+      - new CursorConfiguration
+      - new CursorsController
+      - new GlyphMarginLanesModel
+      - new RunOnceScheduler
+      - new ViewLayout
+      - new ViewModelDecorations
+      - new ViewModelEventDispatcher
+      - new ViewModelLinesFromModelAsIs
+      - new ViewModelLinesFromProjectedModel
+      - options.get
+      - super
+      - this._configuration.onDidChangeFast
+      - this._lines.createCoordinatesConverter
+      - this._register
+      - this._registerModelEvents
+      - this._themeService.onDidColorThemeChange
+      - this._updateConfigurationViewLineCountNow
+      - this.getLineCount
+      - this.model.getLanguageId
+      - this.model.getOptions
+      - this.model.isTooLargeForTokenization
+      - this.viewLayout.onDidContentSizeChange
+      - this.viewLayout.onDidScroll
+  - name: dispose
+    sig: 'dispose(): void'
+    lines:
+    - 164
+    - 172
+    detail:
+      calls:
+      - super.dispose
+      - this._decorations.dispose
+      - this._eventDispatcher.dispose
+      - this._lines.dispose
+      - this._viewportStart.dispose
+  - name: createLineBreaksComputer
+    sig: 'createLineBreaksComputer(): ILineBreaksComputer'
+    lines:
+    - 174
+    - 176
+    detail:
+      calls:
+      - this._lines.createLineBreaksComputer
+  - name: addViewEventHandler
+    sig: 'addViewEventHandler(eventHandler: ViewEventHandler): void'
+    lines:
+    - 178
+    - 180
+    detail:
+      calls:
+      - this._eventDispatcher.addViewEventHandler
+  - name: removeViewEventHandler
+    sig: 'removeViewEventHandler(eventHandler: ViewEventHandler): void'
+    lines:
+    - 182
+    - 184
+    detail:
+      calls:
+      - this._eventDispatcher.removeViewEventHandler
+  - name: getModelVisibleRanges
+    sig: 'getModelVisibleRanges(): Range[]'
+    vis: private
+    lines:
+    - 190
+    - 200
+    detail:
+      calls:
+      - new Range
+      - this._toModelVisibleRanges
+      - this.getLineMaxColumn
+      - this.getLineMinColumn
+      - this.viewLayout.getLinesViewportData
+  - name: visibleLinesStabilized
+    sig: 'visibleLinesStabilized(): void'
+    lines:
+    - 202
+    - 205
+    detail:
+      calls:
+      - this._attachedView.setVisibleLines
+      - this.getModelVisibleRanges
+  - name: setHasFocus
+    sig: 'setHasFocus(hasFocus: boolean): void'
+    lines:
+    - 212
+    - 217
+    detail:
+      calls:
+      - new FocusChangedEvent
+      - new viewEvents.ViewFocusChangedEvent
+      - this._cursor.setHasFocus
+      - this._eventDispatcher.emitOutgoingEvent
+      - this._eventDispatcher.emitSingleViewEvent
+  - name: setHasWidgetFocus
+    sig: 'setHasWidgetFocus(hasWidgetFocus: boolean): void'
+    lines:
+    - 219
+    - 221
+    detail:
+      calls:
+      - new WidgetFocusChangedEvent
+      - this._eventDispatcher.emitOutgoingEvent
+  - name: onCompositionStart
+    sig: 'onCompositionStart(): void'
+    lines:
+    - 223
+    - 225
+    detail:
+      calls:
+      - new viewEvents.ViewCompositionStartEvent
+      - this._eventDispatcher.emitSingleViewEvent
+  - name: onCompositionEnd
+    sig: 'onCompositionEnd(): void'
+    lines:
+    - 227
+    - 229
+    detail:
+      calls:
+      - new viewEvents.ViewCompositionEndEvent
+      - this._eventDispatcher.emitSingleViewEvent
+  - name: _captureStableViewport
+    sig: '_captureStableViewport(): StableViewport'
+    vis: private
+    lines:
+    - 231
+    - 240
+    detail:
+      calls:
+      - new Position
+      - new StableViewport
+      - this.coordinatesConverter.convertViewPositionToModelPosition
+      - this.getLineMinColumn
+      - this.viewLayout.getCurrentScrollTop
+  - name: _onConfigurationChanged
+    sig: '_onConfigurationChanged(eventsCollector: ViewModelEventsCollector, e: ConfigurationChangedEvent): void'
+    vis: private
+    lines:
+    - 242
+    - 282
+    detail:
+      calls:
+      - CursorConfiguration.shouldRecreate
+      - e.hasChanged
+      - eventsCollector.emitViewEvent
+      - new CursorConfiguration
+      - new viewEvents.ViewConfigurationChangedEvent
+      - new viewEvents.ViewDecorationsChangedEvent
+      - new viewEvents.ViewFlushedEvent
+      - new viewEvents.ViewLineMappingChangedEvent
+      - options.get
+      - stableViewport.recoverViewportStart
+      - this._captureStableViewport
+      - this._cursor.onLineMappingChanged
+      - this._cursor.updateConfiguration
+      - this._decorations.onLineMappingChanged
+      - this._decorations.reset
+      - this._lines.setWrappingSettings
+      - this._updateConfigurationViewLineCount.schedule
+      - this.getLineCount
+      - this.model.getLanguageId
+      - this.model.getOptions
+      - this.viewLayout.onConfigurationChanged
+      - this.viewLayout.onFlushed
+  - name: _registerModelEvents
+    sig: '_registerModelEvents(): void'
+    vis: private
+    lines:
+    - 284
+    - 478
+    detail:
+      calls:
+      - this._register
+      - this.model.onDidChangeContentOrInjectedText
+      - this.model.onDidChangeDecorations
+      - this.model.onDidChangeLanguage
+      - this.model.onDidChangeLanguageConfiguration
+      - this.model.onDidChangeOptions
+      - this.model.onDidChangeTokens
+  - name: setHiddenAreas
+    sig: 'setHiddenAreas(ranges: Range[], source?: unknown, forceUpdate?: boolean): void'
+    lines:
+    - 488
+    - 526
+    detail:
+      calls:
+      - eventsCollector.emitViewEvent
+      - mergedRanges.some
+      - new HiddenAreasChangedEvent
+      - new viewEvents.ViewDecorationsChangedEvent
+      - new viewEvents.ViewFlushedEvent
+      - new viewEvents.ViewLineMappingChangedEvent
+      - stableViewport.recoverViewportStart
+      - this._captureStableViewport
+      - this._cursor.onLineMappingChanged
+      - this._decorations.onLineMappingChanged
+      - this._eventDispatcher.beginEmitViewEvents
+      - this._eventDispatcher.emitOutgoingEvent
+      - this._eventDispatcher.endEmitViewEvents
+      - this._lines.setHiddenAreas
+      - this._updateConfigurationViewLineCount.schedule
+      - this.getLineCount
+      - this.hiddenAreasModel.getMergedRanges
+      - this.hiddenAreasModel.setHiddenAreas
+      - this.viewLayout.onFlushed
+      - this.viewLayout.onHeightMaybeChanged
+  - name: getVisibleRangesPlusViewportAboveBelow
+    sig: 'getVisibleRangesPlusViewportAboveBelow(): Range[]'
+    lines:
+    - 528
+    - 540
+    detail:
+      calls:
+      - Math.max
+      - Math.min
+      - Math.round
+      - new Range
+      - this._configuration.options.get
+      - this._toModelVisibleRanges
+      - this.getLineCount
+      - this.getLineMaxColumn
+      - this.getLineMinColumn
+      - this.viewLayout.getLinesViewportData
+  - name: getVisibleRanges
+    sig: 'getVisibleRanges(): Range[]'
+    lines:
+    - 542
+    - 545
+    detail:
+      calls:
+      - this._toModelVisibleRanges
+      - this.getCompletelyVisibleViewRange
+  - name: getHiddenAreas
+    sig: 'getHiddenAreas(): Range[]'
+    lines:
+    - 547
+    - 549
+    detail:
+      calls:
+      - this._lines.getHiddenAreas
+  - name: _toModelVisibleRanges
+    sig: '_toModelVisibleRanges(visibleViewRange: Range): Range[]'
+    vis: private
+    lines:
+    - 551
+    - 594
+    detail:
+      calls:
+      - new Range
+      - this._lines.getHiddenAreas
+      - this.coordinatesConverter.convertViewRangeToModelRange
+      - this.model.getLineMaxColumn
+  - name: getCompletelyVisibleViewRange
+    sig: 'getCompletelyVisibleViewRange(): Range'
+    lines:
+    - 596
+    - 605
+    detail:
+      calls:
+      - new Range
+      - this.getLineMaxColumn
+      - this.getLineMinColumn
+      - this.viewLayout.getLinesViewportData
+  - name: getCompletelyVisibleViewRangeAtScrollTop
+    sig: 'getCompletelyVisibleViewRangeAtScrollTop(scrollTop: number): Range'
+    lines:
+    - 607
+    - 616
+    detail:
+      calls:
+      - new Range
+      - this.getLineMaxColumn
+      - this.getLineMinColumn
+      - this.viewLayout.getLinesViewportDataAtScrollTop
+  - name: saveState
+    sig: 'saveState(): IViewState'
+    lines:
+    - 618
+    - 631
+    detail:
+      calls:
+      - new Position
+      - this.coordinatesConverter.convertViewPositionToModelPosition
+      - this.getLineMinColumn
+      - this.viewLayout.getLineNumberAtVerticalOffset
+      - this.viewLayout.getVerticalOffsetForLineNumber
+      - this.viewLayout.saveState
+  - name: reduceRestoreState
+    sig: 'reduceRestoreState(state: IViewState): { scrollLeft: number; scrollTop: number }'
+    lines:
+    - 633
+    - 646
+    detail:
+      calls:
+      - this._reduceRestoreStateCompatibility
+      - this.coordinatesConverter.convertModelPositionToViewPosition
+      - this.model.validatePosition
+      - this.viewLayout.getVerticalOffsetForLineNumber
+  - name: getLineCount
+    sig: 'getLineCount(): number'
+    lines:
+    - 659
+    - 661
+    detail:
+      calls:
+      - this._lines.getViewLineCount
+  - name: setViewport
+    sig: 'setViewport(startLineNumber: number, endLineNumber: number, centeredLineNumber: number): void'
+    lines:
+    - 666
+    - 668
+    detail:
+      calls:
+      - this._viewportStart.update
+  - name: getActiveIndentGuide
+    sig: 'getActiveIndentGuide(lineNumber: number, minLineNumber: number, maxLineNumber: number): IActiveIndentGuideInfo'
+    lines:
+    - 670
+    - 672
+    detail:
+      calls:
+      - this._lines.getActiveIndentGuide
+  - name: getLinesIndentGuides
+    sig: 'getLinesIndentGuides(startLineNumber: number, endLineNumber: number): number[]'
+    lines:
+    - 674
+    - 676
+    detail:
+      calls:
+      - this._lines.getViewLinesIndentGuides
+  - name: getBracketGuidesInRangeByLine
+    sig: 'getBracketGuidesInRangeByLine(startLineNumber: number, endLineNumber: number, activePosition: IPosition | null, options: BracketGuideOptions): IndentGuide[][]'
+    lines:
+    - 678
+    - 680
+    detail:
+      calls:
+      - this._lines.getViewLinesBracketGuides
+  - name: getLineContent
+    sig: 'getLineContent(lineNumber: number): string'
+    lines:
+    - 682
+    - 684
+    detail:
+      calls:
+      - this._lines.getViewLineContent
+  - name: getLineLength
+    sig: 'getLineLength(lineNumber: number): number'
+    lines:
+    - 686
+    - 688
+    detail:
+      calls:
+      - this._lines.getViewLineLength
+  - name: getLineMinColumn
+    sig: 'getLineMinColumn(lineNumber: number): number'
+    lines:
+    - 690
+    - 692
+    detail:
+      calls:
+      - this._lines.getViewLineMinColumn
+  - name: getLineMaxColumn
+    sig: 'getLineMaxColumn(lineNumber: number): number'
+    lines:
+    - 694
+    - 696
+    detail:
+      calls:
+      - this._lines.getViewLineMaxColumn
+  - name: getLineFirstNonWhitespaceColumn
+    sig: 'getLineFirstNonWhitespaceColumn(lineNumber: number): number'
+    lines:
+    - 698
+    - 704
+    detail:
+      calls:
+      - strings.firstNonWhitespaceIndex
+      - this.getLineContent
+  - name: getLineLastNonWhitespaceColumn
+    sig: 'getLineLastNonWhitespaceColumn(lineNumber: number): number'
+    lines:
+    - 706
+    - 712
+    detail:
+      calls:
+      - strings.lastNonWhitespaceIndex
+      - this.getLineContent
+  - name: getMinimapDecorationsInRange
+    sig: 'getMinimapDecorationsInRange(range: Range): ViewModelDecoration[]'
+    lines:
+    - 714
+    - 716
+    detail:
+      calls:
+      - this._decorations.getMinimapDecorationsInRange
+  - name: getDecorationsInViewport
+    sig: 'getDecorationsInViewport(visibleRange: Range): ViewModelDecoration[]'
+    lines:
+    - 718
+    - 720
+    detail:
+      calls:
+      - this._decorations.getDecorationsViewportData
+  - name: getInjectedTextAt
+    sig: 'getInjectedTextAt(viewPosition: Position): InjectedText | null'
+    lines:
+    - 722
+    - 724
+    detail:
+      calls:
+      - this._lines.getInjectedTextAt
+  - name: getViewportViewLineRenderingData
+    sig: 'getViewportViewLineRenderingData(visibleRange: Range, lineNumber: number): ViewLineRenderingData'
+    lines:
+    - 726
+    - 730
+    detail:
+      calls:
+      - this._decorations.getDecorationsViewportData
+      - this._getViewLineRenderingData
+  - name: getViewLineRenderingData
+    sig: 'getViewLineRenderingData(lineNumber: number): ViewLineRenderingData'
+    lines:
+    - 732
+    - 735
+    detail:
+      calls:
+      - this._decorations.getInlineDecorationsOnLine
+      - this._getViewLineRenderingData
+  - name: _getViewLineRenderingData
+    sig: '_getViewLineRenderingData(lineNumber: number, inlineDecorations: InlineDecoration[]): ViewLineRenderingData'
+    vis: private
+    lines:
+    - 737
+    - 764
+    detail:
+      calls:
+      - lineData.inlineDecorations.map
+      - new ViewLineRenderingData
+      - this._lines.getViewLineData
+      - this.getTabSize
+      - this.model.mightContainNonBasicASCII
+      - this.model.mightContainRTL
+  - name: getViewLineData
+    sig: 'getViewLineData(lineNumber: number): ViewLineData'
+    lines:
+    - 766
+    - 768
+    detail:
+      calls:
+      - this._lines.getViewLineData
+  - name: getMinimapLinesRenderingData
+    sig: 'getMinimapLinesRenderingData(startLineNumber: number, endLineNumber: number, needed: boolean[]): MinimapLinesRenderingData'
+    lines:
+    - 770
+    - 776
+    detail:
+      calls:
+      - new MinimapLinesRenderingData
+      - this._lines.getViewLinesData
+      - this.getTabSize
+  - name: getAllOverviewRulerDecorations
+    sig: 'getAllOverviewRulerDecorations(theme: EditorTheme): OverviewRulerDecorationsGroup[]'
+    lines:
+    - 778
+    - 798
+    detail:
+      calls:
+      - filterValidationDecorations
+      - new OverviewRulerDecorations
+      - opts.getColor
+      - result.accept
+      - this.coordinatesConverter.getViewLineNumberOfModelPosition
+      - this.model.getOverviewRulerDecorations
+  - name: _invalidateDecorationsColorCache
+    sig: '_invalidateDecorationsColorCache(): void'
+    vis: private
+    lines:
+    - 800
+    - 808
+    detail:
+      calls:
+      - opts1?.invalidateCachedColor
+      - opts2?.invalidateCachedColor
+      - this.model.getOverviewRulerDecorations
+  - name: getValueInRange
+    sig: 'getValueInRange(range: Range, eol: EndOfLinePreference): string'
+    lines:
+    - 810
+    - 813
+    detail:
+      calls:
+      - this.coordinatesConverter.convertViewRangeToModelRange
+      - this.model.getValueInRange
+  - name: getValueLengthInRange
+    sig: 'getValueLengthInRange(range: Range, eol: EndOfLinePreference): number'
+    lines:
+    - 815
+    - 818
+    detail:
+      calls:
+      - this.coordinatesConverter.convertViewRangeToModelRange
+      - this.model.getValueLengthInRange
+  - name: modifyPosition
+    sig: 'modifyPosition(position: Position, offset: number): Position'
+    lines:
+    - 820
+    - 824
+    detail:
+      calls:
+      - this.coordinatesConverter.convertModelPositionToViewPosition
+      - this.coordinatesConverter.convertViewPositionToModelPosition
+      - this.model.modifyPosition
+  - name: deduceModelPositionRelativeToViewPosition
+    sig: 'deduceModelPositionRelativeToViewPosition(viewAnchorPosition: Position, deltaOffset: number, lineFeedCnt: number): Position'
+    lines:
+    - 826
+    - 840
+    detail:
+      calls:
+      - this.coordinatesConverter.convertViewPositionToModelPosition
+      - this.model.getEOL
+      - this.model.getOffsetAt
+      - this.model.getPositionAt
+  - name: getPlainTextToCopy
+    sig: 'getPlainTextToCopy(modelRanges: Range[], emptySelectionClipboard: boolean, forceCRLF: boolean): string | string[]'
+    lines:
+    - 842
+    - 901
+    detail:
+      calls:
+      - modelRange.isEmpty
+      - modelRanges.map
+      - modelRanges.slice
+      - modelRanges.sort
+      - range.isEmpty
+      - result.push
+      - this.model.getEOL
+      - this.model.getLineContent
+      - this.model.getValueInRange
+  - name: getRichTextToCopy
+    sig: 'getRichTextToCopy(modelRanges: Range[], emptySelectionClipboard: boolean): { html: string; mode: string } | null'
+    lines:
+    - 903
+    - 960
+    detail:
+      calls:
+      - /[+ ]/.test
+      - /[,']/.test
+      - /[:;\\\/<>]/.test
+      - fontFamily.replace
+      - new Range
+      - range.isEmpty
+      - this._configuration.options.get
+      - this._getColorMap
+      - this._getHTMLToCopy
+      - this.model.getLanguageId
+      - this.model.getLineMaxColumn
+      - this.model.getLineMinColumn
+  - name: _getHTMLToCopy
+    sig: '_getHTMLToCopy(modelRange: Range, colorMap: string[]): string'
+    vis: private
+    lines:
+    - 962
+    - 986
+    detail:
+      calls:
+      - lineTokens.getLineContent
+      - lineTokens.inflate
+      - this.getTabSize
+      - this.model.tokenization.getLineTokens
+      - tokenizeLineToHTML
+  - name: getPrimaryCursorState
+    sig: 'getPrimaryCursorState(): CursorState'
+    lines:
+    - 1001
+    - 1003
+    detail:
+      calls:
+      - this._cursor.getPrimaryCursorState
+  - name: getLastAddedCursorIndex
+    sig: 'getLastAddedCursorIndex(): number'
+    lines:
+    - 1004
+    - 1006
+    detail:
+      calls:
+      - this._cursor.getLastAddedCursorIndex
+  - name: getCursorStates
+    sig: 'getCursorStates(): CursorState[]'
+    lines:
+    - 1007
+    - 1009
+    detail:
+      calls:
+      - this._cursor.getCursorStates
+  - name: setCursorStates
+    sig: 'setCursorStates(source: string | null | undefined, reason: CursorChangeReason, states: PartialCursorState[] | null): boolean'
+    lines:
+    - 1010
+    - 1012
+    detail:
+      calls:
+      - this._withViewEventsCollector
+  - name: getCursorColumnSelectData
+    sig: 'getCursorColumnSelectData(): IColumnSelectData'
+    lines:
+    - 1013
+    - 1015
+    detail:
+      calls:
+      - this._cursor.getCursorColumnSelectData
+  - name: getCursorAutoClosedCharacters
+    sig: 'getCursorAutoClosedCharacters(): Range[]'
+    lines:
+    - 1016
+    - 1018
+    detail:
+      calls:
+      - this._cursor.getAutoClosedCharacters
+  - name: setCursorColumnSelectData
+    sig: 'setCursorColumnSelectData(columnSelectData: IColumnSelectData): void'
+    lines:
+    - 1019
+    - 1021
+    detail:
+      calls:
+      - this._cursor.setCursorColumnSelectData
+  - name: getPrevEditOperationType
+    sig: 'getPrevEditOperationType(): EditOperationType'
+    lines:
+    - 1022
+    - 1024
+    detail:
+      calls:
+      - this._cursor.getPrevEditOperationType
+  - name: setPrevEditOperationType
+    sig: 'setPrevEditOperationType(type: EditOperationType): void'
+    lines:
+    - 1025
+    - 1027
+    detail:
+      calls:
+      - this._cursor.setPrevEditOperationType
+  - name: getSelection
+    sig: 'getSelection(): Selection'
+    lines:
+    - 1028
+    - 1030
+    detail:
+      calls:
+      - this._cursor.getSelection
+  - name: getSelections
+    sig: 'getSelections(): Selection[]'
+    lines:
+    - 1031
+    - 1033
+    detail:
+      calls:
+      - this._cursor.getSelections
+  - name: getPosition
+    sig: 'getPosition(): Position'
+    lines:
+    - 1034
+    - 1036
+    detail:
+      calls:
+      - this._cursor.getPrimaryCursorState
+  - name: setSelections
+    sig: 'setSelections(source: string | null | undefined, selections: readonly ISelection[], reason = CursorChangeReason.NotSet): void'
+    lines:
+    - 1037
+    - 1039
+    detail:
+      calls:
+      - this._withViewEventsCollector
+  - name: saveCursorState
+    sig: 'saveCursorState(): ICursorState[]'
+    lines:
+    - 1040
+    - 1042
+    detail:
+      calls:
+      - this._cursor.saveState
+  - name: restoreCursorState
+    sig: 'restoreCursorState(states: ICursorState[]): void'
+    lines:
+    - 1043
+    - 1045
+    detail:
+      calls:
+      - this._withViewEventsCollector
+  - name: executeEdits
+    sig: 'executeEdits(source: string | null | undefined, edits: IIdentifiedSingleEditOperation[], cursorStateComputer: ICursorStateComputer): void'
+    lines:
+    - 1055
+    - 1057
+    detail:
+      calls:
+      - this._executeCursorEdit
+  - name: startComposition
+    sig: 'startComposition(): void'
+    lines:
+    - 1058
+    - 1060
+    detail:
+      calls:
+      - this._executeCursorEdit
+  - name: endComposition
+    sig: 'endComposition(source?: string | null | undefined): void'
+    lines:
+    - 1061
+    - 1063
+    detail:
+      calls:
+      - this._executeCursorEdit
+  - name: type
+    sig: 'type(text: string, source?: string | null | undefined): void'
+    lines:
+    - 1064
+    - 1066
+    detail:
+      calls:
+      - this._executeCursorEdit
+  - name: compositionType
+    sig: 'compositionType(text: string, replacePrevCharCnt: number, replaceNextCharCnt: number, positionDelta: number, source?: string | null | undefined): void'
+    lines:
+    - 1067
+    - 1069
+    detail:
+      calls:
+      - this._executeCursorEdit
+  - name: paste
+    sig: 'paste(text: string, pasteOnNewLine: boolean, multicursorText?: string[] | null | undefined, source?: string | null | undefined): void'
+    lines:
+    - 1070
+    - 1072
+    detail:
+      calls:
+      - this._executeCursorEdit
+  - name: cut
+    sig: 'cut(source?: string | null | undefined): void'
+    lines:
+    - 1073
+    - 1075
+    detail:
+      calls:
+      - this._executeCursorEdit
+  - name: executeCommand
+    sig: 'executeCommand(command: ICommand, source?: string | null | undefined): void'
+    lines:
+    - 1076
+    - 1078
+    detail:
+      calls:
+      - this._executeCursorEdit
+  - name: executeCommands
+    sig: 'executeCommands(commands: ICommand[], source?: string | null | undefined): void'
+    lines:
+    - 1079
+    - 1081
+    detail:
+      calls:
+      - this._executeCursorEdit
+  - name: revealAllCursors
+    sig: 'revealAllCursors(source: string | null | undefined, revealHorizontal: boolean, minimalReveal: boolean = false): void'
+    lines:
+    - 1082
+    - 1084
+    detail:
+      calls:
+      - this._withViewEventsCollector
+  - name: revealPrimaryCursor
+    sig: 'revealPrimaryCursor(source: string | null | undefined, revealHorizontal: boolean, minimalReveal: boolean = false): void'
+    lines:
+    - 1085
+    - 1087
+    detail:
+      calls:
+      - this._withViewEventsCollector
+  - name: revealTopMostCursor
+    sig: 'revealTopMostCursor(source: string | null | undefined): void'
+    lines:
+    - 1088
+    - 1092
+    detail:
+      calls:
+      - new Range
+      - this._cursor.getTopMostViewPosition
+      - this._withViewEventsCollector
+  - name: revealBottomMostCursor
+    sig: 'revealBottomMostCursor(source: string | null | undefined): void'
+    lines:
+    - 1093
+    - 1097
+    detail:
+      calls:
+      - new Range
+      - this._cursor.getBottomMostViewPosition
+      - this._withViewEventsCollector
+  - name: revealRange
+    sig: 'revealRange(source: string | null | undefined, revealHorizontal: boolean, viewRange: Range, verticalType: viewEvents.VerticalRevealType, scrollType: ScrollType): void'
+    lines:
+    - 1098
+    - 1100
+    detail:
+      calls:
+      - this._withViewEventsCollector
+  - name: changeWhitespace
+    sig: 'changeWhitespace(callback: (accessor: IWhitespaceChangeAccessor) => void): void'
+    lines:
+    - 1105
+    - 1111
+    detail:
+      calls:
+      - new ViewZonesChangedEvent
+      - new viewEvents.ViewZonesChangedEvent
+      - this._eventDispatcher.emitOutgoingEvent
+      - this._eventDispatcher.emitSingleViewEvent
+      - this.viewLayout.changeWhitespace
+  - name: batchEvents
+    sig: 'batchEvents(callback: () => void): void'
+    lines:
+    - 1125
+    - 1127
+    detail:
+      calls:
+      - this._withViewEventsCollector
+  - name: normalizePosition
+    sig: 'normalizePosition(position: Position, affinity: PositionAffinity): Position'
+    lines:
+    - 1129
+    - 1131
+    detail:
+      calls:
+      - this._lines.normalizePosition
+  - name: getLineIndentColumn
+    sig: 'getLineIndentColumn(lineNumber: number): number'
+    lines:
+    - 1137
+    - 1139
+    detail:
+      calls:
+      - this._lines.getLineIndentColumn
+  lines:
+  - 46
+  - 1140
+- name: IBatchableTarget
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: batchChanges
+    type: 'method: batchChanges<T>(cb: () => T): T'
+  lines:
+  - 1142
+  - 1147
+- name: ViewportStart
+  kind: struct
+  bases:
+  - IDisposable
+  methods:
+  - name: create
+    sig: 'create(model: ITextModel): ViewportStart'
+    decorators:
+    - static
+    lines:
+    - 1151
+    - 1154
+    detail:
+      calls:
+      - model._setTrackedRange
+      - new Range
+      - new ViewportStart
+  - name: viewLineNumber
+    sig: 'viewLineNumber(): number'
+    lines:
+    - 1156
+    - 1158
+    detail: {}
+  - name: isValid
+    sig: 'isValid(): boolean'
+    lines:
+    - 1160
+    - 1162
+    detail: {}
+  - name: modelTrackedRange
+    sig: 'modelTrackedRange(): string'
+    lines:
+    - 1164
+    - 1166
+    detail: {}
+  - name: startLineDelta
+    sig: 'startLineDelta(): number'
+    lines:
+    - 1168
+    - 1170
+    detail: {}
+  - name: dispose
+    sig: 'dispose(): void'
+    lines:
+    - 1180
+    - 1182
+    detail:
+      calls:
+      - this._model._setTrackedRange
+  - name: update
+    sig: 'update(viewModel: IViewModel, startLineNumber: number): void'
+    lines:
+    - 1184
+    - 1194
+    detail:
+      calls:
+      - new Position
+      - new Range
+      - viewModel.coordinatesConverter.convertViewPositionToModelPosition
+      - viewModel.getLineMinColumn
+      - viewModel.model._setTrackedRange
+      - viewModel.viewLayout.getCurrentScrollTop
+      - viewModel.viewLayout.getVerticalOffsetForLineNumber
+  - name: invalidate
+    sig: 'invalidate(): void'
+    lines:
+    - 1196
+    - 1198
+    detail: {}
+  lines:
+  - 1149
+  - 1199
+- name: OverviewRulerDecorations
+  kind: struct
+  fields:
+  - name: _asMap
+    type: '{ [color: string]: OverviewRulerDecorationsGroup }'
+    default: Object.create(null)
+  - name: asArray
+    type: OverviewRulerDecorationsGroup[]
+    default: '[]'
+  methods:
+  - name: accept
+    sig: 'accept(color: string, zIndex: number, startLineNumber: number, endLineNumber: number, lane: number): void'
+    lines:
+    - 1206
+    - 1228
+    detail:
+      calls:
+      - new OverviewRulerDecorationsGroup
+      - prevData.push
+      - this.asArray.push
+  lines:
+  - 1201
+  - 1229
+- name: HiddenAreasModel
+  kind: struct
+  ctx: The returned array is immutable.
+  fields:
+  - name: hiddenAreas
+    type: any
+    default: new Map<unknown, Range[]>()
+  - name: shouldRecompute
+    type: any
+    default: 'false'
+  - name: ranges
+    type: Range[]
+    default: '[]'
+  methods:
+  - name: setHiddenAreas
+    sig: 'setHiddenAreas(source: unknown, ranges: Range[]): void'
+    lines:
+    - 1236
+    - 1243
+    detail:
+      calls:
+      - rangeArraysEqual
+      - this.hiddenAreas.get
+      - this.hiddenAreas.set
+  - name: getMergedRanges
+    sig: 'getMergedRanges(): readonly Range[]'
+    lines:
+    - 1248
+    - 1259
+    detail:
+      calls:
+      - Array.from
+      - Array.from(this.hiddenAreas.values()).reduce
+      - rangeArraysEqual
+      - this.hiddenAreas.values
+  lines:
+  - 1231
+  - 1260
+- name: StableViewport
+  kind: struct
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tpublic readonly viewportStartModelPosition: Position | null,\n\t\tpublic readonly startLineDelta: number\n\t)"
+    lines:
+    - 1307
+    - 1310
+    detail: {}
+  - name: recoverViewportStart
+    sig: 'recoverViewportStart(coordinatesConverter: ICoordinatesConverter, viewLayout: ViewLayout): void'
+    lines:
+    - 1312
+    - 1319
+    detail:
+      calls:
+      - coordinatesConverter.convertModelPositionToViewPosition
+      - viewLayout.getVerticalOffsetForLineNumber
+      - viewLayout.setScrollPosition
+  lines:
+  - 1306
+  - 1320
+functions:
+- name: mergeLineRangeArray
+  sig: 'mergeLineRangeArray(arr1: Range[], arr2: Range[]): Range[]'
+  lines:
+  - 1262
+  - 1289
+  detail:
+    calls:
+    - Math.max
+    - Math.min
+    - new Range
+    - result.push
+- name: rangeArraysEqual
+  sig: 'rangeArraysEqual(arr1: Range[], arr2: Range[]): boolean'
+  lines:
+  - 1291
+  - 1301
+  detail:
+    calls:
+    - arr1[i].equalsRange
+exports:
+- name: ViewModel
+  kind: type
+- name: IBatchableTarget
+  kind: type
+- name: ViewportStart
+  kind: type
+- name: OverviewRulerDecorations
+  kind: type
+- name: HiddenAreasModel
+  kind: type
+- name: StableViewport
+  kind: type
+- name: mergeLineRangeArray
+  kind: func
+- name: rangeArraysEqual
+  kind: func
+- name: USE_IDENTITY_LINES_COLLECTION
+  kind: data

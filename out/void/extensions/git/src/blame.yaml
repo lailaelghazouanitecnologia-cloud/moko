@@ -1,0 +1,528 @@
+## Roska File Descriptor — src/blame.ts
+file: src/blame.ts
+lines: 785
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: vscode.DecorationOptions
+- sym: vscode.l10n
+- sym: vscode.Position
+- sym: vscode.Range
+- sym: vscode.TextEditor
+- sym: vscode.TextEditorChange
+- sym: vscode.TextEditorDecorationType
+- sym: vscode.TextEditorChangeKind
+- sym: vscode.ThemeColor
+- sym: vscode.Uri
+- sym: vscode.window
+- sym: vscode.workspace
+- sym: vscode.EventEmitter
+- sym: vscode.ConfigurationChangeEvent
+- sym: vscode.StatusBarItem
+- sym: vscode.StatusBarAlignment
+- sym: vscode.Command
+- sym: vscode.MarkdownString
+- sym: vscode.languages
+- sym: vscode.HoverProvider
+- sym: vscode.CancellationToken
+- sym: vscode.Hover
+- sym: vscode.TextDocument
+- sym: ./model.Model
+- sym: ./util.dispose
+- sym: ./util.fromNow
+- sym: ./util.getCommitShortHash
+- sym: ./util.IDisposable
+- sym: ./repository.Repository
+- sym: ./decorators.throttle
+- sym: ./git.BlameInformation
+- sym: ./git.Commit
+- sym: ./uri.fromGitUri
+- sym: ./uri.isGitUri
+- sym: ./uri.toGitUri
+- sym: ./emoji.emojify
+- sym: ./emoji.ensureEmojis
+- sym: ./staging.getWorkingTreeAndIndexDiffInformation
+- sym: ./staging.getWorkingTreeDiffInformation
+- sym: ./historyItemDetailsProvider.provideSourceControlHistoryItemAvatar
+- sym: ./historyItemDetailsProvider.provideSourceControlHistoryItemHoverCommands
+- sym: ./historyItemDetailsProvider.provideSourceControlHistoryItemMessageLinks
+- sym: ./api/git.AvatarQuery
+- sym: ./api/git.AvatarQueryCommit
+- sym: ./cache.LRUCache
+data:
+- name: AVATAR_SIZE
+  type: number
+  val: '20'
+types:
+- name: BlameInformationTemplateTokens
+  kind: typealias
+  decorators:
+  - type
+  fields:
+  - name: readonly
+    type: string
+  - name: readonly
+    type: string
+  - name: readonly
+    type: string
+  - name: readonly
+    type: string
+  - name: readonly
+    type: string
+  - name: readonly
+    type: string
+  - name: readonly
+    type: string
+  lines:
+  - 107
+  - 115
+- name: ResourceBlameInformation
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: readonly
+    type: Uri
+  - name: readonly
+    type: readonly LineBlameInformation[]
+  lines:
+  - 117
+  - 120
+- name: LineBlameInformation
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: readonly
+    type: number
+  - name: readonly
+    type: BlameInformation | string
+  lines:
+  - 122
+  - 125
+- name: GitBlameInformationCache
+  kind: struct
+  fields:
+  - name: _cache
+    type: any
+    default: new Map<Repository, LRUCache<string, BlameInformation[]>>()
+  methods:
+  - name: delete
+    sig: 'delete(repository: Repository): boolean'
+    lines:
+    - 130
+    - 132
+    detail:
+      calls:
+      - this._cache.delete
+  - name: get
+    sig: 'get(repository: Repository, resource: Uri, commit: string): BlameInformation[] | undefined'
+    lines:
+    - 134
+    - 137
+    detail:
+      calls:
+      - this._cache.get
+      - this._cache.get(repository)?.get
+      - this._getCacheKey
+  - name: set
+    sig: 'set(repository: Repository, resource: Uri, commit: string, blameInformation: BlameInformation[]): void'
+    lines:
+    - 139
+    - 146
+    detail:
+      calls:
+      - new LRUCache
+      - this._cache.get
+      - this._cache.get(repository)!.set
+      - this._cache.has
+      - this._cache.set
+      - this._getCacheKey
+  lines:
+  - 127
+  - 151
+- name: GitBlameController
+  kind: struct
+  fields:
+  - name: _subjectMaxLength
+    type: any
+    default: '50'
+  - name: _onDidChangeBlameInformation
+    type: any
+    default: new EventEmitter<void>()
+  - name: onDidChangeBlameInformation
+    type: any
+    default: this._onDidChangeBlameInformation.event
+  - name: _textEditorBlameInformation
+    type: ResourceBlameInformation | undefined
+  - name: _HEAD
+    type: string | undefined
+  - name: _commitInformationCache
+    type: any
+    default: new LRUCache<string, Commit>(100)
+  - name: _repositoryBlameCache
+    type: any
+    default: new GitBlameInformationCache()
+  - name: _editorDecoration
+    type: GitBlameEditorDecoration | undefined
+  - name: _statusBarItem
+    type: GitBlameStatusBarItem | undefined
+  - name: _repositoryDisposables
+    type: any
+    default: new Map<Repository, IDisposable[]>()
+  - name: _enablementDisposables
+    type: IDisposable[]
+    default: '[]'
+  - name: _disposables
+    type: IDisposable[]
+    default: '[]'
+  methods:
+  - name: textEditorBlameInformation
+    sig: 'textEditorBlameInformation(): ResourceBlameInformation | undefined'
+    lines:
+    - 160
+    - 162
+    detail: {}
+  - name: constructor
+    sig: 'constructor(private readonly _model: Model)'
+    lines:
+    - 183
+    - 186
+    detail:
+      calls:
+      - this._onDidChangeConfiguration
+      - workspace.onDidChangeConfiguration
+  - name: formatBlameInformationMessage
+    sig: 'formatBlameInformationMessage(documentUri: Uri, template: string, blameInformation: BlameInformation): string'
+    lines:
+    - 188
+    - 206
+    detail:
+      calls:
+      - blameInformation.subject.substring
+      - emojify
+      - fromNow
+      - getCommitShortHash
+      - new Date
+      - new Date(blameInformation.authorDate ?? new Date()).toLocaleString
+      - template.replace
+  - name: getBlameInformationHover
+    sig: 'getBlameInformationHover(documentUri: Uri, blameInformation: BlameInformation): Promise<MarkdownString>'
+    is_async: true
+    lines:
+    - 208
+    - 321
+    detail:
+      calls:
+      - JSON.stringify
+      - avatarResult?.get
+      - emojify
+      - encodeURIComponent
+      - fromNow
+      - getCommitShortHash
+      - l10n.t
+      - markdownString.appendMarkdown
+      - new Date
+      - new Date(authorDate).toLocaleString
+      - new MarkdownString
+      - provideSourceControlHistoryItemAvatar
+      - provideSourceControlHistoryItemHoverCommands
+      - provideSourceControlHistoryItemMessageLinks
+      - remoteCommandsMarkdown.join
+      - "remoteHoverCommands\n\t\t\t\t.map"
+      - remoteHoverCommands.push
+      - repository.getCommit
+      - repository.getUnpublishedCommits
+      - this._commitInformationCache.get
+      - this._commitInformationCache.set
+      - this._model.getRepository
+      - unpublishedCommits.has
+  - name: _onDidChangeConfiguration
+    sig: '_onDidChangeConfiguration(e?: ConfigurationChangeEvent): void'
+    vis: private
+    lines:
+    - 323
+    - 372
+    detail:
+      calls:
+      - config.get
+      - dispose
+      - e.affectsConfiguration
+      - new GitBlameEditorDecoration
+      - new GitBlameStatusBarItem
+      - this._editorDecoration?.dispose
+      - this._model.onDidCloseRepository
+      - this._model.onDidOpenRepository
+      - this._onDidOpenRepository
+      - this._statusBarItem?.dispose
+      - this._updateTextEditorBlameInformation
+      - window.onDidChangeActiveTextEditor
+      - window.onDidChangeTextEditorDiffInformation
+      - window.onDidChangeTextEditorSelection
+      - workspace.getConfiguration
+  - name: _onDidCloseRepository
+    sig: '_onDidCloseRepository(repository: Repository): void'
+    vis: private
+    lines:
+    - 381
+    - 389
+    detail:
+      calls:
+      - dispose
+      - this._repositoryBlameCache.delete
+      - this._repositoryDisposables.delete
+      - this._repositoryDisposables.get
+  - name: _getBlameInformation
+    sig: '_getBlameInformation(resource: Uri, commit: string): Promise<BlameInformation[] | undefined>'
+    is_async: true
+    vis: private
+    lines:
+    - 400
+    - 420
+    detail:
+      calls:
+      - ensureEmojis
+      - repository.blame2
+      - this._model.getRepository
+      - this._repositoryBlameCache.get
+      - this._repositoryBlameCache.set
+  - name: _updateTextEditorBlameInformation
+    sig: '_updateTextEditorBlameInformation(textEditor: TextEditor | undefined, reason?: ''selection''): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 423
+    - 567
+    detail:
+      calls:
+      - /^[0-9a-f]{40}$/i.test
+      - fromGitUri
+      - getWorkingTreeAndIndexDiffInformation
+      - getWorkingTreeDiffInformation
+      - isGitUri
+      - isResourceSchemeSupported
+      - l10n.t
+      - lineBlameInformation.push
+      - lineRangesContainLine
+      - mapModifiedLineNumberToOriginalLineNumber
+      - new Error
+      - new Set
+      - resourceBlameInformation.find
+      - textEditor.selections.map
+      - this._getBlameInformation
+      - this._model.getRepository
+  - name: dispose
+    sig: dispose()
+    lines:
+    - 569
+    - 576
+    detail:
+      calls:
+      - dispose
+      - this._repositoryDisposables.clear
+      - this._repositoryDisposables.values
+  lines:
+  - 153
+  - 577
+- name: GitBlameEditorDecoration
+  kind: struct
+  bases:
+  - HoverProvider
+  fields:
+  - name: _decoration
+    type: TextEditorDecorationType
+  - name: _hoverDisposable
+    type: IDisposable | undefined
+  - name: _disposables
+    type: IDisposable[]
+    default: '[]'
+  methods:
+  - name: constructor
+    sig: 'constructor(private readonly _controller: GitBlameController)'
+    lines:
+    - 585
+    - 598
+    detail:
+      calls:
+      - new ThemeColor
+      - this._controller.onDidChangeBlameInformation
+      - this._disposables.push
+      - this._onDidChangeConfiguration
+      - window.createTextEditorDecorationType
+      - window.onDidChangeActiveTextEditor
+      - workspace.onDidChangeConfiguration
+  - name: provideHover
+    sig: 'provideHover(document: TextDocument, position: Position, token: CancellationToken): Promise<Hover | undefined>'
+    is_async: true
+    lines:
+    - 600
+    - 630
+    detail:
+      calls:
+      - blameInformation?.find
+      - document.lineAt
+      - getEditorDecorationRange
+      - this._controller.getBlameInformationHover
+  - name: _onDidChangeConfiguration
+    sig: '_onDidChangeConfiguration(e?: ConfigurationChangeEvent): void'
+    vis: private
+    lines:
+    - 632
+    - 641
+    detail:
+      calls:
+      - e.affectsConfiguration
+      - this._onDidChangeBlameInformation
+      - this._registerHoverProvider
+  - name: _onDidChangeBlameInformation
+    sig: '_onDidChangeBlameInformation(): void'
+    vis: private
+    lines:
+    - 655
+    - 681
+    detail:
+      calls:
+      - blameInformation.map
+      - config.get
+      - textEditor.setDecorations
+      - workspace.getConfiguration
+  - name: dispose
+    sig: dispose()
+    lines:
+    - 705
+    - 710
+    detail:
+      calls:
+      - dispose
+      - this._hoverDisposable?.dispose
+  lines:
+  - 579
+  - 711
+- name: GitBlameStatusBarItem
+  kind: struct
+  fields:
+  - name: _statusBarItem
+    type: StatusBarItem
+  - name: _disposables
+    type: IDisposable[]
+    default: '[]'
+  methods:
+  - name: constructor
+    sig: 'constructor(private readonly _controller: GitBlameController)'
+    lines:
+    - 717
+    - 724
+    detail:
+      calls:
+      - l10n.t
+      - this._controller.onDidChangeBlameInformation
+      - this._disposables.push
+      - window.createStatusBarItem
+      - workspace.onDidChangeConfiguration
+  - name: _onDidChangeBlameInformation
+    sig: '_onDidChangeBlameInformation(): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 735
+    - 771
+    detail:
+      calls:
+      - config.get
+      - l10n.t
+      - this._controller.formatBlameInformationMessage
+      - this._statusBarItem.hide
+      - this._statusBarItem.show
+      - workspace.getConfiguration
+  - name: _provideTooltip
+    sig: '_provideTooltip(uri: Uri, blameInformation: BlameInformation, cancellationToken: CancellationToken): Promise<MarkdownString | undefined>'
+    is_async: true
+    vis: private
+    lines:
+    - 773
+    - 780
+    detail:
+      calls:
+      - this._controller.getBlameInformationHover
+  - name: dispose
+    sig: dispose()
+    lines:
+    - 782
+    - 784
+    detail:
+      calls:
+      - dispose
+  lines:
+  - 713
+  - 785
+functions:
+- name: lineRangesContainLine
+  sig: 'lineRangesContainLine(changes: readonly TextEditorChange[], lineNumber: number): boolean'
+  lines:
+  - 21
+  - 23
+  detail:
+    calls:
+    - changes.some
+- name: lineRangeLength
+  sig: 'lineRangeLength(startLineNumber: number, endLineNumberExclusive: number): number'
+  lines:
+  - 25
+  - 27
+- name: mapModifiedLineNumberToOriginalLineNumber
+  sig: 'mapModifiedLineNumberToOriginalLineNumber(lineNumber: number, changes: readonly TextEditorChange[]): number'
+  lines:
+  - 29
+  - 61
+  detail:
+    calls:
+    - lineRangeLength
+    - new Error
+- name: getEditorDecorationRange
+  sig: 'getEditorDecorationRange(lineNumber: number): Range'
+  lines:
+  - 63
+  - 66
+- name: isResourceSchemeSupported
+  sig: 'isResourceSchemeSupported(uri: Uri): boolean'
+  lines:
+  - 68
+  - 70
+- name: isResourceBlameInformationEqual
+  sig: 'isResourceBlameInformationEqual(a: ResourceBlameInformation | undefined, b: ResourceBlameInformation | undefined): boolean'
+  lines:
+  - 72
+  - 105
+  detail:
+    calls:
+    - a.resource.toString
+    - b.resource.toString
+exports:
+- name: BlameInformationTemplateTokens
+  kind: type
+- name: ResourceBlameInformation
+  kind: type
+- name: LineBlameInformation
+  kind: type
+- name: GitBlameInformationCache
+  kind: type
+- name: GitBlameController
+  kind: type
+- name: GitBlameEditorDecoration
+  kind: type
+- name: GitBlameStatusBarItem
+  kind: type
+- name: lineRangesContainLine
+  kind: func
+- name: lineRangeLength
+  kind: func
+- name: mapModifiedLineNumberToOriginalLineNumber
+  kind: func
+- name: getEditorDecorationRange
+  kind: func
+- name: isResourceSchemeSupported
+  kind: func
+- name: isResourceBlameInformationEqual
+  kind: func
+- name: AVATAR_SIZE
+  kind: data

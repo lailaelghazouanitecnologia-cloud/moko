@@ -1,0 +1,440 @@
+## Roska File Descriptor — common/stream.ts
+file: common/stream.ts
+lines: 790
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: ./cancellation.js.CancellationToken
+- sym: ./errors.js.onUnexpectedError
+- sym: ./lifecycle.js.DisposableStore
+- sym: ./lifecycle.js.toDisposable
+types:
+- name: ReadableStreamEventPayload
+  kind: enum
+  decorators:
+  - type
+  variants:
+  - name: '''end'''
+  lines:
+  - 13
+  - 13
+- name: ReadableStreamEvents
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: on
+    type: 'method: on(event: ''data'', callback: (data: T) => void): void'
+  - name: on
+    type: 'method: on(event: ''error'', callback: (err: Error) => void): void'
+  - name: on
+    type: 'method: on(event: ''end'', callback: () => void): void'
+  lines:
+  - 15
+  - 41
+- name: ReadableStream
+  kind: trait
+  bases:
+  - ReadableStreamEvents<T>
+  decorators:
+  - interface
+  fields:
+  - name: pause
+    type: 'method: pause(): void'
+  - name: resume
+    type: 'method: resume(): void'
+  - name: destroy
+    type: 'method: destroy(): void'
+  - name: removeListener
+    type: 'method: removeListener(event: string, callback: Function): void'
+  lines:
+  - 47
+  - 68
+- name: Readable
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: read
+    type: 'method: read(): T | null'
+  lines:
+  - 74
+  - 81
+- name: WriteableStream
+  kind: trait
+  bases:
+  - ReadableStream<T>
+  decorators:
+  - interface
+  fields:
+  - name: write
+    type: 'method: write(data: T): void | Promise<void>'
+  - name: error
+    type: 'method: error(error: Error): void'
+  - name: end
+    type: 'method: end(result?: T): void'
+  lines:
+  - 96
+  - 127
+- name: ReadableBufferedStream
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: stream
+    type: ReadableStream<T>
+  - name: buffer
+    type: T[]
+  - name: ended
+    type: boolean
+  lines:
+  - 135
+  - 152
+- name: IReducer
+  kind: trait
+  decorators:
+  - interface
+  lines:
+  - 172
+  - 174
+- name: IDataTransformer
+  kind: trait
+  decorators:
+  - interface
+  lines:
+  - 176
+  - 178
+- name: IErrorTransformer
+  kind: trait
+  decorators:
+  - interface
+  lines:
+  - 180
+  - 182
+- name: ITransformer
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: data
+    type: IDataTransformer<Original, Transformed>
+  - name: error
+    type: IErrorTransformer
+  lines:
+  - 184
+  - 187
+- name: WriteableStreamOptions
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: highWaterMark
+    type: number
+  lines:
+  - 193
+  - 201
+- name: WriteableStreamImpl
+  kind: struct
+  ctx: because some objects can be complex and non-reducible, we also allow passing the explicit `null` value to skip the reduce step
+  bases:
+  - WriteableStream<T>
+  fields:
+  - name: state
+    type: any
+    default: "{\n\t\tflowing: false,\n\t\tended: false,\n\t\tdestroyed: false\n\t}"
+  - name: buffer
+    type: any
+    default: "{\n\t\tdata: [] as T[],\n\t\terror: [] as Error[]\n\t}"
+  - name: listeners
+    type: any
+    default: "{\n\t\tdata: [] as { (data: T): void }[],\n\t\terror: [] as { (error: Error): void }[]..."
+  - name: pendingWritePromises
+    type: Function[]
+    default: '[]'
+  methods:
+  - name: constructor
+    sig: 'constructor(private reducer: IReducer<T> | null, private options?: WriteableStreamOptions)'
+    lines:
+    - 230
+    - 230
+    detail: {}
+  - name: pause
+    sig: 'pause(): void'
+    lines:
+    - 232
+    - 238
+    detail: {}
+  - name: resume
+    sig: 'resume(): void'
+    lines:
+    - 240
+    - 253
+    detail:
+      calls:
+      - this.flowData
+      - this.flowEnd
+      - this.flowErrors
+  - name: write
+    sig: 'write(data: T): void | Promise<void>'
+    lines:
+    - 255
+    - 274
+    detail:
+      calls:
+      - new Promise
+      - this.buffer.data.push
+      - this.emitData
+  - name: error
+    sig: 'error(error: Error): void'
+    lines:
+    - 276
+    - 290
+    detail:
+      calls:
+      - this.buffer.error.push
+      - this.emitError
+  - name: end
+    sig: 'end(result?: T): void'
+    lines:
+    - 292
+    - 313
+    detail:
+      calls:
+      - this.destroy
+      - this.emitEnd
+      - this.write
+  - name: on
+    sig: 'on(event: ''data'' | ''error'' | ''end'', callback: (arg0?: any) => void): void'
+    lines:
+    - 334
+    - 373
+    detail:
+      calls:
+      - this.destroy
+      - this.flowEnd
+      - this.flowErrors
+      - this.listeners.data.push
+      - this.listeners.end.push
+      - this.listeners.error.push
+      - this.resume
+  - name: removeListener
+    sig: 'removeListener(event: string, callback: Function): void'
+    lines:
+    - 375
+    - 402
+    detail:
+      calls:
+      - listeners.indexOf
+      - listeners.splice
+  - name: flowData
+    sig: 'flowData(): void'
+    vis: private
+    lines:
+    - 404
+    - 429
+    detail:
+      calls:
+      - pendingWritePromises.forEach
+      - this.emitData
+      - this.reducer
+  - name: destroy
+    sig: 'destroy(): void'
+    lines:
+    - 451
+    - 465
+    detail: {}
+  lines:
+  - 203
+  - 466
+- name: IStreamListener
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: onData
+    type: 'method: onData(data: T): void'
+  - name: onError
+    type: 'method: onError(err: Error): void'
+  - name: onEnd
+    type: 'method: onEnd(): void'
+  lines:
+  - 565
+  - 584
+functions:
+- name: isReadable
+  sig: 'isReadable(obj: unknown)'
+  lines:
+  - 83
+  - 90
+  detail: {}
+- name: isReadableStream
+  sig: 'isReadableStream(obj: unknown)'
+  lines:
+  - 154
+  - 161
+  detail:
+    calls:
+    - '[candidate.on, candidate.pause, candidate.resume, candidate.destroy].every'
+- name: isReadableBufferedStream
+  sig: 'isReadableBufferedStream(obj: unknown)'
+  lines:
+  - 163
+  - 170
+  detail:
+    calls:
+    - Array.isArray
+    - isReadableStream
+- name: newWriteableStream
+  sig: 'newWriteableStream(reducer: IReducer<T> | null, options?: WriteableStreamOptions): WriteableStream<T>'
+  lines:
+  - 189
+  - 191
+- name: consumeReadable
+  sig: 'consumeReadable(readable: Readable<T>, reducer: IReducer<T>): T'
+  lines:
+  - 471
+  - 480
+  detail:
+    calls:
+    - chunks.push
+    - readable.read
+    - reducer
+- name: peekReadable
+  sig: 'peekReadable(readable: Readable<T>, reducer: IReducer<T>, maxChunks: number): T | Readable<T>'
+  lines:
+  - 487
+  - 528
+  detail:
+    calls:
+    - chunks.push
+    - readable.read
+    - reducer
+- name: consumeStream
+  sig: 'consumeStream(stream: ReadableStreamEvents<T>, reducer?: IReducer<T, R>): Promise<R | undefined>'
+  lines:
+  - 537
+  - 563
+  detail:
+    calls:
+    - new Promise
+- name: listenStream
+  sig: 'listenStream(stream: ReadableStreamEvents<T>, listener: IStreamListener<T>, token?: CancellationToken): void'
+  lines:
+  - 589
+  - 611
+  detail:
+    calls:
+    - stream.on
+- name: peekStream
+  sig: 'peekStream(stream: ReadableStream<T>, maxChunks: number): Promise<ReadableBufferedStream<T>>'
+  lines:
+  - 618
+  - 667
+  detail:
+    calls:
+    - new Promise
+- name: toStream
+  sig: 'toStream(t: T, reducer: IReducer<T>): ReadableStream<T>'
+  lines:
+  - 672
+  - 678
+  detail:
+    calls:
+    - newWriteableStream
+    - stream.end
+- name: emptyStream
+  sig: 'emptyStream(): ReadableStream<never>'
+  lines:
+  - 683
+  - 688
+  detail:
+    calls:
+    - newWriteableStream
+    - stream.end
+- name: toReadable
+  sig: 'toReadable(t: T): Readable<T>'
+  lines:
+  - 693
+  - 707
+  detail: {}
+- name: transform
+  sig: 'transform(stream: ReadableStreamEvents<Original>, transformer: ITransformer<Original, Transformed>, reducer: IReducer<Transformed>): ReadableStream<Transformed>'
+  lines:
+  - 712
+  - 722
+  detail:
+    calls:
+    - listenStream
+    - newWriteableStream
+- name: prefixedReadable
+  sig: 'prefixedReadable(prefix: T, readable: Readable<T>, reducer: IReducer<T>): Readable<T>'
+  lines:
+  - 728
+  - 752
+  detail: {}
+- name: prefixedStream
+  sig: 'prefixedStream(prefix: T, stream: ReadableStream<T>, reducer: IReducer<T>): ReadableStream<T>'
+  lines:
+  - 758
+  - 790
+  detail:
+    calls:
+    - listenStream
+    - newWriteableStream
+exports:
+- name: ReadableStreamEventPayload
+  kind: type
+- name: ReadableStreamEvents
+  kind: type
+- name: ReadableStream
+  kind: type
+- name: Readable
+  kind: type
+- name: WriteableStream
+  kind: type
+- name: ReadableBufferedStream
+  kind: type
+- name: IReducer
+  kind: type
+- name: IDataTransformer
+  kind: type
+- name: IErrorTransformer
+  kind: type
+- name: ITransformer
+  kind: type
+- name: WriteableStreamOptions
+  kind: type
+- name: WriteableStreamImpl
+  kind: type
+- name: IStreamListener
+  kind: type
+- name: isReadable
+  kind: func
+- name: isReadableStream
+  kind: func
+- name: isReadableBufferedStream
+  kind: func
+- name: newWriteableStream
+  kind: func
+- name: consumeReadable
+  kind: func
+- name: peekReadable
+  kind: func
+- name: consumeStream
+  kind: func
+- name: listenStream
+  kind: func
+- name: peekStream
+  kind: func
+- name: toStream
+  kind: func
+- name: emptyStream
+  kind: func
+- name: toReadable
+  kind: func
+- name: transform
+  kind: func
+- name: prefixedReadable
+  kind: func
+- name: prefixedStream
+  kind: func

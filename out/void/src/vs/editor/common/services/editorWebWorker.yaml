@@ -1,0 +1,377 @@
+## Roska File Descriptor — services/editorWebWorker.ts
+file: services/editorWebWorker.ts
+lines: 530
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: ../../../base/common/diff/diff.js.stringDiff
+- sym: ../../../base/common/lifecycle.js.IDisposable
+- sym: ../../../base/common/uri.js.URI
+- sym: ../../../base/common/worker/webWorker.js.IWebWorkerServerRequestHandler
+- sym: ../core/position.js.Position
+- sym: ../core/range.js.IRange
+- sym: ../core/range.js.Range
+- sym: ../model.js.EndOfLineSequence
+- sym: ../model.js.ITextModel
+- sym: ../model/mirrorTextModel.js.IMirrorTextModel
+- sym: ../model/mirrorTextModel.js.IModelChangedEvent
+- sym: ../languages.js.IColorInformation
+- sym: ../languages.js.IInplaceReplaceSupportResult
+- sym: ../languages.js.ILink
+- sym: ../languages.js.TextEdit
+- sym: ../languages/linkComputer.js.computeLinks
+- sym: ../languages/supports/inplaceReplaceSupport.js.BasicInplaceReplace
+- sym: ./editorWorker.js.DiffAlgorithmName
+- sym: ./editorWorker.js.IDiffComputationResult
+- sym: ./editorWorker.js.ILineChange
+- sym: ./editorWorker.js.IUnicodeHighlightsResult
+- sym: ./editorBaseApi.js.createMonacoBaseAPI
+- sym: ../../../base/common/stopwatch.js.StopWatch
+- sym: ./unicodeTextModelHighlighter.js.UnicodeTextModelHighlighter
+- sym: ./unicodeTextModelHighlighter.js.UnicodeHighlighterOptions
+- sym: ../diff/legacyLinesDiffComputer.js.DiffComputer
+- sym: ../diff/legacyLinesDiffComputer.js.IChange
+- sym: ../diff/linesDiffComputer.js.ILinesDiffComputer
+- sym: ../diff/linesDiffComputer.js.ILinesDiffComputerOptions
+- sym: ../diff/rangeMapping.js.DetailedLineRangeMapping
+- sym: ../diff/linesDiffComputers.js.linesDiffComputers
+- sym: ../diff/documentDiffProvider.js.IDocumentDiffProviderOptions
+- sym: ../../../base/common/errors.js.BugIndicatingError
+- sym: ../languages/defaultDocumentColorsComputer.js.computeDefaultDocumentColors
+- sym: ./findSectionHeaders.js.FindSectionHeaderOptions
+- sym: ./findSectionHeaders.js.SectionHeader
+- sym: ./findSectionHeaders.js.findSectionHeaders
+- sym: ./textModelSync/textModelSync.protocol.js.IRawModelData
+- sym: ./textModelSync/textModelSync.protocol.js.IWorkerTextModelSyncChannelServer
+- sym: ./textModelSync/textModelSync.impl.js.ICommonModel
+- sym: ./textModelSync/textModelSync.impl.js.WorkerTextModelSyncServer
+types:
+- name: IMirrorModel
+  kind: trait
+  bases:
+  - IMirrorTextModel
+  decorators:
+  - interface
+  fields:
+  - name: readonly
+    type: URI
+  - name: readonly
+    type: number
+  - name: getValue
+    type: 'method: getValue(): string'
+  lines:
+  - 32
+  - 36
+- name: IWorkerContext
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: host
+    type: H
+  - name: getMirrorModels
+    type: 'method: getMirrorModels(): IMirrorModel[]'
+  lines:
+  - 38
+  - 47
+- name: IWordRange
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: readonly
+    type: number
+  - name: readonly
+    type: number
+  lines:
+  - 53
+  - 62
+- name: EditorWorker
+  kind: model
+  ctx: '---- BEGIN diff --------------------------------------------------------------------------'
+  bases:
+  - IDisposable
+  - IWorkerTextModelSyncChannelServer
+  - IWebWorkerServerRequestHandler
+  fields:
+  - name: _requestHandlerBrand
+    type: any
+  - name: _workerTextModelSyncServer
+    type: any
+    default: new WorkerTextModelSyncServer()
+  - name: _diffLimit
+    type: any
+    default: '100000'
+  - name: _suggestionsLimit
+    type: any
+    default: '10000'
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tprivate readonly _foreignModule: any | null = null\n\t)"
+    lines:
+    - 72
+    - 74
+    detail: {}
+  - name: dispose
+    sig: 'dispose(): void'
+    lines:
+    - 76
+    - 77
+    detail: {}
+  - name: $ping
+    sig: $ping()
+    is_async: true
+    lines:
+    - 79
+    - 81
+    detail: {}
+  - name: getModels
+    sig: 'getModels(): ICommonModel[]'
+    lines:
+    - 87
+    - 89
+    detail:
+      calls:
+      - this._workerTextModelSyncServer.getModels
+  - name: $acceptNewModel
+    sig: '$acceptNewModel(data: IRawModelData): void'
+    lines:
+    - 91
+    - 93
+    detail:
+      calls:
+      - this._workerTextModelSyncServer.$acceptNewModel
+  - name: $acceptModelChanged
+    sig: '$acceptModelChanged(uri: string, e: IModelChangedEvent): void'
+    lines:
+    - 95
+    - 97
+    detail:
+      calls:
+      - this._workerTextModelSyncServer.$acceptModelChanged
+  - name: $acceptRemovedModel
+    sig: '$acceptRemovedModel(uri: string): void'
+    lines:
+    - 99
+    - 101
+    detail:
+      calls:
+      - this._workerTextModelSyncServer.$acceptRemovedModel
+  - name: $computeUnicodeHighlights
+    sig: '$computeUnicodeHighlights(url: string, options: UnicodeHighlighterOptions, range?: IRange): Promise<IUnicodeHighlightsResult>'
+    is_async: true
+    lines:
+    - 103
+    - 109
+    detail:
+      calls:
+      - UnicodeTextModelHighlighter.computeUnicodeHighlights
+      - this._getModel
+  - name: $findSectionHeaders
+    sig: '$findSectionHeaders(url: string, options: FindSectionHeaderOptions): Promise<SectionHeader[]>'
+    is_async: true
+    lines:
+    - 111
+    - 117
+    detail:
+      calls:
+      - findSectionHeaders
+      - this._getModel
+  - name: $computeDiff
+    sig: '$computeDiff(originalUrl: string, modifiedUrl: string, options: IDocumentDiffProviderOptions, algorithm: DiffAlgorithmName): Promise<IDiffComputationResult | null>'
+    is_async: true
+    lines:
+    - 121
+    - 130
+    detail:
+      calls:
+      - EditorWorker.computeDiff
+      - this._getModel
+  - name: computeDiff
+    sig: 'computeDiff(originalTextModel: ICommonModel | ITextModel, modifiedTextModel: ICommonModel | ITextModel, options: IDocumentDiffProviderOptions, algorithm: DiffAlgorithmName): IDiffComputationResult'
+    vis: private
+    decorators:
+    - static
+    lines:
+    - 132
+    - 167
+    detail:
+      calls:
+      - diffAlgorithm.computeDiff
+      - getLineChanges
+      - linesDiffComputers.getDefault
+      - linesDiffComputers.getLegacy
+      - modifiedTextModel.getLinesContent
+      - originalTextModel.getLinesContent
+      - result.moves.map
+      - this._modelsAreIdentical
+  - name: _modelsAreIdentical
+    sig: '_modelsAreIdentical(original: ICommonModel | ITextModel, modified: ICommonModel | ITextModel): boolean'
+    vis: private
+    decorators:
+    - static
+    lines:
+    - 169
+    - 183
+    detail:
+      calls:
+      - modified.getLineContent
+      - modified.getLineCount
+      - original.getLineContent
+      - original.getLineCount
+  - name: $computeDirtyDiff
+    sig: '$computeDirtyDiff(originalUrl: string, modifiedUrl: string, ignoreTrimWhitespace: boolean): Promise<IChange[] | null>'
+    is_async: true
+    lines:
+    - 185
+    - 202
+    detail:
+      calls:
+      - diffComputer.computeDiff
+      - modified.getLinesContent
+      - new DiffComputer
+      - original.getLinesContent
+      - this._getModel
+  - name: $computeMoreMinimalEdits
+    sig: '$computeMoreMinimalEdits(modelUrl: string, edits: TextEdit[], pretty: boolean): Promise<TextEdit[]>'
+    is_async: true
+    lines:
+    - 211
+    - 291
+    detail:
+      calls:
+      - Math.max
+      - Range.fromPositions
+      - Range.getEndPosition
+      - Range.getEndPosition(edits[writeIndex].range).equals
+      - Range.getStartPosition
+      - Range.isEmpty
+      - Range.lift
+      - Range.lift(range).getStartPosition
+      - edits.slice
+      - edits.slice(0).sort
+      - model.getValueInRange
+      - model.offsetAt
+      - model.positionAt
+      - result.push
+      - stringDiff
+      - text.replace
+      - text.substr
+      - this._getModel
+  - name: $computeHumanReadableDiff
+    sig: '$computeHumanReadableDiff(modelUrl: string, edits: TextEdit[], options: ILinesDiffComputerOptions): TextEdit[]'
+    lines:
+    - 293
+    - 389
+    detail:
+      calls:
+      - Math.max
+      - Range.fromPositions
+      - Range.isEmpty
+      - Range.lift
+      - Range.lift(range).getStartPosition
+      - addPositions
+      - edits.slice
+      - edits.slice(0).sort
+      - getText
+      - getText(modifiedLines, x.modifiedRange).join
+      - linesDiffComputers.getDefault
+      - linesDiffComputers.getDefault().computeDiff
+      - model.getValueInRange
+      - new BugIndicatingError
+      - original.split
+      - result.push
+      - text.replace
+      - text.split
+      - this._getModel
+      - x.originalRange.getEndPosition
+      - x.originalRange.getStartPosition
+  - name: $computeLinks
+    sig: '$computeLinks(modelUrl: string): Promise<ILink[] | null>'
+    is_async: true
+    lines:
+    - 393
+    - 400
+    detail:
+      calls:
+      - computeLinks
+      - this._getModel
+  - name: $computeDefaultDocumentColors
+    sig: '$computeDefaultDocumentColors(modelUrl: string): Promise<IColorInformation[] | null>'
+    is_async: true
+    lines:
+    - 404
+    - 410
+    detail:
+      calls:
+      - computeDefaultDocumentColors
+      - this._getModel
+  - name: $textualSuggest
+    sig: '$textualSuggest(modelUrls: string[], leadingWord: string | undefined, wordDef: string, wordDefFlags: string): Promise<{ words: string[]; duration: number } | null>'
+    is_async: true
+    lines:
+    - 416
+    - 440
+    detail:
+      calls:
+      - Array.from
+      - Number
+      - isNaN
+      - model.words
+      - new RegExp
+      - new Set
+      - new StopWatch
+      - seen.add
+      - sw.elapsed
+      - this._getModel
+  - name: $computeWordRanges
+    sig: '$computeWordRanges(modelUrl: string, range: IRange, wordDef: string, wordDefFlags: string): Promise<{ [word: string]: IRange[] }>'
+    is_async: true
+    lines:
+    - 447
+    - 474
+    detail:
+      calls:
+      - Number
+      - Object.create
+      - array.push
+      - isNaN
+      - model.getLineWords
+      - new RegExp
+      - this._getModel
+  - name: $navigateValueSet
+    sig: '$navigateValueSet(modelUrl: string, range: IRange, up: boolean, wordDef: string, wordDefFlags: string): Promise<IInplaceReplaceSupportResult | null>'
+    is_async: true
+    lines:
+    - 478
+    - 504
+    detail:
+      calls:
+      - BasicInplaceReplace.INSTANCE.navigateValueSet
+      - model.getValueInRange
+      - model.getWordAtPosition
+      - new RegExp
+      - this._getModel
+  - name: $fmr
+    sig: '$fmr(method: string, args: any[]): Promise<any>'
+    lines:
+    - 509
+    - 519
+    detail:
+      calls:
+      - Promise.reject
+      - Promise.resolve
+      - new Error
+      - this._foreignModule[method].apply
+  lines:
+  - 67
+  - 522
+exports:
+- name: IMirrorModel
+  kind: type
+- name: IWorkerContext
+  kind: type
+- name: IWordRange
+  kind: type
+- name: EditorWorker
+  kind: type

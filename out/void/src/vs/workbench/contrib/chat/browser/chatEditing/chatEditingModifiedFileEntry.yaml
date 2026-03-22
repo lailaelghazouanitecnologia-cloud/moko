@@ -1,0 +1,306 @@
+## Roska File Descriptor — chatEditing/chatEditingModifiedFileEntry.ts
+file: chatEditing/chatEditingModifiedFileEntry.ts
+lines: 314
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: ../../../../../base/common/event.js.Emitter
+- sym: ../../../../../base/common/lifecycle.js.Disposable
+- sym: ../../../../../base/common/lifecycle.js.DisposableMap
+- sym: ../../../../../base/common/lifecycle.js.MutableDisposable
+- sym: ../../../../../base/common/network.js.Schemas
+- sym: ../../../../../base/common/numbers.js.clamp
+- sym: ../../../../../base/common/observable.js.autorun
+- sym: ../../../../../base/common/observable.js.derived
+- sym: ../../../../../base/common/observable.js.IObservable
+- sym: ../../../../../base/common/observable.js.ITransaction
+- sym: ../../../../../base/common/observable.js.observableValue
+- sym: ../../../../../base/common/uri.js.URI
+- sym: ../../../../../editor/common/core/offsetEdit.js.OffsetEdit
+- sym: ../../../../../editor/common/languages.js.TextEdit
+- sym: ../../../../../nls.js.localize
+- sym: ../../../../../platform/configuration/common/configuration.js.IConfigurationService
+- sym: ../../../../../platform/files/common/files.js.IFileService
+- sym: ../../../../../platform/instantiation/common/instantiation.js.IInstantiationService
+- sym: ../../../../../platform/observable/common/platformObservableUtils.js.observableConfigValue
+- sym: ../../../../../platform/theme/common/colorRegistry.js.editorBackground
+- sym: ../../../../../platform/theme/common/colorRegistry.js.registerColor
+- sym: ../../../../../platform/theme/common/colorRegistry.js.transparent
+- sym: ../../../../../platform/undoRedo/common/undoRedo.js.IUndoRedoElement
+- sym: ../../../../../platform/undoRedo/common/undoRedo.js.IUndoRedoService
+- sym: ../../../../common/editor.js.IEditorPane
+- sym: ../../../../services/filesConfiguration/common/filesConfigurationService.js.IFilesConfigurationService
+- sym: ../../../notebook/common/notebookCommon.js.ICellEditOperation
+- sym: ../../common/chatAgents.js.IChatAgentResult
+- sym: ../../common/chatEditingService.js.ChatEditKind
+- sym: ../../common/chatEditingService.js.IModifiedFileEntry
+- sym: ../../common/chatEditingService.js.IModifiedFileEntryEditorIntegration
+- sym: ../../common/chatEditingService.js.WorkingSetEntryState
+- sym: ../../common/chatModel.js.IChatResponseModel
+- sym: ../../common/chatService.js.IChatService
+data:
+- name: pendingRewriteMinimap
+  type: any
+  val: "registerColor('minimap.chatEditHighlight',\n\ttransparent(editorBackground, 0.6),\n\tlocalize('editorSelectionBackground', \"..."
+types:
+- name: AutoAcceptControl
+  kind: struct
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\treadonly total: number,\n\t\treadonly remaining: number,\n\t\treadonly cancel: () => void\n\t)"
+    lines:
+    - 30
+    - 34
+    detail: {}
+  lines:
+  - 29
+  - 35
+- name: AbstractChatEditingModifiedFileEntry
+  kind: trait
+  ctx: Create the editor integration for this entry and the given editor pane. This will only be called once (and cached) per pane. The integration is meant to be scoped to this entry only and when the passed pane/editor changes input, then the editor integration must handle that, e.g use default/null values
+  bases:
+  - Disposable
+  - IModifiedFileEntry
+  decorators:
+  - abstract
+  fields:
+  - name: scheme
+    type: any
+    default: '''modified-file-entry'''
+  - name: lastEntryId
+    type: any
+    default: '0'
+  - name: entryId
+    type: any
+    default: '`${AbstractChatEditingModifiedFileEntry.scheme}::${++AbstractChatEditingModified...'
+  - name: _onDidDelete
+    type: any
+    default: this._register(new Emitter<void>())
+  - name: onDidDelete
+    type: any
+    default: this._onDidDelete.event
+  - name: _stateObs
+    type: any
+    default: observableValue<WorkingSetEntryState>(this, WorkingSetEntryState.Attached)
+  - name: state
+    type: IObservable<WorkingSetEntryState>
+    default: this._stateObs
+  - name: _isCurrentlyBeingModifiedByObs
+    type: any
+    default: observableValue<IChatResponseModel | undefined>(this, undefined)
+  - name: isCurrentlyBeingModifiedBy
+    type: IObservable<IChatResponseModel | undefined>
+    default: this._isCurrentlyBeingModifiedByObs
+  - name: _rewriteRatioObs
+    type: any
+    default: observableValue<number>(this, 0)
+  - name: rewriteRatio
+    type: IObservable<number>
+    default: this._rewriteRatioObs
+  - name: _reviewModeTempObs
+    type: any
+    default: observableValue<true | undefined>(this, undefined)
+  - name: reviewMode
+    type: IObservable<boolean>
+  - name: _autoAcceptCtrl
+    type: any
+    default: observableValue<AutoAcceptControl | undefined>(this, undefined)
+  - name: autoAcceptController
+    type: IObservable<AutoAcceptControl | undefined>
+    default: this._autoAcceptCtrl
+  - name: _autoAcceptTimeout
+    type: IObservable<number>
+  - name: createdInRequestId
+    type: string | undefined
+  - name: _refCounter
+    type: number
+    default: '1'
+  - name: originalURI
+    type: URI
+  - name: _editorIntegrations
+    type: any
+    default: this._register(new DisposableMap<IEditorPane, IModifiedFileEntryEditorIntegratio...
+  - name: changesCount
+    type: IObservable<number>
+  - name: initialContent
+    type: string
+  methods:
+  - name: telemetryInfo
+    sig: 'telemetryInfo(): IModifiedEntryTelemetryInfo'
+    lines:
+    - 70
+    - 72
+    detail: {}
+  - name: lastModifyingRequestId
+    sig: lastModifyingRequestId()
+    lines:
+    - 76
+    - 78
+    detail: {}
+  - name: constructor
+    sig: "constructor(\n\t\treadonly modifiedURI: URI,\n\t\tprotected _telemetryInfo: IModifiedEntryTelemetryInfo,\n\t\tkind: ChatEditKind,\n\t\t@IConfigurationService configService: IConfigurationService,\n\t\t@IFilesConfigurationService protected _fileConfigService: IFilesConfigurationService,\n\t\t@IChatService protected readonly _chatService: IChatService,\n\t\t@IFileService protected readonly _fileService: IFileService,\n\t\t@IUndoRedoService private readonly _undoRedoService: IUndoRedoService,\n\t\t@IInstantiationService protected readonly _instantiationService: IInstantiationService,\n\t)"
+    lines:
+    - 84
+    - 130
+    detail:
+      calls:
+      - autorun
+      - derived
+      - new MutableDisposable
+      - observableConfigValue
+      - super
+      - this._fileService.onDidFilesChange
+      - this._fileService.watch
+      - this._register
+      - this._store.add
+  - name: dispose
+    sig: 'dispose(): void'
+    lines:
+    - 132
+    - 136
+    detail:
+      calls:
+      - super.dispose
+  - name: acquire
+    sig: acquire()
+    lines:
+    - 138
+    - 141
+    detail: {}
+  - name: enableReviewModeUntilSettled
+    sig: 'enableReviewModeUntilSettled(): void'
+    lines:
+    - 143
+    - 157
+    detail:
+      calls:
+      - autorun
+      - this._reviewModeTempObs.set
+      - this._store.add
+  - name: updateTelemetryInfo
+    sig: 'updateTelemetryInfo(telemetryInfo: IModifiedEntryTelemetryInfo)'
+    lines:
+    - 159
+    - 161
+    detail: {}
+  - name: accept
+    sig: 'accept(tx: ITransaction | undefined): Promise<void>'
+    is_async: true
+    lines:
+    - 163
+    - 174
+    detail:
+      calls:
+      - this._autoAcceptCtrl.set
+      - this._doAccept
+      - this._notifyAction
+      - this._stateObs.get
+      - this._stateObs.set
+  - name: reject
+    sig: 'reject(tx: ITransaction | undefined): Promise<void>'
+    is_async: true
+    lines:
+    - 178
+    - 188
+    detail:
+      calls:
+      - this._autoAcceptCtrl.set
+      - this._doReject
+      - this._notifyAction
+      - this._stateObs.get
+      - this._stateObs.set
+  - name: getEditorIntegration
+    sig: 'getEditorIntegration(pane: IEditorPane): IModifiedFileEntryEditorIntegration'
+    lines:
+    - 205
+    - 212
+    detail:
+      calls:
+      - this._createEditorIntegration
+      - this._editorIntegrations.get
+      - this._editorIntegrations.set
+  - name: acceptStreamingEditsStart
+    sig: 'acceptStreamingEditsStart(responseModel: IChatResponseModel, tx: ITransaction)'
+    lines:
+    - 224
+    - 233
+    detail:
+      calls:
+      - this._autoAcceptCtrl.get
+      - this._autoAcceptCtrl.get()?.cancel
+      - this._createUndoRedoElement
+      - this._isCurrentlyBeingModifiedByObs.set
+      - this._resetEditsState
+      - this._undoRedoService.pushElement
+  - name: acceptStreamingEditsEnd
+    sig: 'acceptStreamingEditsEnd(tx: ITransaction)'
+    is_async: true
+    lines:
+    - 239
+    - 273
+    detail:
+      calls:
+      - Date.now
+      - this._areOriginalAndModifiedIdentical
+      - this._autoAcceptCtrl.get
+      - this._autoAcceptTimeout.get
+      - this._resetEditsState
+      - this.accept
+      - this.reviewMode.get
+      - update
+  lines:
+  - 42
+  - 295
+- name: IModifiedEntryTelemetryInfo
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: readonly
+    type: string | undefined
+  - name: readonly
+    type: string | undefined
+  - name: readonly
+    type: string
+  - name: readonly
+    type: string
+  - name: readonly
+    type: IChatAgentResult | undefined
+  lines:
+  - 297
+  - 303
+- name: ISnapshotEntry
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: readonly
+    type: URI
+  - name: readonly
+    type: string
+  - name: readonly
+    type: URI
+  - name: readonly
+    type: string
+  - name: readonly
+    type: string
+  - name: readonly
+    type: OffsetEdit
+  - name: readonly
+    type: WorkingSetEntryState
+  - name: telemetryInfo
+    type: IModifiedEntryTelemetryInfo
+  lines:
+  - 305
+  - 314
+exports:
+- name: AutoAcceptControl
+  kind: type
+- name: AbstractChatEditingModifiedFileEntry
+  kind: type
+- name: IModifiedEntryTelemetryInfo
+  kind: type
+- name: ISnapshotEntry
+  kind: type
+- name: pendingRewriteMinimap
+  kind: data

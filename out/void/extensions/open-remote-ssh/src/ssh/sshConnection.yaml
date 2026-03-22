@@ -1,0 +1,218 @@
+## Roska File Descriptor — ssh/sshConnection.ts
+file: ssh/sshConnection.ts
+lines: 367
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: events.EventEmitter
+- sym: net.net
+- sym: fs.fs
+- sym: stream.stream
+- sym: ssh2.Client
+- sym: ssh2.ClientChannel
+- sym: ssh2.ClientErrorExtensions
+- sym: ssh2.ExecOptions
+- sym: ssh2.ShellOptions
+- sym: ssh2.ConnectConfig
+- sym: net.Server
+- sym: simple-socks.SocksConnectionInfo
+- sym: simple-socks.createServer as createSocksServer
+data:
+- name: defaultOptions
+  type: Partial<SSHConnectConfig>
+  val: "{\n\treconnect: false,\n\tport: 22,\n\treconnectTries: 3,\n\treconnectDelay: 5000\n}"
+- name: SSHConstants
+  type: object
+  val: "{\n\t'CHANNEL': {\n\t\tSSH: 'ssh',\n\t\tTUNNEL: 'tunnel',\n\t\tX11: 'x11'\n\t},\n\t'STATUS': {\n\t\tBEFORECONNECT: 'beforeconnect',\n\t\tCONN..."
+types:
+- name: SSHConnectConfig
+  kind: trait
+  bases:
+  - ConnectConfig
+  decorators:
+  - interface
+  fields:
+  - name: uniqueId
+    type: string
+  - name: reconnect
+    type: boolean
+  - name: reconnectTries
+    type: number
+  - name: reconnectDelay
+    type: number
+  - name: identity
+    type: string | Buffer
+  lines:
+  - 14
+  - 25
+- name: SSHTunnelConfig
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: remoteAddr
+    type: string
+  - name: localPort
+    type: number
+  - name: remotePort
+    type: number
+  - name: remoteSocketPath
+    type: string
+  - name: socks
+    type: boolean
+  lines:
+  - 27
+  - 39
+- name: SSHConnection
+  kind: struct
+  ctx: Emit message on this channel
+  bases:
+  - EventEmitter
+  fields:
+  - name: config
+    type: SSHConnectConfig
+  - name: activeTunnels
+    type: '{ [index: string]: SSHTunnelConfig & { server: Server } }'
+    default: '{}'
+  - name: __$connectPromise
+    type: Promise<SSHConnection> | null
+    default: 'null'
+  - name: __retries
+    type: number
+    default: '0'
+  - name: __err
+    type: 'Error & ClientErrorExtensions & { code?: string } | null'
+    default: 'null'
+  - name: sshConnection
+    type: Client | null
+    default: 'null'
+  methods:
+  - name: constructor
+    sig: 'constructor(options: SSHConnectConfig)'
+    lines:
+    - 71
+    - 75
+    detail:
+      calls:
+      - Object.assign
+      - super
+  - name: emit
+    sig: 'emit(channel: string, status: string, payload?: any): boolean'
+    lines:
+    - 80
+    - 83
+    detail:
+      calls:
+      - super.emit
+  - name: shell
+    sig: 'shell(options: ShellOptions = {}): Promise<ClientChannel>'
+    lines:
+    - 88
+    - 94
+    detail:
+      calls:
+      - this.connect
+      - this.connect().then
+  - name: exec
+    sig: 'exec(cmd: string, params?: Array<string>, options: ExecOptions = {}): Promise<{ stdout: string; stderr: string }>'
+    lines:
+    - 99
+    - 119
+    detail:
+      calls:
+      - Array.isArray
+      - params.join
+      - this.connect
+      - this.connect().then
+  - name: execPartial
+    sig: 'execPartial(cmd: string, tester: (stdout: string, stderr: string) => boolean, params?: Array<string>, options: ExecOptions = {}): Promise<{ stdout: string; stderr: string }>'
+    lines:
+    - 124
+    - 159
+    detail:
+      calls:
+      - Array.isArray
+      - params.join
+      - this.connect
+      - this.connect().then
+  - name: forwardOut
+    sig: 'forwardOut(srcIP: string, srcPort: number, destIP: string, destPort: number): Promise<ClientChannel>'
+    lines:
+    - 164
+    - 175
+    detail:
+      calls:
+      - this.connect
+      - this.connect().then
+  - name: getSocksPort
+    sig: 'getSocksPort(localPort: number): Promise<number>'
+    lines:
+    - 180
+    - 184
+    detail:
+      calls:
+      - this.addTunnel
+      - 'this.addTunnel({ name: ''__socksServer'', socks: true, localPort: localPort }).then'
+  - name: close
+    sig: 'close(): Promise<void>'
+    lines:
+    - 189
+    - 197
+    detail:
+      calls:
+      - this.closeTunnel
+      - this.closeTunnel().then
+      - this.emit
+  - name: connect
+    sig: 'connect(c?: SSHConnectConfig): Promise<SSHConnection>'
+    lines:
+    - 202
+    - 253
+    detail:
+      calls:
+      - Object.assign
+      - new Promise
+  - name: getTunnel
+    sig: 'getTunnel(name: string)'
+    lines:
+    - 258
+    - 260
+    detail: {}
+  - name: addTunnel
+    sig: 'addTunnel(SSHTunnelConfig: SSHTunnelConfig): Promise<SSHTunnelConfig & { server: Server }>'
+    lines:
+    - 265
+    - 336
+    detail:
+      calls:
+      - Promise.resolve
+      - new Promise
+      - this.emit
+      - this.getTunnel
+  - name: closeTunnel
+    sig: 'closeTunnel(name?: string): Promise<void>'
+    lines:
+    - 341
+    - 366
+    detail:
+      calls:
+      - Object.keys
+      - Object.keys(this.activeTunnels).map
+      - Promise.all
+      - Promise.all(tunnels).then
+      - Promise.resolve
+      - new Promise
+  lines:
+  - 62
+  - 367
+exports:
+- name: SSHConnectConfig
+  kind: type
+- name: SSHTunnelConfig
+  kind: type
+- name: SSHConnection
+  kind: type
+- name: defaultOptions
+  kind: data
+- name: SSHConstants
+  kind: data

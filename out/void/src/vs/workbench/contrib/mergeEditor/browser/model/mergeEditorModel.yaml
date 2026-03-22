@@ -1,0 +1,692 @@
+## Roska File Descriptor — model/mergeEditorModel.ts
+file: model/mergeEditorModel.ts
+lines: 814
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: ../../../../../base/common/arrays.js.CompareResult
+- sym: ../../../../../base/common/arrays.js.equals
+- sym: ../../../../../base/common/errors.js.BugIndicatingError
+- sym: ../../../../../base/common/observable.js.autorunHandleChanges
+- sym: ../../../../../base/common/observable.js.derived
+- sym: ../../../../../base/common/observable.js.IObservable
+- sym: ../../../../../base/common/observable.js.IReader
+- sym: ../../../../../base/common/observable.js.ISettableObservable
+- sym: ../../../../../base/common/observable.js.ITransaction
+- sym: ../../../../../base/common/observable.js.keepObserved
+- sym: ../../../../../base/common/observable.js.observableValue
+- sym: ../../../../../base/common/observable.js.transaction
+- sym: ../../../../../base/common/observable.js.waitForState
+- sym: ../../../../../base/common/uri.js.URI
+- sym: ../../../../../editor/common/core/range.js.Range
+- sym: ../../../../../editor/common/languages/language.js.ILanguageService
+- sym: ../../../../../editor/common/model.js.ITextModel
+- sym: ../../../../../nls.js.localize
+- sym: ../../../../../platform/undoRedo/common/undoRedo.js.IResourceUndoRedoElement
+- sym: ../../../../../platform/undoRedo/common/undoRedo.js.IUndoRedoService
+- sym: ../../../../../platform/undoRedo/common/undoRedo.js.UndoRedoElementType
+- sym: ../../../../../platform/undoRedo/common/undoRedo.js.UndoRedoGroup
+- sym: ../../../../common/editor/editorModel.js.EditorModel
+- sym: ./diffComputer.js.IMergeDiffComputer
+- sym: ./lineRange.js.LineRange
+- sym: ./mapping.js.DetailedLineRangeMapping
+- sym: ./mapping.js.DocumentLineRangeMap
+- sym: ./mapping.js.DocumentRangeMap
+- sym: ./mapping.js.LineRangeMapping
+- sym: ./textModelDiffs.js.TextModelDiffChangeReason
+- sym: ./textModelDiffs.js.TextModelDiffs
+- sym: ./textModelDiffs.js.TextModelDiffState
+- sym: ../telemetry.js.MergeEditorTelemetry
+- sym: ../utils.js.leftJoin
+- sym: ./modifiedBaseRange.js.InputNumber
+- sym: ./modifiedBaseRange.js.ModifiedBaseRange
+- sym: ./modifiedBaseRange.js.ModifiedBaseRangeState
+- sym: ./modifiedBaseRange.js.ModifiedBaseRangeStateKind
+types:
+- name: InputData
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: readonly
+    type: ITextModel
+  - name: readonly
+    type: string | undefined
+  - name: readonly
+    type: string | undefined
+  - name: readonly
+    type: string | undefined
+  lines:
+  - 24
+  - 29
+- name: MergeEditorModel
+  kind: model
+  bases:
+  - EditorModel
+  fields:
+  - name: input1TextModelDiffs
+    type: any
+    default: this._register(new TextModelDiffs(this.base, this.input1.textModel, this.diffCom...
+  - name: input2TextModelDiffs
+    type: any
+    default: this._register(new TextModelDiffs(this.base, this.input2.textModel, this.diffCom...
+  - name: resultTextModelDiffs
+    type: any
+    default: this._register(new TextModelDiffs(this.base, this.resultTextModel, this.diffComp...
+  - name: modifiedBaseRanges
+    type: any
+    default: "derived<ModifiedBaseRange[]>(this, (reader) => {\n\t\tconst input1Diffs = this.inpu..."
+  - name: modifiedBaseRangeResultStates
+    type: any
+    default: "derived(this, reader => {\n\t\tconst map = new Map<ModifiedBaseRange, ModifiedBaseR..."
+  - name: resultSnapshot
+    type: any
+    default: this.resultTextModel.createSnapshot()
+  - name: baseInput1Diffs
+    type: any
+    default: this.input1TextModelDiffs.diffs
+  - name: baseInput2Diffs
+    type: any
+    default: this.input2TextModelDiffs.diffs
+  - name: baseResultDiffs
+    type: any
+    default: this.resultTextModelDiffs.diffs
+  - name: input1ResultMapping
+    type: any
+    default: "derived(this, reader => {\n\t\treturn this.getInputResultMapping(\n\t\t\tthis.baseInput..."
+  - name: resultInput1Mapping
+    type: any
+    default: derived(this, reader => this.input1ResultMapping.read(reader).reverse())
+  - name: input2ResultMapping
+    type: any
+    default: "derived(this, reader => {\n\t\treturn this.getInputResultMapping(\n\t\t\tthis.baseInput..."
+  - name: resultInput2Mapping
+    type: any
+    default: derived(this, reader => this.input2ResultMapping.read(reader).reverse())
+  - name: baseResultMapping
+    type: any
+    default: "derived(this, reader => {\n\t\tconst map = new DocumentLineRangeMap(this.baseResult..."
+  - name: resultBaseMapping
+    type: any
+    default: derived(this, reader => this.baseResultMapping.read(reader).reverse())
+  - name: diffComputingState
+    type: any
+    default: "derived(this, reader => {\n\t\tconst states = [\n\t\t\tthis.input1TextModelDiffs,\n\t\t\tth..."
+  - name: inputDiffComputingState
+    type: any
+    default: "derived(this, reader => {\n\t\tconst states = [\n\t\t\tthis.input1TextModelDiffs,\n\t\t\tth..."
+  - name: isUpToDate
+    type: any
+    default: derived(this, reader => this.diffComputingState.read(reader) === MergeEditorMode...
+  - name: onInitialized
+    type: any
+    default: waitForState(this.diffComputingState, state => state === MergeEditorModelState.u...
+  - name: firstRun
+    type: any
+    default: 'true'
+  - name: unhandledConflictsCount
+    type: any
+    default: "derived(this, reader => {\n\t\tconst map = this.modifiedBaseRangeResultStates.read(..."
+  - name: hasUnhandledConflicts
+    type: any
+    default: this.unhandledConflictsCount.map(value => /** @description hasUnhandledConflicts...
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\treadonly base: ITextModel,\n\t\treadonly input1: InputData,\n\t\treadonly input2: InputData,\n\t\treadonly resultTextModel: ITextModel,\n\t\tprivate readonly diffComputer: IMergeDiffComputer,\n\t\tprivate readonly options: { resetResult: boolean },\n\t\tpublic readonly telemetry: MergeEditorTelemetry,\n\t\t@ILanguageService private readonly languageService: ILanguageService,\n\t\t@IUndoRedoService private readonly undoRedoService: IUndoRedoService,\n\t)"
+    lines:
+    - 52
+    - 116
+    detail:
+      calls:
+      - initializePromise.then
+      - keepObserved
+      - super
+      - this._register
+      - this.initialize
+      - this.onInitialized.then
+  - name: initialize
+    sig: 'initialize(): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 118
+    - 122
+    detail:
+      calls:
+      - this.reset
+  - name: reset
+    sig: 'reset(): Promise<void>'
+    is_async: true
+    lines:
+    - 124
+    - 160
+    detail:
+      calls:
+      - this.modifiedBaseRangeResultStates.get
+      - transaction
+      - waitForState
+  - name: computeAutoMergedResult
+    sig: 'computeAutoMergedResult(): string'
+    vis: private
+    lines:
+    - 162
+    - 196
+    detail:
+      calls:
+      - LineRange.fromLineNumbers
+      - appendLinesToResult
+      - resultLines.join
+      - this.base.getLinesContent
+      - this.input1.textModel.getLinesContent
+      - this.input2.textModel.getLinesContent
+      - this.modifiedBaseRanges.get
+      - this.resultTextModel.getEOL
+  - name: hasBaseRange
+    sig: 'hasBaseRange(baseRange: ModifiedBaseRange): boolean'
+    lines:
+    - 198
+    - 200
+    detail:
+      calls:
+      - this.modifiedBaseRangeResultStates.get
+      - this.modifiedBaseRangeResultStates.get().has
+  - name: isApplyingEditInResult
+    sig: 'isApplyingEditInResult(): boolean'
+    lines:
+    - 206
+    - 206
+    detail: {}
+  - name: translateInputRangeToBase
+    sig: 'translateInputRangeToBase(input: 1 | 2, range: Range): Range'
+    lines:
+    - 261
+    - 265
+    detail:
+      calls:
+      - baseInputDiffs.flatMap
+      - map.projectRange
+      - new DocumentRangeMap
+      - new DocumentRangeMap(baseInputDiffs.flatMap(d => d.rangeMappings), 0).reverse
+      - this.baseInput1Diffs.get
+      - this.baseInput2Diffs.get
+  - name: translateBaseRangeToInput
+    sig: 'translateBaseRangeToInput(input: 1 | 2, range: Range): Range'
+    lines:
+    - 267
+    - 271
+    detail:
+      calls:
+      - baseInputDiffs.flatMap
+      - map.projectRange
+      - new DocumentRangeMap
+      - this.baseInput1Diffs.get
+      - this.baseInput2Diffs.get
+  - name: getLineRangeInResult
+    sig: 'getLineRangeInResult(baseRange: LineRange, reader?: IReader): LineRange'
+    lines:
+    - 273
+    - 275
+    detail:
+      calls:
+      - this.resultTextModelDiffs.getResultLineRange
+  - name: translateResultRangeToBase
+    sig: 'translateResultRangeToBase(range: Range): Range'
+    lines:
+    - 277
+    - 280
+    detail:
+      calls:
+      - map.projectRange
+      - new DocumentRangeMap
+      - new DocumentRangeMap(this.baseResultDiffs.get().flatMap(d => d.rangeMappings), 0).reverse
+      - this.baseResultDiffs.get
+      - this.baseResultDiffs.get().flatMap
+  - name: translateBaseRangeToResult
+    sig: 'translateBaseRangeToResult(range: Range): Range'
+    lines:
+    - 282
+    - 285
+    detail:
+      calls:
+      - map.projectRange
+      - new DocumentRangeMap
+      - this.baseResultDiffs.get
+      - this.baseResultDiffs.get().flatMap
+  - name: findModifiedBaseRangesInRange
+    sig: 'findModifiedBaseRangesInRange(rangeInBase: LineRange): ModifiedBaseRange[]'
+    lines:
+    - 287
+    - 290
+    detail:
+      calls:
+      - this.modifiedBaseRanges.get
+      - this.modifiedBaseRanges.get().filter
+  - name: updateBaseRangeAcceptedState
+    sig: 'updateBaseRangeAcceptedState(resultDiffs: DetailedLineRangeMapping[], states: Map<ModifiedBaseRange, ModifiedBaseRangeData>, tx: ITransaction): void'
+    vis: private
+    lines:
+    - 328
+    - 358
+    detail:
+      calls:
+      - data.accepted.get
+      - data.accepted.set
+      - leftJoin
+      - oldState.equals
+      - this.computeState
+  - name: computeState
+    sig: 'computeState(baseRange: ModifiedBaseRange, conflictingDiffs: DetailedLineRangeMapping[]): ModifiedBaseRangeState'
+    vis: private
+    lines:
+    - 360
+    - 401
+    detail:
+      calls:
+      - ModifiedBaseRangeState.base.withInputValue
+      - ModifiedBaseRangeState.base.withInputValue(1, true).withInputValue
+      - ModifiedBaseRangeState.base.withInputValue(2, true).withInputValue
+      - baseRange.getEditForBase
+      - conflictingDiffs.map
+      - editsAgreeWithDiffs
+      - equals
+      - resultRange.getLines
+      - this.resultTextModelDiffs.getResultLineRange
+  - name: getState
+    sig: 'getState(baseRange: ModifiedBaseRange): IObservable<ModifiedBaseRangeState>'
+    lines:
+    - 403
+    - 409
+    detail:
+      calls:
+      - new BugIndicatingError
+      - this.modifiedBaseRangeResultStates.get
+      - this.modifiedBaseRangeResultStates.get().get
+  - name: setState
+    sig: "setState(\n\t\tbaseRange: ModifiedBaseRange,\n\t\tstate: ModifiedBaseRangeState,\n\t\t_markInputAsHandled: boolean | InputNumber,\n\t\ttx: ITransaction,\n\t\t_pushStackElement: boolean = false\n\t): void"
+    lines:
+    - 411
+    - 460
+    detail:
+      calls:
+      - baseRange.getEditForBase
+      - existingState.accepted.set
+      - existingState.handledInput1.get
+      - existingState.handledInput1.set
+      - existingState.handledInput2.get
+      - existingState.handledInput2.set
+      - new BugIndicatingError
+      - new MarkAsHandledUndoRedoElement
+      - new UndoRedoGroup
+      - new WeakRef
+      - this.isUpToDate.get
+      - this.modifiedBaseRangeResultStates.get
+      - this.modifiedBaseRangeResultStates.get().get
+      - this.resultTextModel.pushStackElement
+      - this.resultTextModelDiffs.applyEditRelativeToOriginal
+      - this.resultTextModelDiffs.findTouchingDiffs
+      - this.resultTextModelDiffs.removeDiffs
+      - this.undoRedoService.pushElement
+  - name: resetDirtyConflictsToBase
+    sig: 'resetDirtyConflictsToBase(): void'
+    lines:
+    - 462
+    - 473
+    detail:
+      calls:
+      - transaction
+  - name: isHandled
+    sig: 'isHandled(baseRange: ModifiedBaseRange): IObservable<boolean>'
+    lines:
+    - 475
+    - 477
+    detail:
+      calls:
+      - this.modifiedBaseRangeResultStates.get
+      - this.modifiedBaseRangeResultStates.get().get
+  - name: isInputHandled
+    sig: 'isInputHandled(baseRange: ModifiedBaseRange, inputNumber: InputNumber): IObservable<boolean>'
+    lines:
+    - 479
+    - 482
+    detail:
+      calls:
+      - this.modifiedBaseRangeResultStates.get
+      - this.modifiedBaseRangeResultStates.get().get
+  - name: setInputHandled
+    sig: 'setInputHandled(baseRange: ModifiedBaseRange, inputNumber: InputNumber, handled: boolean, tx: ITransaction): void'
+    lines:
+    - 484
+    - 531
+    detail:
+      calls:
+      - dataRef.deref
+      - localize
+      - model.isDisposed
+      - modelRef.deref
+      - new WeakRef
+      - state.handled.get
+      - state.handledInput1.set
+      - state.handledInput2.set
+      - this.modifiedBaseRangeResultStates.get
+      - this.modifiedBaseRangeResultStates.get().get
+      - this.undoRedoService.pushElement
+      - transaction
+  - name: setHandled
+    sig: 'setHandled(baseRange: ModifiedBaseRange, handled: boolean, tx: ITransaction): void'
+    lines:
+    - 533
+    - 541
+    detail:
+      calls:
+      - state.handled.get
+      - state.handledInput1.set
+      - state.handledInput2.set
+      - this.modifiedBaseRangeResultStates.get
+      - this.modifiedBaseRangeResultStates.get().get
+  - name: setLanguageId
+    sig: 'setLanguageId(languageId: string, source?: string): void'
+    lines:
+    - 556
+    - 562
+    detail:
+      calls:
+      - this.base.setLanguage
+      - this.input1.textModel.setLanguage
+      - this.input2.textModel.setLanguage
+      - this.languageService.createById
+      - this.resultTextModel.setLanguage
+  - name: getInitialResultValue
+    sig: 'getInitialResultValue(): string'
+    lines:
+    - 564
+    - 574
+    detail:
+      calls:
+      - chunks.join
+      - chunks.push
+      - this.resultSnapshot.read
+  - name: getResultValueWithConflictMarkers
+    sig: 'getResultValueWithConflictMarkers(): Promise<string>'
+    is_async: true
+    lines:
+    - 576
+    - 621
+    detail:
+      calls:
+      - LineRange.fromLineNumbers
+      - Math.max
+      - appendLinesToResult
+      - outputLines.join
+      - outputLines.push
+      - state.accepted.get
+      - state.handled.get
+      - this.input1.textModel.getLinesContent
+      - this.input2.textModel.getLinesContent
+      - this.modifiedBaseRangeResultStates.get
+      - this.resultTextModel.getLinesContent
+      - this.resultTextModel.getValue
+      - this.resultTextModelDiffs.getResultLineRange
+      - this.unhandledConflictsCount.get
+      - waitForState
+  - name: conflictCount
+    sig: 'conflictCount(): number'
+    lines:
+    - 623
+    - 625
+    detail:
+      calls:
+      - arrayCount
+      - this.modifiedBaseRanges.get
+  - name: combinableConflictCount
+    sig: 'combinableConflictCount(): number'
+    lines:
+    - 626
+    - 628
+    detail:
+      calls:
+      - arrayCount
+      - this.modifiedBaseRanges.get
+  - name: conflictsResolvedWithBase
+    sig: 'conflictsResolvedWithBase(): number'
+    lines:
+    - 630
+    - 637
+    detail:
+      calls:
+      - arrayCount
+      - this.modifiedBaseRangeResultStates.get
+      - this.modifiedBaseRangeResultStates.get().entries
+  - name: conflictsResolvedWithInput1
+    sig: 'conflictsResolvedWithInput1(): number'
+    lines:
+    - 638
+    - 645
+    detail:
+      calls:
+      - arrayCount
+      - this.modifiedBaseRangeResultStates.get
+      - this.modifiedBaseRangeResultStates.get().entries
+  - name: conflictsResolvedWithInput2
+    sig: 'conflictsResolvedWithInput2(): number'
+    lines:
+    - 646
+    - 653
+    detail:
+      calls:
+      - arrayCount
+      - this.modifiedBaseRangeResultStates.get
+      - this.modifiedBaseRangeResultStates.get().entries
+  - name: conflictsResolvedWithSmartCombination
+    sig: 'conflictsResolvedWithSmartCombination(): number'
+    lines:
+    - 654
+    - 662
+    detail:
+      calls:
+      - arrayCount
+      - this.modifiedBaseRangeResultStates.get
+      - this.modifiedBaseRangeResultStates.get().entries
+  - name: manuallySolvedConflictCountThatEqualNone
+    sig: 'manuallySolvedConflictCountThatEqualNone(): number'
+    lines:
+    - 664
+    - 671
+    detail:
+      calls:
+      - arrayCount
+      - this.modifiedBaseRangeResultStates.get
+      - this.modifiedBaseRangeResultStates.get().entries
+  - name: manuallySolvedConflictCountThatEqualSmartCombine
+    sig: 'manuallySolvedConflictCountThatEqualSmartCombine(): number'
+    lines:
+    - 672
+    - 680
+    detail:
+      calls:
+      - arrayCount
+      - this.modifiedBaseRangeResultStates.get
+      - this.modifiedBaseRangeResultStates.get().entries
+  - name: manuallySolvedConflictCountThatEqualInput1
+    sig: 'manuallySolvedConflictCountThatEqualInput1(): number'
+    lines:
+    - 681
+    - 689
+    detail:
+      calls:
+      - arrayCount
+      - this.modifiedBaseRangeResultStates.get
+      - this.modifiedBaseRangeResultStates.get().entries
+  - name: manuallySolvedConflictCountThatEqualInput2
+    sig: 'manuallySolvedConflictCountThatEqualInput2(): number'
+    lines:
+    - 690
+    - 698
+    detail:
+      calls:
+      - arrayCount
+      - this.modifiedBaseRangeResultStates.get
+      - this.modifiedBaseRangeResultStates.get().entries
+  - name: manuallySolvedConflictCountThatEqualNoneAndStartedWithBase
+    sig: 'manuallySolvedConflictCountThatEqualNoneAndStartedWithBase(): number'
+    lines:
+    - 700
+    - 708
+    detail:
+      calls:
+      - arrayCount
+      - this.modifiedBaseRangeResultStates.get
+      - this.modifiedBaseRangeResultStates.get().entries
+  - name: manuallySolvedConflictCountThatEqualNoneAndStartedWithInput1
+    sig: 'manuallySolvedConflictCountThatEqualNoneAndStartedWithInput1(): number'
+    lines:
+    - 709
+    - 717
+    detail:
+      calls:
+      - arrayCount
+      - this.modifiedBaseRangeResultStates.get
+      - this.modifiedBaseRangeResultStates.get().entries
+  - name: manuallySolvedConflictCountThatEqualNoneAndStartedWithInput2
+    sig: 'manuallySolvedConflictCountThatEqualNoneAndStartedWithInput2(): number'
+    lines:
+    - 718
+    - 726
+    detail:
+      calls:
+      - arrayCount
+      - this.modifiedBaseRangeResultStates.get
+      - this.modifiedBaseRangeResultStates.get().entries
+  - name: manuallySolvedConflictCountThatEqualNoneAndStartedWithBothNonSmart
+    sig: 'manuallySolvedConflictCountThatEqualNoneAndStartedWithBothNonSmart(): number'
+    lines:
+    - 727
+    - 735
+    detail:
+      calls:
+      - arrayCount
+      - this.modifiedBaseRangeResultStates.get
+      - this.modifiedBaseRangeResultStates.get().entries
+  - name: manuallySolvedConflictCountThatEqualNoneAndStartedWithBothSmart
+    sig: 'manuallySolvedConflictCountThatEqualNoneAndStartedWithBothSmart(): number'
+    lines:
+    - 736
+    - 744
+    detail:
+      calls:
+      - arrayCount
+      - this.modifiedBaseRangeResultStates.get
+      - this.modifiedBaseRangeResultStates.get().entries
+  lines:
+  - 31
+  - 745
+- name: ModifiedBaseRangeData
+  kind: struct
+  fields:
+  - name: accepted
+    type: ISettableObservable<ModifiedBaseRangeState>
+    default: observableValue(`BaseRangeState${this.baseRange.baseRange}`, ModifiedBaseRangeSt...
+  - name: handledInput1
+    type: ISettableObservable<boolean>
+    default: observableValue(`BaseRangeHandledState${this.baseRange.baseRange}.Input1`, false...
+  - name: handledInput2
+    type: ISettableObservable<boolean>
+    default: observableValue(`BaseRangeHandledState${this.baseRange.baseRange}.Input2`, false...
+  - name: computedFromDiffing
+    type: any
+    default: 'false'
+  - name: previousNonDiffingState
+    type: ModifiedBaseRangeState | undefined
+    default: undefined
+  - name: handled
+    type: any
+    default: derived(this, reader => this.handledInput1.read(reader) && this.handledInput2.re...
+  methods:
+  - name: constructor
+    sig: 'constructor(private readonly baseRange: ModifiedBaseRange)'
+    lines:
+    - 758
+    - 758
+    detail: {}
+  lines:
+  - 757
+  - 768
+- name: MergeEditorModelState
+  kind: enum
+  variants:
+  - name: initializing
+    val: '1'
+  - name: upToDate
+    val: '2'
+  - name: updating
+    val: '3'
+  lines:
+  - 770
+  - 774
+- name: MarkAsHandledUndoRedoElement
+  kind: struct
+  bases:
+  - IResourceUndoRedoElement
+  fields:
+  - name: code
+    type: any
+    default: '''undoMarkAsHandled'''
+  - name: label
+    type: any
+    default: localize('undoMarkAsHandled', 'Undo Mark As Handled')
+  - name: type
+    type: any
+    default: UndoRedoElementType.Resource
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tpublic readonly resource: URI,\n\t\tprivate readonly mergeEditorModelRef: WeakRef<MergeEditorModel>,\n\t\tprivate readonly stateRef: WeakRef<ModifiedBaseRangeData>,\n\t\tprivate readonly input1Handled: boolean,\n\t\tprivate readonly input2Handled: boolean,\n\t)"
+    lines:
+    - 782
+    - 788
+    detail: {}
+  - name: redo
+    sig: redo()
+    lines:
+    - 790
+    - 801
+    detail:
+      calls:
+      - mergeEditorModel.isDisposed
+      - this.mergeEditorModelRef.deref
+      - this.stateRef.deref
+      - transaction
+  - name: undo
+    sig: undo()
+    lines:
+    - 802
+    - 813
+    detail:
+      calls:
+      - mergeEditorModel.isDisposed
+      - this.mergeEditorModelRef.deref
+      - this.stateRef.deref
+      - transaction
+  lines:
+  - 776
+  - 814
+functions:
+- name: arrayCount
+  sig: 'arrayCount(array: Iterable<T>, predicate: (value: T) => boolean): number'
+  lines:
+  - 747
+  - 755
+  detail:
+    calls:
+    - predicate
+exports:
+- name: InputData
+  kind: type
+- name: MergeEditorModel
+  kind: type
+- name: ModifiedBaseRangeData
+  kind: type
+- name: MergeEditorModelState
+  kind: type
+- name: MarkAsHandledUndoRedoElement
+  kind: type
+- name: arrayCount
+  kind: func

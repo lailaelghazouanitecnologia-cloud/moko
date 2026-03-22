@@ -1,0 +1,316 @@
+## Roska File Descriptor — browser/textMateTokenizationFeatureImpl.ts
+file: browser/textMateTokenizationFeatureImpl.ts
+lines: 510
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: ../../../../amdX.js.canASAR
+- sym: ../../../../amdX.js.importAMDNodeModule
+- sym: ../../../../amdX.js.resolveAmdNodeModulePath
+- sym: ../../../../base/browser/domStylesheets.js.domStylesheets
+- sym: ../../../../base/common/arrays.js.equals as equalArray
+- sym: ../../../../base/common/color.js.Color
+- sym: ../../../../base/common/errors.js.onUnexpectedError
+- sym: ../../../../base/common/lifecycle.js.Disposable
+- sym: ../../../../base/common/lifecycle.js.DisposableStore
+- sym: ../../../../base/common/lifecycle.js.IDisposable
+- sym: ../../../../base/common/network.js.FileAccess
+- sym: ../../../../base/common/network.js.nodeModulesAsarUnpackedPath
+- sym: ../../../../base/common/network.js.nodeModulesPath
+- sym: ../../../../base/common/observable.js.IObservable
+- sym: ../../../../base/common/observable.js.observableFromEvent
+- sym: ../../../../base/common/platform.js.isWeb
+- sym: ../../../../base/common/resources.js.resources
+- sym: ../../../../base/common/types.js.types
+- sym: ../../../../base/common/uri.js.URI
+- sym: ../../../../editor/common/encodedTokenAttributes.js.StandardTokenType
+- sym: ../../../../editor/common/languages.js.ITokenizationSupport
+- sym: ../../../../editor/common/languages.js.LazyTokenizationSupport
+- sym: ../../../../editor/common/languages.js.TokenizationRegistry
+- sym: ../../../../editor/common/languages/language.js.ILanguageService
+- sym: ../../../../editor/common/languages/supports/tokenization.js.generateTokensCSSForColorMap
+- sym: ../../../../nls.js.nls
+- sym: ../../../../platform/configuration/common/configuration.js.IConfigurationService
+- sym: ../../../../platform/extensionResourceLoader/common/extensionResourceLoader.js.IExtensionResourceLoaderService
+- sym: ../../../../platform/instantiation/common/instantiation.js.IInstantiationService
+- sym: ../../../../platform/log/common/log.js.ILogService
+- sym: ../../../../platform/notification/common/notification.js.INotificationService
+- sym: ../../../../platform/progress/common/progress.js.IProgressService
+- sym: ../../../../platform/progress/common/progress.js.ProgressLocation
+- sym: ../../../../platform/telemetry/common/telemetry.js.ITelemetryService
+- sym: ../../environment/common/environmentService.js.IWorkbenchEnvironmentService
+- sym: ../../extensions/common/extensionsRegistry.js.ExtensionMessageCollector
+- sym: ../../extensions/common/extensionsRegistry.js.IExtensionPointUser
+- sym: ./textMateTokenizationFeature.js.ITextMateTokenizationService
+- sym: ./tokenizationSupport/textMateTokenizationSupport.js.TextMateTokenizationSupport
+- sym: ./tokenizationSupport/tokenizationSupportWithLineLimit.js.TokenizationSupportWithLineLimit
+- sym: ./backgroundTokenization/threadedBackgroundTokenizerFactory.js.ThreadedBackgroundTokenizerFactory
+- sym: ../common/TMGrammarFactory.js.TMGrammarFactory
+- sym: ../common/TMGrammarFactory.js.missingTMGrammarErrorMessage
+- sym: ../common/TMGrammars.js.ITMSyntaxExtensionPoint
+- sym: ../common/TMGrammars.js.grammarsExtPoint
+- sym: ../common/TMScopeRegistry.js.IValidEmbeddedLanguagesMap
+- sym: ../common/TMScopeRegistry.js.IValidGrammarDefinition
+- sym: ../common/TMScopeRegistry.js.IValidTokenTypeMap
+- sym: ../../themes/common/workbenchThemeService.js.ITextMateThemingRule
+- sym: ../../themes/common/workbenchThemeService.js.IWorkbenchColorTheme
+- sym: ../../themes/common/workbenchThemeService.js.IWorkbenchThemeService
+- sym: vscode-textmate.IGrammar
+  kind: typing
+- sym: vscode-textmate.IOnigLib
+  kind: typing
+- sym: vscode-textmate.IRawTheme
+  kind: typing
+types:
+- name: TextMateTokenizationFeature
+  kind: struct
+  bases:
+  - Disposable
+  - ITextMateTokenizationService
+  fields:
+  - name: reportTokenizationTimeCounter
+    type: any
+    default: '{ sync: 0, async: 0 }'
+  - name: _serviceBrand
+    type: undefined
+  - name: _styleElement
+    type: HTMLStyleElement
+  - name: _createdModes
+    type: string[]
+    default: '[]'
+  - name: _encounteredLanguages
+    type: boolean[]
+    default: '[]'
+  - name: _debugMode
+    type: boolean
+    default: 'false'
+  - name: _debugModePrintFunc
+    type: '(str: string) => void'
+    default: () => { }
+  - name: _grammarDefinitions
+    type: IValidGrammarDefinition[] | null
+    default: 'null'
+  - name: _grammarFactory
+    type: TMGrammarFactory | null
+    default: 'null'
+  - name: _tokenizersRegistrations
+    type: any
+    default: this._register(new DisposableStore())
+  - name: _currentTheme
+    type: IRawTheme | null
+    default: 'null'
+  - name: _currentTokenColorMap
+    type: string[] | null
+    default: 'null'
+  - name: _threadedBackgroundTokenizerFactory
+    type: any
+    default: "this._instantiationService.createInstance(\n\t\tThreadedBackgroundTokenizerFactory,..."
+  - name: _vscodeOniguruma
+    type: Promise<typeof import('vscode-oniguruma')> | null
+    default: 'null'
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\t@ILanguageService private readonly _languageService: ILanguageService,\n\t\t@IWorkbenchThemeService private readonly _themeService: IWorkbenchThemeService,\n\t\t@IExtensionResourceLoaderService private readonly _extensionResourceLoaderService: IExtensionResourceLoaderService,\n\t\t@INotificationService private readonly _notificationService: INotificationService,\n\t\t@ILogService private readonly _logService: ILogService,\n\t\t@IConfigurationService private readonly _configurationService: IConfigurationService,\n\t\t@IProgressService private readonly _progressService: IProgressService,\n\t\t@IWorkbenchEnvironmentService private readonly _environmentService: IWorkbenchEnvironmentService,\n\t\t@IInstantiationService private readonly _instantiationService: IInstantiationService,\n\t\t@ITelemetryService private readonly _telemetryService: ITelemetryService,\n\t)"
+    lines:
+    - 64
+    - 91
+    detail:
+      calls:
+      - domStylesheets.createStyleSheet
+      - grammarsExtPoint.setHandler
+      - super
+      - this._languageService.onDidRequestRichLanguageFeatures
+      - this._register
+      - this._themeService.getColorTheme
+      - this._themeService.onDidColorThemeChange
+      - this._updateTheme
+  - name: _handleGrammarsExtPoint
+    sig: '_handleGrammarsExtPoint(extensions: readonly IExtensionPointUser<ITMSyntaxExtensionPoint[]>[]): void'
+    vis: private
+    lines:
+    - 101
+    - 130
+    detail:
+      calls:
+      - TokenizationRegistry.getOrCreate
+      - TokenizationRegistry.registerFactory
+      - new LazyTokenizationSupport
+      - this._grammarDefinitions.push
+      - this._grammarFactory.dispose
+      - this._threadedBackgroundTokenizerFactory.setGrammarDefinitions
+      - this._tokenizersRegistrations.add
+      - this._tokenizersRegistrations.clear
+      - this._validateGrammarDefinition
+  - name: _validateGrammarDefinition
+    sig: '_validateGrammarDefinition(extension: IExtensionPointUser<ITMSyntaxExtensionPoint[]>, grammar: ITMSyntaxExtensionPoint): IValidGrammarDefinition | null'
+    vis: private
+    lines:
+    - 132
+    - 197
+    detail:
+      calls:
+      - Object.create
+      - Object.keys
+      - asStringArray
+      - resources.joinPath
+      - this._languageService.isRegisteredLanguageId
+      - this._languageService.languageIdCodec.encodeLanguageId
+      - validateGrammarExtensionPoint
+  - name: startDebugMode
+    sig: 'startDebugMode(printFn: (str: string) => void, onStop: () => void): void'
+    lines:
+    - 199
+    - 237
+    detail:
+      calls:
+      - nls.localize
+      - this._notificationService.error
+      - this._progressService.withProgress
+  - name: _getOrCreateGrammarFactory
+    sig: '_getOrCreateGrammarFactory(): Promise<TMGrammarFactory>'
+    is_async: true
+    vis: private
+    lines:
+    - 243
+    - 268
+    detail:
+      calls:
+      - Promise.all
+      - Promise.resolve
+      - import
+      - new TMGrammarFactory
+      - this._getVSCodeOniguruma
+      - this._themeService.getColorTheme
+      - this._updateTheme
+  - name: _createTokenizationSupport
+    sig: '_createTokenizationSupport(languageId: string): Promise<ITokenizationSupport & IDisposable | null>'
+    is_async: true
+    vis: private
+    lines:
+    - 270
+    - 323
+    detail:
+      calls:
+      - grammarFactory.createGrammar
+      - grammarFactory.has
+      - new DisposableStore
+      - new TextMateTokenizationSupport
+      - new TokenizationSupportWithLineLimit
+      - observableConfigValue
+      - onUnexpectedError
+      - store.add
+      - this._canCreateGrammarFactory
+      - this._getOrCreateGrammarFactory
+      - this._languageService.isRegisteredLanguageId
+      - this._languageService.languageIdCodec.encodeLanguageId
+      - tokenization.onDidEncounterLanguage
+  - name: _updateTheme
+    sig: '_updateTheme(colorTheme: IWorkbenchColorTheme, forceUpdate: boolean): void'
+    vis: private
+    lines:
+    - 325
+    - 342
+    detail:
+      calls:
+      - TokenizationRegistry.setColorMap
+      - equalArray
+      - equalsTokenRules
+      - generateTokensCSSForColorMap
+      - this._grammarFactory?.setTheme
+      - this._threadedBackgroundTokenizerFactory.acceptTheme
+      - toColorMap
+  - name: createTokenizer
+    sig: 'createTokenizer(languageId: string): Promise<IGrammar | null>'
+    is_async: true
+    lines:
+    - 344
+    - 355
+    detail:
+      calls:
+      - grammarFactory.createGrammar
+      - grammarFactory.has
+      - this._getOrCreateGrammarFactory
+      - this._languageService.isRegisteredLanguageId
+      - this._languageService.languageIdCodec.encodeLanguageId
+  - name: _loadVSCodeOnigurumaWASM
+    sig: '_loadVSCodeOnigurumaWASM(): Promise<Response | ArrayBuffer>'
+    is_async: true
+    vis: private
+    lines:
+    - 374
+    - 387
+    detail:
+      calls:
+      - FileAccess.asBrowserUri
+      - FileAccess.asBrowserUri(`${nodeModulesAsarUnpackedPath}/vscode-oniguruma/release/onig.wasm`).toStrin...
+      - FileAccess.asBrowserUri(`${nodeModulesPath}/vscode-oniguruma/release/onig.wasm`).toString
+      - fetch
+      - resolveAmdNodeModulePath
+      - response.arrayBuffer
+  - name: _reportTokenizationTime
+    sig: '_reportTokenizationTime(timeMs: number, languageId: string, sourceExtensionId: string | undefined, lineLength: number, fromWorker: boolean, isRandomSample: boolean): void'
+    vis: private
+    lines:
+    - 389
+    - 433
+    detail:
+      calls:
+      - setTimeout
+      - this._telemetryService.publicLog2
+      - this.getAsyncTokenizationEnabled
+      - this.getAsyncTokenizationVerification
+  lines:
+  - 42
+  - 434
+functions:
+- name: toColorMap
+  sig: 'toColorMap(colorMap: string[]): Color[]'
+  lines:
+  - 436
+  - 442
+  detail:
+    calls:
+    - Color.fromHex
+- name: equalsTokenRules
+  sig: 'equalsTokenRules(a: ITextMateThemingRule[] | null, b: ITextMateThemingRule[] | null): boolean'
+  lines:
+  - 444
+  - 465
+  detail: {}
+- name: validateGrammarExtensionPoint
+  sig: 'validateGrammarExtensionPoint(extensionLocation: URI, syntax: ITMSyntaxExtensionPoint, collector: ExtensionMessageCollector, _languageService: ILanguageService): boolean'
+  lines:
+  - 467
+  - 499
+  detail:
+    calls:
+    - Array.isArray
+    - JSON.stringify
+    - String
+    - _languageService.isRegisteredLanguageId
+    - collector.error
+    - collector.warn
+    - nls.localize
+    - resources.isEqualOrParent
+    - resources.joinPath
+    - syntax.injectTo.some
+    - types.isObject
+- name: observableConfigValue
+  sig: 'observableConfigValue(key: string, languageId: string, defaultValue: T, configurationService: IConfigurationService): IObservable<T>'
+  lines:
+  - 501
+  - 510
+  detail:
+    calls:
+    - observableFromEvent
+exports:
+- name: TextMateTokenizationFeature
+  kind: type
+- name: toColorMap
+  kind: func
+- name: equalsTokenRules
+  kind: func
+- name: validateGrammarExtensionPoint
+  kind: func
+- name: observableConfigValue
+  kind: func

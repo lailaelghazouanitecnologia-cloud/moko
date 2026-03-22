@@ -1,0 +1,420 @@
+## Roska File Descriptor — common/textFileEditorModelManager.ts
+file: common/textFileEditorModelManager.ts
+lines: 626
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: ../../../../nls.js.localize
+- sym: ../../../../base/common/errorMessage.js.toErrorMessage
+- sym: ../../../../base/common/event.js.Event
+- sym: ../../../../base/common/event.js.Emitter
+- sym: ../../../../base/common/uri.js.URI
+- sym: ./textFileEditorModel.js.TextFileEditorModel
+- sym: ../../../../base/common/lifecycle.js.dispose
+- sym: ../../../../base/common/lifecycle.js.IDisposable
+- sym: ../../../../base/common/lifecycle.js.Disposable
+- sym: ../../../../base/common/lifecycle.js.DisposableStore
+- sym: ./textfiles.js.ITextFileEditorModel
+- sym: ./textfiles.js.ITextFileEditorModelManager
+- sym: ./textfiles.js.ITextFileEditorModelResolveOrCreateOptions
+- sym: ./textfiles.js.ITextFileResolveEvent
+- sym: ./textfiles.js.ITextFileSaveEvent
+- sym: ./textfiles.js.ITextFileSaveParticipant
+- sym: ../../../../platform/instantiation/common/instantiation.js.IInstantiationService
+- sym: ../../../../base/common/map.js.ResourceMap
+- sym: ../../../../platform/files/common/files.js.IFileService
+- sym: ../../../../platform/files/common/files.js.FileChangesEvent
+- sym: ../../../../platform/files/common/files.js.FileOperation
+- sym: ../../../../platform/files/common/files.js.FileChangeType
+- sym: ../../../../platform/files/common/files.js.IFileSystemProviderRegistrationEvent
+- sym: ../../../../platform/files/common/files.js.IFileSystemProviderCapabilitiesChangeEvent
+- sym: ../../../../base/common/async.js.Promises
+- sym: ../../../../base/common/async.js.ResourceQueue
+- sym: ../../../../base/common/errors.js.onUnexpectedError
+- sym: ./textFileSaveParticipant.js.TextFileSaveParticipant
+- sym: ../../../../base/common/cancellation.js.CancellationToken
+- sym: ../../../../platform/notification/common/notification.js.INotificationService
+- sym: ../../workingCopy/common/workingCopyFileService.js.IStoredFileWorkingCopySaveParticipantContext
+- sym: ../../workingCopy/common/workingCopyFileService.js.IWorkingCopyFileService
+- sym: ../../workingCopy/common/workingCopyFileService.js.WorkingCopyFileEvent
+- sym: ../../../../editor/common/model.js.ITextSnapshot
+- sym: ../../../../base/common/resources.js.extname
+- sym: ../../../../base/common/resources.js.joinPath
+- sym: ../../../../editor/common/model/textModel.js.createTextBufferFactoryFromSnapshot
+- sym: ../../../../editor/common/languages/modesRegistry.js.PLAINTEXT_EXTENSION
+- sym: ../../../../editor/common/languages/modesRegistry.js.PLAINTEXT_LANGUAGE_ID
+- sym: ../../../../platform/uriIdentity/common/uriIdentity.js.IUriIdentityService
+- sym: ../../../../platform/progress/common/progress.js.IProgress
+- sym: ../../../../platform/progress/common/progress.js.IProgressStep
+types:
+- name: ITextFileEditorModelToRestore
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: readonly
+    type: URI
+  - name: readonly
+    type: URI
+  - name: readonly
+    type: ITextSnapshot
+  - name: readonly
+    type: "{\n\t\treadonly id: string;\n\t\treadonly explicit: boolean;\n\t}"
+  - name: readonly
+    type: string
+  lines:
+  - 29
+  - 38
+- name: TextFileEditorModelManager
+  kind: model
+  ctx: '#region Save participants'
+  bases:
+  - Disposable
+  - ITextFileEditorModelManager
+  fields:
+  - name: _onDidCreate
+    type: any
+    default: 'this._register(new Emitter<TextFileEditorModel>({ leakWarningThreshold: 500 /* i...'
+  - name: onDidCreate
+    type: any
+    default: this._onDidCreate.event
+  - name: _onDidResolve
+    type: any
+    default: this._register(new Emitter<ITextFileResolveEvent>())
+  - name: onDidResolve
+    type: any
+    default: this._onDidResolve.event
+  - name: _onDidRemove
+    type: any
+    default: this._register(new Emitter<URI>())
+  - name: onDidRemove
+    type: any
+    default: this._onDidRemove.event
+  - name: _onDidChangeDirty
+    type: any
+    default: this._register(new Emitter<TextFileEditorModel>())
+  - name: onDidChangeDirty
+    type: any
+    default: this._onDidChangeDirty.event
+  - name: _onDidChangeReadonly
+    type: any
+    default: this._register(new Emitter<TextFileEditorModel>())
+  - name: onDidChangeReadonly
+    type: any
+    default: this._onDidChangeReadonly.event
+  - name: _onDidChangeOrphaned
+    type: any
+    default: this._register(new Emitter<TextFileEditorModel>())
+  - name: onDidChangeOrphaned
+    type: any
+    default: this._onDidChangeOrphaned.event
+  - name: _onDidSaveError
+    type: any
+    default: this._register(new Emitter<TextFileEditorModel>())
+  - name: onDidSaveError
+    type: any
+    default: this._onDidSaveError.event
+  - name: _onDidSave
+    type: any
+    default: this._register(new Emitter<ITextFileSaveEvent>())
+  - name: onDidSave
+    type: any
+    default: this._onDidSave.event
+  - name: _onDidRevert
+    type: any
+    default: this._register(new Emitter<TextFileEditorModel>())
+  - name: onDidRevert
+    type: any
+    default: this._onDidRevert.event
+  - name: _onDidChangeEncoding
+    type: any
+    default: this._register(new Emitter<TextFileEditorModel>())
+  - name: onDidChangeEncoding
+    type: any
+    default: this._onDidChangeEncoding.event
+  - name: mapResourceToModel
+    type: any
+    default: new ResourceMap<TextFileEditorModel>()
+  - name: mapResourceToModelListeners
+    type: any
+    default: new ResourceMap<IDisposable>()
+  - name: mapResourceToDisposeListener
+    type: any
+    default: new ResourceMap<IDisposable>()
+  - name: mapResourceToPendingModelResolvers
+    type: any
+    default: new ResourceMap<Promise<void>>()
+  - name: modelResolveQueue
+    type: any
+    default: this._register(new ResourceQueue())
+  - name: saveErrorHandler
+    type: any
+    default: "(() => {\n\t\tconst notificationService = this.notificationService;\n\n\t\treturn {\n\t\t\t..."
+  - name: mapCorrelationIdToModelsToRestore
+    type: any
+    default: new Map<number, ITextFileEditorModelToRestore[]>()
+  - name: saveParticipants
+    type: TextFileSaveParticipant
+  methods:
+  - name: models
+    sig: 'models(): TextFileEditorModel[]'
+    lines:
+    - 89
+    - 91
+    detail:
+      calls:
+      - this.mapResourceToModel.values
+  - name: constructor
+    sig: "constructor(\n\t\t@IInstantiationService private readonly instantiationService: IInstantiationService,\n\t\t@IFileService private readonly fileService: IFileService,\n\t\t@INotificationService private readonly notificationService: INotificationService,\n\t\t@IWorkingCopyFileService private readonly workingCopyFileService: IWorkingCopyFileService,\n\t\t@IUriIdentityService private readonly uriIdentityService: IUriIdentityService\n\t)"
+    lines:
+    - 93
+    - 105
+    detail:
+      calls:
+      - super
+      - this._register
+      - this.instantiationService.createInstance
+      - this.registerListeners
+  - name: registerListeners
+    sig: 'registerListeners(): void'
+    vis: private
+    lines:
+    - 107
+    - 120
+    detail:
+      calls:
+      - this._register
+      - this.fileService.onDidChangeFileSystemProviderCapabilities
+      - this.fileService.onDidChangeFileSystemProviderRegistrations
+      - this.fileService.onDidFilesChange
+      - this.workingCopyFileService.onDidFailWorkingCopyFileOperation
+      - this.workingCopyFileService.onDidRunWorkingCopyFileOperation
+      - this.workingCopyFileService.onWillRunWorkingCopyFileOperation
+  - name: onDidFilesChange
+    sig: 'onDidFilesChange(e: FileChangesEvent): void'
+    vis: private
+    lines:
+    - 122
+    - 135
+    detail:
+      calls:
+      - e.contains
+      - model.isDirty
+      - this.queueModelReload
+  - name: onWillRunWorkingCopyFileOperation
+    sig: 'onWillRunWorkingCopyFileOperation(e: WorkingCopyFileEvent): void'
+    vis: private
+    lines:
+    - 189
+    - 243
+    detail:
+      calls:
+      - joinPath
+      - modelsToRestore.push
+      - sourceModel.createSnapshot
+      - sourceModel.getEncoding
+      - sourceModel.getLanguageId
+      - sourceModel.isDirty
+      - sourceModelResource.path.substr
+      - sourceModels.push
+      - this.mapCorrelationIdToModelsToRestore.set
+      - this.uriIdentityService.extUri.isEqual
+      - this.uriIdentityService.extUri.isEqualOrParent
+  - name: onDidFailWorkingCopyFileOperation
+    sig: 'onDidFailWorkingCopyFileOperation(e: WorkingCopyFileEvent): void'
+    vis: private
+    lines:
+    - 245
+    - 263
+    detail:
+      calls:
+      - modelsToRestore.forEach
+      - this.mapCorrelationIdToModelsToRestore.delete
+      - this.mapCorrelationIdToModelsToRestore.get
+  - name: onDidRunWorkingCopyFileOperation
+    sig: 'onDidRunWorkingCopyFileOperation(e: WorkingCopyFileEvent): void'
+    vis: private
+    lines:
+    - 265
+    - 328
+    detail:
+      calls:
+      - "(async () => {\n\t\t\t\t\tconst modelsToRestore = this.mapCorrelationIdToModelsToRestore.get(e.correlation..."
+      - "(async () => {\n\t\t\t\t\tfor (const { target } of e.files) {\n\t\t\t\t\t\tconst model = this.get(target);\n\t\t\t\t\t\t..."
+      - e.waitUntil
+  - name: get
+    sig: 'get(resource: URI): TextFileEditorModel | undefined'
+    lines:
+    - 330
+    - 332
+    detail:
+      calls:
+      - this.mapResourceToModel.get
+  - name: reload
+    sig: 'reload(model: TextFileEditorModel): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 338
+    - 351
+    detail:
+      calls:
+      - model.isDirty
+      - model.isDisposed
+      - this.doResolve
+      - this.has
+      - this.joinPendingResolves
+  - name: resolve
+    sig: 'resolve(resource: URI, options?: ITextFileEditorModelResolveOrCreateOptions): Promise<TextFileEditorModel>'
+    is_async: true
+    lines:
+    - 353
+    - 365
+    detail:
+      calls:
+      - this.doResolve
+      - this.joinPendingResolves
+  - name: doResolve
+    sig: 'doResolve(resourceOrModel: URI | TextFileEditorModel, options?: ITextFileEditorModelResolveOrCreateOptions): Promise<TextFileEditorModel>'
+    is_async: true
+    vis: private
+    lines:
+    - 367
+    - 475
+    detail:
+      calls:
+      - "(async () => {\n\t\t\t\t\t\ttry {\n\t\t\t\t\t\t\tawait model.resolve(options);\n\t\t\t\t\t\t} catch (error) {\n\t\t\t\t\t\t\tif (!..."
+      - Promise.resolve
+      - URI.isUri
+      - model.dispose
+      - model.isDirty
+      - model.resolve
+      - model.setLanguageId
+      - this._onDidChangeDirty.fire
+      - this._onDidCreate.fire
+      - this.add
+      - this.get
+      - this.instantiationService.createInstance
+      - this.mapResourceToPendingModelResolvers.delete
+      - this.mapResourceToPendingModelResolvers.set
+      - this.registerModel
+  - name: doJoinPendingResolves
+    sig: 'doJoinPendingResolves(resource: URI): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 486
+    - 507
+    detail:
+      calls:
+      - this.mapResourceToPendingModelResolvers.get
+      - this.mapResourceToPendingModelResolvers.has
+  - name: registerModel
+    sig: 'registerModel(model: TextFileEditorModel): void'
+    vis: private
+    lines:
+    - 509
+    - 524
+    detail:
+      calls:
+      - model.onDidChangeDirty
+      - model.onDidChangeEncoding
+      - model.onDidChangeOrphaned
+      - model.onDidChangeReadonly
+      - model.onDidResolve
+      - model.onDidRevert
+      - model.onDidSave
+      - model.onDidSaveError
+      - modelListeners.add
+      - new DisposableStore
+      - this.mapResourceToModelListeners.set
+  - name: add
+    sig: 'add(resource: URI, model: TextFileEditorModel): void'
+    lines:
+    - 526
+    - 539
+    detail:
+      calls:
+      - disposeListener?.dispose
+      - model.onWillDispose
+      - this.mapResourceToDisposeListener.get
+      - this.mapResourceToDisposeListener.set
+      - this.mapResourceToModel.get
+      - this.mapResourceToModel.set
+  - name: remove
+    sig: 'remove(resource: URI): void'
+    lines:
+    - 541
+    - 559
+    detail:
+      calls:
+      - dispose
+      - this._onDidRemove.fire
+      - this.mapResourceToDisposeListener.delete
+      - this.mapResourceToDisposeListener.get
+      - this.mapResourceToModel.delete
+      - this.mapResourceToModelListeners.delete
+      - this.mapResourceToModelListeners.get
+  - name: addSaveParticipant
+    sig: 'addSaveParticipant(participant: ITextFileSaveParticipant): IDisposable'
+    lines:
+    - 565
+    - 567
+    detail:
+      calls:
+      - this.saveParticipants.addSaveParticipant
+  - name: runSaveParticipants
+    sig: 'runSaveParticipants(model: ITextFileEditorModel, context: IStoredFileWorkingCopySaveParticipantContext, progress: IProgress<IProgressStep>, token: CancellationToken): Promise<void>'
+    lines:
+    - 569
+    - 571
+    detail:
+      calls:
+      - this.saveParticipants.participate
+  - name: canDispose
+    sig: 'canDispose(model: TextFileEditorModel): true | Promise<true>'
+    lines:
+    - 575
+    - 587
+    detail:
+      calls:
+      - model.isDirty
+      - model.isDisposed
+      - this.doCanDispose
+      - this.mapResourceToPendingModelResolvers.has
+  - name: doCanDispose
+    sig: 'doCanDispose(model: TextFileEditorModel): Promise<true>'
+    is_async: true
+    vis: private
+    lines:
+    - 589
+    - 609
+    detail:
+      calls:
+      - Event.toPromise
+      - model.isDirty
+      - this.canDispose
+      - this.joinPendingResolves
+  - name: dispose
+    sig: 'dispose(): void'
+    lines:
+    - 611
+    - 625
+    detail:
+      calls:
+      - dispose
+      - super.dispose
+      - this.mapResourceToDisposeListener.clear
+      - this.mapResourceToDisposeListener.values
+      - this.mapResourceToModel.clear
+      - this.mapResourceToModelListeners.clear
+      - this.mapResourceToModelListeners.values
+      - this.mapResourceToPendingModelResolvers.clear
+  lines:
+  - 40
+  - 626
+exports:
+- name: ITextFileEditorModelToRestore
+  kind: type
+- name: TextFileEditorModelManager
+  kind: type

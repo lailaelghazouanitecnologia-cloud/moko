@@ -1,0 +1,209 @@
+## Roska File Descriptor — browser/window.ts
+file: browser/window.ts
+lines: 462
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: ../../base/browser/browser.js.isSafari
+- sym: ../../base/browser/browser.js.setFullscreen
+- sym: ../../base/browser/dom.js.addDisposableListener
+- sym: ../../base/browser/dom.js.EventHelper
+- sym: ../../base/browser/dom.js.EventType
+- sym: ../../base/browser/dom.js.getActiveWindow
+- sym: ../../base/browser/dom.js.getWindow
+- sym: ../../base/browser/dom.js.getWindowById
+- sym: ../../base/browser/dom.js.getWindows
+- sym: ../../base/browser/dom.js.getWindowsCount
+- sym: ../../base/browser/dom.js.windowOpenNoOpener
+- sym: ../../base/browser/dom.js.windowOpenPopup
+- sym: ../../base/browser/dom.js.windowOpenWithSuccess
+- sym: ../../base/browser/event.js.DomEmitter
+- sym: ../../base/browser/deviceAccess.js.HidDeviceData
+- sym: ../../base/browser/deviceAccess.js.requestHidDevice
+- sym: ../../base/browser/deviceAccess.js.requestSerialPort
+- sym: ../../base/browser/deviceAccess.js.requestUsbDevice
+- sym: ../../base/browser/deviceAccess.js.SerialPortData
+- sym: ../../base/browser/deviceAccess.js.UsbDeviceData
+- sym: ../../base/common/async.js.timeout
+- sym: ../../base/common/event.js.Event
+- sym: ../../base/common/lifecycle.js.Disposable
+- sym: ../../base/common/lifecycle.js.IDisposable
+- sym: ../../base/common/lifecycle.js.dispose
+- sym: ../../base/common/lifecycle.js.toDisposable
+- sym: ../../base/common/network.js.matchesScheme
+- sym: ../../base/common/network.js.Schemas
+- sym: ../../base/common/platform.js.isIOS
+- sym: ../../base/common/platform.js.isMacintosh
+- sym: ../../base/common/severity.js.Severity
+- sym: ../../base/common/uri.js.URI
+- sym: ../../nls.js.localize
+- sym: ../../platform/commands/common/commands.js.CommandsRegistry
+- sym: ../../platform/dialogs/common/dialogs.js.IDialogService
+- sym: ../../platform/dialogs/common/dialogs.js.IPromptButton
+- sym: ../../platform/instantiation/common/instantiation.js.IInstantiationService
+- sym: ../../platform/instantiation/common/instantiation.js.ServicesAccessor
+- sym: ../../platform/label/common/label.js.ILabelService
+- sym: ../../platform/opener/common/opener.js.IOpenerService
+- sym: ../../platform/product/common/productService.js.IProductService
+- sym: ../services/environment/browser/environmentService.js.IBrowserWorkbenchEnvironmentService
+- sym: ../services/layout/browser/layoutService.js.IWorkbenchLayoutService
+- sym: ../services/lifecycle/browser/lifecycleService.js.BrowserLifecycleService
+- sym: ../services/lifecycle/common/lifecycle.js.ILifecycleService
+- sym: ../services/lifecycle/common/lifecycle.js.ShutdownReason
+- sym: ../services/host/browser/host.js.IHostService
+- sym: ../services/driver/browser/driver.js.registerWindowDriver
+- sym: ../../base/browser/window.js.CodeWindow
+- sym: ../../base/browser/window.js.isAuxiliaryWindow
+- sym: ../../base/browser/window.js.mainWindow
+- sym: ../../base/common/functional.js.createSingleCallFunction
+- sym: ../../platform/configuration/common/configuration.js.IConfigurationService
+- sym: ../services/environment/common/environmentService.js.IWorkbenchEnvironmentService
+types:
+- name: BaseWindow
+  kind: trait
+  ctx: try to not compete with the IDs of native `setTimeout`
+  bases:
+  - Disposable
+  decorators:
+  - abstract
+  fields:
+  - name: TIMEOUT_HANDLES
+    type: any
+    default: Number.MIN_SAFE_INTEGER
+  - name: TIMEOUT_DISPOSABLES
+    type: any
+    default: new Map<number, Set<IDisposable>>()
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\ttargetWindow: CodeWindow,\n\t\tdom = { getWindowsCount, getWindows }, /* for testing */\n\t\t@IHostService protected readonly hostService: IHostService,\n\t\t@IWorkbenchEnvironmentService protected readonly environmentService: IWorkbenchEnvironmentService\n\t)"
+    lines:
+    - 40
+    - 52
+    detail:
+      calls:
+      - super
+      - this.enableMultiWindowAwareTimeout
+      - this.enableWindowFocusOnElementFocus
+      - this.registerFullScreenListeners
+  - name: onElementFocus
+    sig: 'onElementFocus(targetWindow: CodeWindow): void'
+    vis: private
+    lines:
+    - 71
+    - 98
+    detail:
+      calls:
+      - activeWindow.document.hasFocus
+      - getActiveWindow
+      - targetWindow.document.hasFocus
+      - targetWindow.focus
+      - this.hostService.focus
+  - name: enableMultiWindowAwareTimeout
+    sig: 'enableMultiWindowAwareTimeout(targetWindow: Window, dom = { getWindowsCount, getWindows }): void'
+    vis: protected
+    lines:
+    - 104
+    - 169
+    detail:
+      calls:
+      - (window as any).vscodeOriginalSetTimeout.apply
+      - BaseWindow.TIMEOUT_DISPOSABLES.delete
+      - BaseWindow.TIMEOUT_DISPOSABLES.get
+      - BaseWindow.TIMEOUT_DISPOSABLES.set
+      - Object.defineProperty
+      - createSingleCallFunction
+      - disposables.add
+      - dispose
+      - dom.getWindows
+      - dom.getWindowsCount
+      - isAuxiliaryWindow
+      - new Set
+      - originalClearTimeout.apply
+      - originalSetTimeout.apply
+      - timeoutDisposables.add
+      - toDisposable
+  - name: confirmOnShutdown
+    sig: 'confirmOnShutdown(accessor: ServicesAccessor, reason: ShutdownReason): Promise<boolean>'
+    is_async: true
+    decorators:
+    - static
+    lines:
+    - 186
+    - 211
+    detail:
+      calls:
+      - accessor.get
+      - configurationService.updateValue
+      - dialogService.confirm
+      - localize
+  lines:
+  - 35
+  - 214
+- name: BrowserWindow
+  kind: struct
+  bases:
+  - BaseWindow
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\t@IOpenerService private readonly openerService: IOpenerService,\n\t\t@ILifecycleService private readonly lifecycleService: BrowserLifecycleService,\n\t\t@IDialogService private readonly dialogService: IDialogService,\n\t\t@ILabelService private readonly labelService: ILabelService,\n\t\t@IProductService private readonly productService: IProductService,\n\t\t@IBrowserWorkbenchEnvironmentService private readonly browserEnvironmentService: IBrowserWorkbenchEnvironmentService,\n\t\t@IWorkbenchLayoutService private readonly layoutService: IWorkbenchLayoutService,\n\t\t@IInstantiationService private readonly instantiationService: IInstantiationService,\n\t\t@IHostService hostService: IHostService\n\t)"
+    lines:
+    - 218
+    - 233
+    detail:
+      calls:
+      - super
+      - this.create
+      - this.registerListeners
+  - name: registerListeners
+    sig: 'registerListeners(): void'
+    vis: private
+    lines:
+    - 235
+    - 259
+    detail:
+      calls:
+      - addDisposableListener
+      - this._register
+      - this.lifecycleService.onWillShutdown
+  - name: onWillShutdown
+    sig: 'onWillShutdown(): void'
+    vis: private
+    lines:
+    - 261
+    - 291
+    detail:
+      calls:
+      - Event.any
+      - Event.once
+      - Event.toPromise
+      - "Event.toPromise(Event.any(\n\t\t\tEvent.once(new DomEmitter(mainWindow.document.body, EventType.KEY_DOWN..."
+      - new DomEmitter
+  - name: create
+    sig: 'create(): void'
+    vis: private
+    lines:
+    - 293
+    - 306
+    detail:
+      calls:
+      - this.registerCommands
+      - this.registerLabelFormatters
+      - this.setupDriver
+      - this.setupOpenHandlers
+  - name: setupOpenHandlers
+    sig: 'setupOpenHandlers(): void'
+    vis: private
+    lines:
+    - 314
+    - 432
+    detail:
+      calls:
+      - this.openerService.setDefaultExternalOpener
+  lines:
+  - 216
+  - 462
+exports:
+- name: BaseWindow
+  kind: type
+- name: BrowserWindow
+  kind: type

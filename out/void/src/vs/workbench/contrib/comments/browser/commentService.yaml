@@ -1,0 +1,691 @@
+## Roska File Descriptor — browser/commentService.ts
+file: browser/commentService.ts
+lines: 554
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: ../../../../editor/common/languages.js.CommentThreadChangedEvent
+- sym: ../../../../editor/common/languages.js.CommentInfo
+- sym: ../../../../editor/common/languages.js.Comment
+- sym: ../../../../editor/common/languages.js.CommentReaction
+- sym: ../../../../editor/common/languages.js.CommentingRanges
+- sym: ../../../../editor/common/languages.js.CommentThread
+- sym: ../../../../editor/common/languages.js.CommentOptions
+- sym: ../../../../editor/common/languages.js.PendingCommentThread
+- sym: ../../../../editor/common/languages.js.CommentingRangeResourceHint
+- sym: ../../../../platform/instantiation/common/instantiation.js.createDecorator
+- sym: ../../../../platform/instantiation/common/instantiation.js.IInstantiationService
+- sym: ../../../../base/common/event.js.Event
+- sym: ../../../../base/common/event.js.Emitter
+- sym: ../../../../base/common/lifecycle.js.Disposable
+- sym: ../../../../base/common/lifecycle.js.DisposableStore
+- sym: ../../../../base/common/lifecycle.js.IDisposable
+- sym: ../../../../base/common/uri.js.URI
+- sym: ../../../../base/common/uri.js.UriComponents
+- sym: ../../../../editor/common/core/range.js.Range
+- sym: ../../../../editor/common/core/range.js.IRange
+- sym: ../../../../base/common/cancellation.js.CancellationToken
+- sym: ../common/commentModel.js.ICommentThreadChangedEvent
+- sym: ./commentMenus.js.CommentMenus
+- sym: ../../notebook/common/notebookRange.js.ICellRange
+- sym: ../../../services/layout/browser/layoutService.js.IWorkbenchLayoutService
+- sym: ../../../../platform/configuration/common/configuration.js.IConfigurationService
+- sym: ../common/commentsConfiguration.js.COMMENTS_SECTION
+- sym: ../common/commentsConfiguration.js.ICommentsConfiguration
+- sym: ../../../../platform/contextkey/common/contextkey.js.IContextKey
+- sym: ../../../../platform/contextkey/common/contextkey.js.IContextKeyService
+- sym: ../../../../platform/storage/common/storage.js.IStorageService
+- sym: ../../../../platform/storage/common/storage.js.StorageScope
+- sym: ../../../../platform/storage/common/storage.js.StorageTarget
+- sym: ../common/commentContextKeys.js.CommentContextKeys
+- sym: ../../../../platform/log/common/log.js.ILogService
+- sym: ./commentsModel.js.CommentsModel
+- sym: ./commentsModel.js.ICommentsModel
+- sym: ../../../../editor/common/services/model.js.IModelService
+- sym: ../../../../base/common/network.js.Schemas
+data:
+- name: ICommentService
+  type: any
+  val: createDecorator<ICommentService>('commentService')
+- name: CONTINUE_ON_COMMENTS
+  type: string
+  val: '''comments.continueOnComments'''
+types:
+- name: IResourceCommentThreadEvent
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: resource
+    type: URI
+  - name: commentInfos
+    type: ICommentInfo[]
+  lines:
+  - 29
+  - 32
+- name: ICommentInfo
+  kind: trait
+  bases:
+  - CommentInfo<T>
+  decorators:
+  - interface
+  fields:
+  - name: uniqueOwner
+    type: string
+  lines:
+  - 34
+  - 37
+- name: INotebookCommentInfo
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: extensionId
+    type: string
+  - name: threads
+    type: CommentThread<ICellRange>[]
+  - name: uniqueOwner
+    type: string
+  lines:
+  - 39
+  - 44
+- name: IWorkspaceCommentThreadsEvent
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: ownerId
+    type: string
+  - name: commentThreads
+    type: CommentThread[]
+  lines:
+  - 46
+  - 50
+- name: INotebookCommentThreadChangedEvent
+  kind: trait
+  bases:
+  - CommentThreadChangedEvent<ICellRange>
+  decorators:
+  - interface
+  fields:
+  - name: uniqueOwner
+    type: string
+  lines:
+  - 52
+  - 54
+- name: ICommentController
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: id
+    type: string
+  - name: features
+    type: "{\n\t\treactionGroup?: CommentReaction[];\n\t\treactionHandler?: boolean;\n\t\toptions?: CommentOptions;\n\t}"
+  - name: options
+    type: CommentOptions
+  - name: contextValue
+    type: string
+  - name: owner
+    type: string
+  - name: activeComment
+    type: '{ thread: CommentThread; comment?: Comment } | undefined'
+  - name: createCommentThreadTemplate
+    type: 'method: createCommentThreadTemplate(resource: UriComponents, range: IRange | undefined, editorId?: string): Promise<void>'
+  - name: updateCommentThreadTemplate
+    type: 'method: updateCommentThreadTemplate(threadHandle: number, range: IRange): Promise<void>'
+  - name: deleteCommentThreadMain
+    type: 'method: deleteCommentThreadMain(commentThreadId: string): void'
+  - name: toggleReaction
+    type: 'method: toggleReaction(uri: URI, thread: CommentThread, comment: Comment, reaction: CommentReaction, token: CancellationToken): Promise<void>'
+  - name: getDocumentComments
+    type: 'method: getDocumentComments(resource: URI, token: CancellationToken): Promise<ICommentInfo<IRange>>'
+  - name: getNotebookComments
+    type: 'method: getNotebookComments(resource: URI, token: CancellationToken): Promise<INotebookCommentInfo>'
+  - name: setActiveCommentAndThread
+    type: 'method: setActiveCommentAndThread(commentInfo: { thread: CommentThread; comment?: Comment } | undefined): Promise<void>'
+  lines:
+  - 56
+  - 75
+- name: IContinueOnCommentProvider
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: provideContinueOnComments
+    type: 'method: provideContinueOnComments(): PendingCommentThread[]'
+  lines:
+  - 77
+  - 79
+- name: ICommentService
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: readonly
+    type: undefined
+  - name: readonly
+    type: Event<IResourceCommentThreadEvent>
+  - name: readonly
+    type: Event<IWorkspaceCommentThreadsEvent>
+  - name: readonly
+    type: Event<ICommentThreadChangedEvent>
+  - name: readonly
+    type: Event<INotebookCommentThreadChangedEvent>
+  - name: readonly
+    type: Event<CommentThread | null>
+  - name: readonly
+    type: Event<CommentThread | undefined>
+  - name: readonly
+    type: 'Event<{ uniqueOwner: string }>'
+  - name: readonly
+    type: 'Event<{ range: Range; commentingRangesInfo: CommentingRanges }>'
+  - name: readonly
+    type: Event<void>
+  - name: readonly
+    type: Event<string | undefined>
+  - name: readonly
+    type: Event<boolean>
+  - name: readonly
+    type: Event<void>
+  - name: readonly
+    type: boolean
+  - name: readonly
+    type: ICommentsModel
+  - name: readonly
+    type: ICommentController | undefined
+  - name: setDocumentComments
+    type: 'method: setDocumentComments(resource: URI, commentInfos: ICommentInfo[]): void'
+  - name: setWorkspaceComments
+    type: 'method: setWorkspaceComments(uniqueOwner: string, commentsByResource: CommentThread<IRange | ICellRange>[]): void'
+  - name: removeWorkspaceComments
+    type: 'method: removeWorkspaceComments(uniqueOwner: string): void'
+  - name: registerCommentController
+    type: 'method: registerCommentController(uniqueOwner: string, commentControl: ICommentController): void'
+  - name: unregisterCommentController
+    type: 'method: unregisterCommentController(uniqueOwner?: string): void'
+  - name: getCommentController
+    type: 'method: getCommentController(uniqueOwner: string): ICommentController | undefined'
+  - name: createCommentThreadTemplate
+    type: 'method: createCommentThreadTemplate(uniqueOwner: string, resource: URI, range: Range | undefined, editorId?: string): Promise<void>'
+  - name: updateCommentThreadTemplate
+    type: 'method: updateCommentThreadTemplate(uniqueOwner: string, threadHandle: number, range: Range): Promise<void>'
+  - name: getCommentMenus
+    type: 'method: getCommentMenus(uniqueOwner: string): CommentMenus'
+  - name: updateComments
+    type: 'method: updateComments(ownerId: string, event: CommentThreadChangedEvent<IRange>): void'
+  - name: updateNotebookComments
+    type: 'method: updateNotebookComments(ownerId: string, event: CommentThreadChangedEvent<ICellRange>): void'
+  - name: disposeCommentThread
+    type: 'method: disposeCommentThread(ownerId: string, threadId: string): void'
+  - name: getDocumentComments
+    type: 'method: getDocumentComments(resource: URI): Promise<(ICommentInfo | null)[]>'
+  - name: getNotebookComments
+    type: 'method: getNotebookComments(resource: URI): Promise<(INotebookCommentInfo | null)[]>'
+  - name: updateCommentingRanges
+    type: 'method: updateCommentingRanges(ownerId: string, resourceHints?: CommentingRangeResourceHint): void'
+  - name: hasReactionHandler
+    type: 'method: hasReactionHandler(uniqueOwner: string): boolean'
+  - name: toggleReaction
+    type: 'method: toggleReaction(uniqueOwner: string, resource: URI, thread: CommentThread<IRange | ICellRange>, comment: Comment, reaction: CommentReaction): Promise<void>'
+  - name: setActiveEditingCommentThread
+    type: 'method: setActiveEditingCommentThread(commentThread: CommentThread<IRange | ICellRange> | null): void'
+  - name: setCurrentCommentThread
+    type: 'method: setCurrentCommentThread(commentThread: CommentThread<IRange | ICellRange> | undefined): void'
+  - name: setActiveCommentAndThread
+    type: 'method: setActiveCommentAndThread(uniqueOwner: string, commentInfo: { thread: CommentThread<IRange | ICellRange>; comment?: Comment } | undefined): Promise<void>'
+  - name: enableCommenting
+    type: 'method: enableCommenting(enable: boolean): void'
+  - name: registerContinueOnCommentProvider
+    type: 'method: registerContinueOnCommentProvider(provider: IContinueOnCommentProvider): IDisposable'
+  - name: removeContinueOnComment
+    type: 'method: removeContinueOnComment(pendingComment: { range: IRange | undefined; uri: URI; uniqueOwner: string; isReply?: boolean }): PendingCommentThread | undefined'
+  - name: resourceHasCommentingRanges
+    type: 'method: resourceHasCommentingRanges(resource: URI): boolean'
+  lines:
+  - 81
+  - 122
+- name: CommentService
+  kind: struct
+  ctx: uniqueOwner -> PendingCommentThread[]
+  bases:
+  - Disposable
+  - ICommentService
+  fields:
+  - name: _serviceBrand
+    type: undefined
+  - name: _onDidSetDataProvider
+    type: Emitter<void>
+    default: this._register(new Emitter<void>())
+  - name: onDidSetDataProvider
+    type: Event<void>
+    default: this._onDidSetDataProvider.event
+  - name: _onDidDeleteDataProvider
+    type: Emitter<string | undefined>
+    default: this._register(new Emitter<string | undefined>())
+  - name: onDidDeleteDataProvider
+    type: Event<string | undefined>
+    default: this._onDidDeleteDataProvider.event
+  - name: _onDidSetResourceCommentInfos
+    type: Emitter<IResourceCommentThreadEvent>
+    default: this._register(new Emitter<IResourceCommentThreadEvent>())
+  - name: onDidSetResourceCommentInfos
+    type: Event<IResourceCommentThreadEvent>
+    default: this._onDidSetResourceCommentInfos.event
+  - name: _onDidSetAllCommentThreads
+    type: Emitter<IWorkspaceCommentThreadsEvent>
+    default: this._register(new Emitter<IWorkspaceCommentThreadsEvent>())
+  - name: onDidSetAllCommentThreads
+    type: Event<IWorkspaceCommentThreadsEvent>
+    default: this._onDidSetAllCommentThreads.event
+  - name: _onDidUpdateCommentThreads
+    type: Emitter<ICommentThreadChangedEvent>
+    default: this._register(new Emitter<ICommentThreadChangedEvent>())
+  - name: onDidUpdateCommentThreads
+    type: Event<ICommentThreadChangedEvent>
+    default: this._onDidUpdateCommentThreads.event
+  - name: _onDidUpdateNotebookCommentThreads
+    type: Emitter<INotebookCommentThreadChangedEvent>
+    default: this._register(new Emitter<INotebookCommentThreadChangedEvent>())
+  - name: onDidUpdateNotebookCommentThreads
+    type: Event<INotebookCommentThreadChangedEvent>
+    default: this._onDidUpdateNotebookCommentThreads.event
+  - name: _onDidUpdateCommentingRanges
+    type: 'Emitter<{ uniqueOwner: string }>'
+    default: 'this._register(new Emitter<{ uniqueOwner: string }>())'
+  - name: onDidUpdateCommentingRanges
+    type: 'Event<{ uniqueOwner: string }>'
+    default: this._onDidUpdateCommentingRanges.event
+  - name: _onDidChangeActiveEditingCommentThread
+    type: any
+    default: this._register(new Emitter<CommentThread | null>())
+  - name: onDidChangeActiveEditingCommentThread
+    type: any
+    default: this._onDidChangeActiveEditingCommentThread.event
+  - name: _onDidChangeCurrentCommentThread
+    type: any
+    default: this._register(new Emitter<CommentThread | undefined>())
+  - name: onDidChangeCurrentCommentThread
+    type: any
+    default: this._onDidChangeCurrentCommentThread.event
+  - name: _onDidChangeCommentingEnabled
+    type: any
+    default: this._register(new Emitter<boolean>())
+  - name: onDidChangeCommentingEnabled
+    type: any
+    default: this._onDidChangeCommentingEnabled.event
+  - name: _onResourceHasCommentingRanges
+    type: any
+    default: this._register(new Emitter<void>())
+  - name: onResourceHasCommentingRanges
+    type: any
+    default: this._onResourceHasCommentingRanges.event
+  - name: _onDidChangeActiveCommentingRange
+    type: "Emitter<{\n\t\trange: Range; commentingRangesInfo:\n\t\tCommentingRanges;\n\t}>"
+    default: "this._register(new Emitter<{\n\t\trange: Range; commentingRangesInfo:\n\t\tCommentingR..."
+  - name: onDidChangeActiveCommentingRange
+    type: 'Event<{ range: Range; commentingRangesInfo: CommentingRanges }>'
+    default: this._onDidChangeActiveCommentingRange.event
+  - name: _commentControls
+    type: any
+    default: new Map<string, ICommentController>()
+  - name: _commentMenus
+    type: any
+    default: new Map<string, CommentMenus>()
+  - name: _isCommentingEnabled
+    type: boolean
+    default: 'true'
+  - name: _workspaceHasCommenting
+    type: IContextKey<boolean>
+  - name: _commentingEnabled
+    type: IContextKey<boolean>
+  - name: _continueOnComments
+    type: any
+    default: new Map<string, PendingCommentThread[]>()
+  - name: _continueOnCommentProviders
+    type: any
+    default: new Set<IContinueOnCommentProvider>()
+  - name: _commentsModel
+    type: CommentsModel
+    default: this._register(new CommentsModel())
+  - name: commentsModel
+    type: ICommentsModel
+    default: this._commentsModel
+  - name: _commentingRangeResources
+    type: any
+    default: new Set<string>()
+  - name: _commentingRangeResourceHintSchemes
+    type: any
+    default: new Set<string>()
+  - name: _lastActiveCommentController
+    type: ICommentController | undefined
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\t@IInstantiationService protected readonly instantiationService: IInstantiationService,\n\t\t@IWorkbenchLayoutService private readonly layoutService: IWorkbenchLayoutService,\n\t\t@IConfigurationService private readonly configurationService: IConfigurationService,\n\t\t@IContextKeyService contextKeyService: IContextKeyService,\n\t\t@IStorageService private readonly storageService: IStorageService,\n\t\t@ILogService private readonly logService: ILogService,\n\t\t@IModelService private readonly modelService: IModelService\n\t)"
+    lines:
+    - 186
+    - 249
+    detail:
+      calls:
+      - CommentContextKeys.WorkspaceHasCommenting.bindTo
+      - CommentContextKeys.commentingEnabled.bindTo
+      - Event.debounce
+      - new DisposableStore
+      - storageEvent
+      - storageListener.add
+      - storageService.onWillSaveState
+      - super
+      - this._handleConfiguration
+      - this._handleZenMode
+      - this._register
+      - this.modelService.onModelAdded
+      - this.storageService.onDidChangeValue
+  - name: _updateResourcesWithCommentingRanges
+    sig: '_updateResourcesWithCommentingRanges(resource: URI, commentInfos: (ICommentInfo | null)[])'
+    vis: private
+    lines:
+    - 251
+    - 262
+    detail:
+      calls:
+      - resource.toString
+      - this._commentingRangeResources.add
+      - this._onResourceHasCommentingRanges.fire
+  - name: isCommentingEnabled
+    sig: 'isCommentingEnabled(): boolean'
+    lines:
+    - 289
+    - 291
+    detail: {}
+  - name: enableCommenting
+    sig: 'enableCommenting(enable: boolean): void'
+    lines:
+    - 293
+    - 299
+    detail:
+      calls:
+      - this._commentingEnabled.set
+      - this._onDidChangeCommentingEnabled.fire
+  - name: setCurrentCommentThread
+    sig: 'setCurrentCommentThread(commentThread: CommentThread | undefined)'
+    lines:
+    - 305
+    - 307
+    detail:
+      calls:
+      - this._onDidChangeCurrentCommentThread.fire
+  - name: setActiveEditingCommentThread
+    sig: 'setActiveEditingCommentThread(commentThread: CommentThread | null)'
+    lines:
+    - 313
+    - 315
+    detail:
+      calls:
+      - this._onDidChangeActiveEditingCommentThread.fire
+  - name: lastActiveCommentcontroller
+    sig: lastActiveCommentcontroller()
+    lines:
+    - 317
+    - 319
+    detail: {}
+  - name: setActiveCommentAndThread
+    sig: 'setActiveCommentAndThread(uniqueOwner: string, commentInfo: { thread: CommentThread<IRange>; comment?: Comment } | undefined)'
+    is_async: true
+    lines:
+    - 322
+    - 334
+    detail:
+      calls:
+      - commentController.setActiveCommentAndThread
+      - this._commentControls.get
+      - this._lastActiveCommentController?.setActiveCommentAndThread
+  - name: setDocumentComments
+    sig: 'setDocumentComments(resource: URI, commentInfos: ICommentInfo[]): void'
+    lines:
+    - 336
+    - 338
+    detail:
+      calls:
+      - this._onDidSetResourceCommentInfos.fire
+  - name: setWorkspaceComments
+    sig: 'setWorkspaceComments(uniqueOwner: string, commentsByResource: CommentThread[]): void'
+    lines:
+    - 350
+    - 359
+    detail:
+      calls:
+      - this._commentControls.get
+      - this._workspaceHasCommenting.set
+      - this.setModelThreads
+  - name: removeWorkspaceComments
+    sig: 'removeWorkspaceComments(uniqueOwner: string): void'
+    lines:
+    - 361
+    - 366
+    detail:
+      calls:
+      - this._commentControls.get
+      - this.setModelThreads
+  - name: registerCommentController
+    sig: 'registerCommentController(uniqueOwner: string, commentControl: ICommentController): void'
+    lines:
+    - 368
+    - 371
+    detail:
+      calls:
+      - this._commentControls.set
+      - this._onDidSetDataProvider.fire
+  - name: unregisterCommentController
+    sig: 'unregisterCommentController(uniqueOwner?: string): void'
+    lines:
+    - 373
+    - 381
+    detail:
+      calls:
+      - this._commentControls.clear
+      - this._commentControls.delete
+      - this._commentsModel.deleteCommentsByOwner
+      - this._onDidDeleteDataProvider.fire
+  - name: getCommentController
+    sig: 'getCommentController(uniqueOwner: string): ICommentController | undefined'
+    lines:
+    - 383
+    - 385
+    detail:
+      calls:
+      - this._commentControls.get
+  - name: createCommentThreadTemplate
+    sig: 'createCommentThreadTemplate(uniqueOwner: string, resource: URI, range: Range | undefined, editorId?: string): Promise<void>'
+    is_async: true
+    lines:
+    - 387
+    - 395
+    detail:
+      calls:
+      - commentController.createCommentThreadTemplate
+      - this._commentControls.get
+  - name: updateCommentThreadTemplate
+    sig: 'updateCommentThreadTemplate(uniqueOwner: string, threadHandle: number, range: Range)'
+    is_async: true
+    lines:
+    - 397
+    - 405
+    detail:
+      calls:
+      - commentController.updateCommentThreadTemplate
+      - this._commentControls.get
+  - name: disposeCommentThread
+    sig: 'disposeCommentThread(uniqueOwner: string, threadId: string)'
+    lines:
+    - 407
+    - 410
+    detail:
+      calls:
+      - controller?.deleteCommentThreadMain
+      - this.getCommentController
+  - name: getCommentMenus
+    sig: 'getCommentMenus(uniqueOwner: string): CommentMenus'
+    lines:
+    - 412
+    - 420
+    detail:
+      calls:
+      - this._commentMenus.get
+      - this._commentMenus.set
+      - this.instantiationService.createInstance
+  - name: updateComments
+    sig: 'updateComments(ownerId: string, event: CommentThreadChangedEvent<IRange>): void'
+    lines:
+    - 422
+    - 428
+    detail:
+      calls:
+      - Object.assign
+      - this._commentControls.get
+      - this.updateModelThreads
+  - name: updateNotebookComments
+    sig: 'updateNotebookComments(ownerId: string, event: CommentThreadChangedEvent<ICellRange>): void'
+    lines:
+    - 430
+    - 433
+    detail:
+      calls:
+      - Object.assign
+      - this._onDidUpdateNotebookCommentThreads.fire
+  - name: updateCommentingRanges
+    sig: 'updateCommentingRanges(ownerId: string, resourceHints?: CommentingRangeResourceHint)'
+    lines:
+    - 435
+    - 443
+    detail:
+      calls:
+      - this._commentingRangeResourceHintSchemes.add
+      - this._onDidUpdateCommentingRanges.fire
+      - this._workspaceHasCommenting.set
+  - name: toggleReaction
+    sig: 'toggleReaction(uniqueOwner: string, resource: URI, thread: CommentThread, comment: Comment, reaction: CommentReaction): Promise<void>'
+    is_async: true
+    lines:
+    - 445
+    - 453
+    detail:
+      calls:
+      - commentController.toggleReaction
+      - new Error
+      - this._commentControls.get
+  - name: hasReactionHandler
+    sig: 'hasReactionHandler(uniqueOwner: string): boolean'
+    lines:
+    - 455
+    - 463
+    detail:
+      calls:
+      - this._commentControls.get
+  - name: getDocumentComments
+    sig: 'getDocumentComments(resource: URI): Promise<(ICommentInfo | null)[]>'
+    is_async: true
+    lines:
+    - 465
+    - 490
+    detail:
+      calls:
+      - Promise.all
+      - commentControlResult.push
+      - control.getDocumentComments
+      - "control.getDocumentComments(resource, CancellationToken.None)\n\t\t\t\t.then"
+      - "control.getDocumentComments(resource, CancellationToken.None)\n\t\t\t\t.then(documentComments => {\n\t\t\t\t\t/..."
+      - this._commentControls.values
+      - this._updateResourcesWithCommentingRanges
+  - name: getNotebookComments
+    sig: 'getNotebookComments(resource: URI): Promise<(INotebookCommentInfo | null)[]>'
+    is_async: true
+    lines:
+    - 492
+    - 503
+    detail:
+      calls:
+      - Promise.all
+      - this._commentControls.forEach
+  - name: registerContinueOnCommentProvider
+    sig: 'registerContinueOnCommentProvider(provider: IContinueOnCommentProvider): IDisposable'
+    lines:
+    - 505
+    - 512
+    detail:
+      calls:
+      - this._continueOnCommentProviders.add
+  - name: _saveContinueOnComments
+    sig: '_saveContinueOnComments(map: Map<string, PendingCommentThread[]>)'
+    vis: private
+    lines:
+    - 514
+    - 521
+    detail:
+      calls:
+      - commentsToSave.map
+      - commentsToSave.map(thread => thread.uri.toString()).join
+      - commentsToSave.push
+      - map.values
+      - this.logService.debug
+      - this.storageService.store
+  - name: removeContinueOnComment
+    sig: 'removeContinueOnComment(pendingComment: { range: IRange; uri: URI; uniqueOwner: string; isReply?: boolean }): PendingCommentThread | undefined'
+    lines:
+    - 523
+    - 532
+    detail:
+      calls:
+      - pendingComments.findIndex
+      - pendingComments.splice
+      - this._continueOnComments.get
+  - name: _addContinueOnComments
+    sig: '_addContinueOnComments(pendingComments: PendingCommentThread[], map: Map<string, PendingCommentThread[]>): Set<string>'
+    vis: private
+    lines:
+    - 534
+    - 549
+    detail:
+      calls:
+      - changedOwners.add
+      - commentsForOwner.every
+      - commentsForOwner.push
+      - map.get
+      - map.has
+      - map.set
+      - new Set
+  - name: resourceHasCommentingRanges
+    sig: 'resourceHasCommentingRanges(resource: URI): boolean'
+    lines:
+    - 551
+    - 553
+    detail:
+      calls:
+      - resource.toString
+      - this._commentingRangeResourceHintSchemes.has
+      - this._commentingRangeResources.has
+  lines:
+  - 126
+  - 554
+exports:
+- name: IResourceCommentThreadEvent
+  kind: type
+- name: ICommentInfo
+  kind: type
+- name: INotebookCommentInfo
+  kind: type
+- name: IWorkspaceCommentThreadsEvent
+  kind: type
+- name: INotebookCommentThreadChangedEvent
+  kind: type
+- name: ICommentController
+  kind: type
+- name: IContinueOnCommentProvider
+  kind: type
+- name: ICommentService
+  kind: type
+- name: CommentService
+  kind: type
+- name: ICommentService
+  kind: data
+- name: CONTINUE_ON_COMMENTS
+  kind: data

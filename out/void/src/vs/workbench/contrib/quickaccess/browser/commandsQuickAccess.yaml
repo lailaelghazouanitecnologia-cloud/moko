@@ -1,0 +1,224 @@
+## Roska File Descriptor — browser/commandsQuickAccess.ts
+file: browser/commandsQuickAccess.ts
+lines: 318
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: ../../../../base/browser/browser.js.isFirefox
+- sym: ../../../../base/common/async.js.raceTimeout
+- sym: ../../../../base/common/async.js.timeout
+- sym: ../../../../base/common/cancellation.js.CancellationToken
+- sym: ../../../../base/common/codicons.js.Codicon
+- sym: ../../../../base/common/iconLabels.js.stripIcons
+- sym: ../../../../base/common/keyCodes.js.KeyCode
+- sym: ../../../../base/common/keyCodes.js.KeyMod
+- sym: ../../../../base/common/platform.js.Language
+- sym: ../../../../base/common/themables.js.ThemeIcon
+- sym: ../../../../editor/common/editorCommon.js.IEditor
+- sym: ../../../../editor/contrib/quickAccess/browser/commandsQuickAccess.js.AbstractEditorCommandsQuickAccessProvider
+- sym: ../../../../nls.js.localize
+- sym: ../../../../nls.js.localize2
+- sym: ../../../../platform/action/common/action.js.isLocalizedString
+- sym: ../../../../platform/actions/common/actions.js.Action2
+- sym: ../../../../platform/actions/common/actions.js.IMenuService
+- sym: ../../../../platform/actions/common/actions.js.MenuId
+- sym: ../../../../platform/actions/common/actions.js.MenuItemAction
+- sym: ../../../../platform/actions/common/actions.js.SubmenuItemAction
+- sym: ../../../../platform/commands/common/commands.js.ICommandService
+- sym: ../../../../platform/configuration/common/configuration.js.IConfigurationChangeEvent
+- sym: ../../../../platform/configuration/common/configuration.js.IConfigurationService
+- sym: ../../../../platform/dialogs/common/dialogs.js.IDialogService
+- sym: ../../../../platform/instantiation/common/instantiation.js.IInstantiationService
+- sym: ../../../../platform/instantiation/common/instantiation.js.ServicesAccessor
+- sym: ../../../../platform/keybinding/common/keybinding.js.IKeybindingService
+- sym: ../../../../platform/keybinding/common/keybindingsRegistry.js.KeybindingWeight
+- sym: ../../../../platform/product/common/productService.js.IProductService
+- sym: ../../../../platform/quickinput/browser/commandsQuickAccess.js.CommandsHistory
+- sym: ../../../../platform/quickinput/browser/commandsQuickAccess.js.ICommandQuickPick
+- sym: ../../../../platform/quickinput/browser/pickerQuickAccess.js.TriggerAction
+- sym: ../../../../platform/quickinput/common/quickAccess.js.DefaultQuickAccessFilterValue
+- sym: ../../../../platform/quickinput/common/quickInput.js.IQuickInputService
+- sym: ../../../../platform/quickinput/common/quickInput.js.IQuickPickSeparator
+- sym: ../../../../platform/storage/common/storage.js.IStorageService
+- sym: ../../../../platform/telemetry/common/telemetry.js.ITelemetryService
+- sym: ../../../browser/quickaccess.js.IWorkbenchQuickAccessConfiguration
+- sym: ../../chat/browser/actions/chatActions.js.CHAT_OPEN_ACTION_ID
+- sym: ../../chat/browser/actions/chatQuickInputActions.js.ASK_QUICK_QUESTION_ACTION_ID
+- sym: ../../chat/common/chatAgents.js.IChatAgentService
+- sym: ../../chat/common/constants.js.ChatAgentLocation
+- sym: ../../../services/aiRelatedInformation/common/aiRelatedInformation.js.CommandInformationResult
+- sym: ../../../services/aiRelatedInformation/common/aiRelatedInformation.js.IAiRelatedInformationService
+- sym: ../../../services/aiRelatedInformation/common/aiRelatedInformation.js.RelatedInformationType
+- sym: ../../../services/editor/common/editorGroupsService.js.IEditorGroupsService
+- sym: ../../../services/editor/common/editorService.js.IEditorService
+- sym: ../../../services/extensions/common/extensions.js.IExtensionService
+- sym: ../../../services/preferences/browser/keybindingsEditorModel.js.createKeybindingCommandQuery
+- sym: ../../../services/preferences/common/preferences.js.IPreferencesService
+types:
+- name: CommandsQuickAccessProvider
+  kind: struct
+  ctx: If extensions are not yet registered, we wait for a little moment to give them
+  bases:
+  - AbstractEditorCommandsQuickAccessProvider
+  fields:
+  - name: AI_RELATED_INFORMATION_MAX_PICKS
+    type: any
+    default: '5'
+  - name: AI_RELATED_INFORMATION_DEBOUNCE
+    type: any
+    default: '200'
+  - name: extensionRegistrationRace
+    type: any
+    default: raceTimeout(this.extensionService.whenInstalledExtensionsRegistered(), 800)
+  - name: useAiRelatedInfo
+    type: any
+    default: 'false'
+  methods:
+  - name: defaultFilterValue
+    sig: 'defaultFilterValue(): DefaultQuickAccessFilterValue | undefined'
+    lines:
+    - 59
+    - 65
+    detail: {}
+  - name: constructor
+    sig: "constructor(\n\t\t@IEditorService private readonly editorService: IEditorService,\n\t\t@IMenuService private readonly menuService: IMenuService,\n\t\t@IExtensionService private readonly extensionService: IExtensionService,\n\t\t@IInstantiationService instantiationService: IInstantiationService,\n\t\t@IKeybindingService keybindingService: IKeybindingService,\n\t\t@ICommandService commandService: ICommandService,\n\t\t@ITelemetryService telemetryService: ITelemetryService,\n\t\t@IDialogService dialogService: IDialogService,\n\t\t@IConfigurationService private readonly configurationService: IConfigurationService,\n\t\t@IEditorGroupsService private readonly editorGroupService: IEditorGroupsService,\n\t\t@IPreferencesService private readonly preferencesService: IPreferencesService,\n\t\t@IProductService private readonly productService: IProductService,\n\t\t@IAiRelatedInformationService private readonly aiRelatedInformationService: IAiRelatedInformationService,\n\t\t@IChatAgentService private readonly chatAgentService: IChatAgentService,\n\t)"
+    lines:
+    - 67
+    - 93
+    detail:
+      calls:
+      - Language.isDefaultVariant
+      - configurationService.onDidChangeConfiguration
+      - super
+      - this._register
+      - this.updateOptions
+  - name: getCommandPicks
+    sig: 'getCommandPicks(token: CancellationToken): Promise<Array<ICommandQuickPick>>'
+    is_async: true
+    vis: protected
+    lines:
+    - 117
+    - 140
+    detail:
+      calls:
+      - "[\n\t\t\t...this.getCodeEditorCommandPicks(),\n\t\t\t...this.getGlobalCommandPicks()\n\t\t].map"
+      - this.getCodeEditorCommandPicks
+      - this.getGlobalCommandPicks
+  - name: getAdditionalCommandPicks
+    sig: 'getAdditionalCommandPicks(allPicks: ICommandQuickPick[], picksSoFar: ICommandQuickPick[], filter: string, token: CancellationToken): Promise<Array<ICommandQuickPick | IQuickPickSeparator>>'
+    is_async: true
+    vis: protected
+    lines:
+    - 155
+    - 186
+    detail:
+      calls:
+      - additionalPicks.push
+      - localize
+      - this.chatAgentService.getDefaultAgent
+      - this.getRelatedInformationPicks
+      - this.hasAdditionalCommandPicks
+      - timeout
+  - name: getRelatedInformationPicks
+    sig: 'getRelatedInformationPicks(allPicks: ICommandQuickPick[], picksSoFar: ICommandQuickPick[], filter: string, token: CancellationToken)'
+    is_async: true
+    vis: private
+    lines:
+    - 188
+    - 212
+    detail:
+      calls:
+      - additionalPicks.push
+      - allPicks.find
+      - new Array
+      - new Set
+      - picksSoFar.map
+      - relatedInformation.sort
+      - this.aiRelatedInformationService.getRelatedInformation
+  - name: getGlobalCommandPicks
+    sig: 'getGlobalCommandPicks(): ICommandQuickPick[]'
+    vis: private
+    lines:
+    - 214
+    - 255
+    detail:
+      calls:
+      - action.item.precondition?.serialize
+      - globalCommandPicks.push
+      - "globalCommandsMenu\n\t\t\t.reduce"
+      - "globalCommandsMenu\n\t\t\t.reduce((r, [, actions]) => [...r, ...actions], <Array<MenuItemAction | Submen..."
+      - isLocalizedString
+      - localize
+      - stripIcons
+      - this.menuService.getMenuActions
+  lines:
+  - 44
+  - 256
+- name: ShowAllCommandsAction
+  kind: struct
+  bases:
+  - Action2
+  fields:
+  - name: ID
+    type: any
+    default: '''workbench.action.showCommands'''
+  methods:
+  - name: constructor
+    sig: constructor()
+    lines:
+    - 264
+    - 276
+    detail:
+      calls:
+      - localize2
+      - super
+  - name: run
+    sig: 'run(accessor: ServicesAccessor): Promise<void>'
+    is_async: true
+    lines:
+    - 278
+    - 280
+    detail:
+      calls:
+      - accessor.get
+      - accessor.get(IQuickInputService).quickAccess.show
+  lines:
+  - 260
+  - 281
+- name: ClearCommandHistoryAction
+  kind: struct
+  bases:
+  - Action2
+  methods:
+  - name: constructor
+    sig: constructor()
+    lines:
+    - 285
+    - 291
+    detail:
+      calls:
+      - localize2
+      - super
+  - name: run
+    sig: 'run(accessor: ServicesAccessor): Promise<void>'
+    is_async: true
+    lines:
+    - 293
+    - 315
+    detail:
+      calls:
+      - CommandsHistory.clearHistory
+      - CommandsHistory.getConfiguredCommandHistoryLength
+      - accessor.get
+      - dialogService.confirm
+      - localize
+  lines:
+  - 283
+  - 316
+exports:
+- name: CommandsQuickAccessProvider
+  kind: type
+- name: ShowAllCommandsAction
+  kind: type
+- name: ClearCommandHistoryAction
+  kind: type

@@ -1,0 +1,587 @@
+## Roska File Descriptor — browser/quickInputController.ts
+file: browser/quickInputController.ts
+lines: 1097
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: ../../../base/browser/dom.js.dom
+- sym: ../../../base/browser/domStylesheets.js.domStylesheetsJs
+- sym: ../../../base/browser/ui/actionbar/actionbar.js.ActionBar
+- sym: ../../../base/browser/ui/actionbar/actionViewItems.js.ActionViewItem
+- sym: ../../../base/browser/ui/button/button.js.Button
+- sym: ../../../base/browser/ui/countBadge/countBadge.js.CountBadge
+- sym: ../../../base/browser/ui/progressbar/progressbar.js.ProgressBar
+- sym: ../../../base/common/cancellation.js.CancellationToken
+- sym: ../../../base/common/event.js.Emitter
+- sym: ../../../base/common/event.js.Event
+- sym: ../../../base/common/keyCodes.js.KeyCode
+- sym: ../../../base/common/lifecycle.js.Disposable
+- sym: ../../../base/common/lifecycle.js.DisposableStore
+- sym: ../../../base/common/lifecycle.js.dispose
+- sym: ../../../base/common/severity.js.Severity
+- sym: ../../../base/common/types.js.isString
+- sym: ../../../nls.js.localize
+- sym: ../common/quickInput.js.IInputBox
+- sym: ../common/quickInput.js.IInputOptions
+- sym: ../common/quickInput.js.IKeyMods
+- sym: ../common/quickInput.js.IPickOptions
+- sym: ../common/quickInput.js.IQuickInput
+- sym: ../common/quickInput.js.IQuickInputButton
+- sym: ../common/quickInput.js.IQuickNavigateConfiguration
+- sym: ../common/quickInput.js.IQuickPick
+- sym: ../common/quickInput.js.IQuickPickItem
+- sym: ../common/quickInput.js.IQuickWidget
+- sym: ../common/quickInput.js.QuickInputHideReason
+- sym: ../common/quickInput.js.QuickPickInput
+- sym: ../common/quickInput.js.QuickPickFocus
+- sym: ../common/quickInput.js.QuickInputType
+- sym: ./quickInputBox.js.QuickInputBox
+- sym: ./quickInput.js.QuickInputUI
+- sym: ./quickInput.js.Writeable
+- sym: ./quickInput.js.IQuickInputStyles
+- sym: ./quickInput.js.IQuickInputOptions
+- sym: ./quickInput.js.QuickPick
+- sym: ./quickInput.js.backButton
+- sym: ./quickInput.js.InputBox
+- sym: ./quickInput.js.Visibilities
+- sym: ./quickInput.js.QuickWidget
+- sym: ./quickInput.js.InQuickInputContextKey
+- sym: ./quickInput.js.QuickInputTypeContextKey
+- sym: ./quickInput.js.EndOfQuickInputBoxContextKey
+- sym: ./quickInput.js.QuickInputAlignmentContextKey
+- sym: ../../layout/browser/layoutService.js.ILayoutService
+- sym: ../../../base/browser/window.js.mainWindow
+- sym: ../../instantiation/common/instantiation.js.IInstantiationService
+- sym: ./quickInputTree.js.QuickInputTree
+- sym: ../../contextkey/common/contextkey.js.IContextKey
+- sym: ../../contextkey/common/contextkey.js.IContextKeyService
+- sym: ../../../base/common/observable.js.autorun
+- sym: ../../../base/common/observable.js.observableValue
+- sym: ../../../base/browser/mouseEvent.js.StandardMouseEvent
+- sym: ../../storage/common/storage.js.IStorageService
+- sym: ../../storage/common/storage.js.StorageScope
+- sym: ../../storage/common/storage.js.StorageTarget
+- sym: ../../configuration/common/configuration.js.IConfigurationService
+- sym: ../../../base/common/platform.js.Platform
+- sym: ../../../base/common/platform.js.platform
+- sym: ../../window/common/window.js.getWindowControlsStyle
+- sym: ../../window/common/window.js.WindowControlsStyle
+- sym: ../../../base/browser/browser.js.getZoomFactor
+data:
+- name: $
+  type: any
+  val: dom.$
+- name: VIEWSTATE_STORAGE_KEY
+  type: string
+  val: '''workbench.quickInput.viewState'''
+types:
+- name: QuickInputViewState
+  kind: typealias
+  decorators:
+  - type
+  fields:
+  - name: readonly
+    type: number
+  - name: readonly
+    type: number
+  lines:
+  - 41
+  - 44
+- name: QuickInputController
+  kind: struct
+  ctx: Max total width of quick input widget
+  bases:
+  - Disposable
+  fields:
+  - name: MAX_WIDTH
+    type: any
+    default: '600'
+  - name: idPrefix
+    type: string
+  - name: ui
+    type: QuickInputUI | undefined
+  - name: dimension
+    type: dom.IDimension
+  - name: titleBarOffset
+    type: number
+  - name: enabled
+    type: any
+    default: 'true'
+  - name: onDidAcceptEmitter
+    type: any
+    default: this._register(new Emitter<void>())
+  - name: onDidCustomEmitter
+    type: any
+    default: this._register(new Emitter<void>())
+  - name: onDidTriggerButtonEmitter
+    type: any
+    default: this._register(new Emitter<IQuickInputButton>())
+  - name: keyMods
+    type: Writeable<IKeyMods>
+    default: '{ ctrlCmd: false, alt: false }'
+  - name: controller
+    type: IQuickInput | null
+    default: 'null'
+  - name: _container
+    type: HTMLElement
+  - name: styles
+    type: IQuickInputStyles
+  - name: onShowEmitter
+    type: any
+    default: this._register(new Emitter<void>())
+  - name: onShow
+    type: any
+    default: this.onShowEmitter.event
+  - name: onHideEmitter
+    type: any
+    default: this._register(new Emitter<void>())
+  - name: onHide
+    type: any
+    default: this.onHideEmitter.event
+  - name: previousFocusElement
+    type: HTMLElement
+  - name: viewState
+    type: QuickInputViewState | undefined
+  - name: dndController
+    type: QuickInputDragAndDropController | undefined
+  - name: inQuickInputContext
+    type: IContextKey<boolean>
+  - name: quickInputTypeContext
+    type: IContextKey<QuickInputType>
+  - name: endOfQuickInputBoxContext
+    type: IContextKey<boolean>
+  - name: backButton
+    type: any
+    default: backButton
+  methods:
+  - name: currentQuickInput
+    sig: currentQuickInput()
+    lines:
+    - 60
+    - 60
+    detail: {}
+  - name: container
+    sig: container()
+    lines:
+    - 63
+    - 63
+    detail: {}
+  - name: constructor
+    sig: "constructor(\n\t\tprivate options: IQuickInputOptions,\n\t\t@ILayoutService private readonly layoutService: ILayoutService,\n\t\t@IInstantiationService private readonly instantiationService: IInstantiationService,\n\t\t@IContextKeyService contextKeyService: IContextKeyService,\n\t\t@IStorageService private readonly storageService: IStorageService\n\t)"
+    lines:
+    - 82
+    - 110
+    detail:
+      calls:
+      - EndOfQuickInputBoxContextKey.bindTo
+      - Event.runAndSubscribe
+      - InQuickInputContextKey.bindTo
+      - QuickInputTypeContextKey.bindTo
+      - dom.onWillUnregisterWindow
+      - super
+      - this._register
+      - this.loadViewState
+  - name: getUI
+    sig: 'getUI(showInActiveContainer?: boolean)'
+    vis: private
+    lines:
+    - 123
+    - 423
+    detail:
+      calls:
+      - $
+      - autorun
+      - checkAll.setAttribute
+      - countContainer.setAttribute
+      - customButton.onDidClick
+      - dom.addDisposableListener
+      - dom.addStandardDisposableListener
+      - dom.append
+      - dom.getWindow
+      - dom.trackFocus
+      - domStylesheetsJs.createStyleSheet
+      - focusTracker.onDidBlur
+      - inlineActionBar.domNode.classList.add
+      - inputBox.onKeyDown
+      - inputBox.setAttribute
+      - leftActionBar.domNode.classList.add
+      - list.onChangedAllVisibleChecked
+      - list.onChangedCheckedCount
+      - list.onChangedVisibleCount
+      - list.onDidChangeFocus
+      - list.onLeave
+      - localize
+      - new ActionBar
+      - new Button
+      - new CountBadge
+      - new ProgressBar
+      - new QuickInputBox
+      - ok.onDidClick
+      - progressBar.getContainer
+      - progressBar.getContainer().classList.add
+      - rightActionBar.domNode.classList.add
+      - this._register
+      - this.instantiationService.createInstance
+      - this.layout
+      - this.reparentUI
+      - this.updateStyles
+      - visibleCountContainer.setAttribute
+  - name: pick
+    sig: 'pick(picks: Promise<QuickPickInput<T>[]> | QuickPickInput<T>[], options: IPickOptions<T> = {}, token: CancellationToken = CancellationToken.None): Promise<(O extends { canPickMany: true } ? T[] : T) | undefined>'
+    lines:
+    - 433
+    - 540
+    detail:
+      calls:
+      - new Promise
+  - name: input
+    sig: 'input(options: IInputOptions = {}, token: CancellationToken = CancellationToken.None): Promise<string | undefined>'
+    lines:
+    - 558
+    - 615
+    detail:
+      calls:
+      - new Promise
+  - name: createQuickPick
+    sig: 'createQuickPick(options: { useSeparators: boolean } = { useSeparators: false }): IQuickPick<T, { useSeparators: boolean }>'
+    lines:
+    - 621
+    - 624
+    detail:
+      calls:
+      - new QuickPick
+      - this.getUI
+  - name: createInputBox
+    sig: 'createInputBox(): IInputBox'
+    lines:
+    - 626
+    - 629
+    detail:
+      calls:
+      - new InputBox
+      - this.getUI
+  - name: setAlignment
+    sig: 'setAlignment(alignment: ''top'' | ''center'' | { top: number; left: number }): void'
+    lines:
+    - 631
+    - 633
+    detail:
+      calls:
+      - this.dndController?.setAlignment
+  - name: createQuickWidget
+    sig: 'createQuickWidget(): IQuickWidget'
+    lines:
+    - 635
+    - 638
+    detail:
+      calls:
+      - new QuickWidget
+      - this.getUI
+  - name: show
+    sig: 'show(controller: IQuickInput)'
+    vis: private
+    lines:
+    - 640
+    - 680
+    detail:
+      calls:
+      - dom.reset
+      - localize
+      - oldController?.didHide
+      - this.dndController?.layoutContainer
+      - this.getUI
+      - this.onShowEmitter.fire
+      - this.options.backKeybindingLabel
+      - this.quickInputTypeContext.set
+      - this.setEnabled
+      - this.updateLayout
+      - ui.count.setCount
+      - ui.inlineActionBar.clear
+      - ui.inputBox.setFocus
+      - ui.inputBox.showDecoration
+      - ui.leftActionBar.clear
+      - ui.list.setElements
+      - ui.progressBar.stop
+      - ui.rightActionBar.clear
+      - ui.visibleCount.setCount
+  - name: isVisible
+    sig: 'isVisible(): boolean'
+    lines:
+    - 682
+    - 684
+    detail: {}
+  - name: setVisibilities
+    sig: 'setVisibilities(visibilities: Visibilities)'
+    vis: private
+    lines:
+    - 686
+    - 704
+    detail:
+      calls:
+      - this.getUI
+      - this.updateLayout
+      - ui.container.classList.toggle
+      - ui.progressBar.getContainer
+  - name: hide
+    sig: 'hide(reason?: QuickInputHideReason)'
+    lines:
+    - 722
+    - 749
+    detail:
+      calls:
+      - controller.didHide
+      - controller.willHide
+      - currentElement.focus
+      - dom.isAncestorOfActiveElement
+      - this.onHideEmitter.fire
+      - this.options.returnFocus
+  - name: focus
+    sig: focus()
+    lines:
+    - 751
+    - 760
+    detail:
+      calls:
+      - this.getUI
+      - this.isVisible
+      - ui.inputBox.setFocus
+      - ui.list.domFocus
+  - name: toggle
+    sig: toggle()
+    lines:
+    - 762
+    - 766
+    detail:
+      calls:
+      - this.getUI
+      - this.getUI().list.toggleCheckbox
+      - this.isVisible
+  - name: toggleHover
+    sig: toggleHover()
+    lines:
+    - 768
+    - 772
+    detail:
+      calls:
+      - this.getUI
+      - this.getUI().list.toggleHover
+      - this.isVisible
+  - name: navigate
+    sig: 'navigate(next: boolean, quickNavigate?: IQuickNavigateConfiguration)'
+    lines:
+    - 774
+    - 781
+    detail:
+      calls:
+      - this.getUI
+      - this.getUI().list.focus
+      - this.isVisible
+  - name: accept
+    sig: 'accept(keyMods: IKeyMods = { alt: false, ctrlCmd: false })'
+    is_async: true
+    lines:
+    - 783
+    - 792
+    detail:
+      calls:
+      - this.onDidAcceptEmitter.fire
+  - name: back
+    sig: back()
+    is_async: true
+    lines:
+    - 794
+    - 796
+    detail:
+      calls:
+      - this.onDidTriggerButtonEmitter.fire
+  - name: cancel
+    sig: cancel()
+    is_async: true
+    lines:
+    - 798
+    - 800
+    detail:
+      calls:
+      - this.hide
+  - name: layout
+    sig: 'layout(dimension: dom.IDimension, titleBarOffset: number): void'
+    lines:
+    - 802
+    - 806
+    detail:
+      calls:
+      - this.updateLayout
+  - name: updateLayout
+    sig: updateLayout()
+    vis: private
+    lines:
+    - 808
+    - 821
+    detail:
+      calls:
+      - Math.min
+      - Math.round
+      - this.isVisible
+      - this.ui.inputBox.layout
+      - this.ui.list.layout
+  - name: applyStyles
+    sig: 'applyStyles(styles: IQuickInputStyles)'
+    lines:
+    - 823
+    - 826
+    detail:
+      calls:
+      - this.updateStyles
+  - name: updateStyles
+    sig: updateStyles()
+    vis: private
+    lines:
+    - 828
+    - 881
+    detail:
+      calls:
+      - content.join
+      - content.push
+      - this.ui.list.style
+  - name: saveViewState
+    sig: 'saveViewState(viewState: QuickInputViewState | undefined): void'
+    vis: private
+    lines:
+    - 894
+    - 905
+    detail:
+      calls:
+      - JSON.stringify
+      - this.storageService.remove
+      - this.storageService.store
+  lines:
+  - 46
+  - 906
+- name: IQuickInputControllerHost
+  kind: trait
+  bases:
+  - ILayoutService
+  decorators:
+  - interface
+  lines:
+  - 908
+  - 908
+- name: QuickInputDragAndDropController
+  kind: struct
+  bases:
+  - Disposable
+  fields:
+  - name: dndViewState
+    type: any
+    default: 'observableValue<{ top?: number; left?: number; done: boolean } | undefined>(this...'
+  - name: _snapThreshold
+    type: any
+    default: '20'
+  - name: _snapLineHorizontalRatio
+    type: any
+    default: '0.25'
+  - name: _controlsOnLeft
+    type: boolean
+  - name: _controlsOnRight
+    type: boolean
+  - name: _quickInputAlignmentContext
+    type: IContextKey<'center' | 'top' | undefined>
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tprivate _container: HTMLElement,\n\t\tprivate readonly _quickInputContainer: HTMLElement,\n\t\tprivate _quickInputDragAreas: { node: HTMLElement; includeChildren: boolean }[],\n\t\tinitialViewState: QuickInputViewState | undefined,\n\t\t@ILayoutService private readonly _layoutService: ILayoutService,\n\t\t@IContextKeyService contextKeyService: IContextKeyService,\n\t\t@IConfigurationService private readonly configurationService: IConfigurationService\n\t)"
+    lines:
+    - 921
+    - 941
+    detail:
+      calls:
+      - QuickInputAlignmentContextKey.bindTo
+      - getWindowControlsStyle
+      - super
+      - this._registerLayoutListener
+      - this.dndViewState.set
+      - this.registerMouseListeners
+  - name: reparentUI
+    sig: 'reparentUI(container: HTMLElement): void'
+    lines:
+    - 943
+    - 945
+    detail: {}
+  - name: layoutContainer
+    sig: 'layoutContainer(dimension = this._layoutService.activeContainerDimension): void'
+    lines:
+    - 947
+    - 957
+    detail:
+      calls:
+      - Math.round
+      - this._layout
+      - this._quickInputContainer.getBoundingClientRect
+      - this.dndViewState.get
+  - name: setAlignment
+    sig: 'setAlignment(alignment: ''top'' | ''center'' | { top: number; left: number }, done = true): void'
+    lines:
+    - 959
+    - 978
+    detail:
+      calls:
+      - this._getCenterXSnapValue
+      - this._getCenterYSnapValue
+      - this._getTopSnapValue
+      - this._quickInputAlignmentContext.set
+      - this.dndViewState.set
+  - name: _registerLayoutListener
+    sig: _registerLayoutListener()
+    vis: private
+    lines:
+    - 980
+    - 982
+    detail:
+      calls:
+      - Event.filter
+      - Event.filter(this._layoutService.onDidLayoutContainer, e => e.container === this._container)
+      - this._register
+  - name: registerMouseListeners
+    sig: 'registerMouseListeners(): void'
+    vis: private
+    lines:
+    - 984
+    - 1040
+    detail:
+      calls:
+      - dom.addDisposableGenericMouseDownListener
+      - dom.addDisposableGenericMouseUpListener
+      - this._register
+  - name: _layout
+    sig: '_layout(topCoordinate: number, leftCoordinate: number)'
+    vis: private
+    lines:
+    - 1042
+    - 1084
+    detail:
+      calls:
+      - Math.abs
+      - Math.max
+      - Math.min
+      - dom.getActiveWindow
+      - getZoomFactor
+      - this._getCenterXSnapValue
+      - this._getCenterYSnapValue
+      - this._getTopSnapValue
+      - this._quickInputAlignmentContext.set
+      - this.dndViewState.set
+  lines:
+  - 910
+  - 1097
+exports:
+- name: QuickInputViewState
+  kind: type
+- name: QuickInputController
+  kind: type
+- name: IQuickInputControllerHost
+  kind: type
+- name: QuickInputDragAndDropController
+  kind: type
+- name: $
+  kind: data
+- name: VIEWSTATE_STORAGE_KEY
+  kind: data

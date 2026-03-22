@@ -1,0 +1,760 @@
+## Roska File Descriptor — bracketPairsTree/ast.ts
+file: bracketPairsTree/ast.ts
+lines: 706
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: ../../../../../base/common/errors.js.BugIndicatingError
+- sym: ../../../core/cursorColumns.js.CursorColumns
+- sym: ../../../languages/supports/languageBracketsConfiguration.js.BracketKind
+- sym: ../../../model.js.ITextModel
+- sym: ./length.js.Length
+- sym: ./length.js.lengthAdd
+- sym: ./length.js.lengthGetLineCount
+- sym: ./length.js.lengthToObj
+- sym: ./length.js.lengthZero
+- sym: ./smallImmutableSet.js.SmallImmutableSet
+- sym: ./tokenizer.js.OpeningBracketId
+data:
+- name: emptyArray
+  type: readonly AstNode[]
+  val: '[]'
+types:
+- name: AstNodeKind
+  kind: enum
+  variants:
+  - name: Text
+    val: '0'
+  - name: Bracket
+    val: '1'
+  - name: Pair
+    val: '2'
+  - name: UnexpectedClosingBracket
+    val: '3'
+  - name: List
+    val: '4'
+  lines:
+  - 14
+  - 20
+- name: AstNode
+  kind: enum
+  decorators:
+  - type
+  variants:
+  - name: TextAstNode
+  lines:
+  - 22
+  - 22
+- name: BaseAstNode
+  kind: trait
+  ctx: Might return null even if {@link idx} is smaller than {@link BaseAstNode.childrenLength}.
+  decorators:
+  - abstract
+  fields:
+  - name: kind
+    type: AstNodeKind
+  - name: childrenLength
+    type: number
+  - name: children
+    type: readonly AstNode[]
+  - name: missingOpeningBracketIds
+    type: SmallImmutableSet<OpeningBracketId>
+  - name: listHeight
+    type: number
+  - name: _length
+    type: Length
+  methods:
+  - name: length
+    sig: 'length(): Length'
+    lines:
+    - 58
+    - 60
+    detail: {}
+  - name: constructor
+    sig: 'constructor(length: Length)'
+    lines:
+    - 62
+    - 64
+    detail: {}
+  lines:
+  - 27
+  - 84
+- name: PairAstNode
+  kind: struct
+  ctx: Avoid using this property, it allocates an array!
+  bases:
+  - BaseAstNode
+  methods:
+  - name: create
+    sig: "create(\n\t\topeningBracket: BracketAstNode,\n\t\tchild: AstNode | null,\n\t\tclosingBracket: BracketAstNode | null\n\t)"
+    decorators:
+    - static
+    lines:
+    - 92
+    - 105
+    detail:
+      calls:
+      - SmallImmutableSet.getEmpty
+      - lengthAdd
+      - new PairAstNode
+  - name: kind
+    sig: 'kind(): AstNodeKind.Pair'
+    lines:
+    - 107
+    - 109
+    detail: {}
+  - name: listHeight
+    sig: listHeight()
+    lines:
+    - 110
+    - 112
+    detail: {}
+  - name: childrenLength
+    sig: 'childrenLength(): number'
+    lines:
+    - 113
+    - 115
+    detail: {}
+  - name: getChild
+    sig: 'getChild(idx: number): AstNode | null'
+    lines:
+    - 116
+    - 123
+    detail:
+      calls:
+      - new Error
+  - name: children
+    sig: children()
+    lines:
+    - 128
+    - 138
+    detail:
+      calls:
+      - result.push
+  - name: canBeReused
+    sig: 'canBeReused(openBracketIds: SmallImmutableSet<OpeningBracketId>)'
+    lines:
+    - 150
+    - 167
+    detail:
+      calls:
+      - openBracketIds.intersects
+  - name: flattenLists
+    sig: 'flattenLists(): PairAstNode'
+    lines:
+    - 169
+    - 175
+    detail:
+      calls:
+      - PairAstNode.create
+      - this.child.flattenLists
+      - this.closingBracket.flattenLists
+      - this.openingBracket.flattenLists
+  - name: deepClone
+    sig: 'deepClone(): PairAstNode'
+    lines:
+    - 177
+    - 185
+    detail:
+      calls:
+      - new PairAstNode
+      - this.child.deepClone
+      - this.closingBracket.deepClone
+      - this.openingBracket.deepClone
+  - name: computeMinIndentation
+    sig: 'computeMinIndentation(offset: Length, textModel: ITextModel): number'
+    lines:
+    - 187
+    - 189
+    detail:
+      calls:
+      - lengthAdd
+      - this.child.computeMinIndentation
+  lines:
+  - 91
+  - 190
+- name: ListAstNode
+  kind: trait
+  ctx: This method uses more memory-efficient list nodes that can only store 2 or 3 children.
+  bases:
+  - BaseAstNode
+  decorators:
+  - abstract
+  fields:
+  - name: cachedMinIndentation
+    type: number
+    default: '-1'
+  methods:
+  - name: create23
+    sig: 'create23(item1: AstNode, item2: AstNode, item3: AstNode | null, immutable: boolean = false): ListAstNode'
+    decorators:
+    - static
+    lines:
+    - 196
+    - 217
+    detail:
+      calls:
+      - lengthAdd
+      - missingBracketIds.merge
+      - new Error
+      - new Immutable23ListAstNode
+      - new TwoThreeListAstNode
+  - name: create
+    sig: 'create(items: AstNode[], immutable: boolean = false): ListAstNode'
+    decorators:
+    - static
+    lines:
+    - 219
+    - 233
+    detail:
+      calls:
+      - lengthAdd
+      - new ArrayListAstNode
+      - new ImmutableArrayListAstNode
+      - this.getEmpty
+      - unopenedBrackets.merge
+  - name: getEmpty
+    sig: getEmpty()
+    decorators:
+    - static
+    lines:
+    - 235
+    - 237
+    detail:
+      calls:
+      - SmallImmutableSet.getEmpty
+      - new ImmutableArrayListAstNode
+  - name: kind
+    sig: 'kind(): AstNodeKind.List'
+    lines:
+    - 239
+    - 241
+    detail: {}
+  - name: missingOpeningBracketIds
+    sig: 'missingOpeningBracketIds(): SmallImmutableSet<OpeningBracketId>'
+    lines:
+    - 243
+    - 245
+    detail: {}
+  - name: constructor
+    sig: "constructor(\n\t\tlength: Length,\n\t\tpublic readonly listHeight: number,\n\t\tprivate _missingOpeningBracketIds: SmallImmutableSet<OpeningBracketId>\n\t)"
+    lines:
+    - 252
+    - 258
+    detail:
+      calls:
+      - super
+  - name: makeLastElementMutable
+    sig: 'makeLastElementMutable(): AstNode | undefined'
+    lines:
+    - 266
+    - 278
+    detail:
+      calls:
+      - lastChild.toMutable
+      - this.getChild
+      - this.setChild
+      - this.throwIfImmutable
+  - name: makeFirstElementMutable
+    sig: 'makeFirstElementMutable(): AstNode | undefined'
+    lines:
+    - 280
+    - 292
+    detail:
+      calls:
+      - firstChild.toMutable
+      - this.getChild
+      - this.setChild
+      - this.throwIfImmutable
+  - name: canBeReused
+    sig: 'canBeReused(openBracketIds: SmallImmutableSet<OpeningBracketId>): boolean'
+    lines:
+    - 294
+    - 315
+    detail:
+      calls:
+      - lastChild.canBeReused
+      - lastChild.getChild
+      - new BugIndicatingError
+      - openBracketIds.intersects
+  - name: handleChildrenChanged
+    sig: 'handleChildrenChanged(): void'
+    lines:
+    - 317
+    - 334
+    detail:
+      calls:
+      - lengthAdd
+      - this.getChild
+      - this.throwIfImmutable
+      - unopenedBrackets.merge
+  - name: flattenLists
+    sig: 'flattenLists(): ListAstNode'
+    lines:
+    - 336
+    - 347
+    detail:
+      calls:
+      - ListAstNode.create
+      - c.flattenLists
+      - items.push
+  - name: computeMinIndentation
+    sig: 'computeMinIndentation(offset: Length, textModel: ITextModel): number'
+    lines:
+    - 349
+    - 366
+    detail:
+      calls:
+      - Math.min
+      - child.computeMinIndentation
+      - lengthAdd
+      - this.getChild
+  lines:
+  - 192
+  - 377
+- name: TwoThreeListAstNode
+  kind: struct
+  bases:
+  - ListAstNode
+  methods:
+  - name: childrenLength
+    sig: 'childrenLength(): number'
+    lines:
+    - 380
+    - 382
+    detail: {}
+  - name: getChild
+    sig: 'getChild(idx: number): AstNode | null'
+    lines:
+    - 383
+    - 390
+    detail:
+      calls:
+      - new Error
+  - name: children
+    sig: 'children(): readonly AstNode[]'
+    lines:
+    - 400
+    - 402
+    detail: {}
+  - name: item1
+    sig: 'item1(): AstNode'
+    lines:
+    - 404
+    - 406
+    detail: {}
+  - name: item2
+    sig: 'item2(): AstNode'
+    lines:
+    - 407
+    - 409
+    detail: {}
+  - name: item3
+    sig: 'item3(): AstNode | null'
+    lines:
+    - 410
+    - 412
+    detail: {}
+  - name: constructor
+    sig: "constructor(\n\t\tlength: Length,\n\t\tlistHeight: number,\n\t\tprivate _item1: AstNode,\n\t\tprivate _item2: AstNode,\n\t\tprivate _item3: AstNode | null,\n\t\tmissingOpeningBracketIds: SmallImmutableSet<OpeningBracketId>\n\t)"
+    lines:
+    - 414
+    - 423
+    detail:
+      calls:
+      - super
+  - name: deepClone
+    sig: 'deepClone(): ListAstNode'
+    lines:
+    - 425
+    - 434
+    detail:
+      calls:
+      - new TwoThreeListAstNode
+      - this._item1.deepClone
+      - this._item2.deepClone
+      - this._item3.deepClone
+  - name: appendChildOfSameHeight
+    sig: 'appendChildOfSameHeight(node: AstNode): void'
+    lines:
+    - 436
+    - 443
+    detail:
+      calls:
+      - new Error
+      - this.handleChildrenChanged
+      - this.throwIfImmutable
+  - name: unappendChild
+    sig: 'unappendChild(): AstNode | undefined'
+    lines:
+    - 445
+    - 454
+    detail:
+      calls:
+      - new Error
+      - this.handleChildrenChanged
+      - this.throwIfImmutable
+  - name: prependChildOfSameHeight
+    sig: 'prependChildOfSameHeight(node: AstNode): void'
+    lines:
+    - 456
+    - 465
+    detail:
+      calls:
+      - new Error
+      - this.handleChildrenChanged
+      - this.throwIfImmutable
+  - name: unprependChild
+    sig: 'unprependChild(): AstNode | undefined'
+    lines:
+    - 467
+    - 479
+    detail:
+      calls:
+      - new Error
+      - this.handleChildrenChanged
+      - this.throwIfImmutable
+  - name: toMutable
+    sig: 'toMutable(): ListAstNode'
+    lines:
+    - 481
+    - 483
+    detail: {}
+  lines:
+  - 379
+  - 484
+- name: Immutable23ListAstNode
+  kind: struct
+  bases:
+  - TwoThreeListAstNode
+  methods:
+  - name: toMutable
+    sig: 'toMutable(): ListAstNode'
+    lines:
+    - 490
+    - 492
+    detail:
+      calls:
+      - new TwoThreeListAstNode
+  lines:
+  - 489
+  - 497
+- name: ArrayListAstNode
+  kind: struct
+  bases:
+  - ListAstNode
+  methods:
+  - name: childrenLength
+    sig: 'childrenLength(): number'
+    lines:
+    - 503
+    - 505
+    detail: {}
+  - name: getChild
+    sig: 'getChild(idx: number): AstNode | null'
+    lines:
+    - 506
+    - 508
+    detail: {}
+  - name: children
+    sig: 'children(): readonly AstNode[]'
+    lines:
+    - 512
+    - 514
+    detail: {}
+  - name: constructor
+    sig: "constructor(\n\t\tlength: Length,\n\t\tlistHeight: number,\n\t\tprivate readonly _children: AstNode[],\n\t\tmissingOpeningBracketIds: SmallImmutableSet<OpeningBracketId>\n\t)"
+    lines:
+    - 516
+    - 523
+    detail:
+      calls:
+      - super
+  - name: deepClone
+    sig: 'deepClone(): ListAstNode'
+    lines:
+    - 525
+    - 531
+    detail:
+      calls:
+      - new Array
+      - new ArrayListAstNode
+      - this._children[i].deepClone
+  - name: appendChildOfSameHeight
+    sig: 'appendChildOfSameHeight(node: AstNode): void'
+    lines:
+    - 533
+    - 537
+    detail:
+      calls:
+      - this._children.push
+      - this.handleChildrenChanged
+      - this.throwIfImmutable
+  - name: unappendChild
+    sig: 'unappendChild(): AstNode | undefined'
+    lines:
+    - 539
+    - 544
+    detail:
+      calls:
+      - this._children.pop
+      - this.handleChildrenChanged
+      - this.throwIfImmutable
+  - name: prependChildOfSameHeight
+    sig: 'prependChildOfSameHeight(node: AstNode): void'
+    lines:
+    - 546
+    - 550
+    detail:
+      calls:
+      - this._children.unshift
+      - this.handleChildrenChanged
+      - this.throwIfImmutable
+  - name: unprependChild
+    sig: 'unprependChild(): AstNode | undefined'
+    lines:
+    - 552
+    - 557
+    detail:
+      calls:
+      - this._children.shift
+      - this.handleChildrenChanged
+      - this.throwIfImmutable
+  - name: toMutable
+    sig: 'toMutable(): ListAstNode'
+    lines:
+    - 559
+    - 561
+    detail: {}
+  lines:
+  - 502
+  - 562
+- name: ImmutableArrayListAstNode
+  kind: struct
+  bases:
+  - ArrayListAstNode
+  methods:
+  - name: toMutable
+    sig: 'toMutable(): ListAstNode'
+    lines:
+    - 568
+    - 570
+    detail:
+      calls:
+      - new ArrayListAstNode
+  lines:
+  - 567
+  - 575
+- name: ImmutableLeafAstNode
+  kind: trait
+  bases:
+  - BaseAstNode
+  decorators:
+  - abstract
+  methods:
+  - name: listHeight
+    sig: listHeight()
+    lines:
+    - 580
+    - 582
+    detail: {}
+  - name: childrenLength
+    sig: 'childrenLength(): number'
+    lines:
+    - 583
+    - 585
+    detail: {}
+  - name: getChild
+    sig: 'getChild(idx: number): AstNode | null'
+    lines:
+    - 586
+    - 588
+    detail: {}
+  - name: children
+    sig: 'children(): readonly AstNode[]'
+    lines:
+    - 589
+    - 591
+    detail: {}
+  - name: flattenLists
+    sig: 'flattenLists(): this & AstNode'
+    lines:
+    - 593
+    - 595
+    detail: {}
+  - name: deepClone
+    sig: 'deepClone(): this & AstNode'
+    lines:
+    - 596
+    - 598
+    detail: {}
+  lines:
+  - 579
+  - 599
+- name: TextAstNode
+  kind: struct
+  bases:
+  - ImmutableLeafAstNode
+  methods:
+  - name: kind
+    sig: 'kind(): AstNodeKind.Text'
+    lines:
+    - 602
+    - 604
+    detail: {}
+  - name: missingOpeningBracketIds
+    sig: 'missingOpeningBracketIds(): SmallImmutableSet<OpeningBracketId>'
+    lines:
+    - 605
+    - 607
+    detail:
+      calls:
+      - SmallImmutableSet.getEmpty
+  - name: canBeReused
+    sig: 'canBeReused(_openedBracketIds: SmallImmutableSet<OpeningBracketId>)'
+    lines:
+    - 609
+    - 611
+    detail: {}
+  - name: computeMinIndentation
+    sig: 'computeMinIndentation(offset: Length, textModel: ITextModel): number'
+    lines:
+    - 613
+    - 634
+    detail:
+      calls:
+      - CursorColumns.visibleColumnFromColumn
+      - Math.min
+      - lengthAdd
+      - lengthGetLineCount
+      - lengthToObj
+      - textModel.getLineContent
+      - textModel.getLineFirstNonWhitespaceColumn
+      - textModel.getOptions
+  lines:
+  - 601
+  - 635
+- name: BracketAstNode
+  kind: struct
+  bases:
+  - ImmutableLeafAstNode
+  methods:
+  - name: create
+    sig: "create(\n\t\tlength: Length,\n\t\tbracketInfo: BracketKind,\n\t\tbracketIds: SmallImmutableSet<OpeningBracketId>\n\t): BracketAstNode"
+    decorators:
+    - static
+    lines:
+    - 638
+    - 645
+    detail:
+      calls:
+      - new BracketAstNode
+  - name: kind
+    sig: 'kind(): AstNodeKind.Bracket'
+    lines:
+    - 647
+    - 649
+    detail: {}
+  - name: missingOpeningBracketIds
+    sig: 'missingOpeningBracketIds(): SmallImmutableSet<OpeningBracketId>'
+    lines:
+    - 651
+    - 653
+    detail:
+      calls:
+      - SmallImmutableSet.getEmpty
+  - name: text
+    sig: text()
+    lines:
+    - 667
+    - 669
+    detail: {}
+  - name: languageId
+    sig: languageId()
+    lines:
+    - 671
+    - 673
+    detail: {}
+  - name: canBeReused
+    sig: 'canBeReused(_openedBracketIds: SmallImmutableSet<OpeningBracketId>)'
+    lines:
+    - 675
+    - 680
+    detail: {}
+  - name: computeMinIndentation
+    sig: 'computeMinIndentation(offset: Length, textModel: ITextModel): number'
+    lines:
+    - 682
+    - 684
+    detail: {}
+  lines:
+  - 637
+  - 685
+- name: InvalidBracketAstNode
+  kind: struct
+  bases:
+  - ImmutableLeafAstNode
+  fields:
+  - name: missingOpeningBracketIds
+    type: SmallImmutableSet<OpeningBracketId>
+  methods:
+  - name: kind
+    sig: 'kind(): AstNodeKind.UnexpectedClosingBracket'
+    lines:
+    - 688
+    - 690
+    detail: {}
+  - name: constructor
+    sig: 'constructor(closingBrackets: SmallImmutableSet<OpeningBracketId>, length: Length)'
+    lines:
+    - 694
+    - 697
+    detail:
+      calls:
+      - super
+  - name: canBeReused
+    sig: 'canBeReused(openedBracketIds: SmallImmutableSet<OpeningBracketId>)'
+    lines:
+    - 699
+    - 701
+    detail:
+      calls:
+      - openedBracketIds.intersects
+  - name: computeMinIndentation
+    sig: 'computeMinIndentation(offset: Length, textModel: ITextModel): number'
+    lines:
+    - 703
+    - 705
+    detail: {}
+  lines:
+  - 687
+  - 706
+exports:
+- name: AstNodeKind
+  kind: type
+- name: AstNode
+  kind: type
+- name: BaseAstNode
+  kind: type
+- name: PairAstNode
+  kind: type
+- name: ListAstNode
+  kind: type
+- name: TwoThreeListAstNode
+  kind: type
+- name: Immutable23ListAstNode
+  kind: type
+- name: ArrayListAstNode
+  kind: type
+- name: ImmutableArrayListAstNode
+  kind: type
+- name: ImmutableLeafAstNode
+  kind: type
+- name: TextAstNode
+  kind: type
+- name: BracketAstNode
+  kind: type
+- name: InvalidBracketAstNode
+  kind: type
+- name: emptyArray
+  kind: data

@@ -1,0 +1,797 @@
+## Roska File Descriptor — browser/suggestWidget.ts
+file: browser/suggestWidget.ts
+lines: 1047
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: ../../../../base/browser/dom.js.dom
+- sym: ../../../../base/browser/keyboardEvent.js.IKeyboardEvent
+- sym: ../../../../base/browser/ui/list/list.js.IListEvent
+- sym: ../../../../base/browser/ui/list/list.js.IListGestureEvent
+- sym: ../../../../base/browser/ui/list/list.js.IListMouseEvent
+- sym: ../../../../base/browser/ui/list/listWidget.js.List
+- sym: ../../../../base/common/async.js.CancelablePromise
+- sym: ../../../../base/common/async.js.createCancelablePromise
+- sym: ../../../../base/common/async.js.disposableTimeout
+- sym: ../../../../base/common/async.js.TimeoutTimer
+- sym: ../../../../base/common/errors.js.onUnexpectedError
+- sym: ../../../../base/common/event.js.Emitter
+- sym: ../../../../base/common/event.js.Event
+- sym: ../../../../base/common/event.js.PauseableEmitter
+- sym: ../../../../base/common/lifecycle.js.DisposableStore
+- sym: ../../../../base/common/lifecycle.js.IDisposable
+- sym: ../../../../base/common/lifecycle.js.MutableDisposable
+- sym: ../../../../base/common/numbers.js.clamp
+- sym: ../../../../base/common/strings.js.strings
+- sym: ../../../browser/editorBrowser.js.ContentWidgetPositionPreference
+- sym: ../../../browser/editorBrowser.js.ICodeEditor
+- sym: ../../../browser/editorBrowser.js.IContentWidget
+- sym: ../../../browser/editorBrowser.js.IContentWidgetPosition
+- sym: ../../../browser/editorBrowser.js.IEditorMouseEvent
+- sym: ../../../browser/widget/codeEditor/embeddedCodeEditorWidget.js.EmbeddedCodeEditorWidget
+- sym: ../../../common/config/editorOptions.js.EditorOption
+- sym: ../../../common/core/position.js.IPosition
+- sym: ./suggestWidgetStatus.js.SuggestWidgetStatus
+- sym: ../../../../nls.js.nls
+- sym: ../../../../platform/contextkey/common/contextkey.js.IContextKey
+- sym: ../../../../platform/contextkey/common/contextkey.js.IContextKeyService
+- sym: ../../../../platform/instantiation/common/instantiation.js.IInstantiationService
+- sym: ../../../../platform/storage/common/storage.js.IStorageService
+- sym: ../../../../platform/storage/common/storage.js.StorageScope
+- sym: ../../../../platform/storage/common/storage.js.StorageTarget
+- sym: ../../../../platform/theme/common/colorRegistry.js.activeContrastBorder
+- sym: ../../../../platform/theme/common/colorRegistry.js.editorForeground
+- sym: ../../../../platform/theme/common/colorRegistry.js.editorWidgetBackground
+- sym: ../../../../platform/theme/common/colorRegistry.js.editorWidgetBorder
+- sym: ../../../../platform/theme/common/colorRegistry.js.listFocusHighlightForeground
+- sym: ../../../../platform/theme/common/colorRegistry.js.listHighlightForeground
+- sym: ../../../../platform/theme/common/colorRegistry.js.quickInputListFocusBackground
+- sym: ../../../../platform/theme/common/colorRegistry.js.quickInputListFocusForeground
+- sym: ../../../../platform/theme/common/colorRegistry.js.quickInputListFocusIconForeground
+- sym: ../../../../platform/theme/common/colorRegistry.js.registerColor
+- sym: ../../../../platform/theme/common/colorRegistry.js.transparent
+- sym: ../../../../platform/theme/common/theme.js.isHighContrast
+- sym: ../../../../platform/theme/common/themeService.js.IColorTheme
+- sym: ../../../../platform/theme/common/themeService.js.IThemeService
+- sym: ./completionModel.js.CompletionModel
+- sym: ../../../../base/browser/ui/resizable/resizable.js.ResizableHTMLElement
+- sym: ./suggest.js.CompletionItem
+- sym: ./suggest.js.Context as SuggestContext
+- sym: ./suggest.js.suggestWidgetStatusbarMenu
+- sym: ./suggestWidgetDetails.js.canExpandCompletionItem
+- sym: ./suggestWidgetDetails.js.SuggestDetailsOverlay
+- sym: ./suggestWidgetDetails.js.SuggestDetailsWidget
+- sym: ./suggestWidgetRenderer.js.ItemRenderer
+- sym: ../../../../platform/theme/browser/defaultStyles.js.getListStyles
+- sym: ../../../../base/browser/ui/aria/aria.js.status
+- sym: ../../../common/languages.js.CompletionItemKinds
+data:
+- name: editorSuggestWidgetForeground
+  type: any
+  val: registerColor('editorSuggestWidget.foreground', editorForeground, nls.localize('editorSuggestWidgetForeground', 'Foregro...
+- name: editorSuggestWidgetSelectedBackground
+  type: any
+  val: registerColor('editorSuggestWidget.selectedBackground', quickInputListFocusBackground, nls.localize('editorSuggestWidget...
+types:
+- name: State
+  kind: enum
+  variants:
+  - name: Hidden
+  - name: Loading
+  - name: Empty
+  - name: Open
+  - name: Frozen
+  - name: Details
+  - name: onDetailsKeyDown
+  lines:
+  - 53
+  - 61
+- name: ISelectedSuggestion
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: item
+    type: CompletionItem
+  - name: index
+    type: number
+  - name: model
+    type: CompletionModel
+  lines:
+  - 63
+  - 67
+- name: PersistedWidgetSize
+  kind: struct
+  fields:
+  - name: _key
+    type: string
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tprivate readonly _service: IStorageService,\n\t\teditor: ICodeEditor\n\t)"
+    lines:
+    - 73
+    - 78
+    detail:
+      calls:
+      - editor.getEditorType
+  - name: restore
+    sig: 'restore(): dom.Dimension | undefined'
+    lines:
+    - 80
+    - 91
+    detail:
+      calls:
+      - JSON.parse
+      - dom.Dimension.is
+      - dom.Dimension.lift
+      - this._service.get
+  - name: store
+    sig: 'store(size: dom.Dimension)'
+    lines:
+    - 93
+    - 95
+    detail:
+      calls:
+      - JSON.stringify
+      - this._service.store
+  - name: reset
+    sig: 'reset(): void'
+    lines:
+    - 97
+    - 99
+    detail:
+      calls:
+      - this._service.remove
+  lines:
+  - 69
+  - 100
+- name: SuggestWidget
+  kind: struct
+  bases:
+  - IDisposable
+  fields:
+  - name: LOADING_MESSAGE
+    type: string
+    default: nls.localize('suggestWidget.loading', "Loading...")
+  - name: NO_SUGGESTIONS_MESSAGE
+    type: string
+    default: nls.localize('suggestWidget.noSuggestions', "No suggestions.")
+  - name: _state
+    type: State
+    default: State.Hidden
+  - name: _isAuto
+    type: boolean
+    default: 'false'
+  - name: _loadingTimeout
+    type: IDisposable
+  - name: _pendingLayout
+    type: any
+    default: new MutableDisposable()
+  - name: _pendingShowDetails
+    type: any
+    default: new MutableDisposable()
+  - name: _currentSuggestionDetails
+    type: CancelablePromise<void>
+  - name: _focusedItem
+    type: CompletionItem
+  - name: _ignoreFocusEvents
+    type: boolean
+    default: 'false'
+  - name: _completionModel
+    type: CompletionModel
+  - name: _cappedHeight
+    type: '{ wanted: number; capped: number }'
+  - name: _forceRenderingAbove
+    type: boolean
+    default: 'false'
+  - name: _explainMode
+    type: boolean
+    default: 'false'
+  - name: element
+    type: ResizableHTMLElement
+  - name: _messageElement
+    type: HTMLElement
+  - name: _listElement
+    type: HTMLElement
+  - name: _list
+    type: List<CompletionItem>
+  - name: _status
+    type: SuggestWidgetStatus
+  - name: _details
+    type: SuggestDetailsOverlay
+  - name: _contentWidget
+    type: SuggestContentWidget
+  - name: _persistedSize
+    type: PersistedWidgetSize
+  - name: _ctxSuggestWidgetVisible
+    type: IContextKey<boolean>
+  - name: _ctxSuggestWidgetDetailsVisible
+    type: IContextKey<boolean>
+  - name: _ctxSuggestWidgetMultipleSuggestions
+    type: IContextKey<boolean>
+  - name: _ctxSuggestWidgetHasFocusedSuggestion
+    type: IContextKey<boolean>
+  - name: _showTimeout
+    type: any
+    default: new TimeoutTimer()
+  - name: _disposables
+    type: any
+    default: new DisposableStore()
+  - name: _onDidSelect
+    type: any
+    default: new PauseableEmitter<ISelectedSuggestion>()
+  - name: _onDidFocus
+    type: any
+    default: new PauseableEmitter<ISelectedSuggestion>()
+  - name: _onDidHide
+    type: any
+    default: new Emitter<this>()
+  - name: _onDidShow
+    type: any
+    default: new Emitter<this>()
+  - name: onDidSelect
+    type: Event<ISelectedSuggestion>
+    default: this._onDidSelect.event
+  - name: onDidFocus
+    type: Event<ISelectedSuggestion>
+    default: this._onDidFocus.event
+  - name: onDidHide
+    type: Event<this>
+    default: this._onDidHide.event
+  - name: onDidShow
+    type: Event<this>
+    default: this._onDidShow.event
+  - name: _onDetailsKeydown
+    type: any
+    default: new Emitter<IKeyboardEvent>()
+  - name: onDetailsKeyDown
+    type: Event<IKeyboardEvent>
+    default: this._onDetailsKeydown.event
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tprivate readonly editor: ICodeEditor,\n\t\t@IStorageService private readonly _storageService: IStorageService,\n\t\t@IContextKeyService _contextKeyService: IContextKeyService,\n\t\t@IThemeService _themeService: IThemeService,\n\t\t@IInstantiationService instantiationService: IInstantiationService,\n\t)"
+    lines:
+    - 151
+    - 304
+    detail:
+      calls:
+      - SuggestContext.DetailsVisible.bindTo
+      - SuggestContext.HasFocusedSuggestion.bindTo
+      - SuggestContext.MultipleSuggestions.bindTo
+      - SuggestContext.Visible.bindTo
+      - _themeService.getColorTheme
+      - _themeService.onDidColorThemeChange
+      - applyIconStyle
+      - applyStatusBarStyle
+      - details.onDidClose
+      - dom.$
+      - dom.addStandardDisposableListener
+      - dom.append
+      - getListStyles
+      - instantiationService.createInstance
+      - new List
+      - new PersistedWidgetSize
+      - new ResizableHTMLElement
+      - new SuggestContentWidget
+      - new SuggestDetailsOverlay
+      - renderer.onDidToggleDetails
+      - this._disposables.add
+      - this._list.onDidChangeFocus
+      - this._list.onDidChangeSelection
+      - this._list.onMouseDown
+      - this._list.onTap
+      - this._list.style
+      - this._onThemeChange
+      - this.editor.onDidChangeConfiguration
+      - this.editor.onDidChangeCursorSelection
+      - this.editor.onMouseDown
+      - this.element.domNode.classList.add
+      - this.element.onDidResize
+      - this.element.onDidWillResize
+  - name: dispose
+    sig: 'dispose(): void'
+    lines:
+    - 306
+    - 318
+    detail:
+      calls:
+      - this._contentWidget.dispose
+      - this._details.dispose
+      - this._details.widget.dispose
+      - this._disposables.dispose
+      - this._list.dispose
+      - this._loadingTimeout?.dispose
+      - this._pendingLayout.dispose
+      - this._pendingShowDetails.dispose
+      - this._showTimeout.dispose
+      - this._status.dispose
+      - this.element.dispose
+  - name: _onEditorMouseDown
+    sig: '_onEditorMouseDown(mouseEvent: IEditorMouseEvent): void'
+    vis: private
+    lines:
+    - 320
+    - 330
+    detail:
+      calls:
+      - this._details.widget.domNode.contains
+      - this._details.widget.domNode.focus
+      - this.editor.focus
+      - this.element.domNode.contains
+  - name: _onListMouseDownOrTap
+    sig: '_onListMouseDownOrTap(e: IListMouseEvent<CompletionItem> | IListGestureEvent<CompletionItem>): void'
+    vis: private
+    lines:
+    - 338
+    - 348
+    detail:
+      calls:
+      - e.browserEvent.preventDefault
+      - e.browserEvent.stopPropagation
+      - this._select
+  - name: _onListFocus
+    sig: '_onListFocus(e: IListEvent<CompletionItem>): void'
+    vis: private
+    lines:
+    - 368
+    - 446
+    detail:
+      calls:
+      - createCancelablePromise
+      - this._ctxSuggestWidgetHasFocusedSuggestion.set
+      - this._currentSuggestionDetails.cancel
+      - this._currentSuggestionDetails.then
+      - "this._currentSuggestionDetails.then(() => {\n\t\t\t\tif (index >= this._list.length || item !== this._lis..."
+      - this._currentSuggestionDetails?.cancel
+      - this._list.reveal
+      - this._onDidFocus.fire
+      - this._setState
+      - this.editor.setAriaOptions
+  - name: _setState
+    sig: '_setState(state: State): void'
+    vis: private
+    lines:
+    - 448
+    - 512
+    detail:
+      calls:
+      - dom.hide
+      - dom.show
+      - status
+      - this._contentWidget.hide
+      - this._ctxSuggestWidgetHasFocusedSuggestion.reset
+      - this._ctxSuggestWidgetMultipleSuggestions.reset
+      - this._ctxSuggestWidgetVisible.reset
+      - this._details.hide
+      - this._details.show
+      - this._details.widget.focus
+      - this._list.splice
+      - this._show
+      - this._showTimeout.cancel
+      - this._status.hide
+      - this.element.domNode.classList.add
+      - this.element.domNode.classList.remove
+      - this.element.domNode.classList.toggle
+  - name: _show
+    sig: '_show(): void'
+    vis: private
+    lines:
+    - 514
+    - 524
+    detail:
+      calls:
+      - this._contentWidget.show
+      - this._ctxSuggestWidgetVisible.set
+      - this._layout
+      - this._persistedSize.restore
+      - this._showTimeout.cancelAndSet
+      - this._status.show
+  - name: showTriggered
+    sig: 'showTriggered(auto: boolean, delay: number)'
+    lines:
+    - 526
+    - 536
+    detail:
+      calls:
+      - disposableTimeout
+      - this._contentWidget.setPosition
+      - this.editor.getPosition
+  - name: showSuggestions
+    sig: 'showSuggestions(completionModel: CompletionModel, selectionIndex: number, isFrozen: boolean, isAuto: boolean, noFocus: boolean): void'
+    lines:
+    - 538
+    - 589
+    detail:
+      calls:
+      - dom.getWindow
+      - dom.runAtThisOrScheduleAtNextAnimationFrame
+      - this._contentWidget.setPosition
+      - this._ctxSuggestWidgetMultipleSuggestions.set
+      - this._currentSuggestionDetails?.cancel
+      - this._list.reveal
+      - this._list.setFocus
+      - this._list.splice
+      - this._loadingTimeout?.dispose
+      - this._onDidFocus.pause
+      - this._onDidFocus.resume
+      - this._onDidSelect.pause
+      - this._onDidSelect.resume
+      - this._setState
+      - this.editor.getPosition
+      - this.getLayoutInfo
+  - name: focusSelected
+    sig: 'focusSelected(): void'
+    lines:
+    - 591
+    - 595
+    detail:
+      calls:
+      - this._list.setFocus
+  - name: selectNextPage
+    sig: 'selectNextPage(): boolean'
+    lines:
+    - 597
+    - 610
+    detail:
+      calls:
+      - this._details.widget.pageDown
+      - this._list.focusNextPage
+  - name: selectNext
+    sig: 'selectNext(): boolean'
+    lines:
+    - 612
+    - 622
+    detail:
+      calls:
+      - this._list.focusNext
+  - name: selectLast
+    sig: 'selectLast(): boolean'
+    lines:
+    - 624
+    - 637
+    detail:
+      calls:
+      - this._details.widget.scrollBottom
+      - this._list.focusLast
+  - name: selectPreviousPage
+    sig: 'selectPreviousPage(): boolean'
+    lines:
+    - 639
+    - 652
+    detail:
+      calls:
+      - this._details.widget.pageUp
+      - this._list.focusPreviousPage
+  - name: selectPrevious
+    sig: 'selectPrevious(): boolean'
+    lines:
+    - 654
+    - 664
+    detail:
+      calls:
+      - this._list.focusPrevious
+  - name: selectFirst
+    sig: 'selectFirst(): boolean'
+    lines:
+    - 666
+    - 679
+    detail:
+      calls:
+      - this._details.widget.scrollTop
+      - this._list.focusFirst
+  - name: getFocusedItem
+    sig: 'getFocusedItem(): ISelectedSuggestion | undefined'
+    lines:
+    - 681
+    - 696
+    detail:
+      calls:
+      - this._list.getFocus
+      - this._list.getFocusedElements
+  - name: toggleDetailsFocus
+    sig: 'toggleDetailsFocus(): void'
+    lines:
+    - 698
+    - 711
+    detail:
+      calls:
+      - this._details.widget.focus
+      - this._isDetailsVisible
+      - this._list.getFocus
+      - this._list.setFocus
+      - this._setState
+      - this.toggleDetails
+  - name: toggleDetails
+    sig: 'toggleDetails(focused: boolean = false): void'
+    lines:
+    - 713
+    - 728
+    detail:
+      calls:
+      - canExpandCompletionItem
+      - this._ctxSuggestWidgetDetailsVisible.set
+      - this._details.hide
+      - this._isDetailsVisible
+      - this._list.getFocusedElements
+      - this._pendingShowDetails.clear
+      - this._setDetailsVisible
+      - this._showDetails
+      - this.element.domNode.classList.remove
+  - name: _showDetails
+    sig: '_showDetails(loading: boolean, focused: boolean): void'
+    vis: private
+    lines:
+    - 730
+    - 754
+    detail:
+      calls:
+      - dom.getWindow
+      - dom.runAtThisOrScheduleAtNextAnimationFrame
+  - name: toggleExplainMode
+    sig: 'toggleExplainMode(): void'
+    lines:
+    - 756
+    - 765
+    detail:
+      calls:
+      - this._isDetailsVisible
+      - this._list.getFocusedElements
+      - this._showDetails
+      - this.toggleDetails
+  - name: resetPersistedSize
+    sig: 'resetPersistedSize(): void'
+    lines:
+    - 767
+    - 769
+    detail:
+      calls:
+      - this._persistedSize.reset
+  - name: hideWidget
+    sig: 'hideWidget(): void'
+    lines:
+    - 771
+    - 787
+    detail:
+      calls:
+      - Math.ceil
+      - dim.with
+      - this._loadingTimeout?.dispose
+      - this._onDidHide.fire
+      - this._pendingLayout.clear
+      - this._pendingShowDetails.clear
+      - this._persistedSize.restore
+      - this._persistedSize.store
+      - this._setState
+      - this.element.clearSashHoverState
+      - this.getLayoutInfo
+  - name: isFrozen
+    sig: 'isFrozen(): boolean'
+    lines:
+    - 789
+    - 791
+    detail: {}
+  - name: _afterRender
+    sig: '_afterRender(position: ContentWidgetPositionPreference | null)'
+    lines:
+    - 793
+    - 808
+    detail:
+      calls:
+      - this._details.hide
+      - this._details.show
+      - this._isDetailsVisible
+      - this._positionDetails
+  - name: _layout
+    sig: '_layout(size: dom.Dimension | undefined): void'
+    vis: private
+    lines:
+    - 810
+    - 896
+    detail:
+      calls:
+      - Math.max
+      - Math.min
+      - dom.getClientArea
+      - dom.getDomNodePagePosition
+      - new dom.Dimension
+      - this._contentWidget.setPreference
+      - this._resize
+      - this.editor.getDomNode
+      - this.editor.getPosition
+      - this.editor.getScrolledVisiblePosition
+      - this.editor.hasModel
+      - this.element.enableSashes
+      - this.getLayoutInfo
+  - name: _resize
+    sig: '_resize(width: number, height: number): void'
+    vis: private
+    lines:
+    - 898
+    - 911
+    detail:
+      calls:
+      - Math.min
+      - this._contentWidget.layout
+      - this._list.layout
+      - this._positionDetails
+      - this.element.layout
+      - this.getLayoutInfo
+  - name: _positionDetails
+    sig: '_positionDetails(): void'
+    vis: private
+    lines:
+    - 913
+    - 917
+    detail:
+      calls:
+      - this._contentWidget.getPosition
+      - this._details.placeAtAnchor
+      - this._isDetailsVisible
+  - name: getLayoutInfo
+    sig: getLayoutInfo()
+    lines:
+    - 919
+    - 936
+    detail:
+      calls:
+      - clamp
+      - new dom.Dimension
+      - this.editor.getOption
+  - name: forceRenderingAbove
+    sig: forceRenderingAbove()
+    lines:
+    - 946
+    - 951
+    detail:
+      calls:
+      - this._layout
+      - this._persistedSize.restore
+  - name: stopForceRenderingAbove
+    sig: stopForceRenderingAbove()
+    lines:
+    - 953
+    - 955
+    detail: {}
+  lines:
+  - 102
+  - 956
+- name: SuggestContentWidget
+  kind: struct
+  bases:
+  - IContentWidget
+  fields:
+  - name: allowEditorOverflow
+    type: any
+    default: 'true'
+  - name: suppressMouseDown
+    type: any
+    default: 'false'
+  - name: _position
+    type: IPosition | null
+  - name: _preference
+    type: ContentWidgetPositionPreference
+  - name: _preferenceLocked
+    type: any
+    default: 'false'
+  - name: _added
+    type: boolean
+    default: 'false'
+  - name: _hidden
+    type: boolean
+    default: 'false'
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tprivate readonly _widget: SuggestWidget,\n\t\tprivate readonly _editor: ICodeEditor\n\t)"
+    lines:
+    - 970
+    - 973
+    detail: {}
+  - name: dispose
+    sig: 'dispose(): void'
+    lines:
+    - 975
+    - 980
+    detail:
+      calls:
+      - this._editor.removeContentWidget
+  - name: getId
+    sig: 'getId(): string'
+    lines:
+    - 982
+    - 984
+    detail: {}
+  - name: getDomNode
+    sig: 'getDomNode(): HTMLElement'
+    lines:
+    - 986
+    - 988
+    detail: {}
+  - name: show
+    sig: 'show(): void'
+    lines:
+    - 990
+    - 996
+    detail:
+      calls:
+      - this._editor.addContentWidget
+  - name: hide
+    sig: 'hide(): void'
+    lines:
+    - 998
+    - 1003
+    detail:
+      calls:
+      - this.layout
+  - name: layout
+    sig: 'layout(): void'
+    lines:
+    - 1005
+    - 1007
+    detail:
+      calls:
+      - this._editor.layoutContentWidget
+  - name: getPosition
+    sig: 'getPosition(): IContentWidgetPosition | null'
+    lines:
+    - 1009
+    - 1017
+    detail: {}
+  - name: beforeRender
+    sig: beforeRender()
+    lines:
+    - 1019
+    - 1023
+    detail:
+      calls:
+      - new dom.Dimension
+      - this._widget.getLayoutInfo
+  - name: afterRender
+    sig: 'afterRender(position: ContentWidgetPositionPreference | null)'
+    lines:
+    - 1025
+    - 1027
+    detail:
+      calls:
+      - this._widget._afterRender
+  - name: setPreference
+    sig: 'setPreference(preference: ContentWidgetPositionPreference)'
+    lines:
+    - 1029
+    - 1033
+    detail: {}
+  - name: lockPreference
+    sig: lockPreference()
+    lines:
+    - 1035
+    - 1037
+    detail: {}
+  - name: unlockPreference
+    sig: unlockPreference()
+    lines:
+    - 1039
+    - 1041
+    detail: {}
+  - name: setPosition
+    sig: 'setPosition(position: IPosition | null): void'
+    lines:
+    - 1043
+    - 1045
+    detail: {}
+  lines:
+  - 958
+  - 1046
+exports:
+- name: State
+  kind: type
+- name: ISelectedSuggestion
+  kind: type
+- name: PersistedWidgetSize
+  kind: type
+- name: SuggestWidget
+  kind: type
+- name: SuggestContentWidget
+  kind: type
+- name: editorSuggestWidgetForeground
+  kind: data
+- name: editorSuggestWidgetSelectedBackground
+  kind: data

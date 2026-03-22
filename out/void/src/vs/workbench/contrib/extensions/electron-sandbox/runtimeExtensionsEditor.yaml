@@ -1,0 +1,317 @@
+## Roska File Descriptor — electron-sandbox/runtimeExtensionsEditor.ts
+file: electron-sandbox/runtimeExtensionsEditor.ts
+lines: 305
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: ../../../../base/common/actions.js.Action
+- sym: ../../../../base/common/buffer.js.VSBuffer
+- sym: ../../../../base/common/codicons.js.Codicon
+- sym: ../../../../base/common/event.js.Event
+- sym: ../../../../base/common/network.js.Schemas
+- sym: ../../../../base/common/resources.js.joinPath
+- sym: ../../../../base/common/uri.js.URI
+- sym: ../../../../nls.js.nls
+- sym: ../../../../platform/actions/common/actions.js.Action2
+- sym: ../../../../platform/actions/common/actions.js.IMenuService
+- sym: ../../../../platform/actions/common/actions.js.MenuId
+- sym: ../../../../platform/clipboard/common/clipboardService.js.IClipboardService
+- sym: ../../../../platform/commands/common/commands.js.ICommandService
+- sym: ../../../../platform/contextkey/common/contextkey.js.ContextKeyExpr
+- sym: ../../../../platform/contextkey/common/contextkey.js.IContextKey
+- sym: ../../../../platform/contextkey/common/contextkey.js.IContextKeyService
+- sym: ../../../../platform/contextkey/common/contextkey.js.RawContextKey
+- sym: ../../../../platform/contextview/browser/contextView.js.IContextMenuService
+- sym: ../../../../platform/dialogs/common/dialogs.js.IFileDialogService
+- sym: ../../../../platform/extensions/common/extensions.js.ExtensionIdentifier
+- sym: ../../../../platform/files/common/files.js.IFileService
+- sym: ../../../../platform/hover/browser/hover.js.IHoverService
+- sym: ../../../../platform/instantiation/common/instantiation.js.IInstantiationService
+- sym: ../../../../platform/instantiation/common/instantiation.js.ServicesAccessor
+- sym: ../../../../platform/instantiation/common/instantiation.js.createDecorator
+- sym: ../../../../platform/label/common/label.js.ILabelService
+- sym: ../../../../platform/notification/common/notification.js.INotificationService
+- sym: ../../../../platform/profiling/common/profiling.js.IV8Profile
+- sym: ../../../../platform/profiling/common/profiling.js.Utils
+- sym: ../../../../platform/storage/common/storage.js.IStorageService
+- sym: ../../../../platform/telemetry/common/telemetry.js.ITelemetryService
+- sym: ../../../../platform/theme/common/themeService.js.IThemeService
+- sym: ../../../common/contextkeys.js.ActiveEditorContext
+- sym: ../../../services/editor/common/editorGroupsService.js.IEditorGroup
+- sym: ../../../services/editor/common/editorService.js.IEditorService
+- sym: ../../../services/editor/common/editorService.js.SIDE_GROUP
+- sym: ../../../services/environment/common/environmentService.js.IWorkbenchEnvironmentService
+- sym: ../../../services/extensionManagement/common/extensionFeatures.js.IExtensionFeaturesManagementService
+- sym: ../../../services/extensions/common/extensions.js.IExtensionHostProfile
+- sym: ../../../services/extensions/common/extensions.js.IExtensionService
+- sym: ../browser/abstractRuntimeExtensionsEditor.js.AbstractRuntimeExtensionsEditor
+- sym: ../browser/abstractRuntimeExtensionsEditor.js.IRuntimeExtension
+- sym: ../common/extensions.js.IExtensionsWorkbenchService
+- sym: ../common/reportExtensionIssueAction.js.ReportExtensionIssueAction
+- sym: ./extensionsSlowActions.js.SlowExtensionAction
+data:
+- name: IExtensionHostProfileService
+  type: any
+  val: createDecorator<IExtensionHostProfileService>('extensionHostProfileService')
+- name: CONTEXT_PROFILE_SESSION_STATE
+  type: any
+  val: new RawContextKey<string>('profileSessionState', 'none')
+- name: CONTEXT_EXTENSION_HOST_PROFILE_RECORDED
+  type: any
+  val: new RawContextKey<boolean>('extensionHostProfileRecorded', false)
+types:
+- name: ProfileSessionState
+  kind: enum
+  variants:
+  - name: None
+    val: '0'
+  - name: Starting
+    val: '1'
+  - name: Running
+    val: '2'
+  - name: Stopping
+    val: '3'
+  lines:
+  - 45
+  - 50
+- name: IExtensionHostProfileService
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: readonly
+    type: undefined
+  - name: readonly
+    type: Event<void>
+  - name: readonly
+    type: Event<void>
+  - name: readonly
+    type: ProfileSessionState
+  - name: readonly
+    type: IExtensionHostProfile | null
+  - name: lastProfileSavedTo
+    type: URI | undefined
+  - name: startProfiling
+    type: 'method: startProfiling(): void'
+  - name: stopProfiling
+    type: 'method: stopProfiling(): void'
+  - name: getUnresponsiveProfile
+    type: 'method: getUnresponsiveProfile(extensionId: ExtensionIdentifier): IExtensionHostProfile | undefined'
+  - name: setUnresponsiveProfile
+    type: 'method: setUnresponsiveProfile(extensionId: ExtensionIdentifier, profile: IExtensionHostProfile): void'
+  lines:
+  - 52
+  - 67
+- name: RuntimeExtensionsEditor
+  kind: struct
+  bases:
+  - AbstractRuntimeExtensionsEditor
+  fields:
+  - name: _profileInfo
+    type: IExtensionHostProfile | null
+  - name: _extensionsHostRecorded
+    type: IContextKey<boolean>
+  - name: _profileSessionState
+    type: IContextKey<string>
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tgroup: IEditorGroup,\n\t\t@ITelemetryService telemetryService: ITelemetryService,\n\t\t@IThemeService themeService: IThemeService,\n\t\t@IContextKeyService contextKeyService: IContextKeyService,\n\t\t@IExtensionsWorkbenchService extensionsWorkbenchService: IExtensionsWorkbenchService,\n\t\t@IExtensionService extensionService: IExtensionService,\n\t\t@INotificationService notificationService: INotificationService,\n\t\t@IContextMenuService contextMenuService: IContextMenuService,\n\t\t@IInstantiationService instantiationService: IInstantiationService,\n\t\t@IStorageService storageService: IStorageService,\n\t\t@ILabelService labelService: ILabelService,\n\t\t@IWorkbenchEnvironmentService environmentService: IWorkbenchEnvironmentService,\n\t\t@IClipboardService clipboardService: IClipboardService,\n\t\t@IExtensionHostProfileService private readonly _extensionHostProfileService: IExtensionHostProfileService,\n\t\t@IExtensionFeaturesManagementService extensionFeaturesManagementService: IExtensionFeaturesManagementService,\n\t\t@IHoverService hoverService: IHoverService,\n\t\t@IMenuService menuService: IMenuService,\n\t)"
+    lines:
+    - 75
+    - 108
+    detail:
+      calls:
+      - CONTEXT_EXTENSION_HOST_PROFILE_RECORDED.bindTo
+      - CONTEXT_PROFILE_SESSION_STATE.bindTo
+      - super
+      - this._extensionHostProfileService.onDidChangeLastProfile
+      - this._extensionHostProfileService.onDidChangeState
+      - this._register
+  lines:
+  - 69
+  - 131
+- name: StartExtensionHostProfileAction
+  kind: struct
+  bases:
+  - Action2
+  fields:
+  - name: ID
+    type: any
+    default: '''workbench.extensions.action.extensionHostProfile'''
+  - name: LABEL
+    type: any
+    default: nls.localize('extensionHostProfileStart', "Start Extension Host Profile")
+  methods:
+  - name: constructor
+    sig: constructor()
+    lines:
+    - 137
+    - 153
+    detail:
+      calls:
+      - ActiveEditorContext.isEqualTo
+      - CONTEXT_PROFILE_SESSION_STATE.isEqualTo
+      - CONTEXT_PROFILE_SESSION_STATE.notEqualsTo
+      - ContextKeyExpr.and
+      - super
+  - name: run
+    sig: 'run(accessor: ServicesAccessor): Promise<any>'
+    lines:
+    - 155
+    - 159
+    detail:
+      calls:
+      - Promise.resolve
+      - accessor.get
+      - extensionHostProfileService.startProfiling
+  lines:
+  - 133
+  - 160
+- name: StopExtensionHostProfileAction
+  kind: struct
+  bases:
+  - Action2
+  fields:
+  - name: ID
+    type: any
+    default: '''workbench.extensions.action.stopExtensionHostProfile'''
+  - name: LABEL
+    type: any
+    default: nls.localize('stopExtensionHostProfileStart', "Stop Extension Host Profile")
+  methods:
+  - name: constructor
+    sig: constructor()
+    lines:
+    - 166
+    - 181
+    detail:
+      calls:
+      - ActiveEditorContext.isEqualTo
+      - CONTEXT_PROFILE_SESSION_STATE.isEqualTo
+      - ContextKeyExpr.and
+      - super
+  - name: run
+    sig: 'run(accessor: ServicesAccessor): Promise<any>'
+    lines:
+    - 183
+    - 187
+    detail:
+      calls:
+      - Promise.resolve
+      - accessor.get
+      - extensionHostProfileService.stopProfiling
+  lines:
+  - 162
+  - 188
+- name: OpenExtensionHostProfileACtion
+  kind: struct
+  bases:
+  - Action2
+  fields:
+  - name: LABEL
+    type: any
+    default: nls.localize('openExtensionHostProfile', "Open Extension Host Profile")
+  - name: ID
+    type: any
+    default: '''workbench.extensions.action.openExtensionHostProfile'''
+  methods:
+  - name: constructor
+    sig: constructor()
+    lines:
+    - 194
+    - 210
+    detail:
+      calls:
+      - ActiveEditorContext.isEqualTo
+      - ContextKeyExpr.and
+      - super
+  - name: run
+    sig: 'run(accessor: ServicesAccessor): Promise<void>'
+    is_async: true
+    lines:
+    - 212
+    - 230
+    detail:
+      calls:
+      - accessor.get
+      - commandService.executeCommand
+      - editorService.openEditor
+  lines:
+  - 190
+  - 232
+- name: SaveExtensionHostProfileAction
+  kind: struct
+  bases:
+  - Action2
+  fields:
+  - name: LABEL
+    type: any
+    default: nls.localize('saveExtensionHostProfile', "Save Extension Host Profile")
+  - name: ID
+    type: any
+    default: '''workbench.extensions.action.saveExtensionHostProfile'''
+  methods:
+  - name: constructor
+    sig: constructor()
+    lines:
+    - 239
+    - 255
+    detail:
+      calls:
+      - ActiveEditorContext.isEqualTo
+      - ContextKeyExpr.and
+      - super
+  - name: run
+    sig: 'run(accessor: ServicesAccessor): Promise<any>'
+    lines:
+    - 257
+    - 263
+    detail:
+      calls:
+      - accessor.get
+      - this._asyncRun
+  - name: _asyncRun
+    sig: "_asyncRun(\n\t\tenvironmentService: IWorkbenchEnvironmentService,\n\t\textensionHostProfileService: IExtensionHostProfileService,\n\t\tfileService: IFileService,\n\t\tfileDialogService: IFileDialogService\n\t): Promise<any>"
+    is_async: true
+    vis: private
+    lines:
+    - 265
+    - 303
+    detail:
+      calls:
+      - JSON.stringify
+      - URI.file
+      - Utils.rewriteAbsolutePaths
+      - VSBuffer.fromString
+      - fileDialogService.defaultFilePath
+      - fileDialogService.showSaveDialog
+      - fileService.writeFile
+      - joinPath
+      - new Date
+      - new Date().toISOString
+      - new Date().toISOString().replace
+      - nls.localize
+  lines:
+  - 234
+  - 304
+exports:
+- name: ProfileSessionState
+  kind: type
+- name: IExtensionHostProfileService
+  kind: type
+- name: RuntimeExtensionsEditor
+  kind: type
+- name: StartExtensionHostProfileAction
+  kind: type
+- name: StopExtensionHostProfileAction
+  kind: type
+- name: OpenExtensionHostProfileACtion
+  kind: type
+- name: SaveExtensionHostProfileAction
+  kind: type
+- name: IExtensionHostProfileService
+  kind: data
+- name: CONTEXT_PROFILE_SESSION_STATE
+  kind: data
+- name: CONTEXT_EXTENSION_HOST_PROFILE_RECORDED
+  kind: data

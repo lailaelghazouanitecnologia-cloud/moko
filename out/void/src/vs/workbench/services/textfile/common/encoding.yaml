@@ -1,0 +1,413 @@
+## Roska File Descriptor — common/encoding.ts
+file: common/encoding.ts
+lines: 787
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: ../../../../base/common/stream.js.Readable
+- sym: ../../../../base/common/stream.js.ReadableStream
+- sym: ../../../../base/common/stream.js.newWriteableStream
+- sym: ../../../../base/common/stream.js.listenStream
+- sym: ../../../../base/common/buffer.js.VSBuffer
+- sym: ../../../../base/common/buffer.js.VSBufferReadable
+- sym: ../../../../base/common/buffer.js.VSBufferReadableStream
+- sym: ../../../../amdX.js.importAMDNodeModule
+- sym: ../../../../base/common/cancellation.js.CancellationTokenSource
+- sym: ../../../../base/common/arrays.js.coalesce
+data:
+- name: UTF8
+  type: string
+  val: '''utf8'''
+- name: UTF8_with_bom
+  type: string
+  val: '''utf8bom'''
+- name: UTF16be
+  type: string
+  val: '''utf16be'''
+- name: UTF16le
+  type: string
+  val: '''utf16le'''
+- name: UTF16be_BOM
+  type: array
+  val: '[0xFE, 0xFF]'
+- name: UTF16le_BOM
+  type: array
+  val: '[0xFF, 0xFE]'
+- name: UTF8_BOM
+  type: array
+  val: '[0xEF, 0xBB, 0xBF]'
+- name: ZERO_BYTE_DETECTION_BUFFER_MAX_LEN
+  type: number
+  val: '512'
+- name: NO_ENCODING_GUESS_MIN_BYTES
+  type: number
+  val: '512'
+- name: AUTO_ENCODING_GUESS_MIN_BYTES
+  type: any
+  val: 512 * 8
+- name: AUTO_ENCODING_GUESS_MAX_BYTES
+  type: any
+  val: 512 * 128
+- name: IGNORE_ENCODINGS
+  type: array
+  val: '[''ascii'', ''utf-16'', ''utf-32'']'
+- name: JSCHARDET_TO_ICONV_ENCODINGS
+  type: '{ [name: string]: string }'
+  val: "{\n\t'ibm866': 'cp866',\n\t'big5': 'cp950'\n}"
+- name: SUPPORTED_ENCODINGS
+  type: EncodingsMap
+  val: "{\n\tutf8: {\n\t\tlabelLong: 'UTF-8',\n\t\tlabelShort: 'UTF-8',\n\t\torder: 1,\n\t\talias: 'utf8bom',\n\t\tguessableName: 'UTF-8'\n\t},\n\tut..."
+- name: GUESSABLE_ENCODINGS
+  type: EncodingsMap
+  val: "(() => {\n\tconst guessableEncodings: EncodingsMap = {};\n\tfor (const encoding in SUPPORTED_ENCODINGS) {\n\t\tif (SUPPORTED_EN..."
+types:
+- name: UTF_ENCODING
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 17
+  - 17
+- name: IDecodeStreamOptions
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: acceptTextOnly
+    type: boolean
+  - name: guessEncoding
+    type: boolean
+  - name: candidateGuessEncodings
+    type: string[]
+  - name: minBytesRequiredForDetection
+    type: number
+  - name: overwriteEncoding
+    type: 'method: overwriteEncoding(detectedEncoding: string | null): Promise<string>'
+  lines:
+  - 32
+  - 39
+- name: IDecodeStreamResult
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: stream
+    type: ReadableStream<string>
+  - name: detected
+    type: IDetectedEncodingResult
+  lines:
+  - 41
+  - 44
+- name: DecodeStreamErrorKind
+  kind: enum
+  variants:
+  - name: STREAM_IS_BINARY
+    val: '1'
+  lines:
+  - 46
+  - 53
+- name: DecodeStreamError
+  kind: struct
+  bases:
+  - Error
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tmessage: string,\n\t\treadonly decodeStreamErrorKind: DecodeStreamErrorKind\n\t)"
+    lines:
+    - 57
+    - 62
+    detail:
+      calls:
+      - super
+  lines:
+  - 55
+  - 63
+- name: IDecoderStream
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: write
+    type: 'method: write(buffer: Uint8Array): string'
+  - name: end
+    type: 'method: end(): string | undefined'
+  lines:
+  - 65
+  - 68
+- name: DecoderStream
+  kind: struct
+  ctx: This stream will only load iconv-lite lazily if the encoding is not UTF-8. This ensures that for most common cases we do not pay the price of loading the module from disk. We still need to be careful when converting UTF-8 to a string though because we read the file in chunks of Buffer and thus need to decode it via TextDecoder helper that is available in browser and node.js environments.
+  bases:
+  - IDecoderStream
+  methods:
+  - name: create
+    sig: 'create(encoding: string): Promise<DecoderStream>'
+    is_async: true
+    decorators:
+    - static
+    lines:
+    - 82
+    - 106
+    detail:
+      calls:
+      - iconv.getDecoder
+      - import
+      - new DecoderStream
+      - new TextDecoder
+      - toNodeEncoding
+      - utf8TextDecoder.decode
+  - name: write
+    sig: 'write(buffer: Uint8Array): string'
+    lines:
+    - 110
+    - 112
+    detail:
+      calls:
+      - this.iconvLiteDecoder.write
+  - name: end
+    sig: 'end(): string | undefined'
+    lines:
+    - 114
+    - 116
+    detail:
+      calls:
+      - this.iconvLiteDecoder.end
+  lines:
+  - 70
+  - 117
+- name: IDetectedEncodingResult
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: encoding
+    type: string | null
+  - name: seemsBinary
+    type: boolean
+  lines:
+  - 430
+  - 433
+- name: IReadResult
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: buffer
+    type: VSBuffer | null
+  - name: bytesRead
+    type: number
+  lines:
+  - 435
+  - 438
+- name: EncodingsMap
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 510
+  - 510
+functions:
+- name: isUTFEncoding
+  sig: 'isUTFEncoding(encoding: string)'
+  lines:
+  - 19
+  - 21
+  detail:
+    calls:
+    - '[UTF8, UTF8_with_bom, UTF16be, UTF16le].some'
+- name: toDecodeStream
+  sig: 'toDecodeStream(source: VSBufferReadableStream, options: IDecodeStreamOptions): Promise<IDecodeStreamResult>'
+  lines:
+  - 119
+  - 215
+  detail:
+    calls:
+    - new Promise
+- name: toEncodeReadable
+  sig: 'toEncodeReadable(readable: Readable<string>, encoding: string, options?: { addBOM?: boolean }): Promise<VSBufferReadable>'
+  is_async: true
+  lines:
+  - 217
+  - 264
+  detail:
+    calls:
+    - Uint8Array.from
+    - VSBuffer.wrap
+    - encoder.end
+    - encoder.write
+    - iconv.getEncoder
+    - import
+    - readable.read
+    - toNodeEncoding
+- name: encodingExists
+  sig: 'encodingExists(encoding: string): Promise<boolean>'
+  is_async: true
+  lines:
+  - 266
+  - 270
+  detail:
+    calls:
+    - iconv.encodingExists
+    - import
+    - toNodeEncoding
+- name: toNodeEncoding
+  sig: 'toNodeEncoding(enc: string | null): string'
+  lines:
+  - 272
+  - 278
+  detail: {}
+- name: detectEncodingByBOMFromBuffer
+  sig: 'detectEncodingByBOMFromBuffer(buffer: VSBuffer | null, bytesRead: number): typeof UTF8_with_bom | typeof UTF16le | typeof UTF16be | null'
+  lines:
+  - 280
+  - 310
+  detail:
+    calls:
+    - buffer.readUInt8
+- name: guessEncodingByBuffer
+  sig: 'guessEncodingByBuffer(buffer: VSBuffer, candidateGuessEncodings?: string[]): Promise<string | null>'
+  is_async: true
+  lines:
+  - 322
+  - 358
+  detail:
+    calls:
+    - IGNORE_ENCODINGS.indexOf
+    - buffer.slice
+    - candidateGuessEncodings.map
+    - coalesce
+    - encodeLatin1
+    - guessed.encoding.toLowerCase
+    - import
+    - jschardet.detect
+    - toIconvLiteEncoding
+- name: normalizeEncoding
+  sig: 'normalizeEncoding(encodingName: string): string'
+  lines:
+  - 365
+  - 367
+  detail:
+    calls:
+    - encodingName.replace
+    - encodingName.replace(/[^a-zA-Z0-9]/g, '').toLowerCase
+- name: toIconvLiteEncoding
+  sig: 'toIconvLiteEncoding(encodingName: string): string'
+  lines:
+  - 369
+  - 374
+  detail:
+    calls:
+    - normalizeEncoding
+- name: toJschardetEncoding
+  sig: 'toJschardetEncoding(encodingName: string): string | undefined'
+  lines:
+  - 376
+  - 381
+  detail:
+    calls:
+    - normalizeEncoding
+- name: encodeLatin1
+  sig: 'encodeLatin1(buffer: Uint8Array): string'
+  lines:
+  - 383
+  - 390
+  detail:
+    calls:
+    - String.fromCharCode
+- name: toCanonicalName
+  sig: 'toCanonicalName(enc: string): string'
+  lines:
+  - 397
+  - 428
+  detail:
+    calls:
+    - enc.match
+- name: detectEncodingFromBuffer
+  sig: 'detectEncodingFromBuffer({ buffer, bytesRead }: IReadResult, autoGuessEncoding?: boolean, candidateGuessEncodings?: string[]): Promise<IDetectedEncodingResult> | IDetectedEncodingResult'
+  lines:
+  - 442
+  - 508
+  detail:
+    calls:
+    - buffer.readUInt8
+    - buffer.slice
+    - detectEncodingByBOMFromBuffer
+    - guessEncodingByBuffer
+    - guessEncodingByBuffer(buffer.slice(0, bytesRead), candidateGuessEncodings).then
+exports:
+- name: UTF_ENCODING
+  kind: type
+- name: IDecodeStreamOptions
+  kind: type
+- name: IDecodeStreamResult
+  kind: type
+- name: DecodeStreamErrorKind
+  kind: type
+- name: DecodeStreamError
+  kind: type
+- name: IDecoderStream
+  kind: type
+- name: DecoderStream
+  kind: type
+- name: IDetectedEncodingResult
+  kind: type
+- name: IReadResult
+  kind: type
+- name: EncodingsMap
+  kind: type
+- name: isUTFEncoding
+  kind: func
+- name: toDecodeStream
+  kind: func
+- name: toEncodeReadable
+  kind: func
+- name: encodingExists
+  kind: func
+- name: toNodeEncoding
+  kind: func
+- name: detectEncodingByBOMFromBuffer
+  kind: func
+- name: guessEncodingByBuffer
+  kind: func
+- name: normalizeEncoding
+  kind: func
+- name: toIconvLiteEncoding
+  kind: func
+- name: toJschardetEncoding
+  kind: func
+- name: encodeLatin1
+  kind: func
+- name: toCanonicalName
+  kind: func
+- name: detectEncodingFromBuffer
+  kind: func
+- name: UTF8
+  kind: data
+- name: UTF8_with_bom
+  kind: data
+- name: UTF16be
+  kind: data
+- name: UTF16le
+  kind: data
+- name: UTF16be_BOM
+  kind: data
+- name: UTF16le_BOM
+  kind: data
+- name: UTF8_BOM
+  kind: data
+- name: ZERO_BYTE_DETECTION_BUFFER_MAX_LEN
+  kind: data
+- name: NO_ENCODING_GUESS_MIN_BYTES
+  kind: data
+- name: AUTO_ENCODING_GUESS_MIN_BYTES
+  kind: data
+- name: AUTO_ENCODING_GUESS_MAX_BYTES
+  kind: data
+- name: IGNORE_ENCODINGS
+  kind: data
+- name: JSCHARDET_TO_ICONV_ENCODINGS
+  kind: data
+- name: SUPPORTED_ENCODINGS
+  kind: data
+- name: GUESSABLE_ENCODINGS
+  kind: data

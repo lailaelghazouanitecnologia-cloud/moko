@@ -1,0 +1,489 @@
+## Roska File Descriptor — browser/debugHover.ts
+file: browser/debugHover.ts
+lines: 522
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: ../../../../base/browser/dom.js.dom
+- sym: ../../../../base/browser/keyboardEvent.js.IKeyboardEvent
+- sym: ../../../../base/browser/mouseEvent.js.IMouseEvent
+- sym: ../../../../base/browser/ui/list/list.js.IListVirtualDelegate
+- sym: ../../../../base/browser/ui/list/listWidget.js.IListAccessibilityProvider
+- sym: ../../../../base/browser/ui/scrollbar/scrollableElement.js.DomScrollableElement
+- sym: ../../../../base/browser/ui/tree/asyncDataTree.js.AsyncDataTree
+- sym: ../../../../base/browser/ui/tree/tree.js.ITreeContextMenuEvent
+- sym: ../../../../base/common/arrays.js.coalesce
+- sym: ../../../../base/common/cancellation.js.CancellationToken
+- sym: ../../../../base/common/cancellation.js.CancellationTokenSource
+- sym: ../../../../base/common/keyCodes.js.KeyCode
+- sym: ../../../../base/common/lifecycle.js.lifecycle
+- sym: ../../../../base/common/numbers.js.clamp
+- sym: ../../../../base/common/platform.js.isMacintosh
+- sym: ../../../../base/common/scrollable.js.ScrollbarVisibility
+- sym: ../../../../editor/browser/editorBrowser.js.ContentWidgetPositionPreference
+- sym: ../../../../editor/browser/editorBrowser.js.ICodeEditor
+- sym: ../../../../editor/browser/editorBrowser.js.IContentWidget
+- sym: ../../../../editor/browser/editorBrowser.js.IContentWidgetPosition
+- sym: ../../../../editor/common/config/editorOptions.js.ConfigurationChangedEvent
+- sym: ../../../../editor/common/config/editorOptions.js.EditorOption
+- sym: ../../../../editor/common/core/dimension.js.IDimension
+- sym: ../../../../editor/common/core/position.js.Position
+- sym: ../../../../editor/common/core/range.js.Range
+- sym: ../../../../editor/common/editorCommon.js.IEditorDecorationsCollection
+- sym: ../../../../editor/common/model/textModel.js.ModelDecorationOptions
+- sym: ../../../../editor/common/services/languageFeatures.js.ILanguageFeaturesService
+- sym: ../../../../nls.js.nls
+- sym: ../../../../platform/actions/common/actions.js.IMenuService
+- sym: ../../../../platform/actions/common/actions.js.MenuId
+- sym: ../../../../platform/contextkey/common/contextkey.js.IContextKeyService
+- sym: ../../../../platform/contextview/browser/contextView.js.IContextMenuService
+- sym: ../../../../platform/instantiation/common/instantiation.js.IInstantiationService
+- sym: ../../../../platform/list/browser/listService.js.WorkbenchAsyncDataTree
+- sym: ../../../../platform/log/common/log.js.ILogService
+- sym: ../../../../platform/theme/common/colorRegistry.js.asCssVariable
+- sym: ../../../../platform/theme/common/colorRegistry.js.editorHoverBackground
+- sym: ../../../../platform/theme/common/colorRegistry.js.editorHoverBorder
+- sym: ../../../../platform/theme/common/colorRegistry.js.editorHoverForeground
+- sym: ../common/debug.js.IDebugService
+- sym: ../common/debug.js.IDebugSession
+- sym: ../common/debug.js.IExpression
+- sym: ../common/debug.js.IExpressionContainer
+- sym: ../common/debug.js.IStackFrame
+- sym: ../common/debugModel.js.Expression
+- sym: ../common/debugModel.js.Variable
+- sym: ../common/debugModel.js.VisualizedExpression
+- sym: ../common/debugUtils.js.getEvaluatableExpressionAtPosition
+- sym: ./baseDebugView.js.AbstractExpressionDataSource
+- sym: ./debugExpressionRenderer.js.DebugExpressionRenderer
+- sym: ./variablesView.js.VariablesRenderer
+- sym: ./variablesView.js.VisualizedVariableRenderer
+- sym: ./variablesView.js.openContextMenuForVariableTreeElement
+data:
+- name: $
+  type: any
+  val: dom.$
+types:
+- name: ShowDebugHoverResult
+  kind: enum
+  variants:
+  - name: NOT_CHANGED
+  - name: NOT_AVAILABLE
+  - name: CANCELLED
+  lines:
+  - 46
+  - 50
+- name: DebugHoverWidget
+  kind: struct
+  ctx: editor.IContentWidget.allowEditorOverflow
+  bases:
+  - IContentWidget
+  fields:
+  - name: ID
+    type: any
+    default: '''debug.hoverWidget'''
+  - name: allowEditorOverflow
+    type: any
+    default: 'true'
+  - name: _isVisible
+    type: "{\n\t\tstore: lifecycle.DisposableStore;\n\t}"
+  - name: safeTriangle
+    type: dom.SafeTriangle
+  - name: showCancellationSource
+    type: CancellationTokenSource
+  - name: domNode
+    type: HTMLElement
+  - name: tree
+    type: AsyncDataTree<IExpression, IExpression, any>
+  - name: showAtPosition
+    type: Position | null
+  - name: positionPreference
+    type: ContentWidgetPositionPreference[]
+  - name: highlightDecorations
+    type: IEditorDecorationsCollection
+  - name: complexValueContainer
+    type: HTMLElement
+  - name: complexValueTitle
+    type: HTMLElement
+  - name: valueContainer
+    type: HTMLElement
+  - name: treeContainer
+    type: HTMLElement
+  - name: toDispose
+    type: lifecycle.IDisposable[]
+  - name: scrollbar
+    type: DomScrollableElement
+  - name: debugHoverComputer
+    type: DebugHoverComputer
+  - name: expressionRenderer
+    type: DebugExpressionRenderer
+  - name: expressionToRender
+    type: IExpression | undefined
+  - name: isUpdatingTree
+    type: any
+    default: 'false'
+  - name: _HOVER_HIGHLIGHT_DECORATION_OPTIONS
+    type: any
+    default: "ModelDecorationOptions.register({\n\t\tdescription: 'bdebug-hover-highlight',\n\t\tcla..."
+  methods:
+  - name: isShowingComplexValue
+    sig: isShowingComplexValue()
+    lines:
+    - 110
+    - 112
+    detail: {}
+  - name: constructor
+    sig: "constructor(\n\t\tprivate editor: ICodeEditor,\n\t\t@IDebugService private readonly debugService: IDebugService,\n\t\t@IInstantiationService private readonly instantiationService: IInstantiationService,\n\t\t@IMenuService private readonly menuService: IMenuService,\n\t\t@IContextKeyService private readonly contextKeyService: IContextKeyService,\n\t\t@IContextMenuService private readonly contextMenuService: IContextMenuService,\n\t)"
+    lines:
+    - 114
+    - 129
+    detail:
+      calls:
+      - this.editor.createDecorationsCollection
+      - this.instantiationService.createInstance
+  - name: create
+    sig: 'create(): void'
+    vis: private
+    lines:
+    - 131
+    - 186
+    detail:
+      calls:
+      - $
+      - VisualizedVariableRenderer.rendererOnVisualizationRange
+      - asCssVariable
+      - dom.append
+      - new DebugHoverAccessibilityProvider
+      - new DebugHoverDelegate
+      - new DomScrollableElement
+      - nls.localize
+      - this.debugService.getViewModel
+      - this.domNode.appendChild
+      - this.editor.addContentWidget
+      - this.editor.applyFontInfo
+      - this.instantiationService.createInstance
+      - this.registerListeners
+      - this.scrollbar.getDomNode
+      - this.toDispose.push
+      - this.tree.onContextMenu
+      - this.tree.onDidChangeContentHeight
+      - this.tree.onDidChangeContentWidth
+      - this.treeContainer.setAttribute
+      - this.valueContainer.setAttribute
+  - name: registerListeners
+    sig: 'registerListeners(): void'
+    vis: private
+    lines:
+    - 197
+    - 215
+    detail:
+      calls:
+      - dom.addStandardDisposableListener
+      - this.debugService.getViewModel
+      - this.debugService.getViewModel().onDidEvaluateLazyExpression
+      - this.editor.onDidChangeConfiguration
+      - this.toDispose.push
+  - name: isHovered
+    sig: 'isHovered(): boolean'
+    lines:
+    - 217
+    - 219
+    detail:
+      calls:
+      - this.domNode?.matches
+  - name: isVisible
+    sig: 'isVisible(): boolean'
+    lines:
+    - 221
+    - 223
+    detail: {}
+  - name: willBeVisible
+    sig: 'willBeVisible(): boolean'
+    lines:
+    - 225
+    - 227
+    detail: {}
+  - name: getId
+    sig: 'getId(): string'
+    lines:
+    - 229
+    - 231
+    detail: {}
+  - name: getDomNode
+    sig: 'getDomNode(): HTMLElement'
+    lines:
+    - 233
+    - 235
+    detail: {}
+  - name: isInSafeTriangle
+    sig: 'isInSafeTriangle(x: number, y: number)'
+    lines:
+    - 241
+    - 243
+    detail:
+      calls:
+      - this.safeTriangle?.contains
+  - name: showAt
+    sig: 'showAt(position: Position, focus: boolean, mouseEvent?: IMouseEvent): Promise<void | ShowDebugHoverResult>'
+    is_async: true
+    lines:
+    - 245
+    - 287
+    detail:
+      calls:
+      - new CancellationTokenSource
+      - result.range.getStartPosition
+      - this.debugHoverComputer.compute
+      - this.debugHoverComputer.evaluate
+      - this.debugService.getViewModel
+      - this.doShow
+      - this.editor.hasModel
+      - this.hide
+      - this.highlightDecorations.set
+      - this.isVisible
+      - this.showCancellationSource?.dispose
+  - name: doShow
+    sig: 'doShow(session: IDebugSession | undefined, position: Position, expression: IExpression, focus: boolean, mouseEvent: IMouseEvent | undefined): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 294
+    - 338
+    detail:
+      calls:
+      - new dom.SafeTriangle
+      - new lifecycle.DisposableStore
+      - store.add
+      - this.create
+      - this.editor.layoutContentWidget
+      - this.editor.render
+      - this.expressionRenderer.renderValue
+      - this.scrollbar.scanDomNode
+      - this.tree.domFocus
+      - this.valueContainer.focus
+  - name: layoutTree
+    sig: 'layoutTree(): void'
+    vis: private
+    lines:
+    - 345
+    - 363
+    detail:
+      calls:
+      - Math.max
+      - Math.min
+      - clamp
+      - this.editor.getDomNode
+      - this.editor.getLayoutInfo
+      - this.editor.getScrollTop
+      - this.editor.getTopForLineNumber
+      - this.scrollbar.scanDomNode
+      - this.tree.layout
+  - name: beforeRender
+    sig: 'beforeRender(): IDimension | null'
+    lines:
+    - 365
+    - 379
+    detail:
+      calls:
+      - this.tree.setInput
+      - this.tree.setInput(expression).finally
+  - name: afterRender
+    sig: 'afterRender(positionPreference: ContentWidgetPositionPreference | null)'
+    lines:
+    - 381
+    - 386
+    detail: {}
+  - name: hide
+    sig: 'hide(): void'
+    lines:
+    - 389
+    - 408
+    detail:
+      calls:
+      - dom.isAncestorOfActiveElement
+      - this._isVisible.store.dispose
+      - this.editor.focus
+      - this.editor.layoutContentWidget
+      - this.highlightDecorations.clear
+      - this.showCancellationSource.dispose
+  - name: getPosition
+    sig: 'getPosition(): IContentWidgetPosition | null'
+    lines:
+    - 410
+    - 415
+    detail: {}
+  - name: dispose
+    sig: 'dispose(): void'
+    lines:
+    - 417
+    - 419
+    detail:
+      calls:
+      - lifecycle.dispose
+  lines:
+  - 80
+  - 420
+- name: DebugHoverAccessibilityProvider
+  kind: struct
+  bases:
+  - IListAccessibilityProvider<IExpression>
+  methods:
+  - name: getWidgetAriaLabel
+    sig: 'getWidgetAriaLabel(): string'
+    lines:
+    - 424
+    - 426
+    detail:
+      calls:
+      - nls.localize
+  - name: getAriaLabel
+    sig: 'getAriaLabel(element: IExpression): string'
+    lines:
+    - 428
+    - 430
+    detail:
+      calls:
+      - nls.localize
+  lines:
+  - 422
+  - 431
+- name: DebugHoverDataSource
+  kind: struct
+  bases:
+  - AbstractExpressionDataSource
+  methods:
+  - name: hasChildren
+    sig: 'hasChildren(element: IExpression): boolean'
+    lines:
+    - 435
+    - 437
+    detail: {}
+  lines:
+  - 433
+  - 442
+- name: DebugHoverDelegate
+  kind: struct
+  bases:
+  - IListVirtualDelegate<IExpression>
+  methods:
+  - name: getHeight
+    sig: 'getHeight(element: IExpression): number'
+    lines:
+    - 445
+    - 447
+    detail: {}
+  - name: getTemplateId
+    sig: 'getTemplateId(element: IExpression): string'
+    lines:
+    - 449
+    - 454
+    detail: {}
+  lines:
+  - 444
+  - 455
+- name: IDebugHoverComputeResult
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: rangeChanged
+    type: boolean
+  - name: range
+    type: Range
+  lines:
+  - 457
+  - 460
+- name: DebugHoverComputer
+  kind: struct
+  fields:
+  - name: _current
+    type: "{\n\t\trange: Range;\n\t\texpression: string;\n\t}"
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tprivate editor: ICodeEditor,\n\t\t@IDebugService private readonly debugService: IDebugService,\n\t\t@ILanguageFeaturesService private readonly languageFeaturesService: ILanguageFeaturesService,\n\t\t@ILogService private readonly logService: ILogService,\n\t)"
+    lines:
+    - 468
+    - 473
+    detail: {}
+  - name: compute
+    sig: 'compute(position: Position, token: CancellationToken): Promise<IDebugHoverComputeResult>'
+    is_async: true
+    lines:
+    - 475
+    - 491
+    detail:
+      calls:
+      - Range.lift
+      - getEvaluatableExpressionAtPosition
+      - this._current?.range.equalsRange
+      - this.debugService.getViewModel
+      - this.editor.getModel
+      - this.editor.hasModel
+  - name: evaluate
+    sig: 'evaluate(session: IDebugSession): Promise<IExpression | undefined>'
+    is_async: true
+    lines:
+    - 493
+    - 521
+    detail:
+      calls:
+      - coalesce
+      - expression.evaluate
+      - findExpressionInStackFrame
+      - new Expression
+      - session.getSourceForUri
+      - this._current.expression.split
+      - this._current.expression.split('.').map
+      - this.debugService.getViewModel
+      - this.editor.getModel
+      - this.logService.error
+  lines:
+  - 462
+  - 522
+functions:
+- name: doFindExpression
+  sig: 'doFindExpression(container: IExpressionContainer, namesToFind: string[]): Promise<IExpression | null>'
+  is_async: true
+  lines:
+  - 52
+  - 69
+  detail:
+    calls:
+    - children.filter
+    - container.getChildren
+    - doFindExpression
+    - namesToFind.slice
+- name: findExpressionInStackFrame
+  sig: 'findExpressionInStackFrame(stackFrame: IStackFrame, namesToFind: string[]): Promise<IExpression | undefined>'
+  is_async: true
+  lines:
+  - 71
+  - 78
+  detail:
+    calls:
+    - Promise.all
+    - coalesce
+    - expressions.every
+    - nonExpensive.map
+    - scopes.filter
+    - stackFrame.getScopes
+exports:
+- name: ShowDebugHoverResult
+  kind: type
+- name: DebugHoverWidget
+  kind: type
+- name: DebugHoverAccessibilityProvider
+  kind: type
+- name: DebugHoverDataSource
+  kind: type
+- name: DebugHoverDelegate
+  kind: type
+- name: IDebugHoverComputeResult
+  kind: type
+- name: DebugHoverComputer
+  kind: type
+- name: doFindExpression
+  kind: func
+- name: findExpressionInStackFrame
+  kind: func
+- name: $
+  kind: data

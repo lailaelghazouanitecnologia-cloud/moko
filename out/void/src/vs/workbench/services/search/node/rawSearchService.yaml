@@ -1,0 +1,261 @@
+## Roska File Descriptor — node/rawSearchService.ts
+file: node/rawSearchService.ts
+lines: 448
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: ../../../../base/common/arrays.js.arrays
+- sym: ../../../../base/common/async.js.CancelablePromise
+- sym: ../../../../base/common/async.js.createCancelablePromise
+- sym: ../../../../base/common/cancellation.js.CancellationToken
+- sym: ../../../../base/common/errors.js.canceled
+- sym: ../../../../base/common/event.js.Emitter
+- sym: ../../../../base/common/event.js.Event
+- sym: ../../../../base/common/fuzzyScorer.js.compareItemsByFuzzyScore
+- sym: ../../../../base/common/fuzzyScorer.js.FuzzyScorerCache
+- sym: ../../../../base/common/fuzzyScorer.js.IItemAccessor
+- sym: ../../../../base/common/fuzzyScorer.js.prepareQuery
+- sym: ../../../../base/common/marshalling.js.revive
+- sym: ../../../../base/common/path.js.basename
+- sym: ../../../../base/common/path.js.dirname
+- sym: ../../../../base/common/path.js.join
+- sym: ../../../../base/common/path.js.sep
+- sym: ../../../../base/common/stopwatch.js.StopWatch
+- sym: ../../../../base/common/uri.js.URI
+- sym: ../../../../base/common/uri.js.UriComponents
+- sym: ../../../../platform/files/common/files.js.ByteSize
+- sym: ../common/search.js.DEFAULT_MAX_SEARCH_RESULTS
+- sym: ../common/search.js.ICachedSearchStats
+- sym: ../common/search.js.IFileQuery
+- sym: ../common/search.js.IFileSearchProgressItem
+- sym: ../common/search.js.IFileSearchStats
+- sym: ../common/search.js.IFolderQuery
+- sym: ../common/search.js.IProgressMessage
+- sym: ../common/search.js.IRawFileMatch
+- sym: ../common/search.js.IRawFileQuery
+- sym: ../common/search.js.IRawQuery
+- sym: ../common/search.js.IRawSearchService
+- sym: ../common/search.js.IRawTextQuery
+- sym: ../common/search.js.ISearchEngine
+- sym: ../common/search.js.ISearchEngineSuccess
+- sym: ../common/search.js.ISerializedFileMatch
+- sym: ../common/search.js.ISerializedSearchComplete
+- sym: ../common/search.js.ISerializedSearchProgressItem
+- sym: ../common/search.js.ISerializedSearchSuccess
+- sym: ../common/search.js.isFilePatternMatch
+- sym: ../common/search.js.ITextQuery
+- sym: ./fileSearch.js.Engine as FileSearchEngine
+- sym: ./textSearchAdapter.js.TextSearchEngineAdapter
+data:
+- name: FileMatchItemAccessor
+  type: any
+  val: "new class implements IItemAccessor<IRawFileMatch> {\n\n\tgetItemLabel(match: IRawFileMatch): string {\n\t\treturn basename(mat..."
+types:
+- name: IProgressCallback
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 21
+  - 21
+- name: IFileProgressCallback
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 22
+  - 22
+- name: SearchService
+  kind: struct
+  ctx: Return a CancelablePromise which is not actually cancelable TODO@rob - Is this really needed?
+  bases:
+  - IRawSearchService
+  fields:
+  - name: BATCH_SIZE
+    type: any
+    default: '512'
+  - name: caches
+    type: '{ [cacheKey: string]: Cache }'
+    default: Object.create(null)
+  methods:
+  - name: constructor
+    sig: 'constructor(private readonly processType: IFileSearchStats[''type''] = ''searchProcess'', private readonly getNumThreads?: () => Promise<number | undefined>)'
+    lines:
+    - 30
+    - 30
+    detail: {}
+  - name: fileSearch
+    sig: 'fileSearch(config: IRawFileQuery): Event<ISerializedSearchProgressItem | ISerializedSearchComplete>'
+    lines:
+    - 32
+    - 53
+    detail:
+      calls:
+      - new Emitter
+      - reviveQuery
+  - name: textSearch
+    sig: 'textSearch(rawQuery: IRawTextQuery): Event<ISerializedSearchProgressItem | ISerializedSearchComplete>'
+    lines:
+    - 55
+    - 75
+    detail:
+      calls:
+      - new Emitter
+      - reviveQuery
+  - name: ripgrepTextSearch
+    sig: 'ripgrepTextSearch(config: ITextQuery, progressCallback: IProgressCallback, token: CancellationToken): Promise<ISerializedSearchSuccess>'
+    is_async: true
+    vis: private
+    lines:
+    - 77
+    - 83
+    detail:
+      calls:
+      - engine.search
+      - new TextSearchEngineAdapter
+      - this.getNumThreads
+      - this.getPlatformFileLimits
+  - name: doFileSearch
+    sig: 'doFileSearch(config: IFileQuery, numThreads: number | undefined, progressCallback: IProgressCallback, token?: CancellationToken): Promise<ISerializedSearchSuccess>'
+    lines:
+    - 91
+    - 93
+    detail:
+      calls:
+      - this.doFileSearchWithEngine
+  - name: doFileSearchWithEngine
+    sig: 'doFileSearchWithEngine(EngineClass: { new(config: IFileQuery, numThreads?: number | undefined): ISearchEngine<IRawFileMatch> }, config: IFileQuery, progressCallback: IProgressCallback, token?: CancellationToken, batchSize = SearchService.BATCH_SIZE, threads?: number): Promise<ISerializedSearchSuccess>'
+    lines:
+    - 95
+    - 142
+    detail:
+      calls:
+      - Object.assign
+      - new EngineClass
+      - new Promise
+      - this.doSearch
+      - this.doSearch(engine, fileProgressCallback, batchSize, token).then
+      - this.doSortedSearch
+      - this.trySortedSearchFromCache
+  - name: doSortedSearch
+    sig: 'doSortedSearch(engine: ISearchEngine<IRawFileMatch>, config: IFileQuery, progressCallback: IProgressCallback, fileProgressCallback: IFileProgressCallback, token?: CancellationToken): Promise<[ISerializedSearchSuccess, IRawFileMatch[]]>'
+    vis: private
+    lines:
+    - 148
+    - 210
+    detail:
+      calls:
+      - allResultsPromise.then
+      - createCancelablePromise
+      - new Emitter
+      - this.getOrCreateCache
+      - this.preventCancellation
+  - name: trySortedSearchFromCache
+    sig: 'trySortedSearchFromCache(config: IFileQuery, progressCallback: IFileProgressCallback, token?: CancellationToken): Promise<[ISerializedSearchSuccess, IRawFileMatch[]]> | undefined'
+    vis: private
+    lines:
+    - 220
+    - 254
+    detail:
+      calls:
+      - cached.then
+      - this.getResultsFromCache
+  - name: getResultsFromCache
+    sig: 'getResultsFromCache(cache: Cache, searchValue: string, progressCallback: IFileProgressCallback, token?: CancellationToken): Promise<[ISearchEngineSuccess, IRawFileMatch[], ICachedSearchStats]> | null'
+    vis: private
+    lines:
+    - 278
+    - 340
+    detail:
+      calls:
+      - StopWatch.create
+      - cacheLookupSW.elapsed
+      - cachedRow.event
+      - cachedRow.promise.then
+      - previousSearch.indexOf
+      - searchValue.indexOf
+      - searchValue.startsWith
+      - this.preventCancellation
+      - token.onCancellationRequested
+  - name: clearCache
+    sig: 'clearCache(cacheKey: string): Promise<void>'
+    lines:
+    - 379
+    - 382
+    detail:
+      calls:
+      - Promise.resolve
+  - name: preventCancellation
+    sig: 'preventCancellation(promise: CancelablePromise<C>): CancelablePromise<C>'
+    vis: private
+    lines:
+    - 388
+    - 404
+    detail:
+      calls:
+      - "new class implements CancelablePromise<C> {\n\t\t\tget [Symbol.toStringTag]() { return this.toString(); }\n\t\t\tcancel() {\n\t\t\t\t// Do nothing\n\t\t\t}\n\t\t\tthen<TResult1 = C, TResult2 = never>(resolve?: ((value: C) => TResult1 | Promise<TResult1>) | undefined | null, reject?: ((reason: any) => TResult2 | Promise<TResult2>) | undefined | null): Promise<TResult1 | TResult2> {\n\t\t\t\treturn promise.then(resolve, reject);\n\t\t\t}\n\t\t\tcatch(reject?: any) {\n\t\t\t\treturn this.then(undefined, reject);\n\t\t\t}\n\t\t\tfinally(onFinally: any) {\n\t\t\t\treturn promise.finally(onFinally);\n\t\t\t}\n\t\t}"
+      - promise.finally
+      - promise.then
+      - this.then
+      - this.toString
+  lines:
+  - 24
+  - 405
+- name: ICacheRow
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: promise
+    type: CancelablePromise<[ISearchEngineSuccess, IRawFileMatch[]]>
+  - name: resolved
+    type: boolean
+  - name: event
+    type: Event<IFileSearchProgressItem>
+  lines:
+  - 407
+  - 412
+- name: Cache
+  kind: struct
+  fields:
+  - name: resultsToSearchCache
+    type: '{ [searchValue: string]: ICacheRow }'
+    default: Object.create(null)
+  - name: scorerCache
+    type: FuzzyScorerCache
+    default: Object.create(null)
+  lines:
+  - 414
+  - 419
+functions:
+- name: reviveQuery
+  sig: 'reviveQuery(rawQuery: U): U extends IRawTextQuery ? ITextQuery : IFileQuery'
+  lines:
+  - 436
+  - 444
+  detail:
+    calls:
+    - rawQuery.extraFileResources.map
+    - rawQuery.folderQueries.map
+- name: reviveFolderQuery
+  sig: 'reviveFolderQuery(rawFolderQuery: IFolderQuery<UriComponents>): IFolderQuery<URI>'
+  lines:
+  - 446
+  - 448
+exports:
+- name: IProgressCallback
+  kind: type
+- name: IFileProgressCallback
+  kind: type
+- name: SearchService
+  kind: type
+- name: ICacheRow
+  kind: type
+- name: Cache
+  kind: type
+- name: reviveQuery
+  kind: func
+- name: reviveFolderQuery
+  kind: func
+- name: FileMatchItemAccessor
+  kind: data

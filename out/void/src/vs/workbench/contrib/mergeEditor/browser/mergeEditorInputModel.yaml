@@ -1,0 +1,411 @@
+## Roska File Descriptor — browser/mergeEditorInputModel.ts
+file: browser/mergeEditorInputModel.ts
+lines: 521
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: ../../../../base/common/assert.js.assertFn
+- sym: ../../../../base/common/errors.js.BugIndicatingError
+- sym: ../../../../base/common/errors.js.onUnexpectedError
+- sym: ../../../../base/common/event.js.Event
+- sym: ../../../../base/common/lifecycle.js.DisposableStore
+- sym: ../../../../base/common/lifecycle.js.IDisposable
+- sym: ../../../../base/common/lifecycle.js.IReference
+- sym: ../../../../base/common/observable.js.derived
+- sym: ../../../../base/common/observable.js.IObservable
+- sym: ../../../../base/common/observable.js.observableFromEvent
+- sym: ../../../../base/common/observable.js.observableValue
+- sym: ../../../../base/common/resources.js.basename
+- sym: ../../../../base/common/resources.js.isEqual
+- sym: ../../../../base/common/severity.js.Severity
+- sym: ../../../../base/common/uri.js.URI
+- sym: ../../../../editor/common/services/model.js.IModelService
+- sym: ../../../../editor/common/services/resolverService.js.IResolvedTextEditorModel
+- sym: ../../../../editor/common/services/resolverService.js.ITextModelService
+- sym: ../../../../nls.js.localize
+- sym: ../../../../platform/dialogs/common/dialogs.js.ConfirmResult
+- sym: ../../../../platform/dialogs/common/dialogs.js.IDialogService
+- sym: ../../../../platform/dialogs/common/dialogs.js.IPromptButton
+- sym: ../../../../platform/instantiation/common/instantiation.js.IInstantiationService
+- sym: ../../../../platform/storage/common/storage.js.IStorageService
+- sym: ../../../../platform/storage/common/storage.js.StorageScope
+- sym: ../../../../platform/storage/common/storage.js.StorageTarget
+- sym: ../../../common/editor.js.IRevertOptions
+- sym: ../../../common/editor.js.SaveSourceRegistry
+- sym: ../../../common/editor/editorModel.js.EditorModel
+- sym: ./mergeEditorInput.js.MergeEditorInputData
+- sym: ./mergeMarkers/mergeMarkersController.js.conflictMarkers
+- sym: ./model/diffComputer.js.MergeDiffComputer
+- sym: ./model/mergeEditorModel.js.InputData
+- sym: ./model/mergeEditorModel.js.MergeEditorModel
+- sym: ./telemetry.js.MergeEditorTelemetry
+- sym: ../common/mergeEditor.js.StorageCloseWithConflicts
+- sym: ../../../services/editor/common/editorService.js.IEditorService
+- sym: ../../../services/textfile/common/textfiles.js.ITextFileEditorModel
+- sym: ../../../services/textfile/common/textfiles.js.ITextFileSaveOptions
+- sym: ../../../services/textfile/common/textfiles.js.ITextFileService
+- sym: ../../../../editor/common/model.js.ITextModel
+- sym: ../../../../editor/common/languages/language.js.ILanguageService
+types:
+- name: MergeEditorArgs
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: base
+    type: URI
+  - name: input1
+    type: MergeEditorInputData
+  - name: input2
+    type: MergeEditorInputData
+  - name: result
+    type: URI
+  lines:
+  - 33
+  - 38
+- name: IMergeEditorInputModelFactory
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: createInputModel
+    type: 'method: createInputModel(args: MergeEditorArgs): Promise<IMergeEditorInputModel>'
+  lines:
+  - 40
+  - 42
+- name: IMergeEditorInputModel
+  kind: trait
+  bases:
+  - IDisposable
+  decorators:
+  - interface
+  fields:
+  - name: readonly
+    type: URI
+  - name: readonly
+    type: MergeEditorModel
+  - name: readonly
+    type: IObservable<boolean>
+  - name: save
+    type: 'method: save(options?: ITextFileSaveOptions): Promise<void>'
+  - name: revert
+    type: 'method: revert(options?: IRevertOptions): Promise<void>'
+  - name: shouldConfirmClose
+    type: 'method: shouldConfirmClose(): boolean'
+  - name: confirmClose
+    type: 'method: confirmClose(inputModels: IMergeEditorInputModel[]): Promise<ConfirmResult>'
+  - name: accept
+    type: 'method: accept(): Promise<void>'
+  lines:
+  - 44
+  - 65
+- name: TempFileMergeEditorModeFactory
+  kind: model
+  bases:
+  - IMergeEditorInputModelFactory
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tprivate readonly _mergeEditorTelemetry: MergeEditorTelemetry,\n\t\t@IInstantiationService private readonly _instantiationService: IInstantiationService,\n\t\t@ITextModelService private readonly _textModelService: ITextModelService,\n\t\t@IModelService private readonly _modelService: IModelService,\n\t)"
+    lines:
+    - 70
+    - 76
+    detail: {}
+  - name: createInputModel
+    sig: 'createInputModel(args: MergeEditorArgs): Promise<IMergeEditorInputModel>'
+    is_async: true
+    lines:
+    - 78
+    - 126
+    detail:
+      calls:
+      - Promise.all
+      - new DisposableStore
+      - result.object.textEditorModel.getLanguageId
+      - result.object.textEditorModel.uri.with
+      - store.add
+      - this._instantiationService.createInstance
+      - this._modelService.createModel
+      - this._textModelService.createModelReference
+      - toInputData
+  lines:
+  - 69
+  - 127
+- name: TempFileMergeEditorInputModel
+  kind: model
+  bases:
+  - EditorModel
+  - IMergeEditorInputModel
+  fields:
+  - name: savedAltVersionId
+    type: any
+    default: observableValue(this, this.model.resultTextModel.getAlternativeVersionId())
+  - name: altVersionId
+    type: any
+    default: "observableFromEvent(this,\n\t\te => this.model.resultTextModel.onDidChangeContent(e..."
+  - name: isDirty
+    type: any
+    default: derived(this, (reader) => this.altVersionId.read(reader) !== this.savedAltVersio...
+  - name: finished
+    type: any
+    default: 'false'
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tpublic readonly model: MergeEditorModel,\n\t\tprivate readonly disposable: IDisposable,\n\t\tprivate readonly result: IResolvedTextEditorModel,\n\t\tpublic readonly resultUri: URI,\n\t\t@ITextFileService private readonly textFileService: ITextFileService,\n\t\t@IDialogService private readonly dialogService: IDialogService,\n\t\t@IEditorService private readonly editorService: IEditorService,\n\t)"
+    lines:
+    - 141
+    - 151
+    detail:
+      calls:
+      - super
+  - name: dispose
+    sig: 'dispose(): void'
+    lines:
+    - 153
+    - 156
+    detail:
+      calls:
+      - super.dispose
+      - this.disposable.dispose
+  - name: accept
+    sig: 'accept(): Promise<void>'
+    is_async: true
+    lines:
+    - 158
+    - 164
+    detail:
+      calls:
+      - this.model.resultTextModel.getAlternativeVersionId
+      - this.model.resultTextModel.getValue
+      - this.result.textEditorModel.setValue
+      - this.savedAltVersionId.set
+      - this.textFileService.save
+  - name: _discard
+    sig: '_discard(): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 166
+    - 170
+    detail:
+      calls:
+      - this.model.resultTextModel.getAlternativeVersionId
+      - this.savedAltVersionId.set
+      - this.textFileService.revert
+  - name: shouldConfirmClose
+    sig: 'shouldConfirmClose(): boolean'
+    lines:
+    - 172
+    - 174
+    detail: {}
+  - name: confirmClose
+    sig: 'confirmClose(inputModels: TempFileMergeEditorInputModel[]): Promise<ConfirmResult>'
+    is_async: true
+    lines:
+    - 176
+    - 235
+    detail:
+      calls:
+      - Promise.all
+      - assertFn
+      - await this.dialogService.prompt
+      - basename
+      - inputModels.map
+      - inputModels.some
+      - localize
+  - name: save
+    sig: 'save(options?: ITextFileSaveOptions): Promise<void>'
+    is_async: true
+    lines:
+    - 237
+    - 263
+    detail:
+      calls:
+      - "(async () => {\n\t\t\tconst { confirmed } = await this.dialogService.confirm({\n\t\t\t\tmessage: localize(\n\t\t..."
+  - name: revert
+    sig: 'revert(options?: IRevertOptions): Promise<void>'
+    is_async: true
+    lines:
+    - 265
+    - 267
+    detail: {}
+  lines:
+  - 129
+  - 268
+- name: WorkspaceMergeEditorModeFactory
+  kind: model
+  bases:
+  - IMergeEditorInputModelFactory
+  fields:
+  - name: FILE_SAVED_SOURCE
+    type: any
+    default: SaveSourceRegistry.registerSource('merge-editor.source', localize('merge-editor....
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tprivate readonly _mergeEditorTelemetry: MergeEditorTelemetry,\n\t\t@IInstantiationService private readonly _instantiationService: IInstantiationService,\n\t\t@ITextModelService private readonly _textModelService: ITextModelService,\n\t\t@ITextFileService private readonly textFileService: ITextFileService,\n\t\t@IModelService private readonly _modelService: IModelService,\n\t\t@ILanguageService private readonly _languageService: ILanguageService,\n\t)"
+    lines:
+    - 273
+    - 281
+    detail: {}
+  - name: createInputModel
+    sig: 'createInputModel(args: MergeEditorArgs): Promise<IMergeEditorInputModel>'
+    is_async: true
+    lines:
+    - 285
+    - 358
+    detail:
+      calls:
+      - Promise.all
+      - lines.some
+      - modelListener.add
+      - new BugIndicatingError
+      - new DisposableStore
+      - result.object.getLanguageId
+      - resultTextFileModel.save
+      - resultTextFileModel.textEditorModel!.getLinesContent
+      - store.add
+      - this._instantiationService.createInstance
+      - this._languageService.createById
+      - this._modelService.createModel
+      - this._textModelService.createModelReference
+      - this._textModelService.createModelReference(args.base).then
+      - "this._textModelService.createModelReference(args.base).then<IReference<ITextModel>>(v => ({\n\t\t\t\tobje..."
+      - this.textFileService.files.models.forEach
+      - this.textFileService.files.onDidCreate
+      - toInputData
+  lines:
+  - 272
+  - 359
+- name: WorkspaceMergeEditorInputModel
+  kind: model
+  ctx: If save resets the dirty state, revert must do so too.
+  bases:
+  - EditorModel
+  - IMergeEditorInputModel
+  fields:
+  - name: isDirty
+    type: any
+    default: "observableFromEvent(this,\n\t\tEvent.any(this.resultTextFileModel.onDidChangeDirty,..."
+  - name: reported
+    type: any
+    default: 'false'
+  - name: dateTimeOpened
+    type: any
+    default: new Date()
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tpublic readonly model: MergeEditorModel,\n\t\tprivate readonly disposableStore: DisposableStore,\n\t\tprivate readonly resultTextFileModel: ITextFileEditorModel,\n\t\tprivate readonly telemetry: MergeEditorTelemetry,\n\t\t@IDialogService private readonly _dialogService: IDialogService,\n\t\t@IStorageService private readonly _storageService: IStorageService,\n\t)"
+    lines:
+    - 370
+    - 379
+    detail:
+      calls:
+      - super
+  - name: dispose
+    sig: 'dispose(): void'
+    lines:
+    - 381
+    - 386
+    detail:
+      calls:
+      - super.dispose
+      - this.disposableStore.dispose
+      - this.reportClose
+  - name: reportClose
+    sig: 'reportClose(accepted: boolean): void'
+    vis: private
+    lines:
+    - 388
+    - 418
+    detail:
+      calls:
+      - new Date
+      - new Date().getTime
+      - this.dateTimeOpened.getTime
+      - this.model.unhandledConflictsCount.get
+      - this.telemetry.reportMergeEditorClosed
+  - name: accept
+    sig: 'accept(): Promise<void>'
+    is_async: true
+    lines:
+    - 420
+    - 423
+    detail:
+      calls:
+      - this.reportClose
+      - this.resultTextFileModel.save
+  - name: resultUri
+    sig: 'resultUri(): URI'
+    lines:
+    - 425
+    - 427
+    detail: {}
+  - name: save
+    sig: 'save(options?: ITextFileSaveOptions): Promise<void>'
+    is_async: true
+    lines:
+    - 429
+    - 431
+    detail:
+      calls:
+      - this.resultTextFileModel.save
+  - name: revert
+    sig: 'revert(options?: IRevertOptions): Promise<void>'
+    is_async: true
+    lines:
+    - 436
+    - 438
+    detail:
+      calls:
+      - this.resultTextFileModel.revert
+  - name: shouldConfirmClose
+    sig: 'shouldConfirmClose(): boolean'
+    lines:
+    - 440
+    - 443
+    detail: {}
+  - name: confirmClose
+    sig: 'confirmClose(inputModels: IMergeEditorInputModel[]): Promise<ConfirmResult>'
+    is_async: true
+    lines:
+    - 445
+    - 507
+    detail:
+      calls:
+      - await this._dialogService.prompt
+      - basename
+      - inputModels.some
+      - localize
+      - this._dialogService.confirm
+      - this._storageService.getBoolean
+      - this._storageService.store
+  lines:
+  - 361
+  - 508
+functions:
+- name: toInputData
+  sig: 'toInputData(data: MergeEditorInputData, textModelService: ITextModelService, store: DisposableStore): Promise<InputData>'
+  is_async: true
+  lines:
+  - 512
+  - 521
+  detail:
+    calls:
+    - store.add
+    - textModelService.createModelReference
+exports:
+- name: MergeEditorArgs
+  kind: type
+- name: IMergeEditorInputModelFactory
+  kind: type
+- name: IMergeEditorInputModel
+  kind: type
+- name: TempFileMergeEditorModeFactory
+  kind: type
+- name: TempFileMergeEditorInputModel
+  kind: type
+- name: WorkspaceMergeEditorModeFactory
+  kind: type
+- name: WorkspaceMergeEditorInputModel
+  kind: type
+- name: toInputData
+  kind: func

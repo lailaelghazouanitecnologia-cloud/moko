@@ -1,0 +1,371 @@
+## Roska File Descriptor — editor/editorPanes.ts
+file: editor/editorPanes.ts
+lines: 550
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: ../../../../nls.js.localize
+- sym: ../../../../base/common/actions.js.IAction
+- sym: ../../../../base/common/event.js.Emitter
+- sym: ../../../../base/common/severity.js.Severity
+- sym: ../../../../base/common/lifecycle.js.Disposable
+- sym: ../../../../base/common/lifecycle.js.DisposableStore
+- sym: ../../../common/editor.js.EditorExtensions
+- sym: ../../../common/editor.js.EditorInputCapabilities
+- sym: ../../../common/editor.js.IEditorOpenContext
+- sym: ../../../common/editor.js.IVisibleEditorPane
+- sym: ../../../common/editor.js.isEditorOpenError
+- sym: ../../../common/editor/editorInput.js.EditorInput
+- sym: ../../../../base/browser/dom.js.Dimension
+- sym: ../../../../base/browser/dom.js.show
+- sym: ../../../../base/browser/dom.js.hide
+- sym: ../../../../base/browser/dom.js.IDomNodePagePosition
+- sym: ../../../../base/browser/dom.js.isAncestor
+- sym: ../../../../base/browser/dom.js.getActiveElement
+- sym: ../../../../base/browser/dom.js.getWindowById
+- sym: ../../../../base/browser/dom.js.isEditableElement
+- sym: ../../../../base/browser/dom.js.$
+- sym: ../../../../platform/registry/common/platform.js.Registry
+- sym: ../../editor.js.IEditorPaneRegistry
+- sym: ../../editor.js.IEditorPaneDescriptor
+- sym: ../../../services/layout/browser/layoutService.js.IWorkbenchLayoutService
+- sym: ./editorPane.js.EditorPane
+- sym: ../../../../platform/instantiation/common/instantiation.js.IInstantiationService
+- sym: ../../../../platform/progress/common/progress.js.IEditorProgressService
+- sym: ../../../../platform/progress/common/progress.js.LongRunningOperation
+- sym: ./editor.js.IEditorGroupView
+- sym: ./editor.js.DEFAULT_EDITOR_MIN_DIMENSIONS
+- sym: ./editor.js.DEFAULT_EDITOR_MAX_DIMENSIONS
+- sym: ./editor.js.IInternalEditorOpenOptions
+- sym: ../../../../base/common/types.js.assertIsDefined
+- sym: ../../../../platform/workspace/common/workspaceTrust.js.IWorkspaceTrustManagementService
+- sym: ./editorPlaceholder.js.ErrorPlaceholderEditor
+- sym: ./editorPlaceholder.js.IErrorEditorPlaceholderOptions
+- sym: ./editorPlaceholder.js.WorkspaceTrustRequiredPlaceholderEditor
+- sym: ../../../../platform/editor/common/editor.js.EditorOpenSource
+- sym: ../../../../platform/editor/common/editor.js.IEditorOptions
+- sym: ../../../../base/common/errors.js.isCancellationError
+- sym: ../../../../base/common/errorMessage.js.toErrorMessage
+- sym: ../../../../platform/log/common/log.js.ILogService
+- sym: ../../../../platform/dialogs/common/dialogs.js.IDialogService
+- sym: ../../../../platform/dialogs/common/dialogs.js.IPromptButton
+- sym: ../../../../platform/dialogs/common/dialogs.js.IPromptCancelButton
+- sym: ../../../../base/browser/ui/sash/sash.js.IBoundarySashes
+- sym: ../../../services/host/browser/host.js.IHostService
+types:
+- name: IOpenEditorResult
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: readonly
+    type: EditorPane
+  - name: readonly
+    type: boolean
+  - name: readonly
+    type: Error
+  - name: readonly
+    type: boolean
+  lines:
+  - 32
+  - 64
+- name: EditorPanes
+  kind: struct
+  ctx: '#region Events'
+  bases:
+  - Disposable
+  fields:
+  - name: _onDidFocus
+    type: any
+    default: this._register(new Emitter<void>())
+  - name: onDidFocus
+    type: any
+    default: this._onDidFocus.event
+  - name: _onDidChangeSizeConstraints
+    type: any
+    default: 'this._register(new Emitter<{ width: number; height: number } | undefined>())'
+  - name: onDidChangeSizeConstraints
+    type: any
+    default: this._onDidChangeSizeConstraints.event
+  - name: _activeEditorPane
+    type: EditorPane | null
+    default: 'null'
+  - name: editorPanes
+    type: EditorPane[]
+    default: '[]'
+  - name: mapEditorPaneToPendingSetInput
+    type: any
+    default: new Map<EditorPane, Promise<void>>()
+  - name: activeEditorPaneDisposables
+    type: any
+    default: this._register(new DisposableStore())
+  - name: pagePosition
+    type: IDomNodePagePosition | undefined
+  - name: boundarySashes
+    type: IBoundarySashes | undefined
+  - name: editorOperation
+    type: LongRunningOperation
+  - name: editorPanesRegistry
+    type: any
+    default: Registry.as<IEditorPaneRegistry>(EditorExtensions.EditorPane)
+  methods:
+  - name: minimumWidth
+    sig: minimumWidth()
+    lines:
+    - 78
+    - 78
+    detail: {}
+  - name: minimumHeight
+    sig: minimumHeight()
+    lines:
+    - 79
+    - 79
+    detail: {}
+  - name: maximumWidth
+    sig: maximumWidth()
+    lines:
+    - 80
+    - 80
+    detail: {}
+  - name: maximumHeight
+    sig: maximumHeight()
+    lines:
+    - 81
+    - 81
+    detail: {}
+  - name: activeEditorPane
+    sig: 'activeEditorPane(): IVisibleEditorPane | null'
+    lines:
+    - 84
+    - 84
+    detail: {}
+  - name: constructor
+    sig: "constructor(\n\t\tprivate readonly editorGroupParent: HTMLElement,\n\t\tprivate readonly editorPanesParent: HTMLElement,\n\t\tprivate readonly groupView: IEditorGroupView,\n\t\t@IWorkbenchLayoutService private readonly layoutService: IWorkbenchLayoutService,\n\t\t@IInstantiationService private readonly instantiationService: IInstantiationService,\n\t\t@IEditorProgressService editorProgressService: IEditorProgressService,\n\t\t@IWorkspaceTrustManagementService private readonly workspaceTrustService: IWorkspaceTrustManagementService,\n\t\t@ILogService private readonly logService: ILogService,\n\t\t@IDialogService private readonly dialogService: IDialogService,\n\t\t@IHostService private readonly hostService: IHostService\n\t)"
+    lines:
+    - 97
+    - 114
+    detail:
+      calls:
+      - new LongRunningOperation
+      - super
+      - this._register
+      - this.registerListeners
+  - name: openEditor
+    sig: 'openEditor(editor: EditorInput, options: IEditorOptions | undefined, internalOptions: IInternalEditorOpenOptions | undefined, context: IEditorOpenContext = Object.create(null)): Promise<IOpenEditorResult>'
+    is_async: true
+    lines:
+    - 134
+    - 153
+    detail:
+      calls:
+      - this.doOpenEditor
+      - this.doShowError
+      - this.getEditorPaneDescriptor
+  - name: doShowError
+    sig: 'doShowError(error: Error, editor: EditorInput, options: IEditorOptions | undefined, internalOptions: IInternalEditorOpenOptions | undefined, context?: IEditorOpenContext): Promise<IOpenEditorResult>'
+    is_async: true
+    vis: private
+    lines:
+    - 155
+    - 181
+    detail:
+      calls:
+      - isCancellationError
+      - isEditorOpenError
+      - this.doOpenEditor
+      - this.doShowErrorDialog
+      - this.logService.error
+  - name: doShowErrorDialog
+    sig: 'doShowErrorDialog(error: Error, editor: EditorInput): Promise<boolean>'
+    is_async: true
+    vis: private
+    lines:
+    - 183
+    - 248
+    detail:
+      calls:
+      - buttons.push
+      - editor.getName
+      - errorActionResult.catch
+      - isEditorOpenError
+      - localize
+      - result.run
+      - this.dialogService.prompt
+      - toErrorMessage
+  - name: doOpenEditor
+    sig: 'doOpenEditor(descriptor: IEditorPaneDescriptor, editor: EditorInput, options: IEditorOptions | undefined, internalOptions: IInternalEditorOpenOptions | undefined, context: IEditorOpenContext = Object.create(null)): Promise<IOpenEditorResult>'
+    is_async: true
+    vis: private
+    lines:
+    - 250
+    - 274
+    detail:
+      calls:
+      - getActiveElement
+      - getWindowById
+      - pane.focus
+      - this.doSetInput
+      - this.doShowEditorPane
+      - this.hostService.moveTop
+      - this.shouldRestoreFocus
+  - name: shouldRestoreFocus
+    sig: 'shouldRestoreFocus(expectedActiveElement: Element | null): boolean'
+    vis: private
+    lines:
+    - 276
+    - 309
+    detail:
+      calls:
+      - getActiveElement
+      - isAncestor
+      - isEditableElement
+      - this.layoutService.isRestored
+  - name: getEditorPaneDescriptor
+    sig: 'getEditorPaneDescriptor(editor: EditorInput): IEditorPaneDescriptor'
+    vis: private
+    lines:
+    - 311
+    - 321
+    detail:
+      calls:
+      - assertIsDefined
+      - editor.hasCapability
+      - this.editorPanesRegistry.getEditorPane
+      - this.workspaceTrustService.isWorkspaceTrusted
+  - name: doShowEditorPane
+    sig: 'doShowEditorPane(descriptor: IEditorPaneDescriptor): EditorPane'
+    vis: private
+    lines:
+    - 323
+    - 358
+    detail:
+      calls:
+      - assertIsDefined
+      - descriptor.describes
+      - editorPane.getContainer
+      - editorPane.layout
+      - editorPane.setBoundarySashes
+      - editorPane.setVisible
+      - new Dimension
+      - show
+      - this.doCreateEditorPane
+      - this.doHideActiveEditorPane
+      - this.doSetActiveEditorPane
+      - this.editorPanesParent.appendChild
+  - name: doCreateEditorPane
+    sig: 'doCreateEditorPane(descriptor: IEditorPaneDescriptor): EditorPane'
+    vis: private
+    lines:
+    - 360
+    - 392
+    detail:
+      calls:
+      - $
+      - editorPane.create
+      - editorPane.getContainer
+      - editorPaneContainer.remove
+      - hide
+      - this.doInstantiateEditorPane
+      - this.editorPanesParent.appendChild
+  - name: doInstantiateEditorPane
+    sig: 'doInstantiateEditorPane(descriptor: IEditorPaneDescriptor): EditorPane'
+    vis: private
+    lines:
+    - 394
+    - 407
+    detail:
+      calls:
+      - descriptor.instantiate
+      - this._register
+      - this.editorPanes.find
+      - this.editorPanes.push
+  - name: doSetActiveEditorPane
+    sig: 'doSetActiveEditorPane(editorPane: EditorPane | null)'
+    vis: private
+    lines:
+    - 409
+    - 423
+    detail:
+      calls:
+      - editorPane.onDidChangeSizeConstraints
+      - editorPane.onDidFocus
+      - this._onDidChangeSizeConstraints.fire
+      - this.activeEditorPaneDisposables.add
+      - this.activeEditorPaneDisposables.clear
+  - name: doSetInput
+    sig: 'doSetInput(editorPane: EditorPane, editor: EditorInput, options: IEditorOptions | undefined, context: IEditorOpenContext): Promise<{ changed: boolean; cancelled: boolean }>'
+    is_async: true
+    vis: private
+    lines:
+    - 425
+    - 485
+    detail:
+      calls:
+      - editorPane.clearInput
+      - editorPane.input?.matches
+      - editorPane.setInput
+      - editorPane.setOptions
+      - operation.isCurrent
+      - operation.stop
+      - this.editorOperation.start
+      - this.layoutService.isRestored
+      - this.mapEditorPaneToPendingSetInput.delete
+      - this.mapEditorPaneToPendingSetInput.get
+      - this.mapEditorPaneToPendingSetInput.has
+      - this.mapEditorPaneToPendingSetInput.set
+  - name: doHideActiveEditorPane
+    sig: 'doHideActiveEditorPane(): void'
+    vis: private
+    lines:
+    - 487
+    - 513
+    detail:
+      calls:
+      - editorPaneContainer.remove
+      - hide
+      - this._activeEditorPane.getContainer
+      - this.doSetActiveEditorPane
+      - this.editorOperation.stop
+      - this.mapEditorPaneToPendingSetInput.delete
+      - this.safeRun
+  - name: closeEditor
+    sig: 'closeEditor(editor: EditorInput): void'
+    lines:
+    - 515
+    - 519
+    detail:
+      calls:
+      - editor.matches
+      - this.doHideActiveEditorPane
+  - name: setVisible
+    sig: 'setVisible(visible: boolean): void'
+    lines:
+    - 521
+    - 523
+    detail:
+      calls:
+      - this.safeRun
+  - name: layout
+    sig: 'layout(pagePosition: IDomNodePagePosition): void'
+    lines:
+    - 525
+    - 529
+    detail:
+      calls:
+      - this.safeRun
+  - name: setBoundarySashes
+    sig: 'setBoundarySashes(sashes: IBoundarySashes): void'
+    lines:
+    - 531
+    - 535
+    detail:
+      calls:
+      - this.safeRun
+  lines:
+  - 66
+  - 550
+exports:
+- name: IOpenEditorResult
+  kind: type
+- name: EditorPanes
+  kind: type

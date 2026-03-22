@@ -1,0 +1,895 @@
+## Roska File Descriptor — common/tunnelModel.ts
+file: common/tunnelModel.ts
+lines: 1045
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: ../../../../nls.js.nls
+- sym: ../../../../base/common/decorators.js.debounce
+- sym: ../../../../base/common/event.js.Emitter
+- sym: ../../../../base/common/event.js.Event
+- sym: ../../../../base/common/hash.js.hash
+- sym: ../../../../base/common/lifecycle.js.Disposable
+- sym: ../../../../base/common/lifecycle.js.DisposableStore
+- sym: ../../../../base/common/uri.js.URI
+- sym: ../../../../platform/configuration/common/configuration.js.ConfigurationTarget
+- sym: ../../../../platform/configuration/common/configuration.js.IConfigurationService
+- sym: ../../../../platform/dialogs/common/dialogs.js.IDialogService
+- sym: ../../../../platform/log/common/log.js.ILogService
+- sym: ../../../../platform/remote/common/remoteAgentConnection.js.IAddressProvider
+- sym: ../../../../platform/remote/common/remoteAuthorityResolver.js.IRemoteAuthorityResolverService
+- sym: ../../../../platform/remote/common/remoteAuthorityResolver.js.TunnelDescription
+- sym: ../../../../platform/storage/common/storage.js.IStorageService
+- sym: ../../../../platform/storage/common/storage.js.StorageScope
+- sym: ../../../../platform/storage/common/storage.js.StorageTarget
+- sym: ../../../../platform/tunnel/common/tunnel.js.RemoteTunnel
+- sym: ../../../../platform/tunnel/common/tunnel.js.ITunnelService
+- sym: ../../../../platform/tunnel/common/tunnel.js.TunnelProtocol
+- sym: ../../../../platform/tunnel/common/tunnel.js.TunnelPrivacyId
+- sym: ../../../../platform/tunnel/common/tunnel.js.LOCALHOST_ADDRESSES
+- sym: ../../../../platform/tunnel/common/tunnel.js.ProvidedPortAttributes
+- sym: ../../../../platform/tunnel/common/tunnel.js.PortAttributesProvider
+- sym: ../../../../platform/tunnel/common/tunnel.js.isLocalhost
+- sym: ../../../../platform/tunnel/common/tunnel.js.isAllInterfaces
+- sym: ../../../../platform/tunnel/common/tunnel.js.ProvidedOnAutoForward
+- sym: ../../../../platform/tunnel/common/tunnel.js.ALL_INTERFACES_ADDRESSES
+- sym: ../../../../platform/workspace/common/workspace.js.IWorkspaceContextService
+- sym: ../../environment/common/environmentService.js.IWorkbenchEnvironmentService
+- sym: ../../extensions/common/extensions.js.IExtensionService
+- sym: ../../../../base/common/cancellation.js.CancellationToken
+- sym: ../../../../base/common/types.js.isNumber
+- sym: ../../../../base/common/types.js.isObject
+- sym: ../../../../base/common/types.js.isString
+- sym: ../../../../base/common/objects.js.deepClone
+- sym: ../../../../platform/contextkey/common/contextkey.js.IContextKeyService
+- sym: ../../../../platform/contextkey/common/contextkey.js.RawContextKey
+data:
+- name: MISMATCH_LOCAL_PORT_COOLDOWN
+  type: any
+  val: 10 * 1000
+- name: TUNNELS_TO_RESTORE
+  type: string
+  val: '''remote.tunnels.toRestore'''
+- name: TUNNELS_TO_RESTORE_EXPIRATION
+  type: string
+  val: '''remote.tunnels.toRestoreExpiration'''
+- name: RESTORE_EXPIRATION_TIME
+  type: any
+  val: 1000 * 60 * 60 * 24 * 14
+- name: ACTIVATION_EVENT
+  type: string
+  val: '''onTunnel'''
+- name: forwardedPortsFeaturesEnabled
+  type: any
+  val: new RawContextKey<boolean>('forwardedPortsViewEnabled', false, nls.localize('tunnel.forwardedPortsViewEnabled', "Whether...
+- name: forwardedPortsViewEnabled
+  type: any
+  val: new RawContextKey<boolean>('forwardedPortsViewOnlyEnabled', false, nls.localize('tunnel.forwardedPortsViewEnabled', "Whe...
+- name: UserTunnelSource
+  type: object
+  val: "{\n\tsource: TunnelSource.User,\n\tdescription: nls.localize('tunnel.source.user', \"User Forwarded\")\n}"
+- name: AutoTunnelSource
+  type: object
+  val: "{\n\tsource: TunnelSource.Auto,\n\tdescription: nls.localize('tunnel.source.auto', \"Auto Forwarded\")\n}"
+types:
+- name: RestorableTunnel
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: remoteHost
+    type: string
+  - name: remotePort
+    type: number
+  - name: localAddress
+    type: string
+  - name: localUri
+    type: URI
+  - name: protocol
+    type: TunnelProtocol
+  - name: localPort
+    type: number
+  - name: source
+    type: "{\n\t\tsource: TunnelSource;\n\t\tdescription: string;\n\t}"
+  lines:
+  - 35
+  - 47
+- name: Tunnel
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: remoteHost
+    type: string
+  - name: remotePort
+    type: number
+  - name: localAddress
+    type: string
+  - name: localUri
+    type: URI
+  - name: protocol
+    type: TunnelProtocol
+  - name: localPort
+    type: number
+  - name: closeable
+    type: boolean
+  - name: privacy
+    type: TunnelPrivacyId | string
+  - name: runningProcess
+    type: string | undefined
+  - name: hasRunningProcess
+    type: boolean
+  - name: pid
+    type: number | undefined
+  - name: source
+    type: "{\n\t\tsource: TunnelSource;\n\t\tdescription: string;\n\t}"
+  lines:
+  - 49
+  - 66
+- name: TunnelCloseReason
+  kind: enum
+  variants:
+  - name: Other
+    val: '''Other'''
+  - name: User
+    val: '''User'''
+  - name: AutoForwardEnd
+    val: '''AutoForwardEnd'''
+  lines:
+  - 76
+  - 80
+- name: TunnelSource
+  kind: enum
+  variants:
+  - name: User
+  - name: Auto
+  - name: Extension
+  lines:
+  - 82
+  - 86
+- name: TunnelProperties
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: remote
+    type: '{ host: string; port: number }'
+  - name: local
+    type: number
+  - name: source
+    type: "{\n\t\tsource: TunnelSource;\n\t\tdescription: string;\n\t}"
+  - name: elevateIfNeeded
+    type: boolean
+  - name: privacy
+    type: string
+  lines:
+  - 141
+  - 151
+- name: CandidatePort
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: host
+    type: string
+  - name: port
+    type: number
+  - name: detail
+    type: string
+  - name: pid
+    type: number
+  lines:
+  - 153
+  - 158
+- name: PortAttributes
+  kind: trait
+  bases:
+  - Attributes
+  decorators:
+  - interface
+  fields:
+  - name: key
+    type: number | PortRange | RegExp | HostAndPort
+  lines:
+  - 160
+  - 162
+- name: OnPortForward
+  kind: enum
+  variants:
+  - name: Notify
+    val: '''notify'''
+  - name: OpenBrowser
+    val: '''openBrowser'''
+  - name: OpenBrowserOnce
+    val: '''openBrowserOnce'''
+  - name: OpenPreview
+    val: '''openPreview'''
+  - name: Silent
+    val: '''silent'''
+  - name: Ignore
+    val: '''ignore'''
+  lines:
+  - 164
+  - 171
+- name: Attributes
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: label
+    type: string | undefined
+  - name: onAutoForward
+    type: OnPortForward | undefined
+  - name: elevateIfNeeded
+    type: boolean | undefined
+  - name: requireLocalPort
+    type: boolean | undefined
+  - name: protocol
+    type: TunnelProtocol | undefined
+  lines:
+  - 173
+  - 179
+- name: PortRange
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: start
+    type: number
+  - name: end
+    type: number
+  lines:
+  - 181
+  - 181
+- name: HostAndPort
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: host
+    type: string
+  - name: port
+    type: number
+  lines:
+  - 183
+  - 183
+- name: PortsAttributes
+  kind: struct
+  bases:
+  - Disposable
+  fields:
+  - name: SETTING
+    type: any
+    default: '''remote.portsAttributes'''
+  - name: DEFAULTS
+    type: any
+    default: '''remote.otherPortsAttributes'''
+  - name: RANGE
+    type: any
+    default: /^(\d+)\-(\d+)$/
+  - name: HOST_AND_PORT
+    type: any
+    default: /^([a-z0-9\-]+):(\d{1,5})$/
+  - name: portsAttributes
+    type: PortAttributes[]
+    default: '[]'
+  - name: defaultPortAttributes
+    type: Attributes | undefined
+  - name: _onDidChangeAttributes
+    type: any
+    default: new Emitter<void>()
+  - name: onDidChangeAttributes
+    type: any
+    default: this._onDidChangeAttributes.event
+  methods:
+  - name: constructor
+    sig: 'constructor(private readonly configurationService: IConfigurationService)'
+    lines:
+    - 202
+    - 210
+    detail:
+      calls:
+      - configurationService.onDidChangeConfiguration
+      - super
+      - this._register
+      - this.updateAttributes
+  - name: getAttributes
+    sig: 'getAttributes(port: number, host: string, commandLine?: string): Attributes | undefined'
+    lines:
+    - 217
+    - 252
+    detail:
+      calls:
+      - this.findNextIndex
+      - this.getOtherAttributes
+  - name: readSetting
+    sig: 'readSetting(): PortAttributes[]'
+    vis: private
+    lines:
+    - 284
+    - 343
+    detail:
+      calls:
+      - Number
+      - PortsAttributes.HOST_AND_PORT.test
+      - PortsAttributes.RANGE.test
+      - RegExp
+      - attributes.push
+      - attributesKey.match
+      - isObject
+      - isString
+      - this.configurationService.getValue
+      - this.sortAttributes
+  - name: providedActionToAction
+    sig: 'providedActionToAction(providedAction: ProvidedOnAutoForward | undefined)'
+    decorators:
+    - static
+    lines:
+    - 367
+    - 377
+    detail: {}
+  - name: addAttributes
+    sig: 'addAttributes(port: number, attributes: Partial<Attributes>, target: ConfigurationTarget)'
+    is_async: true
+    lines:
+    - 379
+    - 397
+    detail:
+      calls:
+      - deepClone
+      - isObject
+      - this.configurationService.inspect
+      - this.configurationService.updateValue
+  lines:
+  - 192
+  - 398
+- name: TunnelModel
+  kind: struct
+  ctx: onCandidateChanged returns the removed candidates
+  bases:
+  - Disposable
+  fields:
+  - name: forwarded
+    type: Map<string, Tunnel>
+  - name: inProgress
+    type: Map<string, true>
+    default: new Map()
+  - name: detected
+    type: Map<string, Tunnel>
+  - name: remoteTunnels
+    type: Map<string, RemoteTunnel>
+  - name: _onForwardPort
+    type: Emitter<Tunnel | void>
+    default: new Emitter()
+  - name: onForwardPort
+    type: Event<Tunnel | void>
+    default: this._onForwardPort.event
+  - name: _onClosePort
+    type: 'Emitter<{ host: string; port: number }>'
+    default: new Emitter()
+  - name: onClosePort
+    type: 'Event<{ host: string; port: number }>'
+    default: this._onClosePort.event
+  - name: _onPortName
+    type: 'Emitter<{ host: string; port: number }>'
+    default: new Emitter()
+  - name: onPortName
+    type: 'Event<{ host: string; port: number }>'
+    default: this._onPortName.event
+  - name: _candidates
+    type: Map<string, CandidatePort> | undefined
+  - name: _onCandidatesChanged
+    type: 'Emitter<Map<string, { host: string; port: number }>>'
+    default: new Emitter()
+  - name: onCandidatesChanged
+    type: 'Event<Map<string, { host: string; port: number }>>'
+    default: this._onCandidatesChanged.event
+  - name: _candidateFilter
+    type: '((candidates: CandidatePort[]) => Promise<CandidatePort[]>) | undefined'
+  - name: tunnelRestoreValue
+    type: Promise<string | undefined>
+  - name: _onEnvironmentTunnelsSet
+    type: Emitter<void>
+    default: new Emitter()
+  - name: onEnvironmentTunnelsSet
+    type: Event<void>
+    default: this._onEnvironmentTunnelsSet.event
+  - name: _environmentTunnelsSet
+    type: boolean
+    default: 'false'
+  - name: configPortsAttributes
+    type: PortsAttributes
+  - name: restoreListener
+    type: DisposableStore | undefined
+    default: undefined
+  - name: knownPortsRestoreValue
+    type: string | undefined
+  - name: restoreComplete
+    type: any
+    default: 'false'
+  - name: onRestoreComplete
+    type: Emitter<void>
+    default: new Emitter()
+  - name: unrestoredExtensionTunnels
+    type: Map<string, RestorableTunnel>
+    default: new Map()
+  - name: sessionCachedProperties
+    type: Map<string, Partial<TunnelProperties>>
+    default: new Map()
+  - name: portAttributesProviders
+    type: PortAttributesProvider[]
+    default: '[]'
+  - name: hasCheckedExtensionsOnTunnelOpened
+    type: any
+    default: 'false'
+  - name: mismatchCooldown
+    type: any
+    default: new Date()
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\t@ITunnelService private readonly tunnelService: ITunnelService,\n\t\t@IStorageService private readonly storageService: IStorageService,\n\t\t@IConfigurationService private readonly configurationService: IConfigurationService,\n\t\t@IWorkbenchEnvironmentService private readonly environmentService: IWorkbenchEnvironmentService,\n\t\t@IRemoteAuthorityResolverService private readonly remoteAuthorityResolverService: IRemoteAuthorityResolverService,\n\t\t@IWorkspaceContextService private readonly workspaceContextService: IWorkspaceContextService,\n\t\t@ILogService private readonly logService: ILogService,\n\t\t@IDialogService private readonly dialogService: IDialogService,\n\t\t@IExtensionService private readonly extensionService: IExtensionService,\n\t\t@IContextKeyService private readonly contextKeyService: IContextKeyService\n\t)"
+    lines:
+    - 430
+    - 509
+    detail:
+      calls:
+      - new Map
+      - new PortsAttributes
+      - super
+      - this._register
+      - this.checkExtensionActivationEvents
+      - this.configPortsAttributes.onDidChangeAttributes
+      - this.getTunnelRestoreValue
+      - this.tunnelService.onTunnelClosed
+      - this.tunnelService.onTunnelOpened
+      - this.tunnelService.tunnels.then
+  - name: checkExtensionActivationEvents
+    sig: 'checkExtensionActivationEvents(tunnelOpened: boolean)'
+    vis: private
+    lines:
+    - 520
+    - 541
+    detail:
+      calls:
+      - this._register
+      - this.extensionHasActivationEvent
+      - this.extensionService.onDidRegisterExtensions
+  - name: onTunnelClosed
+    sig: 'onTunnelClosed(address: { host: string; port: number }, reason: TunnelCloseReason)'
+    is_async: true
+    vis: private
+    lines:
+    - 543
+    - 550
+    detail:
+      calls:
+      - makeAddress
+      - this._onClosePort.fire
+      - this.forwarded.delete
+      - this.forwarded.has
+      - this.storeForwarded
+  - name: addStorageKeyPostfix
+    sig: 'addStorageKeyPostfix(prefix: string): Promise<string | undefined>'
+    is_async: true
+    vis: private
+    lines:
+    - 560
+    - 568
+    detail:
+      calls:
+      - hash
+      - this.logService.debug
+      - this.workspaceContextService.getWorkspace
+  - name: getTunnelRestoreStorageKey
+    sig: 'getTunnelRestoreStorageKey(): Promise<string | undefined>'
+    is_async: true
+    vis: private
+    lines:
+    - 570
+    - 572
+    detail:
+      calls:
+      - this.addStorageKeyPostfix
+  - name: getRestoreExpirationStorageKey
+    sig: 'getRestoreExpirationStorageKey(): Promise<string | undefined>'
+    is_async: true
+    vis: private
+    lines:
+    - 574
+    - 576
+    detail:
+      calls:
+      - this.addStorageKeyPostfix
+  - name: getTunnelRestoreValue
+    sig: 'getTunnelRestoreValue(): Promise<string | undefined>'
+    is_async: true
+    vis: private
+    lines:
+    - 578
+    - 590
+    detail:
+      calls:
+      - this.getTunnelRestoreStorageKey
+      - this.storageService.get
+      - this.storageService.remove
+      - this.storeForwarded
+  - name: restoreForwarded
+    sig: restoreForwarded()
+    is_async: true
+    lines:
+    - 592
+    - 631
+    detail:
+      calls:
+      - JSON.parse
+      - makeAddress
+      - mapHasAddressLocalhostOrAllInterfaces
+      - new DisposableStore
+      - this._register
+      - this.cleanupExpiredTunnelsForRestore
+      - this.configurationService.getValue
+      - this.doForward
+      - this.getTunnelRestoreStorageKey
+      - this.logService.trace
+      - this.onRestoreComplete.fire
+      - this.restoreListener.add
+      - this.storageService.onDidChangeValue
+      - this.storageService.onDidChangeValue(StorageScope.PROFILE, undefined, this.restoreListener)
+      - this.unrestoredExtensionTunnels.set
+      - tunnels.map
+      - tunnels.map(tunnel => tunnel.remotePort).join
+  - name: cleanupExpiredTunnelsForRestore
+    sig: cleanupExpiredTunnelsForRestore()
+    vis: private
+    lines:
+    - 633
+    - 644
+    detail:
+      calls:
+      - Date.now
+      - Promise.resolve
+      - key.replace
+      - this.storageService.getNumber
+      - this.storageService.keys
+      - this.storageService.keys(StorageScope.PROFILE, StorageTarget.USER).filter
+      - this.storageService.remove
+  - name: storeForwarded
+    sig: storeForwarded()
+    is_async: true
+    vis: private
+    lines:
+    - 647
+    - 678
+    detail:
+      calls:
+      - Array.from
+      - Date.now
+      - JSON.stringify
+      - forwarded.map
+      - this.configurationService.getValue
+      - this.forwarded.values
+      - this.getRestoreExpirationStorageKey
+      - this.getTunnelRestoreStorageKey
+      - this.storageService.remove
+      - this.storageService.store
+  - name: showPortMismatchModalIfNeeded
+    sig: 'showPortMismatchModalIfNeeded(tunnel: RemoteTunnel, expectedLocal: number, attributes: Attributes | undefined)'
+    is_async: true
+    vis: private
+    lines:
+    - 681
+    - 697
+    detail:
+      calls:
+      - new Date
+      - newCooldown.getTime
+      - nls.localize
+      - this.dialogService.info
+      - this.mismatchCooldown.getTime
+  - name: forward
+    sig: 'forward(tunnelProperties: TunnelProperties, attributes?: Attributes | null): Promise<RemoteTunnel | string | undefined>'
+    is_async: true
+    lines:
+    - 699
+    - 704
+    detail:
+      calls:
+      - Event.toPromise
+      - this.doForward
+  - name: doForward
+    sig: 'doForward(tunnelProperties: TunnelProperties, attributes?: Attributes | null): Promise<RemoteTunnel | string | undefined>'
+    is_async: true
+    vis: private
+    lines:
+    - 706
+    - 764
+    detail:
+      calls:
+      - (await this.getAttributes([tunnelProperties.remote]))?.get
+      - makeAddress
+      - mapHasAddressLocalhostOrAllInterfaces
+      - new Map
+      - this._onForwardPort.fire
+      - this.extensionService.activateByEvent
+      - this.forwarded.set
+      - this.getAttributes
+      - this.inProgress.delete
+      - this.inProgress.set
+      - this.makeLocalUri
+      - this.mergeAttributesIntoExistingTunnel
+      - this.mergeCachedAndUnrestoredProperties
+      - this.remoteTunnels.set
+      - this.showPortMismatchModalIfNeeded
+      - this.storeForwarded
+      - this.tunnelService.openTunnel
+  - name: mergeCachedAndUnrestoredProperties
+    sig: 'mergeCachedAndUnrestoredProperties(key: string, tunnelProperties: TunnelProperties): TunnelProperties'
+    vis: private
+    lines:
+    - 766
+    - 778
+    detail:
+      calls:
+      - map.delete
+      - map.get
+      - this.sessionCachedProperties.has
+      - this.unrestoredExtensionTunnels.has
+  - name: mergeAttributesIntoExistingTunnel
+    sig: 'mergeAttributesIntoExistingTunnel(existingTunnel: Tunnel, tunnelProperties: TunnelProperties, attributes: Attributes | undefined)'
+    is_async: true
+    vis: private
+    lines:
+    - 780
+    - 813
+    detail:
+      calls:
+      - mapHasAddressLocalhostOrAllInterfaces
+      - this._onForwardPort.fire
+      - this.close
+      - this.doForward
+  - name: name
+    sig: 'name(host: string, port: number, name: string)'
+    is_async: true
+    lines:
+    - 815
+    - 827
+    detail:
+      calls:
+      - makeAddress
+      - mapHasAddressLocalhostOrAllInterfaces
+      - this._onPortName.fire
+      - this.detected.get
+      - this.detected.has
+      - this.storeForwarded
+  - name: close
+    sig: 'close(host: string, port: number, reason: TunnelCloseReason): Promise<void>'
+    is_async: true
+    lines:
+    - 829
+    - 841
+    detail:
+      calls:
+      - makeAddress
+      - this.forwarded.get
+      - this.onTunnelClosed
+      - this.sessionCachedProperties.set
+      - this.tunnelService.closeTunnel
+  - name: address
+    sig: 'address(host: string, port: number): string | undefined'
+    lines:
+    - 843
+    - 846
+    detail:
+      calls:
+      - makeAddress
+      - this.detected.get
+      - this.forwarded.get
+  - name: environmentTunnelsSet
+    sig: 'environmentTunnelsSet(): boolean'
+    lines:
+    - 848
+    - 850
+    detail: {}
+  - name: addEnvironmentTunnels
+    sig: 'addEnvironmentTunnels(tunnels: TunnelDescription[] | undefined): void'
+    lines:
+    - 852
+    - 879
+    detail:
+      calls:
+      - makeAddress
+      - mapHasAddressLocalhostOrAllInterfaces
+      - new Map
+      - nls.localize
+      - this._onEnvironmentTunnelsSet.fire
+      - this._onForwardPort.fire
+      - this.detected.set
+      - this.makeLocalUri
+      - this.tunnelService.setEnvironmentTunnel
+  - name: setCandidateFilter
+    sig: 'setCandidateFilter(filter: ((candidates: CandidatePort[]) => Promise<CandidatePort[]>) | undefined): void'
+    lines:
+    - 881
+    - 883
+    detail: {}
+  - name: setCandidates
+    sig: 'setCandidates(candidates: CandidatePort[])'
+    is_async: true
+    lines:
+    - 885
+    - 895
+    detail:
+      calls:
+      - Array.from
+      - Array.from(removedCandidates.values()).map
+      - Array.from(removedCandidates.values()).map(candidate => candidate.port).join
+      - removedCandidates.values
+      - this._candidateFilter
+      - this._onCandidatesChanged.fire
+      - this.logService.trace
+      - this.updateInResponseToCandidates
+  - name: updateInResponseToCandidates
+    sig: 'updateInResponseToCandidates(candidates: CandidatePort[]): Map<string, { host: string; port: number }>'
+    vis: private
+    lines:
+    - 898
+    - 939
+    detail:
+      calls:
+      - candidates.forEach
+      - new Map
+      - removedCandidates.forEach
+  - name: candidates
+    sig: 'candidates(): CandidatePort[]'
+    lines:
+    - 941
+    - 943
+    detail:
+      calls:
+      - Array.from
+      - this._candidates.values
+  - name: candidatesOrUndefined
+    sig: 'candidatesOrUndefined(): CandidatePort[] | undefined'
+    lines:
+    - 945
+    - 947
+    detail: {}
+  - name: updateAttributes
+    sig: updateAttributes()
+    is_async: true
+    vis: private
+    lines:
+    - 949
+    - 977
+    detail:
+      calls:
+      - Array.from
+      - allAttributes.get
+      - this.doForward
+      - this.forwarded.values
+      - this.getAttributes
+      - this.name
+      - tunnels.map
+  - name: getAttributes
+    sig: 'getAttributes(forwardedPorts: { host: string; port: number }[], checkProviders: boolean = true): Promise<Map<number, Attributes> | undefined>'
+    is_async: true
+    lines:
+    - 979
+    - 1040
+    detail:
+      calls:
+      - Promise.all
+      - allProviderResults.forEach
+      - forwardedPorts.forEach
+      - new Map
+      - this.portAttributesProviders.flatMap
+  - name: addAttributesProvider
+    sig: 'addAttributesProvider(provider: PortAttributesProvider)'
+    lines:
+    - 1042
+    - 1044
+    detail:
+      calls:
+      - this.portAttributesProviders.push
+  lines:
+  - 400
+  - 1045
+functions:
+- name: parseAddress
+  sig: 'parseAddress(address: string): { host: string; port: number } | undefined'
+  lines:
+  - 68
+  - 74
+  detail:
+    calls:
+    - Number
+    - address.match
+    - matches[1]?.substring
+- name: mapHasAddress
+  sig: 'mapHasAddress(map: Map<string, T>, host: string, port: number): T | undefined'
+  lines:
+  - 97
+  - 122
+  detail:
+    calls:
+    - isAllInterfaces
+    - isLocalhost
+    - makeAddress
+    - map.get
+    - map.has
+- name: mapHasAddressLocalhostOrAllInterfaces
+  sig: 'mapHasAddressLocalhostOrAllInterfaces(map: Map<string, T>, host: string, port: number): T | undefined'
+  lines:
+  - 124
+  - 134
+  detail:
+    calls:
+    - isAllInterfaces
+    - isLocalhost
+    - mapHasAddress
+- name: makeAddress
+  sig: 'makeAddress(host: string, port: number): string'
+  lines:
+  - 137
+  - 139
+- name: isCandidatePort
+  sig: 'isCandidatePort(candidate: any)'
+  lines:
+  - 185
+  - 190
+  detail: {}
+exports:
+- name: RestorableTunnel
+  kind: type
+- name: Tunnel
+  kind: type
+- name: TunnelCloseReason
+  kind: type
+- name: TunnelSource
+  kind: type
+- name: TunnelProperties
+  kind: type
+- name: CandidatePort
+  kind: type
+- name: PortAttributes
+  kind: type
+- name: OnPortForward
+  kind: type
+- name: Attributes
+  kind: type
+- name: PortRange
+  kind: type
+- name: HostAndPort
+  kind: type
+- name: PortsAttributes
+  kind: type
+- name: TunnelModel
+  kind: type
+- name: parseAddress
+  kind: func
+- name: mapHasAddress
+  kind: func
+- name: mapHasAddressLocalhostOrAllInterfaces
+  kind: func
+- name: makeAddress
+  kind: func
+- name: isCandidatePort
+  kind: func
+- name: MISMATCH_LOCAL_PORT_COOLDOWN
+  kind: data
+- name: TUNNELS_TO_RESTORE
+  kind: data
+- name: TUNNELS_TO_RESTORE_EXPIRATION
+  kind: data
+- name: RESTORE_EXPIRATION_TIME
+  kind: data
+- name: ACTIVATION_EVENT
+  kind: data
+- name: forwardedPortsFeaturesEnabled
+  kind: data
+- name: forwardedPortsViewEnabled
+  kind: data
+- name: UserTunnelSource
+  kind: data
+- name: AutoTunnelSource
+  kind: data

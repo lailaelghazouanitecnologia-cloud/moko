@@ -1,0 +1,1593 @@
+## Roska File Descriptor — browser/notebookBrowser.ts
+file: browser/notebookBrowser.ts
+lines: 999
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: ../../../../base/browser/window.js.CodeWindow
+- sym: ../../../../base/common/cancellation.js.CancellationToken
+- sym: ../../../../base/common/event.js.Event
+- sym: ../../../../base/common/lifecycle.js.IDisposable
+- sym: ../../../../base/common/uri.js.URI
+- sym: ../../../../editor/browser/editorExtensions.js.IEditorContributionDescription
+- sym: ../../../../editor/common/editorCommon.js.editorCommon
+- sym: ../../../../editor/common/config/fontInfo.js.FontInfo
+- sym: ../../../../editor/common/core/position.js.IPosition
+- sym: ../../../../editor/common/core/range.js.IRange
+- sym: ../../../../editor/common/core/range.js.Range
+- sym: ../../../../editor/common/core/selection.js.Selection
+- sym: ../../../../editor/common/model.js.FindMatch
+- sym: ../../../../editor/common/model.js.IModelDeltaDecoration
+- sym: ../../../../editor/common/model.js.IReadonlyTextBuffer
+- sym: ../../../../editor/common/model.js.ITextModel
+- sym: ../../../../editor/common/model.js.TrackedRangeStickiness
+- sym: ../../../../platform/actions/common/actions.js.MenuId
+- sym: ../../../../platform/editor/common/editor.js.ITextEditorOptions
+- sym: ../../../../platform/editor/common/editor.js.ITextResourceEditorInput
+- sym: ../../../../platform/instantiation/common/instantiation.js.IConstructorSignature
+- sym: ../../../common/editor.js.IEditorPane
+- sym: ../../../common/editor.js.IEditorPaneWithSelection
+- sym: ./notebookViewEvents.js.CellViewModelStateChangeEvent
+- sym: ./notebookViewEvents.js.NotebookCellStateChangedEvent
+- sym: ./notebookViewEvents.js.NotebookLayoutInfo
+- sym: ../common/model/notebookCellTextModel.js.NotebookCellTextModel
+- sym: ../common/model/notebookTextModel.js.NotebookTextModel
+- sym: ../common/notebookCommon.js.CellKind
+- sym: ../common/notebookCommon.js.ICellOutput
+- sym: ../common/notebookCommon.js.INotebookCellStatusBarItem
+- sym: ../common/notebookCommon.js.INotebookRendererInfo
+- sym: ../common/notebookCommon.js.INotebookFindOptions
+- sym: ../common/notebookCommon.js.IOrderedMimeType
+- sym: ../common/notebookCommon.js.NotebookCellInternalMetadata
+- sym: ../common/notebookCommon.js.NotebookCellMetadata
+- sym: ../common/notebookCommon.js.NOTEBOOK_EDITOR_ID
+- sym: ../common/notebookEditorInput.js.isCompositeNotebookEditorInput
+- sym: ../common/notebookKernelService.js.INotebookKernel
+- sym: ./notebookOptions.js.NotebookOptions
+- sym: ../common/notebookRange.js.cellRangesToIndexes
+- sym: ../common/notebookRange.js.ICellRange
+- sym: ../common/notebookRange.js.reduceCellRanges
+- sym: ../../webview/browser/webview.js.IWebviewElement
+- sym: ../../../../editor/common/config/editorOptions.js.IEditorCommentsOptions
+- sym: ../../../../editor/common/config/editorOptions.js.IEditorOptions
+- sym: ../../../../platform/contextkey/common/contextkey.js.IContextKeyService
+- sym: ../../../../editor/browser/editorBrowser.js.ICodeEditor
+- sym: ../../../../base/common/observable.js.IObservable
+- sym: ./diff/notebookDiffEditor.js.NotebookTextDiffEditor
+- sym: ./diff/notebookDiffEditorBrowser.js.INotebookTextDiffEditor
+data:
+- name: EXPAND_CELL_INPUT_COMMAND_ID
+  type: string
+  val: '''notebook.cell.expandCellInput'''
+- name: EXECUTE_CELL_COMMAND_ID
+  type: string
+  val: '''notebook.cell.execute'''
+- name: DETECT_CELL_LANGUAGE
+  type: string
+  val: '''notebook.cell.detectLanguage'''
+- name: CHANGE_CELL_LANGUAGE
+  type: string
+  val: '''notebook.cell.changeLanguage'''
+- name: QUIT_EDIT_CELL_COMMAND_ID
+  type: string
+  val: '''notebook.cell.quitEdit'''
+- name: EXPAND_CELL_OUTPUT_COMMAND_ID
+  type: string
+  val: '''notebook.cell.expandCellOutput'''
+- name: IPYNB_VIEW_TYPE
+  type: string
+  val: '''jupyter-notebook'''
+- name: JUPYTER_EXTENSION_ID
+  type: string
+  val: '''ms-toolsai.jupyter'''
+- name: KERNEL_EXTENSIONS
+  type: any
+  val: "new Map<string, string>([\n\t[IPYNB_VIEW_TYPE, JUPYTER_EXTENSION_ID],\n])"
+- name: KERNEL_RECOMMENDATIONS
+  type: any
+  val: new Map<string, Map<string, INotebookExtensionRecommendation>>()
+types:
+- name: INotebookExtensionRecommendation
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: readonly
+    type: string[]
+  - name: readonly
+    type: string
+  lines:
+  - 70
+  - 73
+- name: RenderOutputType
+  kind: enum
+  variants:
+  - name: Html
+    val: '0'
+  - name: Extension
+    val: '1'
+  lines:
+  - 84
+  - 87
+- name: IRenderPlainHtmlOutput
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: readonly
+    type: RenderOutputType.Html
+  - name: readonly
+    type: IDisplayOutputViewModel
+  - name: readonly
+    type: string
+  lines:
+  - 89
+  - 93
+- name: IRenderOutputViaExtension
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: readonly
+    type: RenderOutputType.Extension
+  - name: readonly
+    type: IDisplayOutputViewModel
+  - name: readonly
+    type: string
+  - name: readonly
+    type: INotebookRendererInfo
+  lines:
+  - 95
+  - 100
+- name: IInsetRenderOutput
+  kind: enum
+  decorators:
+  - type
+  variants:
+  - name: IRenderPlainHtmlOutput
+  - name: IRenderOutputViaExtension
+  lines:
+  - 102
+  - 102
+- name: ICellOutputViewModel
+  kind: trait
+  bases:
+  - IDisposable
+  decorators:
+  - interface
+  fields:
+  - name: cellViewModel
+    type: IGenericCellViewModel
+  - name: model
+    type: ICellOutput
+  - name: resolveMimeTypes
+    type: 'method: resolveMimeTypes(textModel: NotebookTextModel, kernelProvides: readonly string[] | undefined): [readonly IOrderedMimeType[], number]'
+  - name: pickedMimeType
+    type: IOrderedMimeType | undefined
+  - name: hasMultiMimeType
+    type: 'method: hasMultiMimeType(): boolean'
+  - name: readonly
+    type: Event<void>
+  - name: readonly
+    type: IObservable<boolean>
+  - name: setVisible
+    type: 'method: setVisible(visible: boolean, force?: boolean): void'
+  - name: resetRenderer
+    type: 'method: resetRenderer(): void'
+  - name: toRawJSON
+    type: 'method: toRawJSON(): any'
+  lines:
+  - 104
+  - 118
+- name: IDisplayOutputViewModel
+  kind: trait
+  bases:
+  - ICellOutputViewModel
+  decorators:
+  - interface
+  fields:
+  - name: resolveMimeTypes
+    type: 'method: resolveMimeTypes(textModel: NotebookTextModel, kernelProvides: readonly string[] | undefined): [readonly IOrderedMimeType[], number]'
+  lines:
+  - 120
+  - 122
+- name: IGenericCellViewModel
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: id
+    type: string
+  - name: handle
+    type: number
+  - name: uri
+    type: URI
+  - name: metadata
+    type: NotebookCellMetadata
+  - name: outputIsHovered
+    type: boolean
+  - name: outputIsFocused
+    type: boolean
+  - name: inputInOutputIsFocused
+    type: boolean
+  - name: outputsViewModels
+    type: ICellOutputViewModel[]
+  - name: getOutputOffset
+    type: 'method: getOutputOffset(index: number): number'
+  - name: updateOutputHeight
+    type: 'method: updateOutputHeight(index: number, height: number, source?: string): void'
+  lines:
+  - 129
+  - 140
+- name: IDisplayOutputLayoutUpdateRequest
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: readonly
+    type: IGenericCellViewModel
+  - name: output
+    type: IDisplayOutputViewModel
+  - name: cellTop
+    type: number
+  - name: outputOffset
+    type: number
+  - name: forceDisplay
+    type: boolean
+  lines:
+  - 142
+  - 148
+- name: ICommonCellInfo
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: readonly
+    type: string
+  - name: readonly
+    type: number
+  - name: readonly
+    type: URI
+  - name: readonly
+    type: string
+  lines:
+  - 150
+  - 155
+- name: ScrollToRevealBehavior
+  kind: enum
+  variants:
+  - name: fullCell
+  - name: firstLine
+  lines:
+  - 157
+  - 160
+- name: IFocusNotebookCellOptions
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: readonly
+    type: boolean
+  - name: readonly
+    type: number
+  - name: readonly
+    type: ScrollToRevealBehavior | undefined
+  - name: readonly
+    type: string
+  - name: readonly
+    type: string
+  - name: readonly
+    type: boolean
+  lines:
+  - 162
+  - 169
+- name: CellLayoutState
+  kind: enum
+  variants:
+  - name: Uninitialized
+  - name: Estimated
+  - name: FromCache
+  - name: Measured
+  lines:
+  - 173
+  - 178
+- name: CellLayoutInfo
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: readonly
+    type: CellLayoutState
+  - name: readonly
+    type: FontInfo | null
+  - name: readonly
+    type: number
+  - name: readonly
+    type: number
+  - name: readonly
+    type: number
+  - name: readonly
+    type: number
+  - name: readonly
+    type: number
+  - name: readonly
+    type: number
+  - name: readonly
+    type: number
+  - name: readonly
+    type: number
+  lines:
+  - 181
+  - 192
+- name: CellLayoutChangeEvent
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: readonly
+    type: FontInfo
+  - name: readonly
+    type: number
+  - name: readonly
+    type: boolean
+  lines:
+  - 194
+  - 198
+- name: CodeCellLayoutInfo
+  kind: trait
+  bases:
+  - CellLayoutInfo
+  decorators:
+  - interface
+  fields:
+  - name: readonly
+    type: boolean
+  - name: readonly
+    type: number
+  - name: readonly
+    type: number
+  - name: readonly
+    type: number
+  - name: readonly
+    type: number
+  - name: readonly
+    type: number
+  - name: readonly
+    type: number
+  lines:
+  - 200
+  - 208
+- name: CodeCellLayoutChangeEvent
+  kind: trait
+  bases:
+  - CellLayoutChangeEvent
+  decorators:
+  - interface
+  fields:
+  - name: readonly
+    type: string
+  - name: readonly
+    type: boolean
+  - name: readonly
+    type: boolean
+  - name: readonly
+    type: boolean
+  - name: readonly
+    type: number
+  - name: readonly
+    type: boolean
+  lines:
+  - 210
+  - 217
+- name: MarkupCellLayoutInfo
+  kind: trait
+  bases:
+  - CellLayoutInfo
+  decorators:
+  - interface
+  fields:
+  - name: readonly
+    type: number
+  - name: readonly
+    type: number
+  lines:
+  - 219
+  - 222
+- name: CellLayoutContext
+  kind: enum
+  variants:
+  - name: Fold
+  lines:
+  - 224
+  - 226
+- name: MarkupCellLayoutChangeEvent
+  kind: trait
+  bases:
+  - CellLayoutChangeEvent
+  decorators:
+  - interface
+  fields:
+  - name: readonly
+    type: number
+  - name: readonly
+    type: number
+  - name: totalHeight
+    type: number
+  - name: readonly
+    type: CellLayoutContext
+  lines:
+  - 228
+  - 233
+- name: ICommonCellViewModelLayoutChangeInfo
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: readonly
+    type: boolean | number
+  - name: readonly
+    type: number
+  - name: readonly
+    type: CellLayoutContext
+  lines:
+  - 235
+  - 239
+- name: ICellViewModel
+  kind: trait
+  bases:
+  - IGenericCellViewModel
+  decorators:
+  - interface
+  fields:
+  - name: readonly
+    type: NotebookCellTextModel
+  - name: readonly
+    type: string
+  - name: readonly
+    type: IReadonlyTextBuffer
+  - name: readonly
+    type: CellLayoutInfo
+  - name: readonly
+    type: Event<ICommonCellViewModelLayoutChangeInfo>
+  - name: readonly
+    type: Event<void>
+  - name: readonly
+    type: 'Event<{ added: INotebookCellDecorationOptions[]; removed: INotebookCellDecorationOptions[] }>'
+  - name: readonly
+    type: Event<CellViewModelStateChangeEvent>
+  - name: readonly
+    type: Event<void>
+  - name: readonly
+    type: string
+  - name: readonly
+    type: boolean
+  - name: isInputCollapsed
+    type: boolean
+  - name: isOutputCollapsed
+    type: boolean
+  - name: dragging
+    type: boolean
+  - name: handle
+    type: number
+  - name: uri
+    type: URI
+  - name: language
+    type: string
+  - name: readonly
+    type: string
+  - name: cellKind
+    type: CellKind
+  - name: lineNumbers
+    type: '''on'' | ''off'' | ''inherit'''
+  - name: commentOptions
+    type: IEditorCommentsOptions
+  - name: chatHeight
+    type: number
+  - name: commentHeight
+    type: number
+  - name: focusMode
+    type: CellFocusMode
+  - name: focusedOutputId
+    type: string | undefined
+  - name: outputIsHovered
+    type: boolean
+  - name: getText
+    type: 'method: getText(): string'
+  - name: getAlternativeId
+    type: 'method: getAlternativeId(): number'
+  - name: getTextLength
+    type: 'method: getTextLength(): number'
+  - name: getHeight
+    type: 'method: getHeight(lineHeight: number): number'
+  - name: metadata
+    type: NotebookCellMetadata
+  - name: internalMetadata
+    type: NotebookCellInternalMetadata
+  - name: textModel
+    type: ITextModel | undefined
+  - name: hasModel
+    type: 'method: hasModel(): this is IEditableCellViewModel'
+  - name: resolveTextModel
+    type: 'method: resolveTextModel(): Promise<ITextModel>'
+  - name: getSelections
+    type: 'method: getSelections(): Selection[]'
+  - name: setSelections
+    type: 'method: setSelections(selections: Selection[]): void'
+  - name: getSelectionsStartPosition
+    type: 'method: getSelectionsStartPosition(): IPosition[] | undefined'
+  - name: getCellDecorations
+    type: 'method: getCellDecorations(): INotebookCellDecorationOptions[]'
+  - name: getCellStatusBarItems
+    type: 'method: getCellStatusBarItems(): INotebookCellStatusBarItem[]'
+  - name: getEditState
+    type: 'method: getEditState(): CellEditState'
+  - name: updateEditState
+    type: 'method: updateEditState(state: CellEditState, source: string): void'
+  - name: deltaModelDecorations
+    type: 'method: deltaModelDecorations(oldDecorations: readonly string[], newDecorations: readonly IModelDeltaDecoration[]): string[]'
+  - name: getCellDecorationRange
+    type: 'method: getCellDecorationRange(id: string): Range | null'
+  - name: enableAutoLanguageDetection
+    type: 'method: enableAutoLanguageDetection(): void'
+  lines:
+  - 240
+  - 286
+- name: IEditableCellViewModel
+  kind: trait
+  bases:
+  - ICellViewModel
+  decorators:
+  - interface
+  fields:
+  - name: textModel
+    type: ITextModel
+  lines:
+  - 288
+  - 290
+- name: INotebookEditorMouseEvent
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: readonly
+    type: MouseEvent
+  - name: readonly
+    type: ICellViewModel
+  lines:
+  - 292
+  - 295
+- name: INotebookEditorContribution
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: dispose
+    type: 'method: dispose(): void'
+  - name: saveViewState
+    type: 'method: saveViewState?(): unknown'
+  - name: restoreViewState
+    type: 'method: restoreViewState?(state: unknown): void'
+  lines:
+  - 297
+  - 310
+- name: NotebookOverviewRulerLane
+  kind: enum
+  variants:
+  - name: Left
+    val: '1'
+  - name: Center
+    val: '2'
+  - name: Right
+    val: '4'
+  - name: Full
+    val: '7'
+  lines:
+  - 315
+  - 320
+- name: INotebookCellDecorationOptions
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: overviewRuler
+    type: "{\n\t\tcolor: string;\n\t\tmodelRanges: IRange[];\n\t\tincludeOutput: boolean;\n\t\tposition: NotebookOverviewRulerLane;\n\t}"
+  lines:
+  - 322
+  - 333
+- name: INotebookViewZoneDecorationOptions
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: overviewRuler
+    type: "{\n\t\tcolor: string;\n\t\tposition: NotebookOverviewRulerLane;\n\t}"
+  lines:
+  - 335
+  - 340
+- name: INotebookDeltaCellDecoration
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: readonly
+    type: number
+  - name: readonly
+    type: INotebookCellDecorationOptions
+  lines:
+  - 342
+  - 345
+- name: INotebookDeltaViewZoneDecoration
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: readonly
+    type: string
+  - name: readonly
+    type: INotebookViewZoneDecorationOptions
+  lines:
+  - 347
+  - 350
+- name: INotebookDeltaDecoration
+  kind: enum
+  decorators:
+  - type
+  variants:
+  - name: INotebookDeltaCellDecoration
+  - name: INotebookDeltaViewZoneDecoration
+  lines:
+  - 360
+  - 360
+- name: INotebookDeltaCellStatusBarItems
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: readonly
+    type: number
+  - name: readonly
+    type: readonly INotebookCellStatusBarItem[]
+  lines:
+  - 362
+  - 365
+- name: CellRevealType
+  kind: enum
+  variants:
+  - name: Default
+    val: '1'
+  - name: Top
+    val: '2'
+  - name: Center
+    val: '3'
+  - name: CenterIfOutsideViewport
+    val: '4'
+  - name: NearTopIfOutsideViewport
+    val: '5'
+  - name: FirstLineIfOutsideViewport
+    val: '6'
+  lines:
+  - 367
+  - 374
+- name: CellRevealRangeType
+  kind: enum
+  variants:
+  - name: Default
+    val: '1'
+  - name: Center
+    val: '2'
+  - name: CenterIfOutsideViewport
+    val: '3'
+  lines:
+  - 376
+  - 380
+- name: INotebookEditorOptions
+  kind: trait
+  bases:
+  - ITextEditorOptions
+  decorators:
+  - interface
+  fields:
+  - name: readonly
+    type: ITextResourceEditorInput
+  - name: readonly
+    type: CellRevealType
+  - name: readonly
+    type: ICellRange[]
+  - name: readonly
+    type: boolean
+  - name: readonly
+    type: INotebookEditorViewState
+  - name: readonly
+    type: '{ index: number; selection?: IRange }'
+  - name: readonly
+    type: string
+  lines:
+  - 382
+  - 390
+- name: INotebookEditorContributionCtor
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 392
+  - 392
+- name: INotebookEditorContributionDescription
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: id
+    type: string
+  - name: ctor
+    type: INotebookEditorContributionCtor
+  lines:
+  - 394
+  - 397
+- name: INotebookEditorCreationOptions
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: readonly
+    type: boolean
+  - name: readonly
+    type: boolean
+  - name: readonly
+    type: INotebookEditorContributionDescription[]
+  - name: readonly
+    type: IEditorContributionDescription[]
+  - name: readonly
+    type: "{\n\t\tnotebookToolbar: MenuId;\n\t\tcellTitleToolbar: MenuId;\n\t\tcellDeleteToolbar: MenuId;\n\t\tcellInsertToolbar: MenuId;\n\t\tcellTopInsertToolbar: MenuId;\n\t\tcellExecuteToolbar: MenuId;\n\t\tcellExecutePrimary?: MenuId;\n\t}"
+  - name: readonly
+    type: NotebookOptions
+  - name: readonly
+    type: CodeWindow
+  lines:
+  - 399
+  - 415
+- name: INotebookWebviewMessage
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: readonly
+    type: unknown
+  lines:
+  - 417
+  - 419
+- name: INotebookEditorViewState
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: editingCells
+    type: '{ [key: number]: boolean }'
+  - name: collapsedInputCells
+    type: '{ [key: number]: boolean }'
+  - name: collapsedOutputCells
+    type: '{ [key: number]: boolean }'
+  - name: cellLineNumberStates
+    type: '{ [key: number]: ''on'' | ''off'' }'
+  - name: editorViewStates
+    type: '{ [key: number]: editorCommon.ICodeEditorViewState | null }'
+  - name: hiddenFoldingRanges
+    type: ICellRange[]
+  - name: cellTotalHeights
+    type: '{ [key: number]: number }'
+  - name: scrollPosition
+    type: '{ left: number; top: number }'
+  - name: focus
+    type: number
+  - name: editorFocused
+    type: boolean
+  - name: contributionsState
+    type: '{ [id: string]: unknown }'
+  - name: selectedKernelId
+    type: string
+  lines:
+  - 422
+  - 435
+- name: ICellModelDecorations
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: readonly
+    type: number
+  - name: readonly
+    type: readonly string[]
+  lines:
+  - 437
+  - 440
+- name: ICellModelDeltaDecorations
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: readonly
+    type: number
+  - name: readonly
+    type: readonly IModelDeltaDecoration[]
+  lines:
+  - 442
+  - 445
+- name: IModelDecorationsChangeAccessor
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: deltaDecorations
+    type: 'method: deltaDecorations(oldDecorations: ICellModelDecorations[], newDecorations: ICellModelDeltaDecorations[]): ICellModelDecorations[]'
+  lines:
+  - 447
+  - 449
+- name: INotebookViewZone
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: afterModelPosition
+    type: number
+  - name: domNode
+    type: HTMLElement
+  - name: heightInPx
+    type: number
+  lines:
+  - 451
+  - 459
+- name: INotebookViewZoneChangeAccessor
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: addZone
+    type: 'method: addZone(zone: INotebookViewZone): string'
+  - name: removeZone
+    type: 'method: removeZone(id: string): void'
+  - name: layoutZone
+    type: 'method: layoutZone(id: string): void'
+  lines:
+  - 461
+  - 465
+- name: INotebookCellOverlay
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: cell
+    type: ICellViewModel
+  - name: domNode
+    type: HTMLElement
+  lines:
+  - 467
+  - 470
+- name: INotebookCellOverlayChangeAccessor
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: addOverlay
+    type: 'method: addOverlay(overlay: INotebookCellOverlay): string'
+  - name: removeOverlay
+    type: 'method: removeOverlay(id: string): void'
+  - name: layoutOverlay
+    type: 'method: layoutOverlay(id: string): void'
+  lines:
+  - 472
+  - 476
+- name: NotebookViewCellsSplice
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 478
+  - 482
+- name: INotebookViewCellsUpdateEvent
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: readonly
+    type: boolean
+  - name: readonly
+    type: readonly NotebookViewCellsSplice[]
+  lines:
+  - 484
+  - 487
+- name: INotebookViewModel
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: notebookDocument
+    type: NotebookTextModel
+  - name: readonly
+    type: ICellViewModel[]
+  - name: layoutInfo
+    type: NotebookLayoutInfo | null
+  - name: viewType
+    type: string
+  - name: onDidChangeViewCells
+    type: Event<INotebookViewCellsUpdateEvent>
+  - name: onDidChangeSelection
+    type: Event<string>
+  - name: onDidFoldingStateChanged
+    type: Event<void>
+  - name: getNearestVisibleCellIndexUpwards
+    type: 'method: getNearestVisibleCellIndexUpwards(index: number): number'
+  - name: getTrackedRange
+    type: 'method: getTrackedRange(id: string): ICellRange | null'
+  - name: setTrackedRange
+    type: 'method: setTrackedRange(id: string | null, newRange: ICellRange | null, newStickiness: TrackedRangeStickiness): string | null'
+  - name: getOverviewRulerDecorations
+    type: 'method: getOverviewRulerDecorations(): INotebookDeltaViewZoneDecoration[]'
+  - name: getSelections
+    type: 'method: getSelections(): ICellRange[]'
+  - name: getCellIndex
+    type: 'method: getCellIndex(cell: ICellViewModel): number'
+  - name: getMostRecentlyExecutedCell
+    type: 'method: getMostRecentlyExecutedCell(): ICellViewModel | undefined'
+  - name: deltaCellStatusBarItems
+    type: 'method: deltaCellStatusBarItems(oldItems: string[], newItems: INotebookDeltaCellStatusBarItems[]): string[]'
+  - name: getFoldedLength
+    type: 'method: getFoldedLength(index: number): number'
+  - name: getFoldingStartIndex
+    type: 'method: getFoldingStartIndex(index: number): number'
+  - name: replaceOne
+    type: 'method: replaceOne(cell: ICellViewModel, range: Range, text: string): Promise<void>'
+  - name: replaceAll
+    type: 'method: replaceAll(matches: CellFindMatchWithIndex[], texts: string[]): Promise<void>'
+  lines:
+  - 489
+  - 509
+- name: INotebookEditor
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: readonly
+    type: Event<NotebookCellStateChangedEvent>
+  - name: readonly
+    type: Event<INotebookViewCellsUpdateEvent>
+  - name: readonly
+    type: Event<void>
+  - name: readonly
+    type: Event<void>
+  - name: readonly
+    type: Event<void>
+  - name: readonly
+    type: Event<NotebookTextModel | undefined>
+  - name: readonly
+    type: Event<void>
+  - name: readonly
+    type: Event<void>
+  - name: readonly
+    type: Event<void>
+  - name: readonly
+    type: Event<void>
+  - name: readonly
+    type: Event<void>
+  - name: readonly
+    type: Event<void>
+  - name: readonly
+    type: Event<INotebookEditor>
+  - name: readonly
+    type: Event<void>
+  - name: readonly
+    type: Event<INotebookEditorMouseEvent>
+  - name: readonly
+    type: Event<INotebookEditorMouseEvent>
+  - name: readonly
+    type: ICellRange[]
+  - name: readonly
+    type: NotebookTextModel
+  - name: readonly
+    type: boolean
+  - name: readonly
+    type: boolean
+  - name: readonly
+    type: NotebookOptions
+  - name: readonly
+    type: boolean
+  - name: readonly
+    type: INotebookKernel | undefined
+  - name: readonly
+    type: number
+  - name: readonly
+    type: number
+  - name: readonly
+    type: IContextKeyService
+  - name: readonly
+    type: ICodeEditor | undefined
+  - name: readonly
+    type: '[ICellViewModel, ICodeEditor][]'
+  - name: readonly
+    type: '[ICellViewModel, ICodeEditor] | undefined'
+  - name: getLength
+    type: 'method: getLength(): number'
+  - name: getSelections
+    type: 'method: getSelections(): ICellRange[]'
+  - name: setSelections
+    type: 'method: setSelections(selections: ICellRange[]): void'
+  - name: getFocus
+    type: 'method: getFocus(): ICellRange'
+  - name: setFocus
+    type: 'method: setFocus(focus: ICellRange): void'
+  - name: getId
+    type: 'method: getId(): string'
+  - name: getViewModel
+    type: 'method: getViewModel(): INotebookViewModel | undefined'
+  - name: hasModel
+    type: 'method: hasModel(): this is IActiveNotebookEditor'
+  - name: dispose
+    type: 'method: dispose(): void'
+  - name: getDomNode
+    type: 'method: getDomNode(): HTMLElement'
+  - name: getInnerWebview
+    type: 'method: getInnerWebview(): IWebviewElement | undefined'
+  - name: getSelectionViewModels
+    type: 'method: getSelectionViewModels(): ICellViewModel[]'
+  - name: getEditorViewState
+    type: 'method: getEditorViewState(): INotebookEditorViewState'
+  - name: restoreListViewState
+    type: 'method: restoreListViewState(viewState: INotebookEditorViewState | undefined): void'
+  - name: getBaseCellEditorOptions
+    type: 'method: getBaseCellEditorOptions(language: string): IBaseCellEditorOptions'
+  - name: focus
+    type: 'method: focus(): void'
+  - name: focusContainer
+    type: 'method: focusContainer(clearSelection?: boolean): void'
+  - name: hasEditorFocus
+    type: 'method: hasEditorFocus(): boolean'
+  - name: hasWebviewFocus
+    type: 'method: hasWebviewFocus(): boolean'
+  - name: hasOutputTextSelection
+    type: 'method: hasOutputTextSelection(): boolean'
+  - name: setOptions
+    type: 'method: setOptions(options: INotebookEditorOptions | undefined): Promise<void>'
+  - name: focusElement
+    type: 'method: focusElement(cell: ICellViewModel): void'
+  - name: getLayoutInfo
+    type: 'method: getLayoutInfo(): NotebookLayoutInfo'
+  - name: getVisibleRangesPlusViewportAboveAndBelow
+    type: 'method: getVisibleRangesPlusViewportAboveAndBelow(): ICellRange[]'
+  - name: focusNotebookCell
+    type: 'method: focusNotebookCell(cell: ICellViewModel, focus: ''editor'' | ''container'' | ''output'', options?: IFocusNotebookCellOptions): Promise<void>'
+  - name: executeNotebookCells
+    type: 'method: executeNotebookCells(cells?: Iterable<ICellViewModel>): Promise<void>'
+  - name: cancelNotebookCells
+    type: 'method: cancelNotebookCells(cells?: Iterable<ICellViewModel>): Promise<void>'
+  - name: getActiveCell
+    type: 'method: getActiveCell(): ICellViewModel | undefined'
+  - name: layoutNotebookCell
+    type: 'method: layoutNotebookCell(cell: ICellViewModel, height: number): Promise<void>'
+  - name: createOutput
+    type: 'method: createOutput(cell: ICellViewModel, output: IInsetRenderOutput, offset: number, createWhenIdle: boolean): Promise<void>'
+  - name: updateOutput
+    type: 'method: updateOutput(cell: ICellViewModel, output: IInsetRenderOutput, offset: number): Promise<void>'
+  - name: copyOutputImage
+    type: 'method: copyOutputImage(cellOutput: ICellOutputViewModel): Promise<void>'
+  - name: selectOutputContent
+    type: 'method: selectOutputContent(cell: ICellViewModel): void'
+  - name: selectInputContents
+    type: 'method: selectInputContents(cell: ICellViewModel): void'
+  - name: readonly
+    type: Event<INotebookWebviewMessage>
+  - name: postMessage
+    type: 'method: postMessage(message: any): void'
+  - name: addClassName
+    type: 'method: addClassName(className: string): void'
+  - name: removeClassName
+    type: 'method: removeClassName(className: string): void'
+  - name: setScrollTop
+    type: 'method: setScrollTop(scrollTop: number): void'
+  - name: revealCellRangeInView
+    type: 'method: revealCellRangeInView(range: ICellRange): void'
+  - name: revealInView
+    type: 'method: revealInView(cell: ICellViewModel): Promise<void>'
+  - name: revealInViewAtTop
+    type: 'method: revealInViewAtTop(cell: ICellViewModel): void'
+  - name: revealInCenter
+    type: 'method: revealInCenter(cell: ICellViewModel): void'
+  - name: revealInCenterIfOutsideViewport
+    type: 'method: revealInCenterIfOutsideViewport(cell: ICellViewModel): Promise<void>'
+  - name: revealFirstLineIfOutsideViewport
+    type: 'method: revealFirstLineIfOutsideViewport(cell: ICellViewModel): Promise<void>'
+  - name: revealLineInViewAsync
+    type: 'method: revealLineInViewAsync(cell: ICellViewModel, line: number): Promise<void>'
+  - name: revealLineInCenterAsync
+    type: 'method: revealLineInCenterAsync(cell: ICellViewModel, line: number): Promise<void>'
+  - name: revealLineInCenterIfOutsideViewportAsync
+    type: 'method: revealLineInCenterIfOutsideViewportAsync(cell: ICellViewModel, line: number): Promise<void>'
+  - name: revealRangeInViewAsync
+    type: 'method: revealRangeInViewAsync(cell: ICellViewModel, range: Selection | Range): Promise<void>'
+  - name: revealRangeInCenterAsync
+    type: 'method: revealRangeInCenterAsync(cell: ICellViewModel, range: Selection | Range): Promise<void>'
+  - name: revealRangeInCenterIfOutsideViewportAsync
+    type: 'method: revealRangeInCenterIfOutsideViewportAsync(cell: ICellViewModel, range: Selection | Range): Promise<void>'
+  - name: revealCellOffsetInCenter
+    type: 'method: revealCellOffsetInCenter(cell: ICellViewModel, offset: number): void'
+  - name: revealOffsetInCenterIfOutsideViewport
+    type: 'method: revealOffsetInCenterIfOutsideViewport(offset: number): void'
+  - name: getCellRangeFromViewRange
+    type: 'method: getCellRangeFromViewRange(startIndex: number, endIndex: number): ICellRange | undefined'
+  - name: setHiddenAreas
+    type: 'method: setHiddenAreas(_ranges: ICellRange[]): boolean'
+  - name: setCellEditorSelection
+    type: 'method: setCellEditorSelection(cell: ICellViewModel, selection: Range): void'
+  - name: deltaCellDecorations
+    type: 'method: deltaCellDecorations(oldDecorations: string[], newDecorations: INotebookDeltaDecoration[]): string[]'
+  - name: changeModelDecorations
+    type: 'method: changeModelDecorations<T>(callback: (changeAccessor: IModelDecorationsChangeAccessor) => T): T | null'
+  - name: changeViewZones
+    type: 'method: changeViewZones(callback: (accessor: INotebookViewZoneChangeAccessor) => void): void'
+  - name: changeCellOverlays
+    type: 'method: changeCellOverlays(callback: (accessor: INotebookCellOverlayChangeAccessor) => void): void'
+  - name: getViewZoneLayoutInfo
+    type: 'method: getViewZoneLayoutInfo(id: string): { top: number; height: number } | null'
+  - name: getContribution
+    type: 'method: getContribution<T extends INotebookEditorContribution>(id: string): T'
+  - name: getViewIndexByModelIndex
+    type: 'method: getViewIndexByModelIndex(index: number): number'
+  - name: getCellsInRange
+    type: 'method: getCellsInRange(range?: ICellRange): ReadonlyArray<ICellViewModel>'
+  - name: cellAt
+    type: 'method: cellAt(index: number): ICellViewModel | undefined'
+  - name: getCellByHandle
+    type: 'method: getCellByHandle(handle: number): ICellViewModel | undefined'
+  - name: getCellIndex
+    type: 'method: getCellIndex(cell: ICellViewModel): number | undefined'
+  - name: getNextVisibleCellIndex
+    type: 'method: getNextVisibleCellIndex(index: number): number | undefined'
+  - name: getPreviousVisibleCellIndex
+    type: 'method: getPreviousVisibleCellIndex(index: number): number | undefined'
+  - name: find
+    type: 'method: find(query: string, options: INotebookFindOptions, token: CancellationToken, skipWarmup?: boolean, shouldGetSearchPreviewInfo?: boolean, ownerID?: string): Promise<CellFindMatchWithIndex[]>'
+  - name: findHighlightCurrent
+    type: 'method: findHighlightCurrent(matchIndex: number, ownerID?: string): Promise<number>'
+  - name: findUnHighlightCurrent
+    type: 'method: findUnHighlightCurrent(matchIndex: number, ownerID?: string): Promise<void>'
+  - name: findStop
+    type: 'method: findStop(ownerID?: string): void'
+  - name: showProgress
+    type: 'method: showProgress(): void'
+  - name: hideProgress
+    type: 'method: hideProgress(): void'
+  - name: getAbsoluteTopOfElement
+    type: 'method: getAbsoluteTopOfElement(cell: ICellViewModel): number'
+  - name: getHeightOfElement
+    type: 'method: getHeightOfElement(cell: ICellViewModel): number'
+  lines:
+  - 512
+  - 804
+- name: IActiveNotebookEditor
+  kind: trait
+  bases:
+  - INotebookEditor
+  decorators:
+  - interface
+  fields:
+  - name: getViewModel
+    type: 'method: getViewModel(): INotebookViewModel'
+  - name: textModel
+    type: NotebookTextModel
+  - name: getFocus
+    type: 'method: getFocus(): ICellRange'
+  - name: cellAt
+    type: 'method: cellAt(index: number): ICellViewModel'
+  - name: getCellIndex
+    type: 'method: getCellIndex(cell: ICellViewModel): number'
+  - name: getNextVisibleCellIndex
+    type: 'method: getNextVisibleCellIndex(index: number): number'
+  lines:
+  - 806
+  - 813
+- name: INotebookEditorPane
+  kind: trait
+  bases:
+  - IEditorPaneWithSelection
+  decorators:
+  - interface
+  fields:
+  - name: getControl
+    type: 'method: getControl(): INotebookEditor | undefined'
+  - name: readonly
+    type: Event<void>
+  - name: textModel
+    type: NotebookTextModel | undefined
+  lines:
+  - 815
+  - 819
+- name: IBaseCellEditorOptions
+  kind: trait
+  bases:
+  - IDisposable
+  decorators:
+  - interface
+  fields:
+  - name: readonly
+    type: IEditorOptions
+  - name: readonly
+    type: Event<void>
+  lines:
+  - 821
+  - 824
+- name: INotebookEditorDelegate
+  kind: trait
+  bases:
+  - INotebookEditor
+  decorators:
+  - interface
+  fields:
+  - name: hasModel
+    type: 'method: hasModel(): this is IActiveNotebookEditorDelegate'
+  - name: readonly
+    type: INotebookEditorCreationOptions
+  - name: readonly
+    type: Event<void>
+  - name: readonly
+    type: Event<void>
+  - name: createMarkupPreview
+    type: 'method: createMarkupPreview(cell: ICellViewModel): Promise<void>'
+  - name: unhideMarkupPreviews
+    type: 'method: unhideMarkupPreviews(cells: readonly ICellViewModel[]): Promise<void>'
+  - name: hideMarkupPreviews
+    type: 'method: hideMarkupPreviews(cells: readonly ICellViewModel[]): Promise<void>'
+  - name: removeInset
+    type: 'method: removeInset(output: IDisplayOutputViewModel): void'
+  - name: hideInset
+    type: 'method: hideInset(output: IDisplayOutputViewModel): void'
+  - name: deltaCellContainerClassNames
+    type: 'method: deltaCellContainerClassNames(cellId: string, added: string[], removed: string[], cellKind: CellKind): void'
+  lines:
+  - 829
+  - 849
+- name: IActiveNotebookEditorDelegate
+  kind: trait
+  bases:
+  - INotebookEditorDelegate
+  decorators:
+  - interface
+  fields:
+  - name: getViewModel
+    type: 'method: getViewModel(): INotebookViewModel'
+  - name: textModel
+    type: NotebookTextModel
+  - name: getFocus
+    type: 'method: getFocus(): ICellRange'
+  - name: cellAt
+    type: 'method: cellAt(index: number): ICellViewModel'
+  - name: getCellIndex
+    type: 'method: getCellIndex(cell: ICellViewModel): number'
+  - name: getNextVisibleCellIndex
+    type: 'method: getNextVisibleCellIndex(index: number): number'
+  lines:
+  - 851
+  - 858
+- name: ISearchPreviewInfo
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: line
+    type: string
+  - name: range
+    type: "{\n\t\tstart: number;\n\t\tend: number;\n\t}"
+  lines:
+  - 860
+  - 866
+- name: CellWebviewFindMatch
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: readonly
+    type: number
+  - name: readonly
+    type: ISearchPreviewInfo
+  lines:
+  - 868
+  - 871
+- name: CellContentFindMatch
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 873
+  - 873
+- name: CellFindMatch
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: cell
+    type: ICellViewModel
+  - name: contentMatches
+    type: CellContentFindMatch[]
+  lines:
+  - 875
+  - 878
+- name: CellFindMatchWithIndex
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: cell
+    type: ICellViewModel
+  - name: index
+    type: number
+  - name: length
+    type: number
+  - name: getMatch
+    type: 'method: getMatch(index: number): FindMatch | CellWebviewFindMatch'
+  - name: contentMatches
+    type: FindMatch[]
+  - name: webviewMatches
+    type: CellWebviewFindMatch[]
+  lines:
+  - 880
+  - 887
+- name: CellEditState
+  kind: enum
+  variants:
+  - name: Preview
+  - name: Editing
+  lines:
+  - 889
+  - 901
+- name: CellFocusMode
+  kind: enum
+  variants:
+  - name: Container
+  - name: Editor
+  - name: Output
+  - name: ChatInput
+  lines:
+  - 903
+  - 908
+- name: CursorAtBoundary
+  kind: enum
+  variants:
+  - name: None
+  - name: Top
+  - name: Bottom
+  - name: Both
+  lines:
+  - 910
+  - 915
+- name: CursorAtLineBoundary
+  kind: enum
+  variants:
+  - name: None
+  - name: Start
+  - name: End
+  - name: Both
+  lines:
+  - 917
+  - 922
+- name: CellFoldingState
+  kind: enum
+  variants:
+  - name: None
+  - name: Expanded
+  - name: Collapsed
+  lines:
+  - 989
+  - 993
+- name: EditorFoldingStateDelegate
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: getCellIndex
+    type: 'method: getCellIndex(cell: ICellViewModel): number'
+  - name: getFoldingState
+    type: 'method: getFoldingState(index: number): CellFoldingState'
+  lines:
+  - 995
+  - 998
+functions:
+- name: isNotebookCellDecoration
+  sig: 'isNotebookCellDecoration(obj: unknown)'
+  lines:
+  - 352
+  - 354
+- name: isNotebookViewZoneDecoration
+  sig: 'isNotebookViewZoneDecoration(obj: unknown)'
+  lines:
+  - 356
+  - 358
+- name: getNotebookEditorFromEditorPane
+  sig: 'getNotebookEditorFromEditorPane(editorPane?: IEditorPane): INotebookEditor | undefined'
+  lines:
+  - 924
+  - 946
+  detail:
+    calls:
+    - editorPane.getControl
+    - editorPane.getId
+    - isCompositeNotebookEditorInput
+- name: expandCellRangesWithHiddenCells
+  sig: 'expandCellRangesWithHiddenCells(editor: INotebookEditor, ranges: ICellRange[])'
+  lines:
+  - 952
+  - 977
+  detail:
+    calls:
+    - cellRangesToIndexes
+    - indexes.forEach
+    - reduceCellRanges
+- name: cellRangeToViewCells
+  sig: 'cellRangeToViewCells(editor: IActiveNotebookEditor, ranges: ICellRange[])'
+  lines:
+  - 979
+  - 986
+  detail:
+    calls:
+    - reduceCellRanges
+    - reduceCellRanges(ranges).forEach
+exports:
+- name: INotebookExtensionRecommendation
+  kind: type
+- name: RenderOutputType
+  kind: type
+- name: IRenderPlainHtmlOutput
+  kind: type
+- name: IRenderOutputViaExtension
+  kind: type
+- name: IInsetRenderOutput
+  kind: type
+- name: ICellOutputViewModel
+  kind: type
+- name: IDisplayOutputViewModel
+  kind: type
+- name: IGenericCellViewModel
+  kind: type
+- name: IDisplayOutputLayoutUpdateRequest
+  kind: type
+- name: ICommonCellInfo
+  kind: type
+- name: ScrollToRevealBehavior
+  kind: type
+- name: IFocusNotebookCellOptions
+  kind: type
+- name: CellLayoutState
+  kind: type
+- name: CellLayoutInfo
+  kind: type
+- name: CellLayoutChangeEvent
+  kind: type
+- name: CodeCellLayoutInfo
+  kind: type
+- name: CodeCellLayoutChangeEvent
+  kind: type
+- name: MarkupCellLayoutInfo
+  kind: type
+- name: CellLayoutContext
+  kind: type
+- name: MarkupCellLayoutChangeEvent
+  kind: type
+- name: ICommonCellViewModelLayoutChangeInfo
+  kind: type
+- name: ICellViewModel
+  kind: type
+- name: IEditableCellViewModel
+  kind: type
+- name: INotebookEditorMouseEvent
+  kind: type
+- name: INotebookEditorContribution
+  kind: type
+- name: NotebookOverviewRulerLane
+  kind: type
+- name: INotebookCellDecorationOptions
+  kind: type
+- name: INotebookViewZoneDecorationOptions
+  kind: type
+- name: INotebookDeltaCellDecoration
+  kind: type
+- name: INotebookDeltaViewZoneDecoration
+  kind: type
+- name: INotebookDeltaDecoration
+  kind: type
+- name: INotebookDeltaCellStatusBarItems
+  kind: type
+- name: CellRevealType
+  kind: type
+- name: CellRevealRangeType
+  kind: type
+- name: INotebookEditorOptions
+  kind: type
+- name: INotebookEditorContributionCtor
+  kind: type
+- name: INotebookEditorContributionDescription
+  kind: type
+- name: INotebookEditorCreationOptions
+  kind: type
+- name: INotebookWebviewMessage
+  kind: type
+- name: INotebookEditorViewState
+  kind: type
+- name: ICellModelDecorations
+  kind: type
+- name: ICellModelDeltaDecorations
+  kind: type
+- name: IModelDecorationsChangeAccessor
+  kind: type
+- name: INotebookViewZone
+  kind: type
+- name: INotebookViewZoneChangeAccessor
+  kind: type
+- name: INotebookCellOverlay
+  kind: type
+- name: INotebookCellOverlayChangeAccessor
+  kind: type
+- name: NotebookViewCellsSplice
+  kind: type
+- name: INotebookViewCellsUpdateEvent
+  kind: type
+- name: INotebookViewModel
+  kind: type
+- name: INotebookEditor
+  kind: type
+- name: IActiveNotebookEditor
+  kind: type
+- name: INotebookEditorPane
+  kind: type
+- name: IBaseCellEditorOptions
+  kind: type
+- name: INotebookEditorDelegate
+  kind: type
+- name: IActiveNotebookEditorDelegate
+  kind: type
+- name: ISearchPreviewInfo
+  kind: type
+- name: CellWebviewFindMatch
+  kind: type
+- name: CellContentFindMatch
+  kind: type
+- name: CellFindMatch
+  kind: type
+- name: CellFindMatchWithIndex
+  kind: type
+- name: CellEditState
+  kind: type
+- name: CellFocusMode
+  kind: type
+- name: CursorAtBoundary
+  kind: type
+- name: CursorAtLineBoundary
+  kind: type
+- name: CellFoldingState
+  kind: type
+- name: EditorFoldingStateDelegate
+  kind: type
+- name: isNotebookCellDecoration
+  kind: func
+- name: isNotebookViewZoneDecoration
+  kind: func
+- name: getNotebookEditorFromEditorPane
+  kind: func
+- name: expandCellRangesWithHiddenCells
+  kind: func
+- name: cellRangeToViewCells
+  kind: func
+- name: EXPAND_CELL_INPUT_COMMAND_ID
+  kind: data
+- name: EXECUTE_CELL_COMMAND_ID
+  kind: data
+- name: DETECT_CELL_LANGUAGE
+  kind: data
+- name: CHANGE_CELL_LANGUAGE
+  kind: data
+- name: QUIT_EDIT_CELL_COMMAND_ID
+  kind: data
+- name: EXPAND_CELL_OUTPUT_COMMAND_ID
+  kind: data
+- name: IPYNB_VIEW_TYPE
+  kind: data
+- name: JUPYTER_EXTENSION_ID
+  kind: data
+- name: KERNEL_EXTENSIONS
+  kind: data
+- name: KERNEL_RECOMMENDATIONS
+  kind: data

@@ -1,0 +1,662 @@
+## Roska File Descriptor — sash/sash.ts
+file: sash/sash.ts
+lines: 689
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: ../../dom.js.$
+- sym: ../../dom.js.append
+- sym: ../../dom.js.EventHelper
+- sym: ../../dom.js.EventLike
+- sym: ../../dom.js.getWindow
+- sym: ../../dom.js.isHTMLElement
+- sym: ../../domStylesheets.js.createStyleSheet
+- sym: ../../event.js.DomEmitter
+- sym: ../../touch.js.EventType
+- sym: ../../touch.js.Gesture
+- sym: ../../../common/async.js.Delayer
+- sym: ../../../common/decorators.js.memoize
+- sym: ../../../common/event.js.Emitter
+- sym: ../../../common/event.js.Event
+- sym: ../../../common/lifecycle.js.Disposable
+- sym: ../../../common/lifecycle.js.DisposableStore
+- sym: ../../../common/lifecycle.js.toDisposable
+- sym: ../../../common/platform.js.isMacintosh
+data:
+- name: DEBUG
+  type: boolean
+  val: 'false'
+- name: globalSize
+  type: number
+  val: '4'
+- name: onDidChangeGlobalSize
+  type: any
+  val: new Emitter<number>()
+- name: globalHoverDelay
+  type: number
+  val: '300'
+- name: onDidChangeHoverDelay
+  type: any
+  val: new Emitter<number>()
+- name: PointerEventsDisabledCssClass
+  type: string
+  val: '''pointer-events-disabled'''
+types:
+- name: IVerticalSashLayoutProvider
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: getVerticalSashLeft
+    type: 'method: getVerticalSashLeft(sash: Sash): number'
+  - name: getVerticalSashTop
+    type: 'method: getVerticalSashTop?(sash: Sash): number'
+  - name: getVerticalSashHeight
+    type: 'method: getVerticalSashHeight?(sash: Sash): number'
+  lines:
+  - 27
+  - 31
+- name: IHorizontalSashLayoutProvider
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: getHorizontalSashTop
+    type: 'method: getHorizontalSashTop(sash: Sash): number'
+  - name: getHorizontalSashLeft
+    type: 'method: getHorizontalSashLeft?(sash: Sash): number'
+  - name: getHorizontalSashWidth
+    type: 'method: getHorizontalSashWidth?(sash: Sash): number'
+  lines:
+  - 36
+  - 40
+- name: ISashLayoutProvider
+  kind: enum
+  decorators:
+  - type
+  variants:
+  - name: IVerticalSashLayoutProvider
+  - name: IHorizontalSashLayoutProvider
+  lines:
+  - 42
+  - 42
+- name: ISashEvent
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: readonly
+    type: number
+  - name: readonly
+    type: number
+  - name: readonly
+    type: number
+  - name: readonly
+    type: number
+  - name: readonly
+    type: boolean
+  lines:
+  - 44
+  - 50
+- name: OrthogonalEdge
+  kind: enum
+  variants:
+  - name: North
+    val: '''north'''
+  - name: South
+    val: '''south'''
+  - name: East
+    val: '''east'''
+  - name: West
+    val: '''west'''
+  lines:
+  - 52
+  - 57
+- name: IBoundarySashes
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: readonly
+    type: Sash
+  - name: readonly
+    type: Sash
+  - name: readonly
+    type: Sash
+  - name: readonly
+    type: Sash
+  lines:
+  - 59
+  - 64
+- name: ISashOptions
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: readonly
+    type: Orientation
+  - name: readonly
+    type: number
+  - name: readonly
+    type: Sash
+  - name: readonly
+    type: Sash
+  - name: readonly
+    type: OrthogonalEdge
+  lines:
+  - 66
+  - 103
+- name: IVerticalSashOptions
+  kind: trait
+  bases:
+  - ISashOptions
+  decorators:
+  - interface
+  fields:
+  - name: readonly
+    type: Orientation.VERTICAL
+  lines:
+  - 105
+  - 107
+- name: IHorizontalSashOptions
+  kind: trait
+  bases:
+  - ISashOptions
+  decorators:
+  - interface
+  fields:
+  - name: readonly
+    type: Orientation.HORIZONTAL
+  lines:
+  - 109
+  - 111
+- name: Orientation
+  kind: enum
+  variants:
+  - name: VERTICAL
+  - name: HORIZONTAL
+  lines:
+  - 113
+  - 116
+- name: SashState
+  kind: enum
+  variants:
+  - name: Disabled
+  - name: AtMinimum
+  - name: AtMaximum
+  - name: Enabled
+  lines:
+  - 118
+  - 145
+- name: PointerEvent
+  kind: trait
+  bases:
+  - EventLike
+  decorators:
+  - interface
+  fields:
+  - name: readonly
+    type: number
+  - name: readonly
+    type: number
+  - name: readonly
+    type: boolean
+  - name: readonly
+    type: EventTarget | null
+  - name: readonly
+    type: EventTarget | undefined
+  lines:
+  - 161
+  - 167
+- name: IPointerEventFactory
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: readonly
+    type: Event<PointerEvent>
+  - name: readonly
+    type: Event<PointerEvent>
+  - name: dispose
+    type: 'method: dispose(): void'
+  lines:
+  - 169
+  - 173
+- name: MouseEventFactory
+  kind: struct
+  bases:
+  - IPointerEventFactory
+  fields:
+  - name: disposables
+    type: any
+    default: new DisposableStore()
+  methods:
+  - name: constructor
+    sig: 'constructor(private el: HTMLElement)'
+    lines:
+    - 179
+    - 179
+    detail: {}
+  - name: onPointerMove
+    sig: 'onPointerMove(): Event<PointerEvent>'
+    lines:
+    - 182
+    - 184
+    detail:
+      calls:
+      - getWindow
+      - new DomEmitter
+      - this.disposables.add
+  - name: onPointerUp
+    sig: 'onPointerUp(): Event<PointerEvent>'
+    lines:
+    - 187
+    - 189
+    detail:
+      calls:
+      - getWindow
+      - new DomEmitter
+      - this.disposables.add
+  - name: dispose
+    sig: 'dispose(): void'
+    lines:
+    - 191
+    - 193
+    detail:
+      calls:
+      - this.disposables.dispose
+  lines:
+  - 175
+  - 194
+- name: GestureEventFactory
+  kind: struct
+  bases:
+  - IPointerEventFactory
+  fields:
+  - name: disposables
+    type: any
+    default: new DisposableStore()
+  methods:
+  - name: onPointerMove
+    sig: 'onPointerMove(): Event<PointerEvent>'
+    lines:
+    - 201
+    - 203
+    detail:
+      calls:
+      - new DomEmitter
+      - this.disposables.add
+  - name: onPointerUp
+    sig: 'onPointerUp(): Event<PointerEvent>'
+    lines:
+    - 206
+    - 208
+    detail:
+      calls:
+      - new DomEmitter
+      - this.disposables.add
+  - name: constructor
+    sig: 'constructor(private el: HTMLElement)'
+    lines:
+    - 210
+    - 210
+    detail: {}
+  - name: dispose
+    sig: 'dispose(): void'
+    lines:
+    - 212
+    - 214
+    detail:
+      calls:
+      - this.disposables.dispose
+  lines:
+  - 196
+  - 215
+- name: OrthogonalPointerEventFactory
+  kind: struct
+  bases:
+  - IPointerEventFactory
+  methods:
+  - name: onPointerMove
+    sig: 'onPointerMove(): Event<PointerEvent>'
+    lines:
+    - 220
+    - 222
+    detail: {}
+  - name: onPointerUp
+    sig: 'onPointerUp(): Event<PointerEvent>'
+    lines:
+    - 225
+    - 227
+    detail: {}
+  - name: constructor
+    sig: 'constructor(private factory: IPointerEventFactory)'
+    lines:
+    - 229
+    - 229
+    detail: {}
+  - name: dispose
+    sig: 'dispose(): void'
+    lines:
+    - 231
+    - 233
+    detail: {}
+  lines:
+  - 217
+  - 234
+- name: Sash
+  kind: struct
+  ctx: The state of a sash defines whether it can be interacted with by the user as well as what mouse cursor to use, when hovered.
+  bases:
+  - Disposable
+  fields:
+  - name: el
+    type: HTMLElement
+  - name: layoutProvider
+    type: ISashLayoutProvider
+  - name: orientation
+    type: Orientation
+  - name: size
+    type: number
+  - name: hoverDelay
+    type: any
+    default: globalHoverDelay
+  - name: hoverDelayer
+    type: any
+    default: this._register(new Delayer(this.hoverDelay))
+  - name: _state
+    type: SashState
+    default: SashState.Enabled
+  - name: onDidEnablementChange
+    type: any
+    default: this._register(new Emitter<SashState>())
+  - name: _onDidStart
+    type: any
+    default: this._register(new Emitter<ISashEvent>())
+  - name: _onDidChange
+    type: any
+    default: this._register(new Emitter<ISashEvent>())
+  - name: _onDidReset
+    type: any
+    default: this._register(new Emitter<void>())
+  - name: _onDidEnd
+    type: any
+    default: this._register(new Emitter<void>())
+  - name: orthogonalStartSashDisposables
+    type: any
+    default: this._register(new DisposableStore())
+  - name: _orthogonalStartSash
+    type: Sash | undefined
+  - name: orthogonalStartDragHandleDisposables
+    type: any
+    default: this._register(new DisposableStore())
+  - name: _orthogonalStartDragHandle
+    type: HTMLElement | undefined
+  - name: orthogonalEndSashDisposables
+    type: any
+    default: this._register(new DisposableStore())
+  - name: _orthogonalEndSash
+    type: Sash | undefined
+  - name: orthogonalEndDragHandleDisposables
+    type: any
+    default: this._register(new DisposableStore())
+  - name: _orthogonalEndDragHandle
+    type: HTMLElement | undefined
+  - name: onDidStart
+    type: Event<ISashEvent>
+    default: this._onDidStart.event
+  - name: onDidChange
+    type: Event<ISashEvent>
+    default: this._onDidChange.event
+  - name: onDidReset
+    type: Event<void>
+    default: this._onDidReset.event
+  - name: onDidEnd
+    type: Event<void>
+    default: this._onDidEnd.event
+  - name: linkedSash
+    type: Sash | undefined
+    default: undefined
+  methods:
+  - name: state
+    sig: 'state(): SashState'
+    lines:
+    - 275
+    - 275
+    detail: {}
+  - name: orthogonalStartSash
+    sig: 'orthogonalStartSash(): Sash | undefined'
+    lines:
+    - 276
+    - 276
+    detail: {}
+  - name: orthogonalEndSash
+    sig: 'orthogonalEndSash(): Sash | undefined'
+    lines:
+    - 277
+    - 277
+    detail: {}
+  - name: state
+    sig: 'state(state: SashState)'
+    lines:
+    - 283
+    - 294
+    detail:
+      calls:
+      - this.el.classList.toggle
+      - this.onDidEnablementChange.fire
+  - name: orthogonalStartSash
+    sig: 'orthogonalStartSash(sash: Sash | undefined)'
+    lines:
+    - 333
+    - 360
+    detail:
+      calls:
+      - onChange
+      - sash.onDidEnablementChange.event
+      - this.orthogonalStartDragHandleDisposables.clear
+      - this.orthogonalStartSashDisposables.add
+      - this.orthogonalStartSashDisposables.clear
+  - name: orthogonalEndSash
+    sig: 'orthogonalEndSash(sash: Sash | undefined)'
+    lines:
+    - 371
+    - 398
+    detail:
+      calls:
+      - onChange
+      - sash.onDidEnablementChange.event
+      - this.orthogonalEndDragHandleDisposables.clear
+      - this.orthogonalEndSashDisposables.add
+      - this.orthogonalEndSashDisposables.clear
+  - name: constructor
+    sig: 'constructor(container: HTMLElement, layoutProvider: ISashLayoutProvider, options: ISashOptions)'
+    lines:
+    - 417
+    - 494
+    detail:
+      calls:
+      - $
+      - Gesture.addTarget
+      - append
+      - new DomEmitter
+      - onDidChangeGlobalSize.event
+      - onDidChangeHoverDelay.event
+      - onMouseDoubleClick
+      - onMouseDown
+      - onMouseEnter
+      - onMouseLeave
+      - onTap
+      - onTouchStart
+      - super
+      - this._register
+      - this.el.classList.add
+      - this.el.classList.remove
+      - this.el.classList.toggle
+      - this.layout
+  - name: onPointerStart
+    sig: 'onPointerStart(event: PointerEvent, pointerEventFactory: IPointerEventFactory): void'
+    vis: private
+    lines:
+    - 496
+    - 594
+    detail:
+      calls:
+      - EventHelper.stop
+      - createStyleSheet
+      - disposables.add
+      - iframe.classList.add
+      - new DisposableStore
+      - new OrthogonalPointerEventFactory
+      - orthogonalSash.onPointerStart
+      - pointerEventFactory.onPointerMove
+      - pointerEventFactory.onPointerUp
+      - this._onDidStart.fire
+      - this.el.classList.add
+      - this.el.ownerDocument.getElementsByTagName
+      - this.getOrthogonalSash
+      - this.linkedSash.onPointerStart
+      - this.onDidEnablementChange.event
+      - updateStyle
+  - name: onPointerDoublePress
+    sig: 'onPointerDoublePress(e: MouseEvent): void'
+    vis: private
+    lines:
+    - 596
+    - 608
+    detail:
+      calls:
+      - orthogonalSash._onDidReset.fire
+      - this._onDidReset.fire
+      - this.getOrthogonalSash
+      - this.linkedSash._onDidReset.fire
+  - name: onMouseEnter
+    sig: 'onMouseEnter(sash: Sash, fromLinkedSash: boolean = false): void'
+    vis: private
+    decorators:
+    - static
+    lines:
+    - 610
+    - 621
+    detail:
+      calls:
+      - Sash.onMouseEnter
+      - sash.el.classList.add
+      - sash.el.classList.contains
+      - sash.hoverDelayer.cancel
+      - sash.hoverDelayer.trigger
+      - sash.hoverDelayer.trigger(() => sash.el.classList.add('hover'), sash.hoverDelay).then
+  - name: onMouseLeave
+    sig: 'onMouseLeave(sash: Sash, fromLinkedSash: boolean = false): void'
+    vis: private
+    decorators:
+    - static
+    lines:
+    - 623
+    - 630
+    detail:
+      calls:
+      - Sash.onMouseLeave
+      - sash.el.classList.remove
+      - sash.hoverDelayer.cancel
+  - name: clearSashHoverState
+    sig: 'clearSashHoverState(): void'
+    lines:
+    - 637
+    - 639
+    detail:
+      calls:
+      - Sash.onMouseLeave
+  - name: layout
+    sig: 'layout(): void'
+    lines:
+    - 645
+    - 669
+    detail:
+      calls:
+      - horizontalProvider.getHorizontalSashLeft
+      - horizontalProvider.getHorizontalSashTop
+      - horizontalProvider.getHorizontalSashWidth
+      - verticalProvider.getVerticalSashHeight
+      - verticalProvider.getVerticalSashLeft
+      - verticalProvider.getVerticalSashTop
+  - name: dispose
+    sig: 'dispose(): void'
+    lines:
+    - 685
+    - 688
+    detail:
+      calls:
+      - super.dispose
+      - this.el.remove
+  lines:
+  - 251
+  - 689
+functions:
+- name: setGlobalSashSize
+  sig: 'setGlobalSashSize(size: number): void'
+  lines:
+  - 149
+  - 152
+  detail:
+    calls:
+    - onDidChangeGlobalSize.fire
+- name: setGlobalHoverDelay
+  sig: 'setGlobalHoverDelay(size: number): void'
+  lines:
+  - 156
+  - 159
+  detail:
+    calls:
+    - onDidChangeHoverDelay.fire
+exports:
+- name: IVerticalSashLayoutProvider
+  kind: type
+- name: IHorizontalSashLayoutProvider
+  kind: type
+- name: ISashLayoutProvider
+  kind: type
+- name: ISashEvent
+  kind: type
+- name: OrthogonalEdge
+  kind: type
+- name: IBoundarySashes
+  kind: type
+- name: ISashOptions
+  kind: type
+- name: IVerticalSashOptions
+  kind: type
+- name: IHorizontalSashOptions
+  kind: type
+- name: Orientation
+  kind: type
+- name: SashState
+  kind: type
+- name: PointerEvent
+  kind: type
+- name: IPointerEventFactory
+  kind: type
+- name: MouseEventFactory
+  kind: type
+- name: GestureEventFactory
+  kind: type
+- name: OrthogonalPointerEventFactory
+  kind: type
+- name: Sash
+  kind: type
+- name: setGlobalSashSize
+  kind: func
+- name: setGlobalHoverDelay
+  kind: func
+- name: DEBUG
+  kind: data
+- name: globalSize
+  kind: data
+- name: onDidChangeGlobalSize
+  kind: data
+- name: globalHoverDelay
+  kind: data
+- name: onDidChangeHoverDelay
+  kind: data
+- name: PointerEventsDisabledCssClass
+  kind: data

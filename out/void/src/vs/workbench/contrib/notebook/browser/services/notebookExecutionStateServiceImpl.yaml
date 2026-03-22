@@ -1,0 +1,654 @@
+## Roska File Descriptor — services/notebookExecutionStateServiceImpl.ts
+file: services/notebookExecutionStateServiceImpl.ts
+lines: 594
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: ../../../../../base/common/event.js.Emitter
+- sym: ../../../../../base/common/lifecycle.js.combinedDisposable
+- sym: ../../../../../base/common/lifecycle.js.Disposable
+- sym: ../../../../../base/common/lifecycle.js.IDisposable
+- sym: ../../../../../base/common/map.js.ResourceMap
+- sym: ../../../../../base/common/resources.js.isEqual
+- sym: ../../../../../base/common/uri.js.URI
+- sym: ../../../../../base/common/uuid.js.generateUuid
+- sym: ../../../../../platform/accessibilitySignal/browser/accessibilitySignalService.js.AccessibilitySignal
+- sym: ../../../../../platform/accessibilitySignal/browser/accessibilitySignalService.js.IAccessibilitySignalService
+- sym: ../../../../../platform/instantiation/common/instantiation.js.IInstantiationService
+- sym: ../../../../../platform/log/common/log.js.ILogService
+- sym: ../../common/model/notebookTextModel.js.NotebookTextModel
+- sym: ../../common/notebookCommon.js.CellEditType
+- sym: ../../common/notebookCommon.js.CellUri
+- sym: ../../common/notebookCommon.js.ICellEditOperation
+- sym: ../../common/notebookCommon.js.NotebookCellExecutionState
+- sym: ../../common/notebookCommon.js.NotebookCellInternalMetadata
+- sym: ../../common/notebookCommon.js.NotebookExecutionState
+- sym: ../../common/notebookCommon.js.NotebookTextModelWillAddRemoveEvent
+- sym: ../../common/notebookExecutionService.js.CellExecutionUpdateType
+- sym: ../../common/notebookExecutionService.js.INotebookExecutionService
+- sym: ../../common/notebookExecutionStateService.js.ICellExecuteUpdate
+- sym: ../../common/notebookExecutionStateService.js.ICellExecutionComplete
+- sym: ../../common/notebookExecutionStateService.js.ICellExecutionStateChangedEvent
+- sym: ../../common/notebookExecutionStateService.js.ICellExecutionStateUpdate
+- sym: ../../common/notebookExecutionStateService.js.IExecutionStateChangedEvent
+- sym: ../../common/notebookExecutionStateService.js.IFailedCellInfo
+- sym: ../../common/notebookExecutionStateService.js.INotebookCellExecution
+- sym: ../../common/notebookExecutionStateService.js.INotebookExecution
+- sym: ../../common/notebookExecutionStateService.js.INotebookExecutionStateService
+- sym: ../../common/notebookExecutionStateService.js.INotebookFailStateChangedEvent
+- sym: ../../common/notebookExecutionStateService.js.NotebookExecutionType
+- sym: ../../common/notebookKernelService.js.INotebookKernelService
+- sym: ../../common/notebookService.js.INotebookService
+types:
+- name: NotebookExecutionStateService
+  kind: struct
+  bases:
+  - Disposable
+  - INotebookExecutionStateService
+  fields:
+  - name: _serviceBrand
+    type: undefined
+  - name: _executions
+    type: any
+    default: new ResourceMap<Map<number, CellExecution>>()
+  - name: _notebookExecutions
+    type: any
+    default: new ResourceMap<[NotebookExecution, IDisposable]>()
+  - name: _notebookListeners
+    type: any
+    default: new ResourceMap<NotebookExecutionListeners>()
+  - name: _cellListeners
+    type: any
+    default: new ResourceMap<IDisposable>()
+  - name: _lastFailedCells
+    type: any
+    default: new ResourceMap<IFailedCellInfo>()
+  - name: _lastCompletedCellHandles
+    type: any
+    default: new ResourceMap<number>()
+  - name: _onDidChangeExecution
+    type: any
+    default: this._register(new Emitter<ICellExecutionStateChangedEvent | IExecutionStateChan...
+  - name: onDidChangeExecution
+    type: any
+    default: this._onDidChangeExecution.event
+  - name: _onDidChangeLastRunFailState
+    type: any
+    default: this._register(new Emitter<INotebookFailStateChangedEvent>())
+  - name: onDidChangeLastRunFailState
+    type: any
+    default: this._onDidChangeLastRunFailState.event
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\t@IInstantiationService private readonly _instantiationService: IInstantiationService,\n\t\t@ILogService private readonly _logService: ILogService,\n\t\t@INotebookService private readonly _notebookService: INotebookService,\n\t\t@IAccessibilitySignalService private readonly _accessibilitySignalService: IAccessibilitySignalService\n\t)"
+    lines:
+    - 38
+    - 45
+    detail:
+      calls:
+      - super
+  - name: getLastFailedCellForNotebook
+    sig: 'getLastFailedCellForNotebook(notebook: URI): number | undefined'
+    lines:
+    - 47
+    - 50
+    detail:
+      calls:
+      - this._lastFailedCells.get
+  - name: getLastCompletedCellForNotebook
+    sig: 'getLastCompletedCellForNotebook(notebook: URI): number | undefined'
+    lines:
+    - 52
+    - 54
+    detail:
+      calls:
+      - this._lastCompletedCellHandles.get
+  - name: forceCancelNotebookExecutions
+    sig: 'forceCancelNotebookExecutions(notebookUri: URI): void'
+    lines:
+    - 56
+    - 66
+    detail:
+      calls:
+      - notebookCellExecutions.values
+      - this._executions.get
+      - this._notebookExecutions.has
+      - this._onCellExecutionDidComplete
+      - this._onExecutionDidComplete
+  - name: getCellExecution
+    sig: 'getCellExecution(cellUri: URI): INotebookCellExecution | undefined'
+    lines:
+    - 68
+    - 80
+    detail:
+      calls:
+      - CellUri.parse
+      - exeMap.get
+      - new Error
+      - this._executions.get
+  - name: getExecution
+    sig: 'getExecution(notebook: URI): INotebookExecution | undefined'
+    lines:
+    - 81
+    - 83
+    detail:
+      calls:
+      - this._notebookExecutions.get
+  - name: getCellExecutionsForNotebook
+    sig: 'getCellExecutionsForNotebook(notebook: URI): INotebookCellExecution[]'
+    lines:
+    - 85
+    - 88
+    detail:
+      calls:
+      - Array.from
+      - exeMap.values
+      - this._executions.get
+  - name: getCellExecutionsByHandleForNotebook
+    sig: 'getCellExecutionsByHandleForNotebook(notebook: URI): Map<number, INotebookCellExecution> | undefined'
+    lines:
+    - 90
+    - 93
+    detail:
+      calls:
+      - exeMap.entries
+      - new Map
+      - this._executions.get
+  - name: _onCellExecutionDidComplete
+    sig: '_onCellExecutionDidComplete(notebookUri: URI, cellHandle: number, exe: CellExecution, lastRunSuccess?: boolean): void'
+    vis: private
+    lines:
+    - 99
+    - 131
+    detail:
+      calls:
+      - CellUri.generate
+      - exe.dispose
+      - new NotebookCellExecutionEvent
+      - notebookExecutions.delete
+      - notebookUri.toString
+      - this._accessibilitySignalService.playSignal
+      - this._cellListeners.delete
+      - this._cellListeners.get
+      - this._cellListeners.get(cellUri)?.dispose
+      - this._clearLastFailedCell
+      - this._executions.delete
+      - this._executions.get
+      - this._lastCompletedCellHandles.set
+      - this._logService.debug
+      - this._notebookListeners.delete
+      - this._notebookListeners.get
+      - this._notebookListeners.get(notebookUri)?.dispose
+      - this._onDidChangeExecution.fire
+      - this._setLastFailedCell
+  - name: _onExecutionDidComplete
+    sig: '_onExecutionDidComplete(notebookUri: URI): void'
+    vis: private
+    lines:
+    - 137
+    - 147
+    detail:
+      calls:
+      - Array.isArray
+      - disposables.forEach
+      - new NotebookExecutionEvent
+      - notebookUri.toString
+      - this._logService.debug
+      - this._notebookExecutions.delete
+      - this._notebookExecutions.get
+      - this._onDidChangeExecution.fire
+  - name: createCellExecution
+    sig: 'createCellExecution(notebookUri: URI, cellHandle: number): INotebookCellExecution'
+    lines:
+    - 149
+    - 173
+    detail:
+      calls:
+      - exe.initialize
+      - new Error
+      - new Map
+      - new NotebookCellExecutionEvent
+      - notebookExecutionMap.get
+      - notebookExecutionMap.set
+      - notebookUri.toString
+      - this._createNotebookCellExecution
+      - this._executions.get
+      - this._executions.set
+      - this._instantiationService.createInstance
+      - this._notebookListeners.set
+      - this._notebookService.getNotebookTextModel
+      - this._onDidChangeExecution.fire
+  - name: createExecution
+    sig: 'createExecution(notebookUri: URI): INotebookExecution'
+    lines:
+    - 174
+    - 193
+    detail:
+      calls:
+      - new Error
+      - new NotebookExecutionEvent
+      - notebookUri.toString
+      - this._createNotebookExecution
+      - this._instantiationService.createInstance
+      - this._notebookExecutions.get
+      - this._notebookExecutions.set
+      - this._notebookListeners.has
+      - this._notebookListeners.set
+      - this._notebookService.getNotebookTextModel
+      - this._onDidChangeExecution.fire
+  - name: _createNotebookCellExecution
+    sig: '_createNotebookCellExecution(notebook: NotebookTextModel, cellHandle: number): CellExecution'
+    vis: private
+    lines:
+    - 195
+    - 204
+    detail:
+      calls:
+      - CellUri.generate
+      - combinedDisposable
+      - exe.onDidComplete
+      - exe.onDidUpdate
+      - this._cellListeners.set
+      - this._instantiationService.createInstance
+  - name: _createNotebookExecution
+    sig: '_createNotebookExecution(notebook: NotebookTextModel): [NotebookExecution, IDisposable]'
+    vis: private
+    lines:
+    - 206
+    - 213
+    detail:
+      calls:
+      - combinedDisposable
+      - exe.onDidComplete
+      - exe.onDidUpdate
+      - this._instantiationService.createInstance
+  - name: _setLastFailedCell
+    sig: '_setLastFailedCell(notebookURI: URI, cellHandle: number): void'
+    vis: private
+    lines:
+    - 215
+    - 231
+    detail:
+      calls:
+      - this._getFailedCellListener
+      - this._lastFailedCells.get
+      - this._lastFailedCells.set
+      - this._notebookService.getNotebookTextModel
+      - this._onDidChangeLastRunFailState.fire
+  - name: _setLastFailedCellVisibility
+    sig: '_setLastFailedCellVisibility(notebookURI: URI, visible: boolean): void'
+    vis: private
+    lines:
+    - 233
+    - 245
+    detail:
+      calls:
+      - this._lastFailedCells.get
+      - this._lastFailedCells.set
+      - this._onDidChangeLastRunFailState.fire
+  - name: _clearLastFailedCell
+    sig: '_clearLastFailedCell(notebookURI: URI): void'
+    vis: private
+    lines:
+    - 247
+    - 256
+    detail:
+      calls:
+      - lastFailedCellInfo.disposable?.dispose
+      - this._lastFailedCells.delete
+      - this._lastFailedCells.get
+      - this._onDidChangeLastRunFailState.fire
+  - name: dispose
+    sig: 'dispose(): void'
+    lines:
+    - 279
+    - 294
+    detail:
+      calls:
+      - super.dispose
+      - this._cellListeners.forEach
+      - this._executions.clear
+      - this._executions.forEach
+      - this._lastFailedCells.forEach
+      - this._notebookExecutions.clear
+      - this._notebookExecutions.forEach
+      - this._notebookListeners.forEach
+  lines:
+  - 22
+  - 295
+- name: NotebookCellExecutionEvent
+  kind: struct
+  bases:
+  - ICellExecutionStateChangedEvent
+  fields:
+  - name: type
+    type: any
+    default: NotebookExecutionType.cell
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\treadonly notebook: URI,\n\t\treadonly cellHandle: number,\n\t\treadonly changed?: CellExecution\n\t)"
+    lines:
+    - 299
+    - 303
+    detail: {}
+  - name: affectsCell
+    sig: 'affectsCell(cell: URI): boolean'
+    lines:
+    - 305
+    - 308
+    detail:
+      calls:
+      - CellUri.parse
+      - isEqual
+  - name: affectsNotebook
+    sig: 'affectsNotebook(notebook: URI): boolean'
+    lines:
+    - 310
+    - 312
+    detail:
+      calls:
+      - isEqual
+  lines:
+  - 297
+  - 313
+- name: NotebookExecutionEvent
+  kind: struct
+  bases:
+  - IExecutionStateChangedEvent
+  fields:
+  - name: type
+    type: any
+    default: NotebookExecutionType.notebook
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\treadonly notebook: URI,\n\t\treadonly changed?: NotebookExecution\n\t)"
+    lines:
+    - 317
+    - 320
+    detail: {}
+  - name: affectsNotebook
+    sig: 'affectsNotebook(notebook: URI): boolean'
+    lines:
+    - 322
+    - 324
+    detail:
+      calls:
+      - isEqual
+  lines:
+  - 315
+  - 325
+- name: NotebookExecutionListeners
+  kind: struct
+  bases:
+  - Disposable
+  fields:
+  - name: _notebookModel
+    type: NotebookTextModel
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tnotebook: URI,\n\t\t@INotebookService private readonly _notebookService: INotebookService,\n\t\t@INotebookKernelService private readonly _notebookKernelService: INotebookKernelService,\n\t\t@INotebookExecutionService private readonly _notebookExecutionService: INotebookExecutionService,\n\t\t@INotebookExecutionStateService private readonly _notebookExecutionStateService: INotebookExecutionStateService,\n\t\t@ILogService private readonly _logService: ILogService,\n\t)"
+    lines:
+    - 330
+    - 349
+    detail:
+      calls:
+      - new Error
+      - notebook.toString
+      - super
+      - this._logService.debug
+      - this._notebookModel.onWillAddRemoveCells
+      - this._notebookModel.onWillDispose
+      - this._notebookService.getNotebookTextModel
+      - this._register
+  - name: cancelAll
+    sig: 'cancelAll(): void'
+    vis: private
+    lines:
+    - 351
+    - 355
+    detail:
+      calls:
+      - exes.map
+      - this._logService.debug
+      - this._notebookExecutionService.cancelNotebookCellHandles
+      - this._notebookExecutionStateService.getCellExecutionsForNotebook
+  - name: onWillAddRemoveCells
+    sig: 'onWillAddRemoveCells(e: NotebookTextModelWillAddRemoveEvent): void'
+    vis: private
+    lines:
+    - 362
+    - 394
+    detail:
+      calls:
+      - JSON.stringify
+      - e.rawEvent.changes.forEach
+      - kernel.cancelNotebookCellExecution
+      - new Set
+      - this._logService.debug
+      - this._notebookExecutionStateService.getCellExecutionsByHandleForNotebook
+      - this._notebookKernelService.getSelectedOrSuggestedKernel
+  lines:
+  - 327
+  - 395
+- name: CellExecution
+  kind: struct
+  bases:
+  - Disposable
+  - INotebookCellExecution
+  fields:
+  - name: _onDidUpdate
+    type: any
+    default: this._register(new Emitter<void>())
+  - name: onDidUpdate
+    type: any
+    default: this._onDidUpdate.event
+  - name: _onDidComplete
+    type: any
+    default: this._register(new Emitter<boolean | undefined>())
+  - name: onDidComplete
+    type: any
+    default: this._onDidComplete.event
+  - name: _state
+    type: NotebookCellExecutionState
+    default: NotebookCellExecutionState.Unconfirmed
+  - name: _didPause
+    type: any
+    default: 'false'
+  - name: _isPaused
+    type: any
+    default: 'false'
+  methods:
+  - name: state
+    sig: state()
+    lines:
+    - 438
+    - 440
+    detail: {}
+  - name: notebook
+    sig: 'notebook(): URI'
+    lines:
+    - 442
+    - 444
+    detail: {}
+  - name: didPause
+    sig: didPause()
+    lines:
+    - 447
+    - 449
+    detail: {}
+  - name: isPaused
+    sig: isPaused()
+    lines:
+    - 452
+    - 454
+    detail: {}
+  - name: constructor
+    sig: "constructor(\n\t\treadonly cellHandle: number,\n\t\tprivate readonly _notebookModel: NotebookTextModel,\n\t\t@ILogService private readonly _logService: ILogService,\n\t)"
+    lines:
+    - 456
+    - 463
+    detail:
+      calls:
+      - super
+      - this._logService.debug
+      - this.getCellLog
+  - name: initialize
+    sig: initialize()
+    lines:
+    - 465
+    - 479
+    detail:
+      calls:
+      - generateUuid
+      - this._applyExecutionEdits
+  - name: logUpdates
+    sig: 'logUpdates(updates: ICellExecuteUpdate[]): void'
+    vis: private
+    lines:
+    - 485
+    - 488
+    detail:
+      calls:
+      - this._logService.debug
+      - this.getCellLog
+      - updates.map
+      - updates.map(u => CellExecutionUpdateType[u.editType]).join
+  - name: confirm
+    sig: confirm()
+    lines:
+    - 490
+    - 494
+    detail:
+      calls:
+      - this._logService.debug
+      - this._onDidUpdate.fire
+      - this.getCellLog
+  - name: update
+    sig: 'update(updates: ICellExecuteUpdate[]): void'
+    lines:
+    - 496
+    - 522
+    detail:
+      calls:
+      - '[...updates].reverse'
+      - '[...updates].reverse().find'
+      - this._applyExecutionEdits
+      - this._logService.debug
+      - this._notebookModel.cells.find
+      - this._notebookModel.uri.toString
+      - this._onDidUpdate.fire
+      - this.logUpdates
+      - updates.map
+      - updates.some
+  - name: complete
+    sig: 'complete(completionData: ICellExecutionComplete): void'
+    lines:
+    - 524
+    - 543
+    detail:
+      calls:
+      - this._applyExecutionEdits
+      - this._logService.debug
+      - this._notebookModel.cells.find
+      - this._notebookModel.uri.toString
+      - this._onDidComplete.fire
+  lines:
+  - 430
+  - 548
+- name: NotebookExecution
+  kind: struct
+  bases:
+  - Disposable
+  - INotebookExecution
+  fields:
+  - name: _onDidUpdate
+    type: any
+    default: this._register(new Emitter<void>())
+  - name: onDidUpdate
+    type: any
+    default: this._onDidUpdate.event
+  - name: _onDidComplete
+    type: any
+    default: this._register(new Emitter<void>())
+  - name: onDidComplete
+    type: any
+    default: this._onDidComplete.event
+  - name: _state
+    type: NotebookExecutionState
+    default: NotebookExecutionState.Unconfirmed
+  methods:
+  - name: state
+    sig: state()
+    lines:
+    - 558
+    - 560
+    detail: {}
+  - name: notebook
+    sig: 'notebook(): URI'
+    lines:
+    - 562
+    - 564
+    detail: {}
+  - name: constructor
+    sig: "constructor(\n\t\tprivate readonly _notebookModel: NotebookTextModel,\n\t\t@ILogService private readonly _logService: ILogService,\n\t)"
+    lines:
+    - 566
+    - 572
+    detail:
+      calls:
+      - super
+      - this._logService.debug
+  - name: confirm
+    sig: confirm()
+    lines:
+    - 577
+    - 581
+    detail:
+      calls:
+      - this._onDidUpdate.fire
+      - this.debug
+  - name: begin
+    sig: 'begin(): void'
+    lines:
+    - 583
+    - 587
+    detail:
+      calls:
+      - this._onDidUpdate.fire
+      - this.debug
+  - name: complete
+    sig: 'complete(): void'
+    lines:
+    - 589
+    - 593
+    detail:
+      calls:
+      - this._onDidComplete.fire
+      - this.debug
+  lines:
+  - 550
+  - 594
+functions:
+- name: updateToEdit
+  sig: 'updateToEdit(update: ICellExecuteUpdate, cellHandle: number): ICellEditOperation'
+  lines:
+  - 397
+  - 428
+  detail:
+    calls:
+    - new Error
+exports:
+- name: NotebookExecutionStateService
+  kind: type
+- name: NotebookCellExecutionEvent
+  kind: type
+- name: NotebookExecutionEvent
+  kind: type
+- name: NotebookExecutionListeners
+  kind: type
+- name: CellExecution
+  kind: type
+- name: NotebookExecution
+  kind: type
+- name: updateToEdit
+  kind: func

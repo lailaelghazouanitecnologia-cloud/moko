@@ -1,0 +1,277 @@
+## Roska File Descriptor — common/extHostWebview.ts
+file: common/extHostWebview.ts
+lines: 296
+layer: ui
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: ../../../base/common/buffer.js.VSBuffer
+- sym: ../../../base/common/event.js.Emitter
+- sym: ../../../base/common/event.js.Event
+- sym: ../../../base/common/lifecycle.js.Disposable
+- sym: ../../../base/common/network.js.Schemas
+- sym: ../../../base/common/objects.js.objects
+- sym: ../../../base/common/uri.js.URI
+- sym: ../../../platform/extensions/common/extensionValidator.js.normalizeVersion
+- sym: ../../../platform/extensions/common/extensionValidator.js.parseVersion
+- sym: ../../../platform/extensions/common/extensions.js.IExtensionDescription
+- sym: ../../../platform/log/common/log.js.ILogService
+- sym: ./extHostApiDeprecationService.js.IExtHostApiDeprecationService
+- sym: ./extHostWebviewMessaging.js.deserializeWebviewMessage
+- sym: ./extHostWebviewMessaging.js.serializeWebviewMessage
+- sym: ./extHostWorkspace.js.IExtHostWorkspace
+- sym: ../../contrib/webview/common/webview.js.WebviewRemoteInfo
+- sym: ../../contrib/webview/common/webview.js.asWebviewUri
+- sym: ../../contrib/webview/common/webview.js.webviewGenericCspSource
+- sym: ../../services/extensions/common/proxyIdentifier.js.SerializableObjectWithBuffers
+- sym: vscode.vscode
+- sym: ./extHost.protocol.js.extHostProtocol
+types:
+- name: ExtHostWebview
+  kind: struct
+  ctx: internal
+  fields:
+  - name: _onMessageEmitter
+    type: any
+    default: new Emitter<any>()
+  - name: onDidReceiveMessage
+    type: Event<any>
+    default: this._onMessageEmitter.event
+  - name: _onDidDispose
+    type: Event<void>
+    default: this.#onDidDisposeEmitter.event
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\thandle: extHostProtocol.WebviewHandle,\n\t\tproxy: extHostProtocol.MainThreadWebviewsShape,\n\t\toptions: vscode.WebviewOptions,\n\t\tremoteInfo: WebviewRemoteInfo,\n\t\tworkspace: IExtHostWorkspace | undefined,\n\t\textension: IExtensionDescription,\n\t\tdeprecationService: IExtHostApiDeprecationService,\n\t)"
+    lines:
+    - 43
+    - 61
+    detail:
+      calls:
+      - shouldSerializeBuffersForPostMessage
+      - shouldTryRewritingOldResourceUris
+  - name: dispose
+    sig: dispose()
+    lines:
+    - 69
+    - 76
+    detail:
+      calls:
+      - this.#onDidDisposeEmitter.dispose
+      - this.#onDidDisposeEmitter.fire
+      - this._onMessageEmitter.dispose
+  - name: asWebviewUri
+    sig: 'asWebviewUri(resource: vscode.Uri): vscode.Uri'
+    lines:
+    - 78
+    - 81
+    detail:
+      calls:
+      - asWebviewUri
+  - name: cspSource
+    sig: 'cspSource(): string'
+    lines:
+    - 83
+    - 96
+    detail:
+      calls:
+      - extensionCspRule.endsWith
+      - extensionLocation.toString
+  - name: html
+    sig: 'html(): string'
+    lines:
+    - 98
+    - 101
+    detail:
+      calls:
+      - this.assertNotDisposed
+  - name: html
+    sig: 'html(value: string)'
+    lines:
+    - 103
+    - 114
+    detail:
+      calls:
+      - /(["'])vscode-resource:([^\s'"]+?)(["'])/i.test
+      - this.#deprecationService.report
+      - this.#proxy.$setHtml
+      - this.assertNotDisposed
+      - this.rewriteOldResourceUrlsIfNeeded
+  - name: options
+    sig: 'options(): vscode.WebviewOptions'
+    lines:
+    - 116
+    - 119
+    detail:
+      calls:
+      - this.assertNotDisposed
+  - name: options
+    sig: 'options(newOptions: vscode.WebviewOptions)'
+    lines:
+    - 121
+    - 129
+    detail:
+      calls:
+      - objects.equals
+      - serializeWebviewOptions
+      - this.#proxy.$setOptions
+      - this.assertNotDisposed
+  - name: postMessage
+    sig: 'postMessage(message: any): Promise<boolean>'
+    is_async: true
+    lines:
+    - 131
+    - 137
+    detail:
+      calls:
+      - serializeWebviewMessage
+      - this.#proxy.$postMessage
+  - name: rewriteOldResourceUrlsIfNeeded
+    sig: 'rewriteOldResourceUrlsIfNeeded(value: string): string'
+    vis: private
+    lines:
+    - 145
+    - 169
+    detail:
+      calls:
+      - "value\n\t\t\t.replace"
+      - "value\n\t\t\t.replace(/([\"'])(?:vscode-resource):(\\/\\/([^\\s\\/'\"]+?)(?=\\/))?([^\\s'\"]+?)([\"'])/gi, (_match..."
+  lines:
+  - 25
+  - 170
+- name: ExtHostWebviews
+  kind: struct
+  bases:
+  - Disposable
+  fields:
+  - name: _webviewProxy
+    type: extHostProtocol.MainThreadWebviewsShape
+  - name: _webviews
+    type: any
+    default: new Map<extHostProtocol.WebviewHandle, ExtHostWebview>()
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tmainContext: extHostProtocol.IMainContext,\n\t\tprivate readonly remoteInfo: WebviewRemoteInfo,\n\t\tprivate readonly workspace: IExtHostWorkspace | undefined,\n\t\tprivate readonly _logService: ILogService,\n\t\tprivate readonly _deprecationService: IExtHostApiDeprecationService,\n\t)"
+    lines:
+    - 200
+    - 209
+    detail:
+      calls:
+      - mainContext.getProxy
+      - super
+  - name: dispose
+    sig: 'dispose(): void'
+    lines:
+    - 211
+    - 218
+    detail:
+      calls:
+      - super.dispose
+      - this._webviews.clear
+      - this._webviews.values
+      - webview.dispose
+  - name: $onMessage
+    sig: "$onMessage(\n\t\thandle: extHostProtocol.WebviewHandle,\n\t\tjsonMessage: string,\n\t\tbuffers: SerializableObjectWithBuffers<VSBuffer[]>\n\t): void"
+    lines:
+    - 220
+    - 230
+    detail:
+      calls:
+      - deserializeWebviewMessage
+      - this.getWebview
+      - webview._onMessageEmitter.fire
+  - name: $onMissingCsp
+    sig: "$onMissingCsp(\n\t\t_handle: extHostProtocol.WebviewHandle,\n\t\textensionId: string\n\t): void"
+    lines:
+    - 232
+    - 237
+    detail:
+      calls:
+      - this._logService.warn
+  - name: createNewWebview
+    sig: 'createNewWebview(handle: string, options: extHostProtocol.IWebviewContentOptions, extension: IExtensionDescription): ExtHostWebview'
+    lines:
+    - 239
+    - 249
+    detail:
+      calls:
+      - new ExtHostWebview
+      - reviveOptions
+      - this._webviews.set
+      - webview._onDidDispose
+  - name: deleteWebview
+    sig: 'deleteWebview(handle: string)'
+    lines:
+    - 251
+    - 253
+    detail:
+      calls:
+      - this._webviews.delete
+  lines:
+  - 194
+  - 258
+functions:
+- name: shouldSerializeBuffersForPostMessage
+  sig: 'shouldSerializeBuffersForPostMessage(extension: IExtensionDescription): boolean'
+  lines:
+  - 172
+  - 179
+  detail:
+    calls:
+    - normalizeVersion
+    - parseVersion
+- name: shouldTryRewritingOldResourceUris
+  sig: 'shouldTryRewritingOldResourceUris(extension: IExtensionDescription): boolean'
+  lines:
+  - 181
+  - 192
+  detail:
+    calls:
+    - normalizeVersion
+    - parseVersion
+- name: toExtensionData
+  sig: 'toExtensionData(extension: IExtensionDescription): extHostProtocol.WebviewExtensionDescription'
+  lines:
+  - 260
+  - 262
+- name: serializeWebviewOptions
+  sig: "serializeWebviewOptions(\n\textension: IExtensionDescription,\n\tworkspace: IExtHostWorkspace | undefined,\n\toptions: vscode.WebviewOptions,\n): extHostProtocol.IWebviewContentOptions"
+  lines:
+  - 264
+  - 276
+  detail:
+    calls:
+    - getDefaultLocalResourceRoots
+- name: reviveOptions
+  sig: 'reviveOptions(options: extHostProtocol.IWebviewContentOptions): vscode.WebviewOptions'
+  lines:
+  - 278
+  - 286
+  detail:
+    calls:
+    - options.localResourceRoots?.map
+- name: getDefaultLocalResourceRoots
+  sig: "getDefaultLocalResourceRoots(\n\textension: IExtensionDescription,\n\tworkspace: IExtHostWorkspace | undefined,\n): URI[]"
+  lines:
+  - 288
+  - 296
+  detail:
+    calls:
+    - (workspace?.getWorkspaceFolders() || []).map
+    - workspace?.getWorkspaceFolders
+exports:
+- name: ExtHostWebview
+  kind: type
+- name: ExtHostWebviews
+  kind: type
+- name: shouldSerializeBuffersForPostMessage
+  kind: func
+- name: shouldTryRewritingOldResourceUris
+  kind: func
+- name: toExtensionData
+  kind: func
+- name: serializeWebviewOptions
+  kind: func
+- name: reviveOptions
+  kind: func
+- name: getDefaultLocalResourceRoots
+  kind: func

@@ -1,0 +1,252 @@
+## Roska File Descriptor — node/stateService.ts
+file: node/stateService.ts
+lines: 204
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: ../../../base/common/async.js.ThrottledDelayer
+- sym: ../../../base/common/buffer.js.VSBuffer
+- sym: ../../../base/common/lifecycle.js.Disposable
+- sym: ../../../base/common/types.js.isUndefined
+- sym: ../../../base/common/types.js.isUndefinedOrNull
+- sym: ../../../base/common/uri.js.URI
+- sym: ../../environment/common/environment.js.IEnvironmentService
+- sym: ../../files/common/files.js.FileOperationError
+- sym: ../../files/common/files.js.FileOperationResult
+- sym: ../../files/common/files.js.IFileService
+- sym: ../../log/common/log.js.ILogService
+- sym: ./state.js.IStateReadService
+- sym: ./state.js.IStateService
+types:
+- name: StorageDatabase
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 16
+  - 16
+- name: SaveStrategy
+  kind: enum
+  variants:
+  - name: IMMEDIATE
+  - name: DELAYED
+  lines:
+  - 18
+  - 21
+- name: FileStorage
+  kind: struct
+  bases:
+  - Disposable
+  fields:
+  - name: storage
+    type: StorageDatabase
+    default: Object.create(null)
+  - name: lastSavedStorageContents
+    type: any
+    default: ''''''
+  - name: flushDelayer
+    type: ThrottledDelayer<void>
+  - name: initializing
+    type: Promise<void> | undefined
+    default: undefined
+  - name: closing
+    type: Promise<void> | undefined
+    default: undefined
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tprivate readonly storagePath: URI,\n\t\tsaveStrategy: SaveStrategy,\n\t\tprivate readonly logService: ILogService,\n\t\tprivate readonly fileService: IFileService,\n\t)"
+    lines:
+    - 33
+    - 42
+    detail:
+      calls:
+      - new ThrottledDelayer
+      - super
+      - this._register
+  - name: init
+    sig: 'init(): Promise<void>'
+    lines:
+    - 44
+    - 50
+    detail:
+      calls:
+      - this.doInit
+  - name: doInit
+    sig: 'doInit(): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 52
+    - 61
+    detail:
+      calls:
+      - (await this.fileService.readFile(this.storagePath)).value.toString
+      - JSON.parse
+      - this.fileService.readFile
+      - this.logService.error
+  - name: getItem
+    sig: 'getItem(key: string, defaultValue?: T): T | undefined'
+    lines:
+    - 65
+    - 72
+    detail:
+      calls:
+      - isUndefinedOrNull
+  - name: setItem
+    sig: 'setItem(key: string, data?: object | string | number | boolean | undefined | null): void'
+    lines:
+    - 74
+    - 76
+    detail:
+      calls:
+      - this.setItems
+  - name: setItems
+    sig: 'setItems(items: readonly { key: string; data?: object | string | number | boolean | undefined | null }[]): void'
+    lines:
+    - 78
+    - 106
+    detail:
+      calls:
+      - isUndefined
+      - isUndefinedOrNull
+      - this.save
+  - name: removeItem
+    sig: 'removeItem(key: string): void'
+    lines:
+    - 108
+    - 115
+    detail:
+      calls:
+      - isUndefined
+      - this.save
+  - name: save
+    sig: 'save(): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 117
+    - 123
+    detail:
+      calls:
+      - this.flushDelayer.trigger
+  - name: doSave
+    sig: 'doSave(): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 125
+    - 146
+    detail:
+      calls:
+      - JSON.stringify
+      - VSBuffer.fromString
+      - this.fileService.writeFile
+      - this.logService.error
+  - name: close
+    sig: 'close(): Promise<void>'
+    is_async: true
+    lines:
+    - 148
+    - 154
+    detail:
+      calls:
+      - this.flushDelayer.trigger
+  lines:
+  - 23
+  - 155
+- name: StateReadonlyService
+  kind: struct
+  bases:
+  - Disposable
+  - IStateReadService
+  fields:
+  - name: _serviceBrand
+    type: undefined
+  - name: fileStorage
+    type: FileStorage
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tsaveStrategy: SaveStrategy,\n\t\t@IEnvironmentService environmentService: IEnvironmentService,\n\t\t@ILogService logService: ILogService,\n\t\t@IFileService fileService: IFileService\n\t)"
+    lines:
+    - 163
+    - 172
+    detail:
+      calls:
+      - new FileStorage
+      - super
+      - this._register
+  - name: init
+    sig: 'init(): Promise<void>'
+    is_async: true
+    lines:
+    - 174
+    - 176
+    detail:
+      calls:
+      - this.fileStorage.init
+  - name: getItem
+    sig: 'getItem(key: string, defaultValue?: T): T | undefined'
+    lines:
+    - 180
+    - 182
+    detail:
+      calls:
+      - this.fileStorage.getItem
+  lines:
+  - 157
+  - 183
+- name: StateService
+  kind: struct
+  bases:
+  - StateReadonlyService
+  - IStateService
+  fields:
+  - name: _serviceBrand
+    type: undefined
+  methods:
+  - name: setItem
+    sig: 'setItem(key: string, data?: object | string | number | boolean | undefined | null): void'
+    lines:
+    - 189
+    - 191
+    detail:
+      calls:
+      - this.fileStorage.setItem
+  - name: setItems
+    sig: 'setItems(items: readonly { key: string; data?: object | string | number | boolean | undefined | null }[]): void'
+    lines:
+    - 193
+    - 195
+    detail:
+      calls:
+      - this.fileStorage.setItems
+  - name: removeItem
+    sig: 'removeItem(key: string): void'
+    lines:
+    - 197
+    - 199
+    detail:
+      calls:
+      - this.fileStorage.removeItem
+  - name: close
+    sig: 'close(): Promise<void>'
+    lines:
+    - 201
+    - 203
+    detail:
+      calls:
+      - this.fileStorage.close
+  lines:
+  - 185
+  - 204
+exports:
+- name: StorageDatabase
+  kind: type
+- name: SaveStrategy
+  kind: type
+- name: FileStorage
+  kind: type
+- name: StateReadonlyService
+  kind: type
+- name: StateService
+  kind: type

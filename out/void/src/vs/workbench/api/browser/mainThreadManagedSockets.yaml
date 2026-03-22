@@ -1,0 +1,144 @@
+## Roska File Descriptor — browser/mainThreadManagedSockets.ts
+file: browser/mainThreadManagedSockets.ts
+lines: 125
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: ../../../base/common/buffer.js.VSBuffer
+- sym: ../../../base/common/event.js.Emitter
+- sym: ../../../base/common/lifecycle.js.Disposable
+- sym: ../../../base/common/lifecycle.js.IDisposable
+- sym: ../../../base/parts/ipc/common/ipc.net.js.ISocket
+- sym: ../../../base/parts/ipc/common/ipc.net.js.SocketCloseEventType
+- sym: ../../../platform/remote/common/managedSocket.js.ManagedSocket
+- sym: ../../../platform/remote/common/managedSocket.js.RemoteSocketHalf
+- sym: ../../../platform/remote/common/managedSocket.js.connectManagedSocket
+- sym: ../../../platform/remote/common/remoteAuthorityResolver.js.ManagedRemoteConnection
+- sym: ../../../platform/remote/common/remoteAuthorityResolver.js.RemoteConnectionType
+- sym: ../../../platform/remote/common/remoteSocketFactoryService.js.IRemoteSocketFactoryService
+- sym: ../../../platform/remote/common/remoteSocketFactoryService.js.ISocketFactory
+- sym: ../common/extHost.protocol.js.ExtHostContext
+- sym: ../common/extHost.protocol.js.ExtHostManagedSocketsShape
+- sym: ../common/extHost.protocol.js.MainContext
+- sym: ../common/extHost.protocol.js.MainThreadManagedSocketsShape
+- sym: ../../services/extensions/common/extHostCustomers.js.IExtHostContext
+- sym: ../../services/extensions/common/extHostCustomers.js.extHostNamedCustomer
+types:
+- name: MainThreadManagedSockets
+  kind: struct
+  bases:
+  - Disposable
+  - MainThreadManagedSocketsShape
+  fields:
+  - name: _proxy
+    type: ExtHostManagedSocketsShape
+  - name: _registrations
+    type: any
+    default: new Map<number, IDisposable>()
+  - name: _remoteSockets
+    type: any
+    default: new Map<number, RemoteSocketHalf>()
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\textHostContext: IExtHostContext,\n\t\t@IRemoteSocketFactoryService private readonly _remoteSocketFactoryService: IRemoteSocketFactoryService,\n\t)"
+    lines:
+    - 23
+    - 29
+    detail:
+      calls:
+      - extHostContext.getProxy
+      - super
+  - name: $registerSocketFactory
+    sig: '$registerSocketFactory(socketFactoryId: number): Promise<void>'
+    is_async: true
+    lines:
+    - 31
+    - 70
+    detail:
+      calls:
+      - new Promise
+      - "new class implements ISocketFactory<RemoteConnectionType.Managed> {\n\n\t\t\tsupports(connectTo: ManagedRemoteConnection): boolean {\n\t\t\t\treturn (connectTo.id === socketFactoryId);\n\t\t\t}\n\n\t\t\tconnect(connectTo: ManagedRemoteConnection, path: string, query: string, debugLabel: string): Promise<ISocket> {\n\t\t\t\treturn new Promise<ISocket>((resolve, reject) => {\n\t\t\t\t\tif (connectTo.id !== socketFactoryId) {\n\t\t\t\t\t\treturn reject(new Error('Invalid connectTo'));\n\t\t\t\t\t}\n\n\t\t\t\t\tconst factoryId = connectTo.id;\n\t\t\t\t\tthat._proxy.$openRemoteSocket(factoryId).then(socketId => {\n\t\t\t\t\t\tconst half: RemoteSocketHalf = {\n\t\t\t\t\t\t\tonClose: new Emitter(),\n\t\t\t\t\t\t\tonData: new Emitter(),\n\t\t\t\t\t\t\tonEnd: new Emitter(),\n\t\t\t\t\t\t};\n\t\t\t\t\t\tthat._remoteSockets.set(socketId, half);\n\n\t\t\t\t\t\tMainThreadManagedSocket.connect(socketId, that._proxy, path, query, debugLabel, half)\n\t\t\t\t\t\t\t.then(\n\t\t\t\t\t\t\t\tsocket => {\n\t\t\t\t\t\t\t\t\tsocket.onDidDispose(() => that._remoteSockets.delete(socketId));\n\t\t\t\t\t\t\t\t\tresolve(socket);\n\t\t\t\t\t\t\t\t},\n\t\t\t\t\t\t\t\terr => {\n\t\t\t\t\t\t\t\t\tthat._remoteSockets.delete(socketId);\n\t\t\t\t\t\t\t\t\treject(err);\n\t\t\t\t\t\t\t\t});\n\t\t\t\t\t}).catch(reject);\n\t\t\t\t});\n\t\t\t}\n\t\t}"
+      - this._registrations.set
+      - this._remoteSocketFactoryService.register
+  - name: $unregisterSocketFactory
+    sig: '$unregisterSocketFactory(socketFactoryId: number): Promise<void>'
+    is_async: true
+    lines:
+    - 72
+    - 74
+    detail:
+      calls:
+      - this._registrations.get
+      - this._registrations.get(socketFactoryId)?.dispose
+  - name: $onDidManagedSocketHaveData
+    sig: '$onDidManagedSocketHaveData(socketId: number, data: VSBuffer): void'
+    lines:
+    - 76
+    - 78
+    detail:
+      calls:
+      - this._remoteSockets.get
+      - this._remoteSockets.get(socketId)?.onData.fire
+  - name: $onDidManagedSocketClose
+    sig: '$onDidManagedSocketClose(socketId: number, error: string | undefined): void'
+    lines:
+    - 80
+    - 87
+    detail:
+      calls:
+      - new Error
+      - this._remoteSockets.delete
+      - this._remoteSockets.get
+      - this._remoteSockets.get(socketId)?.onClose.fire
+  - name: $onDidManagedSocketEnd
+    sig: '$onDidManagedSocketEnd(socketId: number): void'
+    lines:
+    - 89
+    - 91
+    detail:
+      calls:
+      - this._remoteSockets.get
+      - this._remoteSockets.get(socketId)?.onEnd.fire
+  lines:
+  - 17
+  - 92
+- name: MainThreadManagedSocket
+  kind: struct
+  bases:
+  - ManagedSocket
+  methods:
+  - name: connect
+    sig: "connect(\n\t\tsocketId: number,\n\t\tproxy: ExtHostManagedSocketsShape,\n\t\tpath: string, query: string, debugLabel: string,\n\t\thalf: RemoteSocketHalf\n\t): Promise<MainThreadManagedSocket>"
+    decorators:
+    - static
+    lines:
+    - 95
+    - 103
+    detail:
+      calls:
+      - connectManagedSocket
+      - new MainThreadManagedSocket
+  - name: write
+    sig: 'write(buffer: VSBuffer): void'
+    lines:
+    - 114
+    - 116
+    detail:
+      calls:
+      - this.proxy.$remoteSocketWrite
+  - name: drain
+    sig: 'drain(): Promise<void>'
+    lines:
+    - 122
+    - 124
+    detail:
+      calls:
+      - this.proxy.$remoteSocketDrain
+  lines:
+  - 94
+  - 125
+exports:
+- name: MainThreadManagedSockets
+  kind: type
+- name: MainThreadManagedSocket
+  kind: type

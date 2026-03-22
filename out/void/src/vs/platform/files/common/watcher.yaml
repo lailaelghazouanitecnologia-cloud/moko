@@ -1,0 +1,475 @@
+## Roska File Descriptor — common/watcher.ts
+file: common/watcher.ts
+lines: 508
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: ../../../base/common/event.js.Event
+- sym: ../../../base/common/glob.js.GLOBSTAR
+- sym: ../../../base/common/glob.js.IRelativePattern
+- sym: ../../../base/common/glob.js.parse
+- sym: ../../../base/common/glob.js.ParsedPattern
+- sym: ../../../base/common/lifecycle.js.Disposable
+- sym: ../../../base/common/lifecycle.js.DisposableStore
+- sym: ../../../base/common/lifecycle.js.IDisposable
+- sym: ../../../base/common/lifecycle.js.MutableDisposable
+- sym: ../../../base/common/path.js.isAbsolute
+- sym: ../../../base/common/platform.js.isLinux
+- sym: ../../../base/common/uri.js.URI
+- sym: ./files.js.FileChangeFilter
+- sym: ./files.js.FileChangeType
+- sym: ./files.js.IFileChange
+- sym: ./files.js.isParent
+types:
+- name: IWatchRequest
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: readonly
+    type: string
+  - name: readonly
+    type: boolean
+  - name: readonly
+    type: string[]
+  - name: readonly
+    type: Array<string | IRelativePattern>
+  - name: readonly
+    type: number
+  - name: readonly
+    type: FileChangeFilter
+  lines:
+  - 14
+  - 53
+- name: IWatchRequestWithCorrelation
+  kind: trait
+  bases:
+  - IWatchRequest
+  decorators:
+  - interface
+  fields:
+  - name: readonly
+    type: number
+  lines:
+  - 55
+  - 57
+- name: INonRecursiveWatchRequest
+  kind: trait
+  bases:
+  - IWatchRequest
+  decorators:
+  - interface
+  fields:
+  - name: readonly
+    type: 'false'
+  lines:
+  - 63
+  - 69
+- name: IRecursiveWatchRequest
+  kind: trait
+  bases:
+  - IWatchRequest
+  decorators:
+  - interface
+  fields:
+  - name: readonly
+    type: 'true'
+  - name: pollingInterval
+    type: number
+  lines:
+  - 71
+  - 83
+- name: IUniversalWatchRequest
+  kind: enum
+  decorators:
+  - type
+  variants:
+  - name: IRecursiveWatchRequest
+  - name: INonRecursiveWatchRequest
+  lines:
+  - 89
+  - 89
+- name: IWatcherErrorEvent
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: readonly
+    type: string
+  - name: readonly
+    type: IUniversalWatchRequest
+  lines:
+  - 91
+  - 94
+- name: IWatcher
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: readonly
+    type: Event<IFileChange[]>
+  - name: readonly
+    type: Event<ILogMessage>
+  - name: readonly
+    type: Event<IWatcherErrorEvent>
+  - name: watch
+    type: 'method: watch(requests: IWatchRequest[]): Promise<void>'
+  - name: setVerboseLogging
+    type: 'method: setVerboseLogging(enabled: boolean): Promise<void>'
+  - name: stop
+    type: 'method: stop(): Promise<void>'
+  lines:
+  - 96
+  - 133
+- name: IRecursiveWatcher
+  kind: trait
+  bases:
+  - IWatcher
+  decorators:
+  - interface
+  fields:
+  - name: watch
+    type: 'method: watch(requests: IRecursiveWatchRequest[]): Promise<void>'
+  lines:
+  - 135
+  - 137
+- name: IRecursiveWatcherWithSubscribe
+  kind: trait
+  bases:
+  - IRecursiveWatcher
+  decorators:
+  - interface
+  fields:
+  - name: subscribe
+    type: 'method: subscribe(path: string, callback: (error: true | null, change?: IFileChange) => void): IDisposable | undefined'
+  lines:
+  - 139
+  - 151
+- name: IRecursiveWatcherOptions
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: readonly
+    type: boolean | string[]
+  - name: readonly
+    type: number
+  lines:
+  - 153
+  - 172
+- name: INonRecursiveWatcher
+  kind: trait
+  bases:
+  - IWatcher
+  decorators:
+  - interface
+  fields:
+  - name: watch
+    type: 'method: watch(requests: INonRecursiveWatchRequest[]): Promise<void>'
+  lines:
+  - 174
+  - 176
+- name: IUniversalWatcher
+  kind: trait
+  bases:
+  - IWatcher
+  decorators:
+  - interface
+  fields:
+  - name: watch
+    type: 'method: watch(requests: IUniversalWatchRequest[]): Promise<void>'
+  lines:
+  - 178
+  - 180
+- name: AbstractWatcherClient
+  kind: trait
+  bases:
+  - Disposable
+  decorators:
+  - abstract
+  fields:
+  - name: MAX_RESTARTS
+    type: any
+    default: '5'
+  - name: watcher
+    type: IWatcher | undefined
+  - name: watcherDisposables
+    type: any
+    default: this._register(new MutableDisposable())
+  - name: requests
+    type: IWatchRequest[] | undefined
+    default: undefined
+  - name: restartCounter
+    type: any
+    default: '0'
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tprivate readonly onFileChanges: (changes: IFileChange[]) => void,\n\t\tprivate readonly onLogMessage: (msg: ILogMessage) => void,\n\t\tprivate verboseLogging: boolean,\n\t\tprivate options: {\n\t\t\treadonly type: string;\n\t\t\treadonly restartOnError: boolean;\n\t\t}\n\t)"
+    lines:
+    - 193
+    - 203
+    detail:
+      calls:
+      - super
+  - name: init
+    sig: 'init(): void'
+    vis: protected
+    lines:
+    - 207
+    - 221
+    detail:
+      calls:
+      - disposables.add
+      - new DisposableStore
+      - this.createWatcher
+      - this.watcher.onDidChangeFile
+      - this.watcher.onDidError
+      - this.watcher.onDidLogMessage
+      - this.watcher.setVerboseLogging
+  - name: onError
+    sig: 'onError(error: string, failedRequest?: IUniversalWatchRequest): void'
+    vis: protected
+    lines:
+    - 223
+    - 239
+    detail:
+      calls:
+      - this.canRestart
+      - this.error
+      - this.restart
+  - name: canRestart
+    sig: 'canRestart(error: string, failedRequest?: IUniversalWatchRequest): boolean'
+    vis: private
+    lines:
+    - 241
+    - 265
+    detail:
+      calls:
+      - error.indexOf
+  - name: watch
+    sig: 'watch(requests: IUniversalWatchRequest[]): Promise<void>'
+    is_async: true
+    lines:
+    - 274
+    - 278
+    detail:
+      calls:
+      - this.watcher?.watch
+  - name: setVerboseLogging
+    sig: 'setVerboseLogging(verboseLogging: boolean): Promise<void>'
+    is_async: true
+    lines:
+    - 280
+    - 284
+    detail:
+      calls:
+      - this.watcher?.setVerboseLogging
+  - name: dispose
+    sig: 'dispose(): void'
+    lines:
+    - 294
+    - 300
+    detail:
+      calls:
+      - super.dispose
+  lines:
+  - 182
+  - 301
+- name: AbstractNonRecursiveWatcherClient
+  kind: trait
+  bases:
+  - AbstractWatcherClient
+  decorators:
+  - abstract
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tonFileChanges: (changes: IFileChange[]) => void,\n\t\tonLogMessage: (msg: ILogMessage) => void,\n\t\tverboseLogging: boolean\n\t)"
+    lines:
+    - 305
+    - 311
+    detail:
+      calls:
+      - super
+  lines:
+  - 303
+  - 314
+- name: AbstractUniversalWatcherClient
+  kind: trait
+  bases:
+  - AbstractWatcherClient
+  decorators:
+  - abstract
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tonFileChanges: (changes: IFileChange[]) => void,\n\t\tonLogMessage: (msg: ILogMessage) => void,\n\t\tverboseLogging: boolean\n\t)"
+    lines:
+    - 318
+    - 324
+    detail:
+      calls:
+      - super
+  lines:
+  - 316
+  - 327
+- name: ILogMessage
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: readonly
+    type: '''trace'' | ''warn'' | ''error'' | ''info'' | ''debug'''
+  - name: readonly
+    type: string
+  lines:
+  - 329
+  - 332
+- name: EventCoalescer
+  kind: struct
+  fields:
+  - name: coalesced
+    type: any
+    default: new Set<IFileChange>()
+  - name: mapPathToChange
+    type: any
+    default: new Map<string, IFileChange>()
+  methods:
+  - name: processEvent
+    sig: 'processEvent(event: IFileChange): void'
+    lines:
+    - 391
+    - 436
+    detail:
+      calls:
+      - this.coalesced.add
+      - this.coalesced.delete
+      - this.mapPathToChange.delete
+      - this.mapPathToChange.get
+      - this.mapPathToChange.set
+      - this.toKey
+  - name: coalesce
+    sig: 'coalesce(): IFileChange[]'
+    lines:
+    - 438
+    - 469
+    detail:
+      calls:
+      - Array.from
+      - Array.from(this.coalesced).filter
+      - "Array.from(this.coalesced).filter(e => {\n\t\t\tif (e.type !== FileChangeType.DELETED) {\n\t\t\t\taddOrChange..."
+  lines:
+  - 378
+  - 470
+functions:
+- name: isWatchRequestWithCorrelation
+  sig: 'isWatchRequestWithCorrelation(request: IWatchRequest)'
+  lines:
+  - 59
+  - 61
+- name: isRecursiveWatchRequest
+  sig: 'isRecursiveWatchRequest(request: IWatchRequest)'
+  lines:
+  - 85
+  - 87
+- name: reviveFileChanges
+  sig: 'reviveFileChanges(changes: IFileChange[]): IFileChange[]'
+  lines:
+  - 334
+  - 340
+  detail:
+    calls:
+    - changes.map
+- name: coalesceEvents
+  sig: 'coalesceEvents(changes: IFileChange[]): IFileChange[]'
+  lines:
+  - 342
+  - 351
+  detail:
+    calls:
+    - coalescer.coalesce
+    - coalescer.processEvent
+    - new EventCoalescer
+- name: normalizeWatcherPattern
+  sig: 'normalizeWatcherPattern(path: string, pattern: string | IRelativePattern): string | IRelativePattern'
+  lines:
+  - 353
+  - 366
+  detail:
+    calls:
+    - isAbsolute
+    - pattern.startsWith
+- name: parseWatcherPatterns
+  sig: 'parseWatcherPatterns(path: string, patterns: Array<string | IRelativePattern>): ParsedPattern[]'
+  lines:
+  - 368
+  - 376
+  detail:
+    calls:
+    - normalizeWatcherPattern
+    - parse
+    - parsedPatterns.push
+- name: isFiltered
+  sig: 'isFiltered(event: IFileChange, filter: FileChangeFilter | undefined): boolean'
+  lines:
+  - 472
+  - 485
+  detail: {}
+- name: requestFilterToString
+  sig: 'requestFilterToString(filter: FileChangeFilter | undefined): string'
+  lines:
+  - 487
+  - 508
+  detail:
+    calls:
+    - filters.join
+    - filters.push
+exports:
+- name: IWatchRequest
+  kind: type
+- name: IWatchRequestWithCorrelation
+  kind: type
+- name: INonRecursiveWatchRequest
+  kind: type
+- name: IRecursiveWatchRequest
+  kind: type
+- name: IUniversalWatchRequest
+  kind: type
+- name: IWatcherErrorEvent
+  kind: type
+- name: IWatcher
+  kind: type
+- name: IRecursiveWatcher
+  kind: type
+- name: IRecursiveWatcherWithSubscribe
+  kind: type
+- name: IRecursiveWatcherOptions
+  kind: type
+- name: INonRecursiveWatcher
+  kind: type
+- name: IUniversalWatcher
+  kind: type
+- name: AbstractWatcherClient
+  kind: type
+- name: AbstractNonRecursiveWatcherClient
+  kind: type
+- name: AbstractUniversalWatcherClient
+  kind: type
+- name: ILogMessage
+  kind: type
+- name: EventCoalescer
+  kind: type
+- name: isWatchRequestWithCorrelation
+  kind: func
+- name: isRecursiveWatchRequest
+  kind: func
+- name: reviveFileChanges
+  kind: func
+- name: coalesceEvents
+  kind: func
+- name: normalizeWatcherPattern
+  kind: func
+- name: parseWatcherPatterns
+  kind: func
+- name: isFiltered
+  kind: func
+- name: requestFilterToString
+  kind: func

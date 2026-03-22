@@ -1,0 +1,304 @@
+## Roska File Descriptor — browser/mainThreadWebviewPanels.ts
+file: browser/mainThreadWebviewPanels.ts
+lines: 355
+layer: ui
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: ../../../base/common/errors.js.onUnexpectedError
+- sym: ../../../base/common/event.js.Event
+- sym: ../../../base/common/lifecycle.js.Disposable
+- sym: ../../../base/common/lifecycle.js.DisposableMap
+- sym: ../../../base/common/uri.js.URI
+- sym: ../../../base/common/uuid.js.generateUuid
+- sym: ../../../platform/configuration/common/configuration.js.IConfigurationService
+- sym: ../../../platform/storage/common/storage.js.IStorageService
+- sym: ../../common/editor/diffEditorInput.js.DiffEditorInput
+- sym: ../../common/editor/editorInput.js.EditorInput
+- sym: ../../contrib/webview/browser/webview.js.ExtensionKeyedWebviewOriginStore
+- sym: ../../contrib/webview/browser/webview.js.WebviewOptions
+- sym: ../../contrib/webviewPanel/browser/webviewEditorInput.js.WebviewInput
+- sym: ../../contrib/webviewPanel/browser/webviewIconManager.js.WebviewIcons
+- sym: ../../contrib/webviewPanel/browser/webviewWorkbenchService.js.IWebViewShowOptions
+- sym: ../../contrib/webviewPanel/browser/webviewWorkbenchService.js.IWebviewWorkbenchService
+- sym: ../../services/editor/common/editorGroupColumn.js.editorGroupToColumn
+- sym: ../../services/editor/common/editorGroupsService.js.GroupLocation
+- sym: ../../services/editor/common/editorGroupsService.js.GroupsOrder
+- sym: ../../services/editor/common/editorGroupsService.js.IEditorGroup
+- sym: ../../services/editor/common/editorGroupsService.js.IEditorGroupsService
+- sym: ../../services/editor/common/editorGroupsService.js.preferredSideBySideGroupDirection
+- sym: ../../services/editor/common/editorService.js.ACTIVE_GROUP
+- sym: ../../services/editor/common/editorService.js.IEditorService
+- sym: ../../services/editor/common/editorService.js.PreferredGroup
+- sym: ../../services/editor/common/editorService.js.SIDE_GROUP
+- sym: ../../services/extensions/common/extensions.js.IExtensionService
+- sym: ../../services/extensions/common/extHostCustomers.js.IExtHostContext
+- sym: ../common/extHost.protocol.js.extHostProtocol
+- sym: ./mainThreadWebviews.js.MainThreadWebviews
+- sym: ./mainThreadWebviews.js.reviveWebviewContentOptions
+- sym: ./mainThreadWebviews.js.reviveWebviewExtension
+types:
+- name: WebviewInputStore
+  kind: struct
+  fields:
+  - name: _handlesToInputs
+    type: any
+    default: new Map<string, WebviewInput>()
+  - name: _inputsToHandles
+    type: any
+    default: new Map<WebviewInput, string>()
+  methods:
+  - name: add
+    sig: 'add(handle: string, input: WebviewInput): void'
+    lines:
+    - 34
+    - 37
+    detail:
+      calls:
+      - this._handlesToInputs.set
+      - this._inputsToHandles.set
+  - name: getHandleForInput
+    sig: 'getHandleForInput(input: WebviewInput): string | undefined'
+    lines:
+    - 39
+    - 41
+    detail:
+      calls:
+      - this._inputsToHandles.get
+  - name: getInputForHandle
+    sig: 'getInputForHandle(handle: string): WebviewInput | undefined'
+    lines:
+    - 43
+    - 45
+    detail:
+      calls:
+      - this._handlesToInputs.get
+  - name: delete
+    sig: 'delete(handle: string): void'
+    lines:
+    - 47
+    - 53
+    detail:
+      calls:
+      - this._handlesToInputs.delete
+      - this._inputsToHandles.delete
+      - this.getInputForHandle
+  - name: size
+    sig: 'size(): number'
+    lines:
+    - 55
+    - 57
+    detail: {}
+  - name: unknown
+    sig: 'unknown(): Iterator<WebviewInput>'
+    lines:
+    - 59
+    - 61
+    detail:
+      calls:
+      - this._handlesToInputs.values
+  lines:
+  - 30
+  - 62
+- name: WebviewViewTypeTransformer
+  kind: struct
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tpublic readonly prefix: string,\n\t)"
+    lines:
+    - 65
+    - 67
+    detail: {}
+  - name: fromExternal
+    sig: 'fromExternal(viewType: string): string'
+    lines:
+    - 69
+    - 71
+    detail: {}
+  - name: toExternal
+    sig: 'toExternal(viewType: string): string | undefined'
+    lines:
+    - 73
+    - 77
+    detail:
+      calls:
+      - viewType.startsWith
+      - viewType.substr
+  lines:
+  - 64
+  - 78
+- name: MainThreadWebviewPanels
+  kind: struct
+  bases:
+  - Disposable
+  fields:
+  - name: webviewPanelViewType
+    type: any
+    default: new WebviewViewTypeTransformer('mainThreadWebview-')
+  - name: _proxy
+    type: extHostProtocol.ExtHostWebviewPanelsShape
+  - name: _webviewInputs
+    type: any
+    default: new WebviewInputStore()
+  - name: _revivers
+    type: any
+    default: this._register(new DisposableMap<string>())
+  - name: webviewOriginStore
+    type: ExtensionKeyedWebviewOriginStore
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tcontext: IExtHostContext,\n\t\tprivate readonly _mainThreadWebviews: MainThreadWebviews,\n\t\t@IConfigurationService private readonly _configurationService: IConfigurationService,\n\t\t@IEditorGroupsService private readonly _editorGroupService: IEditorGroupsService,\n\t\t@IEditorService private readonly _editorService: IEditorService,\n\t\t@IExtensionService extensionService: IExtensionService,\n\t\t@IStorageService storageService: IStorageService,\n\t\t@IWebviewWorkbenchService private readonly _webviewWorkbenchService: IWebviewWorkbenchService,\n\t)"
+    lines:
+    - 92
+    - 134
+    detail:
+      calls:
+      - Event.any
+      - "Event.any(\n\t\t\t_editorService.onDidActiveEditorChange,\n\t\t\t_editorService.onDidVisibleEditorsChange,\n\t..."
+      - _webviewWorkbenchService.onDidChangeActiveWebviewEditor
+      - _webviewWorkbenchService.registerResolver
+      - context.getProxy
+      - new ExtensionKeyedWebviewOriginStore
+      - super
+      - this._register
+  - name: webviewInputs
+    sig: 'webviewInputs(): Iterable<WebviewInput>'
+    lines:
+    - 136
+    - 136
+    detail: {}
+  - name: addWebviewInput
+    sig: 'addWebviewInput(handle: extHostProtocol.WebviewHandle, input: WebviewInput, options: { serializeBuffersForPostMessage: boolean }): void'
+    lines:
+    - 138
+    - 149
+    detail:
+      calls:
+      - input.webview.onDidDispose
+      - this._mainThreadWebviews.addWebview
+      - this._webviewInputs.add
+  - name: $createWebviewPanel
+    sig: "$createWebviewPanel(\n\t\textensionData: extHostProtocol.WebviewExtensionDescription,\n\t\thandle: extHostProtocol.WebviewHandle,\n\t\tviewType: string,\n\t\tinitData: extHostProtocol.IWebviewInitData,\n\t\tshowOptions: extHostProtocol.WebviewPanelShowOptions,\n\t): void"
+    lines:
+    - 151
+    - 177
+    detail:
+      calls:
+      - reviveWebviewContentOptions
+      - reviveWebviewExtension
+      - reviveWebviewOptions
+      - this._webviewWorkbenchService.openWebview
+      - this.addWebviewInput
+      - this.getTargetGroupFromShowOptions
+      - this.webviewOriginStore.getOrigin
+      - this.webviewPanelViewType.fromExternal
+  - name: $disposeWebview
+    sig: '$disposeWebview(handle: extHostProtocol.WebviewHandle): void'
+    lines:
+    - 179
+    - 185
+    detail:
+      calls:
+      - this.tryGetWebviewInput
+      - webview.dispose
+  - name: $setTitle
+    sig: '$setTitle(handle: extHostProtocol.WebviewHandle, value: string): void'
+    lines:
+    - 187
+    - 189
+    detail:
+      calls:
+      - this.tryGetWebviewInput
+      - this.tryGetWebviewInput(handle)?.setName
+  - name: $setIconPath
+    sig: '$setIconPath(handle: extHostProtocol.WebviewHandle, value: extHostProtocol.IWebviewIconPath | undefined): void'
+    lines:
+    - 191
+    - 196
+    detail:
+      calls:
+      - reviveWebviewIcon
+      - this.tryGetWebviewInput
+  - name: $reveal
+    sig: '$reveal(handle: extHostProtocol.WebviewHandle, showOptions: extHostProtocol.WebviewPanelShowOptions): void'
+    lines:
+    - 198
+    - 206
+    detail:
+      calls:
+      - this._webviewWorkbenchService.revealWebview
+      - this.getTargetGroupFromShowOptions
+      - this.tryGetWebviewInput
+      - webview.isDisposed
+  - name: getTargetGroupFromShowOptions
+    sig: 'getTargetGroupFromShowOptions(showOptions: extHostProtocol.WebviewPanelShowOptions): PreferredGroup'
+    vis: private
+    lines:
+    - 208
+    - 240
+    detail:
+      calls:
+      - preferredSideBySideGroupDirection
+      - this._editorGroupService.addGroup
+      - this._editorGroupService.findGroup
+      - this._editorGroupService.getGroups
+  - name: $registerSerializer
+    sig: '$registerSerializer(viewType: string, options: { serializeBuffersForPostMessage: boolean }): void'
+    lines:
+    - 242
+    - 285
+    detail:
+      calls:
+      - new Error
+      - this._revivers.has
+      - this._revivers.set
+      - this._webviewWorkbenchService.registerResolver
+  - name: $unregisterSerializer
+    sig: '$unregisterSerializer(viewType: string): void'
+    lines:
+    - 287
+    - 293
+    detail:
+      calls:
+      - new Error
+      - this._revivers.deleteAndDispose
+      - this._revivers.has
+  - name: updateWebviewViewStates
+    sig: 'updateWebviewViewStates(activeEditorInput: EditorInput | undefined)'
+    vis: private
+    lines:
+    - 295
+    - 333
+    detail:
+      calls:
+      - Object.keys
+      - this._proxy.$onDidChangeWebviewPanelViewStates
+      - updateViewStatesForInput
+  lines:
+  - 80
+  - 338
+functions:
+- name: reviveWebviewIcon
+  sig: 'reviveWebviewIcon(value: extHostProtocol.IWebviewIconPath | undefined): WebviewIcons | undefined'
+  lines:
+  - 340
+  - 348
+  detail:
+    calls:
+    - URI.revive
+- name: reviveWebviewOptions
+  sig: 'reviveWebviewOptions(panelOptions: extHostProtocol.IWebviewPanelOptions): WebviewOptions'
+  lines:
+  - 350
+  - 355
+  detail: {}
+exports:
+- name: WebviewInputStore
+  kind: type
+- name: WebviewViewTypeTransformer
+  kind: type
+- name: MainThreadWebviewPanels
+  kind: type
+- name: reviveWebviewIcon
+  kind: func
+- name: reviveWebviewOptions
+  kind: func

@@ -1,0 +1,460 @@
+## Roska File Descriptor — src/testOutputScanner.ts
+file: src/testOutputScanner.ts
+lines: 660
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: '@jridgewell/trace-mapping.decodedMappings'
+- sym: '@jridgewell/trace-mapping.GREATEST_LOWER_BOUND'
+- sym: '@jridgewell/trace-mapping.LEAST_UPPER_BOUND'
+- sym: '@jridgewell/trace-mapping.originalPositionFor'
+- sym: '@jridgewell/trace-mapping.TraceMap'
+- sym: ansi-styles.styles
+- sym: child_process.ChildProcessWithoutNullStreams
+- sym: vscode.vscode
+- sym: ./coverageProvider.istanbulCoverageContext
+- sym: ./coverageProvider.PerTestCoverageTracker
+- sym: ./metadata.attachTestMessageMetadata
+- sym: ./snapshot.snapshotComment
+- sym: ./stackTraceParser.StackTraceLocation
+- sym: ./stackTraceParser.StackTraceParser
+- sym: ./streamSplitter.StreamSplitter
+- sym: ./testTree.getContentFromFilesystem
+- sym: ./v8CoverageWrangling.IScriptCoverage
+data:
+- name: LF
+  type: string
+  val: '''\n''.charCodeAt(0)'
+- name: spdlogRe
+  type: any
+  val: '/"(.+)", source: (file:\/\/\/.*?)+ \(([0-9]+)\)/'
+- name: crlf
+  type: string
+  val: '''\r\n'''
+- name: inlineSourcemapRe
+  type: any
+  val: /^\/\/# sourceMappingURL=data:application\/json;base64,(.+)/m
+- name: sourceMapBiases
+  type: array
+  val: '[GREATEST_LOWER_BOUND, LEAST_UPPER_BOUND] as const'
+- name: locationRe
+  type: any
+  val: /(file:\/{3}.+):([0-9]+):([0-9]+)/g
+types:
+- name: MochaEvent
+  kind: enum
+  variants:
+  - name: Start
+    val: '''start'''
+  - name: TestStart
+    val: '''testStart'''
+  - name: Pass
+    val: '''pass'''
+  - name: Fail
+    val: '''fail'''
+  - name: End
+    val: '''end'''
+  - name: CoverageInit
+    val: '''coverageInit'''
+  - name: CoverageIncrement
+    val: '''coverageIncrement'''
+  lines:
+  - 24
+  - 34
+- name: IStartEvent
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: total
+    type: number
+  lines:
+  - 36
+  - 38
+- name: ITestStartEvent
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: file
+    type: string
+  - name: currentRetry
+    type: number
+  - name: speed
+    type: string
+  lines:
+  - 40
+  - 46
+- name: IPassEvent
+  kind: trait
+  bases:
+  - ITestStartEvent
+  decorators:
+  - interface
+  fields:
+  - name: duration
+    type: number
+  lines:
+  - 48
+  - 50
+- name: IFailEvent
+  kind: trait
+  bases:
+  - IPassEvent
+  decorators:
+  - interface
+  fields:
+  - name: err
+    type: string
+  - name: stack
+    type: string | null
+  - name: expected
+    type: string
+  - name: actual
+    type: string
+  - name: expectedJSON
+    type: unknown
+  - name: actualJSON
+    type: unknown
+  - name: snapshotPath
+    type: string
+  lines:
+  - 52
+  - 60
+- name: IEndEvent
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: suites
+    type: number
+  - name: tests
+    type: number
+  - name: passes
+    type: number
+  - name: pending
+    type: number
+  - name: failures
+    type: number
+  - name: start
+    type: string
+  - name: end
+    type: string
+  lines:
+  - 62
+  - 70
+- name: ITestCoverageCoverage
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: file
+    type: string
+  - name: coverage
+    type: '{ result: IScriptCoverage[] }'
+  lines:
+  - 72
+  - 76
+- name: MochaEventTuple
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 78
+  - 85
+- name: TestOutputScanner
+  kind: struct
+  ctx: Fired when a mocha event comes in.
+  fields:
+  - name: mochaEventEmitter
+    type: any
+    default: new vscode.EventEmitter<MochaEventTuple>()
+  - name: outputEventEmitter
+    type: any
+    default: new vscode.EventEmitter<string>()
+  - name: onExitEmitter
+    type: any
+    default: new vscode.EventEmitter<string | undefined>()
+  - name: onMochaEvent
+    type: any
+    default: this.mochaEventEmitter.event
+  - name: onOtherOutput
+    type: any
+    default: this.outputEventEmitter.event
+  - name: onRunnerExit
+    type: any
+    default: this.onExitEmitter.event
+  - name: processData
+    type: any
+    default: "(data: string | Buffer) => {\n\t\tif (this.args) {\n\t\t\tthis.outputEventEmitter.fire(..."
+  methods:
+  - name: constructor
+    sig: 'constructor(private readonly process: ChildProcessWithoutNullStreams, private args?: string[])'
+    lines:
+    - 109
+    - 116
+    detail:
+      calls:
+      - new StreamSplitter
+      - process.on
+      - process.stderr.pipe
+      - process.stderr.pipe(new StreamSplitter(LF)).on
+      - process.stdout.pipe
+      - process.stdout.pipe(new StreamSplitter(LF)).on
+  - name: dispose
+    sig: dispose()
+    lines:
+    - 121
+    - 127
+    detail:
+      calls:
+      - this.process.kill
+  lines:
+  - 89
+  - 148
+- name: QueuedOutput
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 150
+  - 150
+- name: SearchStrategy
+  kind: enum
+  variants:
+  - name: FirstBefore
+    val: '-1'
+  - name: FirstAfter
+    val: '1'
+  lines:
+  - 429
+  - 432
+- name: SourceLocationMapper
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 434
+  - 434
+- name: SourceMapStore
+  kind: struct
+  ctx: Gets an original location from a base 0 line and column
+  fields:
+  - name: cache
+    type: any
+    default: new Map</* file uri */ string, Promise<TraceMap | undefined>>()
+  methods:
+  - name: getSourceLocationMapper
+    sig: 'getSourceLocationMapper(fileUri: string): Promise<SourceLocationMapper>'
+    is_async: true
+    lines:
+    - 439
+    - 488
+    detail:
+      calls:
+      - this.loadSourceMap
+  - name: getSourceLocation
+    sig: 'getSourceLocation(fileUri: string, line: number, col = 0)'
+    is_async: true
+    lines:
+    - 491
+    - 517
+    detail:
+      calls:
+      - decodedMappings
+      - new vscode.Location
+      - new vscode.Position
+      - originalPositionFor
+      - this.completeSourceMapUrl
+      - this.loadSourceMap
+  - name: getSourceFile
+    sig: 'getSourceFile(compiledUri: string)'
+    is_async: true
+    lines:
+    - 519
+    - 537
+    detail:
+      calls:
+      - originalPositionFor
+      - this.completeSourceMapUrl
+      - this.loadSourceMap
+  - name: loadSourceMap
+    sig: 'loadSourceMap(fileUri: string)'
+    vis: private
+    lines:
+    - 551
+    - 575
+    detail:
+      calls:
+      - "(async () => {\n\t\t\ttry {\n\t\t\t\tconst contents = await getContentFromFilesystem(vscode.Uri.parse(fileUri..."
+      - this.cache.get
+      - this.cache.set
+  lines:
+  - 436
+  - 576
+functions:
+- name: scanTestOutput
+  sig: "scanTestOutput(\n\ttests: Map<string, vscode.TestItem>,\n\ttask: vscode.TestRun,\n\tscanner: TestOutputScanner,\n\tcoverageDir: string | undefined,\n\tcancellation: vscode.CancellationToken\n): Promise<void>"
+  is_async: true
+  lines:
+  - 152
+  - 377
+  detail:
+    calls:
+    - Promise.all
+    - Promise.resolve
+    - enqueueExitBlocker
+    - istanbulCoverageContext.apply
+    - msg.replace
+    - new Promise
+    - new Set
+    - new SourceMapStore
+    - perTestCoverage.report
+    - scanner.dispose
+    - task.appendOutput
+    - task.end
+    - task.skipped
+    - tests.values
+    - vscode.commands.executeCommand
+- name: forceCRLF
+  sig: 'forceCRLF(str: string)'
+  lines:
+  - 382
+  - 382
+- name: sourcemapStack
+  sig: 'sourcemapStack(store: SourceMapStore, str: string)'
+  is_async: true
+  lines:
+  - 384
+  - 409
+  detail:
+    calls:
+    - Promise.all
+    - '[...str.matchAll(locationRe)].map'
+    - replacement.to.toString
+    - str.matchAll
+    - str.replace
+- name: outputToString
+  sig: 'outputToString(output: unknown)'
+  lines:
+  - 411
+  - 412
+- name: tryMakeMarkdown
+  sig: 'tryMakeMarkdown(message: string)'
+  lines:
+  - 414
+  - 424
+  detail:
+    calls:
+    - lines.findIndex
+    - lines.join
+    - lines.push
+    - lines.splice
+    - message.split
+    - new vscode.MarkdownString
+- name: replaceAllLocations
+  sig: 'replaceAllLocations(store: SourceMapStore, str: string)'
+  is_async: true
+  lines:
+  - 580
+  - 611
+  detail:
+    calls:
+    - Promise.all
+    - deriveSourceLocation
+    - locationPromise.then
+    - output.push
+    - str.matchAll
+    - str.substring
+    - values.join
+- name: deriveStackLocations
+  sig: "deriveStackLocations(\n\tstore: SourceMapStore,\n\tstack: string,\n\ttcase: vscode.TestItem\n)"
+  is_async: true
+  lines:
+  - 613
+  - 645
+  detail:
+    calls:
+    - Promise.all
+    - '[...new StackTraceParser(stack)].filter'
+    - location.uri.toString
+    - locationsMapped.map
+    - locationsRaw.map
+    - new StackTraceParser
+    - tcase.range.contains
+    - tcase.uri.toString
+- name: deriveSourceLocation
+  sig: 'deriveSourceLocation(store: SourceMapStore, parts: RegExpMatchArray)'
+  is_async: true
+  lines:
+  - 647
+  - 650
+  detail:
+    calls:
+    - Number
+    - store.getSourceLocation
+- name: findLastIndex
+  sig: 'findLastIndex(arr: T[], predicate: (value: T) => boolean)'
+  lines:
+  - 652
+  - 660
+  detail:
+    calls:
+    - predicate
+exports:
+- name: MochaEvent
+  kind: type
+- name: IStartEvent
+  kind: type
+- name: ITestStartEvent
+  kind: type
+- name: IPassEvent
+  kind: type
+- name: IFailEvent
+  kind: type
+- name: IEndEvent
+  kind: type
+- name: ITestCoverageCoverage
+  kind: type
+- name: MochaEventTuple
+  kind: type
+- name: TestOutputScanner
+  kind: type
+- name: QueuedOutput
+  kind: type
+- name: SearchStrategy
+  kind: type
+- name: SourceLocationMapper
+  kind: type
+- name: SourceMapStore
+  kind: type
+- name: scanTestOutput
+  kind: func
+- name: forceCRLF
+  kind: func
+- name: sourcemapStack
+  kind: func
+- name: outputToString
+  kind: func
+- name: tryMakeMarkdown
+  kind: func
+- name: replaceAllLocations
+  kind: func
+- name: deriveStackLocations
+  kind: func
+- name: deriveSourceLocation
+  kind: func
+- name: findLastIndex
+  kind: func
+- name: LF
+  kind: data
+- name: spdlogRe
+  kind: data
+- name: crlf
+  kind: data
+- name: inlineSourcemapRe
+  kind: data
+- name: sourceMapBiases
+  kind: data
+- name: locationRe
+  kind: data

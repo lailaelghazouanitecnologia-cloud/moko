@@ -1,0 +1,445 @@
+## Roska File Descriptor — shell-parser/parser.ts
+file: shell-parser/parser.ts
+lines: 735
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+data:
+- name: operators
+  type: array
+  val: '['';'', ''&'', ''&;'', ''|'', ''|&'', ''&&'', ''||''] as const'
+- name: parseString
+  type: any
+  val: parseLiteral<NodeType.String>(NodeType.String, '"', '"')
+- name: parseRawString
+  type: any
+  val: "parseLiteral<NodeType.RawString>(\n\tNodeType.RawString,\n\t'\\'',\n\t'\\'',\n)"
+- name: parseExpansion
+  type: any
+  val: "parseLiteral<NodeType.Expansion>(\n\tNodeType.Expansion,\n\t'${',\n\t'}',\n)"
+- name: parseAnsiCString
+  type: any
+  val: "parseLiteral<NodeType.AnsiCString>(\n\tNodeType.AnsiCString,\n\t'$\\'',\n\t'\\'',\n)"
+- name: parseArithmeticExpansion
+  type: any
+  val: "parseLiteral<NodeType.ArithmeticExpansion>(\n\tNodeType.ArithmeticExpansion,\n\t'$((',\n\t'))',\n)"
+types:
+- name: NodeType
+  kind: enum
+  variants:
+  - name: Program
+    val: '''program'''
+  - name: AssignmentList
+    val: '''assignment_list'''
+  - name: Assignment
+    val: '''assignment'''
+  - name: VariableName
+    val: '''variable_name'''
+  - name: Subscript
+    val: '''subscript'''
+  - name: CompoundStatement
+    val: '''compound_statement'''
+  - name: Subshell
+    val: '''subshell'''
+  - name: Command
+    val: '''command'''
+  - name: Pipeline
+    val: '''pipeline'''
+  - name: List
+    val: '''list'''
+  - name: ProcessSubstitution
+    val: '''process_substitution'''
+  - name: Concatenation
+    val: '''concatenation'''
+  - name: Word
+    val: '''word'''
+  - name: String
+    val: '''string'''
+  - name: Expansion
+    val: '''expansion'''
+  - name: CommandSubstitution
+    val: '''command_substitution'''
+  - name: RawString
+    val: '''raw_string'''
+  - name: AnsiCString
+    val: '''ansi_c_string'''
+  - name: SimpleExpansion
+    val: '''simple_expansion'''
+  - name: SpecialExpansion
+    val: '''special_expansion'''
+  - name: ArithmeticExpansion
+    val: '''arithmetic_expansion'''
+  lines:
+  - 30
+  - 60
+- name: LiteralNode
+  kind: enum
+  decorators:
+  - type
+  variants:
+  - name: BaseNode<NodeType.Word>
+  lines:
+  - 62
+  - 72
+- name: BaseNode
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: text
+    type: string
+  - name: innerText
+    type: string
+  - name: startIndex
+    type: number
+  - name: endIndex
+    type: number
+  - name: complete
+    type: boolean
+  - name: type
+    type: Type
+  - name: children
+    type: BaseNode[]
+  lines:
+  - 74
+  - 86
+- name: ListNode
+  kind: trait
+  bases:
+  - BaseNode
+  decorators:
+  - interface
+  fields:
+  - name: type
+    type: NodeType.List
+  - name: operator
+    type: '''||'' | ''&&'' | ''|'' | ''|&'''
+  lines:
+  - 88
+  - 91
+- name: AssignmentListNode
+  kind: trait
+  bases:
+  - BaseNode
+  decorators:
+  - interface
+  fields:
+  - name: type
+    type: NodeType.AssignmentList
+  - name: children
+    type: "| [...AssignmentNode[], BaseNode<NodeType.Command>]\n\t| AssignmentNode[]"
+  - name: hasCommand
+    type: boolean
+  lines:
+  - 93
+  - 99
+- name: AssignmentNode
+  kind: trait
+  bases:
+  - BaseNode
+  decorators:
+  - interface
+  fields:
+  - name: type
+    type: NodeType.Assignment
+  - name: operator
+    type: '''='' | ''+='''
+  - name: name
+    type: BaseNode<NodeType.VariableName> | SubscriptNode
+  - name: children
+    type: LiteralNode[]
+  lines:
+  - 101
+  - 106
+- name: SubscriptNode
+  kind: trait
+  bases:
+  - BaseNode
+  decorators:
+  - interface
+  fields:
+  - name: type
+    type: NodeType.Subscript
+  - name: name
+    type: BaseNode<NodeType.VariableName>
+  - name: index
+    type: LiteralNode
+  lines:
+  - 108
+  - 112
+- name: Operator
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 116
+  - 116
+functions:
+- name: parseOperator
+  sig: 'parseOperator(str: string, index: number): Operator | null'
+  lines:
+  - 118
+  - 127
+  detail:
+    calls:
+    - '[''&'', '';'', ''|''].includes'
+    - operators.includes
+    - str.charAt
+    - str.slice
+- name: getInnerText
+  sig: 'getInnerText(node: BaseNode): string'
+  lines:
+  - 129
+  - 161
+  detail:
+    calls:
+    - '''$`"\\\n''.includes'
+    - children.reduce
+    - text.charAt
+- name: createNode
+  sig: "createNode(\n\tstr: string,\n\tpartial: Partial<T>,\n): T"
+  lines:
+  - 163
+  - 181
+  detail:
+    calls:
+    - getInnerText
+    - str.slice
+- name: createTextNode
+  sig: "createTextNode(\n\tstr: string,\n\tstartIndex: number,\n\ttext: string,\n): BaseNode"
+  lines:
+  - 183
+  - 188
+  detail: {}
+- name: nextWordIndex
+  sig: 'nextWordIndex(str: string, index: number)'
+  lines:
+  - 190
+  - 196
+  detail:
+    calls:
+    - str.slice
+    - str.slice(index).search
+- name: parseSimpleExpansion
+  sig: "parseSimpleExpansion(\n\tstr: string,\n\tindex: number,\n\tterminalChars: string[],\n): | BaseNode<NodeType.SimpleExpansion>\n\t| BaseNode<NodeType.SpecialExpansion>\n\t| null"
+  lines:
+  - 199
+  - 235
+  detail:
+    calls:
+    - '''*@?-$0_''.includes'
+    - createNode
+    - str.charAt
+    - terminalSymbols.includes
+- name: parseCommandSubstitution
+  sig: "parseCommandSubstitution(\n\tstr: string,\n\tstartIndex: number,\n\tterminalChar: string,\n): BaseNode<NodeType.CommandSubstitution>"
+  lines:
+  - 238
+  - 258
+  detail:
+    calls:
+    - createNode
+    - parseStatements
+    - str.charAt
+- name: childAtIndex
+  sig: "childAtIndex(\n\tstr: string,\n\tindex: number,\n\tinString: boolean,\n\tterminators: string[],\n): LiteralNode | null"
+  lines:
+  - 282
+  - 316
+  detail:
+    calls:
+    - parseAnsiCString
+    - parseArithmeticExpansion
+    - parseCommandSubstitution
+    - parseExpansion
+    - parseRawString
+    - parseSimpleExpansion
+    - parseString
+    - str.charAt
+- name: parseLiteral
+  sig: "parseLiteral(\n\ttype: T,\n\tstartChars: string,\n\tendChars: string,\n)"
+  lines:
+  - 318
+  - 353
+  detail: {}
+- name: parseStatements
+  sig: "parseStatements(\n\tstr: string,\n\tindex: number,\n\tterminalChar: string,\n\tmustTerminate = false,\n): {\n\tstatements: BaseNode[];\n\tterminatorIndex: number;\n}"
+  lines:
+  - 355
+  - 407
+  detail:
+    calls:
+    - createNode
+    - nextWordIndex
+    - parseOperator
+    - parseStatement
+    - statements.push
+    - str.charAt
+- name: parseConcatenationOrLiteralNode
+  sig: "parseConcatenationOrLiteralNode(\n\tstr: string,\n\tstartIndex: number,\n\tterminalChar: string,\n): { children: LiteralNode[]; endIndex: number }"
+  lines:
+  - 409
+  - 482
+  detail:
+    calls:
+    - '['' '', ''\t''].includes'
+    - argumentChildren.push
+    - childAtIndex
+    - endArgument
+    - endWord
+    - parseOperator
+    - str.charAt
+    - terminators.push
+- name: parseCommand
+  sig: "parseCommand(\n\tstr: string,\n\tidx: number,\n\tterminalChar: string,\n): BaseNode<NodeType.Command>"
+  lines:
+  - 484
+  - 504
+  detail:
+    calls:
+    - Math.max
+    - createNode
+    - nextWordIndex
+    - parseConcatenationOrLiteralNode
+- name: parseAssignmentNode
+  sig: "parseAssignmentNode(\n\tstr: string,\n\tstartIndex: number,\n): AssignmentNode"
+  lines:
+  - 506
+  - 559
+  detail:
+    calls:
+    - createNode
+    - parseConcatenationOrLiteralNode
+    - "str\n\t\t.slice"
+    - "str\n\t\t.slice(startIndex, firstOperatorCharIndex)\n\t\t.indexOf"
+    - str.charAt
+    - str.indexOf
+- name: parseAssignments
+  sig: 'parseAssignments(str: string, index: number): AssignmentNode[]'
+  lines:
+  - 561
+  - 575
+  detail:
+    calls:
+    - /^[\w[\]]+\+?=.*/.test
+    - nextWordIndex
+    - parseAssignmentNode
+    - str.slice
+    - variables.push
+- name: parseAssignmentListNodeOrCommandNode
+  sig: "parseAssignmentListNodeOrCommandNode(\n\tstr: string,\n\tstartIndex: number,\n\tterminalChar: string,\n): AssignmentListNode | BaseNode<NodeType.Command>"
+  lines:
+  - 577
+  - 607
+  detail:
+    calls:
+    - createNode
+    - nextWordIndex
+    - parseAssignments
+    - parseCommand
+    - parseOperator
+- name: reduceStatements
+  sig: "reduceStatements(\n\tstr: string,\n\tlhs: BaseNode,\n\trhs: BaseNode,\n\ttype: NodeType,\n): BaseNode"
+  lines:
+  - 609
+  - 621
+  detail: {}
+- name: parseStatement
+  sig: "parseStatement(\n\tstr: string,\n\tindex: number,\n\tterminalChar: string,\n): BaseNode"
+  lines:
+  - 623
+  - 710
+  detail:
+    calls:
+    - '[''{'', ''(''].includes'
+    - createNode
+    - nextWordIndex
+    - parseAssignmentListNodeOrCommandNode
+    - parseOperator
+    - parseStatement
+    - parseStatements
+    - reduceStatements
+    - str.charAt
+- name: printTree
+  sig: 'printTree(root: BaseNode)'
+  lines:
+  - 712
+  - 728
+  detail:
+    calls:
+    - console.log
+    - getNodeText
+- name: parse
+  sig: 'parse(str: string): BaseNode'
+  lines:
+  - 730
+  - 735
+  detail:
+    calls:
+    - parseStatements
+exports:
+- name: NodeType
+  kind: type
+- name: LiteralNode
+  kind: type
+- name: BaseNode
+  kind: type
+- name: ListNode
+  kind: type
+- name: AssignmentListNode
+  kind: type
+- name: AssignmentNode
+  kind: type
+- name: SubscriptNode
+  kind: type
+- name: Operator
+  kind: type
+- name: parseOperator
+  kind: func
+- name: getInnerText
+  kind: func
+- name: createNode
+  kind: func
+- name: createTextNode
+  kind: func
+- name: nextWordIndex
+  kind: func
+- name: parseSimpleExpansion
+  kind: func
+- name: parseCommandSubstitution
+  kind: func
+- name: childAtIndex
+  kind: func
+- name: parseLiteral
+  kind: func
+- name: parseStatements
+  kind: func
+- name: parseConcatenationOrLiteralNode
+  kind: func
+- name: parseCommand
+  kind: func
+- name: parseAssignmentNode
+  kind: func
+- name: parseAssignments
+  kind: func
+- name: parseAssignmentListNodeOrCommandNode
+  kind: func
+- name: reduceStatements
+  kind: func
+- name: parseStatement
+  kind: func
+- name: printTree
+  kind: func
+- name: parse
+  kind: func
+- name: operators
+  kind: data
+- name: parseString
+  kind: data
+- name: parseRawString
+  kind: data
+- name: parseExpansion
+  kind: data
+- name: parseAnsiCString
+  kind: data
+- name: parseArithmeticExpansion
+  kind: data

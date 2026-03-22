@@ -1,0 +1,423 @@
+## Roska File Descriptor — browser/languageModelToolsService.ts
+file: browser/languageModelToolsService.ts
+lines: 502
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: ../../../../base/browser/markdownRenderer.js.renderStringAsPlaintext
+- sym: ../../../../base/common/async.js.RunOnceScheduler
+- sym: ../../../../base/common/cancellation.js.CancellationToken
+- sym: ../../../../base/common/cancellation.js.CancellationTokenSource
+- sym: ../../../../base/common/errorMessage.js.toErrorMessage
+- sym: ../../../../base/common/errors.js.CancellationError
+- sym: ../../../../base/common/errors.js.isCancellationError
+- sym: ../../../../base/common/event.js.Emitter
+- sym: ../../../../base/common/htmlContent.js.MarkdownString
+- sym: ../../../../base/common/iterator.js.Iterable
+- sym: ../../../../base/common/lazy.js.Lazy
+- sym: ../../../../base/common/lifecycle.js.Disposable
+- sym: ../../../../base/common/lifecycle.js.DisposableStore
+- sym: ../../../../base/common/lifecycle.js.dispose
+- sym: ../../../../base/common/lifecycle.js.IDisposable
+- sym: ../../../../base/common/lifecycle.js.toDisposable
+- sym: ../../../../base/common/map.js.LRUCache
+- sym: ../../../../base/common/network.js.Schemas
+- sym: ../../../../base/common/uri.js.URI
+- sym: ../../../../nls.js.localize
+- sym: ../../../../platform/accessibility/common/accessibility.js.IAccessibilityService
+- sym: ../../../../platform/configuration/common/configuration.js.IConfigurationService
+- sym: ../../../../platform/contextkey/common/contextkey.js.IContextKey
+- sym: ../../../../platform/contextkey/common/contextkey.js.IContextKeyService
+- sym: ../../../../platform/dialogs/common/dialogs.js.IDialogService
+- sym: ../../../../platform/instantiation/common/instantiation.js.IInstantiationService
+- sym: ../../../../platform/jsonschemas/common/jsonContributionRegistry.js.JSONContributionRegistry
+- sym: ../../../../platform/log/common/log.js.ILogService
+- sym: ../../../../platform/registry/common/platform.js.Registry
+- sym: ../../../../platform/storage/common/storage.js.IStorageService
+- sym: ../../../../platform/storage/common/storage.js.StorageScope
+- sym: ../../../../platform/storage/common/storage.js.StorageTarget
+- sym: ../../../../platform/telemetry/common/telemetry.js.ITelemetryService
+- sym: ../../../services/extensions/common/extensions.js.IExtensionService
+- sym: ../common/chatContextKeys.js.ChatContextKeys
+- sym: ../common/chatModel.js.ChatModel
+- sym: ../common/chatProgressTypes/chatToolInvocation.js.ChatToolInvocation
+- sym: ../common/chatService.js.IChatService
+- sym: ../common/constants.js.ChatConfiguration
+- sym: ../common/languageModelToolsService.js.CountTokensCallback
+- sym: ../common/languageModelToolsService.js.ILanguageModelToolsService
+- sym: ../common/languageModelToolsService.js.IPreparedToolInvocation
+- sym: ../common/languageModelToolsService.js.IToolData
+- sym: ../common/languageModelToolsService.js.IToolImpl
+- sym: ../common/languageModelToolsService.js.IToolInvocation
+- sym: ../common/languageModelToolsService.js.IToolResult
+- sym: ../common/languageModelToolsService.js.stringifyPromptTsxPart
+data:
+- name: jsonSchemaRegistry
+  type: any
+  val: Registry.as<JSONContributionRegistry.IJSONContributionRegistry>(JSONContributionRegistry.Extensions.JSONContribution)
+types:
+- name: IToolEntry
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: data
+    type: IToolData
+  - name: impl
+    type: IToolImpl
+  lines:
+  - 40
+  - 43
+- name: LanguageModelToolsService
+  kind: model
+  ctx: Throttle tools updates because it sends all tools and runs on context key updates
+  bases:
+  - Disposable
+  - ILanguageModelToolsService
+  fields:
+  - name: _serviceBrand
+    type: undefined
+  - name: _onDidChangeTools
+    type: any
+    default: new Emitter<void>()
+  - name: onDidChangeTools
+    type: any
+    default: this._onDidChangeTools.event
+  - name: _onDidChangeToolsScheduler
+    type: any
+    default: new RunOnceScheduler(() => this._onDidChangeTools.fire(), 750)
+  - name: _tools
+    type: any
+    default: new Map<string, IToolEntry>()
+  - name: _toolContextKeys
+    type: any
+    default: new Set<string>()
+  - name: _ctxToolsCount
+    type: IContextKey<number>
+  - name: _callsByRequestId
+    type: any
+    default: new Map<string, IDisposable[]>()
+  - name: _workspaceToolConfirmStore
+    type: Lazy<ToolConfirmStore>
+  - name: _profileToolConfirmStore
+    type: Lazy<ToolConfirmStore>
+  - name: _memoryToolConfirmStore
+    type: any
+    default: new Set<string>()
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\t@IInstantiationService private readonly _instantiationService: IInstantiationService,\n\t\t@IExtensionService private readonly _extensionService: IExtensionService,\n\t\t@IContextKeyService private readonly _contextKeyService: IContextKeyService,\n\t\t@IChatService private readonly _chatService: IChatService,\n\t\t@IDialogService private readonly _dialogService: IDialogService,\n\t\t@ITelemetryService private readonly _telemetryService: ITelemetryService,\n\t\t@ILogService private readonly _logService: ILogService,\n\t\t@IConfigurationService private readonly _configurationService: IConfigurationService,\n\t\t@IAccessibilityService private readonly _accessibilityService: IAccessibilityService\n\t)"
+    lines:
+    - 64
+    - 94
+    detail:
+      calls:
+      - ChatContextKeys.Tools.toolsCount.bindTo
+      - new Lazy
+      - super
+      - this._configurationService.onDidChangeConfiguration
+      - this._contextKeyService.onDidChangeContext
+      - this._register
+  - name: registerToolData
+    sig: 'registerToolData(toolData: IToolData): IDisposable'
+    lines:
+    - 96
+    - 122
+    detail:
+      calls:
+      - URI.from
+      - 'URI.from({ scheme: Schemas.vscode, authority: ''schemas'', path: `/lm/tool/${toolData.id}` }).toString'
+      - jsonSchemaRegistry.registerSchema
+      - jsonSchemaRegistry.registerSchemaAssociation
+      - new DisposableStore
+      - new Error
+      - store.add
+      - this._ctxToolsCount.set
+      - this._onDidChangeToolsScheduler.schedule
+      - this._tools.has
+      - this._tools.set
+      - toDisposable
+      - toolData.when?.keys
+      - toolData.when?.keys().forEach
+  - name: _refreshAllToolContextKeys
+    sig: _refreshAllToolContextKeys()
+    vis: private
+    lines:
+    - 124
+    - 129
+    detail:
+      calls:
+      - this._toolContextKeys.clear
+      - this._tools.values
+      - tool.data.when?.keys
+      - tool.data.when?.keys().forEach
+  - name: registerToolImplementation
+    sig: 'registerToolImplementation(id: string, tool: IToolImpl): IDisposable'
+    lines:
+    - 131
+    - 145
+    detail:
+      calls:
+      - new Error
+      - this._tools.get
+      - toDisposable
+  - name: getTools
+    sig: 'getTools(): Iterable<Readonly<IToolData>>'
+    lines:
+    - 147
+    - 159
+    detail:
+      calls:
+      - Iterable.filter
+      - Iterable.map
+      - this._configurationService.getValue
+      - this._tools.values
+  - name: getTool
+    sig: 'getTool(id: string): IToolData | undefined'
+    lines:
+    - 161
+    - 163
+    detail:
+      calls:
+      - this._getToolEntry
+  - name: getToolByName
+    sig: 'getToolByName(name: string): IToolData | undefined'
+    lines:
+    - 174
+    - 181
+    detail:
+      calls:
+      - this.getTools
+  - name: setToolAutoConfirmation
+    sig: 'setToolAutoConfirmation(toolId: string, scope: ''workspace'' | ''profile'' | ''memory'', autoConfirm = true): void'
+    lines:
+    - 183
+    - 191
+    detail:
+      calls:
+      - this._memoryToolConfirmStore.add
+      - this._profileToolConfirmStore.value.setAutoConfirm
+      - this._workspaceToolConfirmStore.value.setAutoConfirm
+  - name: resetToolAutoConfirmation
+    sig: 'resetToolAutoConfirmation(): void'
+    lines:
+    - 193
+    - 197
+    detail:
+      calls:
+      - this._memoryToolConfirmStore.clear
+      - this._profileToolConfirmStore.value.reset
+      - this._workspaceToolConfirmStore.value.reset
+  - name: invokeTool
+    sig: 'invokeTool(dto: IToolInvocation, countTokens: CountTokensCallback, token: CancellationToken): Promise<IToolResult>'
+    is_async: true
+    lines:
+    - 199
+    - 323
+    detail:
+      calls:
+      - JSON.stringify
+      - isCancellationError
+      - localize
+      - model.acceptResponseProgress
+      - model.getRequests
+      - model.getRequests().at
+      - new CancellationError
+      - new CancellationTokenSource
+      - new ChatToolInvocation
+      - new DisposableStore
+      - new Error
+      - renderStringAsPlaintext
+      - source.token.onCancellationRequested
+      - store.add
+      - this._accessibilityService.alert
+      - this._callsByRequestId.get
+      - this._callsByRequestId.get(requestId)!.push
+      - this._callsByRequestId.has
+      - this._callsByRequestId.set
+      - this._chatService.getSession
+      - this._dialogService.confirm
+      - this._extensionService.activateByEvent
+      - this._logService.error
+      - this._logService.trace
+      - this._telemetryService.publicLog2
+      - this._tools.get
+      - this.cleanupCallDisposables
+      - this.ensureToolDetails
+      - this.prepareToolInvocation
+      - this.shouldAutoConfirm
+      - toDisposable
+      - toErrorMessage
+      - token.onCancellationRequested
+      - tool.impl.invoke
+      - toolInvocation.confirmed.complete
+      - toolInvocation?.complete
+  - name: prepareToolInvocation
+    sig: 'prepareToolInvocation(tool: IToolEntry, dto: IToolInvocation, token: CancellationToken): Promise<IPreparedToolInvocation | undefined>'
+    is_async: true
+    vis: private
+    lines:
+    - 325
+    - 362
+    detail:
+      calls:
+      - localize
+      - new MarkdownString
+      - tool.impl!.prepareToolInvocation
+  - name: shouldAutoConfirm
+    sig: 'shouldAutoConfirm(toolId: string, runsInWorkspace: boolean | undefined): boolean'
+    vis: private
+    lines:
+    - 385
+    - 403
+    detail:
+      calls:
+      - this._configurationService.inspect
+      - this._memoryToolConfirmStore.has
+      - this._profileToolConfirmStore.value.getAutoConfirm
+      - this._workspaceToolConfirmStore.value.getAutoConfirm
+      - value.hasOwnProperty
+  - name: cleanupCallDisposables
+    sig: 'cleanupCallDisposables(requestId: string, store: DisposableStore): void'
+    vis: private
+    lines:
+    - 405
+    - 417
+    detail:
+      calls:
+      - disposables.indexOf
+      - disposables.splice
+      - store.dispose
+      - this._callsByRequestId.delete
+      - this._callsByRequestId.get
+  - name: cancelToolCallsForRequest
+    sig: 'cancelToolCallsForRequest(requestId: string): void'
+    lines:
+    - 419
+    - 425
+    detail:
+      calls:
+      - calls.forEach
+      - this._callsByRequestId.delete
+      - this._callsByRequestId.get
+  - name: dispose
+    sig: 'dispose(): void'
+    lines:
+    - 427
+    - 432
+    detail:
+      calls:
+      - super.dispose
+      - this._callsByRequestId.forEach
+      - this._ctxToolsCount.reset
+  lines:
+  - 45
+  - 433
+- name: LanguageModelToolInvokedEvent
+  kind: typealias
+  decorators:
+  - type
+  fields:
+  - name: result
+    type: '''success'' | ''error'' | ''userCancelled'''
+  - name: chatSessionId
+    type: string | undefined
+  - name: toolId
+    type: string
+  - name: toolExtensionId
+    type: string | undefined
+  - name: toolSourceKind
+    type: string
+  lines:
+  - 435
+  - 441
+- name: LanguageModelToolInvokedClassification
+  kind: typealias
+  decorators:
+  - type
+  fields:
+  - name: result
+    type: '{ classification: ''SystemMetaData''; purpose: ''FeatureInsight''; comment: ''Whether invoking the LanguageModelTool resulted in an error.'' }'
+  - name: chatSessionId
+    type: '{ classification: ''SystemMetaData''; purpose: ''FeatureInsight''; comment: ''The ID of the chat session that the tool was used within, if applicable.'' }'
+  - name: toolId
+    type: '{ classification: ''SystemMetaData''; purpose: ''FeatureInsight''; comment: ''The ID of the tool used.'' }'
+  - name: toolExtensionId
+    type: '{ classification: ''SystemMetaData''; purpose: ''FeatureInsight''; comment: ''The extension that contributed the tool.'' }'
+  - name: toolSourceKind
+    type: '{ classification: ''SystemMetaData''; purpose: ''FeatureInsight''; comment: ''The source (mcp/extension/internal) of the tool.'' }'
+  - name: owner
+    type: '''roblourens'''
+  - name: comment
+    type: '''Provides insight into the usage of language model tools.'''
+  lines:
+  - 443
+  - 451
+- name: ToolConfirmStore
+  kind: struct
+  bases:
+  - Disposable
+  fields:
+  - name: STORED_KEY
+    type: any
+    default: '''chat/autoconfirm'''
+  - name: _autoConfirmTools
+    type: LRUCache<string, boolean>
+    default: new LRUCache<string, boolean>(100)
+  - name: _didChange
+    type: any
+    default: 'false'
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tprivate readonly _scope: StorageScope,\n\t\t@IStorageService private readonly storageService: IStorageService,\n\t)"
+    lines:
+    - 459
+    - 478
+    detail:
+      calls:
+      - storageService.getObject
+      - storageService.onWillSaveState
+      - super
+      - this._autoConfirmTools.set
+      - this._register
+  - name: reset
+    sig: reset()
+    lines:
+    - 480
+    - 483
+    detail:
+      calls:
+      - this._autoConfirmTools.clear
+  - name: getAutoConfirm
+    sig: 'getAutoConfirm(toolId: string): boolean'
+    lines:
+    - 485
+    - 492
+    detail:
+      calls:
+      - this._autoConfirmTools.get
+  - name: setAutoConfirm
+    sig: 'setAutoConfirm(toolId: string, autoConfirm: boolean): void'
+    lines:
+    - 494
+    - 501
+    detail:
+      calls:
+      - this._autoConfirmTools.delete
+      - this._autoConfirmTools.set
+  lines:
+  - 453
+  - 502
+exports:
+- name: IToolEntry
+  kind: type
+- name: LanguageModelToolsService
+  kind: type
+- name: LanguageModelToolInvokedEvent
+  kind: type
+- name: LanguageModelToolInvokedClassification
+  kind: type
+- name: ToolConfirmStore
+  kind: type
+- name: jsonSchemaRegistry
+  kind: data

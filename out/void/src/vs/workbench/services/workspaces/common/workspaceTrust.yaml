@@ -1,0 +1,730 @@
+## Roska File Descriptor — common/workspaceTrust.ts
+file: common/workspaceTrust.ts
+lines: 891
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: ../../../../base/common/event.js.Emitter
+- sym: ../../../../base/common/event.js.Event
+- sym: ../../../../base/common/lifecycle.js.Disposable
+- sym: ../../../../base/common/lifecycle.js.IDisposable
+- sym: ../../../../base/common/lifecycle.js.toDisposable
+- sym: ../../../../base/common/linkedList.js.LinkedList
+- sym: ../../../../base/common/network.js.Schemas
+- sym: ../../../../base/common/uri.js.URI
+- sym: ../../../../platform/window/common/window.js.IPath
+- sym: ../../../../platform/configuration/common/configuration.js.IConfigurationService
+- sym: ../../../../platform/instantiation/common/extensions.js.InstantiationType
+- sym: ../../../../platform/instantiation/common/extensions.js.registerSingleton
+- sym: ../../../../platform/remote/common/remoteAuthorityResolver.js.IRemoteAuthorityResolverService
+- sym: ../../../../platform/remote/common/remoteAuthorityResolver.js.ResolverResult
+- sym: ../../../../platform/remote/common/remoteHosts.js.getRemoteAuthority
+- sym: ../../../../platform/workspace/common/virtualWorkspace.js.isVirtualResource
+- sym: ../../../../platform/storage/common/storage.js.IStorageService
+- sym: ../../../../platform/storage/common/storage.js.StorageScope
+- sym: ../../../../platform/storage/common/storage.js.StorageTarget
+- sym: ../../../../platform/workspace/common/workspace.js.ISingleFolderWorkspaceIdentifier
+- sym: ../../../../platform/workspace/common/workspace.js.isSavedWorkspace
+- sym: ../../../../platform/workspace/common/workspace.js.isSingleFolderWorkspaceIdentifier
+- sym: ../../../../platform/workspace/common/workspace.js.isTemporaryWorkspace
+- sym: ../../../../platform/workspace/common/workspace.js.IWorkspace
+- sym: ../../../../platform/workspace/common/workspace.js.IWorkspaceContextService
+- sym: ../../../../platform/workspace/common/workspace.js.IWorkspaceFolder
+- sym: ../../../../platform/workspace/common/workspace.js.toWorkspaceIdentifier
+- sym: ../../../../platform/workspace/common/workspace.js.WorkbenchState
+- sym: ../../../../platform/workspace/common/workspaceTrust.js.WorkspaceTrustRequestOptions
+- sym: ../../../../platform/workspace/common/workspaceTrust.js.IWorkspaceTrustManagementService
+- sym: ../../../../platform/workspace/common/workspaceTrust.js.IWorkspaceTrustInfo
+- sym: ../../../../platform/workspace/common/workspaceTrust.js.IWorkspaceTrustUriInfo
+- sym: ../../../../platform/workspace/common/workspaceTrust.js.IWorkspaceTrustRequestService
+- sym: ../../../../platform/workspace/common/workspaceTrust.js.IWorkspaceTrustTransitionParticipant
+- sym: ../../../../platform/workspace/common/workspaceTrust.js.WorkspaceTrustUriResponse
+- sym: ../../../../platform/workspace/common/workspaceTrust.js.IWorkspaceTrustEnablementService
+- sym: ../../../common/memento.js.Memento
+- sym: ../../../common/memento.js.MementoObject
+- sym: ../../environment/common/environmentService.js.IWorkbenchEnvironmentService
+- sym: ../../../../platform/uriIdentity/common/uriIdentity.js.IUriIdentityService
+- sym: ../../../../base/common/resources.js.isEqualAuthority
+- sym: ../../../../base/common/platform.js.isWeb
+- sym: ../../../../platform/files/common/files.js.IFileService
+- sym: ../../../../base/common/async.js.promiseWithResolvers
+data:
+- name: WORKSPACE_TRUST_ENABLED
+  type: string
+  val: '''security.workspace.trust.enabled'''
+- name: WORKSPACE_TRUST_STARTUP_PROMPT
+  type: string
+  val: '''security.workspace.trust.startupPrompt'''
+- name: WORKSPACE_TRUST_BANNER
+  type: string
+  val: '''security.workspace.trust.banner'''
+- name: WORKSPACE_TRUST_UNTRUSTED_FILES
+  type: string
+  val: '''security.workspace.trust.untrustedFiles'''
+- name: WORKSPACE_TRUST_EMPTY_WINDOW
+  type: string
+  val: '''security.workspace.trust.emptyWindow'''
+- name: WORKSPACE_TRUST_EXTENSION_SUPPORT
+  type: string
+  val: '''extensions.supportUntrustedWorkspaces'''
+- name: WORKSPACE_TRUST_STORAGE_KEY
+  type: string
+  val: '''content.trust.model.key'''
+types:
+- name: CanonicalWorkspace
+  kind: struct
+  bases:
+  - IWorkspace
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tprivate readonly originalWorkspace: IWorkspace,\n\t\tprivate readonly canonicalFolderUris: URI[],\n\t\tprivate readonly canonicalConfiguration: URI | null | undefined\n\t)"
+    lines:
+    - 37
+    - 41
+    detail: {}
+  - name: folders
+    sig: 'folders(): IWorkspaceFolder[]'
+    lines:
+    - 44
+    - 53
+    detail:
+      calls:
+      - this.originalWorkspace.folders.map
+  - name: transient
+    sig: 'transient(): boolean | undefined'
+    lines:
+    - 55
+    - 57
+    detail: {}
+  - name: configuration
+    sig: 'configuration(): URI | null | undefined'
+    lines:
+    - 59
+    - 61
+    detail: {}
+  - name: id
+    sig: 'id(): string'
+    lines:
+    - 63
+    - 65
+    detail: {}
+  lines:
+  - 36
+  - 66
+- name: WorkspaceTrustEnablementService
+  kind: struct
+  bases:
+  - Disposable
+  - IWorkspaceTrustEnablementService
+  fields:
+  - name: _serviceBrand
+    type: undefined
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\t@IConfigurationService private readonly configurationService: IConfigurationService,\n\t\t@IWorkbenchEnvironmentService private readonly environmentService: IWorkbenchEnvironmentService\n\t)"
+    lines:
+    - 72
+    - 77
+    detail:
+      calls:
+      - super
+  - name: isWorkspaceTrustEnabled
+    sig: 'isWorkspaceTrustEnabled(): boolean'
+    lines:
+    - 79
+    - 85
+    detail:
+      calls:
+      - this.configurationService.getValue
+  lines:
+  - 68
+  - 86
+- name: WorkspaceTrustManagementService
+  kind: struct
+  ctx: '#region initialize'
+  bases:
+  - Disposable
+  - IWorkspaceTrustManagementService
+  fields:
+  - name: _serviceBrand
+    type: undefined
+  - name: storageKey
+    type: any
+    default: WORKSPACE_TRUST_STORAGE_KEY
+  - name: _workspaceResolvedPromise
+    type: Promise<void>
+  - name: _workspaceResolvedPromiseResolve
+    type: () => void
+  - name: _workspaceTrustInitializedPromise
+    type: Promise<void>
+  - name: _workspaceTrustInitializedPromiseResolve
+    type: () => void
+  - name: _onDidChangeTrust
+    type: any
+    default: this._register(new Emitter<boolean>())
+  - name: onDidChangeTrust
+    type: any
+    default: this._onDidChangeTrust.event
+  - name: _onDidChangeTrustedFolders
+    type: any
+    default: this._register(new Emitter<void>())
+  - name: onDidChangeTrustedFolders
+    type: any
+    default: this._onDidChangeTrustedFolders.event
+  - name: _canonicalStartupFiles
+    type: URI[]
+    default: '[]'
+  - name: _canonicalWorkspace
+    type: IWorkspace
+  - name: _canonicalUrisResolved
+    type: boolean
+  - name: _isTrusted
+    type: boolean
+  - name: _trustStateInfo
+    type: IWorkspaceTrustInfo
+  - name: _remoteAuthority
+    type: ResolverResult | undefined
+  - name: _storedTrustState
+    type: WorkspaceTrustMemento
+  - name: _trustTransitionManager
+    type: WorkspaceTrustTransitionManager
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\t@IConfigurationService private readonly configurationService: IConfigurationService,\n\t\t@IRemoteAuthorityResolverService private readonly remoteAuthorityResolverService: IRemoteAuthorityResolverService,\n\t\t@IStorageService private readonly storageService: IStorageService,\n\t\t@IUriIdentityService private readonly uriIdentityService: IUriIdentityService,\n\t\t@IWorkbenchEnvironmentService private readonly environmentService: IWorkbenchEnvironmentService,\n\t\t@IWorkspaceContextService private readonly workspaceService: IWorkspaceContextService,\n\t\t@IWorkspaceTrustEnablementService private readonly workspaceTrustEnablementService: IWorkspaceTrustEnablementService,\n\t\t@IFileService private readonly fileService: IFileService\n\t)"
+    lines:
+    - 116
+    - 142
+    detail:
+      calls:
+      - new WorkspaceTrustMemento
+      - new WorkspaceTrustTransitionManager
+      - promiseWithResolvers
+      - super
+      - this._register
+      - this.calculateWorkspaceTrust
+      - this.initializeWorkspaceTrust
+      - this.isEmptyWorkspace
+      - this.loadTrustInfo
+      - this.registerListeners
+      - this.workspaceService.getWorkspace
+  - name: initializeWorkspaceTrust
+    sig: 'initializeWorkspaceTrust(): void'
+    vis: private
+    lines:
+    - 146
+    - 182
+    detail:
+      calls:
+      - this._workspaceTrustInitializedPromise.then
+      - this.isEmptyWorkspace
+      - this.remoteAuthorityResolverService.resolveAuthority
+      - "this.remoteAuthorityResolverService.resolveAuthority(this.environmentService.remoteAuthority)\n\t\t\t\t.t..."
+      - this.resolveCanonicalUris
+      - "this.resolveCanonicalUris()\n\t\t\t.then"
+      - "this.resolveCanonicalUris()\n\t\t\t.then(async () => {\n\t\t\t\tthis._canonicalUrisResolved = true;\n\t\t\t\tawait..."
+  - name: registerListeners
+    sig: 'registerListeners(): void'
+    vis: private
+    lines:
+    - 188
+    - 199
+    detail:
+      calls:
+      - this._register
+      - this.storageService.onDidChangeValue
+      - this.storageService.onDidChangeValue(StorageScope.APPLICATION, this.storageKey, this._store)
+      - this.workspaceService.onDidChangeWorkspaceFolders
+  - name: getCanonicalUri
+    sig: 'getCanonicalUri(uri: URI): Promise<URI>'
+    is_async: true
+    vis: private
+    lines:
+    - 201
+    - 214
+    detail:
+      calls:
+      - canonicalUri.with
+      - this.remoteAuthorityResolverService.getCanonicalURI
+      - uri.authority.indexOf
+      - uri.authority.substr
+      - uri.with
+  - name: resolveCanonicalUris
+    sig: 'resolveCanonicalUris(): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 216
+    - 248
+    detail:
+      calls:
+      - Promise.all
+      - canonicalFilesToOpen.filter
+      - filesToOpen.filter
+      - filesToOpen.filter(f => !!f.fileUri).map
+      - filesToOpen.push
+      - filesToOpenOrCreateUris.map
+      - isSavedWorkspace
+      - new CanonicalWorkspace
+      - this._canonicalStartupFiles.push
+      - this.getCanonicalUri
+      - this.workspaceService.getWorkspace
+      - this.workspaceService.getWorkspace().folders.map
+      - workspaceUris.map
+  - name: loadTrustInfo
+    sig: 'loadTrustInfo(): IWorkspaceTrustInfo'
+    vis: private
+    lines:
+    - 250
+    - 274
+    detail:
+      calls:
+      - JSON.parse
+      - result.uriTrustInfo.filter
+      - result.uriTrustInfo.map
+      - this.storageService.get
+  - name: saveTrustInfo
+    sig: 'saveTrustInfo(): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 276
+    - 281
+    detail:
+      calls:
+      - JSON.stringify
+      - this._onDidChangeTrustedFolders.fire
+      - this.storageService.store
+      - this.updateWorkspaceTrust
+  - name: calculateWorkspaceTrust
+    sig: 'calculateWorkspaceTrust(): boolean'
+    vis: private
+    lines:
+    - 293
+    - 326
+    detail:
+      calls:
+      - this.configurationService.getValue
+      - this.getUrisTrust
+      - this.getWorkspaceUris
+      - this.isEmptyWorkspace
+      - this.workspaceTrustEnablementService.isWorkspaceTrustEnabled
+  - name: updateWorkspaceTrust
+    sig: 'updateWorkspaceTrust(trusted?: boolean): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 328
+    - 348
+    detail:
+      calls:
+      - this._onDidChangeTrust.fire
+      - this._trustTransitionManager.participate
+      - this.calculateWorkspaceTrust
+      - this.isWorkspaceTrusted
+      - this.resolveCanonicalUris
+      - this.workspaceTrustEnablementService.isWorkspaceTrustEnabled
+  - name: doGetUriTrustInfo
+    sig: 'doGetUriTrustInfo(uri: URI): IWorkspaceTrustUriInfo'
+    vis: private
+    lines:
+    - 364
+    - 395
+    detail:
+      calls:
+      - this.isTrustedByRemote
+      - this.isTrustedVirtualResource
+      - this.uriIdentityService.extUri.isEqualOrParent
+      - this.workspaceTrustEnablementService.isWorkspaceTrustEnabled
+  - name: doSetUrisTrust
+    sig: 'doSetUrisTrust(uris: URI[], trusted: boolean): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 397
+    - 427
+    detail:
+      calls:
+      - this._trustStateInfo.uriTrustInfo.filter
+      - this._trustStateInfo.uriTrustInfo.find
+      - this._trustStateInfo.uriTrustInfo.push
+      - this.isTrustedByRemote
+      - this.isTrustedVirtualResource
+      - this.saveTrustInfo
+  - name: workspaceResolved
+    sig: 'workspaceResolved(): Promise<void>'
+    lines:
+    - 476
+    - 478
+    detail: {}
+  - name: workspaceTrustInitialized
+    sig: 'workspaceTrustInitialized(): Promise<void>'
+    lines:
+    - 480
+    - 482
+    detail: {}
+  - name: acceptsOutOfWorkspaceFiles
+    sig: 'acceptsOutOfWorkspaceFiles(): boolean'
+    lines:
+    - 484
+    - 486
+    detail: {}
+  - name: acceptsOutOfWorkspaceFiles
+    sig: 'acceptsOutOfWorkspaceFiles(value: boolean)'
+    lines:
+    - 488
+    - 490
+    detail: {}
+  - name: isWorkspaceTrusted
+    sig: 'isWorkspaceTrusted(): boolean'
+    lines:
+    - 492
+    - 494
+    detail: {}
+  - name: isWorkspaceTrustForced
+    sig: 'isWorkspaceTrustForced(): boolean'
+    lines:
+    - 496
+    - 509
+    detail:
+      calls:
+      - this.getWorkspaceUris
+      - this.getWorkspaceUris().filter
+  - name: canSetParentFolderTrust
+    sig: 'canSetParentFolderTrust(): boolean'
+    lines:
+    - 511
+    - 528
+    detail:
+      calls:
+      - isSingleFolderWorkspaceIdentifier
+      - this.uriIdentityService.extUri.dirname
+      - this.uriIdentityService.extUri.isEqual
+      - toWorkspaceIdentifier
+  - name: setParentFolderTrust
+    sig: 'setParentFolderTrust(trusted: boolean): Promise<void>'
+    is_async: true
+    lines:
+    - 530
+    - 537
+    detail:
+      calls:
+      - this.canSetParentFolderTrust
+      - this.setUrisTrust
+      - this.uriIdentityService.extUri.dirname
+      - toWorkspaceIdentifier
+  - name: canSetWorkspaceTrust
+    sig: 'canSetWorkspaceTrust(): boolean'
+    lines:
+    - 539
+    - 589
+    detail:
+      calls:
+      - isSingleFolderWorkspaceIdentifier
+      - this.canSetParentFolderTrust
+      - this.doGetUriTrustInfo
+      - this.getWorkspaceUris
+      - this.getWorkspaceUris().filter
+      - this.isEmptyWorkspace
+      - this.isWorkspaceTrusted
+      - this.uriIdentityService.extUri.dirname
+      - this.uriIdentityService.extUri.isEqual
+      - toWorkspaceIdentifier
+  - name: setWorkspaceTrust
+    sig: 'setWorkspaceTrust(trusted: boolean): Promise<void>'
+    is_async: true
+    lines:
+    - 591
+    - 600
+    detail:
+      calls:
+      - this.getWorkspaceUris
+      - this.isEmptyWorkspace
+      - this.setUrisTrust
+      - this.updateWorkspaceTrust
+  - name: getUriTrustInfo
+    sig: 'getUriTrustInfo(uri: URI): Promise<IWorkspaceTrustUriInfo>'
+    is_async: true
+    lines:
+    - 602
+    - 614
+    detail:
+      calls:
+      - this.doGetUriTrustInfo
+      - this.getCanonicalUri
+      - this.isTrustedByRemote
+      - this.workspaceTrustEnablementService.isWorkspaceTrustEnabled
+  - name: setUrisTrust
+    sig: 'setUrisTrust(uris: URI[], trusted: boolean): Promise<void>'
+    is_async: true
+    lines:
+    - 616
+    - 618
+    detail:
+      calls:
+      - Promise.all
+      - this.doSetUrisTrust
+      - uris.map
+  - name: getTrustedUris
+    sig: 'getTrustedUris(): URI[]'
+    lines:
+    - 620
+    - 622
+    detail:
+      calls:
+      - this._trustStateInfo.uriTrustInfo.map
+  - name: setTrustedUris
+    sig: 'setTrustedUris(uris: URI[]): Promise<void>'
+    is_async: true
+    lines:
+    - 624
+    - 648
+    detail:
+      calls:
+      - this._trustStateInfo.uriTrustInfo.push
+      - this.getCanonicalUri
+      - this.saveTrustInfo
+      - this.uriIdentityService.extUri.isEqual
+      - this.uriIdentityService.extUri.removeTrailingPathSeparator
+  - name: addWorkspaceTrustTransitionParticipant
+    sig: 'addWorkspaceTrustTransitionParticipant(participant: IWorkspaceTrustTransitionParticipant): IDisposable'
+    lines:
+    - 650
+    - 652
+    detail:
+      calls:
+      - this._trustTransitionManager.addWorkspaceTrustTransitionParticipant
+  lines:
+  - 88
+  - 655
+- name: WorkspaceTrustRequestService
+  kind: struct
+  ctx: '#region Open file(s) trust request'
+  bases:
+  - Disposable
+  - IWorkspaceTrustRequestService
+  fields:
+  - name: _serviceBrand
+    type: undefined
+  - name: _openFilesTrustRequestPromise
+    type: Promise<WorkspaceTrustUriResponse>
+  - name: _openFilesTrustRequestResolver
+    type: '(response: WorkspaceTrustUriResponse) => void'
+  - name: _workspaceTrustRequestPromise
+    type: Promise<boolean | undefined>
+  - name: _workspaceTrustRequestResolver
+    type: '(trusted: boolean | undefined) => void'
+  - name: _onDidInitiateOpenFilesTrustRequest
+    type: any
+    default: this._register(new Emitter<void>())
+  - name: onDidInitiateOpenFilesTrustRequest
+    type: any
+    default: this._onDidInitiateOpenFilesTrustRequest.event
+  - name: _onDidInitiateWorkspaceTrustRequest
+    type: any
+    default: this._register(new Emitter<WorkspaceTrustRequestOptions | undefined>())
+  - name: onDidInitiateWorkspaceTrustRequest
+    type: any
+    default: this._onDidInitiateWorkspaceTrustRequest.event
+  - name: _onDidInitiateWorkspaceTrustRequestOnStartup
+    type: any
+    default: this._register(new Emitter<void>())
+  - name: onDidInitiateWorkspaceTrustRequestOnStartup
+    type: any
+    default: this._onDidInitiateWorkspaceTrustRequestOnStartup.event
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\t@IConfigurationService private readonly configurationService: IConfigurationService,\n\t\t@IWorkspaceTrustManagementService private readonly workspaceTrustManagementService: IWorkspaceTrustManagementService\n\t)"
+    lines:
+    - 675
+    - 680
+    detail:
+      calls:
+      - super
+  - name: completeOpenFilesTrustRequest
+    sig: 'completeOpenFilesTrustRequest(result: WorkspaceTrustUriResponse, saveResponse?: boolean): Promise<void>'
+    is_async: true
+    lines:
+    - 692
+    - 718
+    detail:
+      calls:
+      - this._openFilesTrustRequestResolver
+  - name: requestOpenFilesTrust
+    sig: 'requestOpenFilesTrust(uris: URI[]): Promise<WorkspaceTrustUriResponse>'
+    is_async: true
+    lines:
+    - 720
+    - 760
+    detail:
+      calls:
+      - Promise.all
+      - new Promise
+      - openFilesTrustInfo.map
+      - openFilesTrustInfo.map(info => info.trusted).every
+      - this._onDidInitiateOpenFilesTrustRequest.fire
+      - this.workspaceTrustManagementService.isWorkspaceTrusted
+      - uris.map
+  - name: cancelWorkspaceTrustRequest
+    sig: 'cancelWorkspaceTrustRequest(): void'
+    lines:
+    - 775
+    - 782
+    detail:
+      calls:
+      - this._workspaceTrustRequestResolver
+  - name: completeWorkspaceTrustRequest
+    sig: 'completeWorkspaceTrustRequest(trusted?: boolean): Promise<void>'
+    is_async: true
+    lines:
+    - 784
+    - 795
+    detail:
+      calls:
+      - Event.once
+      - Event.once(this.workspaceTrustManagementService.onDidChangeTrust)
+      - this.resolveWorkspaceTrustRequest
+      - this.workspaceTrustManagementService.isWorkspaceTrusted
+      - this.workspaceTrustManagementService.setWorkspaceTrust
+  - name: requestWorkspaceTrust
+    sig: 'requestWorkspaceTrust(options?: WorkspaceTrustRequestOptions): Promise<boolean | undefined>'
+    is_async: true
+    lines:
+    - 797
+    - 816
+    detail:
+      calls:
+      - new Promise
+      - this._onDidInitiateWorkspaceTrustRequest.fire
+      - this.workspaceTrustManagementService.isWorkspaceTrusted
+  - name: requestWorkspaceTrustOnStartup
+    sig: 'requestWorkspaceTrustOnStartup(): void'
+    lines:
+    - 818
+    - 827
+    detail:
+      calls:
+      - new Promise
+      - this._onDidInitiateWorkspaceTrustRequestOnStartup.fire
+  lines:
+  - 657
+  - 830
+- name: WorkspaceTrustTransitionManager
+  kind: struct
+  bases:
+  - Disposable
+  fields:
+  - name: participants
+    type: any
+    default: new LinkedList<IWorkspaceTrustTransitionParticipant>()
+  methods:
+  - name: addWorkspaceTrustTransitionParticipant
+    sig: 'addWorkspaceTrustTransitionParticipant(participant: IWorkspaceTrustTransitionParticipant): IDisposable'
+    lines:
+    - 836
+    - 839
+    detail:
+      calls:
+      - this.participants.push
+      - toDisposable
+  - name: participate
+    sig: 'participate(trusted: boolean): Promise<void>'
+    is_async: true
+    lines:
+    - 841
+    - 845
+    detail:
+      calls:
+      - participant.participate
+  - name: dispose
+    sig: 'dispose(): void'
+    lines:
+    - 847
+    - 850
+    detail:
+      calls:
+      - super.dispose
+      - this.participants.clear
+  lines:
+  - 832
+  - 851
+- name: WorkspaceTrustMemento
+  kind: struct
+  fields:
+  - name: _memento
+    type: Memento
+  - name: _mementoObject
+    type: MementoObject
+  - name: _acceptsOutOfWorkspaceFilesKey
+    type: any
+    default: '''acceptsOutOfWorkspaceFiles'''
+  - name: _isEmptyWorkspaceTrustedKey
+    type: any
+    default: '''isEmptyWorkspaceTrusted'''
+  methods:
+  - name: constructor
+    sig: 'constructor(storageService?: IStorageService)'
+    lines:
+    - 861
+    - 868
+    detail:
+      calls:
+      - new Memento
+      - this._memento.getMemento
+  - name: acceptsOutOfWorkspaceFiles
+    sig: 'acceptsOutOfWorkspaceFiles(): boolean'
+    lines:
+    - 870
+    - 872
+    detail: {}
+  - name: acceptsOutOfWorkspaceFiles
+    sig: 'acceptsOutOfWorkspaceFiles(value: boolean)'
+    lines:
+    - 874
+    - 878
+    detail:
+      calls:
+      - this._memento?.saveMemento
+  - name: isEmptyWorkspaceTrusted
+    sig: 'isEmptyWorkspaceTrusted(): boolean | undefined'
+    lines:
+    - 880
+    - 882
+    detail: {}
+  - name: isEmptyWorkspaceTrusted
+    sig: 'isEmptyWorkspaceTrusted(value: boolean | undefined)'
+    lines:
+    - 884
+    - 888
+    detail:
+      calls:
+      - this._memento?.saveMemento
+  lines:
+  - 853
+  - 889
+exports:
+- name: CanonicalWorkspace
+  kind: type
+- name: WorkspaceTrustEnablementService
+  kind: type
+- name: WorkspaceTrustManagementService
+  kind: type
+- name: WorkspaceTrustRequestService
+  kind: type
+- name: WorkspaceTrustTransitionManager
+  kind: type
+- name: WorkspaceTrustMemento
+  kind: type
+- name: WORKSPACE_TRUST_ENABLED
+  kind: data
+- name: WORKSPACE_TRUST_STARTUP_PROMPT
+  kind: data
+- name: WORKSPACE_TRUST_BANNER
+  kind: data
+- name: WORKSPACE_TRUST_UNTRUSTED_FILES
+  kind: data
+- name: WORKSPACE_TRUST_EMPTY_WINDOW
+  kind: data
+- name: WORKSPACE_TRUST_EXTENSION_SUPPORT
+  kind: data
+- name: WORKSPACE_TRUST_STORAGE_KEY
+  kind: data

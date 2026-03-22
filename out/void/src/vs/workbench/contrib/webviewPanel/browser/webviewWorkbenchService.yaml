@@ -1,0 +1,323 @@
+## Roska File Descriptor — browser/webviewWorkbenchService.ts
+file: browser/webviewWorkbenchService.ts
+lines: 395
+layer: ui
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: ../../../../base/common/async.js.CancelablePromise
+- sym: ../../../../base/common/async.js.createCancelablePromise
+- sym: ../../../../base/common/async.js.DeferredPromise
+- sym: ../../../../base/common/cancellation.js.CancellationToken
+- sym: ../../../../base/common/cancellation.js.CancellationTokenSource
+- sym: ../../../../base/common/decorators.js.memoize
+- sym: ../../../../base/common/errors.js.isCancellationError
+- sym: ../../../../base/common/event.js.Emitter
+- sym: ../../../../base/common/event.js.Event
+- sym: ../../../../base/common/iterator.js.Iterable
+- sym: ../../../../base/common/lifecycle.js.combinedDisposable
+- sym: ../../../../base/common/lifecycle.js.Disposable
+- sym: ../../../../base/common/lifecycle.js.IDisposable
+- sym: ../../../../base/common/lifecycle.js.toDisposable
+- sym: ../../../../platform/editor/common/editor.js.EditorActivation
+- sym: ../../../../platform/instantiation/common/instantiation.js.createDecorator
+- sym: ../../../../platform/instantiation/common/instantiation.js.IInstantiationService
+- sym: ../../../common/editor.js.GroupIdentifier
+- sym: ../../../common/editor/diffEditorInput.js.DiffEditorInput
+- sym: ../../../common/editor/editorInput.js.EditorInput
+- sym: ../../webview/browser/webview.js.IOverlayWebview
+- sym: ../../webview/browser/webview.js.IWebviewService
+- sym: ../../webview/browser/webview.js.WebviewInitInfo
+- sym: ./webviewEditor.js.CONTEXT_ACTIVE_WEBVIEW_PANEL_ID
+- sym: ./webviewIconManager.js.WebviewIconManager
+- sym: ./webviewIconManager.js.WebviewIcons
+- sym: ../../../services/editor/common/editorGroupsService.js.IEditorGroup
+- sym: ../../../services/editor/common/editorGroupsService.js.IEditorGroupsService
+- sym: ../../../services/editor/common/editorService.js.ACTIVE_GROUP_TYPE
+- sym: ../../../services/editor/common/editorService.js.IEditorService
+- sym: ../../../services/editor/common/editorService.js.SIDE_GROUP_TYPE
+- sym: ./webviewEditorInput.js.WebviewInput
+- sym: ./webviewEditorInput.js.WebviewInputInitInfo
+data:
+- name: IWebviewWorkbenchService
+  type: any
+  val: createDecorator<IWebviewWorkbenchService>('webviewEditorService')
+types:
+- name: IWebViewShowOptions
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: readonly
+    type: IEditorGroup | GroupIdentifier | ACTIVE_GROUP_TYPE | SIDE_GROUP_TYPE
+  - name: readonly
+    type: boolean
+  lines:
+  - 25
+  - 28
+- name: IWebviewWorkbenchService
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: readonly
+    type: undefined
+  - name: readonly
+    type: WebviewIconManager
+  - name: readonly
+    type: Event<WebviewInput | undefined>
+  - name: openWebview
+    type: "method: openWebview(\n\t\twebviewInitInfo: WebviewInitInfo,\n\t\tviewType: string,\n\t\ttitle: string,\n\t\tshowOptions: IWebViewShowOptions,\n\t): WebviewInput"
+  - name: openRevivedWebview
+    type: "method: openRevivedWebview(options: {\n\t\twebviewInitInfo: WebviewInitInfo;\n\t\tviewType: string;\n\t\ttitle: string;\n\t\ticonPath: WebviewIcons | undefined;\n\t\tstate: any;\n\t\tgroup: number | undefined;\n\t}): WebviewInput"
+  - name: revealWebview
+    type: "method: revealWebview(\n\t\twebview: WebviewInput,\n\t\tgroup: IEditorGroup | GroupIdentifier | ACTIVE_GROUP_TYPE | SIDE_GROUP_TYPE,\n\t\tpreserveFocus: boolean\n\t): void"
+  - name: registerResolver
+    type: 'method: registerResolver(resolver: WebviewResolver): IDisposable'
+  - name: shouldPersist
+    type: 'method: shouldPersist(input: WebviewInput): boolean'
+  - name: resolveWebview
+    type: 'method: resolveWebview(webview: WebviewInput, token: CancellationToken): Promise<void>'
+  lines:
+  - 35
+  - 97
+- name: WebviewResolver
+  kind: trait
+  ctx: Handles filling in the content of webview before it can be shown to the user.
+  decorators:
+  - interface
+  fields:
+  - name: canResolve
+    type: 'method: canResolve(webview: WebviewInput): boolean'
+  - name: resolveWebview
+    type: 'method: resolveWebview(webview: WebviewInput, token: CancellationToken): Promise<void>'
+  lines:
+  - 102
+  - 112
+- name: LazilyResolvedWebviewEditorInput
+  kind: struct
+  bases:
+  - WebviewInput
+  fields:
+  - name: _resolved
+    type: any
+    default: 'false'
+  - name: _resolvePromise
+    type: CancelablePromise<void>
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tinit: WebviewInputInitInfo,\n\t\twebview: IOverlayWebview,\n\t\t@IWebviewWorkbenchService private readonly _webviewWorkbenchService: IWebviewWorkbenchService,\n\t)"
+    lines:
+    - 123
+    - 129
+    detail:
+      calls:
+      - super
+  - name: dispose
+    sig: dispose()
+    lines:
+    - 131
+    - 135
+    detail:
+      calls:
+      - super.dispose
+      - this._resolvePromise?.cancel
+  - name: resolve
+    sig: resolve()
+    is_async: true
+    lines:
+    - 138
+    - 151
+    detail:
+      calls:
+      - createCancelablePromise
+      - isCancellationError
+      - super.resolve
+  lines:
+  - 118
+  - 161
+- name: RevivalPool
+  kind: struct
+  fields:
+  - name: _awaitingRevival
+    type: "Array<{\n\t\treadonly input: WebviewInput;\n\t\treadonly promise: DeferredPromise<void>;\n\t\treadonly disposable: IDisposable;\n\t}>"
+    default: '[]'
+  methods:
+  - name: enqueueForRestoration
+    sig: 'enqueueForRestoration(input: WebviewInput, token: CancellationToken): Promise<void>'
+    lines:
+    - 171
+    - 192
+    detail:
+      calls:
+      - combinedDisposable
+      - input.webview.onDidDispose
+      - new DeferredPromise
+      - this._awaitingRevival.push
+      - token.onCancellationRequested
+  - name: reviveFor
+    sig: 'reviveFor(reviver: WebviewResolver, token: CancellationToken)'
+    lines:
+    - 194
+    - 203
+    detail:
+      calls:
+      - reviver.resolveWebview
+      - reviver.resolveWebview(input, token).then
+      - reviver.resolveWebview(input, token).then(x => resolve.complete(x), err => resolve.error(err)).final...
+      - this._awaitingRevival.filter
+  lines:
+  - 164
+  - 204
+- name: WebviewEditorService
+  kind: struct
+  bases:
+  - Disposable
+  - IWebviewWorkbenchService
+  fields:
+  - name: _serviceBrand
+    type: undefined
+  - name: _revivers
+    type: any
+    default: new Set<WebviewResolver>()
+  - name: _revivalPool
+    type: any
+    default: new RevivalPool()
+  - name: _iconManager
+    type: WebviewIconManager
+  - name: _activeWebview
+    type: WebviewInput | undefined
+  - name: _onDidChangeActiveWebviewEditor
+    type: any
+    default: this._register(new Emitter<WebviewInput | undefined>())
+  - name: onDidChangeActiveWebviewEditor
+    type: any
+    default: this._onDidChangeActiveWebviewEditor.event
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\t@IEditorGroupsService editorGroupsService: IEditorGroupsService,\n\t\t@IEditorService private readonly _editorService: IEditorService,\n\t\t@IInstantiationService private readonly _instantiationService: IInstantiationService,\n\t\t@IWebviewService private readonly _webviewService: IWebviewService,\n\t)"
+    lines:
+    - 215
+    - 240
+    detail:
+      calls:
+      - _editorService.onDidActiveEditorChange
+      - _webviewService.onDidChangeActiveWebview
+      - editorGroupsService.registerContextKeyProvider
+      - super
+      - this._instantiationService.createInstance
+      - this._register
+      - this.updateActiveWebview
+  - name: iconManager
+    sig: iconManager()
+    lines:
+    - 242
+    - 244
+    detail: {}
+  - name: openWebview
+    sig: "openWebview(\n\t\twebviewInitInfo: WebviewInitInfo,\n\t\tviewType: string,\n\t\ttitle: string,\n\t\tshowOptions: IWebViewShowOptions,\n\t): WebviewInput"
+    lines:
+    - 285
+    - 301
+    detail:
+      calls:
+      - this._editorService.openEditor
+      - this._instantiationService.createInstance
+      - this._webviewService.createWebviewOverlay
+  - name: revealWebview
+    sig: "revealWebview(\n\t\twebview: WebviewInput,\n\t\tgroup: IEditorGroup | GroupIdentifier | ACTIVE_GROUP_TYPE | SIDE_GROUP_TYPE,\n\t\tpreserveFocus: boolean\n\t): void"
+    lines:
+    - 303
+    - 316
+    detail:
+      calls:
+      - this._editorService.openEditor
+      - this.findTopLevelEditorForWebview
+  - name: openRevivedWebview
+    sig: "openRevivedWebview(options: {\n\t\twebviewInitInfo: WebviewInitInfo;\n\t\tviewType: string;\n\t\ttitle: string;\n\t\ticonPath: WebviewIcons | undefined;\n\t\tstate: any;\n\t\tgroup: number | undefined;\n\t}): WebviewInput"
+    lines:
+    - 332
+    - 350
+    detail:
+      calls:
+      - this._instantiationService.createInstance
+      - this._webviewService.createWebviewOverlay
+      - webviewInput.updateGroup
+  - name: registerResolver
+    sig: 'registerResolver(reviver: WebviewResolver): IDisposable'
+    lines:
+    - 352
+    - 362
+    detail:
+      calls:
+      - new CancellationTokenSource
+      - this._revivalPool.reviveFor
+      - this._revivers.add
+      - toDisposable
+  - name: shouldPersist
+    sig: 'shouldPersist(webview: WebviewInput): boolean'
+    lines:
+    - 364
+    - 372
+    detail:
+      calls:
+      - Iterable.some
+      - this._revivers.values
+  - name: tryRevive
+    sig: 'tryRevive(webview: WebviewInput, token: CancellationToken): Promise<boolean>'
+    is_async: true
+    vis: private
+    lines:
+    - 374
+    - 382
+    detail:
+      calls:
+      - canRevive
+      - reviver.resolveWebview
+      - this._revivers.values
+  - name: resolveWebview
+    sig: 'resolveWebview(webview: WebviewInput, token: CancellationToken): Promise<void>'
+    is_async: true
+    lines:
+    - 384
+    - 390
+    detail:
+      calls:
+      - this._revivalPool.enqueueForRestoration
+      - this.tryRevive
+  - name: setIcons
+    sig: 'setIcons(id: string, iconPath: WebviewIcons | undefined): void'
+    lines:
+    - 392
+    - 394
+    detail:
+      calls:
+      - this._iconManager.setIcons
+  lines:
+  - 207
+  - 395
+functions:
+- name: canRevive
+  sig: 'canRevive(reviver: WebviewResolver, webview: WebviewInput): boolean'
+  lines:
+  - 114
+  - 116
+  detail:
+    calls:
+    - reviver.canResolve
+exports:
+- name: IWebViewShowOptions
+  kind: type
+- name: IWebviewWorkbenchService
+  kind: type
+- name: WebviewResolver
+  kind: type
+- name: LazilyResolvedWebviewEditorInput
+  kind: type
+- name: RevivalPool
+  kind: type
+- name: WebviewEditorService
+  kind: type
+- name: canRevive
+  kind: func
+- name: IWebviewWorkbenchService
+  kind: data

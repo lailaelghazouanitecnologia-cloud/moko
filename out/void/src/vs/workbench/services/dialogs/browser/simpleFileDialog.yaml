@@ -1,0 +1,590 @@
+## Roska File Descriptor — browser/simpleFileDialog.ts
+file: browser/simpleFileDialog.ts
+lines: 1087
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: ../../../../nls.js.nls
+- sym: ../../../../base/common/resources.js.resources
+- sym: ../../../../base/common/objects.js.objects
+- sym: ../../../../platform/files/common/files.js.IFileService
+- sym: ../../../../platform/files/common/files.js.IFileStat
+- sym: ../../../../platform/files/common/files.js.FileKind
+- sym: ../../../../platform/files/common/files.js.IFileStatWithPartialMetadata
+- sym: ../../../../platform/quickinput/common/quickInput.js.IQuickInputService
+- sym: ../../../../platform/quickinput/common/quickInput.js.IQuickPickItem
+- sym: ../../../../platform/quickinput/common/quickInput.js.IQuickPick
+- sym: ../../../../platform/quickinput/common/quickInput.js.ItemActivation
+- sym: ../../../../base/common/uri.js.URI
+- sym: ../../../../base/common/platform.js.isWindows
+- sym: ../../../../base/common/platform.js.OperatingSystem
+- sym: ../../../../platform/dialogs/common/dialogs.js.ISaveDialogOptions
+- sym: ../../../../platform/dialogs/common/dialogs.js.IOpenDialogOptions
+- sym: ../../../../platform/dialogs/common/dialogs.js.IFileDialogService
+- sym: ../../../../platform/label/common/label.js.ILabelService
+- sym: ../../../../platform/workspace/common/workspace.js.IWorkspaceContextService
+- sym: ../../../../platform/notification/common/notification.js.INotificationService
+- sym: ../../../../editor/common/services/model.js.IModelService
+- sym: ../../../../editor/common/languages/language.js.ILanguageService
+- sym: ../../../../editor/common/services/getIconClasses.js.getIconClasses
+- sym: ../../../../base/common/network.js.Schemas
+- sym: ../../environment/common/environmentService.js.IWorkbenchEnvironmentService
+- sym: ../../remote/common/remoteAgentService.js.IRemoteAgentService
+- sym: ../../../../platform/contextkey/common/contextkey.js.IContextKeyService
+- sym: ../../../../platform/contextkey/common/contextkey.js.IContextKey
+- sym: ../../../../platform/contextkey/common/contextkey.js.RawContextKey
+- sym: ../../../../base/common/strings.js.equalsIgnoreCase
+- sym: ../../../../base/common/strings.js.format
+- sym: ../../../../base/common/strings.js.startsWithIgnoreCase
+- sym: ../../../../platform/keybinding/common/keybinding.js.IKeybindingService
+- sym: ../../../../platform/remote/common/remoteAgentEnvironment.js.IRemoteAgentEnvironment
+- sym: ../../../../base/common/extpath.js.isValidBasename
+- sym: ../../../../base/common/event.js.Emitter
+- sym: ../../../../base/common/lifecycle.js.Disposable
+- sym: ../../../../base/common/lifecycle.js.DisposableStore
+- sym: ../../../../base/common/lifecycle.js.IDisposable
+- sym: ../../../../base/common/async.js.createCancelablePromise
+- sym: ../../../../base/common/async.js.CancelablePromise
+- sym: ../../../../base/common/cancellation.js.CancellationToken
+- sym: ../../../../platform/commands/common/commands.js.ICommandHandler
+- sym: ../../editor/common/editorService.js.IEditorService
+- sym: ../../../../base/common/labels.js.normalizeDriveLetter
+- sym: ../../../common/editor.js.SaveReason
+- sym: ../../path/common/pathService.js.IPathService
+- sym: ../../../../platform/accessibility/common/accessibility.js.IAccessibilityService
+- sym: ../../../../base/browser/dom.js.getActiveDocument
+- sym: ../../../../base/common/codicons.js.Codicon
+- sym: ../../../../base/common/themables.js.ThemeIcon
+- sym: ../../../../platform/storage/common/storage.js.IStorageService
+- sym: ../../../../platform/storage/common/storage.js.StorageScope
+- sym: ../../../../platform/storage/common/storage.js.StorageTarget
+data:
+- name: RemoteFileDialogContext
+  type: any
+  val: new RawContextKey<boolean>('remoteFileDialogVisible', false)
+types:
+- name: FileQuickPickItem
+  kind: trait
+  bases:
+  - IQuickPickItem
+  decorators:
+  - interface
+  fields:
+  - name: uri
+    type: URI
+  - name: isFolder
+    type: boolean
+  lines:
+  - 92
+  - 95
+- name: UpdateResult
+  kind: enum
+  variants:
+  - name: Updated
+  - name: UpdatedWithTrailing
+  - name: Updating
+  - name: NotUpdated
+  - name: InvalidPath
+  lines:
+  - 97
+  - 103
+- name: ISimpleFileDialog
+  kind: trait
+  bases:
+  - IDisposable
+  decorators:
+  - interface
+  fields:
+  - name: showOpenDialog
+    type: 'method: showOpenDialog(options: IOpenDialogOptions): Promise<URI | undefined>'
+  - name: showSaveDialog
+    type: 'method: showSaveDialog(options: ISaveDialogOptions): Promise<URI | undefined>'
+  lines:
+  - 107
+  - 110
+- name: SimpleFileDialog
+  kind: struct
+  ctx: Returns true if there is a file at the end of the URI.
+  bases:
+  - Disposable
+  - ISimpleFileDialog
+  fields:
+  - name: options
+    type: IOpenDialogOptions
+  - name: currentFolder
+    type: URI
+  - name: filePickBox
+    type: IQuickPick<FileQuickPickItem>
+  - name: hidden
+    type: boolean
+    default: 'false'
+  - name: allowFileSelection
+    type: boolean
+    default: 'true'
+  - name: allowFolderSelection
+    type: boolean
+    default: 'false'
+  - name: remoteAuthority
+    type: string | undefined
+  - name: requiresTrailing
+    type: boolean
+    default: 'false'
+  - name: trailing
+    type: string | undefined
+  - name: scheme
+    type: string
+  - name: contextKey
+    type: IContextKey<boolean>
+  - name: userEnteredPathSegment
+    type: string
+    default: ''''''
+  - name: autoCompletePathSegment
+    type: string
+    default: ''''''
+  - name: activeItem
+    type: FileQuickPickItem | undefined
+  - name: userHome
+    type: URI
+  - name: trueHome
+    type: URI
+  - name: isWindows
+    type: boolean
+    default: 'false'
+  - name: badPath
+    type: string | undefined
+  - name: remoteAgentEnvironment
+    type: IRemoteAgentEnvironment | null | undefined
+  - name: separator
+    type: string
+    default: '''/'''
+  - name: onBusyChangeEmitter
+    type: any
+    default: this._register(new Emitter<boolean>())
+  - name: updatingPromise
+    type: CancelablePromise<boolean> | undefined
+  - name: _showDotFiles
+    type: boolean
+    default: 'true'
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\t@IFileService private readonly fileService: IFileService,\n\t\t@IQuickInputService private readonly quickInputService: IQuickInputService,\n\t\t@ILabelService private readonly labelService: ILabelService,\n\t\t@IWorkspaceContextService private readonly workspaceContextService: IWorkspaceContextService,\n\t\t@INotificationService private readonly notificationService: INotificationService,\n\t\t@IFileDialogService private readonly fileDialogService: IFileDialogService,\n\t\t@IModelService private readonly modelService: IModelService,\n\t\t@ILanguageService private readonly languageService: ILanguageService,\n\t\t@IWorkbenchEnvironmentService protected readonly environmentService: IWorkbenchEnvironmentService,\n\t\t@IRemoteAgentService private readonly remoteAgentService: IRemoteAgentService,\n\t\t@IPathService protected readonly pathService: IPathService,\n\t\t@IKeybindingService private readonly keybindingService: IKeybindingService,\n\t\t@IContextKeyService contextKeyService: IContextKeyService,\n\t\t@IAccessibilityService private readonly accessibilityService: IAccessibilityService,\n\t\t@IStorageService private readonly storageService: IStorageService\n\t)"
+    lines:
+    - 138
+    - 171
+    detail:
+      calls:
+      - RemoteFileDialogContext.bindTo
+      - new DisposableStore
+      - super
+      - this._register
+      - this.getShowDotFiles
+      - this.storageService.onDidChangeValue
+      - this.storageService.onDidChangeValue(StorageScope.WORKSPACE, 'remoteFileDialog.showDotFiles', dispos...
+  - name: busy
+    sig: 'busy(busy: boolean)'
+    lines:
+    - 181
+    - 186
+    detail:
+      calls:
+      - this.onBusyChangeEmitter.fire
+  - name: busy
+    sig: 'busy(): boolean'
+    lines:
+    - 188
+    - 190
+    detail: {}
+  - name: showOpenDialog
+    sig: 'showOpenDialog(options: IOpenDialogOptions = {}): Promise<URI | undefined>'
+    is_async: true
+    lines:
+    - 192
+    - 202
+    detail:
+      calls:
+      - Promise.resolve
+      - this.getOptions
+      - this.getScheme
+      - this.getUserHome
+      - this.pickResource
+  - name: showSaveDialog
+    sig: 'showSaveDialog(options: ISaveDialogOptions): Promise<URI | undefined>'
+    is_async: true
+    lines:
+    - 204
+    - 222
+    detail:
+      calls:
+      - Promise.resolve
+      - new Promise
+      - this.getOptions
+      - this.getScheme
+      - this.getUserHome
+  - name: getOptions
+    sig: 'getOptions(options: ISaveDialogOptions | IOpenDialogOptions, isSave: boolean = false): IOpenDialogOptions | undefined'
+    vis: private
+    lines:
+    - 224
+    - 244
+    detail:
+      calls:
+      - defaultUri.toString
+      - nls.localize
+      - objects.deepClone
+      - resources.basename
+      - resources.joinPath
+      - this.fileService.hasProvider
+      - this.notificationService.info
+  - name: remoteUriFrom
+    sig: 'remoteUriFrom(path: string, hintUri?: URI): URI'
+    vis: private
+    lines:
+    - 246
+    - 257
+    detail:
+      calls:
+      - URI.file
+      - URI.from
+      - path.replace
+      - path.startsWith
+      - resources.toLocalResource
+  - name: getRemoteAgentEnvironment
+    sig: 'getRemoteAgentEnvironment(): Promise<IRemoteAgentEnvironment | null>'
+    is_async: true
+    vis: private
+    lines:
+    - 271
+    - 276
+    detail:
+      calls:
+      - this.remoteAgentService.getEnvironment
+  - name: pickResource
+    sig: 'pickResource(isSave: boolean = false): Promise<URI | undefined>'
+    is_async: true
+    vis: private
+    lines:
+    - 284
+    - 446
+    detail:
+      calls:
+      - new Promise
+      - resources.basename
+      - resources.dirname
+      - resources.extname
+      - this.checkIsWindowsOS
+      - this.fileService.stat
+      - this.labelService.getSeparator
+      - this.workspaceContextService.getWorkspace
+  - name: dispose
+    sig: 'dispose(): void'
+    lines:
+    - 448
+    - 450
+    detail:
+      calls:
+      - super.dispose
+  - name: handleValueChange
+    sig: 'handleValueChange(value: string)'
+    is_async: true
+    vis: private
+    lines:
+    - 452
+    - 475
+    detail:
+      calls:
+      - equalsIgnoreCase
+      - resources.extUriIgnorePathCase.isEqual
+      - this.canTildaEscapeHatch
+      - this.constructFullUserPath
+      - this.filePickBoxValue
+      - this.isBadSubpath
+      - this.isValueChangeFromUser
+      - this.setActiveItems
+      - this.tryUpdateItems
+  - name: constructFullUserPath
+    sig: 'constructFullUserPath(): string'
+    vis: private
+    lines:
+    - 503
+    - 514
+    detail:
+      calls:
+      - equalsIgnoreCase
+      - this.filePickBox.value.substr
+      - this.pathAppend
+      - this.pathFromUri
+  - name: filePickBoxValue
+    sig: 'filePickBoxValue(): URI'
+    vis: private
+    lines:
+    - 516
+    - 536
+    detail:
+      calls:
+      - currentPath.substr
+      - equalsIgnoreCase
+      - resources.addTrailingPathSeparator
+      - resources.basename
+      - resources.hasTrailingPathSeparator
+      - resources.joinPath
+      - resources.relativePath
+      - this.filePickBox.value.substr
+      - this.filePickBox.value.trimRight
+      - this.pathAppend
+      - this.pathFromUri
+      - this.remoteUriFrom
+  - name: onDidAccept
+    sig: 'onDidAccept(): Promise<URI | undefined>'
+    is_async: true
+    vis: private
+    lines:
+    - 538
+    - 586
+    detail:
+      calls:
+      - equalsIgnoreCase
+      - resources.basename
+      - startsWithIgnoreCase
+      - this.addPostfix
+      - this.basenameWithTrailingSlash
+      - this.filePickBoxValue
+      - this.insertText
+      - this.pathFromUri
+      - this.tryUpdateItems
+      - this.updateItems
+      - this.validate
+  - name: tildaReplace
+    sig: 'tildaReplace(value: string): URI'
+    vis: private
+    lines:
+    - 602
+    - 610
+    detail:
+      calls:
+      - resources.joinPath
+      - this.canTildaEscapeHatch
+      - this.remoteUriFrom
+      - value.substring
+  - name: tryUpdateItems
+    sig: 'tryUpdateItems(value: string, valueUri: URI, reset: boolean = false): Promise<UpdateResult>'
+    is_async: true
+    vis: private
+    lines:
+    - 622
+    - 676
+    detail:
+      calls:
+      - /^[a-zA-Z]:$/.test
+      - equalsIgnoreCase
+      - nls.localize
+      - resources.addTrailingPathSeparator
+      - resources.basename
+      - resources.dirname
+      - resources.extUriIgnorePathCase.isEqual
+      - resources.extUriIgnorePathCase.isEqualOrParent
+      - resources.removeTrailingPathSeparator
+      - this.canTildaEscapeHatch
+      - this.endsWithSlash
+      - this.fileService.stat
+      - this.pathFromUri
+      - this.pathFromUri(this.currentFolder).substring
+      - this.root
+      - this.tildaReplace
+      - this.tryAddTrailingSeparatorToDirectory
+      - this.updateItems
+  - name: setActiveItems
+    sig: 'setActiveItems(value: string)'
+    vis: private
+    lines:
+    - 685
+    - 715
+    detail:
+      calls:
+      - equalsIgnoreCase
+      - resources.basename
+      - this.constructFullUserPath
+      - this.pathFromUri
+      - this.remoteUriFrom
+      - this.setAutoComplete
+      - this.tildaReplace
+      - this.tryUpdateTrailing
+      - userPath.substring
+      - value.substring
+  - name: setAutoComplete
+    sig: 'setAutoComplete(startingValue: string, startingBasename: string, quickPickItem: FileQuickPickItem, force: boolean = false): boolean'
+    vis: private
+    lines:
+    - 717
+    - 765
+    detail:
+      calls:
+      - equalsIgnoreCase
+      - getActiveDocument
+      - getActiveDocument().execCommand
+      - itemBasename.substr
+      - this.accessibilityService.isScreenReaderOptimized
+      - this.basenameWithTrailingSlash
+      - this.insertText
+      - this.pathAppend
+      - this.pathFromUri
+      - this.trimTrailingSlash
+  - name: insertText
+    sig: 'insertText(wholeValue: string, insertText: string)'
+    vis: private
+    lines:
+    - 767
+    - 778
+    detail:
+      calls:
+      - getActiveDocument
+      - getActiveDocument().execCommand
+      - this.filePickBox.inputHasFocus
+      - this.handleValueChange
+  - name: addPostfix
+    sig: 'addPostfix(uri: URI): URI'
+    vis: private
+    lines:
+    - 780
+    - 802
+    detail:
+      calls:
+      - resources.basename
+      - resources.dirname
+      - resources.extname
+      - resources.extname(uri).substr
+      - resources.hasTrailingPathSeparator
+      - resources.joinPath
+  - name: yesNoPrompt
+    sig: 'yesNoPrompt(uri: URI, message: string): Promise<boolean>'
+    vis: private
+    lines:
+    - 808
+    - 844
+    detail:
+      calls:
+      - disposableStore.add
+      - new DisposableStore
+      - new Promise
+      - nls.localize
+      - this.pathFromUri
+      - this.quickInputService.createQuickPick
+  - name: validate
+    sig: 'validate(uri: URI | undefined): Promise<boolean>'
+    is_async: true
+    vis: private
+    lines:
+    - 846
+    - 905
+    detail:
+      calls:
+      - Promise.resolve
+      - isValidBasename
+      - nls.localize
+      - resources.basename
+      - resources.dirname
+      - this.fileService.stat
+      - this.yesNoPrompt
+  - name: updateItems
+    sig: 'updateItems(newFolder: URI, force: boolean = false, trailing?: string): Promise<boolean>'
+    is_async: true
+    vis: private
+    lines:
+    - 908
+    - 966
+    detail:
+      calls:
+      - createCancelablePromise
+      - this.updatingPromise.cancel
+  - name: pathFromUri
+    sig: 'pathFromUri(uri: URI, endWithSeparator: boolean = false): string'
+    vis: private
+    lines:
+    - 968
+    - 979
+    detail:
+      calls:
+      - normalizeDriveLetter
+      - normalizeDriveLetter(uri.fsPath, this.isWindows).replace
+      - result.replace
+      - this.endsWithSlash
+  - name: checkIsWindowsOS
+    sig: 'checkIsWindowsOS(): Promise<boolean>'
+    is_async: true
+    vis: private
+    lines:
+    - 990
+    - 997
+    detail:
+      calls:
+      - this.getRemoteAgentEnvironment
+  - name: basenameWithTrailingSlash
+    sig: 'basenameWithTrailingSlash(fullPath: URI): string'
+    vis: private
+    lines:
+    - 1003
+    - 1007
+    detail:
+      calls:
+      - child.substring
+      - resources.dirname
+      - this.pathFromUri
+  - name: createBackItem
+    sig: 'createBackItem(currFolder: URI): Promise<FileQuickPickItem | undefined>'
+    is_async: true
+    vis: private
+    lines:
+    - 1009
+    - 1019
+    detail:
+      calls:
+      - resources.addTrailingPathSeparator
+      - resources.dirname
+      - resources.isEqual
+      - this.currentFolder.with
+      - this.fileService.exists
+  - name: createItems
+    sig: 'createItems(folder: IFileStat | undefined, currentFolder: URI, token: CancellationToken): Promise<FileQuickPickItem[]>'
+    is_async: true
+    vis: private
+    lines:
+    - 1021
+    - 1056
+    detail:
+      calls:
+      - Promise.all
+      - console.log
+      - filteredChildren.map
+      - folder.children?.filter
+      - result.push
+      - result.sort
+      - sorted.unshift
+      - this.createBackItem
+      - this.fileService.resolve
+  - name: createItem
+    sig: 'createItem(stat: IFileStat, parent: URI, token: CancellationToken): Promise<FileQuickPickItem | undefined>'
+    is_async: true
+    vis: private
+    lines:
+    - 1073
+    - 1086
+    detail:
+      calls:
+      - getIconClasses
+      - resources.addTrailingPathSeparator
+      - resources.basename
+      - resources.joinPath
+      - this.filterFile
+  lines:
+  - 112
+  - 1087
+exports:
+- name: FileQuickPickItem
+  kind: type
+- name: UpdateResult
+  kind: type
+- name: ISimpleFileDialog
+  kind: type
+- name: SimpleFileDialog
+  kind: type
+- name: RemoteFileDialogContext
+  kind: data

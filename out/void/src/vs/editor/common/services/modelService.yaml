@@ -1,0 +1,485 @@
+## Roska File Descriptor — services/modelService.ts
+file: services/modelService.ts
+lines: 595
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: ../../../base/common/event.js.Emitter
+- sym: ../../../base/common/event.js.Event
+- sym: ../../../base/common/lifecycle.js.Disposable
+- sym: ../../../base/common/lifecycle.js.IDisposable
+- sym: ../../../base/common/lifecycle.js.DisposableStore
+- sym: ../../../base/common/platform.js.platform
+- sym: ../../../base/common/uri.js.URI
+- sym: ../core/editOperation.js.EditOperation
+- sym: ../core/editOperation.js.ISingleEditOperation
+- sym: ../core/range.js.Range
+- sym: ../model.js.DefaultEndOfLine
+- sym: ../model.js.EndOfLinePreference
+- sym: ../model.js.EndOfLineSequence
+- sym: ../model.js.ITextBuffer
+- sym: ../model.js.ITextBufferFactory
+- sym: ../model.js.ITextModel
+- sym: ../model.js.ITextModelCreationOptions
+- sym: ../model/textModel.js.TextModel
+- sym: ../model/textModel.js.createTextBuffer
+- sym: ../core/textModelDefaults.js.EDITOR_MODEL_DEFAULTS
+- sym: ../textModelEvents.js.IModelLanguageChangedEvent
+- sym: ../languages/modesRegistry.js.PLAINTEXT_LANGUAGE_ID
+- sym: ../languages/language.js.ILanguageSelection
+- sym: ./model.js.IModelService
+- sym: ./textResourceConfiguration.js.ITextResourcePropertiesService
+- sym: ../../../platform/configuration/common/configuration.js.IConfigurationChangeEvent
+- sym: ../../../platform/configuration/common/configuration.js.IConfigurationService
+- sym: ../../../platform/undoRedo/common/undoRedo.js.IUndoRedoService
+- sym: ../../../platform/undoRedo/common/undoRedo.js.ResourceEditStackSnapshot
+- sym: ../../../base/common/hash.js.StringSHA1
+- sym: ../model/editStack.js.isEditStackElement
+- sym: ../../../base/common/network.js.Schemas
+- sym: ../../../base/common/objects.js.equals
+- sym: ../../../platform/instantiation/common/instantiation.js.IInstantiationService
+data:
+- name: DEFAULT_EOL
+  type: any
+  val: '(platform.isLinux || platform.isMacintosh) ? DefaultEndOfLine.LF : DefaultEndOfLine.CRLF'
+types:
+- name: ModelData
+  kind: struct
+  bases:
+  - IDisposable
+  fields:
+  - name: _modelEventListeners
+    type: any
+    default: new DisposableStore()
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tpublic readonly model: TextModel,\n\t\tonWillDispose: (model: ITextModel) => void,\n\t\tonDidChangeLanguage: (model: ITextModel, e: IModelLanguageChangedEvent) => void\n\t)"
+    lines:
+    - 36
+    - 44
+    detail:
+      calls:
+      - model.onDidChangeLanguage
+      - model.onWillDispose
+      - this._modelEventListeners.add
+  - name: dispose
+    sig: 'dispose(): void'
+    lines:
+    - 46
+    - 48
+    detail:
+      calls:
+      - this._modelEventListeners.dispose
+  lines:
+  - 32
+  - 49
+- name: IRawEditorConfig
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: tabSize
+    type: any
+  - name: indentSize
+    type: any
+  - name: insertSpaces
+    type: any
+  - name: detectIndentation
+    type: any
+  - name: trimAutoWhitespace
+    type: any
+  - name: creationOptions
+    type: any
+  - name: largeFileOptimizations
+    type: any
+  - name: bracketPairColorization
+    type: any
+  lines:
+  - 51
+  - 60
+- name: IRawConfig
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: eol
+    type: any
+  - name: editor
+    type: IRawEditorConfig
+  lines:
+  - 62
+  - 65
+- name: DisposedModelInfo
+  kind: struct
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tpublic readonly uri: URI,\n\t\tpublic readonly initialUndoRedoSnapshot: ResourceEditStackSnapshot | null,\n\t\tpublic readonly time: number,\n\t\tpublic readonly sharesUndoRedoStack: boolean,\n\t\tpublic readonly heapSize: number,\n\t\tpublic readonly sha1: string,\n\t\tpublic readonly versionId: number,\n\t\tpublic readonly alternativeVersionId: number,\n\t)"
+    lines:
+    - 70
+    - 79
+    detail: {}
+  lines:
+  - 69
+  - 80
+- name: ModelService
+  kind: model
+  ctx: All the models known in the system.
+  bases:
+  - Disposable
+  - IModelService
+  fields:
+  - name: MAX_MEMORY_FOR_CLOSED_FILES_UNDO_STACK
+    type: any
+    default: 20 * 1024 * 1024
+  - name: _serviceBrand
+    type: undefined
+  - name: _onModelAdded
+    type: Emitter<ITextModel>
+    default: this._register(new Emitter<ITextModel>())
+  - name: onModelAdded
+    type: Event<ITextModel>
+    default: this._onModelAdded.event
+  - name: _onModelRemoved
+    type: Emitter<ITextModel>
+    default: this._register(new Emitter<ITextModel>())
+  - name: onModelRemoved
+    type: Event<ITextModel>
+    default: this._onModelRemoved.event
+  - name: _onModelModeChanged
+    type: any
+    default: 'this._register(new Emitter<{ model: ITextModel; oldLanguageId: string }>())'
+  - name: onModelLanguageChanged
+    type: any
+    default: this._onModelModeChanged.event
+  - name: _modelCreationOptionsByLanguageAndResource
+    type: '{ [languageAndResource: string]: ITextModelCreationOptions }'
+  - name: _models
+    type: '{ [modelId: string]: ModelData }'
+  - name: _disposedModels
+    type: Map<string, DisposedModelInfo>
+  - name: _disposedModelsHeapSize
+    type: number
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\t@IConfigurationService private readonly _configurationService: IConfigurationService,\n\t\t@ITextResourcePropertiesService private readonly _resourcePropertiesService: ITextResourcePropertiesService,\n\t\t@IUndoRedoService private readonly _undoRedoService: IUndoRedoService,\n\t\t@IInstantiationService private readonly _instantiationService: IInstantiationService\n\t)"
+    lines:
+    - 106
+    - 120
+    detail:
+      calls:
+      - Object.create
+      - new Map
+      - super
+      - this._configurationService.onDidChangeConfiguration
+      - this._register
+      - this._updateModelOptions
+  - name: _readModelOptions
+    sig: '_readModelOptions(config: IRawConfig, isForSimpleWidget: boolean): ITextModelCreationOptions'
+    vis: private
+    decorators:
+    - static
+    lines:
+    - 122
+    - 188
+    detail:
+      calls:
+      - Boolean
+      - Math.max
+      - isNaN
+      - parseInt
+  - name: getCreationOptions
+    sig: 'getCreationOptions(languageIdOrSelection: string | ILanguageSelection, resource: URI | undefined, isForSimpleWidget: boolean): ITextModelCreationOptions'
+    lines:
+    - 209
+    - 219
+    detail:
+      calls:
+      - ModelService._readModelOptions
+      - this._configurationService.getValue
+      - this._getEOL
+  - name: _updateModelOptions
+    sig: '_updateModelOptions(e: IConfigurationChangeEvent | undefined): void'
+    vis: private
+    lines:
+    - 221
+    - 241
+    detail:
+      calls:
+      - ModelService._setModelOptionsForModel
+      - Object.create
+      - Object.keys
+      - e.affectsConfiguration
+      - modelData.model.getLanguageId
+      - this.getCreationOptions
+  - name: _setModelOptionsForModel
+    sig: '_setModelOptionsForModel(model: ITextModel, newOptions: ITextModelCreationOptions, currentOptions: ITextModelCreationOptions): void'
+    vis: private
+    decorators:
+    - static
+    lines:
+    - 243
+    - 275
+    detail:
+      calls:
+      - equals
+      - model.detectIndentation
+      - model.getLineCount
+      - model.setEOL
+      - model.updateOptions
+  - name: _ensureDisposedModelsHeapSize
+    sig: '_ensureDisposedModelsHeapSize(maxModelsHeapSize: number): void'
+    vis: private
+    lines:
+    - 293
+    - 311
+    detail:
+      calls:
+      - disposedModels.shift
+      - disposedModels.sort
+      - this._disposedModels.forEach
+      - this._removeDisposedModel
+      - this._undoRedoService.restoreSnapshot
+  - name: _createModelData
+    sig: '_createModelData(value: string | ITextBufferFactory, languageIdOrSelection: string | ILanguageSelection, resource: URI | undefined, isForSimpleWidget: boolean): ModelData'
+    vis: private
+    lines:
+    - 313
+    - 369
+    detail:
+      calls:
+      - MODEL_ID
+      - element.matchesResource
+      - element.setModel
+      - isEditStackElement
+      - model._overwriteAlternativeVersionId
+      - model._overwriteInitialUndoRedoSnapshot
+      - model._overwriteVersionId
+      - new Error
+      - new ModelData
+      - sha1Computer.canComputeSHA1
+      - sha1Computer.computeSHA1
+      - this._disposedModels.has
+      - this._getSHA1Computer
+      - this._instantiationService.createInstance
+      - this._removeDisposedModel
+      - this._undoRedoService.getElements
+      - this._undoRedoService.restoreSnapshot
+      - this._undoRedoService.setElementsValidFlag
+      - this.getCreationOptions
+  - name: updateModel
+    sig: 'updateModel(model: ITextModel, value: string | ITextBufferFactory): void'
+    lines:
+    - 371
+    - 391
+    detail:
+      calls:
+      - ModelService._computeEdits
+      - createTextBuffer
+      - disposable.dispose
+      - model.equalsTextBuffer
+      - model.getLanguageId
+      - model.pushEOL
+      - model.pushEditOperations
+      - model.pushStackElement
+      - textBuffer.getEOL
+      - this.getCreationOptions
+  - name: _commonPrefix
+    sig: '_commonPrefix(a: ITextModel, aLen: number, aDelta: number, b: ITextBuffer, bLen: number, bDelta: number): number'
+    vis: private
+    decorators:
+    - static
+    lines:
+    - 393
+    - 401
+    detail:
+      calls:
+      - Math.min
+      - a.getLineContent
+      - b.getLineContent
+  - name: _commonSuffix
+    sig: '_commonSuffix(a: ITextModel, aLen: number, aDelta: number, b: ITextBuffer, bLen: number, bDelta: number): number'
+    vis: private
+    decorators:
+    - static
+    lines:
+    - 403
+    - 411
+    detail:
+      calls:
+      - Math.min
+      - a.getLineContent
+      - b.getLineContent
+  - name: _computeEdits
+    sig: '_computeEdits(model: ITextModel, textBuffer: ITextBuffer): ISingleEditOperation[]'
+    decorators:
+    - static
+    lines:
+    - 416
+    - 442
+    detail:
+      calls:
+      - EditOperation.replaceMove
+      - model.getLineCount
+      - model.getLineMaxColumn
+      - new Range
+      - textBuffer.getLineCount
+      - textBuffer.getLineLength
+      - textBuffer.getValueInRange
+      - this._commonPrefix
+      - this._commonSuffix
+  - name: createModel
+    sig: 'createModel(value: string | ITextBufferFactory, languageSelection: ILanguageSelection | null, resource?: URI, isForSimpleWidget: boolean = false): ITextModel'
+    lines:
+    - 444
+    - 456
+    detail:
+      calls:
+      - this._createModelData
+      - this._onModelAdded.fire
+  - name: destroyModel
+    sig: 'destroyModel(resource: URI): void'
+    lines:
+    - 458
+    - 465
+    detail:
+      calls:
+      - MODEL_ID
+      - modelData.model.dispose
+  - name: getModels
+    sig: 'getModels(): ITextModel[]'
+    lines:
+    - 467
+    - 477
+    detail:
+      calls:
+      - Object.keys
+      - ret.push
+  - name: getModel
+    sig: 'getModel(resource: URI): ITextModel | null'
+    lines:
+    - 479
+    - 486
+    detail:
+      calls:
+      - MODEL_ID
+  - name: _onWillDispose
+    sig: '_onWillDispose(model: ITextModel): void'
+    vis: private
+    lines:
+    - 500
+    - 556
+    detail:
+      calls:
+      - Date.now
+      - MODEL_ID
+      - element.heapSize
+      - element.matchesResource
+      - element.setModel
+      - isEditStackElement
+      - model.getAlternativeVersionId
+      - model.getLanguageId
+      - model.getVersionId
+      - model.uri.toString
+      - modelData.dispose
+      - modelData.model.getInitialUndoRedoSnapshot
+      - new DisposedModelInfo
+      - sha1Computer.canComputeSHA1
+      - sha1Computer.computeSHA1
+      - this._ensureDisposedModelsHeapSize
+      - this._getSHA1Computer
+      - this._insertDisposedModel
+      - this._onModelRemoved.fire
+      - this._schemaShouldMaintainUndoRedoElements
+      - this._shouldRestoreUndoStack
+      - this._undoRedoService.getElements
+      - this._undoRedoService.getUriComparisonKey
+      - this._undoRedoService.restoreSnapshot
+      - this._undoRedoService.setElementsValidFlag
+  - name: _onDidChangeLanguage
+    sig: '_onDidChangeLanguage(model: ITextModel, e: IModelLanguageChangedEvent): void'
+    vis: private
+    lines:
+    - 558
+    - 565
+    detail:
+      calls:
+      - ModelService._setModelOptionsForModel
+      - model.getLanguageId
+      - this._onModelModeChanged.fire
+      - this.getCreationOptions
+  lines:
+  - 82
+  - 570
+- name: ITextModelSHA1Computer
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: canComputeSHA1
+    type: 'method: canComputeSHA1(model: ITextModel): boolean'
+  - name: computeSHA1
+    type: 'method: computeSHA1(model: ITextModel): string'
+  lines:
+  - 572
+  - 575
+- name: DefaultModelSHA1Computer
+  kind: model
+  ctx: takes 200ms to compute a sha1 on a 10MB model on a new machine
+  bases:
+  - ITextModelSHA1Computer
+  fields:
+  - name: MAX_MODEL_SIZE
+    type: any
+    default: 10 * 1024 * 1024
+  methods:
+  - name: canComputeSHA1
+    sig: 'canComputeSHA1(model: ITextModel): boolean'
+    lines:
+    - 581
+    - 583
+    detail:
+      calls:
+      - model.getValueLength
+  - name: computeSHA1
+    sig: 'computeSHA1(model: ITextModel): string'
+    lines:
+    - 585
+    - 594
+    detail:
+      calls:
+      - model.createSnapshot
+      - new StringSHA1
+      - shaComputer.digest
+      - shaComputer.update
+      - snapshot.read
+  lines:
+  - 577
+  - 595
+functions:
+- name: MODEL_ID
+  sig: 'MODEL_ID(resource: URI): string'
+  lines:
+  - 28
+  - 30
+  detail:
+    calls:
+    - resource.toString
+exports:
+- name: ModelData
+  kind: type
+- name: IRawEditorConfig
+  kind: type
+- name: IRawConfig
+  kind: type
+- name: DisposedModelInfo
+  kind: type
+- name: ModelService
+  kind: type
+- name: ITextModelSHA1Computer
+  kind: type
+- name: DefaultModelSHA1Computer
+  kind: type
+- name: MODEL_ID
+  kind: func
+- name: DEFAULT_EOL
+  kind: data

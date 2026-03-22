@@ -1,0 +1,341 @@
+## Roska File Descriptor — src/extension.ts
+file: src/extension.ts
+lines: 404
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: fs.promises as fs
+- sym: net.createServer
+- sym: net.Server
+- sym: path.dirname
+- sym: vscode.vscode
+data:
+- name: TEXT_STATUSBAR_LABEL
+  type: object
+  val: "{\n\t[State.Disabled]: vscode.l10n.t('Auto Attach: Disabled'),\n\t[State.Always]: vscode.l10n.t('Auto Attach: Always'),\n\t[St..."
+- name: TEXT_STATE_LABEL
+  type: object
+  val: "{\n\t[State.Disabled]: vscode.l10n.t('Disabled'),\n\t[State.Always]: vscode.l10n.t('Always'),\n\t[State.Smart]: vscode.l10n.t(..."
+- name: TEXT_STATE_DESCRIPTION
+  type: object
+  val: "{\n\t[State.Disabled]: vscode.l10n.t('Auto attach is disabled and not shown in status bar'),\n\t[State.Always]: vscode.l10n...."
+- name: TEXT_TOGGLE_WORKSPACE
+  type: any
+  val: vscode.l10n.t('Toggle auto attach in this workspace')
+- name: TEXT_TOGGLE_GLOBAL
+  type: any
+  val: vscode.l10n.t('Toggle auto attach on this machine')
+- name: TEXT_TEMP_DISABLE
+  type: any
+  val: vscode.l10n.t('Temporarily disable auto attach in this session')
+- name: TEXT_TEMP_ENABLE
+  type: any
+  val: vscode.l10n.t('Re-enable auto attach')
+- name: TEXT_TEMP_DISABLE_LABEL
+  type: any
+  val: 'vscode.l10n.t(''Auto Attach: Disabled'')'
+- name: TOGGLE_COMMAND
+  type: string
+  val: '''extension.node-debug.toggleAutoAttach'''
+- name: STORAGE_IPC
+  type: string
+  val: '''jsDebugIpcState'''
+- name: SETTING_SECTION
+  type: string
+  val: '''debug.javascript'''
+- name: SETTING_STATE
+  type: string
+  val: '''autoAttachFilter'''
+- name: SETTINGS_CAUSE_REFRESH
+  type: any
+  val: "new Set(\n\t['autoAttachSmartPattern', SETTING_STATE].map(s => `${SETTING_SECTION}.${s}`),\n)"
+- name: currentState
+  type: 'Promise<{ context: vscode.ExtensionContext; state: State | null }>'
+- name: statusItem
+  type: vscode.StatusBarItem | undefined
+- name: server
+  type: Promise<Server | undefined> | undefined
+- name: isTemporarilyDisabled
+  type: boolean
+  val: 'false'
+- name: transitions
+  type: '{ [S in State]: (context: vscode.ExtensionContext) => Promise<void> }'
+  val: "{\n\tasync [State.Disabled](context) {\n\t\tawait clearJsDebugAttachState(context);\n\t},\n\n\tasync [State.OnlyWithFlag](context)..."
+types:
+- name: State
+  kind: enum
+  variants:
+  - name: Disabled
+    val: '''disabled'''
+  - name: OnlyWithFlag
+    val: '''onlyWithFlag'''
+  - name: Smart
+    val: '''smart'''
+  - name: Always
+    val: '''always'''
+  lines:
+  - 11
+  - 16
+- name: PickResult
+  kind: enum
+  decorators:
+  - type
+  variants:
+  - name: undefined
+  lines:
+  - 107
+  - 107
+- name: PickItem
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 108
+  - 108
+- name: CachedIpcState
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: ipcAddress
+    type: string
+  - name: jsDebugPath
+    type: string | undefined
+  - name: settingsValue
+    type: string
+  lines:
+  - 284
+  - 288
+functions:
+- name: activate
+  sig: 'activate(context: vscode.ExtensionContext): void'
+  lines:
+  - 61
+  - 82
+  detail:
+    calls:
+    - Promise.resolve
+    - context.subscriptions.push
+    - readCurrentState
+    - toggleAutoAttachSetting.bind
+    - updateAutoAttach
+    - vscode.commands.registerCommand
+    - vscode.workspace.onDidChangeConfiguration
+- name: deactivate
+  sig: 'deactivate(): Promise<void>'
+  is_async: true
+  lines:
+  - 84
+  - 86
+- name: refreshAutoAttachVars
+  sig: refreshAutoAttachVars()
+  lines:
+  - 88
+  - 91
+- name: getDefaultScope
+  sig: 'getDefaultScope(info: ReturnType<vscode.WorkspaceConfiguration[''inspect'']>)'
+  lines:
+  - 93
+  - 105
+  detail: {}
+- name: toggleAutoAttachSetting
+  sig: 'toggleAutoAttachSetting(context: vscode.ExtensionContext, scope?: vscode.ConfigurationTarget): Promise<void>'
+  is_async: true
+  lines:
+  - 110
+  - 187
+  detail:
+    calls:
+    - '[State.Always, State.Smart, State.OnlyWithFlag, State.Disabled].map'
+    - createAttachServer
+    - destroyAttachServer
+    - getDefaultScope
+    - items.unshift
+    - new Promise
+    - new vscode.ThemeIcon
+    - quickPick.dispose
+    - quickPick.items.filter
+    - quickPick.show
+    - readCurrentState
+    - section.inspect
+    - section.update
+    - toggleAutoAttachSetting
+    - updateStatusBar
+    - vscode.window.createQuickPick
+    - vscode.workspace.getConfiguration
+- name: readCurrentState
+  sig: 'readCurrentState(): State'
+  lines:
+  - 189
+  - 192
+  detail:
+    calls:
+    - section.get
+    - vscode.workspace.getConfiguration
+- name: clearJsDebugAttachState
+  sig: 'clearJsDebugAttachState(context: vscode.ExtensionContext)'
+  is_async: true
+  lines:
+  - 194
+  - 200
+  detail:
+    calls:
+    - context.workspaceState.get
+    - context.workspaceState.update
+    - destroyAttachServer
+    - vscode.commands.executeCommand
+- name: createAttachServer
+  sig: 'createAttachServer(context: vscode.ExtensionContext)'
+  is_async: true
+  lines:
+  - 206
+  - 232
+  detail:
+    calls:
+    - createServerInner
+    - createServerInner(ipcAddress).catch
+    - getIpcAddress
+- name: createServerInner
+  sig: 'createServerInner(ipcAddress: string)'
+  is_async: true
+  lines:
+  - 234
+  - 243
+  detail:
+    calls:
+    - createServerInstance
+    - fs.unlink
+    - fs.unlink(ipcAddress).catch
+- name: createServerInstance
+  sig: 'createServerInstance(ipcAddress: string)'
+  lines:
+  - 245
+  - 272
+  detail: {}
+- name: destroyAttachServer
+  sig: destroyAttachServer()
+  is_async: true
+  lines:
+  - 277
+  - 282
+  detail:
+    calls:
+    - new Promise
+- name: updateStatusBar
+  sig: 'updateStatusBar(context: vscode.ExtensionContext, state: State, busy = false)'
+  lines:
+  - 315
+  - 333
+  detail:
+    calls:
+    - context.subscriptions.push
+    - statusItem.show
+    - statusItem?.hide
+    - vscode.l10n.t
+    - vscode.window.createStatusBarItem
+- name: updateAutoAttach
+  sig: 'updateAutoAttach(newState: State)'
+  lines:
+  - 338
+  - 353
+  detail:
+    calls:
+    - currentState.then
+- name: getIpcAddress
+  sig: 'getIpcAddress(context: vscode.ExtensionContext)'
+  is_async: true
+  lines:
+  - 359
+  - 394
+  detail:
+    calls:
+    - await vscode.commands.executeCommand
+    - context.workspaceState.get
+    - context.workspaceState.update
+    - getJsDebugSettingKey
+    - vscode.extensions.getExtension
+- name: getJsDebugSettingKey
+  sig: getJsDebugSettingKey()
+  lines:
+  - 396
+  - 404
+  detail:
+    calls:
+    - JSON.stringify
+    - config.get
+    - vscode.workspace.getConfiguration
+exports:
+- name: State
+  kind: type
+- name: PickResult
+  kind: type
+- name: PickItem
+  kind: type
+- name: CachedIpcState
+  kind: type
+- name: activate
+  kind: func
+- name: deactivate
+  kind: func
+- name: refreshAutoAttachVars
+  kind: func
+- name: getDefaultScope
+  kind: func
+- name: toggleAutoAttachSetting
+  kind: func
+- name: readCurrentState
+  kind: func
+- name: clearJsDebugAttachState
+  kind: func
+- name: createAttachServer
+  kind: func
+- name: createServerInner
+  kind: func
+- name: createServerInstance
+  kind: func
+- name: destroyAttachServer
+  kind: func
+- name: updateStatusBar
+  kind: func
+- name: updateAutoAttach
+  kind: func
+- name: getIpcAddress
+  kind: func
+- name: getJsDebugSettingKey
+  kind: func
+- name: TEXT_STATUSBAR_LABEL
+  kind: data
+- name: TEXT_STATE_LABEL
+  kind: data
+- name: TEXT_STATE_DESCRIPTION
+  kind: data
+- name: TEXT_TOGGLE_WORKSPACE
+  kind: data
+- name: TEXT_TOGGLE_GLOBAL
+  kind: data
+- name: TEXT_TEMP_DISABLE
+  kind: data
+- name: TEXT_TEMP_ENABLE
+  kind: data
+- name: TEXT_TEMP_DISABLE_LABEL
+  kind: data
+- name: TOGGLE_COMMAND
+  kind: data
+- name: STORAGE_IPC
+  kind: data
+- name: SETTING_SECTION
+  kind: data
+- name: SETTING_STATE
+  kind: data
+- name: SETTINGS_CAUSE_REFRESH
+  kind: data
+- name: currentState
+  kind: data
+- name: statusItem
+  kind: data
+- name: server
+  kind: data
+- name: isTemporarilyDisabled
+  kind: data
+- name: transitions
+  kind: data

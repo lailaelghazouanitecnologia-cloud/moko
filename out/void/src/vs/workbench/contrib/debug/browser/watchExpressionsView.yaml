@@ -1,0 +1,469 @@
+## Roska File Descriptor — browser/watchExpressionsView.ts
+file: browser/watchExpressionsView.ts
+lines: 613
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: ../../../../base/browser/dnd.js.IDragAndDropData
+- sym: ../../../../base/browser/ui/actionbar/actionbar.js.ActionBar
+- sym: ../../../../base/browser/ui/highlightedlabel/highlightedLabel.js.IHighlight
+- sym: ../../../../base/browser/ui/list/list.js.IListVirtualDelegate
+- sym: ../../../../base/browser/ui/list/list.js.ListDragOverEffectPosition
+- sym: ../../../../base/browser/ui/list/list.js.ListDragOverEffectType
+- sym: ../../../../base/browser/ui/list/listView.js.ElementsDragAndDropData
+- sym: ../../../../base/browser/ui/list/listView.js.ListViewTargetSector
+- sym: ../../../../base/browser/ui/list/listWidget.js.IListAccessibilityProvider
+- sym: ../../../../base/browser/ui/tree/tree.js.ITreeContextMenuEvent
+- sym: ../../../../base/browser/ui/tree/tree.js.ITreeDragAndDrop
+- sym: ../../../../base/browser/ui/tree/tree.js.ITreeDragOverReaction
+- sym: ../../../../base/browser/ui/tree/tree.js.ITreeMouseEvent
+- sym: ../../../../base/browser/ui/tree/tree.js.ITreeNode
+- sym: ../../../../base/common/async.js.RunOnceScheduler
+- sym: ../../../../base/common/codicons.js.Codicon
+- sym: ../../../../base/common/filters.js.FuzzyScore
+- sym: ../../../../base/common/keyCodes.js.KeyCode
+- sym: ../../../../base/common/keyCodes.js.KeyMod
+- sym: ../../../../nls.js.localize
+- sym: ../../../../platform/actions/browser/menuEntryActionViewItem.js.getContextMenuActions
+- sym: ../../../../platform/actions/browser/menuEntryActionViewItem.js.getFlatContextMenuActions
+- sym: ../../../../platform/actions/common/actions.js.Action2
+- sym: ../../../../platform/actions/common/actions.js.IMenu
+- sym: ../../../../platform/actions/common/actions.js.IMenuService
+- sym: ../../../../platform/actions/common/actions.js.MenuId
+- sym: ../../../../platform/actions/common/actions.js.registerAction2
+- sym: ../../../../platform/clipboard/common/clipboardService.js.IClipboardService
+- sym: ../../../../platform/configuration/common/configuration.js.IConfigurationService
+- sym: ../../../../platform/contextkey/common/contextkey.js.ContextKeyExpr
+- sym: ../../../../platform/contextkey/common/contextkey.js.IContextKey
+- sym: ../../../../platform/contextkey/common/contextkey.js.IContextKeyService
+- sym: ../../../../platform/contextview/browser/contextView.js.IContextMenuService
+- sym: ../../../../platform/contextview/browser/contextView.js.IContextViewService
+- sym: ../../../../platform/hover/browser/hover.js.IHoverService
+- sym: ../../../../platform/instantiation/common/instantiation.js.IInstantiationService
+- sym: ../../../../platform/instantiation/common/instantiation.js.ServicesAccessor
+- sym: ../../../../platform/keybinding/common/keybinding.js.IKeybindingService
+- sym: ../../../../platform/keybinding/common/keybindingsRegistry.js.KeybindingWeight
+- sym: ../../../../platform/list/browser/listService.js.WorkbenchAsyncDataTree
+- sym: ../../../../platform/opener/common/opener.js.IOpenerService
+- sym: ../../../../platform/theme/common/themeService.js.IThemeService
+- sym: ../../../browser/parts/views/viewPane.js.ViewAction
+- sym: ../../../browser/parts/views/viewPane.js.ViewPane
+- sym: ../../../browser/parts/views/viewsViewlet.js.IViewletViewOptions
+- sym: ../../../common/contextkeys.js.FocusedViewContext
+- sym: ../../../common/views.js.IViewDescriptorService
+- sym: ../common/debug.js.CONTEXT_CAN_VIEW_MEMORY
+- sym: ../common/debug.js.CONTEXT_EXPRESSION_SELECTED
+- sym: ../common/debug.js.CONTEXT_VARIABLE_IS_READONLY
+- sym: ../common/debug.js.CONTEXT_WATCH_EXPRESSIONS_EXIST
+- sym: ../common/debug.js.CONTEXT_WATCH_EXPRESSIONS_FOCUSED
+- sym: ../common/debug.js.CONTEXT_WATCH_ITEM_TYPE
+- sym: ../common/debug.js.IDebugConfiguration
+- sym: ../common/debug.js.IDebugService
+- sym: ../common/debug.js.IDebugViewWithVariables
+- sym: ../common/debug.js.IExpression
+- sym: ../common/debug.js.WATCH_VIEW_ID
+- sym: ../common/debugModel.js.Expression
+- sym: ../common/debugModel.js.Variable
+- sym: ../common/debugModel.js.VisualizedExpression
+- sym: ./baseDebugView.js.AbstractExpressionDataSource
+- sym: ./baseDebugView.js.AbstractExpressionsRenderer
+- sym: ./baseDebugView.js.expressionAndScopeLabelProvider
+- sym: ./baseDebugView.js.IExpressionTemplateData
+- sym: ./baseDebugView.js.IInputBoxOptions
+- sym: ./baseDebugView.js.renderViewTree
+- sym: ./debugCommands.js.COPY_WATCH_EXPRESSION_COMMAND_ID
+- sym: ./debugExpressionRenderer.js.DebugExpressionRenderer
+- sym: ./debugIcons.js.watchExpressionsAdd
+- sym: ./debugIcons.js.watchExpressionsRemoveAll
+- sym: ./variablesView.js.VariablesRenderer
+- sym: ./variablesView.js.VisualizedVariableRenderer
+data:
+- name: MAX_VALUE_RENDER_LENGTH_IN_VIEWLET
+  type: number
+  val: '1024'
+- name: ignoreViewUpdates
+  type: boolean
+  val: 'false'
+- name: useCachedEvaluation
+  type: boolean
+  val: 'false'
+- name: ADD_WATCH_ID
+  type: string
+  val: '''workbench.debug.viewlet.action.addWatchExpression'''
+- name: ADD_WATCH_LABEL
+  type: any
+  val: localize('addWatchExpression', "Add Expression")
+- name: REMOVE_WATCH_EXPRESSIONS_COMMAND_ID
+  type: string
+  val: '''workbench.debug.viewlet.action.removeAllWatchExpressions'''
+- name: REMOVE_WATCH_EXPRESSIONS_LABEL
+  type: any
+  val: localize('removeAllWatchExpressions', "Remove All Expressions")
+types:
+- name: WatchExpressionsView
+  kind: struct
+  bases:
+  - ViewPane
+  - IDebugViewWithVariables
+  fields:
+  - name: watchExpressionsUpdatedScheduler
+    type: RunOnceScheduler
+  - name: needsRefresh
+    type: any
+    default: 'false'
+  - name: tree
+    type: WorkbenchAsyncDataTree<IDebugService | IExpression, IExpression, FuzzyScore>
+  - name: watchExpressionsExist
+    type: IContextKey<boolean>
+  - name: watchItemType
+    type: IContextKey<string | undefined>
+  - name: variableReadonly
+    type: IContextKey<boolean>
+  - name: menu
+    type: IMenu
+  - name: expressionRenderer
+    type: DebugExpressionRenderer
+  methods:
+  - name: treeSelection
+    sig: treeSelection()
+    lines:
+    - 58
+    - 60
+    detail:
+      calls:
+      - this.tree.getSelection
+  - name: constructor
+    sig: "constructor(\n\t\toptions: IViewletViewOptions,\n\t\t@IContextMenuService contextMenuService: IContextMenuService,\n\t\t@IDebugService private readonly debugService: IDebugService,\n\t\t@IKeybindingService keybindingService: IKeybindingService,\n\t\t@IInstantiationService instantiationService: IInstantiationService,\n\t\t@IViewDescriptorService viewDescriptorService: IViewDescriptorService,\n\t\t@IConfigurationService configurationService: IConfigurationService,\n\t\t@IContextKeyService contextKeyService: IContextKeyService,\n\t\t@IOpenerService openerService: IOpenerService,\n\t\t@IThemeService themeService: IThemeService,\n\t\t@IHoverService hoverService: IHoverService,\n\t\t@IMenuService menuService: IMenuService\n\t)"
+    lines:
+    - 62
+    - 89
+    detail:
+      calls:
+      - CONTEXT_VARIABLE_IS_READONLY.bindTo
+      - CONTEXT_WATCH_EXPRESSIONS_EXIST.bindTo
+      - CONTEXT_WATCH_ITEM_TYPE.bindTo
+      - instantiationService.createInstance
+      - menuService.createMenu
+      - new RunOnceScheduler
+      - super
+      - this._register
+      - this.debugService.getModel
+      - this.debugService.getModel().getWatchExpressions
+      - this.watchExpressionsExist.set
+  - name: renderBody
+    sig: 'renderBody(container: HTMLElement): void'
+    vis: protected
+    lines:
+    - 91
+    - 190
+    detail:
+      calls:
+      - CONTEXT_WATCH_EXPRESSIONS_FOCUSED.bindTo
+      - VisualizedVariableRenderer.rendererOnVisualizationRange
+      - container.classList.add
+      - new WatchExpressionsAccessibilityProvider
+      - new WatchExpressionsDelegate
+      - new WatchExpressionsDragAndDrop
+      - renderViewTree
+      - super.renderBody
+      - this._register
+      - this.debugService.getModel
+      - this.debugService.getModel().onDidChangeWatchExpressions
+      - this.debugService.getViewModel
+      - this.debugService.getViewModel().onDidEvaluateLazyExpression
+      - this.debugService.getViewModel().onDidFocusStackFrame
+      - this.debugService.getViewModel().onDidSelectExpression
+      - this.debugService.getViewModel().onWillUpdateViews
+      - this.element.classList.add
+      - this.getLocationBasedColors
+      - this.instantiationService.createInstance
+      - this.onDidChangeBodyVisibility
+      - this.tree.onContextMenu
+      - this.tree.onMouseDblClick
+      - this.tree.setInput
+  - name: focus
+    sig: 'focus(): void'
+    lines:
+    - 197
+    - 200
+    detail:
+      calls:
+      - super.focus
+      - this.tree.domFocus
+  - name: collapseAll
+    sig: 'collapseAll(): void'
+    lines:
+    - 202
+    - 204
+    detail:
+      calls:
+      - this.tree.collapseAll
+  - name: onMouseDblClick
+    sig: 'onMouseDblClick(e: ITreeMouseEvent<IExpression>): void'
+    vis: private
+    lines:
+    - 206
+    - 221
+    detail:
+      calls:
+      - (e.browserEvent.target as HTMLElement).className.indexOf
+      - this.debugService.addWatchExpression
+      - this.debugService.getViewModel
+      - this.debugService.getViewModel().getSelectedExpression
+      - this.debugService.getViewModel().setSelectedExpression
+  - name: onContextMenu
+    sig: 'onContextMenu(e: ITreeContextMenuEvent<IExpression>): void'
+    vis: private
+    lines:
+    - 223
+    - 236
+    detail:
+      calls:
+      - attributes.indexOf
+      - getFlatContextMenuActions
+      - this.contextMenuService.showContextMenu
+      - this.menu.getActions
+      - this.tree.getSelection
+      - this.variableReadonly.set
+      - this.watchItemType.set
+  lines:
+  - 47
+  - 237
+- name: WatchExpressionsDelegate
+  kind: struct
+  bases:
+  - IListVirtualDelegate<IExpression>
+  methods:
+  - name: getHeight
+    sig: 'getHeight(_element: IExpression): number'
+    lines:
+    - 241
+    - 243
+    detail: {}
+  - name: getTemplateId
+    sig: 'getTemplateId(element: IExpression): string'
+    lines:
+    - 245
+    - 256
+    detail: {}
+  lines:
+  - 239
+  - 257
+- name: WatchExpressionsDataSource
+  kind: struct
+  bases:
+  - AbstractExpressionDataSource
+  methods:
+  - name: hasChildren
+    sig: 'hasChildren(element: IExpression | IDebugService): boolean'
+    lines:
+    - 265
+    - 267
+    detail:
+      calls:
+      - isDebugService
+  - name: doGetChildren
+    sig: 'doGetChildren(element: IDebugService | IExpression): Promise<Array<IExpression>>'
+    vis: protected
+    lines:
+    - 269
+    - 280
+    detail:
+      calls:
+      - Promise.all
+      - debugService.getModel
+      - debugService.getModel().getWatchExpressions
+      - debugService.getViewModel
+      - element.getChildren
+      - isDebugService
+      - watchExpressions.map
+  lines:
+  - 263
+  - 281
+- name: WatchExpressionsRenderer
+  kind: struct
+  bases:
+  - AbstractExpressionsRenderer
+  fields:
+  - name: ID
+    type: any
+    default: '''watchexpression'''
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tprivate readonly expressionRenderer: DebugExpressionRenderer,\n\t\t@IMenuService private readonly menuService: IMenuService,\n\t\t@IContextKeyService private readonly contextKeyService: IContextKeyService,\n\t\t@IDebugService debugService: IDebugService,\n\t\t@IContextViewService contextViewService: IContextViewService,\n\t\t@IHoverService hoverService: IHoverService,\n\t\t@IConfigurationService private configurationService: IConfigurationService,\n\t)"
+    lines:
+    - 288
+    - 298
+    detail:
+      calls:
+      - super
+  - name: templateId
+    sig: templateId()
+    lines:
+    - 300
+    - 302
+    detail: {}
+  - name: renderElement
+    sig: 'renderElement(node: ITreeNode<IExpression, FuzzyScore>, index: number, data: IExpressionTemplateData): void'
+    lines:
+    - 304
+    - 312
+    detail:
+      calls:
+      - data.elementDisposable.add
+      - data.elementDisposable.clear
+      - super.renderExpressionElement
+      - this.configurationService.onDidChangeConfiguration
+  - name: renderExpression
+    sig: 'renderExpression(expression: IExpression, data: IExpressionTemplateData, highlights: IHighlight[]): void'
+    vis: protected
+    lines:
+    - 314
+    - 346
+    detail:
+      calls:
+      - data.elementDisposable.add
+      - data.label.set
+      - expression.getSession
+      - this.configurationService.getValue
+      - this.expressionRenderer.renderValue
+  - name: renderActionBar
+    sig: 'renderActionBar(actionBar: ActionBar, expression: IExpression)'
+    vis: protected
+    lines:
+    - 382
+    - 392
+    detail:
+      calls:
+      - actionBar.clear
+      - actionBar.push
+      - getContextForWatchExpressionMenu
+      - getContextMenuActions
+      - this.menuService.getMenuActions
+  lines:
+  - 284
+  - 393
+- name: WatchExpressionsAccessibilityProvider
+  kind: struct
+  bases:
+  - IListAccessibilityProvider<IExpression>
+  methods:
+  - name: getWidgetAriaLabel
+    sig: 'getWidgetAriaLabel(): string'
+    lines:
+    - 407
+    - 409
+    detail:
+      calls:
+      - localize
+  - name: getAriaLabel
+    sig: 'getAriaLabel(element: IExpression): string'
+    lines:
+    - 411
+    - 418
+    detail:
+      calls:
+      - localize
+  lines:
+  - 405
+  - 419
+- name: WatchExpressionsDragAndDrop
+  kind: struct
+  bases:
+  - ITreeDragAndDrop<IExpression>
+  methods:
+  - name: constructor
+    sig: 'constructor(private debugService: IDebugService)'
+    lines:
+    - 423
+    - 423
+    detail: {}
+  - name: onDragOver
+    sig: 'onDragOver(data: IDragAndDropData, targetElement: IExpression | undefined, targetIndex: number | undefined, targetSector: ListViewTargetSector | undefined, originalEvent: DragEvent): boolean | ITreeDragOverReaction'
+    lines:
+    - 425
+    - 453
+    detail: {}
+  - name: getDragURI
+    sig: 'getDragURI(element: IExpression): string | null'
+    lines:
+    - 455
+    - 461
+    detail:
+      calls:
+      - element.getId
+      - this.debugService.getViewModel
+      - this.debugService.getViewModel().getSelectedExpression
+  - name: getDragLabel
+    sig: 'getDragLabel(elements: IExpression[]): string | undefined'
+    lines:
+    - 463
+    - 469
+    detail: {}
+  - name: drop
+    sig: 'drop(data: IDragAndDropData, targetElement: IExpression, targetIndex: number | undefined, targetSector: ListViewTargetSector | undefined, originalEvent: DragEvent): void'
+    lines:
+    - 471
+    - 502
+    detail:
+      calls:
+      - draggedElement.getId
+      - new Error
+      - this.debugService.getModel
+      - this.debugService.getModel().getWatchExpressions
+      - this.debugService.moveWatchExpression
+      - watches.indexOf
+  - name: dispose
+    sig: 'dispose(): void'
+    lines:
+    - 504
+    - 504
+    detail: {}
+  lines:
+  - 421
+  - 505
+functions:
+- name: isDebugService
+  sig: 'isDebugService(element: any)'
+  lines:
+  - 259
+  - 261
+- name: getContextForWatchExpressionMenu
+  sig: 'getContextForWatchExpressionMenu(parentContext: IContextKeyService, expression: IExpression)'
+  lines:
+  - 398
+  - 403
+  detail:
+    calls:
+    - parentContext.createOverlay
+exports:
+- name: WatchExpressionsView
+  kind: type
+- name: WatchExpressionsDelegate
+  kind: type
+- name: WatchExpressionsDataSource
+  kind: type
+- name: WatchExpressionsRenderer
+  kind: type
+- name: WatchExpressionsAccessibilityProvider
+  kind: type
+- name: WatchExpressionsDragAndDrop
+  kind: type
+- name: isDebugService
+  kind: func
+- name: getContextForWatchExpressionMenu
+  kind: func
+- name: MAX_VALUE_RENDER_LENGTH_IN_VIEWLET
+  kind: data
+- name: ignoreViewUpdates
+  kind: data
+- name: useCachedEvaluation
+  kind: data
+- name: ADD_WATCH_ID
+  kind: data
+- name: ADD_WATCH_LABEL
+  kind: data
+- name: REMOVE_WATCH_EXPRESSIONS_COMMAND_ID
+  kind: data
+- name: REMOVE_WATCH_EXPRESSIONS_LABEL
+  kind: data

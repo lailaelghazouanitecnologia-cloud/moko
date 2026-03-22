@@ -1,0 +1,214 @@
+## Roska File Descriptor — browser/codeActionModel.ts
+file: browser/codeActionModel.ts
+lines: 387
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: ../../../../base/common/async.js.CancelablePromise
+- sym: ../../../../base/common/async.js.createCancelablePromise
+- sym: ../../../../base/common/async.js.TimeoutTimer
+- sym: ../../../../base/common/errors.js.isCancellationError
+- sym: ../../../../base/common/event.js.Emitter
+- sym: ../../../../base/common/hierarchicalKind.js.HierarchicalKind
+- sym: ../../../../base/common/lifecycle.js.Disposable
+- sym: ../../../../base/common/lifecycle.js.IDisposable
+- sym: ../../../../base/common/lifecycle.js.MutableDisposable
+- sym: ../../../../base/common/resources.js.isEqual
+- sym: ../../../../base/common/uri.js.URI
+- sym: ../../../../platform/configuration/common/configuration.js.IConfigurationService
+- sym: ../../../../platform/contextkey/common/contextkey.js.IContextKey
+- sym: ../../../../platform/contextkey/common/contextkey.js.IContextKeyService
+- sym: ../../../../platform/contextkey/common/contextkey.js.RawContextKey
+- sym: ../../../../platform/markers/common/markers.js.IMarkerService
+- sym: ../../../../platform/progress/common/progress.js.IEditorProgressService
+- sym: ../../../../platform/progress/common/progress.js.Progress
+- sym: ../../../browser/editorBrowser.js.ICodeEditor
+- sym: ../../../common/config/editorOptions.js.EditorOption
+- sym: ../../../common/config/editorOptions.js.ShowLightbulbIconMode
+- sym: ../../../common/core/position.js.Position
+- sym: ../../../common/core/selection.js.Selection
+- sym: ../../../common/languageFeatureRegistry.js.LanguageFeatureRegistry
+- sym: ../../../common/languages.js.CodeActionProvider
+- sym: ../../../common/languages.js.CodeActionTriggerType
+- sym: ../common/types.js.CodeActionKind
+- sym: ../common/types.js.CodeActionSet
+- sym: ../common/types.js.CodeActionTrigger
+- sym: ../common/types.js.CodeActionTriggerSource
+- sym: ./codeAction.js.getCodeActions
+data:
+- name: SUPPORTED_CODE_ACTIONS
+  type: any
+  val: new RawContextKey<string>('supportedCodeAction', '')
+- name: APPLY_FIX_ALL_COMMAND_ID
+  type: string
+  val: '''_typescript.applyFixAllCodeAction'''
+- name: emptyCodeActionSet
+  type: any
+  val: "Object.freeze<CodeActionSet>({\n\tallActions: [],\n\tvalidActions: [],\n\tdispose: () => { },\n\tdocumentation: [],\n\thasAutoFix:..."
+types:
+- name: TriggeredCodeAction
+  kind: typealias
+  decorators:
+  - type
+  fields:
+  - name: readonly
+    type: Selection
+  - name: readonly
+    type: CodeActionTrigger
+  lines:
+  - 30
+  - 33
+- name: CodeActionOracle
+  kind: struct
+  bases:
+  - Disposable
+  fields:
+  - name: _autoTriggerTimer
+    type: any
+    default: this._register(new TimeoutTimer())
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tprivate readonly _editor: ICodeEditor,\n\t\tprivate readonly _markerService: IMarkerService,\n\t\tprivate readonly _signalChange: (triggered: TriggeredCodeAction | undefined) => void,\n\t\tprivate readonly _delay: number = 250,\n\t)"
+    lines:
+    - 39
+    - 48
+    detail:
+      calls:
+      - super
+      - this._editor.onDidChangeCursorPosition
+      - this._markerService.onMarkerChanged
+      - this._register
+  - name: trigger
+    sig: 'trigger(trigger: CodeActionTrigger): void'
+    lines:
+    - 50
+    - 53
+    detail:
+      calls:
+      - this._getRangeOfSelectionUnlessWhitespaceEnclosed
+      - this._signalChange
+  - name: _onMarkerChanges
+    sig: '_onMarkerChanges(resources: readonly URI[]): void'
+    vis: private
+    lines:
+    - 55
+    - 60
+    detail:
+      calls:
+      - resources.some
+      - this._editor.getModel
+      - this._tryAutoTrigger
+  - name: _getRangeOfSelectionUnlessWhitespaceEnclosed
+    sig: '_getRangeOfSelectionUnlessWhitespaceEnclosed(trigger: CodeActionTrigger): Selection | undefined'
+    vis: private
+    lines:
+    - 68
+    - 110
+    detail:
+      calls:
+      - /\s/.test
+      - model.getLineContent
+      - model.getLineMaxColumn
+      - selection.getPosition
+      - selection.isEmpty
+      - this._editor.getModel
+      - this._editor.getOption
+      - this._editor.getSelection
+      - this._editor.hasModel
+  lines:
+  - 35
+  - 111
+- name: CodeActionModel
+  kind: struct
+  bases:
+  - Disposable
+  fields:
+  - name: _codeActionOracle
+    type: any
+    default: this._register(new MutableDisposable<CodeActionOracle>())
+  - name: _state
+    type: CodeActionsState.State
+    default: CodeActionsState.Empty
+  - name: _supportedCodeActions
+    type: IContextKey<string>
+  - name: _onDidChangeState
+    type: any
+    default: this._register(new Emitter<CodeActionsState.State>())
+  - name: onDidChangeState
+    type: any
+    default: this._onDidChangeState.event
+  - name: codeActionsDisposable
+    type: MutableDisposable<IDisposable>
+    default: this._register(new MutableDisposable())
+  - name: _disposed
+    type: any
+    default: 'false'
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tprivate readonly _editor: ICodeEditor,\n\t\tprivate readonly _registry: LanguageFeatureRegistry<CodeActionProvider>,\n\t\tprivate readonly _markerService: IMarkerService,\n\t\tcontextKeyService: IContextKeyService,\n\t\tprivate readonly _progressService?: IEditorProgressService,\n\t\tprivate readonly _configurationService?: IConfigurationService,\n\t)"
+    lines:
+    - 170
+    - 190
+    detail:
+      calls:
+      - SUPPORTED_CODE_ACTIONS.bindTo
+      - super
+      - this._editor.onDidChangeConfiguration
+      - this._editor.onDidChangeModel
+      - this._editor.onDidChangeModelLanguage
+      - this._register
+      - this._registry.onDidChange
+      - this._update
+  - name: dispose
+    sig: 'dispose(): void'
+    lines:
+    - 192
+    - 200
+    detail:
+      calls:
+      - super.dispose
+      - this.setState
+  - name: _update
+    sig: '_update(): void'
+    vis: private
+    lines:
+    - 207
+    - 364
+    detail:
+      calls:
+      - new CodeActionOracle
+      - supportedActions.join
+      - this._codeActionOracle.value.trigger
+      - this._editor.getModel
+      - this._editor.getOption
+      - this._registry.all
+      - this._registry.all(model).flatMap
+      - this._registry.has
+      - this._supportedCodeActions.reset
+      - this._supportedCodeActions.set
+      - this.setState
+  - name: trigger
+    sig: 'trigger(trigger: CodeActionTrigger)'
+    lines:
+    - 366
+    - 369
+    detail:
+      calls:
+      - this._codeActionOracle.value?.trigger
+      - this.codeActionsDisposable.clear
+  lines:
+  - 156
+  - 387
+exports:
+- name: TriggeredCodeAction
+  kind: type
+- name: CodeActionOracle
+  kind: type
+- name: CodeActionModel
+  kind: type
+- name: SUPPORTED_CODE_ACTIONS
+  kind: data
+- name: APPLY_FIX_ALL_COMMAND_ID
+  kind: data
+- name: emptyCodeActionSet
+  kind: data

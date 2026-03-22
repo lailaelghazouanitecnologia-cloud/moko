@@ -1,0 +1,332 @@
+## Roska File Descriptor — browser/mainThreadEditors.ts
+file: browser/mainThreadEditors.ts
+lines: 422
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: ../../../base/common/errors.js.illegalArgument
+- sym: ../../../base/common/lifecycle.js.IDisposable
+- sym: ../../../base/common/lifecycle.js.dispose
+- sym: ../../../base/common/lifecycle.js.DisposableStore
+- sym: ../../../base/common/objects.js.equals as objectEquals
+- sym: ../../../base/common/uri.js.URI
+- sym: ../../../base/common/uri.js.UriComponents
+- sym: ../../../editor/browser/services/codeEditorService.js.ICodeEditorService
+- sym: ../../../editor/common/core/range.js.IRange
+- sym: ../../../editor/common/core/selection.js.ISelection
+- sym: ../../../editor/common/editorCommon.js.IDecorationOptions
+- sym: ../../../editor/common/editorCommon.js.IDecorationRenderOptions
+- sym: ../../../editor/common/core/editOperation.js.ISingleEditOperation
+- sym: ../../../platform/commands/common/commands.js.CommandsRegistry
+- sym: ../../../platform/editor/common/editor.js.ITextEditorOptions
+- sym: ../../../platform/editor/common/editor.js.IResourceEditorInput
+- sym: ../../../platform/editor/common/editor.js.EditorActivation
+- sym: ../../../platform/editor/common/editor.js.EditorResolution
+- sym: ../../../platform/editor/common/editor.js.ITextEditorDiffInformation
+- sym: ../../../platform/editor/common/editor.js.isTextEditorDiffInformationEqual
+- sym: ../../../platform/editor/common/editor.js.ITextEditorChange
+- sym: ../../../platform/instantiation/common/instantiation.js.ServicesAccessor
+- sym: ./mainThreadEditor.js.MainThreadTextEditor
+- sym: ../common/extHost.protocol.js.ExtHostContext
+- sym: ../common/extHost.protocol.js.ExtHostEditorsShape
+- sym: ../common/extHost.protocol.js.IApplyEditsOptions
+- sym: ../common/extHost.protocol.js.ITextDocumentShowOptions
+- sym: ../common/extHost.protocol.js.ITextEditorConfigurationUpdate
+- sym: ../common/extHost.protocol.js.ITextEditorPositionData
+- sym: ../common/extHost.protocol.js.IUndoStopOptions
+- sym: ../common/extHost.protocol.js.MainThreadTextEditorsShape
+- sym: ../common/extHost.protocol.js.TextEditorRevealType
+- sym: ../../services/editor/common/editorGroupColumn.js.editorGroupToColumn
+- sym: ../../services/editor/common/editorGroupColumn.js.columnToEditorGroup
+- sym: ../../services/editor/common/editorGroupColumn.js.EditorGroupColumn
+- sym: ../../services/editor/common/editorService.js.IEditorService
+- sym: ../../services/editor/common/editorGroupsService.js.IEditorGroupsService
+- sym: ../../../platform/environment/common/environment.js.IEnvironmentService
+- sym: ../../services/workingCopy/common/workingCopyService.js.IWorkingCopyService
+- sym: ../../../platform/extensions/common/extensions.js.ExtensionIdentifier
+- sym: ../../../editor/common/diff/legacyLinesDiffComputer.js.IChange
+- sym: ../../services/extensions/common/extHostCustomers.js.IExtHostContext
+- sym: ../../common/editor.js.IEditorControl
+- sym: ../../../editor/browser/editorBrowser.js.getCodeEditor
+- sym: ../../../editor/browser/editorBrowser.js.ICodeEditor
+- sym: ../../../platform/configuration/common/configuration.js.IConfigurationService
+- sym: ../../contrib/scm/browser/quickDiffModel.js.IQuickDiffModelService
+- sym: ../../../base/common/observable.js.autorun
+- sym: ../../../base/common/observable.js.constObservable
+- sym: ../../../base/common/observable.js.derived
+- sym: ../../../base/common/observable.js.derivedOpts
+- sym: ../../../base/common/observable.js.IObservable
+- sym: ../../../base/common/observable.js.observableFromEvent
+- sym: ../../../platform/uriIdentity/common/uriIdentity.js.IUriIdentityService
+- sym: ../../../editor/common/model.js.isITextModel
+- sym: ../../../editor/common/diff/rangeMapping.js.LineRangeMapping
+- sym: ../../../base/common/arrays.js.equals
+- sym: ../../../base/common/event.js.Event
+- sym: ../../../editor/common/services/editorWorker.js.DiffAlgorithmName
+types:
+- name: IMainThreadEditorLocator
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: getEditor
+    type: 'method: getEditor(id: string): MainThreadTextEditor | undefined'
+  - name: findTextEditorIdFor
+    type: 'method: findTextEditorIdFor(editorControl: IEditorControl): string | undefined'
+  - name: getIdOfCodeEditor
+    type: 'method: getIdOfCodeEditor(codeEditor: ICodeEditor): string | undefined'
+  lines:
+  - 40
+  - 44
+- name: MainThreadTextEditors
+  kind: struct
+  ctx: '--- from extension host process'
+  bases:
+  - MainThreadTextEditorsShape
+  fields:
+  - name: INSTANCE_COUNT
+    type: number
+    default: '0'
+  - name: _instanceId
+    type: string
+  - name: _proxy
+    type: ExtHostEditorsShape
+  - name: _toDispose
+    type: any
+    default: new DisposableStore()
+  - name: _textEditorsListenersMap
+    type: '{ [editorId: string]: IDisposable[] }'
+  - name: _editorPositionData
+    type: ITextEditorPositionData | null
+  - name: _registeredDecorationTypes
+    type: '{ [decorationType: string]: boolean }'
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tprivate readonly _editorLocator: IMainThreadEditorLocator,\n\t\textHostContext: IExtHostContext,\n\t\t@ICodeEditorService private readonly _codeEditorService: ICodeEditorService,\n\t\t@IEditorService private readonly _editorService: IEditorService,\n\t\t@IEditorGroupsService private readonly _editorGroupService: IEditorGroupsService,\n\t\t@IConfigurationService private readonly _configurationService: IConfigurationService,\n\t\t@IQuickDiffModelService private readonly _quickDiffModelService: IQuickDiffModelService,\n\t\t@IUriIdentityService private readonly _uriIdentityService: IUriIdentityService\n\t)"
+    lines:
+    - 57
+    - 78
+    detail:
+      calls:
+      - Object.create
+      - String
+      - extHostContext.getProxy
+      - this._editorGroupService.onDidMoveGroup
+      - this._editorGroupService.onDidRemoveGroup
+      - this._editorService.onDidVisibleEditorsChange
+      - this._toDispose.add
+  - name: dispose
+    sig: 'dispose(): void'
+    lines:
+    - 80
+    - 90
+    detail:
+      calls:
+      - Object.create
+      - Object.keys
+      - Object.keys(this._textEditorsListenersMap).forEach
+      - this._codeEditorService.removeDecorationType
+      - this._toDispose.dispose
+  - name: handleTextEditorAdded
+    sig: 'handleTextEditorAdded(textEditor: MainThreadTextEditor): void'
+    lines:
+    - 92
+    - 106
+    detail:
+      calls:
+      - autorun
+      - textEditor.getId
+      - textEditor.onPropertiesChanged
+      - this._getTextEditorDiffInformation
+      - toDispose.push
+  - name: handleTextEditorRemoved
+    sig: 'handleTextEditorRemoved(id: string): void'
+    lines:
+    - 108
+    - 111
+    detail:
+      calls:
+      - dispose
+  - name: _getTextEditorDiffInformation
+    sig: '_getTextEditorDiffInformation(textEditor: MainThreadTextEditor, toDispose: IDisposable[]): IObservable<ITextEditorDiffInformation[] | undefined>'
+    vis: private
+    lines:
+    - 134
+    - 238
+    detail:
+      calls:
+      - constObservable
+      - derived
+      - derivedOpts
+      - observableFromEvent
+      - textEditor.getCodeEditor
+      - this._codeEditorService.listDiffEditors
+      - "this._codeEditorService.listDiffEditors()\n\t\t\t.filter"
+  - name: $tryShowTextDocument
+    sig: '$tryShowTextDocument(resource: UriComponents, options: ITextDocumentShowOptions): Promise<string | undefined>'
+    is_async: true
+    lines:
+    - 242
+    - 268
+    detail:
+      calls:
+      - URI.revive
+      - columnToEditorGroup
+      - editor.getControl
+      - getCodeEditor
+      - this._editorLocator.getIdOfCodeEditor
+      - this._editorService.openEditor
+  - name: $tryShowEditor
+    sig: '$tryShowEditor(id: string, position?: EditorGroupColumn): Promise<void>'
+    is_async: true
+    lines:
+    - 270
+    - 280
+    detail:
+      calls:
+      - columnToEditorGroup
+      - mainThreadEditor.getModel
+      - this._editorLocator.getEditor
+      - this._editorService.openEditor
+  - name: $tryHideEditor
+    sig: '$tryHideEditor(id: string): Promise<void>'
+    is_async: true
+    lines:
+    - 282
+    - 293
+    detail:
+      calls:
+      - editorPane.group.closeEditor
+      - mainThreadEditor.matches
+      - this._editorLocator.getEditor
+  - name: $trySetSelections
+    sig: '$trySetSelections(id: string, selections: ISelection[]): Promise<void>'
+    lines:
+    - 295
+    - 302
+    detail:
+      calls:
+      - Promise.reject
+      - Promise.resolve
+      - editor.setSelections
+      - illegalArgument
+      - this._editorLocator.getEditor
+  - name: $trySetDecorations
+    sig: '$trySetDecorations(id: string, key: string, ranges: IDecorationOptions[]): Promise<void>'
+    lines:
+    - 304
+    - 312
+    detail:
+      calls:
+      - Promise.reject
+      - Promise.resolve
+      - editor.setDecorations
+      - illegalArgument
+      - this._editorLocator.getEditor
+  - name: $trySetDecorationsFast
+    sig: '$trySetDecorationsFast(id: string, key: string, ranges: number[]): Promise<void>'
+    lines:
+    - 314
+    - 322
+    detail:
+      calls:
+      - Promise.reject
+      - Promise.resolve
+      - editor.setDecorationsFast
+      - illegalArgument
+      - this._editorLocator.getEditor
+  - name: $tryRevealRange
+    sig: '$tryRevealRange(id: string, range: IRange, revealType: TextEditorRevealType): Promise<void>'
+    lines:
+    - 324
+    - 331
+    detail:
+      calls:
+      - Promise.reject
+      - Promise.resolve
+      - editor.revealRange
+      - illegalArgument
+      - this._editorLocator.getEditor
+  - name: $trySetOptions
+    sig: '$trySetOptions(id: string, options: ITextEditorConfigurationUpdate): Promise<void>'
+    lines:
+    - 333
+    - 340
+    detail:
+      calls:
+      - Promise.reject
+      - Promise.resolve
+      - editor.setConfiguration
+      - illegalArgument
+      - this._editorLocator.getEditor
+  - name: $tryApplyEdits
+    sig: '$tryApplyEdits(id: string, modelVersionId: number, edits: ISingleEditOperation[], opts: IApplyEditsOptions): Promise<boolean>'
+    lines:
+    - 342
+    - 348
+    detail:
+      calls:
+      - Promise.reject
+      - Promise.resolve
+      - editor.applyEdits
+      - illegalArgument
+      - this._editorLocator.getEditor
+  - name: $tryInsertSnippet
+    sig: '$tryInsertSnippet(id: string, modelVersionId: number, template: string, ranges: readonly IRange[], opts: IUndoStopOptions): Promise<boolean>'
+    lines:
+    - 350
+    - 356
+    detail:
+      calls:
+      - Promise.reject
+      - Promise.resolve
+      - editor.insertSnippet
+      - illegalArgument
+      - this._editorLocator.getEditor
+  - name: $registerTextEditorDecorationType
+    sig: '$registerTextEditorDecorationType(extensionId: ExtensionIdentifier, key: string, options: IDecorationRenderOptions): void'
+    lines:
+    - 358
+    - 362
+    detail:
+      calls:
+      - this._codeEditorService.registerDecorationType
+  - name: $removeTextEditorDecorationType
+    sig: '$removeTextEditorDecorationType(key: string): void'
+    lines:
+    - 364
+    - 368
+    detail:
+      calls:
+      - this._codeEditorService.removeDecorationType
+  - name: $getDiffInformation
+    sig: '$getDiffInformation(id: string): Promise<IChange[]>'
+    lines:
+    - 370
+    - 407
+    detail:
+      calls:
+      - Promise.reject
+      - Promise.resolve
+      - codeEditor.getId
+      - codeEditor.getModel
+      - codeEditor.hasModel
+      - diffEditor.getLineChanges
+      - diffEditors.filter
+      - editor.getCodeEditor
+      - new Error
+      - quickDiffModelRef.dispose
+      - quickDiffModelRef.object.changes.filter
+      - quickDiffModelRef.object.quickDiffs.find
+      - scmQuickDiffChanges.map
+      - this._codeEditorService.listDiffEditors
+      - this._editorLocator.getEditor
+      - this._quickDiffModelService.createQuickDiffModelReference
+  lines:
+  - 46
+  - 408
+exports:
+- name: IMainThreadEditorLocator
+  kind: type
+- name: MainThreadTextEditors
+  kind: type

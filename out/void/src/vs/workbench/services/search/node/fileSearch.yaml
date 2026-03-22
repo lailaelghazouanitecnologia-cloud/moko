@@ -1,0 +1,394 @@
+## Roska File Descriptor — node/fileSearch.ts
+file: node/fileSearch.ts
+lines: 760
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: child_process.childProcess
+- sym: fs.fs
+- sym: ../../../../base/common/path.js.path
+- sym: stream.Readable
+- sym: string_decoder.StringDecoder
+- sym: ../../../../base/common/arrays.js.arrays
+- sym: ../../../../base/common/errorMessage.js.toErrorMessage
+- sym: ../../../../base/common/glob.js.glob
+- sym: ../../../../base/common/normalization.js.normalization
+- sym: ../../../../base/common/extpath.js.isEqualOrParent
+- sym: ../../../../base/common/platform.js.platform
+- sym: ../../../../base/common/stopwatch.js.StopWatch
+- sym: ../../../../base/common/strings.js.strings
+- sym: ../../../../base/common/types.js.types
+- sym: ../../../../base/common/uri.js.URI
+- sym: ../../../../base/node/pfs.js.Promises
+- sym: ../common/search.js.IFileQuery
+- sym: ../common/search.js.IFolderQuery
+- sym: ../common/search.js.IProgressMessage
+- sym: ../common/search.js.ISearchEngineStats
+- sym: ../common/search.js.IRawFileMatch
+- sym: ../common/search.js.ISearchEngine
+- sym: ../common/search.js.ISearchEngineSuccess
+- sym: ../common/search.js.isFilePatternMatch
+- sym: ../common/search.js.hasSiblingFn
+- sym: ./ripgrepFileSearch.js.spawnRipgrepCmd
+- sym: ../../../../base/common/fuzzyScorer.js.prepareQuery
+data:
+- name: killCmds
+  type: any
+  val: new Set<() => void>()
+types:
+- name: IDirectoryEntry
+  kind: trait
+  bases:
+  - IRawFileMatch
+  decorators:
+  - interface
+  fields:
+  - name: base
+    type: string
+  lines:
+  - 26
+  - 29
+- name: IDirectoryTree
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: rootEntries
+    type: IDirectoryEntry[]
+  - name: pathToEntries
+    type: '{ [relativePath: string]: IDirectoryEntry[] }'
+  lines:
+  - 31
+  - 34
+- name: FileWalker
+  kind: struct
+  ctx: Public for testing.
+  fields:
+  - name: config
+    type: IFileQuery
+  - name: filePattern
+    type: string
+  - name: normalizedFilePatternLowercase
+    type: string | null
+    default: 'null'
+  - name: includePattern
+    type: glob.ParsedExpression | undefined
+  - name: maxResults
+    type: number | null
+  - name: exists
+    type: boolean
+  - name: maxFilesize
+    type: number | null
+    default: 'null'
+  - name: isLimitHit
+    type: boolean
+  - name: resultCount
+    type: number
+  - name: isCanceled
+    type: any
+    default: 'false'
+  - name: fileWalkSW
+    type: StopWatch | null
+    default: 'null'
+  - name: directoriesWalked
+    type: number
+  - name: filesWalked
+    type: number
+  - name: errors
+    type: string[]
+  - name: cmdSW
+    type: StopWatch | null
+    default: 'null'
+  - name: cmdResultCount
+    type: number
+    default: '0'
+  - name: folderExcludePatterns
+    type: Map<string, AbsoluteAndRelativeParsedExpression>
+  - name: globalExcludePattern
+    type: glob.ParsedExpression | undefined
+  - name: walkedPaths
+    type: '{ [path: string]: boolean }'
+  methods:
+  - name: constructor
+    sig: 'constructor(config: IFileQuery)'
+    lines:
+    - 64
+    - 109
+    detail:
+      calls:
+      - Object.create
+      - config.folderQueries.forEach
+      - glob.parse
+      - new Map
+      - prepareQuery
+  - name: cancel
+    sig: 'cancel(): void'
+    lines:
+    - 111
+    - 114
+    detail:
+      calls:
+      - killCmds.forEach
+  - name: walk
+    sig: 'walk(folderQueries: IFolderQuery[], extraFiles: URI[], numThreads: number | undefined, onResult: (result: IRawFileMatch) => void, onMessage: (message: IProgressMessage) => void, done: (error: Error | null, isLimitHit: boolean) => void): void'
+    lines:
+    - 116
+    - 154
+    detail:
+      calls:
+      - StopWatch.create
+      - done
+      - extraFiles.forEach
+      - this.parallel
+  - name: parallel
+    sig: 'parallel(list: T[], fn: (item: T, callback: (err: Error | null, result: E | null) => void) => void, callback: (err: Array<Error | null> | null, result: E[]) => void): void'
+    vis: private
+    lines:
+    - 156
+    - 182
+    detail:
+      calls:
+      - callback
+      - list.forEach
+      - new Array
+  - name: cmdTraversal
+    sig: 'cmdTraversal(folderQuery: IFolderQuery, numThreads: number | undefined, onResult: (result: IRawFileMatch) => void, onMessage: (message: IProgressMessage) => void, cb: (err?: Error) => void): void'
+    vis: private
+    lines:
+    - 192
+    - 276
+    detail:
+      calls:
+      - JSON.stringify
+      - Object.keys
+      - killCmds.add
+      - onMessage
+      - "ripgrep.rgArgs.args\n\t\t\t.map"
+      - "ripgrep.rgArgs.args\n\t\t\t.map(arg => arg.match(/^-/) ? arg : `'${arg}'`)\n\t\t\t.join"
+      - spawnRipgrepCmd
+      - this.collectStdout
+      - this.folderExcludePatterns.get
+      - this.initDirectoryTree
+  - name: spawnFindCmd
+    sig: 'spawnFindCmd(folderQuery: IFolderQuery)'
+    lines:
+    - 281
+    - 301
+    detail:
+      calls:
+      - args.pop
+      - args.push
+      - childProcess.spawn
+      - excludePattern.getBasenameTerms
+      - excludePattern.getPathTerms
+      - this.folderExcludePatterns.get
+  - name: readStdout
+    sig: 'readStdout(cmd: childProcess.ChildProcess, encoding: BufferEncoding, cb: (err: Error | null, stdout?: string) => void): void'
+    lines:
+    - 306
+    - 319
+    detail:
+      calls:
+      - this.collectStdout
+  - name: collectStdout
+    sig: 'collectStdout(cmd: childProcess.ChildProcess, encoding: BufferEncoding, onMessage: (message: IProgressMessage) => void, cb: (err: Error | null, stdout?: string, last?: boolean) => void): void'
+    vis: private
+    lines:
+    - 321
+    - 364
+    detail:
+      calls:
+      - cmd.on
+      - cmd.stdout.once
+      - onMessage
+      - this.collectData
+      - this.forwardData
+  - name: addDirectoryEntries
+    sig: 'addDirectoryEntries(folderQuery: IFolderQuery, { pathToEntries }: IDirectoryTree, base: string, relativeFiles: string[], onResult: (result: IRawFileMatch) => void)'
+    vis: private
+    lines:
+    - 396
+    - 422
+    detail:
+      calls:
+      - relativeFiles.forEach
+      - relativeFiles.indexOf
+      - this.getSearchPath
+      - this.matchFile
+  - name: matchDirectoryTree
+    sig: 'matchDirectoryTree({ rootEntries, pathToEntries }: IDirectoryTree, rootFolder: string, onResult: (result: IRawFileMatch) => void)'
+    vis: private
+    lines:
+    - 424
+    - 461
+    detail:
+      calls:
+      - matchDirectory
+      - this.folderExcludePatterns.get
+  - name: getStats
+    sig: 'getStats(): ISearchEngineStats'
+    lines:
+    - 463
+    - 471
+    detail:
+      calls:
+      - this.cmdSW!.elapsed
+      - this.fileWalkSW!.elapsed
+  - name: doWalk
+    sig: 'doWalk(folderQuery: IFolderQuery, relativeParentPath: string, files: string[], onResult: (result: IRawFileMatch) => void, done: (error?: Error) => void): void'
+    vis: private
+    lines:
+    - 473
+    - 565
+    detail:
+      calls:
+      - hasSiblingFn
+      - this.parallel
+  - name: matchFile
+    sig: 'matchFile(onResult: (result: IRawFileMatch) => void, candidate: IRawFileMatch): void'
+    vis: private
+    lines:
+    - 567
+    - 579
+    detail:
+      calls:
+      - onResult
+      - path.basename
+      - this.includePattern
+      - this.isFileMatch
+  lines:
+  - 41
+  - 633
+- name: Engine
+  kind: struct
+  bases:
+  - ISearchEngine<IRawFileMatch>
+  fields:
+  - name: folderQueries
+    type: IFolderQuery[]
+  - name: extraFiles
+    type: URI[]
+  - name: walker
+    type: FileWalker
+  - name: numThreads
+    type: number
+  methods:
+  - name: constructor
+    sig: 'constructor(config: IFileQuery, numThreads?: number)'
+    lines:
+    - 641
+    - 647
+    detail:
+      calls:
+      - new FileWalker
+  - name: search
+    sig: 'search(onResult: (result: IRawFileMatch) => void, onProgress: (progress: IProgressMessage) => void, done: (error: Error | null, complete: ISearchEngineSuccess) => void): void'
+    lines:
+    - 649
+    - 657
+    detail:
+      calls:
+      - this.walker.walk
+  - name: cancel
+    sig: 'cancel(): void'
+    lines:
+    - 659
+    - 661
+    detail:
+      calls:
+      - this.walker.cancel
+  lines:
+  - 635
+  - 662
+- name: AbsoluteAndRelativeParsedExpression
+  kind: struct
+  ctx: Split the IExpression into its absolute and relative components, and glob.parse them separately.
+  fields:
+  - name: absoluteParsedExpr
+    type: glob.ParsedExpression | undefined
+  - name: relativeParsedExpr
+    type: glob.ParsedExpression | undefined
+  methods:
+  - name: constructor
+    sig: 'constructor(public expression: glob.IExpression, private root: string)'
+    lines:
+    - 673
+    - 675
+    detail:
+      calls:
+      - this.init
+  - name: init
+    sig: 'init(expr: glob.IExpression): void'
+    vis: private
+    lines:
+    - 680
+    - 697
+    detail:
+      calls:
+      - Object.keys
+      - "Object.keys(expr)\n\t\t\t.filter"
+      - "Object.keys(expr)\n\t\t\t.filter(key => expr[key])\n\t\t\t.forEach"
+      - glob.parse
+  - name: test
+    sig: 'test(_path: string, basename?: string, hasSibling?: (name: string) => boolean | Promise<boolean>): string | Promise<string | null> | undefined | null'
+    lines:
+    - 699
+    - 702
+    detail:
+      calls:
+      - path.join
+      - this.absoluteParsedExpr
+      - this.relativeParsedExpr
+  - name: getBasenameTerms
+    sig: 'getBasenameTerms(): string[]'
+    lines:
+    - 704
+    - 715
+    detail:
+      calls:
+      - basenameTerms.push
+      - glob.getBasenameTerms
+  - name: getPathTerms
+    sig: 'getPathTerms(): string[]'
+    lines:
+    - 717
+    - 728
+    detail:
+      calls:
+      - glob.getPathTerms
+      - pathTerms.push
+  lines:
+  - 669
+  - 729
+functions:
+- name: rgErrorMsgForDisplay
+  sig: 'rgErrorMsgForDisplay(msg: string): string | undefined'
+  lines:
+  - 731
+  - 760
+  detail:
+    calls:
+    - firstLine.charAt
+    - firstLine.charAt(0).toUpperCase
+    - firstLine.startsWith
+    - firstLine.substr
+    - lines[0].trim
+    - lines[lines.length - 1].trim
+    - msg.trim
+    - msg.trim().split
+    - strings.uppercaseFirstLetter
+exports:
+- name: IDirectoryEntry
+  kind: type
+- name: IDirectoryTree
+  kind: type
+- name: FileWalker
+  kind: type
+- name: Engine
+  kind: type
+- name: AbsoluteAndRelativeParsedExpression
+  kind: type
+- name: rgErrorMsgForDisplay
+  kind: func
+- name: killCmds
+  kind: data

@@ -1,0 +1,983 @@
+## Roska File Descriptor — common/rpcProtocol.ts
+file: common/rpcProtocol.ts
+lines: 968
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: ../../../../base/common/async.js.RunOnceScheduler
+- sym: ../../../../base/common/buffer.js.VSBuffer
+- sym: ../../../../base/common/cancellation.js.CancellationToken
+- sym: ../../../../base/common/cancellation.js.CancellationTokenSource
+- sym: ../../../../base/common/charCode.js.CharCode
+- sym: ../../../../base/common/errors.js.errors
+- sym: ../../../../base/common/event.js.Emitter
+- sym: ../../../../base/common/event.js.Event
+- sym: ../../../../base/common/lifecycle.js.Disposable
+- sym: ../../../../base/common/lifecycle.js.DisposableStore
+- sym: ../../../../base/common/lifecycle.js.IDisposable
+- sym: ../../../../base/common/marshalling.js.MarshalledObject
+- sym: ../../../../base/common/marshallingIds.js.MarshalledId
+- sym: ../../../../base/common/uriIpc.js.IURITransformer
+- sym: ../../../../base/common/uriIpc.js.transformIncomingURIs
+- sym: ../../../../base/parts/ipc/common/ipc.js.IMessagePassingProtocol
+- sym: ./lazyPromise.js.CanceledLazyPromise
+- sym: ./lazyPromise.js.LazyPromise
+- sym: ./proxyIdentifier.js.getStringIdentifierForProxy
+- sym: ./proxyIdentifier.js.IRPCProtocol
+- sym: ./proxyIdentifier.js.Proxied
+- sym: ./proxyIdentifier.js.ProxyIdentifier
+- sym: ./proxyIdentifier.js.SerializableObjectWithBuffers
+data:
+- name: refSymbolName
+  type: string
+  val: '''$$ref$$'''
+- name: undefinedRef
+  type: object
+  val: '{ [refSymbolName]: -1 } as const'
+- name: _RPCProtocolSymbol
+  type: any
+  val: Symbol.for('rpcProtocol')
+- name: _RPCProxySymbol
+  type: any
+  val: Symbol.for('rpcProxy')
+types:
+- name: JSONStringifyReplacer
+  kind: trait
+  decorators:
+  - interface
+  lines:
+  - 20
+  - 22
+- name: StringifiedJsonWithBufferRefs
+  kind: struct
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tpublic readonly jsonString: string,\n\t\tpublic readonly referencedBuffers: readonly VSBuffer[],\n\t)"
+    lines:
+    - 36
+    - 39
+    detail: {}
+  lines:
+  - 35
+  - 40
+- name: RequestInitiator
+  kind: enum
+  variants:
+  - name: LocalSide
+    val: '0'
+  - name: OtherSide
+    val: '1'
+  lines:
+  - 97
+  - 100
+- name: ResponsiveState
+  kind: enum
+  variants:
+  - name: Responsive
+    val: '0'
+  - name: Unresponsive
+    val: '1'
+  lines:
+  - 102
+  - 105
+- name: IRPCProtocolLogger
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: logIncoming
+    type: 'method: logIncoming(msgLength: number, req: number, initiator: RequestInitiator, str: string, data?: any): void'
+  - name: logOutgoing
+    type: 'method: logOutgoing(msgLength: number, req: number, initiator: RequestInitiator, str: string, data?: any): void'
+  lines:
+  - 107
+  - 110
+- name: RPCProtocol
+  kind: struct
+  ctx: 3s
+  bases:
+  - Disposable
+  - IRPCProtocol
+  fields:
+  - name: UNRESPONSIVE_TIME
+    type: any
+    default: 3 * 1000
+  - name: _onDidChangeResponsiveState
+    type: Emitter<ResponsiveState>
+    default: this._register(new Emitter<ResponsiveState>())
+  - name: onDidChangeResponsiveState
+    type: Event<ResponsiveState>
+    default: this._onDidChangeResponsiveState.event
+  - name: _protocol
+    type: IMessagePassingProtocol
+  - name: _logger
+    type: IRPCProtocolLogger | null
+  - name: _uriTransformer
+    type: IURITransformer | null
+  - name: _uriReplacer
+    type: JSONStringifyReplacer | null
+  - name: _isDisposed
+    type: boolean
+  - name: _locals
+    type: any[]
+  - name: _proxies
+    type: any[]
+  - name: _lastMessageId
+    type: number
+  - name: _cancelInvokedHandlers
+    type: '{ [req: string]: () => void }'
+  - name: _pendingRPCReplies
+    type: '{ [msgId: string]: PendingRPCReply }'
+  - name: _responsiveState
+    type: ResponsiveState
+  - name: _unacknowledgedCount
+    type: number
+  - name: _unresponsiveTime
+    type: number
+  - name: _asyncCheckUresponsive
+    type: RunOnceScheduler
+  methods:
+  - name: constructor
+    sig: 'constructor(protocol: IMessagePassingProtocol, logger: IRPCProtocolLogger | null = null, transformer: IURITransformer | null = null)'
+    lines:
+    - 141
+    - 162
+    detail:
+      calls:
+      - Object.create
+      - createURIReplacer
+      - new RunOnceScheduler
+      - super
+      - this._protocol.onMessage
+      - this._register
+  - name: dispose
+    sig: 'dispose(): void'
+    lines:
+    - 164
+    - 175
+    detail:
+      calls:
+      - Object.keys
+      - Object.keys(this._pendingRPCReplies).forEach
+      - super.dispose
+  - name: drain
+    sig: 'drain(): Promise<void>'
+    lines:
+    - 177
+    - 182
+    detail:
+      calls:
+      - Promise.resolve
+      - this._protocol.drain
+  - name: _onWillSendRequest
+    sig: '_onWillSendRequest(req: number): void'
+    vis: private
+    lines:
+    - 184
+    - 194
+    detail:
+      calls:
+      - Date.now
+      - this._asyncCheckUresponsive.isScheduled
+      - this._asyncCheckUresponsive.schedule
+  - name: _onDidReceiveAcknowledge
+    sig: '_onDidReceiveAcknowledge(req: number): void'
+    vis: private
+    lines:
+    - 196
+    - 206
+    detail:
+      calls:
+      - Date.now
+      - this._asyncCheckUresponsive.cancel
+      - this._setResponsiveState
+  - name: _checkUnresponsive
+    sig: '_checkUnresponsive(): void'
+    vis: private
+    lines:
+    - 208
+    - 221
+    detail:
+      calls:
+      - Date.now
+      - this._asyncCheckUresponsive.schedule
+      - this._setResponsiveState
+  - name: responsiveState
+    sig: 'responsiveState(): ResponsiveState'
+    lines:
+    - 232
+    - 234
+    detail: {}
+  - name: transformIncomingURIs
+    sig: 'transformIncomingURIs(obj: T): T'
+    lines:
+    - 236
+    - 241
+    detail:
+      calls:
+      - transformIncomingURIs
+  - name: getProxy
+    sig: 'getProxy(identifier: ProxyIdentifier<T>): Proxied<T>'
+    lines:
+    - 243
+    - 249
+    detail:
+      calls:
+      - this._createProxy
+  - name: set
+    sig: 'set(identifier: ProxyIdentifier<T>, value: R): R'
+    lines:
+    - 268
+    - 271
+    detail: {}
+  - name: assertRegistered
+    sig: 'assertRegistered(identifiers: ProxyIdentifier<any>[]): void'
+    lines:
+    - 273
+    - 280
+    detail:
+      calls:
+      - new Error
+  - name: _receiveOneMessage
+    sig: '_receiveOneMessage(rawmsg: VSBuffer): void'
+    vis: private
+    lines:
+    - 282
+    - 358
+    detail:
+      calls:
+      - MessageBuffer.read
+      - MessageIO.deserializeReplyErrError
+      - MessageIO.deserializeReplyOKJSON
+      - MessageIO.deserializeReplyOKJSONWithBuffers
+      - MessageIO.deserializeReplyOKVSBuffer
+      - MessageIO.deserializeRequestJSONArgs
+      - MessageIO.deserializeRequestMixedArgs
+      - buff.readUInt32
+      - buff.readUInt8
+      - console.error
+      - this._logger?.logIncoming
+      - this._onDidReceiveAcknowledge
+      - this._receiveCancel
+      - this._receiveReply
+      - this._receiveReplyErr
+      - this._receiveRequest
+      - transformIncomingURIs
+  - name: _receiveRequest
+    sig: '_receiveRequest(msgLength: number, req: number, rpcId: number, method: string, args: any[], usesCancellationToken: boolean): void'
+    vis: private
+    lines:
+    - 360
+    - 395
+    detail:
+      calls:
+      - MessageIO.serializeAcknowledged
+      - String
+      - args.push
+      - getStringIdentifierForProxy
+      - new CancellationTokenSource
+      - promise.then
+      - this._invokeHandler
+      - this._logger?.logIncoming
+      - this._logger?.logOutgoing
+      - this._protocol.send
+  - name: _receiveReply
+    sig: '_receiveReply(msgLength: number, req: number, value: any): void'
+    vis: private
+    lines:
+    - 403
+    - 414
+    detail:
+      calls:
+      - String
+      - pendingReply.resolveOk
+      - this._logger?.logIncoming
+      - this._pendingRPCReplies.hasOwnProperty
+  - name: _receiveReplyErr
+    sig: '_receiveReplyErr(msgLength: number, req: number, value: any): void'
+    vis: private
+    lines:
+    - 416
+    - 439
+    detail:
+      calls:
+      - String
+      - new Error
+      - pendingReply.resolveErr
+      - this._logger?.logIncoming
+      - this._pendingRPCReplies.hasOwnProperty
+  - name: _invokeHandler
+    sig: '_invokeHandler(rpcId: number, methodName: string, args: any[]): Promise<any>'
+    vis: private
+    lines:
+    - 441
+    - 447
+    detail:
+      calls:
+      - Promise.reject
+      - Promise.resolve
+      - this._doInvokeHandler
+  - name: _remoteCall
+    sig: '_remoteCall(rpcId: number, methodName: string, args: any[]): Promise<any>'
+    vis: private
+    lines:
+    - 461
+    - 496
+    detail:
+      calls:
+      - CancellationToken.isCancellationToken
+      - MessageIO.serializeRequest
+      - MessageIO.serializeRequestArguments
+      - Promise.reject
+      - String
+      - args.pop
+      - cancellationToken.onCancellationRequested
+      - disposable.add
+      - errors.canceled
+      - getStringIdentifierForProxy
+      - new CanceledLazyPromise
+      - new DisposableStore
+      - new LazyPromise
+      - new PendingRPCReply
+      - this._logger?.logOutgoing
+      - this._onWillSendRequest
+      - this._protocol.send
+  lines:
+  - 117
+  - 497
+- name: PendingRPCReply
+  kind: struct
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tprivate readonly _promise: LazyPromise,\n\t\tprivate readonly _disposable: IDisposable\n\t)"
+    lines:
+    - 500
+    - 503
+    detail: {}
+  - name: resolveOk
+    sig: 'resolveOk(value: any): void'
+    lines:
+    - 505
+    - 508
+    detail:
+      calls:
+      - this._disposable.dispose
+      - this._promise.resolveOk
+  - name: resolveErr
+    sig: 'resolveErr(err: any): void'
+    lines:
+    - 510
+    - 513
+    detail:
+      calls:
+      - this._disposable.dispose
+      - this._promise.resolveErr
+  lines:
+  - 499
+  - 514
+- name: MessageBuffer
+  kind: struct
+  fields:
+  - name: _buff
+    type: VSBuffer
+  - name: _offset
+    type: number
+  - name: sizeUInt32
+    type: any
+    default: '4'
+  methods:
+  - name: alloc
+    sig: 'alloc(type: MessageType, req: number, messageSize: number): MessageBuffer'
+    decorators:
+    - static
+    lines:
+    - 518
+    - 523
+    detail:
+      calls:
+      - VSBuffer.alloc
+      - new MessageBuffer
+      - result.writeUInt32
+      - result.writeUInt8
+  - name: read
+    sig: 'read(buff: VSBuffer, offset: number): MessageBuffer'
+    decorators:
+    - static
+    lines:
+    - 525
+    - 527
+    detail:
+      calls:
+      - new MessageBuffer
+  - name: buffer
+    sig: 'buffer(): VSBuffer'
+    lines:
+    - 532
+    - 534
+    detail: {}
+  - name: sizeUInt8
+    sig: 'sizeUInt8(): number'
+    decorators:
+    - static
+    lines:
+    - 541
+    - 543
+    detail: {}
+  - name: writeUInt8
+    sig: 'writeUInt8(n: number): void'
+    lines:
+    - 547
+    - 549
+    detail:
+      calls:
+      - this._buff.writeUInt8
+  - name: readUInt8
+    sig: 'readUInt8(): number'
+    lines:
+    - 551
+    - 554
+    detail:
+      calls:
+      - this._buff.readUInt8
+  - name: writeUInt32
+    sig: 'writeUInt32(n: number): void'
+    lines:
+    - 556
+    - 558
+    detail:
+      calls:
+      - this._buff.writeUInt32BE
+  - name: readUInt32
+    sig: 'readUInt32(): number'
+    lines:
+    - 560
+    - 563
+    detail:
+      calls:
+      - this._buff.readUInt32BE
+  - name: sizeShortString
+    sig: 'sizeShortString(str: VSBuffer): number'
+    decorators:
+    - static
+    lines:
+    - 565
+    - 567
+    detail: {}
+  - name: writeShortString
+    sig: 'writeShortString(str: VSBuffer): void'
+    lines:
+    - 569
+    - 572
+    detail:
+      calls:
+      - this._buff.set
+      - this._buff.writeUInt8
+  - name: readShortString
+    sig: 'readShortString(): string'
+    lines:
+    - 574
+    - 579
+    detail:
+      calls:
+      - strBuff.toString
+      - this._buff.readUInt8
+      - this._buff.slice
+  - name: sizeLongString
+    sig: 'sizeLongString(str: VSBuffer): number'
+    decorators:
+    - static
+    lines:
+    - 581
+    - 583
+    detail: {}
+  - name: writeLongString
+    sig: 'writeLongString(str: VSBuffer): void'
+    lines:
+    - 585
+    - 588
+    detail:
+      calls:
+      - this._buff.set
+      - this._buff.writeUInt32BE
+  - name: readLongString
+    sig: 'readLongString(): string'
+    lines:
+    - 590
+    - 595
+    detail:
+      calls:
+      - strBuff.toString
+      - this._buff.readUInt32BE
+      - this._buff.slice
+  - name: writeBuffer
+    sig: 'writeBuffer(buff: VSBuffer): void'
+    lines:
+    - 597
+    - 600
+    detail:
+      calls:
+      - this._buff.set
+      - this._buff.writeUInt32BE
+  - name: sizeVSBuffer
+    sig: 'sizeVSBuffer(buff: VSBuffer): number'
+    decorators:
+    - static
+    lines:
+    - 602
+    - 604
+    detail: {}
+  - name: writeVSBuffer
+    sig: 'writeVSBuffer(buff: VSBuffer): void'
+    lines:
+    - 606
+    - 609
+    detail:
+      calls:
+      - this._buff.set
+      - this._buff.writeUInt32BE
+  - name: readVSBuffer
+    sig: 'readVSBuffer(): VSBuffer'
+    lines:
+    - 611
+    - 615
+    detail:
+      calls:
+      - this._buff.readUInt32BE
+      - this._buff.slice
+  - name: sizeMixedArray
+    sig: 'sizeMixedArray(arr: readonly MixedArg[]): number'
+    decorators:
+    - static
+    lines:
+    - 617
+    - 643
+    detail:
+      calls:
+      - this.sizeLongString
+      - this.sizeVSBuffer
+  - name: writeMixedArray
+    sig: 'writeMixedArray(arr: readonly MixedArg[]): void'
+    lines:
+    - 645
+    - 671
+    detail:
+      calls:
+      - this._buff.writeUInt8
+      - this.writeBuffer
+      - this.writeLongString
+      - this.writeUInt32
+      - this.writeUInt8
+      - this.writeVSBuffer
+  - name: readMixedArray
+    sig: 'readMixedArray(): Array<string | VSBuffer | SerializableObjectWithBuffers<any> | undefined>'
+    lines:
+    - 673
+    - 701
+    detail:
+      calls:
+      - buffers.push
+      - new Array
+      - new SerializableObjectWithBuffers
+      - parseJsonAndRestoreBufferRefs
+      - this._buff.readUInt8
+      - this.readLongString
+      - this.readUInt32
+      - this.readUInt8
+      - this.readVSBuffer
+  lines:
+  - 516
+  - 702
+- name: SerializedRequestArgumentType
+  kind: enum
+  variants:
+  - name: Simple
+  - name: Mixed
+  lines:
+  - 704
+  - 707
+- name: SerializedRequestArguments
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 709
+  - 711
+- name: MessageIO
+  kind: struct
+  methods:
+  - name: serializeRequestArguments
+    sig: 'serializeRequestArguments(args: any[], replacer: JSONStringifyReplacer | null): SerializedRequestArguments'
+    decorators:
+    - static
+    lines:
+    - 731
+    - 756
+    detail:
+      calls:
+      - VSBuffer.fromString
+      - stringify
+      - stringifyJsonWithBufferRefs
+      - this._useMixedArgSerialization
+  - name: serializeRequest
+    sig: 'serializeRequest(req: number, rpcId: number, method: string, serializedArgs: SerializedRequestArguments, usesCancellationToken: boolean): VSBuffer'
+    decorators:
+    - static
+    lines:
+    - 758
+    - 765
+    detail:
+      calls:
+      - this._requestJSONArgs
+      - this._requestMixedArgs
+  - name: _requestJSONArgs
+    sig: '_requestJSONArgs(req: number, rpcId: number, method: string, args: string, usesCancellationToken: boolean): VSBuffer'
+    vis: private
+    decorators:
+    - static
+    lines:
+    - 767
+    - 781
+    detail:
+      calls:
+      - MessageBuffer.alloc
+      - MessageBuffer.sizeLongString
+      - MessageBuffer.sizeShortString
+      - MessageBuffer.sizeUInt8
+      - VSBuffer.fromString
+      - result.writeLongString
+      - result.writeShortString
+      - result.writeUInt8
+  - name: deserializeRequestJSONArgs
+    sig: 'deserializeRequestJSONArgs(buff: MessageBuffer): { rpcId: number; method: string; args: any[] }'
+    decorators:
+    - static
+    lines:
+    - 783
+    - 792
+    detail:
+      calls:
+      - JSON.parse
+      - buff.readLongString
+      - buff.readShortString
+      - buff.readUInt8
+  - name: _requestMixedArgs
+    sig: '_requestMixedArgs(req: number, rpcId: number, method: string, args: readonly MixedArg[], usesCancellationToken: boolean): VSBuffer'
+    vis: private
+    decorators:
+    - static
+    lines:
+    - 794
+    - 807
+    detail:
+      calls:
+      - MessageBuffer.alloc
+      - MessageBuffer.sizeMixedArray
+      - MessageBuffer.sizeShortString
+      - MessageBuffer.sizeUInt8
+      - VSBuffer.fromString
+      - result.writeMixedArray
+      - result.writeShortString
+      - result.writeUInt8
+  - name: deserializeRequestMixedArgs
+    sig: 'deserializeRequestMixedArgs(buff: MessageBuffer): { rpcId: number; method: string; args: any[] }'
+    decorators:
+    - static
+    lines:
+    - 809
+    - 827
+    detail:
+      calls:
+      - JSON.parse
+      - buff.readMixedArray
+      - buff.readShortString
+      - buff.readUInt8
+      - new Array
+  - name: serializeAcknowledged
+    sig: 'serializeAcknowledged(req: number): VSBuffer'
+    decorators:
+    - static
+    lines:
+    - 829
+    - 831
+    detail:
+      calls:
+      - MessageBuffer.alloc
+  - name: serializeCancel
+    sig: 'serializeCancel(req: number): VSBuffer'
+    decorators:
+    - static
+    lines:
+    - 833
+    - 835
+    detail:
+      calls:
+      - MessageBuffer.alloc
+  - name: serializeReplyOK
+    sig: 'serializeReplyOK(req: number, res: any, replacer: JSONStringifyReplacer | null): VSBuffer'
+    decorators:
+    - static
+    lines:
+    - 837
+    - 848
+    detail:
+      calls:
+      - safeStringify
+      - stringifyJsonWithBufferRefs
+      - this._serializeReplyOKEmpty
+      - this._serializeReplyOKJSON
+      - this._serializeReplyOKJSONWithBuffers
+      - this._serializeReplyOKVSBuffer
+  - name: _serializeReplyOKVSBuffer
+    sig: '_serializeReplyOKVSBuffer(req: number, res: VSBuffer): VSBuffer'
+    vis: private
+    decorators:
+    - static
+    lines:
+    - 854
+    - 861
+    detail:
+      calls:
+      - MessageBuffer.alloc
+      - MessageBuffer.sizeVSBuffer
+      - result.writeVSBuffer
+  - name: deserializeReplyOKVSBuffer
+    sig: 'deserializeReplyOKVSBuffer(buff: MessageBuffer): VSBuffer'
+    decorators:
+    - static
+    lines:
+    - 863
+    - 865
+    detail:
+      calls:
+      - buff.readVSBuffer
+  - name: _serializeReplyOKJSON
+    sig: '_serializeReplyOKJSON(req: number, res: string): VSBuffer'
+    vis: private
+    decorators:
+    - static
+    lines:
+    - 867
+    - 876
+    detail:
+      calls:
+      - MessageBuffer.alloc
+      - MessageBuffer.sizeLongString
+      - VSBuffer.fromString
+      - result.writeLongString
+  - name: _serializeReplyOKJSONWithBuffers
+    sig: '_serializeReplyOKJSONWithBuffers(req: number, res: string, buffers: readonly VSBuffer[]): VSBuffer'
+    vis: private
+    decorators:
+    - static
+    lines:
+    - 878
+    - 896
+    detail:
+      calls:
+      - MessageBuffer.alloc
+      - MessageBuffer.sizeLongString
+      - MessageBuffer.sizeVSBuffer
+      - VSBuffer.fromString
+      - result.writeBuffer
+      - result.writeLongString
+      - result.writeUInt32
+  - name: deserializeReplyOKJSON
+    sig: 'deserializeReplyOKJSON(buff: MessageBuffer): any'
+    decorators:
+    - static
+    lines:
+    - 898
+    - 901
+    detail:
+      calls:
+      - JSON.parse
+      - buff.readLongString
+  - name: deserializeReplyOKJSONWithBuffers
+    sig: 'deserializeReplyOKJSONWithBuffers(buff: MessageBuffer, uriTransformer: IURITransformer | null): SerializableObjectWithBuffers<any>'
+    decorators:
+    - static
+    lines:
+    - 903
+    - 913
+    detail:
+      calls:
+      - buff.readLongString
+      - buff.readUInt32
+      - buff.readVSBuffer
+      - buffers.push
+      - new SerializableObjectWithBuffers
+      - parseJsonAndRestoreBufferRefs
+  - name: serializeReplyErr
+    sig: 'serializeReplyErr(req: number, err: any): VSBuffer'
+    decorators:
+    - static
+    lines:
+    - 915
+    - 928
+    detail:
+      calls:
+      - MessageBuffer.alloc
+      - MessageBuffer.sizeLongString
+      - VSBuffer.fromString
+      - errors.transformErrorForSerialization
+      - result.writeLongString
+      - safeStringify
+      - this._serializeReplyErrEmpty
+  - name: deserializeReplyErrError
+    sig: 'deserializeReplyErrError(buff: MessageBuffer): Error'
+    decorators:
+    - static
+    lines:
+    - 930
+    - 933
+    detail:
+      calls:
+      - JSON.parse
+      - buff.readLongString
+  lines:
+  - 714
+  - 938
+- name: MessageType
+  kind: enum
+  variants:
+  - name: RequestJSONArgs
+    val: '1'
+  - name: RequestJSONArgsWithCancellation
+    val: '2'
+  - name: RequestMixedArgs
+    val: '3'
+  - name: RequestMixedArgsWithCancellation
+    val: '4'
+  - name: Acknowledged
+    val: '5'
+  - name: Cancel
+    val: '6'
+  - name: ReplyOKEmpty
+    val: '7'
+  - name: ReplyOKVSBuffer
+    val: '8'
+  - name: ReplyOKJSON
+    val: '9'
+  - name: ReplyOKJSONWithBuffers
+    val: '10'
+  - name: ReplyErrError
+    val: '11'
+  - name: ReplyErrEmpty
+    val: '12'
+  lines:
+  - 940
+  - 953
+- name: ArgType
+  kind: enum
+  variants:
+  - name: String
+    val: '1'
+  - name: VSBuffer
+    val: '2'
+  - name: SerializedObjectWithBuffers
+    val: '3'
+  - name: Undefined
+    val: '4'
+  lines:
+  - 955
+  - 960
+- name: MixedArg
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 963
+  - 968
+functions:
+- name: safeStringify
+  sig: 'safeStringify(obj: any, replacer: JSONStringifyReplacer | null): string'
+  lines:
+  - 24
+  - 30
+  detail:
+    calls:
+    - JSON.stringify
+- name: stringifyJsonWithBufferRefs
+  sig: 'stringifyJsonWithBufferRefs(obj: T, replacer: JSONStringifyReplacer | null = null, useSafeStringify = false): StringifiedJsonWithBufferRefs'
+  lines:
+  - 42
+  - 62
+  detail:
+    calls:
+    - '(useSafeStringify ? safeStringify : JSON.stringify)'
+- name: parseJsonAndRestoreBufferRefs
+  sig: 'parseJsonAndRestoreBufferRefs(jsonString: string, buffers: readonly VSBuffer[], uriTransformer: IURITransformer | null): any'
+  lines:
+  - 64
+  - 78
+  detail:
+    calls:
+    - JSON.parse
+- name: stringify
+  sig: 'stringify(obj: any, replacer: JSONStringifyReplacer | null): string'
+  lines:
+  - 81
+  - 83
+  detail:
+    calls:
+    - JSON.stringify
+- name: createURIReplacer
+  sig: 'createURIReplacer(transformer: IURITransformer | null): JSONStringifyReplacer | null'
+  lines:
+  - 85
+  - 95
+  detail: {}
+- name: noop
+  sig: noop()
+  lines:
+  - 112
+  - 112
+exports:
+- name: JSONStringifyReplacer
+  kind: type
+- name: StringifiedJsonWithBufferRefs
+  kind: type
+- name: RequestInitiator
+  kind: type
+- name: ResponsiveState
+  kind: type
+- name: IRPCProtocolLogger
+  kind: type
+- name: RPCProtocol
+  kind: type
+- name: PendingRPCReply
+  kind: type
+- name: MessageBuffer
+  kind: type
+- name: SerializedRequestArgumentType
+  kind: type
+- name: SerializedRequestArguments
+  kind: type
+- name: MessageIO
+  kind: type
+- name: MessageType
+  kind: type
+- name: ArgType
+  kind: type
+- name: MixedArg
+  kind: type
+- name: safeStringify
+  kind: func
+- name: stringifyJsonWithBufferRefs
+  kind: func
+- name: parseJsonAndRestoreBufferRefs
+  kind: func
+- name: stringify
+  kind: func
+- name: createURIReplacer
+  kind: func
+- name: noop
+  kind: func
+- name: refSymbolName
+  kind: data
+- name: undefinedRef
+  kind: data
+- name: _RPCProtocolSymbol
+  kind: data
+- name: _RPCProxySymbol
+  kind: data

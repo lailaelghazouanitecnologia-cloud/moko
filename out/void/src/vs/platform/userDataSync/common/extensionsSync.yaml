@@ -1,0 +1,465 @@
+## Roska File Descriptor — common/extensionsSync.ts
+file: common/extensionsSync.ts
+lines: 640
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: ../../../base/common/async.js.Promises
+- sym: ../../../base/common/cancellation.js.CancellationToken
+- sym: ../../../base/common/collections.js.IStringDictionary
+- sym: ../../../base/common/errors.js.getErrorMessage
+- sym: ../../../base/common/event.js.Event
+- sym: ../../../base/common/jsonFormatter.js.toFormattedString
+- sym: ../../../base/common/lifecycle.js.DisposableStore
+- sym: ../../../base/common/strings.js.compare
+- sym: ../../../base/common/uri.js.URI
+- sym: ../../configuration/common/configuration.js.IConfigurationService
+- sym: ../../environment/common/environment.js.IEnvironmentService
+- sym: ../../extensionManagement/common/extensionEnablementService.js.GlobalExtensionEnablementService
+- sym: ../../extensionManagement/common/extensionManagement.js.IExtensionGalleryService
+- sym: ../../extensionManagement/common/extensionManagement.js.IExtensionManagementService
+- sym: ../../extensionManagement/common/extensionManagement.js.IGlobalExtensionEnablementService
+- sym: ../../extensionManagement/common/extensionManagement.js.ILocalExtension
+- sym: ../../extensionManagement/common/extensionManagement.js.ExtensionManagementError
+- sym: ../../extensionManagement/common/extensionManagement.js.ExtensionManagementErrorCode
+- sym: ../../extensionManagement/common/extensionManagement.js.IGalleryExtension
+- sym: ../../extensionManagement/common/extensionManagement.js.DISABLED_EXTENSIONS_STORAGE_PATH
+- sym: ../../extensionManagement/common/extensionManagement.js.EXTENSION_INSTALL_SKIP_WALKTHROUGH_CONTEXT
+- sym: ../../extensionManagement/common/extensionManagement.js.EXTENSION_INSTALL_SOURCE_CONTEXT
+- sym: ../../extensionManagement/common/extensionManagement.js.InstallExtensionInfo
+- sym: ../../extensionManagement/common/extensionManagement.js.ExtensionInstallSource
+- sym: ../../extensionManagement/common/extensionManagement.js.EXTENSION_INSTALL_SKIP_PUBLISHER_TRUST_CONTEXT
+- sym: ../../extensionManagement/common/extensionManagementUtil.js.areSameExtensions
+- sym: ../../extensionManagement/common/extensionStorage.js.ExtensionStorageService
+- sym: ../../extensionManagement/common/extensionStorage.js.IExtensionStorageService
+- sym: ../../extensions/common/extensions.js.ExtensionType
+- sym: ../../extensions/common/extensions.js.IExtensionIdentifier
+- sym: ../../extensions/common/extensions.js.isApplicationScopedExtension
+- sym: ../../files/common/files.js.IFileService
+- sym: ../../instantiation/common/instantiation.js.IInstantiationService
+- sym: ../../instantiation/common/serviceCollection.js.ServiceCollection
+- sym: ../../log/common/log.js.ILogService
+- sym: ../../storage/common/storage.js.IStorageService
+- sym: ../../telemetry/common/telemetry.js.ITelemetryService
+- sym: ../../uriIdentity/common/uriIdentity.js.IUriIdentityService
+- sym: ../../userDataProfile/common/userDataProfile.js.IUserDataProfile
+- sym: ../../userDataProfile/common/userDataProfile.js.IUserDataProfilesService
+- sym: ./abstractSynchronizer.js.AbstractInitializer
+- sym: ./abstractSynchronizer.js.AbstractSynchroniser
+- sym: ./abstractSynchronizer.js.getSyncResourceLogLabel
+- sym: ./abstractSynchronizer.js.IAcceptResult
+- sym: ./abstractSynchronizer.js.IMergeResult
+- sym: ./abstractSynchronizer.js.IResourcePreview
+- sym: ./extensionsMerge.js.IMergeResult as IExtensionMergeResult
+- sym: ./extensionsMerge.js.merge
+- sym: ./ignoredExtensions.js.IIgnoredExtensionsManagementService
+- sym: ./userDataSync.js.Change
+- sym: ./userDataSync.js.IRemoteUserData
+- sym: ./userDataSync.js.ISyncData
+- sym: ./userDataSync.js.ISyncExtension
+- sym: ./userDataSync.js.IUserDataSyncLocalStoreService
+- sym: ./userDataSync.js.IUserDataSynchroniser
+- sym: ./userDataSync.js.IUserDataSyncLogService
+- sym: ./userDataSync.js.IUserDataSyncEnablementService
+- sym: ./userDataSync.js.IUserDataSyncStoreService
+- sym: ./userDataSync.js.SyncResource
+- sym: ./userDataSync.js.USER_DATA_SYNC_SCHEME
+- sym: ./userDataSync.js.ILocalSyncExtension
+- sym: ../../userDataProfile/common/userDataProfileStorageService.js.IUserDataProfileStorageService
+types:
+- name: IExtensionResourceMergeResult
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 36
+  - 36
+- name: IExtensionResourcePreview
+  kind: trait
+  bases:
+  - IResourcePreview
+  decorators:
+  - interface
+  fields:
+  - name: readonly
+    type: ILocalSyncExtension[]
+  - name: readonly
+    type: ISyncExtension[] | null
+  - name: readonly
+    type: ISyncExtension[]
+  - name: readonly
+    type: IExtensionIdentifier[] | null
+  - name: readonly
+    type: IExtensionResourceMergeResult
+  lines:
+  - 38
+  - 44
+- name: ILastSyncUserData
+  kind: trait
+  bases:
+  - IRemoteUserData
+  decorators:
+  - interface
+  fields:
+  - name: skippedExtensions
+    type: ISyncExtension[] | undefined
+  - name: builtinExtensions
+    type: IExtensionIdentifier[] | undefined
+  lines:
+  - 46
+  - 49
+- name: ExtensionsSynchroniser
+  kind: struct
+  ctx: 'Version 3 - Introduce installed property to skip installing built in extensions protected readonly version: number = 3;'
+  bases:
+  - AbstractSynchroniser
+  - IUserDataSynchroniser
+  fields:
+  - name: version
+    type: number
+    default: '6'
+  - name: previewResource
+    type: URI
+    default: this.extUri.joinPath(this.syncPreviewFolder, 'extensions.json')
+  - name: baseResource
+    type: URI
+    default: 'this.previewResource.with({ scheme: USER_DATA_SYNC_SCHEME, authority: ''base'' })'
+  - name: localResource
+    type: URI
+    default: 'this.previewResource.with({ scheme: USER_DATA_SYNC_SCHEME, authority: ''local'' })'
+  - name: remoteResource
+    type: URI
+    default: 'this.previewResource.with({ scheme: USER_DATA_SYNC_SCHEME, authority: ''remote'' }...'
+  - name: acceptedResource
+    type: URI
+    default: 'this.previewResource.with({ scheme: USER_DATA_SYNC_SCHEME, authority: ''accepted''...'
+  - name: localExtensionsProvider
+    type: LocalExtensionsProvider
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\t// profileLocation changes for default profile\n\t\tprofile: IUserDataProfile,\n\t\tcollection: string | undefined,\n\t\t@IEnvironmentService environmentService: IEnvironmentService,\n\t\t@IFileService fileService: IFileService,\n\t\t@IStorageService storageService: IStorageService,\n\t\t@IUserDataSyncStoreService userDataSyncStoreService: IUserDataSyncStoreService,\n\t\t@IUserDataSyncLocalStoreService userDataSyncLocalStoreService: IUserDataSyncLocalStoreService,\n\t\t@IExtensionManagementService private readonly extensionManagementService: IExtensionManagementService,\n\t\t@IIgnoredExtensionsManagementService private readonly ignoredExtensionsManagementService: IIgnoredExtensionsManagementService,\n\t\t@IUserDataSyncLogService logService: IUserDataSyncLogService,\n\t\t@IConfigurationService configurationService: IConfigurationService,\n\t\t@IUserDataSyncEnablementService userDataSyncEnablementService: IUserDataSyncEnablementService,\n\t\t@ITelemetryService telemetryService: ITelemetryService,\n\t\t@IExtensionStorageService extensionStorageService: IExtensionStorageService,\n\t\t@IUriIdentityService uriIdentityService: IUriIdentityService,\n\t\t@IUserDataProfileStorageService userDataProfileStorageService: IUserDataProfileStorageService,\n\t\t@IInstantiationService private readonly instantiationService: IInstantiationService,\n\t)"
+    lines:
+    - 115
+    - 143
+    detail:
+      calls:
+      - Event.any
+      - "Event.any<any>(\n\t\t\t\tEvent.filter(this.extensionManagementService.onDidInstallExtensions, (e => e.som..."
+      - Event.filter
+      - super
+      - this._register
+      - this.instantiationService.createInstance
+  - name: generateSyncPreview
+    sig: 'generateSyncPreview(remoteUserData: IRemoteUserData, lastSyncUserData: ILastSyncUserData | null): Promise<IExtensionResourcePreview[]>'
+    is_async: true
+    vis: protected
+    lines:
+    - 145
+    - 185
+    detail:
+      calls:
+      - merge
+      - parseAndMigrateExtensions
+      - this.getPreviewContent
+      - this.localExtensionsProvider.getLocalExtensions
+      - this.logService.trace
+      - this.stringify
+  - name: hasRemoteChanged
+    sig: 'hasRemoteChanged(lastSyncUserData: ILastSyncUserData): Promise<boolean>'
+    is_async: true
+    vis: protected
+    lines:
+    - 187
+    - 192
+    detail:
+      calls:
+      - merge
+      - parseAndMigrateExtensions
+      - this.localExtensionsProvider.getLocalExtensions
+  - name: getPreviewContent
+    sig: 'getPreviewContent(localExtensions: ISyncExtension[], added: ISyncExtension[], updated: ISyncExtension[], removed: IExtensionIdentifier[]): string'
+    vis: private
+    lines:
+    - 194
+    - 216
+    detail:
+      calls:
+      - idsOrUUIDs.has
+      - localExtension.identifier.id.toLowerCase
+      - new Set
+      - preview.forEach
+      - preview.push
+      - removed.forEach
+      - this.stringify
+  - name: getAcceptResult
+    sig: 'getAcceptResult(resourcePreview: IExtensionResourcePreview, resource: URI, content: string | null | undefined, token: CancellationToken): Promise<IExtensionResourceMergeResult>'
+    is_async: true
+    vis: protected
+    lines:
+    - 222
+    - 240
+    detail:
+      calls:
+      - new Error
+      - resource.toString
+      - this.acceptLocal
+      - this.acceptRemote
+      - this.extUri.isEqual
+  - name: acceptLocal
+    sig: 'acceptLocal(resourcePreview: IExtensionResourcePreview): Promise<IExtensionResourceMergeResult>'
+    is_async: true
+    vis: private
+    lines:
+    - 242
+    - 255
+    detail:
+      calls:
+      - JSON.parse
+      - merge
+      - this.extensionManagementService.getInstalled
+      - this.ignoredExtensionsManagementService.getIgnoredExtensions
+  - name: acceptRemote
+    sig: 'acceptRemote(resourcePreview: IExtensionResourcePreview): Promise<IExtensionResourceMergeResult>'
+    is_async: true
+    vis: private
+    lines:
+    - 257
+    - 280
+    detail:
+      calls:
+      - JSON.parse
+      - merge
+      - this.extensionManagementService.getInstalled
+      - this.ignoredExtensionsManagementService.getIgnoredExtensions
+  - name: applyResult
+    sig: 'applyResult(remoteUserData: IRemoteUserData, lastSyncUserData: IRemoteUserData | null, resourcePreviews: [IExtensionResourcePreview, IExtensionResourceMergeResult][], force: boolean): Promise<void>'
+    is_async: true
+    vis: protected
+    lines:
+    - 282
+    - 310
+    detail:
+      calls:
+      - JSON.stringify
+      - remote.added.map
+      - remote.removed.map
+      - remote.updated.map
+      - skippedExtensions.map
+      - this.backupLocal
+      - this.computeBuiltinExtensions
+      - this.localExtensionsProvider.updateLocalExtensions
+      - this.logService.info
+      - this.logService.trace
+      - this.updateLastSyncUserData
+      - this.updateRemoteUserData
+  - name: computeBuiltinExtensions
+    sig: 'computeBuiltinExtensions(localExtensions: ILocalSyncExtension[], previousBuiltinExtensions: IExtensionIdentifier[] | null): IExtensionIdentifier[]'
+    vis: private
+    lines:
+    - 312
+    - 330
+    detail:
+      calls:
+      - builtinExtension.id.toLowerCase
+      - builtinExtensions.push
+      - localExtension.identifier.id.toLowerCase
+      - localExtensionsSet.add
+      - localExtensionsSet.has
+      - new Set
+  - name: resolveContent
+    sig: 'resolveContent(uri: URI): Promise<string | null>'
+    is_async: true
+    lines:
+    - 332
+    - 342
+    detail:
+      calls:
+      - JSON.parse
+      - this.extUri.isEqual
+      - this.resolvePreviewContent
+      - this.stringify
+  - name: hasLocalData
+    sig: 'hasLocalData(): Promise<boolean>'
+    is_async: true
+    lines:
+    - 348
+    - 358
+    detail:
+      calls:
+      - localExtensions.some
+      - this.localExtensionsProvider.getLocalExtensions
+  lines:
+  - 96
+  - 360
+- name: LocalExtensionsProvider
+  kind: struct
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\t@IExtensionManagementService private readonly extensionManagementService: IExtensionManagementService,\n\t\t@IUserDataProfileStorageService private readonly userDataProfileStorageService: IUserDataProfileStorageService,\n\t\t@IExtensionGalleryService private readonly extensionGalleryService: IExtensionGalleryService,\n\t\t@IIgnoredExtensionsManagementService private readonly ignoredExtensionsManagementService: IIgnoredExtensionsManagementService,\n\t\t@IInstantiationService private readonly instantiationService: IInstantiationService,\n\t\t@IUserDataSyncLogService private readonly logService: IUserDataSyncLogService,\n\t)"
+    lines:
+    - 364
+    - 371
+    detail: {}
+  - name: getLocalExtensions
+    sig: 'getLocalExtensions(profile: IUserDataProfile): Promise<{ localExtensions: ILocalSyncExtension[]; ignoredExtensions: string[] }>'
+    is_async: true
+    lines:
+    - 373
+    - 409
+    detail:
+      calls:
+      - this.extensionManagementService.getInstalled
+      - this.ignoredExtensionsManagementService.getIgnoredExtensions
+      - this.withProfileScopedServices
+  - name: updateLocalExtensions
+    sig: 'updateLocalExtensions(added: ISyncExtension[], removed: IExtensionIdentifier[], updated: ISyncExtension[], skippedExtensions: ISyncExtension[], profile: IUserDataProfile): Promise<ISyncExtension[]>'
+    is_async: true
+    lines:
+    - 411
+    - 558
+    detail:
+      calls:
+      - Promises.settled
+      - '[ExtensionManagementErrorCode.Incompatible, ExtensionManagementErrorCode.IncompatibleApi, ExtensionM...'
+      - addToSkipped.push
+      - extensionsToRemove.map
+      - getSyncResourceLogLabel
+      - identifier.id.toLowerCase
+      - installedExtensions.filter
+      - new Map
+      - newSkippedExtensions.push
+      - newSkippedExtensions.some
+      - removeFromSkipped.push
+      - removeFromSkipped.some
+      - syncExtensionsToInstall.get
+      - this.extensionManagementService.getInstalled
+      - this.extensionManagementService.installGalleryExtensions
+      - this.logService.error
+      - this.logService.info
+      - this.withProfileScopedServices
+  - name: updateExtensionState
+    sig: 'updateExtensionState(state: IStringDictionary<any>, extension: ILocalExtension | IGalleryExtension, version: string | undefined, extensionStorageService: IExtensionStorageService): void'
+    vis: private
+    lines:
+    - 560
+    - 569
+    detail:
+      calls:
+      - Object.keys
+      - Object.keys(state).forEach
+      - extensionStorageService.getExtensionState
+      - extensionStorageService.getKeysForSync
+      - extensionStorageService.setExtensionState
+      - keys.forEach
+  - name: withProfileScopedServices
+    sig: 'withProfileScopedServices(profile: IUserDataProfile, fn: (extensionEnablementService: IGlobalExtensionEnablementService, extensionStorageService: IExtensionStorageService) => Promise<T>): Promise<T>'
+    is_async: true
+    vis: private
+    lines:
+    - 571
+    - 584
+    detail:
+      calls:
+      - this.userDataProfileStorageService.withProfileScopedStorageService
+  lines:
+  - 362
+  - 586
+- name: IExtensionsInitializerPreviewResult
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: readonly
+    type: ILocalExtension[]
+  - name: readonly
+    type: IExtensionIdentifier[]
+  - name: readonly
+    type: '(IExtensionIdentifier & { preRelease: boolean })[]'
+  - name: readonly
+    type: ISyncExtension[]
+  lines:
+  - 588
+  - 593
+- name: AbstractExtensionsInitializer
+  kind: trait
+  bases:
+  - AbstractInitializer
+  decorators:
+  - abstract
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\t@IExtensionManagementService protected readonly extensionManagementService: IExtensionManagementService,\n\t\t@IIgnoredExtensionsManagementService private readonly ignoredExtensionsManagementService: IIgnoredExtensionsManagementService,\n\t\t@IFileService fileService: IFileService,\n\t\t@IUserDataProfilesService userDataProfilesService: IUserDataProfilesService,\n\t\t@IEnvironmentService environmentService: IEnvironmentService,\n\t\t@ILogService logService: ILogService,\n\t\t@IStorageService storageService: IStorageService,\n\t\t@IUriIdentityService uriIdentityService: IUriIdentityService,\n\t)"
+    lines:
+    - 597
+    - 608
+    detail:
+      calls:
+      - super
+  - name: generatePreview
+    sig: 'generatePreview(remoteExtensions: ISyncExtension[], localExtensions: ILocalExtension[]): IExtensionsInitializerPreviewResult'
+    vis: protected
+    lines:
+    - 614
+    - 638
+    detail:
+      calls:
+      - disabledExtensions.push
+      - installedExtensions.push
+      - localExtensions.find
+      - newExtensions.push
+      - this.ignoredExtensionsManagementService.hasToNeverSyncExtension
+  lines:
+  - 595
+  - 640
+functions:
+- name: parseAndMigrateExtensions
+  sig: 'parseAndMigrateExtensions(syncData: ISyncData, extensionManagementService: IExtensionManagementService): Promise<ISyncExtension[]>'
+  is_async: true
+  lines:
+  - 51
+  - 77
+  detail:
+    calls:
+    - (await extensionManagementService.getInstalled(ExtensionType.System)).filter
+    - JSON.parse
+    - builtinExtensions.every
+    - extensionManagementService.getInstalled
+- name: parseExtensions
+  sig: 'parseExtensions(syncData: ISyncData): ISyncExtension[]'
+  lines:
+  - 79
+  - 81
+  detail:
+    calls:
+    - JSON.parse
+- name: stringify
+  sig: 'stringify(extensions: ISyncExtension[], format: boolean): string'
+  lines:
+  - 83
+  - 94
+  detail:
+    calls:
+    - JSON.stringify
+    - extensions.sort
+    - toFormattedString
+exports:
+- name: IExtensionResourceMergeResult
+  kind: type
+- name: IExtensionResourcePreview
+  kind: type
+- name: ILastSyncUserData
+  kind: type
+- name: ExtensionsSynchroniser
+  kind: type
+- name: LocalExtensionsProvider
+  kind: type
+- name: IExtensionsInitializerPreviewResult
+  kind: type
+- name: AbstractExtensionsInitializer
+  kind: type
+- name: parseAndMigrateExtensions
+  kind: func
+- name: parseExtensions
+  kind: func
+- name: stringify
+  kind: func

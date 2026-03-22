@@ -1,0 +1,258 @@
+## Roska File Descriptor — node/extensionHostConnection.ts
+file: node/extensionHostConnection.ts
+lines: 353
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: child_process.cp
+- sym: net.net
+- sym: ../../base/common/buffer.js.VSBuffer
+- sym: ../../base/common/event.js.Emitter
+- sym: ../../base/common/event.js.Event
+- sym: ../../base/common/lifecycle.js.Disposable
+- sym: ../../base/common/lifecycle.js.DisposableStore
+- sym: ../../base/common/lifecycle.js.toDisposable
+- sym: ../../base/common/network.js.FileAccess
+- sym: ../../base/common/path.js.delimiter
+- sym: ../../base/common/path.js.join
+- sym: ../../base/common/platform.js.IProcessEnvironment
+- sym: ../../base/common/platform.js.isWindows
+- sym: ../../base/common/processes.js.removeDangerousEnvVariables
+- sym: ../../base/parts/ipc/node/ipc.net.js.createRandomIPCHandle
+- sym: ../../base/parts/ipc/node/ipc.net.js.NodeSocket
+- sym: ../../base/parts/ipc/node/ipc.net.js.WebSocketNodeSocket
+- sym: ../../platform/configuration/common/configuration.js.IConfigurationService
+- sym: ../../platform/log/common/log.js.ILogService
+- sym: ../../platform/remote/common/remoteAgentConnection.js.IRemoteExtensionHostStartParams
+- sym: ../../platform/shell/node/shellEnv.js.getResolvedShellEnv
+- sym: ./extensionHostStatusService.js.IExtensionHostStatusService
+- sym: ./remoteLanguagePacks.js.getNLSConfiguration
+- sym: ./serverEnvironmentService.js.IServerEnvironmentService
+- sym: ../../workbench/services/extensions/common/extensionHostEnv.js.IPCExtHostConnection
+- sym: ../../workbench/services/extensions/common/extensionHostEnv.js.SocketExtHostConnection
+- sym: ../../workbench/services/extensions/common/extensionHostEnv.js.writeExtHostConnection
+- sym: ../../workbench/services/extensions/common/extensionHostProtocol.js.IExtHostReadyMessage
+- sym: ../../workbench/services/extensions/common/extensionHostProtocol.js.IExtHostReduceGraceTimeMessage
+- sym: ../../workbench/services/extensions/common/extensionHostProtocol.js.IExtHostSocketMessage
+types:
+- name: ConnectionData
+  kind: struct
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tpublic readonly socket: NodeSocket | WebSocketNodeSocket,\n\t\tpublic readonly initialDataChunk: VSBuffer\n\t)"
+    lines:
+    - 71
+    - 74
+    detail: {}
+  - name: socketDrain
+    sig: 'socketDrain(): Promise<void>'
+    lines:
+    - 76
+    - 78
+    detail:
+      calls:
+      - this.socket.drain
+  - name: toIExtHostSocketMessage
+    sig: 'toIExtHostSocketMessage(): IExtHostSocketMessage'
+    lines:
+    - 80
+    - 103
+    detail:
+      calls:
+      - (<Buffer>inflateBytes.buffer).toString
+      - (<Buffer>this.initialDataChunk.buffer).toString
+      - VSBuffer.alloc
+  lines:
+  - 70
+  - 104
+- name: ExtensionHostConnection
+  kind: struct
+  bases:
+  - Disposable
+  fields:
+  - name: _onClose
+    type: any
+    default: new Emitter<void>()
+  - name: onClose
+    type: Event<void>
+    default: this._onClose.event
+  - name: _canSendSocket
+    type: boolean
+  - name: _disposed
+    type: boolean
+  - name: _remoteAddress
+    type: string
+  - name: _extensionHostProcess
+    type: cp.ChildProcess | null
+  - name: _connectionData
+    type: ConnectionData | null
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tprivate readonly _reconnectionToken: string,\n\t\tremoteAddress: string,\n\t\tsocket: NodeSocket | WebSocketNodeSocket,\n\t\tinitialDataChunk: VSBuffer,\n\t\t@IServerEnvironmentService private readonly _environmentService: IServerEnvironmentService,\n\t\t@ILogService private readonly _logService: ILogService,\n\t\t@IExtensionHostStatusService private readonly _extensionHostStatusService: IExtensionHostStatusService,\n\t\t@IConfigurationService private readonly _configurationService: IConfigurationService\n\t)"
+    lines:
+    - 117
+    - 135
+    detail:
+      calls:
+      - new ConnectionData
+      - super
+      - this._log
+  - name: dispose
+    sig: 'dispose(): void'
+    lines:
+    - 137
+    - 140
+    detail:
+      calls:
+      - super.dispose
+      - this._cleanResources
+  - name: _pipeSockets
+    sig: '_pipeSockets(extHostSocket: net.Socket, connectionData: ConnectionData): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 154
+    - 181
+    detail:
+      calls:
+      - Event.fromNodeEventEmitter
+      - Event.fromNodeEventEmitter<Buffer>(extHostSocket, 'data')
+      - Event.fromNodeEventEmitter<void>(extHostSocket, 'close')
+      - Event.fromNodeEventEmitter<void>(extHostSocket, 'end')
+      - Event.fromNodeEventEmitter<void>(extHostSocket, 'error')
+      - connectionData.socket.onClose
+      - connectionData.socket.onData
+      - connectionData.socket.onEnd
+      - disposables.add
+      - extHostSocket.write
+      - new DisposableStore
+      - toDisposable
+  - name: _sendSocketToExtensionHost
+    sig: '_sendSocketToExtensionHost(extensionHostProcess: cp.ChildProcess, connectionData: ConnectionData): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 183
+    - 194
+    detail:
+      calls:
+      - connectionData.socketDrain
+      - connectionData.toIExtHostSocketMessage
+      - extensionHostProcess.send
+  - name: shortenReconnectionGraceTimeIfNecessary
+    sig: 'shortenReconnectionGraceTimeIfNecessary(): void'
+    lines:
+    - 196
+    - 204
+    detail:
+      calls:
+      - this._extensionHostProcess.send
+  - name: acceptReconnection
+    sig: 'acceptReconnection(remoteAddress: string, _socket: NodeSocket | WebSocketNodeSocket, initialDataChunk: VSBuffer): void'
+    lines:
+    - 206
+    - 218
+    detail:
+      calls:
+      - new ConnectionData
+      - this._log
+      - this._sendSocketToExtensionHost
+  - name: _cleanResources
+    sig: '_cleanResources(): void'
+    vis: private
+    lines:
+    - 220
+    - 235
+    detail:
+      calls:
+      - this._connectionData.socket.end
+      - this._extensionHostProcess.kill
+      - this._onClose.fire
+  - name: start
+    sig: 'start(startParams: IRemoteExtensionHostStartParams): Promise<void>'
+    is_async: true
+    lines:
+    - 237
+    - 318
+    detail:
+      calls:
+      - Event.fromNodeEventEmitter
+      - FileAccess.asFileUri
+      - args.push
+      - buildUserEnvironment
+      - console.error
+      - cp.fork
+      - extHostNamedPipeServer.on
+      - new IPCExtHostConnection
+      - new SocketExtHostConnection
+      - onStderr
+      - onStdout
+      - opts.execArgv.unshift
+      - process.execArgv.filter
+      - removeDangerousEnvVariables
+      - this._extensionHostProcess.on
+      - this._extensionHostProcess.stderr!.setEncoding
+      - this._extensionHostProcess.stdout!.setEncoding
+      - this._listenOnPipe
+      - this._log
+      - this._register
+      - writeExtHostConnection
+  lines:
+  - 106
+  - 332
+functions:
+- name: buildUserEnvironment
+  sig: 'buildUserEnvironment(startParamsEnv: { [key: string]: string | null } = {}, withUserShellEnvironment: boolean, language: string, environmentService: IServerEnvironmentService, logService: ILogService, configurationService: IConfigurationService): Promise<IProcessEnvironment>'
+  is_async: true
+  lines:
+  - 26
+  - 68
+  detail:
+    calls:
+    - JSON.stringify
+    - getNLSConfiguration
+    - getResolvedShellEnv
+    - join
+    - logService.error
+    - readCaseInsensitive
+    - removeNulls
+    - setCaseInsensitive
+- name: readCaseInsensitive
+  sig: 'readCaseInsensitive(env: { [key: string]: string | undefined }, key: string): string | undefined'
+  lines:
+  - 334
+  - 338
+  detail:
+    calls:
+    - Object.keys
+    - Object.keys(env).filter
+- name: setCaseInsensitive
+  sig: 'setCaseInsensitive(env: { [key: string]: unknown }, key: string, value: string): void'
+  lines:
+  - 340
+  - 344
+  detail:
+    calls:
+    - Object.keys
+    - Object.keys(env).filter
+- name: removeNulls
+  sig: 'removeNulls(env: { [key: string]: unknown | null }): void'
+  lines:
+  - 346
+  - 353
+  detail:
+    calls:
+    - Object.keys
+exports:
+- name: ConnectionData
+  kind: type
+- name: ExtensionHostConnection
+  kind: type
+- name: buildUserEnvironment
+  kind: func
+- name: readCaseInsensitive
+  kind: func
+- name: setCaseInsensitive
+  kind: func
+- name: removeNulls
+  kind: func

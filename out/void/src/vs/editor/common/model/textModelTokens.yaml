@@ -1,0 +1,547 @@
+## Roska File Descriptor — model/textModelTokens.ts
+file: model/textModelTokens.ts
+lines: 558
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: ../../../base/common/async.js.IdleDeadline
+- sym: ../../../base/common/async.js.runWhenGlobalIdle
+- sym: ../../../base/common/errors.js.BugIndicatingError
+- sym: ../../../base/common/errors.js.onUnexpectedError
+- sym: ../../../base/common/platform.js.setTimeout0
+- sym: ../../../base/common/stopwatch.js.StopWatch
+- sym: ../core/eolCounter.js.countEOL
+- sym: ../core/lineRange.js.LineRange
+- sym: ../core/offsetRange.js.OffsetRange
+- sym: ../core/position.js.Position
+- sym: ../encodedTokenAttributes.js.StandardTokenType
+- sym: ../languages.js.EncodedTokenizationResult
+- sym: ../languages.js.IBackgroundTokenizationStore
+- sym: ../languages.js.IBackgroundTokenizer
+- sym: ../languages.js.ILanguageIdCodec
+- sym: ../languages.js.IState
+- sym: ../languages.js.ITokenizationSupport
+- sym: ../languages/nullTokenize.js.nullTokenizeEncoded
+- sym: ../model.js.ITextModel
+- sym: ./fixedArray.js.FixedArray
+- sym: ../textModelEvents.js.IModelContentChange
+- sym: ../tokens/contiguousMultilineTokensBuilder.js.ContiguousMultilineTokensBuilder
+- sym: ../tokens/lineTokens.js.LineTokens
+types:
+- name: Constants
+  kind: enum
+  variants:
+  - name: CHEAP_TOKENIZATION_LENGTH_LIMIT
+    val: '2048'
+  lines:
+  - 23
+  - 25
+- name: TokenizerWithStateStore
+  kind: struct
+  fields:
+  - name: initialState
+    type: any
+    default: this.tokenizationSupport.getInitialState() as TState
+  - name: store
+    type: TrackingTokenizationStateStore<TState>
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tlineCount: number,\n\t\tpublic readonly tokenizationSupport: ITokenizationSupport\n\t)"
+    lines:
+    - 32
+    - 37
+    detail:
+      calls:
+      - new TrackingTokenizationStateStore
+  - name: getStartState
+    sig: 'getStartState(lineNumber: number): TState | null'
+    lines:
+    - 39
+    - 41
+    detail:
+      calls:
+      - this.store.getStartState
+  - name: getFirstInvalidLine
+    sig: 'getFirstInvalidLine(): { lineNumber: number; startState: TState } | null'
+    lines:
+    - 43
+    - 45
+    detail:
+      calls:
+      - this.store.getFirstInvalidLine
+  lines:
+  - 27
+  - 46
+- name: TokenizerWithStateStoreAndTextModel
+  kind: struct
+  ctx: assumes state is up to date
+  bases:
+  - TokenizerWithStateStore
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tlineCount: number,\n\t\ttokenizationSupport: ITokenizationSupport,\n\t\tpublic readonly _textModel: ITextModel,\n\t\tpublic readonly _languageIdCodec: ILanguageIdCodec\n\t)"
+    lines:
+    - 49
+    - 56
+    detail:
+      calls:
+      - super
+  - name: updateTokensUntilLine
+    sig: 'updateTokensUntilLine(builder: ContiguousMultilineTokensBuilder, lineNumber: number): void'
+    lines:
+    - 58
+    - 73
+    detail:
+      calls:
+      - builder.add
+      - safeTokenize
+      - this._textModel.getLanguageId
+      - this._textModel.getLineContent
+      - this.getFirstInvalidLine
+      - this.store.setEndState
+  - name: getTokenTypeIfInsertingCharacter
+    sig: 'getTokenTypeIfInsertingCharacter(position: Position, character: string): StandardTokenType'
+    lines:
+    - 76
+    - 101
+    detail:
+      calls:
+      - lineContent.substring
+      - lineTokens.findTokenIndexAtOffset
+      - lineTokens.getCount
+      - lineTokens.getStandardTokenType
+      - new LineTokens
+      - safeTokenize
+      - this._textModel.getLanguageId
+      - this._textModel.getLineContent
+      - this.getStartState
+  - name: tokenizeLinesAt
+    sig: 'tokenizeLinesAt(lineNumber: number, lines: string[]): LineTokens[] | null'
+    lines:
+    - 104
+    - 121
+    detail:
+      calls:
+      - new LineTokens
+      - result.push
+      - safeTokenize
+      - this._textModel.getLanguageId
+      - this.getStartState
+  - name: hasAccurateTokensForLine
+    sig: 'hasAccurateTokensForLine(lineNumber: number): boolean'
+    lines:
+    - 123
+    - 126
+    detail:
+      calls:
+      - this.store.getFirstInvalidEndStateLineNumberOrMax
+  - name: isCheapToTokenize
+    sig: 'isCheapToTokenize(lineNumber: number): boolean'
+    lines:
+    - 128
+    - 139
+    detail:
+      calls:
+      - this._textModel.getLineLength
+      - this.store.getFirstInvalidEndStateLineNumberOrMax
+  - name: tokenizeHeuristically
+    sig: 'tokenizeHeuristically(builder: ContiguousMultilineTokensBuilder, startLineNumber: number, endLineNumber: number): { heuristicTokens: boolean }'
+    lines:
+    - 144
+    - 167
+    detail:
+      calls:
+      - builder.add
+      - safeTokenize
+      - this._textModel.getLanguageId
+      - this._textModel.getLineContent
+      - this.guessStartState
+      - this.store.getFirstInvalidEndStateLineNumberOrMax
+      - this.updateTokensUntilLine
+  lines:
+  - 48
+  - 184
+- name: TrackingTokenizationStateStore
+  kind: struct
+  ctx: ''
+  fields:
+  - name: _tokenizationStateStore
+    type: any
+    default: new TokenizationStateStore<TState>()
+  - name: _invalidEndStatesLineNumbers
+    type: any
+    default: new RangePriorityQueueImpl()
+  methods:
+  - name: constructor
+    sig: 'constructor(private lineCount: number)'
+    lines:
+    - 219
+    - 221
+    detail:
+      calls:
+      - new OffsetRange
+      - this._invalidEndStatesLineNumbers.addRange
+  - name: getEndState
+    sig: 'getEndState(lineNumber: number): TState | null'
+    lines:
+    - 223
+    - 225
+    detail:
+      calls:
+      - this._tokenizationStateStore.getEndState
+  - name: setEndState
+    sig: 'setEndState(lineNumber: number, state: TState): boolean'
+    lines:
+    - 230
+    - 243
+    detail:
+      calls:
+      - new BugIndicatingError
+      - new OffsetRange
+      - this._invalidEndStatesLineNumbers.addRange
+      - this._invalidEndStatesLineNumbers.delete
+      - this._tokenizationStateStore.setEndState
+  - name: acceptChange
+    sig: 'acceptChange(range: LineRange, newLineCount: number): void'
+    lines:
+    - 245
+    - 249
+    detail:
+      calls:
+      - new OffsetRange
+      - this._invalidEndStatesLineNumbers.addRangeAndResize
+      - this._tokenizationStateStore.acceptChange
+  - name: acceptChanges
+    sig: 'acceptChanges(changes: IModelContentChange[])'
+    lines:
+    - 251
+    - 256
+    detail:
+      calls:
+      - countEOL
+      - new LineRange
+      - this.acceptChange
+  - name: invalidateEndStateRange
+    sig: 'invalidateEndStateRange(range: LineRange): void'
+    lines:
+    - 258
+    - 260
+    detail:
+      calls:
+      - new OffsetRange
+      - this._invalidEndStatesLineNumbers.addRange
+  - name: getFirstInvalidEndStateLineNumber
+    sig: 'getFirstInvalidEndStateLineNumber(): number | null'
+    lines:
+    - 262
+    - 262
+    detail: {}
+  - name: getFirstInvalidEndStateLineNumberOrMax
+    sig: 'getFirstInvalidEndStateLineNumberOrMax(): number'
+    lines:
+    - 264
+    - 266
+    detail:
+      calls:
+      - this.getFirstInvalidEndStateLineNumber
+  - name: allStatesValid
+    sig: 'allStatesValid(): boolean'
+    lines:
+    - 268
+    - 268
+    detail: {}
+  - name: getStartState
+    sig: 'getStartState(lineNumber: number, initialState: TState): TState | null'
+    lines:
+    - 270
+    - 273
+    detail:
+      calls:
+      - this.getEndState
+  - name: getFirstInvalidLine
+    sig: 'getFirstInvalidLine(initialState: TState): { lineNumber: number; startState: TState } | null'
+    lines:
+    - 275
+    - 286
+    detail:
+      calls:
+      - new BugIndicatingError
+      - this.getFirstInvalidEndStateLineNumber
+      - this.getStartState
+  lines:
+  - 215
+  - 287
+- name: TokenizationStateStore
+  kind: struct
+  fields:
+  - name: _lineEndStates
+    type: any
+    default: new FixedArray<TState | null>(null)
+  methods:
+  - name: getEndState
+    sig: 'getEndState(lineNumber: number): TState | null'
+    lines:
+    - 292
+    - 294
+    detail:
+      calls:
+      - this._lineEndStates.get
+  - name: setEndState
+    sig: 'setEndState(lineNumber: number, state: TState): boolean'
+    lines:
+    - 296
+    - 304
+    detail:
+      calls:
+      - oldState.equals
+      - this._lineEndStates.get
+      - this._lineEndStates.set
+  - name: acceptChange
+    sig: 'acceptChange(range: LineRange, newLineCount: number): void'
+    lines:
+    - 306
+    - 316
+    detail:
+      calls:
+      - this._lineEndStates.replace
+  - name: acceptChanges
+    sig: 'acceptChanges(changes: IModelContentChange[])'
+    lines:
+    - 318
+    - 323
+    detail:
+      calls:
+      - countEOL
+      - new LineRange
+      - this.acceptChange
+  lines:
+  - 289
+  - 324
+- name: RangePriorityQueue
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: get
+    type: 'method: get min(): number | null'
+  - name: removeMin
+    type: 'method: removeMin(): number | null'
+  - name: addRange
+    type: 'method: addRange(range: OffsetRange): void'
+  - name: addRangeAndResize
+    type: 'method: addRangeAndResize(range: OffsetRange, newLength: number): void'
+  lines:
+  - 326
+  - 333
+- name: RangePriorityQueueImpl
+  kind: struct
+  bases:
+  - RangePriorityQueue
+  fields:
+  - name: _ranges
+    type: OffsetRange[]
+    default: '[]'
+  methods:
+  - name: getRanges
+    sig: 'getRanges(): OffsetRange[]'
+    lines:
+    - 338
+    - 340
+    detail: {}
+  - name: min
+    sig: 'min(): number | null'
+    lines:
+    - 342
+    - 347
+    detail: {}
+  - name: removeMin
+    sig: 'removeMin(): number | null'
+    lines:
+    - 349
+    - 360
+    detail:
+      calls:
+      - new OffsetRange
+      - this._ranges.shift
+  - name: delete
+    sig: 'delete(value: number): void'
+    lines:
+    - 362
+    - 380
+    detail:
+      calls:
+      - new OffsetRange
+      - this._ranges.findIndex
+      - this._ranges.splice
+  - name: addRange
+    sig: 'addRange(range: OffsetRange): void'
+    lines:
+    - 382
+    - 384
+    detail:
+      calls:
+      - OffsetRange.addRange
+  - name: addRangeAndResize
+    sig: 'addRangeAndResize(range: OffsetRange, newLength: number): void'
+    lines:
+    - 386
+    - 417
+    detail:
+      calls:
+      - Math.max
+      - Math.min
+      - new OffsetRange
+      - this._ranges.splice
+      - this._ranges[i].delta
+  - name: toString
+    sig: toString()
+    lines:
+    - 419
+    - 421
+    detail:
+      calls:
+      - this._ranges.map
+      - this._ranges.map(r => r.toString()).join
+  lines:
+  - 335
+  - 422
+- name: DefaultBackgroundTokenizer
+  kind: struct
+  ctx: Tokenize until the deadline occurs, but try to yield every 1-2ms.
+  bases:
+  - IBackgroundTokenizer
+  fields:
+  - name: _isDisposed
+    type: any
+    default: 'false'
+  - name: _isScheduled
+    type: any
+    default: 'false'
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tprivate readonly _tokenizerWithStateStore: TokenizerWithStateStoreAndTextModel,\n\t\tprivate readonly _backgroundTokenStore: IBackgroundTokenizationStore,\n\t)"
+    lines:
+    - 447
+    - 451
+    detail: {}
+  - name: dispose
+    sig: 'dispose(): void'
+    lines:
+    - 453
+    - 455
+    detail: {}
+  - name: handleChanges
+    sig: 'handleChanges(): void'
+    lines:
+    - 457
+    - 459
+    detail:
+      calls:
+      - this._beginBackgroundTokenization
+  - name: _backgroundTokenizeWithDeadline
+    sig: '_backgroundTokenizeWithDeadline(deadline: IdleDeadline): void'
+    vis: private
+    lines:
+    - 478
+    - 501
+    detail:
+      calls:
+      - Date.now
+      - deadline.timeRemaining
+      - execute
+  - name: _backgroundTokenizeForAtLeast1ms
+    sig: '_backgroundTokenizeForAtLeast1ms(): void'
+    vis: private
+    lines:
+    - 506
+    - 528
+    detail:
+      calls:
+      - StopWatch.create
+      - builder.finalize
+      - new ContiguousMultilineTokensBuilder
+      - sw.elapsed
+      - this._backgroundTokenStore.setTokens
+      - this._hasLinesToTokenize
+      - this._tokenizeOneInvalidLine
+      - this._tokenizerWithStateStore._textModel.getLineCount
+      - this.checkFinished
+  - name: _tokenizeOneInvalidLine
+    sig: '_tokenizeOneInvalidLine(builder: ContiguousMultilineTokensBuilder): number'
+    vis: private
+    lines:
+    - 537
+    - 544
+    detail:
+      calls:
+      - this._tokenizerWithStateStore._textModel.getLineCount
+      - this._tokenizerWithStateStore.updateTokensUntilLine
+      - this._tokenizerWithStateStore?.getFirstInvalidLine
+  - name: checkFinished
+    sig: 'checkFinished(): void'
+    lines:
+    - 546
+    - 553
+    detail:
+      calls:
+      - this._backgroundTokenStore.backgroundTokenizationFinished
+      - this._tokenizerWithStateStore.store.allStatesValid
+  - name: requestTokens
+    sig: 'requestTokens(startLineNumber: number, endLineNumberExclusive: number): void'
+    lines:
+    - 555
+    - 557
+    detail:
+      calls:
+      - new LineRange
+      - this._tokenizerWithStateStore.store.invalidateEndStateRange
+  lines:
+  - 444
+  - 558
+functions:
+- name: findLikelyRelevantLines
+  sig: 'findLikelyRelevantLines(model: ITextModel, lineNumber: number, store?: TokenizerWithStateStore): { likelyRelevantLines: string[]; initialState?: IState }'
+  lines:
+  - 186
+  - 208
+  detail:
+    calls:
+    - likelyRelevantLines.push
+    - likelyRelevantLines.reverse
+    - model.getLineContent
+    - model.getLineFirstNonWhitespaceColumn
+    - store?.getStartState
+- name: safeTokenize
+  sig: 'safeTokenize(languageIdCodec: ILanguageIdCodec, languageId: string, tokenizationSupport: ITokenizationSupport | null, text: string, hasEOL: boolean, state: IState): EncodedTokenizationResult'
+  lines:
+  - 425
+  - 442
+  detail:
+    calls:
+    - LineTokens.convertToEndOffset
+    - languageIdCodec.encodeLanguageId
+    - nullTokenizeEncoded
+    - onUnexpectedError
+    - state.clone
+    - tokenizationSupport.tokenizeEncoded
+exports:
+- name: Constants
+  kind: type
+- name: TokenizerWithStateStore
+  kind: type
+- name: TokenizerWithStateStoreAndTextModel
+  kind: type
+- name: TrackingTokenizationStateStore
+  kind: type
+- name: TokenizationStateStore
+  kind: type
+- name: RangePriorityQueue
+  kind: type
+- name: RangePriorityQueueImpl
+  kind: type
+- name: DefaultBackgroundTokenizer
+  kind: type
+- name: findLikelyRelevantLines
+  kind: func
+- name: safeTokenize
+  kind: func

@@ -1,0 +1,252 @@
+## Roska File Descriptor — node/diskFileSystemProviderServer.ts
+file: node/diskFileSystemProviderServer.ts
+lines: 337
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: ../../../base/common/event.js.Emitter
+- sym: ../../../base/common/event.js.Event
+- sym: ../../../base/parts/ipc/common/ipc.js.IServerChannel
+- sym: ./diskFileSystemProvider.js.DiskFileSystemProvider
+- sym: ../../../base/common/lifecycle.js.Disposable
+- sym: ../../../base/common/lifecycle.js.dispose
+- sym: ../../../base/common/lifecycle.js.IDisposable
+- sym: ../../../base/common/lifecycle.js.toDisposable
+- sym: ../../log/common/log.js.ILogService
+- sym: ../../../base/common/uriIpc.js.IURITransformer
+- sym: ../../../base/common/uri.js.URI
+- sym: ../../../base/common/uri.js.UriComponents
+- sym: ../../../base/common/buffer.js.VSBuffer
+- sym: ../../../base/common/stream.js.ReadableStreamEventPayload
+- sym: ../../../base/common/stream.js.listenStream
+- sym: ../common/files.js.IStat
+- sym: ../common/files.js.IFileReadStreamOptions
+- sym: ../common/files.js.IFileWriteOptions
+- sym: ../common/files.js.IFileOpenOptions
+- sym: ../common/files.js.IFileDeleteOptions
+- sym: ../common/files.js.IFileOverwriteOptions
+- sym: ../common/files.js.IFileChange
+- sym: ../common/files.js.IWatchOptions
+- sym: ../common/files.js.FileType
+- sym: ../common/files.js.IFileAtomicReadOptions
+- sym: ../../../base/common/cancellation.js.CancellationTokenSource
+- sym: ../../environment/common/environment.js.IEnvironmentService
+- sym: ../common/watcher.js.IRecursiveWatcherOptions
+types:
+- name: ISessionFileWatcher
+  kind: trait
+  bases:
+  - IDisposable
+  decorators:
+  - interface
+  fields:
+  - name: watch
+    type: 'method: watch(req: number, resource: URI, opts: IWatchOptions): IDisposable'
+  lines:
+  - 20
+  - 22
+- name: AbstractDiskFileSystemProviderChannel
+  kind: trait
+  ctx: '#region File Metadata Resolving'
+  bases:
+  - Disposable
+  - IServerChannel<T>
+  decorators:
+  - abstract
+  fields:
+  - name: sessionToWatcher
+    type: any
+    default: new Map<string /* session ID */, ISessionFileWatcher>()
+  - name: watchRequests
+    type: any
+    default: new Map<string /* session ID + request ID */, IDisposable>()
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tprotected readonly provider: DiskFileSystemProvider,\n\t\tprotected readonly logService: ILogService\n\t)"
+    lines:
+    - 29
+    - 34
+    detail:
+      calls:
+      - super
+  - name: call
+    sig: 'call(ctx: T, command: string, arg?: any): Promise<any>'
+    lines:
+    - 36
+    - 58
+    detail:
+      calls:
+      - new Error
+      - this.cloneFile
+      - this.close
+      - this.copy
+      - this.delete
+      - this.getUriTransformer
+      - this.mkdir
+      - this.open
+      - this.read
+      - this.readFile
+      - this.readdir
+      - this.rename
+      - this.stat
+      - this.unwatch
+      - this.watch
+      - this.write
+      - this.writeFile
+  - name: listen
+    sig: 'listen(ctx: T, event: string, arg: any): Event<any>'
+    lines:
+    - 60
+    - 69
+    detail:
+      calls:
+      - new Error
+      - this.getUriTransformer
+      - this.onFileChange
+      - this.onReadFileStream
+  - name: readFile
+    sig: 'readFile(uriTransformer: IURITransformer, _resource: UriComponents, opts?: IFileAtomicReadOptions): Promise<VSBuffer>'
+    is_async: true
+    vis: private
+    lines:
+    - 93
+    - 98
+    detail:
+      calls:
+      - VSBuffer.wrap
+      - this.provider.readFile
+      - this.transformIncoming
+  - name: onReadFileStream
+    sig: 'onReadFileStream(uriTransformer: IURITransformer, _resource: URI, opts: IFileReadStreamOptions): Event<ReadableStreamEventPayload<VSBuffer>>'
+    vis: private
+    lines:
+    - 100
+    - 129
+    detail:
+      calls:
+      - listenStream
+      - new CancellationTokenSource
+      - new Emitter
+      - this.provider.readFileStream
+      - this.transformIncoming
+  - name: read
+    sig: 'read(fd: number, pos: number, length: number): Promise<[VSBuffer, number]>'
+    is_async: true
+    vis: private
+    lines:
+    - 147
+    - 153
+    detail:
+      calls:
+      - VSBuffer.alloc
+      - this.provider.read
+  - name: watch
+    sig: 'watch(uriTransformer: IURITransformer, sessionId: string, req: number, _resource: UriComponents, opts: IWatchOptions): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 226
+    - 233
+    detail:
+      calls:
+      - this.sessionToWatcher.get
+      - this.transformIncoming
+      - this.watchRequests.set
+      - watcher.watch
+  - name: unwatch
+    sig: 'unwatch(sessionId: string, req: number): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 235
+    - 242
+    detail:
+      calls:
+      - dispose
+      - this.watchRequests.delete
+      - this.watchRequests.get
+  - name: dispose
+    sig: 'dispose(): void'
+    lines:
+    - 248
+    - 260
+    detail:
+      calls:
+      - disposable.dispose
+      - super.dispose
+      - this.sessionToWatcher.clear
+      - this.watchRequests.clear
+  lines:
+  - 27
+  - 261
+- name: AbstractSessionFileWatcher
+  kind: trait
+  ctx: To ensure we use one file watcher per session, we keep a
+  bases:
+  - Disposable
+  - ISessionFileWatcher
+  decorators:
+  - abstract
+  fields:
+  - name: watcherRequests
+    type: any
+    default: new Map<number, IDisposable>()
+  - name: fileWatcher
+    type: DiskFileSystemProvider
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tprivate readonly uriTransformer: IURITransformer,\n\t\tsessionEmitter: Emitter<IFileChange[] | string>,\n\t\tlogService: ILogService,\n\t\tprivate readonly environmentService: IEnvironmentService\n\t)"
+    lines:
+    - 277
+    - 288
+    detail:
+      calls:
+      - new DiskFileSystemProvider
+      - super
+      - this._register
+      - this.registerListeners
+  - name: registerListeners
+    sig: 'registerListeners(sessionEmitter: Emitter<IFileChange[] | string>): void'
+    vis: private
+    lines:
+    - 290
+    - 305
+    detail:
+      calls:
+      - localChangeEmitter.event
+      - new Emitter
+      - this._register
+      - this.fileWatcher.onDidChangeFile
+      - this.fileWatcher.onDidWatchError
+  - name: watch
+    sig: 'watch(req: number, resource: URI, opts: IWatchOptions): IDisposable'
+    lines:
+    - 315
+    - 327
+    detail:
+      calls:
+      - Array.isArray
+      - this.fileWatcher.watch
+      - this.getExtraExcludes
+      - this.watcherRequests.set
+      - toDisposable
+  - name: dispose
+    sig: 'dispose(): void'
+    lines:
+    - 329
+    - 336
+    detail:
+      calls:
+      - disposable.dispose
+      - super.dispose
+      - this.watcherRequests.clear
+  lines:
+  - 263
+  - 337
+exports:
+- name: ISessionFileWatcher
+  kind: type
+- name: AbstractDiskFileSystemProviderChannel
+  kind: type
+- name: AbstractSessionFileWatcher
+  kind: type

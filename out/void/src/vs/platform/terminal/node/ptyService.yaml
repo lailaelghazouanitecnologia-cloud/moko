@@ -1,0 +1,1249 @@
+## Roska File Descriptor — node/ptyService.ts
+file: node/ptyService.ts
+lines: 1113
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: child_process.execFile
+- sym: child_process.exec
+- sym: ../../../base/common/async.js.AutoOpenBarrier
+- sym: ../../../base/common/async.js.ProcessTimeRunOnceScheduler
+- sym: ../../../base/common/async.js.Promises
+- sym: ../../../base/common/async.js.Queue
+- sym: ../../../base/common/async.js.timeout
+- sym: ../../../base/common/event.js.Emitter
+- sym: ../../../base/common/event.js.Event
+- sym: ../../../base/common/lifecycle.js.Disposable
+- sym: ../../../base/common/lifecycle.js.toDisposable
+- sym: ../../../base/common/platform.js.IProcessEnvironment
+- sym: ../../../base/common/platform.js.isWindows
+- sym: ../../../base/common/platform.js.OperatingSystem
+- sym: ../../../base/common/platform.js.OS
+- sym: ../../../base/common/uri.js.URI
+- sym: ../../../base/node/shell.js.getSystemShell
+- sym: ../../log/common/log.js.ILogService
+- sym: ../../log/common/log.js.LogLevel
+- sym: ../common/requestStore.js.RequestStore
+- sym: ../common/terminal.js.IProcessDataEvent
+- sym: ../common/terminal.js.IProcessReadyEvent
+- sym: ../common/terminal.js.IPtyService
+- sym: ../common/terminal.js.IRawTerminalInstanceLayoutInfo
+- sym: ../common/terminal.js.IReconnectConstants
+- sym: ../common/terminal.js.IShellLaunchConfig
+- sym: ../common/terminal.js.ITerminalInstanceLayoutInfoById
+- sym: ../common/terminal.js.ITerminalLaunchError
+- sym: ../common/terminal.js.ITerminalsLayoutInfo
+- sym: ../common/terminal.js.ITerminalTabLayoutInfoById
+- sym: ../common/terminal.js.TerminalIcon
+- sym: ../common/terminal.js.IProcessProperty
+- sym: ../common/terminal.js.TitleEventSource
+- sym: ../common/terminal.js.ProcessPropertyType
+- sym: ../common/terminal.js.IProcessPropertyMap
+- sym: ../common/terminal.js.IFixedTerminalDimensions
+- sym: ../common/terminal.js.IPersistentTerminalProcessLaunchConfig
+- sym: ../common/terminal.js.ICrossVersionSerializedTerminalState
+- sym: ../common/terminal.js.ISerializedTerminalState
+- sym: ../common/terminal.js.ITerminalProcessOptions
+- sym: ../common/terminal.js.IPtyHostLatencyMeasurement
+- sym: ../common/terminal.js.type IPtyServiceContribution
+- sym: ../common/terminalDataBuffering.js.TerminalDataBufferer
+- sym: ../common/terminalEnvironment.js.escapeNonWindowsPath
+- sym: '@xterm/addon-serialize.ISerializeOptions'
+  kind: typing
+- sym: '@xterm/addon-serialize.SerializeAddon as XtermSerializeAddon'
+  kind: typing
+- sym: '@xterm/addon-unicode11.Unicode11Addon as XtermUnicode11Addon'
+  kind: typing
+- sym: ../common/terminalProcess.js.IGetTerminalLayoutInfoArgs
+- sym: ../common/terminalProcess.js.IProcessDetails
+- sym: ../common/terminalProcess.js.ISetTerminalLayoutInfoArgs
+- sym: ../common/terminalProcess.js.ITerminalTabLayoutInfoDto
+- sym: ./terminalEnvironment.js.getWindowsBuildNumber
+- sym: ./terminalProcess.js.TerminalProcess
+- sym: ../../../nls.js.localize
+- sym: ./childProcessMonitor.js.ignoreProcessNames
+- sym: ../../../base/common/errors.js.ErrorNoTelemetry
+- sym: ../common/xterm/shellIntegrationAddon.js.ShellIntegrationAddon
+- sym: ../common/terminalStrings.js.formatMessageForTerminal
+- sym: ../common/capabilities/capabilities.js.IPtyHostProcessReplayEvent
+- sym: ../../product/common/productService.js.IProductService
+- sym: path.join
+- sym: ../../../base/common/decorators.js.memoize
+- sym: ../../../base/common/performance.js.performance
+- sym: '@xterm/headless.pkg'
+- sym: ./terminalContrib/autoReplies/autoRepliesContribController.js.AutoRepliesPtyServiceContribution
+data:
+- name: '{ Terminal: XtermTerminal }'
+  type: any
+  val: pkg
+- name: SerializeAddon
+  type: typeof XtermSerializeAddon
+- name: Unicode11Addon
+  type: typeof XtermUnicode11Addon
+types:
+- name: XtermTerminal
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 36
+  - 36
+- name: WorkspaceId
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 66
+  - 66
+- name: PtyService
+  kind: struct
+  ctx: '#region Pty service contribution RPC calls'
+  bases:
+  - Disposable
+  - IPtyService
+  fields:
+  - name: _serviceBrand
+    type: undefined
+  - name: _ptys
+    type: Map<number, PersistentTerminalProcess>
+    default: new Map()
+  - name: _workspaceLayoutInfos
+    type: any
+    default: new Map<WorkspaceId, ISetTerminalLayoutInfoArgs>()
+  - name: _detachInstanceRequestStore
+    type: 'RequestStore<IProcessDetails | undefined, { workspaceId: string; instanceId: number }>'
+  - name: _revivedPtyIdMap
+    type: 'Map<string, { newId: number; state: ISerializedTerminalState }>'
+    default: new Map()
+  - name: _autoRepliesContribution
+    type: any
+    default: new AutoRepliesPtyServiceContribution(this._logService)
+  - name: _contributions
+    type: IPtyServiceContribution[]
+    default: "[\n\t\tthis._autoRepliesContribution\n\t]"
+  - name: _lastPtyId
+    type: number
+    default: '0'
+  - name: _onHeartbeat
+    type: any
+    default: this._register(new Emitter<void>())
+  - name: onHeartbeat
+    type: any
+    default: this._traceEvent('_onHeartbeat', this._onHeartbeat.event)
+  - name: _onProcessData
+    type: any
+    default: 'this._register(new Emitter<{ id: number; event: IProcessDataEvent | string }>())'
+  - name: onProcessData
+    type: any
+    default: this._traceEvent('_onProcessData', this._onProcessData.event)
+  - name: _onProcessReplay
+    type: any
+    default: 'this._register(new Emitter<{ id: number; event: IPtyHostProcessReplayEvent }>())'
+  - name: onProcessReplay
+    type: any
+    default: this._traceEvent('_onProcessReplay', this._onProcessReplay.event)
+  - name: _onProcessReady
+    type: any
+    default: 'this._register(new Emitter<{ id: number; event: IProcessReadyEvent }>())'
+  - name: onProcessReady
+    type: any
+    default: this._traceEvent('_onProcessReady', this._onProcessReady.event)
+  - name: _onProcessExit
+    type: any
+    default: 'this._register(new Emitter<{ id: number; event: number | undefined }>())'
+  - name: onProcessExit
+    type: any
+    default: this._traceEvent('_onProcessExit', this._onProcessExit.event)
+  - name: _onProcessOrphanQuestion
+    type: any
+    default: 'this._register(new Emitter<{ id: number }>())'
+  - name: onProcessOrphanQuestion
+    type: any
+    default: this._traceEvent('_onProcessOrphanQuestion', this._onProcessOrphanQuestion.event...
+  - name: _onDidRequestDetach
+    type: any
+    default: 'this._register(new Emitter<{ requestId: number; workspaceId: string; instanceId:...'
+  - name: onDidRequestDetach
+    type: any
+    default: this._traceEvent('_onDidRequestDetach', this._onDidRequestDetach.event)
+  - name: _onDidChangeProperty
+    type: any
+    default: 'this._register(new Emitter<{ id: number; property: IProcessProperty<any> }>())'
+  - name: onDidChangeProperty
+    type: any
+    default: this._traceEvent('_onDidChangeProperty', this._onDidChangeProperty.event)
+  methods:
+  - name: installAutoReply
+    sig: 'installAutoReply(match: string, reply: string)'
+    is_async: true
+    lines:
+    - 83
+    - 85
+    detail:
+      calls:
+      - this._autoRepliesContribution.installAutoReply
+  - name: uninstallAllAutoReplies
+    sig: uninstallAllAutoReplies()
+    is_async: true
+    lines:
+    - 87
+    - 89
+    detail:
+      calls:
+      - this._autoRepliesContribution.uninstallAllAutoReplies
+  - name: traceRpcArgs
+    sig: 'traceRpcArgs(): { logService: ILogService; simulatedLatency: number }'
+    lines:
+    - 127
+    - 132
+    detail: {}
+  - name: constructor
+    sig: "constructor(\n\t\tprivate readonly _logService: ILogService,\n\t\tprivate readonly _productService: IProductService,\n\t\tprivate readonly _reconnectConstants: IReconnectConstants,\n\t\tprivate readonly _simulatedLatency: number\n\t)"
+    lines:
+    - 134
+    - 151
+    detail:
+      calls:
+      - new RequestStore
+      - super
+      - this._detachInstanceRequestStore.onCreateRequest
+      - this._register
+      - toDisposable
+  - name: refreshIgnoreProcessNames
+    sig: 'refreshIgnoreProcessNames(names: string[]): Promise<void>'
+    is_async: true
+    lines:
+    - 154
+    - 157
+    detail:
+      calls:
+      - ignoreProcessNames.push
+  - name: requestDetachInstance
+    sig: 'requestDetachInstance(workspaceId: string, instanceId: number): Promise<IProcessDetails | undefined>'
+    is_async: true
+    lines:
+    - 160
+    - 162
+    detail:
+      calls:
+      - this._detachInstanceRequestStore.createRequest
+  - name: acceptDetachInstanceReply
+    sig: 'acceptDetachInstanceReply(requestId: number, persistentProcessId: number): Promise<void>'
+    is_async: true
+    lines:
+    - 165
+    - 172
+    detail:
+      calls:
+      - this._buildProcessDetails
+      - this._detachInstanceRequestStore.acceptReply
+      - this._ptys.get
+  - name: freePortKillProcess
+    sig: 'freePortKillProcess(port: string): Promise<{ port: string; processId: string }>'
+    is_async: true
+    lines:
+    - 175
+    - 198
+    detail:
+      calls:
+      - Number.parseInt
+      - new Error
+      - new Promise
+      - process.kill
+      - processesForPort[0].match
+      - stdout.split
+      - stdout.split(/\r?\n/).filter
+  - name: serializeTerminalState
+    sig: 'serializeTerminalState(ids: number[]): Promise<string>'
+    is_async: true
+    lines:
+    - 201
+    - 224
+    detail:
+      calls:
+      - JSON.stringify
+      - Promise.all
+      - Promises.withAsyncBody
+      - ids.indexOf
+      - promises.push
+      - this._ptys.entries
+  - name: reviveTerminalProcesses
+    sig: 'reviveTerminalProcesses(workspaceId: string, state: ISerializedTerminalState[], dateTimeFormatLocale: string)'
+    is_async: true
+    lines:
+    - 227
+    - 233
+    detail:
+      calls:
+      - Promise.all
+      - promises.push
+      - this._reviveTerminalProcess
+  - name: _reviveTerminalProcess
+    sig: '_reviveTerminalProcess(workspaceId: string, terminal: ISerializedTerminalState): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 235
+    - 281
+    detail:
+      calls:
+      - '''\r\n''.repeat'
+      - formatMessageForTerminal
+      - localize
+      - terminal.replayEvent.events.at
+      - this._getRevivingProcessId
+      - this._logService.info
+      - this._revivedPtyIdMap.set
+      - this.createProcess
+  - name: shutdownAll
+    sig: 'shutdownAll(): Promise<void>'
+    is_async: true
+    lines:
+    - 284
+    - 286
+    detail:
+      calls:
+      - this.dispose
+  - name: createProcess
+    sig: "createProcess(\n\t\tshellLaunchConfig: IShellLaunchConfig,\n\t\tcwd: string,\n\t\tcols: number,\n\t\trows: number,\n\t\tunicodeVersion: '6' | '11',\n\t\tenv: IProcessEnvironment,\n\t\texecutableEnv: IProcessEnvironment,\n\t\toptions: ITerminalProcessOptions,\n\t\tshouldPersist: boolean,\n\t\tworkspaceId: string,\n\t\tworkspaceName: string,\n\t\tisReviving?: boolean,\n\t\trawReviveBuffer?: string\n\t): Promise<number>"
+    is_async: true
+    lines:
+    - 289
+    - 335
+    detail:
+      calls:
+      - new Error
+      - new PersistentTerminalProcess
+      - new TerminalProcess
+      - persistentProcess.onDidChangeProperty
+      - persistentProcess.onPersistentProcessReady
+      - persistentProcess.onProcessData
+      - persistentProcess.onProcessOrphanQuestion
+      - persistentProcess.onProcessReady
+      - persistentProcess.onProcessReplay
+      - process.onProcessExit
+      - this._ptys.set
+  - name: attachToProcess
+    sig: 'attachToProcess(id: number): Promise<void>'
+    is_async: true
+    lines:
+    - 338
+    - 346
+    detail:
+      calls:
+      - this._logService.info
+      - this._logService.warn
+      - this._throwIfNoPty
+      - this._throwIfNoPty(id).attach
+  - name: updateTitle
+    sig: 'updateTitle(id: number, title: string, titleSource: TitleEventSource): Promise<void>'
+    is_async: true
+    lines:
+    - 349
+    - 351
+    detail:
+      calls:
+      - this._throwIfNoPty
+      - this._throwIfNoPty(id).setTitle
+  - name: updateIcon
+    sig: 'updateIcon(id: number, userInitiated: boolean, icon: URI | { light: URI; dark: URI } | { id: string; color?: { id: string } }, color?: string): Promise<void>'
+    is_async: true
+    lines:
+    - 354
+    - 356
+    detail:
+      calls:
+      - this._throwIfNoPty
+      - this._throwIfNoPty(id).setIcon
+  - name: clearBuffer
+    sig: 'clearBuffer(id: number): Promise<void>'
+    is_async: true
+    lines:
+    - 359
+    - 361
+    detail:
+      calls:
+      - this._throwIfNoPty
+      - this._throwIfNoPty(id).clearBuffer
+  - name: refreshProperty
+    sig: 'refreshProperty(id: number, type: T): Promise<IProcessPropertyMap[T]>'
+    is_async: true
+    lines:
+    - 364
+    - 366
+    detail:
+      calls:
+      - this._throwIfNoPty
+      - this._throwIfNoPty(id).refreshProperty
+  - name: updateProperty
+    sig: 'updateProperty(id: number, type: T, value: IProcessPropertyMap[T]): Promise<void>'
+    is_async: true
+    lines:
+    - 369
+    - 371
+    detail:
+      calls:
+      - this._throwIfNoPty
+      - this._throwIfNoPty(id).updateProperty
+  - name: detachFromProcess
+    sig: 'detachFromProcess(id: number, forcePersist?: boolean): Promise<void>'
+    is_async: true
+    lines:
+    - 374
+    - 376
+    detail:
+      calls:
+      - this._throwIfNoPty
+      - this._throwIfNoPty(id).detach
+  - name: reduceConnectionGraceTime
+    sig: 'reduceConnectionGraceTime(): Promise<void>'
+    is_async: true
+    lines:
+    - 379
+    - 383
+    detail:
+      calls:
+      - pty.reduceGraceTime
+      - this._ptys.values
+  - name: listProcesses
+    sig: 'listProcesses(): Promise<IProcessDetails[]>'
+    is_async: true
+    lines:
+    - 386
+    - 393
+    detail:
+      calls:
+      - Array.from
+      - Array.from(this._ptys.entries()).filter
+      - Promise.all
+      - allTerminals.filter
+      - persistentProcesses.map
+      - this._logService.info
+      - this._ptys.entries
+  - name: getPerformanceMarks
+    sig: 'getPerformanceMarks(): Promise<performance.PerformanceMark[]>'
+    is_async: true
+    lines:
+    - 396
+    - 398
+    detail:
+      calls:
+      - performance.getMarks
+  - name: start
+    sig: 'start(id: number): Promise<ITerminalLaunchError | { injectedArgs: string[] } | undefined>'
+    is_async: true
+    lines:
+    - 401
+    - 404
+    detail:
+      calls:
+      - pty.start
+      - this._ptys.get
+  - name: shutdown
+    sig: 'shutdown(id: number, immediate: boolean): Promise<void>'
+    is_async: true
+    lines:
+    - 407
+    - 410
+    detail:
+      calls:
+      - this._ptys.get
+      - this._ptys.get(id)?.shutdown
+  - name: input
+    sig: 'input(id: number, data: string): Promise<void>'
+    is_async: true
+    lines:
+    - 412
+    - 420
+    detail:
+      calls:
+      - contrib.handleProcessInput
+      - pty.input
+      - this._throwIfNoPty
+  - name: processBinary
+    sig: 'processBinary(id: number, data: string): Promise<void>'
+    is_async: true
+    lines:
+    - 422
+    - 424
+    detail:
+      calls:
+      - this._throwIfNoPty
+      - this._throwIfNoPty(id).writeBinary
+  - name: resize
+    sig: 'resize(id: number, cols: number, rows: number): Promise<void>'
+    is_async: true
+    lines:
+    - 426
+    - 434
+    detail:
+      calls:
+      - contrib.handleProcessResize
+      - pty.resize
+      - this._throwIfNoPty
+  - name: getInitialCwd
+    sig: 'getInitialCwd(id: number): Promise<string>'
+    is_async: true
+    lines:
+    - 436
+    - 438
+    detail:
+      calls:
+      - this._throwIfNoPty
+      - this._throwIfNoPty(id).getInitialCwd
+  - name: getCwd
+    sig: 'getCwd(id: number): Promise<string>'
+    is_async: true
+    lines:
+    - 440
+    - 442
+    detail:
+      calls:
+      - this._throwIfNoPty
+      - this._throwIfNoPty(id).getCwd
+  - name: acknowledgeDataEvent
+    sig: 'acknowledgeDataEvent(id: number, charCount: number): Promise<void>'
+    is_async: true
+    lines:
+    - 444
+    - 446
+    detail:
+      calls:
+      - this._throwIfNoPty
+      - this._throwIfNoPty(id).acknowledgeDataEvent
+  - name: setUnicodeVersion
+    sig: 'setUnicodeVersion(id: number, version: ''6'' | ''11''): Promise<void>'
+    is_async: true
+    lines:
+    - 448
+    - 450
+    detail:
+      calls:
+      - this._throwIfNoPty
+      - this._throwIfNoPty(id).setUnicodeVersion
+  - name: getLatency
+    sig: 'getLatency(): Promise<IPtyHostLatencyMeasurement[]>'
+    is_async: true
+    lines:
+    - 452
+    - 454
+    detail: {}
+  - name: orphanQuestionReply
+    sig: 'orphanQuestionReply(id: number): Promise<void>'
+    is_async: true
+    lines:
+    - 456
+    - 458
+    detail:
+      calls:
+      - this._throwIfNoPty
+      - this._throwIfNoPty(id).orphanQuestionReply
+  - name: getDefaultSystemShell
+    sig: 'getDefaultSystemShell(osOverride: OperatingSystem = OS): Promise<string>'
+    is_async: true
+    lines:
+    - 461
+    - 463
+    detail:
+      calls:
+      - getSystemShell
+  - name: getEnvironment
+    sig: 'getEnvironment(): Promise<IProcessEnvironment>'
+    is_async: true
+    lines:
+    - 466
+    - 468
+    detail: {}
+  - name: getWslPath
+    sig: 'getWslPath(original: string, direction: ''unix-to-win'' | ''win-to-unix'' | unknown): Promise<string>'
+    is_async: true
+    lines:
+    - 471
+    - 511
+    detail:
+      calls:
+      - getWindowsBuildNumber
+      - new Promise
+      - original.replace
+      - this._getWSLExecutablePath
+  - name: getRevivedPtyNewId
+    sig: 'getRevivedPtyNewId(workspaceId: string, id: number): Promise<number | undefined>'
+    is_async: true
+    lines:
+    - 524
+    - 531
+    detail:
+      calls:
+      - this._getRevivingProcessId
+      - this._logService.warn
+      - this._revivedPtyIdMap.get
+  - name: setTerminalLayoutInfo
+    sig: 'setTerminalLayoutInfo(args: ISetTerminalLayoutInfoArgs): Promise<void>'
+    is_async: true
+    lines:
+    - 534
+    - 536
+    detail:
+      calls:
+      - this._workspaceLayoutInfos.set
+  - name: getTerminalLayoutInfo
+    sig: 'getTerminalLayoutInfo(args: IGetTerminalLayoutInfoArgs): Promise<ITerminalsLayoutInfo | undefined>'
+    is_async: true
+    lines:
+    - 539
+    - 551
+    detail:
+      calls:
+      - Promise.all
+      - expandedTabs.filter
+      - layout.tabs.map
+      - new Set
+      - performance.mark
+      - this._workspaceLayoutInfos.get
+  - name: _expandTerminalTab
+    sig: '_expandTerminalTab(workspaceId: string, tab: ITerminalTabLayoutInfoById, doneSet: Set<number>): Promise<ITerminalTabLayoutInfoDto>'
+    is_async: true
+    vis: private
+    lines:
+    - 553
+    - 561
+    detail:
+      calls:
+      - Promise.all
+      - expandedTerminals.filter
+      - tab.terminals.map
+  - name: _expandTerminalInstance
+    sig: '_expandTerminalInstance(workspaceId: string, t: ITerminalInstanceLayoutInfoById, doneSet: Set<number>): Promise<IRawTerminalInstanceLayoutInfo<IProcessDetails | null>>'
+    is_async: true
+    vis: private
+    lines:
+    - 563
+    - 591
+    detail:
+      calls:
+      - Array.from
+      - doneSet.add
+      - doneSet.has
+      - new Error
+      - this._buildProcessDetails
+      - this._getRevivingProcessId
+      - this._logService.debug
+      - this._logService.info
+      - this._logService.warn
+      - this._ptys.keys
+      - this._revivedPtyIdMap.delete
+      - this._revivedPtyIdMap.get
+      - this._revivedPtyIdMap.values
+      - this._throwIfNoPty
+  - name: _buildProcessDetails
+    sig: '_buildProcessDetails(id: number, persistentProcess: PersistentTerminalProcess, wasRevived: boolean = false): Promise<IProcessDetails>'
+    is_async: true
+    vis: private
+    lines:
+    - 597
+    - 626
+    detail:
+      calls:
+      - Promise.all
+      - performance.mark
+      - persistentProcess.getCwd
+      - persistentProcess.isOrphaned
+  lines:
+  - 71
+  - 635
+- name: InteractionState
+  kind: enum
+  variants:
+  - name: None
+    val: '''None'''
+  - name: ReplayOnly
+    val: '''ReplayOnly'''
+  - name: Session
+    val: '''Session'''
+  lines:
+  - 637
+  - 644
+- name: PersistentTerminalProcess
+  kind: struct
+  ctx: Fired when the persistent process has a ready process and has finished its replay.
+  bases:
+  - Disposable
+  fields:
+  - name: _bufferer
+    type: TerminalDataBufferer
+  - name: _pendingCommands
+    type: any
+    default: 'new Map<number, { resolve: (data: any) => void; reject: (err: any) => void }>()'
+  - name: _isStarted
+    type: boolean
+    default: 'false'
+  - name: _interactionState
+    type: MutationLogger<InteractionState>
+  - name: _orphanQuestionBarrier
+    type: AutoOpenBarrier | null
+  - name: _orphanQuestionReplyTime
+    type: number
+  - name: _orphanRequestQueue
+    type: any
+    default: new Queue<boolean>()
+  - name: _disconnectRunner1
+    type: ProcessTimeRunOnceScheduler
+  - name: _disconnectRunner2
+    type: ProcessTimeRunOnceScheduler
+  - name: _onProcessReplay
+    type: any
+    default: this._register(new Emitter<IPtyHostProcessReplayEvent>())
+  - name: onProcessReplay
+    type: any
+    default: this._onProcessReplay.event
+  - name: _onProcessReady
+    type: any
+    default: this._register(new Emitter<IProcessReadyEvent>())
+  - name: onProcessReady
+    type: any
+    default: this._onProcessReady.event
+  - name: _onPersistentProcessReady
+    type: any
+    default: this._register(new Emitter<void>())
+  - name: onPersistentProcessReady
+    type: any
+    default: this._onPersistentProcessReady.event
+  - name: _onProcessData
+    type: any
+    default: this._register(new Emitter<string>())
+  - name: onProcessData
+    type: any
+    default: this._onProcessData.event
+  - name: _onProcessOrphanQuestion
+    type: any
+    default: this._register(new Emitter<void>())
+  - name: onProcessOrphanQuestion
+    type: any
+    default: this._onProcessOrphanQuestion.event
+  - name: _onDidChangeProperty
+    type: any
+    default: this._register(new Emitter<IProcessProperty<any>>())
+  - name: onDidChangeProperty
+    type: any
+    default: this._onDidChangeProperty.event
+  - name: _inReplay
+    type: any
+    default: 'false'
+  - name: _pid
+    type: any
+    default: '-1'
+  - name: _cwd
+    type: any
+    default: ''''''
+  - name: _title
+    type: string | undefined
+  - name: _titleSource
+    type: TitleEventSource
+    default: TitleEventSource.Process
+  - name: _serializer
+    type: ITerminalSerializer
+  - name: _wasRevived
+    type: boolean
+  - name: _fixedDimensions
+    type: IFixedTerminalDimensions | undefined
+  methods:
+  - name: pid
+    sig: 'pid(): number'
+    lines:
+    - 685
+    - 685
+    detail: {}
+  - name: shellLaunchConfig
+    sig: 'shellLaunchConfig(): IShellLaunchConfig'
+    lines:
+    - 686
+    - 686
+    detail: {}
+  - name: hasWrittenData
+    sig: 'hasWrittenData(): boolean'
+    lines:
+    - 687
+    - 687
+    detail: {}
+  - name: title
+    sig: 'title(): string'
+    lines:
+    - 688
+    - 688
+    detail: {}
+  - name: titleSource
+    sig: 'titleSource(): TitleEventSource'
+    lines:
+    - 689
+    - 689
+    detail: {}
+  - name: icon
+    sig: 'icon(): TerminalIcon | undefined'
+    lines:
+    - 690
+    - 690
+    detail: {}
+  - name: color
+    sig: 'color(): string | undefined'
+    lines:
+    - 691
+    - 691
+    detail: {}
+  - name: fixedDimensions
+    sig: 'fixedDimensions(): IFixedTerminalDimensions | undefined'
+    lines:
+    - 692
+    - 692
+    detail: {}
+  - name: hasChildProcesses
+    sig: 'hasChildProcesses(): boolean'
+    lines:
+    - 693
+    - 693
+    detail: {}
+  - name: setTitle
+    sig: 'setTitle(title: string, titleSource: TitleEventSource): void'
+    lines:
+    - 695
+    - 702
+    detail:
+      calls:
+      - this._interactionState.setValue
+      - this._serializer.freeRawReviveBuffer
+  - name: setIcon
+    sig: 'setIcon(userInitiated: boolean, icon: TerminalIcon, color?: string): void'
+    lines:
+    - 704
+    - 715
+    detail:
+      calls:
+      - this._interactionState.setValue
+      - this._serializer.freeRawReviveBuffer
+  - name: constructor
+    sig: "constructor(\n\t\tprivate _persistentProcessId: number,\n\t\tprivate readonly _terminalProcess: TerminalProcess,\n\t\treadonly workspaceId: string,\n\t\treadonly workspaceName: string,\n\t\treadonly shouldPersistTerminal: boolean,\n\t\tcols: number,\n\t\trows: number,\n\t\treadonly processLaunchOptions: IPersistentTerminalProcessLaunchConfig,\n\t\tpublic unicodeVersion: '6' | '11',\n\t\treconnectConstants: IReconnectConstants,\n\t\tprivate readonly _logService: ILogService,\n\t\treviveBuffer: string | undefined,\n\t\trawReviveBuffer: string | undefined,\n\t\tprivate _icon?: TerminalIcon,\n\t\tprivate _color?: string,\n\t\tname?: string,\n\t\tfixedDimensions?: IFixedTerminalDimensions\n\t)"
+    lines:
+    - 721
+    - 783
+    detail:
+      calls:
+      - new MutationLogger
+      - new ProcessTimeRunOnceScheduler
+      - new TerminalDataBufferer
+      - new XtermSerializer
+      - super
+      - this._bufferer.startBuffering
+      - this._register
+      - this._terminalProcess.onDidChangeProperty
+      - this._terminalProcess.onProcessExit
+      - this._terminalProcess.onProcessReady
+      - this.onProcessData
+      - this.setTitle
+  - name: attach
+    sig: 'attach(): Promise<void>'
+    is_async: true
+    lines:
+    - 785
+    - 791
+    detail:
+      calls:
+      - this._disconnectRunner1.cancel
+      - this._disconnectRunner1.isScheduled
+      - this._disconnectRunner2.cancel
+      - this._disconnectRunner2.isScheduled
+      - this._logService.warn
+  - name: detach
+    sig: 'detach(forcePersist?: boolean): Promise<void>'
+    is_async: true
+    lines:
+    - 793
+    - 801
+    detail:
+      calls:
+      - this._disconnectRunner1.schedule
+      - this.shutdown
+  - name: serializeNormalBuffer
+    sig: 'serializeNormalBuffer(): Promise<IPtyHostProcessReplayEvent>'
+    lines:
+    - 803
+    - 805
+    detail:
+      calls:
+      - this._serializer.generateReplayEvent
+  - name: refreshProperty
+    sig: 'refreshProperty(type: T): Promise<IProcessPropertyMap[T]>'
+    is_async: true
+    lines:
+    - 807
+    - 809
+    detail:
+      calls:
+      - this._terminalProcess.refreshProperty
+  - name: updateProperty
+    sig: 'updateProperty(type: T, value: IProcessPropertyMap[T]): Promise<void>'
+    is_async: true
+    lines:
+    - 811
+    - 815
+    detail:
+      calls:
+      - this._setFixedDimensions
+  - name: start
+    sig: 'start(): Promise<ITerminalLaunchError | { injectedArgs: string[] } | undefined>'
+    is_async: true
+    lines:
+    - 817
+    - 844
+    detail:
+      calls:
+      - this._onDidChangeProperty.fire
+      - this._onPersistentProcessReady.fire
+      - this._onProcessReady.fire
+      - this._terminalProcess.getWindowsPty
+      - this._terminalProcess.start
+      - this.triggerReplay
+  - name: shutdown
+    sig: 'shutdown(immediate: boolean): void'
+    lines:
+    - 845
+    - 847
+    detail:
+      calls:
+      - this._terminalProcess.shutdown
+  - name: input
+    sig: 'input(data: string): void'
+    lines:
+    - 848
+    - 855
+    detail:
+      calls:
+      - this._interactionState.setValue
+      - this._serializer.freeRawReviveBuffer
+      - this._terminalProcess.input
+  - name: writeBinary
+    sig: 'writeBinary(data: string): Promise<void>'
+    lines:
+    - 856
+    - 858
+    detail:
+      calls:
+      - this._terminalProcess.processBinary
+  - name: resize
+    sig: 'resize(cols: number, rows: number): void'
+    lines:
+    - 859
+    - 869
+    detail:
+      calls:
+      - this._bufferer.flushBuffer
+      - this._serializer.handleResize
+      - this._terminalProcess.resize
+  - name: clearBuffer
+    sig: 'clearBuffer(): Promise<void>'
+    is_async: true
+    lines:
+    - 870
+    - 873
+    detail:
+      calls:
+      - this._serializer.clearBuffer
+      - this._terminalProcess.clearBuffer
+  - name: setUnicodeVersion
+    sig: 'setUnicodeVersion(version: ''6'' | ''11''): void'
+    lines:
+    - 874
+    - 878
+    detail:
+      calls:
+      - this._serializer.setUnicodeVersion
+  - name: acknowledgeDataEvent
+    sig: 'acknowledgeDataEvent(charCount: number): void'
+    lines:
+    - 879
+    - 884
+    detail:
+      calls:
+      - this._terminalProcess.acknowledgeDataEvent
+  - name: getInitialCwd
+    sig: 'getInitialCwd(): Promise<string>'
+    lines:
+    - 885
+    - 887
+    detail:
+      calls:
+      - this._terminalProcess.getInitialCwd
+  - name: getCwd
+    sig: 'getCwd(): Promise<string>'
+    lines:
+    - 888
+    - 890
+    detail:
+      calls:
+      - this._terminalProcess.getCwd
+  - name: triggerReplay
+    sig: 'triggerReplay(): Promise<void>'
+    is_async: true
+    lines:
+    - 892
+    - 905
+    detail:
+      calls:
+      - this._interactionState.setValue
+      - this._logService.info
+      - this._onPersistentProcessReady.fire
+      - this._onProcessReplay.fire
+      - this._serializer.generateReplayEvent
+      - this._terminalProcess.clearUnacknowledgedChars
+  - name: sendCommandResult
+    sig: 'sendCommandResult(reqId: number, isError: boolean, serializedPayload: any): void'
+    lines:
+    - 907
+    - 913
+    detail:
+      calls:
+      - this._pendingCommands.delete
+      - this._pendingCommands.get
+  - name: orphanQuestionReply
+    sig: 'orphanQuestionReply(): void'
+    lines:
+    - 915
+    - 922
+    detail:
+      calls:
+      - Date.now
+      - barrier.open
+  - name: reduceGraceTime
+    sig: 'reduceGraceTime(): void'
+    lines:
+    - 924
+    - 933
+    detail:
+      calls:
+      - this._disconnectRunner1.isScheduled
+      - this._disconnectRunner2.isScheduled
+      - this._disconnectRunner2.schedule
+  - name: isOrphaned
+    sig: 'isOrphaned(): Promise<boolean>'
+    is_async: true
+    lines:
+    - 935
+    - 937
+    detail:
+      calls:
+      - this._orphanRequestQueue.queue
+  - name: _isOrphaned
+    sig: '_isOrphaned(): Promise<boolean>'
+    is_async: true
+    vis: private
+    lines:
+    - 939
+    - 955
+    detail:
+      calls:
+      - Date.now
+      - new AutoOpenBarrier
+      - this._disconnectRunner1.isScheduled
+      - this._disconnectRunner2.isScheduled
+      - this._onProcessOrphanQuestion.fire
+      - this._orphanQuestionBarrier.wait
+  lines:
+  - 646
+  - 956
+- name: MutationLogger
+  kind: struct
+  methods:
+  - name: value
+    sig: 'value(): T'
+    lines:
+    - 959
+    - 959
+    detail: {}
+  - name: setValue
+    sig: 'setValue(value: T, reason: string)'
+    lines:
+    - 960
+    - 965
+    detail:
+      calls:
+      - this._log
+  - name: constructor
+    sig: "constructor(\n\t\tprivate readonly _name: string,\n\t\tprivate _value: T,\n\t\tprivate readonly _logService: ILogService\n\t)"
+    lines:
+    - 967
+    - 973
+    detail:
+      calls:
+      - this._log
+  lines:
+  - 958
+  - 978
+- name: XtermSerializer
+  kind: struct
+  bases:
+  - ITerminalSerializer
+  fields:
+  - name: _xterm
+    type: XtermTerminal
+  - name: _shellIntegrationAddon
+    type: ShellIntegrationAddon
+  - name: _unicodeAddon
+    type: XtermUnicode11Addon
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tcols: number,\n\t\trows: number,\n\t\tscrollback: number,\n\t\tunicodeVersion: '6' | '11',\n\t\treviveBufferWithRestoreMessage: string | undefined,\n\t\tshellIntegrationNonce: string,\n\t\tprivate _rawReviveBuffer: string | undefined,\n\t\tlogService: ILogService\n\t)"
+    lines:
+    - 985
+    - 1007
+    detail:
+      calls:
+      - new ShellIntegrationAddon
+      - new XtermTerminal
+      - this._xterm.loadAddon
+      - this._xterm.writeln
+      - this.setUnicodeVersion
+  - name: freeRawReviveBuffer
+    sig: 'freeRawReviveBuffer(): void'
+    lines:
+    - 1009
+    - 1012
+    detail: {}
+  - name: handleData
+    sig: 'handleData(data: string): void'
+    lines:
+    - 1014
+    - 1016
+    detail:
+      calls:
+      - this._xterm.write
+  - name: handleResize
+    sig: 'handleResize(cols: number, rows: number): void'
+    lines:
+    - 1018
+    - 1020
+    detail:
+      calls:
+      - this._xterm.resize
+  - name: clearBuffer
+    sig: 'clearBuffer(): void'
+    lines:
+    - 1022
+    - 1024
+    detail:
+      calls:
+      - this._xterm.clear
+  - name: generateReplayEvent
+    sig: 'generateReplayEvent(normalBufferOnly?: boolean, restoreToLastReviveBuffer?: boolean): Promise<IPtyHostProcessReplayEvent>'
+    is_async: true
+    lines:
+    - 1026
+    - 1052
+    detail:
+      calls:
+      - new (await this._getSerializeConstructor())
+      - serialize.serialize
+      - this._getSerializeConstructor
+      - this._shellIntegrationAddon.serialize
+      - this._xterm.loadAddon
+  - name: setUnicodeVersion
+    sig: 'setUnicodeVersion(version: ''6'' | ''11''): Promise<void>'
+    is_async: true
+    lines:
+    - 1054
+    - 1066
+    detail:
+      calls:
+      - new (await this._getUnicode11Constructor())
+      - this._getUnicode11Constructor
+      - this._unicodeAddon?.dispose
+      - this._xterm.loadAddon
+  - name: _getUnicode11Constructor
+    sig: '_getUnicode11Constructor(): Promise<typeof Unicode11Addon>'
+    is_async: true
+    lines:
+    - 1068
+    - 1073
+    detail:
+      calls:
+      - import
+  - name: _getSerializeConstructor
+    sig: '_getSerializeConstructor(): Promise<typeof SerializeAddon>'
+    is_async: true
+    lines:
+    - 1075
+    - 1080
+    detail:
+      calls:
+      - import
+  lines:
+  - 980
+  - 1081
+- name: ITerminalSerializer
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: handleData
+    type: 'method: handleData(data: string): void'
+  - name: freeRawReviveBuffer
+    type: 'method: freeRawReviveBuffer(): void'
+  - name: handleResize
+    type: 'method: handleResize(cols: number, rows: number): void'
+  - name: clearBuffer
+    type: 'method: clearBuffer(): void'
+  - name: generateReplayEvent
+    type: 'method: generateReplayEvent(normalBufferOnly?: boolean, restoreToLastReviveBuffer?: boolean): Promise<IPtyHostProcessReplayEvent>'
+  - name: setUnicodeVersion
+    type: 'method: setUnicodeVersion?(version: ''6'' | ''11''): void'
+  lines:
+  - 1106
+  - 1113
+functions:
+- name: traceRpc
+  sig: 'traceRpc(_target: any, key: string, descriptor: any)'
+  lines:
+  - 39
+  - 64
+  detail:
+    calls:
+    - args.map
+    - args.map(e => JSON.stringify(e)).join
+    - fn.apply
+    - new Error
+    - this.traceRpcArgs.logService.error
+    - this.traceRpcArgs.logService.getLevel
+    - this.traceRpcArgs.logService.trace
+    - timeout
+- name: printTime
+  sig: 'printTime(ms: number): string'
+  lines:
+  - 1083
+  - 1104
+  detail:
+    calls:
+    - Math.floor
+exports:
+- name: XtermTerminal
+  kind: type
+- name: WorkspaceId
+  kind: type
+- name: PtyService
+  kind: type
+- name: InteractionState
+  kind: type
+- name: PersistentTerminalProcess
+  kind: type
+- name: MutationLogger
+  kind: type
+- name: XtermSerializer
+  kind: type
+- name: ITerminalSerializer
+  kind: type
+- name: traceRpc
+  kind: func
+- name: printTime
+  kind: func
+- name: '{ Terminal: XtermTerminal }'
+  kind: data
+- name: SerializeAddon
+  kind: data
+- name: Unicode11Addon
+  kind: data

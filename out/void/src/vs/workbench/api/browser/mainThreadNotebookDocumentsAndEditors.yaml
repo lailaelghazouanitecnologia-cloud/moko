@@ -1,0 +1,222 @@
+## Roska File Descriptor — browser/mainThreadNotebookDocumentsAndEditors.ts
+file: browser/mainThreadNotebookDocumentsAndEditors.ts
+lines: 246
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: ../../../base/common/collections.js.diffMaps
+- sym: ../../../base/common/collections.js.diffSets
+- sym: ../../../base/common/lifecycle.js.combinedDisposable
+- sym: ../../../base/common/lifecycle.js.DisposableStore
+- sym: ../../../base/common/lifecycle.js.DisposableMap
+- sym: ../../../base/common/uri.js.URI
+- sym: ../../../platform/instantiation/common/instantiation.js.IInstantiationService
+- sym: ../../../platform/log/common/log.js.ILogService
+- sym: ./mainThreadNotebookDocuments.js.MainThreadNotebookDocuments
+- sym: ./mainThreadNotebookDto.js.NotebookDto
+- sym: ./mainThreadNotebookEditors.js.MainThreadNotebookEditors
+- sym: ../../services/extensions/common/extHostCustomers.js.extHostCustomer
+- sym: ../../services/extensions/common/extHostCustomers.js.IExtHostContext
+- sym: ../../services/editor/common/editorGroupColumn.js.editorGroupToColumn
+- sym: ../../contrib/notebook/browser/notebookBrowser.js.getNotebookEditorFromEditorPane
+- sym: ../../contrib/notebook/browser/notebookBrowser.js.IActiveNotebookEditor
+- sym: ../../contrib/notebook/browser/notebookBrowser.js.INotebookEditor
+- sym: ../../contrib/notebook/browser/services/notebookEditorService.js.INotebookEditorService
+- sym: ../../contrib/notebook/common/model/notebookTextModel.js.NotebookTextModel
+- sym: ../../contrib/notebook/common/notebookService.js.INotebookService
+- sym: ../../services/editor/common/editorGroupsService.js.IEditorGroupsService
+- sym: ../../services/editor/common/editorService.js.IEditorService
+- sym: ../common/extHost.protocol.js.ExtHostContext
+- sym: ../common/extHost.protocol.js.ExtHostNotebookShape
+- sym: ../common/extHost.protocol.js.INotebookDocumentsAndEditorsDelta
+- sym: ../common/extHost.protocol.js.INotebookEditorAddData
+- sym: ../common/extHost.protocol.js.INotebookModelAddedData
+- sym: ../common/extHost.protocol.js.MainContext
+- sym: ../../services/extensions/common/proxyIdentifier.js.SerializableObjectWithBuffers
+types:
+- name: INotebookAndEditorDelta
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: removedDocuments
+    type: URI[]
+  - name: addedDocuments
+    type: NotebookTextModel[]
+  - name: removedEditors
+    type: string[]
+  - name: addedEditors
+    type: IActiveNotebookEditor[]
+  - name: newActiveEditor
+    type: string | null
+  - name: visibleEditors
+    type: string[]
+  lines:
+  - 25
+  - 32
+- name: NotebookAndEditorState
+  kind: struct
+  methods:
+  - name: delta
+    sig: 'delta(before: NotebookAndEditorState | undefined, after: NotebookAndEditorState): INotebookAndEditorDelta'
+    decorators:
+    - static
+    lines:
+    - 35
+    - 61
+    detail:
+      calls:
+      - '[...after.visibleEditors].map'
+      - after.textEditors.values
+      - diffMaps
+      - diffSets
+      - documentDelta.removed.map
+      - editorDelta.removed.map
+  - name: constructor
+    sig: "constructor(\n\t\treadonly documents: Set<NotebookTextModel>,\n\t\treadonly textEditors: Map<string, IActiveNotebookEditor>,\n\t\treadonly activeEditor: string | null | undefined,\n\t\treadonly visibleEditors: Map<string, IActiveNotebookEditor>\n\t)"
+    lines:
+    - 63
+    - 70
+    detail: {}
+  lines:
+  - 34
+  - 71
+- name: MainThreadNotebooksAndEditors
+  kind: struct
+  ctx: private readonly _onDidAddNotebooks = new Emitter<NotebookTextModel[]>();
+  fields:
+  - name: _proxy
+    type: Pick<ExtHostNotebookShape, '$acceptDocumentAndEditorsDelta'>
+  - name: _disposables
+    type: any
+    default: new DisposableStore()
+  - name: _editorListeners
+    type: any
+    default: new DisposableMap<string>()
+  - name: _currentState
+    type: NotebookAndEditorState
+  - name: _mainThreadNotebooks
+    type: MainThreadNotebookDocuments
+  - name: _mainThreadEditors
+    type: MainThreadNotebookEditors
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\textHostContext: IExtHostContext,\n\t\t@IInstantiationService instantiationService: IInstantiationService,\n\t\t@INotebookService private readonly _notebookService: INotebookService,\n\t\t@INotebookEditorService private readonly _notebookEditorService: INotebookEditorService,\n\t\t@IEditorService private readonly _editorService: IEditorService,\n\t\t@IEditorGroupsService private readonly _editorGroupService: IEditorGroupsService,\n\t\t@ILogService private readonly _logService: ILogService,\n\t)"
+    lines:
+    - 96
+    - 120
+    detail:
+      calls:
+      - extHostContext.getProxy
+      - extHostContext.set
+      - instantiationService.createInstance
+      - this._editorService.onDidActiveEditorChange
+      - this._editorService.onDidVisibleEditorsChange
+      - this._notebookEditorService.onDidAddNotebookEditor
+      - this._notebookEditorService.onDidRemoveNotebookEditor
+      - this._notebookService.onDidRemoveNotebookDocument
+      - this._notebookService.onWillAddNotebookDocument
+      - this._updateState
+  - name: dispose
+    sig: dispose()
+    lines:
+    - 122
+    - 127
+    detail:
+      calls:
+      - this._disposables.dispose
+      - this._editorListeners.dispose
+      - this._mainThreadEditors.dispose
+      - this._mainThreadNotebooks.dispose
+  - name: _handleEditorAdd
+    sig: '_handleEditorAdd(editor: INotebookEditor): void'
+    vis: private
+    lines:
+    - 129
+    - 135
+    detail:
+      calls:
+      - combinedDisposable
+      - editor.getId
+      - editor.onDidChangeModel
+      - editor.onDidFocusWidget
+      - this._editorListeners.set
+      - this._updateState
+  - name: _handleEditorRemove
+    sig: '_handleEditorRemove(editor: INotebookEditor): void'
+    vis: private
+    lines:
+    - 137
+    - 140
+    detail:
+      calls:
+      - editor.getId
+      - this._editorListeners.deleteAndDispose
+      - this._updateState
+  - name: _updateState
+    sig: '_updateState(focusedEditor?: INotebookEditor): void'
+    vis: private
+    lines:
+    - 142
+    - 175
+    detail:
+      calls:
+      - NotebookAndEditorState.delta
+      - activeNotebookEditor.getId
+      - editor.getId
+      - editor.hasModel
+      - editors.has
+      - editors.keys
+      - editors.set
+      - focusedEditor.getId
+      - getNotebookEditorFromEditorPane
+      - new Map
+      - new NotebookAndEditorState
+      - new Set
+      - notebookEditor.getId
+      - notebookEditor?.hasModel
+      - this._logService.trace
+      - this._notebookEditorService.listNotebookEditors
+      - this._notebookService.listNotebookDocuments
+      - this._onDelta
+      - visibleEditorsMap.set
+  - name: _onDelta
+    sig: '_onDelta(delta: INotebookAndEditorDelta): void'
+    vis: private
+    lines:
+    - 177
+    - 199
+    detail:
+      calls:
+      - MainThreadNotebooksAndEditors._isDeltaEmpty
+      - delta.addedDocuments.map
+      - delta.addedEditors.map
+      - new SerializableObjectWithBuffers
+      - this._mainThreadEditors.handleEditorsAdded
+      - this._mainThreadEditors.handleEditorsRemoved
+      - this._mainThreadNotebooks.handleNotebooksAdded
+      - this._mainThreadNotebooks.handleNotebooksRemoved
+      - this._proxy.$acceptDocumentAndEditorsDelta
+  - name: _asEditorAddData
+    sig: '_asEditorAddData(add: IActiveNotebookEditor): INotebookEditorAddData'
+    vis: private
+    lines:
+    - 233
+    - 245
+    detail:
+      calls:
+      - add.getId
+      - add.getSelections
+      - add.getViewModel
+      - editorGroupToColumn
+      - this._editorService.visibleEditorPanes.find
+  lines:
+  - 74
+  - 246
+exports:
+- name: INotebookAndEditorDelta
+  kind: type
+- name: NotebookAndEditorState
+  kind: type
+- name: MainThreadNotebooksAndEditors
+  kind: type

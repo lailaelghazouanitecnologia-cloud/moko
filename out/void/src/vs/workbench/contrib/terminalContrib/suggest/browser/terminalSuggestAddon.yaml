@@ -1,0 +1,569 @@
+## Roska File Descriptor — browser/terminalSuggestAddon.ts
+file: browser/terminalSuggestAddon.ts
+lines: 884
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: '@xterm/xterm.ITerminalAddon'
+  kind: typing
+- sym: '@xterm/xterm.Terminal'
+  kind: typing
+- sym: ../../../../../base/browser/dom.js.dom
+- sym: ../../../../../base/common/event.js.Emitter
+- sym: ../../../../../base/common/event.js.Event
+- sym: ../../../../../base/common/lifecycle.js.combinedDisposable
+- sym: ../../../../../base/common/lifecycle.js.Disposable
+- sym: ../../../../../base/common/lifecycle.js.MutableDisposable
+- sym: ../../../../../base/common/path.js.sep
+- sym: ../../../../../base/common/strings.js.commonPrefixLength
+- sym: ../../../../../editor/contrib/suggest/browser/suggestWidget.js.editorSuggestWidgetSelectedBackground
+- sym: ../../../../../platform/configuration/common/configuration.js.IConfigurationService
+- sym: ../../../../../platform/contextkey/common/contextkey.js.IContextKey
+- sym: ../../../../../platform/instantiation/common/instantiation.js.IInstantiationService
+- sym: ../../../../../platform/storage/common/storage.js.IStorageService
+- sym: ../../../../../platform/storage/common/storage.js.StorageScope
+- sym: ../../../../../platform/storage/common/storage.js.StorageTarget
+- sym: ../../../../../platform/terminal/common/capabilities/capabilities.js.TerminalCapability
+- sym: ../../../../../platform/terminal/common/capabilities/capabilities.js.type ITerminalCapabilityStore
+- sym: ../../../../../platform/terminal/common/capabilities/commandDetection/promptInputModel.js.IPromptInputModel
+  kind: typing
+- sym: ../../../../../platform/terminal/common/capabilities/commandDetection/promptInputModel.js.IPromptInputModelState
+  kind: typing
+- sym: ../../../../../platform/theme/browser/defaultStyles.js.getListStyles
+- sym: ../../../../../platform/theme/common/colorRegistry.js.activeContrastBorder
+- sym: ../../../terminal/browser/xterm-private.js.IXtermCore
+  kind: typing
+- sym: ../../../terminal/common/terminalStorageKeys.js.TerminalStorageKeys
+- sym: ../common/terminalSuggestConfiguration.js.terminalSuggestConfigSection
+- sym: ../common/terminalSuggestConfiguration.js.TerminalSuggestSettingId
+- sym: ../common/terminalSuggestConfiguration.js.type ITerminalSuggestConfiguration
+- sym: ../../../../services/suggest/browser/simpleCompletionModel.js.LineContext
+- sym: ../../../../services/suggest/browser/simpleSuggestWidget.js.ISimpleSelectedSuggestion
+- sym: ../../../../services/suggest/browser/simpleSuggestWidget.js.SimpleSuggestWidget
+- sym: ./terminalCompletionService.js.ITerminalCompletionService
+- sym: ../../../../../platform/terminal/common/terminal.js.TerminalSettingId
+- sym: ../../../../../platform/terminal/common/terminal.js.TerminalShellType
+- sym: ../../../../../base/common/cancellation.js.CancellationToken
+- sym: ../../../../../base/common/cancellation.js.CancellationTokenSource
+- sym: ../../../../services/extensions/common/extensions.js.IExtensionService
+- sym: ../../../../../base/common/themables.js.ThemeIcon
+- sym: ../../../../../platform/actions/common/actions.js.MenuId
+- sym: ../../../../services/suggest/browser/simpleSuggestWidgetRenderer.js.ISimpleSuggestWidgetFontInfo
+- sym: ../../../terminal/browser/terminal.js.ITerminalConfigurationService
+- sym: ../../../../../editor/common/config/fontInfo.js.GOLDEN_LINE_HEIGHT_RATIO
+- sym: ../../../../../editor/common/config/fontInfo.js.MINIMUM_LINE_HEIGHT
+- sym: ./terminalCompletionModel.js.TerminalCompletionModel
+- sym: ./terminalCompletionItem.js.TerminalCompletionItem
+- sym: ./terminalCompletionItem.js.TerminalCompletionItemKind
+- sym: ./terminalCompletionItem.js.type ITerminalCompletion
+- sym: ../../../../../base/common/async.js.IntervalTimer
+- sym: ../../../../../base/common/async.js.TimeoutTimer
+- sym: ../../../../../nls.js.localize
+- sym: ./terminalSuggestTelemetry.js.TerminalSuggestTelemetry
+- sym: ./terminalSymbolIcons.js.terminalSymbolAliasIcon
+- sym: ./terminalSymbolIcons.js.terminalSymbolArgumentIcon
+- sym: ./terminalSymbolIcons.js.terminalSymbolEnumMember
+- sym: ./terminalSymbolIcons.js.terminalSymbolFileIcon
+- sym: ./terminalSymbolIcons.js.terminalSymbolFlagIcon
+- sym: ./terminalSymbolIcons.js.terminalSymbolInlineSuggestionIcon
+- sym: ./terminalSymbolIcons.js.terminalSymbolMethodIcon
+- sym: ./terminalSymbolIcons.js.terminalSymbolOptionIcon
+- sym: ./terminalSymbolIcons.js.terminalSymbolFolderIcon
+types:
+- name: ISuggestController
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: isPasting
+    type: boolean
+  - name: selectPreviousSuggestion
+    type: 'method: selectPreviousSuggestion(): void'
+  - name: selectPreviousPageSuggestion
+    type: 'method: selectPreviousPageSuggestion(): void'
+  - name: selectNextSuggestion
+    type: 'method: selectNextSuggestion(): void'
+  - name: selectNextPageSuggestion
+    type: 'method: selectNextPageSuggestion(): void'
+  - name: acceptSelectedSuggestion
+    type: 'method: acceptSelectedSuggestion(suggestion?: Pick<ISimpleSelectedSuggestion<TerminalCompletionItem>, ''item'' | ''model''>): void'
+  - name: hideSuggestWidget
+    type: 'method: hideSuggestWidget(cancelAnyRequests: boolean, wasClosedByUser?: boolean): void'
+  lines:
+  - 42
+  - 50
+- name: SuggestAddon
+  kind: struct
+  ctx: 'TODO: Remove these in favor of prompt input state'
+  bases:
+  - Disposable
+  - ITerminalAddon
+  - ISuggestController
+  fields:
+  - name: _terminal
+    type: Terminal
+  - name: _promptInputModel
+    type: IPromptInputModel
+  - name: _promptInputModelSubscriptions
+    type: any
+    default: this._register(new MutableDisposable())
+  - name: _mostRecentPromptInputState
+    type: IPromptInputModelState
+  - name: _currentPromptInputState
+    type: IPromptInputModelState
+  - name: _model
+    type: TerminalCompletionModel
+  - name: _container
+    type: HTMLElement
+  - name: _screen
+    type: HTMLElement
+  - name: _suggestWidget
+    type: SimpleSuggestWidget<TerminalCompletionModel, TerminalCompletionItem>
+  - name: _cachedFontInfo
+    type: ISimpleSuggestWidgetFontInfo | undefined
+  - name: _enableWidget
+    type: boolean
+    default: 'true'
+  - name: _pathSeparator
+    type: string
+    default: sep
+  - name: _isFilteringDirectories
+    type: boolean
+    default: 'false'
+  - name: _leadingLineContent
+    type: string
+  - name: _cursorIndexDelta
+    type: number
+    default: '0'
+  - name: _requestedCompletionsIndex
+    type: number
+    default: '0'
+  - name: _lastUserData
+    type: string
+  - name: lastAcceptedCompletionTimestamp
+    type: number
+    default: '0'
+  - name: _lastUserDataTimestamp
+    type: number
+    default: '0'
+  - name: _cancellationTokenSource
+    type: CancellationTokenSource | undefined
+  - name: isPasting
+    type: boolean
+    default: 'false'
+  - name: shellType
+    type: TerminalShellType | undefined
+  - name: _shellTypeInit
+    type: Promise<void>
+  - name: _onBell
+    type: any
+    default: this._register(new Emitter<void>())
+  - name: onBell
+    type: any
+    default: this._onBell.event
+  - name: _onAcceptedCompletion
+    type: any
+    default: this._register(new Emitter<string>())
+  - name: onAcceptedCompletion
+    type: any
+    default: this._onAcceptedCompletion.event
+  - name: _onDidReceiveCompletions
+    type: any
+    default: this._register(new Emitter<void>())
+  - name: onDidReceiveCompletions
+    type: any
+    default: this._onDidReceiveCompletions.event
+  - name: _onDidFontConfigurationChange
+    type: any
+    default: this._register(new Emitter<void>())
+  - name: onDidFontConfigurationChange
+    type: any
+    default: this._onDidFontConfigurationChange.event
+  - name: _kindToIconMap
+    type: any
+    default: "new Map<number, ThemeIcon>([\n\t\t[TerminalCompletionItemKind.File, terminalSymbolF..."
+  - name: _kindToKindLabelMap
+    type: any
+    default: "new Map<number, string>([\n\t\t[TerminalCompletionItemKind.File, localize('file', '..."
+  - name: _inlineCompletion
+    type: ITerminalCompletion
+    default: "{\n\t\tlabel: '',\n\t\t// Right arrow is used to accept the completion. This is a comm..."
+  - name: _inlineCompletionItem
+    type: any
+    default: new TerminalCompletionItem(this._inlineCompletion)
+  - name: _shouldSyncWhenReady
+    type: boolean
+    default: 'false'
+  - name: _suggestTelemetry
+    type: TerminalSuggestTelemetry | undefined
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tshellType: TerminalShellType | undefined,\n\t\tprivate readonly _capabilities: ITerminalCapabilityStore,\n\t\tprivate readonly _terminalSuggestWidgetVisibleContextKey: IContextKey<boolean>,\n\t\t@ITerminalCompletionService private readonly _terminalCompletionService: ITerminalCompletionService,\n\t\t@IConfigurationService private readonly _configurationService: IConfigurationService,\n\t\t@IInstantiationService private readonly _instantiationService: IInstantiationService,\n\t\t@IExtensionService private readonly _extensionService: IExtensionService,\n\t\t@ITerminalConfigurationService private readonly _terminalConfigurationService: ITerminalConfigurationService,\n\t)"
+    lines:
+    - 137
+    - 215
+    detail:
+      calls:
+      - Event.any
+      - Event.runAndSubscribe
+      - Promise.resolve
+      - new IntervalTimer
+      - new Promise
+      - "new Promise<void>(r => {\n\t\t\t\tintervalTimer.cancelAndSet(() => {\n\t\t\t\t\tif (this.shellType) {\n\t\t\t\t\t\tr()..."
+      - new TimeoutTimer
+      - super
+      - this._register
+      - this._terminalConfigurationService.onConfigChanged
+  - name: activate
+    sig: 'activate(xterm: Terminal): void'
+    lines:
+    - 217
+    - 224
+    detail:
+      calls:
+      - this._register
+      - xterm.onKey
+      - xterm.onScroll
+  - name: _handleCompletionProviders
+    sig: '_handleCompletionProviders(terminal: Terminal | undefined, token: CancellationToken, explicitlyInvoked?: boolean): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 226
+    - 328
+    detail:
+      calls:
+      - completions.filter
+      - completions.filter(c => !!c.label).map
+      - completions.find
+      - completions.some
+      - dom.isAncestorOfActiveElement
+      - new LineContext
+      - new TerminalCompletionModel
+      - normalizePathSeparator
+      - providedCompletions?.flat
+      - textLabel?.match
+      - this._configurationService.getValue
+      - this._extensionService.activateByEvent
+      - this._kindToIconMap.get
+      - this._kindToKindLabelMap.get
+      - this._leadingLineContent.includes
+      - this._onDidReceiveCompletions.fire
+      - this._promptInputModel.prefix.substring
+      - this._refreshInlineCompletion
+      - this._showCompletions
+      - this._terminalCompletionService.provideCompletions
+      - this.hideSuggestWidget
+  - name: setContainerWithOverflow
+    sig: 'setContainerWithOverflow(container: HTMLElement): void'
+    lines:
+    - 330
+    - 332
+    detail: {}
+  - name: setScreen
+    sig: 'setScreen(screen: HTMLElement): void'
+    lines:
+    - 334
+    - 336
+    detail: {}
+  - name: toggleExplainMode
+    sig: 'toggleExplainMode(): void'
+    lines:
+    - 338
+    - 340
+    detail:
+      calls:
+      - this._suggestWidget?.toggleExplainMode
+  - name: toggleSuggestionFocus
+    sig: 'toggleSuggestionFocus(): void'
+    lines:
+    - 342
+    - 344
+    detail:
+      calls:
+      - this._suggestWidget?.toggleDetailsFocus
+  - name: toggleSuggestionDetails
+    sig: 'toggleSuggestionDetails(): void'
+    lines:
+    - 346
+    - 348
+    detail:
+      calls:
+      - this._suggestWidget?.toggleDetails
+  - name: resetWidgetSize
+    sig: 'resetWidgetSize(): void'
+    lines:
+    - 350
+    - 352
+    detail:
+      calls:
+      - this._suggestWidget?.resetWidgetSize
+  - name: requestCompletions
+    sig: 'requestCompletions(explicitlyInvoked?: boolean): Promise<void>'
+    is_async: true
+    lines:
+    - 354
+    - 370
+    detail:
+      calls:
+      - new CancellationTokenSource
+      - this._cancellationTokenSource.cancel
+      - this._cancellationTokenSource.dispose
+      - this._handleCompletionProviders
+  - name: _addPropertiesToInlineCompletionItem
+    sig: '_addPropertiesToInlineCompletionItem(completions: ITerminalCompletion[]): void'
+    vis: private
+    lines:
+    - 372
+    - 386
+    detail:
+      calls:
+      - (typeof this._inlineCompletionItem.completion.label === 'string' ? this._inlineCompletionItem.comple...
+      - completions.findIndex
+      - completions.splice
+  - name: _requestTriggerCharQuickSuggestCompletions
+    sig: '_requestTriggerCharQuickSuggestCompletions(): boolean'
+    vis: private
+    lines:
+    - 388
+    - 398
+    detail:
+      calls:
+      - this._terminalSuggestWidgetVisibleContextKey.get
+      - this._wasLastInputIncludedEscape
+      - this._wasLastInputVerticalArrowKey
+      - this.requestCompletions
+  - name: _sync
+    sig: '_sync(promptInputState: IPromptInputModelState): void'
+    vis: private
+    lines:
+    - 422
+    - 556
+    detail:
+      calls:
+      - char.match
+      - new LineContext
+      - normalizePathSeparator
+      - prefix?.endsWith
+      - prefix?.match
+      - previousPromptInputState?.value[this._currentPromptInputState.cursorIndex]?.match
+      - promptInputState.prefix.match
+      - promptInputState.prefix.trim
+      - promptInputState.prefix.trim().match
+      - this._configurationService.getValue
+      - this._currentPromptInputState.value.at
+      - this._currentPromptInputState.value.substring
+      - this._getTerminalDimensions
+      - this._model?.items.map
+      - this._refreshInlineCompletion
+      - this._requestTriggerCharQuickSuggestCompletions
+      - this._screen!.getBoundingClientRect
+      - this._suggestWidget.hasCompletions
+      - this._suggestWidget.setLineContext
+      - this._suggestWidget.showSuggestions
+      - this._terminalSuggestWidgetVisibleContextKey.get
+      - this._wasLastInputArrowKey
+      - this._wasLastInputRightArrowKey
+      - this.hideSuggestWidget
+  - name: _refreshInlineCompletion
+    sig: '_refreshInlineCompletion(completions: ITerminalCompletion[]): void'
+    vis: private
+    lines:
+    - 558
+    - 595
+    detail:
+      calls:
+      - new TerminalCompletionItem
+      - this._addPropertiesToInlineCompletionItem
+      - this._currentPromptInputState.value.lastIndexOf
+      - this._currentPromptInputState.value.substring
+      - this._model?.forceRefilterAll
+  - name: _getFontInfo
+    sig: '_getFontInfo(): ISimpleSuggestWidgetFontInfo'
+    vis: private
+    lines:
+    - 605
+    - 642
+    detail:
+      calls:
+      - Math.round
+      - dom.getActiveWindow
+      - fontWeight.toString
+      - this._configurationService.getValue
+      - this._terminalConfigurationService.getFont
+  - name: _showCompletions
+    sig: '_showCompletions(model: TerminalCompletionModel, explicitlyInvoked?: boolean): void'
+    vis: private
+    lines:
+    - 648
+    - 669
+    detail:
+      calls:
+      - suggestWidget.onDidFocus
+      - suggestWidget.setCompletionModel
+      - suggestWidget.showSuggestions
+      - this._ensureSuggestWidget
+      - this._getTerminalDimensions
+      - this._register
+      - this._screen!.getBoundingClientRect
+  - name: _ensureSuggestWidget
+    sig: '_ensureSuggestWidget(terminal: Terminal): SimpleSuggestWidget<TerminalCompletionModel, TerminalCompletionItem>'
+    vis: private
+    lines:
+    - 672
+    - 722
+    detail:
+      calls:
+      - dom.addDisposableListener
+      - dom.getActiveDocument
+      - getListStyles
+      - this._configurationService.onDidChangeConfiguration
+      - this._getAdvancedExplainModeDetails.bind
+      - this._getFontInfo.bind
+      - this._instantiationService.createInstance
+      - this._onDidFontConfigurationChange.event.bind
+      - this._register
+      - this._suggestWidget.list.style
+      - this._suggestWidget.onDidBlurDetails
+      - this._suggestWidget.onDidHide
+      - this._suggestWidget.onDidSelect
+      - this._suggestWidget.onDidShow
+      - this._terminal?.element?.querySelector
+      - this._terminalSuggestWidgetVisibleContextKey.set
+  - name: selectPreviousSuggestion
+    sig: 'selectPreviousSuggestion(): void'
+    lines:
+    - 724
+    - 726
+    detail:
+      calls:
+      - this._suggestWidget?.selectPrevious
+  - name: selectPreviousPageSuggestion
+    sig: 'selectPreviousPageSuggestion(): void'
+    lines:
+    - 728
+    - 730
+    detail:
+      calls:
+      - this._suggestWidget?.selectPreviousPage
+  - name: selectNextSuggestion
+    sig: 'selectNextSuggestion(): void'
+    lines:
+    - 732
+    - 734
+    detail:
+      calls:
+      - this._suggestWidget?.selectNext
+  - name: selectNextPageSuggestion
+    sig: 'selectNextPageSuggestion(): void'
+    lines:
+    - 736
+    - 738
+    detail:
+      calls:
+      - this._suggestWidget?.selectNextPage
+  - name: acceptSelectedSuggestion
+    sig: 'acceptSelectedSuggestion(suggestion?: Pick<ISimpleSelectedSuggestion<TerminalCompletionItem>, ''item'' | ''model''>, respectRunOnEnter?: boolean): void'
+    lines:
+    - 740
+    - 834
+    detail:
+      calls:
+      - '''\x1bOC''.repeat'
+      - '''\x1b[3~''.repeat'
+      - '''\x7F''.repeat'
+      - Date.now
+      - "[\n\t\t\t\t\t// Backspace (left) to remove all additional input\n\t\t\t\t\t'\\x7F'.repeat(replacementText.length ..."
+      - commonPrefixLength
+      - completionText.includes
+      - completionText.replaceAll
+      - completionText.substring
+      - completionText.toLowerCase
+      - completionText.toLowerCase().replace
+      - currentPromptInputState.prefix.endsWith
+      - currentPromptInputState.suffix.startsWith
+      - currentPromptInputState.value.at
+      - currentPromptInputState.value.substring
+      - currentPromptInputState.value.substring(currentPromptInputState.cursorIndex, currentPromptInputState...
+      - replacementText.substring
+      - replacementText.toLowerCase
+      - this._configurationService.getValue
+      - this._onAcceptedCompletion.fire
+      - this._suggestTelemetry?.acceptCompletion
+      - this._suggestWidget?.getFocusedItem
+      - this._suggestWidget?.hide
+      - this.hideSuggestWidget
+  - name: hideSuggestWidget
+    sig: 'hideSuggestWidget(cancelAnyRequest: boolean): void'
+    lines:
+    - 836
+    - 844
+    detail:
+      calls:
+      - this._cancellationTokenSource?.cancel
+      - this._suggestWidget?.hide
+  lines:
+  - 51
+  - 845
+- name: PersistedWidgetSize
+  kind: struct
+  fields:
+  - name: _key
+    type: any
+    default: TerminalStorageKeys.TerminalSuggestSize
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\t@IStorageService private readonly _storageService: IStorageService\n\t)"
+    lines:
+    - 851
+    - 854
+    detail: {}
+  - name: restore
+    sig: 'restore(): dom.Dimension | undefined'
+    lines:
+    - 856
+    - 867
+    detail:
+      calls:
+      - JSON.parse
+      - dom.Dimension.is
+      - dom.Dimension.lift
+      - this._storageService.get
+  - name: store
+    sig: 'store(size: dom.Dimension)'
+    lines:
+    - 869
+    - 871
+    detail:
+      calls:
+      - JSON.stringify
+      - this._storageService.store
+  - name: reset
+    sig: 'reset(): void'
+    lines:
+    - 873
+    - 875
+    detail:
+      calls:
+      - this._storageService.remove
+  lines:
+  - 847
+  - 876
+functions:
+- name: normalizePathSeparator
+  sig: 'normalizePathSeparator(path: string, sep: string): string'
+  lines:
+  - 878
+  - 883
+  detail:
+    calls:
+    - path.replaceAll
+exports:
+- name: ISuggestController
+  kind: type
+- name: SuggestAddon
+  kind: type
+- name: PersistedWidgetSize
+  kind: type
+- name: normalizePathSeparator
+  kind: func

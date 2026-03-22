@@ -1,0 +1,515 @@
+## Roska File Descriptor — testResultsView/testResultsOutput.ts
+file: testResultsView/testResultsOutput.ts
+lines: 600
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: ../../../../../base/browser/dom.js.dom
+- sym: ../../../../../base/common/async.js.Delayer
+- sym: ../../../../../base/common/buffer.js.VSBuffer
+- sym: ../../../../../base/common/event.js.Event
+- sym: ../../../../../base/common/iterator.js.Iterable
+- sym: ../../../../../base/common/lazy.js.Lazy
+- sym: ../../../../../base/common/lifecycle.js.Disposable
+- sym: ../../../../../base/common/lifecycle.js.DisposableStore
+- sym: ../../../../../base/common/lifecycle.js.IDisposable
+- sym: ../../../../../base/common/lifecycle.js.IReference
+- sym: ../../../../../base/common/lifecycle.js.MutableDisposable
+- sym: ../../../../../base/common/lifecycle.js.combinedDisposable
+- sym: ../../../../../base/common/lifecycle.js.toDisposable
+- sym: ../../../../../base/common/uri.js.URI
+- sym: ../../../../../editor/browser/editorBrowser.js.ICodeEditor
+- sym: ../../../../../editor/browser/editorBrowser.js.IDiffEditorConstructionOptions
+- sym: ../../../../../editor/browser/widget/codeEditor/codeEditorWidget.js.CodeEditorWidget
+- sym: ../../../../../editor/browser/widget/codeEditor/embeddedCodeEditorWidget.js.EmbeddedCodeEditorWidget
+- sym: ../../../../../editor/browser/widget/diffEditor/diffEditorWidget.js.DiffEditorWidget
+- sym: ../../../../../editor/browser/widget/diffEditor/embeddedDiffEditorWidget.js.EmbeddedDiffEditorWidget
+- sym: ../../../../../editor/browser/widget/markdownRenderer/browser/markdownRenderer.js.MarkdownRenderer
+- sym: ../../../../../editor/common/config/editorOptions.js.IDiffEditorOptions
+- sym: ../../../../../editor/common/config/editorOptions.js.IEditorOptions
+- sym: ../../../../../editor/common/services/resolverService.js.IResolvedTextEditorModel
+- sym: ../../../../../editor/common/services/resolverService.js.ITextModelService
+- sym: ../../../../../editor/contrib/peekView/browser/peekView.js.peekViewResultsBackground
+- sym: ../../../../../nls.js.localize
+- sym: ../../../../../platform/instantiation/common/instantiation.js.IInstantiationService
+- sym: ../../../../../platform/terminal/common/capabilities/capabilities.js.TerminalCapability
+- sym: ../../../../../platform/terminal/common/capabilities/terminalCapabilityStore.js.TerminalCapabilityStore
+- sym: ../../../../../platform/terminal/common/terminalStrings.js.formatMessageForTerminal
+- sym: ../../../../../platform/workspace/common/workspace.js.IWorkspaceContextService
+- sym: ../../../../common/editor/editorModel.js.EditorModel
+- sym: ../../../../common/theme.js.PANEL_BACKGROUND
+- sym: ../../../../common/theme.js.SIDE_BAR_BACKGROUND
+- sym: ../../../../common/views.js.IViewDescriptorService
+- sym: ../../../../common/views.js.ViewContainerLocation
+- sym: ../../../terminal/browser/detachedTerminal.js.DetachedProcessInfo
+- sym: ../../../terminal/browser/terminal.js.IDetachedTerminalInstance
+- sym: ../../../terminal/browser/terminal.js.ITerminalService
+- sym: ../../../terminal/browser/xterm/xtermTerminal.js.getXtermScaledDimensions
+- sym: ../../../terminal/common/terminalColorRegistry.js.TERMINAL_BACKGROUND_COLOR
+- sym: ../testMessageColorizer.js.colorizeTestMessageInEditor
+- sym: ./testResultsSubject.js.InspectSubject
+- sym: ./testResultsSubject.js.MessageSubject
+- sym: ./testResultsSubject.js.TaskSubject
+- sym: ./testResultsSubject.js.TestOutputSubject
+- sym: ../../common/constants.js.Testing
+- sym: ../../common/observableValue.js.MutableObservableValue
+- sym: ../../common/testResult.js.ITaskRawOutput
+- sym: ../../common/testResult.js.ITestResult
+- sym: ../../common/testResult.js.ITestRunTaskResults
+- sym: ../../common/testResult.js.LiveTestResult
+- sym: ../../common/testResult.js.TestResultItemChangeReason
+- sym: ../../common/testTypes.js.ITestMessage
+- sym: ../../common/testTypes.js.TestMessageType
+- sym: ../../common/testTypes.js.getMarkId
+- sym: ../../../../../base/common/scrollable.js.ScrollEvent
+- sym: ../../../debug/browser/callStackWidget.js.CALL_STACK_WIDGET_HEADER_HEIGHT
+data:
+- name: commonEditorOptions
+  type: IEditorOptions
+  val: "{\n\tscrollBeyondLastLine: false,\n\tlinks: true,\n\tlineNumbers: 'off',\n\tglyphMargin: false,\n\tscrollbar: {\n\t\tvertical: 'hidde..."
+- name: diffEditorOptions
+  type: IDiffEditorConstructionOptions
+  val: "{\n\t...commonEditorOptions,\n\tenableSplitViewResizing: true,\n\tisInEmbeddedEditor: true,\n\trenderOverviewRuler: false,\n\tigno..."
+types:
+- name: SimpleDiffEditorModel
+  kind: model
+  bases:
+  - EditorModel
+  fields:
+  - name: original
+    type: any
+    default: this._original.object.textEditorModel
+  - name: modified
+    type: any
+    default: this._modified.object.textEditorModel
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tprivate readonly _original: IReference<IResolvedTextEditorModel>,\n\t\tprivate readonly _modified: IReference<IResolvedTextEditorModel>,\n\t)"
+    lines:
+    - 50
+    - 55
+    detail:
+      calls:
+      - super
+  - name: dispose
+    sig: dispose()
+    lines:
+    - 57
+    - 61
+    detail:
+      calls:
+      - super.dispose
+      - this._modified.dispose
+      - this._original.dispose
+  lines:
+  - 46
+  - 62
+- name: IPeekOutputRenderer
+  kind: trait
+  bases:
+  - IDisposable
+  decorators:
+  - interface
+  fields:
+  - name: onDidContentSizeChange
+    type: Event<void>
+  - name: onScrolled
+    type: 'method: onScrolled?(evt: ScrollEvent): void'
+  - name: update
+    type: 'method: update(subject: InspectSubject): Promise<boolean>'
+  - name: layout
+    type: 'method: layout(dimension: dom.IDimension, hasMultipleFrames: boolean): number | undefined'
+  - name: dispose
+    type: 'method: dispose(): void'
+  lines:
+  - 65
+  - 74
+- name: DiffContentProvider
+  kind: struct
+  bases:
+  - Disposable
+  - IPeekOutputRenderer
+  fields:
+  - name: widget
+    type: any
+    default: this._register(new MutableDisposable<DiffEditorWidget>())
+  - name: model
+    type: any
+    default: this._register(new MutableDisposable())
+  - name: dimension
+    type: dom.IDimension
+  - name: helper
+    type: ScrollHelper
+  methods:
+  - name: onDidContentSizeChange
+    sig: onDidContentSizeChange()
+    lines:
+    - 117
+    - 119
+    detail: {}
+  - name: constructor
+    sig: "constructor(\n\t\tprivate readonly editor: ICodeEditor | undefined,\n\t\tprivate readonly container: HTMLElement,\n\t\t@IInstantiationService private readonly instantiationService: IInstantiationService,\n\t\t@ITextModelService private readonly modelService: ITextModelService,\n\t)"
+    lines:
+    - 121
+    - 128
+    detail:
+      calls:
+      - super
+  - name: update
+    sig: 'update(subject: InspectSubject)'
+    is_async: true
+    lines:
+    - 130
+    - 172
+    detail:
+      calls:
+      - ITestMessage.isDiffable
+      - Promise.all
+      - isMultiline
+      - new SimpleDiffEditorModel
+      - this.clear
+      - this.getOptions
+      - this.instantiationService.createInstance
+      - this.modelService.createModelReference
+      - this.widget.value.layout
+      - this.widget.value.setModel
+      - this.widget.value.updateOptions
+  - name: layout
+    sig: 'layout(dimensions: dom.IDimension, hasMultipleFrames: boolean)'
+    lines:
+    - 179
+    - 193
+    detail:
+      calls:
+      - Math.max
+      - editor.getModifiedEditor
+      - editor.getModifiedEditor().getContentHeight
+      - editor.getOriginalEditor
+      - editor.getOriginalEditor().getContentHeight
+      - editor.layout
+      - new ScrollHelper
+  - name: onScrolled
+    sig: 'onScrolled(evt: ScrollEvent): void'
+    lines:
+    - 195
+    - 197
+    detail:
+      calls:
+      - this.helper?.onScrolled
+      - this.widget.value?.getDomNode
+      - this.widget.value?.getOriginalEditor
+  lines:
+  - 111
+  - 204
+- name: MarkdownTestMessagePeek
+  kind: struct
+  bases:
+  - Disposable
+  - IPeekOutputRenderer
+  fields:
+  - name: markdown
+    type: any
+    default: "new Lazy(\n\t\t() => this.instantiationService.createInstance(MarkdownRenderer, {})..."
+  - name: rendered
+    type: any
+    default: this._register(new DisposableStore())
+  - name: element
+    type: HTMLElement
+  methods:
+  - name: constructor
+    sig: 'constructor(private readonly container: HTMLElement, @IInstantiationService private readonly instantiationService: IInstantiationService)'
+    lines:
+    - 215
+    - 218
+    detail:
+      calls:
+      - super
+      - this._register
+      - toDisposable
+  - name: update
+    sig: 'update(subject: InspectSubject)'
+    is_async: true
+    lines:
+    - 220
+    - 240
+    detail:
+      calls:
+      - ITestMessage.isDiffable
+      - rendered.element.classList.add
+      - this.clear
+      - this.container.appendChild
+      - this.markdown.value.render
+      - this.rendered.add
+      - toDisposable
+  - name: layout
+    sig: 'layout(dimension: dom.IDimension): number | undefined'
+    lines:
+    - 242
+    - 249
+    detail: {}
+  lines:
+  - 207
+  - 255
+- name: ScrollHelper
+  kind: struct
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tprivate readonly hasMultipleFrames: boolean,\n\t\tprivate readonly contentHeight: number,\n\t\tprivate readonly viewHeight: number,\n\t)"
+    lines:
+    - 258
+    - 262
+    detail: {}
+  - name: onScrolled
+    sig: 'onScrolled(evt: ScrollEvent, container: HTMLElement | undefined | null, editor: ICodeEditor | undefined)'
+    lines:
+    - 264
+    - 274
+    detail:
+      calls:
+      - Math.max
+      - Math.min
+      - editor.setScrollTop
+  lines:
+  - 257
+  - 275
+- name: PlainTextMessagePeek
+  kind: struct
+  bases:
+  - Disposable
+  - IPeekOutputRenderer
+  fields:
+  - name: widgetDecorations
+    type: any
+    default: this._register(new MutableDisposable())
+  - name: widget
+    type: any
+    default: this._register(new MutableDisposable<CodeEditorWidget>())
+  - name: model
+    type: any
+    default: this._register(new MutableDisposable())
+  - name: dimension
+    type: dom.IDimension
+  - name: helper
+    type: ScrollHelper
+  methods:
+  - name: onDidContentSizeChange
+    sig: onDidContentSizeChange()
+    lines:
+    - 284
+    - 286
+    detail: {}
+  - name: constructor
+    sig: "constructor(\n\t\tprivate readonly editor: ICodeEditor | undefined,\n\t\tprivate readonly container: HTMLElement,\n\t\t@IInstantiationService private readonly instantiationService: IInstantiationService,\n\t\t@ITextModelService private readonly modelService: ITextModelService,\n\t)"
+    lines:
+    - 288
+    - 295
+    detail:
+      calls:
+      - super
+  - name: update
+    sig: 'update(subject: InspectSubject): Promise<boolean>'
+    is_async: true
+    lines:
+    - 297
+    - 333
+    detail:
+      calls:
+      - ITestMessage.isDiffable
+      - colorizeTestMessageInEditor
+      - this.clear
+      - this.instantiationService.createInstance
+      - this.modelService.createModelReference
+      - this.widget.value.layout
+      - this.widget.value.setModel
+      - this.widget.value.updateOptions
+  - name: clear
+    sig: clear()
+    vis: private
+    lines:
+    - 335
+    - 339
+    detail:
+      calls:
+      - this.model.clear
+      - this.widget.clear
+      - this.widgetDecorations.clear
+  - name: onScrolled
+    sig: 'onScrolled(evt: ScrollEvent): void'
+    lines:
+    - 341
+    - 343
+    detail:
+      calls:
+      - this.helper?.onScrolled
+      - this.widget.value?.getDomNode
+  - name: layout
+    sig: 'layout(dimensions: dom.IDimension, hasMultipleFrames: boolean)'
+    lines:
+    - 345
+    - 356
+    detail:
+      calls:
+      - editor.getContentHeight
+      - editor.layout
+      - new ScrollHelper
+  lines:
+  - 277
+  - 357
+- name: TerminalMessagePeek
+  kind: struct
+  ctx: Active terminal instance.
+  bases:
+  - Disposable
+  - IPeekOutputRenderer
+  fields:
+  - name: dimensions
+    type: dom.IDimension
+  - name: terminalCwd
+    type: any
+    default: this._register(new MutableObservableValue<string>(''))
+  - name: xtermLayoutDelayer
+    type: any
+    default: this._register(new Delayer(50))
+  - name: terminal
+    type: any
+    default: this._register(new MutableDisposable<IDetachedTerminalInstance>())
+  - name: outputDataListener
+    type: any
+    default: this._register(new MutableDisposable())
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tprivate readonly container: HTMLElement,\n\t\tprivate readonly isInPeekView: boolean,\n\t\t@ITerminalService private readonly terminalService: ITerminalService,\n\t\t@IViewDescriptorService private readonly viewDescriptorService: IViewDescriptorService,\n\t\t@IWorkspaceContextService private readonly workspaceContext: IWorkspaceContextService,\n\t)"
+    lines:
+    - 369
+    - 377
+    detail:
+      calls:
+      - super
+  - name: makeTerminal
+    sig: makeTerminal()
+    is_async: true
+    vis: private
+    lines:
+    - 379
+    - 421
+    detail:
+      calls:
+      - capabilities.add
+      - new DetachedProcessInfo
+      - new TerminalCapabilityStore
+      - prev.xterm.clearBuffer
+      - prev.xterm.clearSearchDecorations
+      - prev.xterm.write
+      - this.terminalService.createDetachedTerminal
+  - name: update
+    sig: 'update(subject: InspectSubject): Promise<boolean>'
+    is_async: true
+    lines:
+    - 423
+    - 435
+    detail:
+      calls:
+      - this.clear
+      - this.outputDataListener.clear
+      - this.updateForTaskSubject
+      - this.updateForTestSubject
+  - name: updateForTestSubject
+    sig: 'updateForTestSubject(subject: TestOutputSubject | MessageSubject)'
+    is_async: true
+    vis: private
+    lines:
+    - 437
+    - 469
+    detail:
+      calls:
+      - await this.updateGenerically
+      - getMarkId
+      - localize
+      - output.getRangeIter
+      - results.getStateById
+      - terminal?.xterm.selectMarkedRange
+      - that.updateCwd
+  - name: updateGenerically
+    sig: "updateGenerically(opts: {\n\t\tsubject: InspectSubject;\n\t\tnoOutputMessage: string;\n\t\tgetTarget: (result: ITestResult) => T | undefined;\n\t\tdoInitialWrite: (target: T, result: LiveTestResult) => Iterable<VSBuffer>;\n\t\tdoListenForMoreData: (target: T, result: LiveTestResult, write: (s: Uint8Array) => void) => IDisposable;\n\t})"
+    is_async: true
+    vis: private
+    lines:
+    - 486
+    - 549
+    detail:
+      calls:
+      - combinedDisposable
+      - localize
+      - new MutableObservableValue
+      - new Promise
+      - opts.doInitialWrite
+      - opts.doListenForMoreData
+      - opts.getTarget
+      - result.onComplete
+      - terminal.xterm.write
+      - this.attachTerminalToDom
+      - this.clear
+      - this.makeTerminal
+      - this.outputDataListener.clear
+      - this.writeNotice
+  - name: attachTerminalToDom
+    sig: 'attachTerminalToDom(terminal: IDetachedTerminalInstance)'
+    vis: private
+    lines:
+    - 563
+    - 567
+    detail:
+      calls:
+      - dom.getWindow
+      - dom.scheduleAtNextAnimationFrame
+      - terminal.attachToElement
+      - terminal.xterm.write
+  - name: clear
+    sig: clear()
+    vis: private
+    lines:
+    - 569
+    - 573
+    detail:
+      calls:
+      - this.outputDataListener.clear
+      - this.terminal.clear
+      - this.xtermLayoutDelayer.cancel
+  - name: layout
+    sig: 'layout(dimensions: dom.IDimension)'
+    lines:
+    - 575
+    - 583
+    detail:
+      calls:
+      - this.layoutTerminal
+  lines:
+  - 359
+  - 598
+functions:
+- name: isMultiline
+  sig: 'isMultiline(str: string | undefined)'
+  lines:
+  - 600
+  - 600
+exports:
+- name: SimpleDiffEditorModel
+  kind: type
+- name: IPeekOutputRenderer
+  kind: type
+- name: DiffContentProvider
+  kind: type
+- name: MarkdownTestMessagePeek
+  kind: type
+- name: ScrollHelper
+  kind: type
+- name: PlainTextMessagePeek
+  kind: type
+- name: TerminalMessagePeek
+  kind: type
+- name: isMultiline
+  kind: func
+- name: commonEditorOptions
+  kind: data
+- name: diffEditorOptions
+  kind: data

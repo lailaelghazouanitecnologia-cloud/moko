@@ -1,0 +1,879 @@
+## Roska File Descriptor — browser/settingsTreeModels.ts
+file: browser/settingsTreeModels.ts
+lines: 1177
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: ../../../../base/common/arrays.js.arrays
+- sym: ../../../../base/common/strings.js.escapeRegExpCharacters
+- sym: ../../../../base/common/strings.js.isFalsyOrWhitespace
+- sym: ../../../../base/common/types.js.isUndefinedOrNull
+- sym: ../../../../base/common/uri.js.URI
+- sym: ../../../../platform/configuration/common/configuration.js.ConfigurationTarget
+- sym: ../../../../platform/configuration/common/configuration.js.IConfigurationValue
+- sym: ./preferencesWidgets.js.SettingsTarget
+- sym: ./settingsLayout.js.ITOCEntry
+- sym: ./settingsLayout.js.knownAcronyms
+- sym: ./settingsLayout.js.knownTermMappings
+- sym: ./settingsLayout.js.tocData
+- sym: ../common/preferences.js.ENABLE_EXTENSION_TOGGLE_SETTINGS
+- sym: ../common/preferences.js.ENABLE_LANGUAGE_FILTER
+- sym: ../common/preferences.js.MODIFIED_SETTING_TAG
+- sym: ../common/preferences.js.POLICY_SETTING_TAG
+- sym: ../common/preferences.js.REQUIRE_TRUSTED_WORKSPACE_SETTING_TAG
+- sym: ../common/preferences.js.compareTwoNullableNumbers
+- sym: ../../../services/preferences/common/preferences.js.IExtensionSetting
+- sym: ../../../services/preferences/common/preferences.js.ISearchResult
+- sym: ../../../services/preferences/common/preferences.js.ISetting
+- sym: ../../../services/preferences/common/preferences.js.ISettingMatch
+- sym: ../../../services/preferences/common/preferences.js.SettingMatchType
+- sym: ../../../services/preferences/common/preferences.js.SettingValueType
+- sym: ../../../services/environment/common/environmentService.js.IWorkbenchEnvironmentService
+- sym: ../../../services/configuration/common/configuration.js.FOLDER_SCOPES
+- sym: ../../../services/configuration/common/configuration.js.WORKSPACE_SCOPES
+- sym: ../../../services/configuration/common/configuration.js.REMOTE_MACHINE_SCOPES
+- sym: ../../../services/configuration/common/configuration.js.LOCAL_MACHINE_SCOPES
+- sym: ../../../services/configuration/common/configuration.js.IWorkbenchConfigurationService
+- sym: ../../../services/configuration/common/configuration.js.APPLICATION_SCOPES
+- sym: ../../../../base/common/jsonSchema.js.IJSONSchema
+- sym: ../../../../base/common/lifecycle.js.Disposable
+- sym: ../../../../base/common/lifecycle.js.IDisposable
+- sym: ../../../../base/common/event.js.Emitter
+- sym: ../../../../platform/configuration/common/configurationRegistry.js.ConfigurationDefaultValueSource
+- sym: ../../../../platform/configuration/common/configurationRegistry.js.ConfigurationScope
+- sym: ../../../../platform/configuration/common/configurationRegistry.js.EditPresentationTypes
+- sym: ../../../../platform/configuration/common/configurationRegistry.js.Extensions
+- sym: ../../../../platform/configuration/common/configurationRegistry.js.IConfigurationRegistry
+- sym: ../../../../editor/common/languages/language.js.ILanguageService
+- sym: ../../../../platform/registry/common/platform.js.Registry
+- sym: ../../../services/userDataProfile/common/userDataProfile.js.IUserDataProfileService
+- sym: ../../../../platform/product/common/productService.js.IProductService
+- sym: ../../../../platform/request/common/request.js.USER_LOCAL_AND_REMOTE_SETTINGS
+data:
+- name: ONLINE_SERVICES_SETTING_TAG
+  type: string
+  val: '''usesOnlineServices'''
+- name: tagRegex
+  type: any
+  val: /(^|\s)@tag:("([^"]*)"|[^"]\S*)/g
+- name: extensionRegex
+  type: any
+  val: /(^|\s)@ext:("([^"]*)"|[^"]\S*)?/g
+- name: featureRegex
+  type: any
+  val: /(^|\s)@feature:("([^"]*)"|[^"]\S*)?/g
+- name: idRegex
+  type: any
+  val: /(^|\s)@id:("([^"]*)"|[^"]\S*)?/g
+- name: languageRegex
+  type: any
+  val: /(^|\s)@lang:("([^"]*)"|[^"]\S*)?/g
+types:
+- name: ISettingsEditorViewState
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: settingsTarget
+    type: SettingsTarget
+  - name: query
+    type: string
+  - name: tagFilters
+    type: Set<string>
+  - name: extensionFilters
+    type: Set<string>
+  - name: featureFilters
+    type: Set<string>
+  - name: idFilters
+    type: Set<string>
+  - name: languageFilter
+    type: string
+  - name: filterToCategory
+    type: SettingsTreeGroupElement
+  lines:
+  - 29
+  - 38
+- name: SettingsTreeElement
+  kind: trait
+  bases:
+  - Disposable
+  decorators:
+  - abstract
+  fields:
+  - name: id
+    type: string
+  - name: parent
+    type: SettingsTreeGroupElement
+  - name: _tabbable
+    type: any
+    default: 'false'
+  - name: _onDidChangeTabbable
+    type: any
+    default: this._register(new Emitter<void>())
+  - name: onDidChangeTabbable
+    type: any
+    default: this._onDidChangeTabbable.event
+  methods:
+  - name: constructor
+    sig: 'constructor(_id: string)'
+    lines:
+    - 48
+    - 51
+    detail:
+      calls:
+      - super
+  - name: tabbable
+    sig: 'tabbable(): boolean'
+    lines:
+    - 53
+    - 55
+    detail: {}
+  - name: tabbable
+    sig: 'tabbable(value: boolean)'
+    lines:
+    - 57
+    - 60
+    detail:
+      calls:
+      - this._onDidChangeTabbable.fire
+  lines:
+  - 40
+  - 61
+- name: SettingsTreeGroupChild
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 63
+  - 63
+- name: SettingsTreeGroupElement
+  kind: struct
+  ctx: Returns whether this group contains the given child key (to a depth of 1 only)
+  bases:
+  - SettingsTreeElement
+  fields:
+  - name: count
+    type: number
+  - name: level
+    type: number
+  - name: isFirstGroup
+    type: boolean
+  - name: _childSettingKeys
+    type: Set<string>
+    default: new Set()
+  - name: _children
+    type: SettingsTreeGroupChild[]
+    default: '[]'
+  methods:
+  - name: children
+    sig: 'children(): SettingsTreeGroupChild[]'
+    lines:
+    - 74
+    - 76
+    detail: {}
+  - name: children
+    sig: 'children(newChildren: SettingsTreeGroupChild[])'
+    lines:
+    - 78
+    - 87
+    detail:
+      calls:
+      - new Set
+      - this._children.forEach
+  - name: constructor
+    sig: 'constructor(_id: string, count: number | undefined, label: string, level: number, isFirstGroup: boolean)'
+    lines:
+    - 89
+    - 96
+    detail:
+      calls:
+      - super
+  - name: containsSetting
+    sig: 'containsSetting(key: string): boolean'
+    lines:
+    - 101
+    - 103
+    detail:
+      calls:
+      - this._childSettingKeys.has
+  lines:
+  - 65
+  - 104
+- name: SettingsTreeNewExtensionsElement
+  kind: struct
+  bases:
+  - SettingsTreeElement
+  methods:
+  - name: constructor
+    sig: 'constructor(_id: string, public readonly extensionIds: string[])'
+    lines:
+    - 107
+    - 109
+    detail:
+      calls:
+      - super
+  lines:
+  - 106
+  - 110
+- name: SettingsTreeSettingElement
+  kind: struct
+  ctx: scopeValue || defaultValue, for rendering convenience.
+  bases:
+  - SettingsTreeElement
+  fields:
+  - name: MAX_DESC_LINES
+    type: any
+    default: '20'
+  - name: setting
+    type: ISetting
+  - name: _displayCategory
+    type: string | null
+    default: 'null'
+  - name: _displayLabel
+    type: string | null
+    default: 'null'
+  - name: value
+    type: any
+  - name: scopeValue
+    type: any
+  - name: defaultValue
+    type: any
+  - name: defaultValueSource
+    type: ConfigurationDefaultValueSource | undefined
+  - name: isConfigured
+    type: any
+    default: 'false'
+  - name: isUntrusted
+    type: any
+    default: 'false'
+  - name: hasPolicyValue
+    type: any
+    default: 'false'
+  - name: tags
+    type: Set<string>
+  - name: overriddenScopeList
+    type: string[]
+    default: '[]'
+  - name: overriddenDefaultsLanguageList
+    type: string[]
+    default: '[]'
+  - name: languageOverrideValues
+    type: Map<string, IConfigurationValue<unknown>>
+    default: new Map<string, IConfigurationValue<unknown>>()
+  - name: description
+    type: string
+  - name: valueType
+    type: SettingValueType
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tsetting: ISetting,\n\t\tparent: SettingsTreeGroupElement,\n\t\treadonly settingsTarget: SettingsTarget,\n\t\tprivate readonly isWorkspaceTrusted: boolean,\n\t\tprivate readonly languageFilter: string | undefined,\n\t\tprivate readonly languageService: ILanguageService,\n\t\tprivate readonly productService: IProductService,\n\t\tprivate readonly userDataProfileService: IUserDataProfileService,\n\t\tprivate readonly configurationService: IWorkbenchConfigurationService,\n\t)"
+    lines:
+    - 168
+    - 186
+    detail:
+      calls:
+      - sanitizeId
+      - super
+      - this.initSettingDescription
+      - this.initSettingValueType
+  - name: displayCategory
+    sig: 'displayCategory(): string'
+    lines:
+    - 188
+    - 194
+    detail:
+      calls:
+      - this.initLabels
+  - name: displayLabel
+    sig: 'displayLabel(): string'
+    lines:
+    - 196
+    - 202
+    detail:
+      calls:
+      - this.initLabels
+  - name: initSettingDescription
+    sig: initSettingDescription()
+    vis: private
+    lines:
+    - 215
+    - 223
+    detail:
+      calls:
+      - this.setting.description.join
+      - this.setting.description.slice
+      - truncatedDescLines.join
+      - truncatedDescLines.push
+  - name: initSettingValueType
+    sig: initSettingValueType()
+    vis: private
+    lines:
+    - 225
+    - 273
+    detail:
+      calls:
+      - Array.isArray
+      - '[''string'', ''enum'', ''number'', ''integer''].includes'
+      - getObjectSettingSchemaType
+      - isExcludeSetting
+      - isExtensionToggleSetting
+      - isIncludeSetting
+      - settingTypeEnumRenderable
+      - this.setting.type.includes
+  - name: inspectSelf
+    sig: inspectSelf()
+    lines:
+    - 275
+    - 279
+    detail:
+      calls:
+      - inspectSetting
+      - this.getTargetToInspect
+      - this.update
+  - name: update
+    sig: 'update(inspectResult: IInspectResult, isWorkspaceTrusted: boolean): void'
+    vis: private
+    lines:
+    - 293
+    - 389
+    detail:
+      calls:
+      - Registry.as
+      - Registry.as<IConfigurationRegistry>(Extensions.Configuration).getConfigurationDefaultsOverrides
+      - inspectedLanguageOverrides.get
+      - new Set
+      - overriddenDefaultsLanguageList.push
+      - overriddenScopeList.push
+      - registryValues.get
+      - source.get
+      - this.languageOverrideValues.get
+      - this.languageOverrideValues.has
+      - this.languageOverrideValues.set
+      - this.languageService.isRegisteredLanguageId
+      - this.setting.tags?.forEach
+      - this.tags.add
+  - name: matchesAllTags
+    sig: 'matchesAllTags(tagFilters?: Set<string>): boolean'
+    lines:
+    - 391
+    - 407
+    detail:
+      calls:
+      - Array.from
+      - Array.from(tagFilters).every
+      - this.inspectSelf
+  - name: matchesScope
+    sig: 'matchesScope(scope: SettingsTarget, isRemote: boolean): boolean'
+    lines:
+    - 409
+    - 439
+    detail:
+      calls:
+      - APPLICATION_SCOPES.includes
+      - FOLDER_SCOPES.includes
+      - LOCAL_MACHINE_SCOPES.includes
+      - REMOTE_MACHINE_SCOPES.includes
+      - URI.isUri
+      - USER_LOCAL_AND_REMOTE_SETTINGS.includes
+      - WORKSPACE_SCOPES.includes
+  - name: matchesAnyExtension
+    sig: 'matchesAnyExtension(extensionFilters?: Set<string>): boolean'
+    lines:
+    - 441
+    - 451
+    detail:
+      calls:
+      - Array.from
+      - Array.from(extensionFilters).some
+  - name: matchesAnyFeature
+    sig: 'matchesAnyFeature(featureFilters?: Set<string>): boolean'
+    lines:
+    - 453
+    - 473
+    detail:
+      calls:
+      - Array.from
+      - Array.from(featureFilters).some
+      - tocData.children!.find
+  - name: matchesAnyId
+    sig: 'matchesAnyId(idFilters?: Set<string>): boolean'
+    lines:
+    - 475
+    - 480
+    detail:
+      calls:
+      - idFilters.has
+  - name: matchesAllLanguages
+    sig: 'matchesAllLanguages(languageFilter?: string): boolean'
+    lines:
+    - 482
+    - 502
+    detail:
+      calls:
+      - this.languageService.isRegisteredLanguageId
+  lines:
+  - 112
+  - 503
+- name: SettingsTreeModel
+  kind: struct
+  bases:
+  - IDisposable
+  fields:
+  - name: _root
+    type: SettingsTreeGroupElement
+  - name: _tocRoot
+    type: ITOCEntry<ISetting>
+  - name: _treeElementsBySettingName
+    type: any
+    default: new Map<string, SettingsTreeSettingElement[]>()
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tprotected readonly _viewState: ISettingsEditorViewState,\n\t\tprivate _isWorkspaceTrusted: boolean,\n\t\t@IWorkbenchConfigurationService private readonly _configurationService: IWorkbenchConfigurationService,\n\t\t@ILanguageService private readonly _languageService: ILanguageService,\n\t\t@IUserDataProfileService private readonly _userDataProfileService: IUserDataProfileService,\n\t\t@IProductService private readonly _productService: IProductService\n\t)"
+    lines:
+    - 518
+    - 526
+    detail: {}
+  - name: root
+    sig: 'root(): SettingsTreeGroupElement'
+    lines:
+    - 528
+    - 530
+    detail: {}
+  - name: update
+    sig: 'update(newTocRoot = this._tocRoot): void'
+    lines:
+    - 532
+    - 547
+    detail:
+      calls:
+      - newRoot.dispose
+      - this._treeElementsBySettingName.clear
+      - this.createSettingsTreeGroupElement
+      - this.disposeChildren
+  - name: updateWorkspaceTrust
+    sig: 'updateWorkspaceTrust(workspaceTrusted: boolean): void'
+    lines:
+    - 549
+    - 552
+    detail:
+      calls:
+      - this.updateRequireTrustedTargetElements
+  - name: getElementsByName
+    sig: 'getElementsByName(name: string): SettingsTreeSettingElement[] | null'
+    lines:
+    - 568
+    - 570
+    detail:
+      calls:
+      - this._treeElementsBySettingName.get
+  - name: updateElementsByName
+    sig: 'updateElementsByName(name: string): void'
+    lines:
+    - 572
+    - 578
+    detail:
+      calls:
+      - this._treeElementsBySettingName.get
+      - this._treeElementsBySettingName.has
+      - this.reinspectSettings
+  - name: updateRequireTrustedTargetElements
+    sig: 'updateRequireTrustedTargetElements(): void'
+    vis: private
+    lines:
+    - 580
+    - 582
+    detail:
+      calls:
+      - '[...this._treeElementsBySettingName.values()].flat'
+      - '[...this._treeElementsBySettingName.values()].flat().filter'
+      - this._treeElementsBySettingName.values
+      - this.reinspectSettings
+  - name: createSettingsTreeGroupElement
+    sig: 'createSettingsTreeGroupElement(tocEntry: ITOCEntry<ISetting>, parent?: SettingsTreeGroupElement): SettingsTreeGroupElement'
+    vis: private
+    lines:
+    - 590
+    - 620
+    detail:
+      calls:
+      - child.dispose
+      - child.inspectSelf
+      - children.push
+      - new SettingsTreeGroupElement
+      - this.getDepth
+      - tocEntry.children.map
+      - tocEntry.settings.map
+  - name: createSettingsTreeSettingElement
+    sig: 'createSettingsTreeSettingElement(setting: ISetting, parent: SettingsTreeGroupElement): SettingsTreeSettingElement'
+    vis: private
+    lines:
+    - 630
+    - 646
+    detail:
+      calls:
+      - nameElements.push
+      - new SettingsTreeSettingElement
+      - this._treeElementsBySettingName.get
+      - this._treeElementsBySettingName.set
+  - name: dispose
+    sig: dispose()
+    lines:
+    - 648
+    - 651
+    detail:
+      calls:
+      - this._treeElementsBySettingName.clear
+      - this.disposeChildAndRecurse
+  lines:
+  - 513
+  - 652
+- name: IInspectResult
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: isConfigured
+    type: boolean
+  - name: inspected
+    type: IConfigurationValue<unknown>
+  - name: targetSelector
+    type: '''applicationValue'' | ''userLocalValue'' | ''userRemoteValue'' | ''workspaceValue'' | ''workspaceFolderValue'''
+  - name: inspectedLanguageOverrides
+    type: Map<string, IConfigurationValue<unknown>>
+  - name: languageSelector
+    type: string | undefined
+  lines:
+  - 654
+  - 660
+- name: SearchResultIdx
+  kind: enum
+  variants:
+  - name: Local
+    val: '0'
+  - name: Remote
+    val: '1'
+  - name: NewExtensions
+    val: '2'
+  lines:
+  - 930
+  - 934
+- name: SearchResultModel
+  kind: model
+  bases:
+  - SettingsTreeModel
+  fields:
+  - name: rawSearchResults
+    type: ISearchResult[] | null
+    default: 'null'
+  - name: cachedUniqueSearchResults
+    type: ISearchResult | null
+    default: 'null'
+  - name: newExtensionSearchResults
+    type: ISearchResult | null
+    default: 'null'
+  - name: searchResultCount
+    type: number | null
+    default: 'null'
+  - name: settingsOrderByTocIndex
+    type: Map<string, number> | null
+  - name: id
+    type: any
+    default: '''searchResultModel'''
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tviewState: ISettingsEditorViewState,\n\t\tsettingsOrderByTocIndex: Map<string, number> | null,\n\t\tisWorkspaceTrusted: boolean,\n\t\t@IWorkbenchConfigurationService configurationService: IWorkbenchConfigurationService,\n\t\t@IWorkbenchEnvironmentService private readonly environmentService: IWorkbenchEnvironmentService,\n\t\t@ILanguageService languageService: ILanguageService,\n\t\t@IUserDataProfileService userDataProfileService: IUserDataProfileService,\n\t\t@IProductService productService: IProductService\n\t)"
+    lines:
+    - 945
+    - 958
+    detail:
+      calls:
+      - super
+      - this.update
+  - name: sortResults
+    sig: 'sortResults(filterMatches: ISettingMatch[]): ISettingMatch[]'
+    vis: private
+    lines:
+    - 960
+    - 997
+    detail:
+      calls:
+      - arrays.distinct
+      - filterMatches.sort
+      - this.settingsOrderByTocIndex.get
+  - name: getUniqueResults
+    sig: 'getUniqueResults(): ISearchResult | null'
+    lines:
+    - 999
+    - 1033
+    detail:
+      calls:
+      - combinedFilterMatches.concat
+      - localResult.filterMatches.forEach
+      - new Set
+      - remoteResult.filterMatches.filter
+      - this.sortResults
+  - name: getRawResults
+    sig: 'getRawResults(): ISearchResult[]'
+    lines:
+    - 1035
+    - 1037
+    detail: {}
+  - name: setResult
+    sig: 'setResult(order: SearchResultIdx, result: ISearchResult | null): void'
+    lines:
+    - 1039
+    - 1051
+    detail:
+      calls:
+      - this.updateChildren
+  - name: updateChildren
+    sig: 'updateChildren(): void'
+    lines:
+    - 1053
+    - 1093
+    detail:
+      calls:
+      - arrays.distinct
+      - child.dispose
+      - child.matchesAllLanguages
+      - child.matchesAllTags
+      - child.matchesAnyExtension
+      - child.matchesAnyFeature
+      - child.matchesAnyId
+      - child.matchesScope
+      - new SettingsTreeNewExtensionsElement
+      - newChildren.push
+      - this._root.children.push
+      - this.getFlatSettings
+      - "this.newExtensionSearchResults.filterMatches\n\t\t\t\t.map"
+      - "this.newExtensionSearchResults.filterMatches\n\t\t\t\t.map(result => (<IExtensionSetting>result.setting))..."
+      - this.update
+  - name: getUniqueResultsCount
+    sig: 'getUniqueResultsCount(): number'
+    lines:
+    - 1095
+    - 1097
+    detail: {}
+  lines:
+  - 936
+  - 1102
+- name: IParsedQuery
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: tags
+    type: string[]
+  - name: query
+    type: string
+  - name: extensionFilters
+    type: string[]
+  - name: idFilters
+    type: string[]
+  - name: featureFilters
+    type: string[]
+  - name: languageFilter
+    type: string | undefined
+  lines:
+  - 1104
+  - 1111
+functions:
+- name: createSettingMatchRegExp
+  sig: 'createSettingMatchRegExp(pattern: string): RegExp'
+  lines:
+  - 506
+  - 511
+  detail:
+    calls:
+    - escapeRegExpCharacters
+    - "escapeRegExpCharacters(pattern)\n\t\t.replace"
+    - new RegExp
+- name: inspectSetting
+  sig: 'inspectSetting(key: string, target: SettingsTarget, languageFilter: string | undefined, configurationService: IWorkbenchConfigurationService): IInspectResult'
+  lines:
+  - 662
+  - 703
+  detail:
+    calls:
+    - URI.isUri
+    - configurationService.inspect
+    - inspectedLanguageOverrides.get
+    - inspectedLanguageOverrides.has
+    - inspectedLanguageOverrides.set
+    - new Map
+- name: sanitizeId
+  sig: 'sanitizeId(id: string): string'
+  lines:
+  - 705
+  - 707
+  detail:
+    calls:
+    - id.replace
+- name: settingKeyToDisplayFormat
+  sig: 'settingKeyToDisplayFormat(key: string, groupId: string = '''', isLanguageTagSetting: boolean = false): { category: string; label: string }'
+  lines:
+  - 709
+  - 728
+  detail:
+    calls:
+    - groupId.replace
+    - key.lastIndexOf
+    - key.replace
+    - key.substring
+    - trimCategoryForGroup
+    - wordifyKey
+- name: wordifyKey
+  sig: 'wordifyKey(key: string): string'
+  lines:
+  - 730
+  - 746
+  detail:
+    calls:
+    - "key\n\t\t.replace"
+    - "key\n\t\t.replace(/\\.([a-z0-9])/g, (_, p1) => ` \\u203A ${p1.toUpperCase()}`) // Replace dot with spaced..."
+    - key.replace
+    - new RegExp
+- name: trimCategoryForGroup
+  sig: 'trimCategoryForGroup(category: string, groupId: string): string'
+  lines:
+  - 756
+  - 797
+  detail:
+    calls:
+    - doTrim
+- name: isExtensionToggleSetting
+  sig: 'isExtensionToggleSetting(setting: ISetting, productService: IProductService): boolean'
+  lines:
+  - 799
+  - 803
+  detail: {}
+- name: isExcludeSetting
+  sig: 'isExcludeSetting(setting: ISetting): boolean'
+  lines:
+  - 805
+  - 812
+  detail: {}
+- name: isIncludeSetting
+  sig: 'isIncludeSetting(setting: ISetting): boolean'
+  lines:
+  - 814
+  - 816
+- name: objectSettingSupportsRemoveDefaultValue
+  sig: 'objectSettingSupportsRemoveDefaultValue(key: string): boolean'
+  lines:
+  - 819
+  - 821
+- name: isSimpleType
+  sig: 'isSimpleType(type: string | undefined): boolean'
+  lines:
+  - 823
+  - 825
+- name: getObjectRenderableSchemaType
+  sig: 'getObjectRenderableSchemaType(schema: IJSONSchema, key: string): ''simple'' | ''complex'' | false'
+  lines:
+  - 827
+  - 871
+  detail:
+    calls:
+    - Array.isArray
+    - isSimpleType
+    - objectSettingSupportsRemoveDefaultValue
+    - type.includes
+- name: getObjectSettingSchemaType
+  sig: "getObjectSettingSchemaType({\n\tkey,\n\ttype,\n\tobjectProperties,\n\tobjectPatternProperties,\n\tobjectAdditionalProperties\n}: ISetting): 'simple' | 'complex' | false"
+  lines:
+  - 873
+  - 922
+  detail:
+    calls:
+    - Array.isArray
+    - Object.keys
+    - Object.keys(objectPatternProperties ?? {}).includes
+    - Object.values
+    - getObjectRenderableSchemaType
+    - isUndefinedOrNull
+    - schemas.push
+- name: settingTypeEnumRenderable
+  sig: 'settingTypeEnumRenderable(_type: string | string[])'
+  lines:
+  - 924
+  - 928
+  detail:
+    calls:
+    - Array.isArray
+    - type.every
+- name: parseQuery
+  sig: 'parseQuery(query: string): IParsedQuery'
+  lines:
+  - 1119
+  - 1177
+  detail:
+    calls:
+    - getTagsForType
+    - query.replace
+    - query.trim
+exports:
+- name: ISettingsEditorViewState
+  kind: type
+- name: SettingsTreeElement
+  kind: type
+- name: SettingsTreeGroupChild
+  kind: type
+- name: SettingsTreeGroupElement
+  kind: type
+- name: SettingsTreeNewExtensionsElement
+  kind: type
+- name: SettingsTreeSettingElement
+  kind: type
+- name: SettingsTreeModel
+  kind: type
+- name: IInspectResult
+  kind: type
+- name: SearchResultIdx
+  kind: type
+- name: SearchResultModel
+  kind: type
+- name: IParsedQuery
+  kind: type
+- name: createSettingMatchRegExp
+  kind: func
+- name: inspectSetting
+  kind: func
+- name: sanitizeId
+  kind: func
+- name: settingKeyToDisplayFormat
+  kind: func
+- name: wordifyKey
+  kind: func
+- name: trimCategoryForGroup
+  kind: func
+- name: isExtensionToggleSetting
+  kind: func
+- name: isExcludeSetting
+  kind: func
+- name: isIncludeSetting
+  kind: func
+- name: objectSettingSupportsRemoveDefaultValue
+  kind: func
+- name: isSimpleType
+  kind: func
+- name: getObjectRenderableSchemaType
+  kind: func
+- name: getObjectSettingSchemaType
+  kind: func
+- name: settingTypeEnumRenderable
+  kind: func
+- name: parseQuery
+  kind: func
+- name: ONLINE_SERVICES_SETTING_TAG
+  kind: data
+- name: tagRegex
+  kind: data
+- name: extensionRegex
+  kind: data
+- name: featureRegex
+  kind: data
+- name: idRegex
+  kind: data
+- name: languageRegex
+  kind: data

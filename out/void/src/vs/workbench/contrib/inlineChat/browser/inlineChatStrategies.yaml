@@ -1,0 +1,351 @@
+## Roska File Descriptor — browser/inlineChatStrategies.ts
+file: browser/inlineChatStrategies.ts
+lines: 578
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: ../../../../base/browser/dom.js.WindowIntervalTimer
+- sym: ../../../../base/common/cancellation.js.CancellationToken
+- sym: ../../../../base/common/event.js.Emitter
+- sym: ../../../../base/common/event.js.Event
+- sym: ../../../../base/common/lifecycle.js.DisposableStore
+- sym: ../../../../base/common/themables.js.themeColorFromId
+- sym: ../../../../base/common/themables.js.ThemeIcon
+- sym: ../../../../editor/browser/editorBrowser.js.ICodeEditor
+- sym: ../../../../editor/browser/editorBrowser.js.IViewZone
+- sym: ../../../../editor/browser/editorBrowser.js.IViewZoneChangeAccessor
+- sym: ../../../../editor/browser/stableEditorScroll.js.StableEditorScrollState
+- sym: ../../../../editor/browser/widget/diffEditor/components/diffEditorViewZones/renderLines.js.LineSource
+- sym: ../../../../editor/browser/widget/diffEditor/components/diffEditorViewZones/renderLines.js.RenderOptions
+- sym: ../../../../editor/browser/widget/diffEditor/components/diffEditorViewZones/renderLines.js.renderLines
+- sym: ../../../../editor/common/core/editOperation.js.ISingleEditOperation
+- sym: ../../../../editor/common/core/lineRange.js.LineRange
+- sym: ../../../../editor/common/core/position.js.Position
+- sym: ../../../../editor/common/core/range.js.Range
+- sym: ../../../../editor/common/editorCommon.js.IEditorDecorationsCollection
+- sym: ../../../../editor/common/model.js.IModelDecorationsChangeAccessor
+- sym: ../../../../editor/common/model.js.IModelDeltaDecoration
+- sym: ../../../../editor/common/model.js.IValidEditOperation
+- sym: ../../../../editor/common/model.js.MinimapPosition
+- sym: ../../../../editor/common/model.js.OverviewRulerLane
+- sym: ../../../../editor/common/model.js.TrackedRangeStickiness
+- sym: ../../../../editor/common/model/textModel.js.ModelDecorationOptions
+- sym: ../../../../editor/common/services/editorWorker.js.IEditorWorkerService
+- sym: ../../../../editor/common/viewModel.js.InlineDecoration
+- sym: ../../../../editor/common/viewModel.js.InlineDecorationType
+- sym: ../../../../platform/contextkey/common/contextkey.js.IContextKey
+- sym: ../../../../platform/contextkey/common/contextkey.js.IContextKeyService
+- sym: ../../../../platform/progress/common/progress.js.Progress
+- sym: ../../../common/editor.js.SaveReason
+- sym: ../../chat/common/chatWordCounter.js.countWords
+- sym: ./inlineChatSession.js.HunkInformation
+- sym: ./inlineChatSession.js.Session
+- sym: ./inlineChatSession.js.HunkState
+- sym: ./inlineChatZoneWidget.js.InlineChatZoneWidget
+- sym: ../common/inlineChat.js.ACTION_TOGGLE_DIFF
+- sym: ../common/inlineChat.js.CTX_INLINE_CHAT_CHANGE_HAS_DIFF
+- sym: ../common/inlineChat.js.CTX_INLINE_CHAT_CHANGE_SHOWS_DIFF
+- sym: ../common/inlineChat.js.InlineChatConfigKeys
+- sym: ../common/inlineChat.js.MENU_INLINE_CHAT_ZONE
+- sym: ../common/inlineChat.js.minimapInlineChatDiffInserted
+- sym: ../common/inlineChat.js.overviewRulerInlineChatDiffInserted
+- sym: ../../../../base/common/types.js.assertType
+- sym: ./utils.js.performAsyncTextEdit
+- sym: ./utils.js.asProgressiveEdit
+- sym: ../../../../platform/accessibility/common/accessibility.js.IAccessibilityService
+- sym: ../../../../platform/configuration/common/configuration.js.IConfigurationService
+- sym: ../../../services/textfile/common/textfiles.js.ITextFileService
+- sym: ../../../services/untitled/common/untitledTextEditorModel.js.IUntitledTextEditorModel
+- sym: ../../../../base/common/network.js.Schemas
+- sym: ../../../../platform/instantiation/common/instantiation.js.IInstantiationService
+- sym: ../../chat/browser/codeBlockPart.js.DefaultChatTextEditor
+- sym: ../../../../base/common/resources.js.isEqual
+- sym: ../../../../base/common/iterator.js.Iterable
+- sym: ../../mergeEditor/browser/view/conflictActions.js.ConflictActionsFactory
+- sym: ../../mergeEditor/browser/view/conflictActions.js.IContentWidgetAction
+- sym: ../../../../base/common/observable.js.observableValue
+- sym: ../../../../platform/actions/common/actions.js.IMenuService
+- sym: ../../../../platform/actions/common/actions.js.MenuItemAction
+types:
+- name: IEditObserver
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: start
+    type: 'method: start(): void'
+  - name: stop
+    type: 'method: stop(): void'
+  lines:
+  - 45
+  - 48
+- name: HunkAction
+  kind: enum
+  variants:
+  - name: Accept
+  - name: Discard
+  - name: MoveNext
+  - name: MovePrev
+  - name: ToggleDiff
+  lines:
+  - 50
+  - 56
+- name: LiveStrategy
+  kind: struct
+  fields:
+  - name: _decoInsertedText
+    type: any
+    default: "ModelDecorationOptions.register({\n\t\tdescription: 'inline-modified-line',\n\t\tclass..."
+  - name: _decoInsertedTextRange
+    type: any
+    default: "ModelDecorationOptions.register({\n\t\tdescription: 'inline-chat-inserted-range-lin..."
+  - name: _store
+    type: any
+    default: new DisposableStore()
+  - name: _onDidAccept
+    type: any
+    default: this._store.add(new Emitter<void>())
+  - name: _onDidDiscard
+    type: any
+    default: this._store.add(new Emitter<void>())
+  - name: _ctxCurrentChangeHasDiff
+    type: IContextKey<boolean>
+  - name: _ctxCurrentChangeShowsDiff
+    type: IContextKey<boolean>
+  - name: _progressiveEditingDecorations
+    type: IEditorDecorationsCollection
+  - name: _lensActionsFactory
+    type: ConflictActionsFactory
+  - name: _editCount
+    type: number
+    default: '0'
+  - name: _hunkData
+    type: any
+    default: new Map<HunkInformation, HunkDisplayData>()
+  - name: onDidAccept
+    type: Event<void>
+    default: this._onDidAccept.event
+  - name: onDidDiscard
+    type: Event<void>
+    default: this._onDidDiscard.event
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tprotected readonly _session: Session,\n\t\tprotected readonly _editor: ICodeEditor,\n\t\tprotected readonly _zone: InlineChatZoneWidget,\n\t\tprivate readonly _showOverlayToolbar: boolean,\n\t\t@IContextKeyService contextKeyService: IContextKeyService,\n\t\t@IEditorWorkerService protected readonly _editorWorkerService: IEditorWorkerService,\n\t\t@IAccessibilityService private readonly _accessibilityService: IAccessibilityService,\n\t\t@IConfigurationService private readonly _configService: IConfigurationService,\n\t\t@IMenuService private readonly _menuService: IMenuService,\n\t\t@IContextKeyService private readonly _contextService: IContextKeyService,\n\t\t@ITextFileService private readonly _textFileService: ITextFileService,\n\t\t@IInstantiationService protected readonly _instaService: IInstantiationService\n\t)"
+    lines:
+    - 93
+    - 112
+    detail:
+      calls:
+      - CTX_INLINE_CHAT_CHANGE_HAS_DIFF.bindTo
+      - CTX_INLINE_CHAT_CHANGE_SHOWS_DIFF.bindTo
+      - new ConflictActionsFactory
+      - this._editor.createDecorationsCollection
+      - this._store.add
+  - name: dispose
+    sig: 'dispose(): void'
+    lines:
+    - 114
+    - 117
+    detail:
+      calls:
+      - this._resetDiff
+      - this._store.dispose
+  - name: _resetDiff
+    sig: '_resetDiff(): void'
+    vis: private
+    lines:
+    - 119
+    - 129
+    detail:
+      calls:
+      - data.remove
+      - this._ctxCurrentChangeHasDiff.reset
+      - this._ctxCurrentChangeShowsDiff.reset
+      - this._hunkData.values
+      - this._progressiveEditingDecorations.clear
+      - this._zone.widget.updateStatus
+  - name: apply
+    sig: apply()
+    is_async: true
+    lines:
+    - 131
+    - 137
+    detail:
+      calls:
+      - this._doApplyChanges
+      - this._editor.pushUndoStop
+      - this._resetDiff
+  - name: cancel
+    sig: cancel()
+    lines:
+    - 139
+    - 142
+    detail:
+      calls:
+      - this._resetDiff
+      - this._session.hunkData.discardAll
+  - name: makeChanges
+    sig: 'makeChanges(edits: ISingleEditOperation[], obs: IEditObserver, undoStopBefore: boolean): Promise<void>'
+    is_async: true
+    lines:
+    - 144
+    - 146
+    detail:
+      calls:
+      - this._makeChanges
+  - name: makeProgressiveChanges
+    sig: 'makeProgressiveChanges(edits: ISingleEditOperation[], obs: IEditObserver, opts: ProgressingEditsOptions, undoStopBefore: boolean): Promise<void>'
+    is_async: true
+    lines:
+    - 148
+    - 169
+    detail:
+      calls:
+      - new Progress
+      - this._makeChanges
+  - name: _makeChanges
+    sig: '_makeChanges(edits: ISingleEditOperation[], obs: IEditObserver, opts: ProgressingEditsOptions | undefined, progress: Progress<IValidEditOperation[]> | undefined, undoStopBefore: boolean): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 171
+    - 200
+    detail:
+      calls:
+      - asProgressiveEdit
+      - countWords
+      - new WindowIntervalTimer
+      - obs.start
+      - obs.stop
+      - performAsyncTextEdit
+      - this._editor.pushUndoStop
+      - this._session.textModelN.pushEditOperations
+  - name: performHunkAction
+    sig: 'performHunkAction(hunk: HunkInformation | undefined, action: HunkAction)'
+    lines:
+    - 202
+    - 227
+    detail:
+      calls:
+      - displayData.acceptHunk
+      - displayData.discardHunk
+      - displayData.move
+      - displayData.toggleDiff
+      - this._findDisplayData
+      - this._onDidAccept.fire
+      - this._onDidDiscard.fire
+  - name: _findDisplayData
+    sig: '_findDisplayData(hunkInfo?: HunkInformation)'
+    vis: private
+    lines:
+    - 229
+    - 265
+    detail:
+      calls:
+      - Iterable.filter
+      - Iterable.first
+      - candidate.hunk.getRangesN
+      - candidate.hunk.getState
+      - this._hunkData.get
+      - this._hunkData.values
+  - name: renderChanges
+    sig: renderChanges()
+    is_async: true
+    lines:
+    - 267
+    - 499
+    detail:
+      calls:
+      - renderHunks
+      - this._progressiveEditingDecorations.clear
+  - name: getWholeRangeDecoration
+    sig: 'getWholeRangeDecoration(): IModelDeltaDecoration[]'
+    lines:
+    - 501
+    - 504
+    detail: {}
+  - name: _doApplyChanges
+    sig: '_doApplyChanges(ignoreLocal: boolean): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 506
+    - 544
+    detail:
+      calls:
+      - editor.apply
+      - isEqual
+      - this._instaService.createInstance
+      - this._session.chatModel.getRequests
+      - this._textFileService.untitled.get
+      - untitledModel.isDisposed
+      - untitledModel.resolve
+      - untitledModel.save
+      - untitledModels.push
+  lines:
+  - 58
+  - 545
+- name: ProgressingEditsOptions
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: duration
+    type: number
+  - name: token
+    type: CancellationToken
+  lines:
+  - 547
+  - 550
+- name: HunkDisplayData
+  kind: typealias
+  decorators:
+  - type
+  fields:
+  - name: decorationIds
+    type: string[]
+  - name: diffViewZoneId
+    type: string | undefined
+  - name: diffViewZone
+    type: IViewZone
+  - name: lensActionsViewZoneIds
+    type: string[]
+  - name: distance
+    type: number
+  - name: position
+    type: Position
+  - name: acceptHunk
+    type: () => void
+  - name: discardHunk
+    type: () => void
+  - name: toggleDiff
+    type: () => any
+  - name: move
+    type: '(next: boolean) => void'
+  - name: hunk
+    type: HunkInformation
+  lines:
+  - 552
+  - 570
+functions:
+- name: changeDecorationsAndViewZones
+  sig: 'changeDecorationsAndViewZones(editor: ICodeEditor, callback: (accessor: IModelDecorationsChangeAccessor, viewZoneAccessor: IViewZoneChangeAccessor) => void): void'
+  lines:
+  - 572
+  - 578
+  detail:
+    calls:
+    - editor.changeDecorations
+exports:
+- name: IEditObserver
+  kind: type
+- name: HunkAction
+  kind: type
+- name: LiveStrategy
+  kind: type
+- name: ProgressingEditsOptions
+  kind: type
+- name: HunkDisplayData
+  kind: type
+- name: changeDecorationsAndViewZones
+  kind: func

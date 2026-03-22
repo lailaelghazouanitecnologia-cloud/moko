@@ -1,0 +1,302 @@
+## Roska File Descriptor — common/markerService.ts
+file: common/markerService.ts
+lines: 411
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: ../../../base/common/arrays.js.isFalsyOrEmpty
+- sym: ../../../base/common/arrays.js.isNonEmptyArray
+- sym: ../../../base/common/event.js.DebounceEmitter
+- sym: ../../../base/common/iterator.js.Iterable
+- sym: ../../../base/common/lifecycle.js.IDisposable
+- sym: ../../../base/common/lifecycle.js.toDisposable
+- sym: ../../../base/common/map.js.ResourceMap
+- sym: ../../../base/common/map.js.ResourceSet
+- sym: ../../../base/common/network.js.Schemas
+- sym: ../../../base/common/uri.js.URI
+- sym: ../../../nls.js.localize
+- sym: ./markers.js.IMarker
+- sym: ./markers.js.IMarkerData
+- sym: ./markers.js.IMarkerService
+- sym: ./markers.js.IResourceMarker
+- sym: ./markers.js.MarkerSeverity
+- sym: ./markers.js.MarkerStatistics
+data:
+- name: unsupportedSchemas
+  type: any
+  val: "new Set([\n\tSchemas.inMemory,\n\tSchemas.vscodeSourceControl,\n\tSchemas.walkThrough,\n\tSchemas.walkThroughSnippet,\n\tSchemas.v..."
+types:
+- name: DoubleResourceMap
+  kind: struct
+  fields:
+  - name: _byResource
+    type: any
+    default: new ResourceMap<Map<string, V>>()
+  - name: _byOwner
+    type: any
+    default: new Map<string, ResourceMap<V>>()
+  methods:
+  - name: set
+    sig: 'set(resource: URI, owner: string, value: V)'
+    lines:
+    - 29
+    - 43
+    detail:
+      calls:
+      - new Map
+      - new ResourceMap
+      - ownerMap.set
+      - resourceMap.set
+      - this._byOwner.get
+      - this._byOwner.set
+      - this._byResource.get
+      - this._byResource.set
+  - name: get
+    sig: 'get(resource: URI, owner: string): V | undefined'
+    lines:
+    - 45
+    - 48
+    detail:
+      calls:
+      - ownerMap?.get
+      - this._byResource.get
+  - name: delete
+    sig: 'delete(resource: URI, owner: string): boolean'
+    lines:
+    - 50
+    - 65
+    detail:
+      calls:
+      - new Error
+      - ownerMap.delete
+      - resourceMap.delete
+      - this._byOwner.get
+      - this._byResource.get
+  - name: values
+    sig: 'values(key?: URI | string): Iterable<V>'
+    lines:
+    - 67
+    - 76
+    detail:
+      calls:
+      - Iterable.concat
+      - Iterable.empty
+      - Iterable.map
+      - URI.isUri
+      - this._byOwner.get
+      - this._byOwner.get(key)?.values
+      - this._byOwner.values
+      - this._byResource.get
+      - this._byResource.get(key)?.values
+  lines:
+  - 24
+  - 77
+- name: MarkerStats
+  kind: struct
+  bases:
+  - MarkerStatistics
+  fields:
+  - name: errors
+    type: number
+    default: '0'
+  - name: infos
+    type: number
+    default: '0'
+  - name: warnings
+    type: number
+    default: '0'
+  - name: unknowns
+    type: number
+    default: '0'
+  - name: _data
+    type: any
+    default: new ResourceMap<MarkerStatistics>()
+  - name: _service
+    type: IMarkerService
+  - name: _subscription
+    type: IDisposable
+  methods:
+  - name: constructor
+    sig: 'constructor(service: IMarkerService)'
+    lines:
+    - 90
+    - 93
+    detail:
+      calls:
+      - service.onMarkerChanged
+  - name: dispose
+    sig: 'dispose(): void'
+    lines:
+    - 95
+    - 97
+    detail:
+      calls:
+      - this._subscription.dispose
+  - name: _update
+    sig: '_update(resources: readonly URI[]): void'
+    vis: private
+    lines:
+    - 99
+    - 109
+    detail:
+      calls:
+      - this._add
+      - this._data.get
+      - this._data.set
+      - this._resourceStats
+      - this._substract
+  - name: _resourceStats
+    sig: '_resourceStats(resource: URI): MarkerStatistics'
+    vis: private
+    lines:
+    - 111
+    - 132
+    detail:
+      calls:
+      - this._service.read
+      - unsupportedSchemas.has
+  lines:
+  - 79
+  - 147
+- name: MarkerService
+  kind: struct
+  ctx: Creates an information marker for filtered resources
+  bases:
+  - IMarkerService
+  fields:
+  - name: _serviceBrand
+    type: undefined
+  - name: _onMarkerChanged
+    type: any
+    default: "new DebounceEmitter<readonly URI[]>({\n\t\tdelay: 0,\n\t\tmerge: MarkerService._merge\n..."
+  - name: onMarkerChanged
+    type: any
+    default: this._onMarkerChanged.event
+  - name: _data
+    type: any
+    default: new DoubleResourceMap<IMarker[]>()
+  - name: _stats
+    type: any
+    default: new MarkerStats(this)
+  - name: _filteredResources
+    type: any
+    default: new ResourceMap<string[]>()
+  methods:
+  - name: dispose
+    sig: 'dispose(): void'
+    lines:
+    - 164
+    - 167
+    detail:
+      calls:
+      - this._onMarkerChanged.dispose
+      - this._stats.dispose
+  - name: getStatistics
+    sig: 'getStatistics(): MarkerStatistics'
+    lines:
+    - 169
+    - 171
+    detail: {}
+  - name: remove
+    sig: 'remove(owner: string, resources: URI[]): void'
+    lines:
+    - 173
+    - 177
+    detail:
+      calls:
+      - this.changeOne
+  - name: changeOne
+    sig: 'changeOne(owner: string, resource: URI, markerData: IMarkerData[]): void'
+    lines:
+    - 179
+    - 200
+    detail:
+      calls:
+      - MarkerService._toMarker
+      - isFalsyOrEmpty
+      - markers.push
+      - this._data.delete
+      - this._data.set
+      - this._onMarkerChanged.fire
+  - name: installResourceFilter
+    sig: 'installResourceFilter(resource: URI, reason: string): IDisposable'
+    lines:
+    - 202
+    - 226
+    detail:
+      calls:
+      - reasons.push
+      - this._filteredResources.get
+      - this._filteredResources.set
+      - this._onMarkerChanged.fire
+      - toDisposable
+  - name: _toMarker
+    sig: '_toMarker(owner: string, resource: URI, data: IMarkerData): IMarker | undefined'
+    vis: private
+    decorators:
+    - static
+    lines:
+    - 228
+    - 261
+    detail: {}
+  - name: changeAll
+    sig: 'changeAll(owner: string, data: IResourceMarker[]): void'
+    lines:
+    - 263
+    - 307
+    detail:
+      calls:
+      - Iterable.first
+      - MarkerService._toMarker
+      - array.push
+      - changes.push
+      - groups.get
+      - groups.set
+      - isNonEmptyArray
+      - new ResourceMap
+      - this._data.delete
+      - this._data.set
+      - this._data.values
+      - this._onMarkerChanged.fire
+  - name: read
+    sig: 'read(filter: { owner?: string; resource?: URI; severities?: number; take?: number } = Object.create(null)): IMarker[]'
+    lines:
+    - 329
+    - 394
+    detail:
+      calls:
+      - MarkerService._accept
+      - filtered.add
+      - filtered.has
+      - new ResourceSet
+      - result.push
+      - this._createFilteredMarker
+      - this._data.get
+      - this._data.values
+      - this._filteredResources.get
+  - name: _merge
+    sig: '_merge(all: (readonly URI[])[]): URI[]'
+    vis: private
+    decorators:
+    - static
+    lines:
+    - 402
+    - 410
+    detail:
+      calls:
+      - Array.from
+      - new ResourceMap
+      - set.keys
+      - set.set
+  lines:
+  - 149
+  - 411
+exports:
+- name: DoubleResourceMap
+  kind: type
+- name: MarkerStats
+  kind: type
+- name: MarkerService
+  kind: type
+- name: unsupportedSchemas
+  kind: data

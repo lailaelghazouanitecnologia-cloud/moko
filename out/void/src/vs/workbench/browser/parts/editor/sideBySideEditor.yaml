@@ -1,0 +1,500 @@
+## Roska File Descriptor — editor/sideBySideEditor.ts
+file: editor/sideBySideEditor.ts
+lines: 580
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: ../../../../nls.js.localize
+- sym: ../../../../base/browser/dom.js.Dimension
+- sym: ../../../../base/browser/dom.js.$
+- sym: ../../../../base/browser/dom.js.clearNode
+- sym: ../../../../base/browser/dom.js.multibyteAwareBtoa
+- sym: ../../../../platform/registry/common/platform.js.Registry
+- sym: ../../../common/editor.js.IEditorControl
+- sym: ../../../common/editor.js.IEditorPane
+- sym: ../../../common/editor.js.IEditorOpenContext
+- sym: ../../../common/editor.js.EditorExtensions
+- sym: ../../../common/editor.js.SIDE_BY_SIDE_EDITOR_ID
+- sym: ../../../common/editor.js.SideBySideEditor as Side
+- sym: ../../../common/editor.js.IEditorPaneSelection
+- sym: ../../../common/editor.js.IEditorPaneWithSelection
+- sym: ../../../common/editor.js.IEditorPaneSelectionChangeEvent
+- sym: ../../../common/editor.js.isEditorPaneWithSelection
+- sym: ../../../common/editor.js.EditorPaneSelectionCompareResult
+- sym: ../../../common/editor/sideBySideEditorInput.js.SideBySideEditorInput
+- sym: ../../../common/editor/editorInput.js.EditorInput
+- sym: ./editorPane.js.EditorPane
+- sym: ../../../../platform/telemetry/common/telemetry.js.ITelemetryService
+- sym: ../../../../platform/instantiation/common/instantiation.js.IInstantiationService
+- sym: ../../../../platform/theme/common/themeService.js.IThemeService
+- sym: ../../editor.js.IEditorPaneRegistry
+- sym: ../../../../base/common/cancellation.js.CancellationToken
+- sym: ../../../services/editor/common/editorGroupsService.js.IEditorGroup
+- sym: ../../../services/editor/common/editorGroupsService.js.IEditorGroupsService
+- sym: ../../../../base/browser/ui/splitview/splitview.js.SplitView
+- sym: ../../../../base/browser/ui/splitview/splitview.js.Sizing
+- sym: ../../../../base/browser/ui/splitview/splitview.js.Orientation
+- sym: ../../../../base/common/event.js.Event
+- sym: ../../../../base/common/event.js.Relay
+- sym: ../../../../base/common/event.js.Emitter
+- sym: ../../../../platform/storage/common/storage.js.IStorageService
+- sym: ../../../../base/common/types.js.assertIsDefined
+- sym: ../../../../platform/editor/common/editor.js.IEditorOptions
+- sym: ../../../../platform/configuration/common/configuration.js.IConfigurationChangeEvent
+- sym: ../../../../platform/configuration/common/configuration.js.IConfigurationService
+- sym: ./editor.js.DEFAULT_EDITOR_MIN_DIMENSIONS
+- sym: ../../../../base/common/lifecycle.js.DisposableStore
+- sym: ../../../common/theme.js.SIDE_BY_SIDE_EDITOR_HORIZONTAL_BORDER
+- sym: ../../../common/theme.js.SIDE_BY_SIDE_EDITOR_VERTICAL_BORDER
+- sym: ./editorWithViewState.js.AbstractEditorWithViewState
+- sym: ../../../../editor/common/services/textResourceConfiguration.js.ITextResourceConfigurationService
+- sym: ../../../services/editor/common/editorService.js.IEditorService
+- sym: ../../../../base/common/resources.js.isEqual
+- sym: ../../../../base/common/uri.js.URI
+- sym: ../../../../base/browser/ui/sash/sash.js.IBoundarySashes
+types:
+- name: ISideBySideEditorViewState
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: primary
+    type: object
+  - name: secondary
+    type: object
+  - name: focus
+    type: Side.PRIMARY | Side.SECONDARY | undefined
+  - name: ratio
+    type: number | undefined
+  lines:
+  - 36
+  - 41
+- name: ISideBySideEditorOptions
+  kind: trait
+  bases:
+  - IEditorOptions
+  decorators:
+  - interface
+  fields:
+  - name: target
+    type: Side.PRIMARY | Side.SECONDARY
+  lines:
+  - 49
+  - 60
+- name: SideBySideEditor
+  kind: struct
+  ctx: '#region Layout Constraints'
+  bases:
+  - AbstractEditorWithViewState
+  - IEditorPaneWithSelection
+  fields:
+  - name: ID
+    type: string
+    default: SIDE_BY_SIDE_EDITOR_ID
+  - name: SIDE_BY_SIDE_LAYOUT_SETTING
+    type: any
+    default: '''workbench.editor.splitInGroupLayout'''
+  - name: VIEW_STATE_PREFERENCE_KEY
+    type: any
+    default: '''sideBySideEditorViewState'''
+  - name: _boundarySashes
+    type: IBoundarySashes | undefined
+  - name: onDidCreateEditors
+    type: any
+    default: 'this._register(new Emitter<{ width: number; height: number } | undefined>())'
+  - name: _onDidChangeSizeConstraints
+    type: any
+    default: 'this._register(new Relay<{ width: number; height: number } | undefined>())'
+  - name: onDidChangeSizeConstraints
+    type: any
+    default: Event.any(this.onDidCreateEditors.event, this._onDidChangeSizeConstraints.event)
+  - name: _onDidChangeSelection
+    type: any
+    default: this._register(new Emitter<IEditorPaneSelectionChangeEvent>())
+  - name: onDidChangeSelection
+    type: any
+    default: this._onDidChangeSelection.event
+  - name: primaryEditorPane
+    type: EditorPane | undefined
+    default: undefined
+  - name: secondaryEditorPane
+    type: EditorPane | undefined
+    default: undefined
+  - name: primaryEditorContainer
+    type: HTMLElement | undefined
+  - name: secondaryEditorContainer
+    type: HTMLElement | undefined
+  - name: splitview
+    type: SplitView | undefined
+  - name: splitviewDisposables
+    type: any
+    default: this._register(new DisposableStore())
+  - name: editorDisposables
+    type: any
+    default: this._register(new DisposableStore())
+  - name: orientation
+    type: Orientation
+  - name: dimension
+    type: any
+    default: new Dimension(0, 0)
+  - name: lastFocusedSide
+    type: Side.PRIMARY | Side.SECONDARY | undefined
+    default: undefined
+  methods:
+  - name: minimumWidth
+    sig: 'minimumWidth(value: number)'
+    lines:
+    - 82
+    - 82
+    detail: {}
+  - name: maximumWidth
+    sig: 'maximumWidth(value: number)'
+    lines:
+    - 83
+    - 83
+    detail: {}
+  - name: minimumHeight
+    sig: 'minimumHeight(value: number)'
+    lines:
+    - 84
+    - 84
+    detail: {}
+  - name: maximumHeight
+    sig: 'maximumHeight(value: number)'
+    lines:
+    - 85
+    - 85
+    detail: {}
+  - name: minimumWidth
+    sig: minimumWidth()
+    lines:
+    - 87
+    - 87
+    detail: {}
+  - name: maximumWidth
+    sig: maximumWidth()
+    lines:
+    - 88
+    - 88
+    detail: {}
+  - name: minimumHeight
+    sig: minimumHeight()
+    lines:
+    - 89
+    - 89
+    detail: {}
+  - name: maximumHeight
+    sig: maximumHeight()
+    lines:
+    - 90
+    - 90
+    detail: {}
+  - name: constructor
+    sig: "constructor(\n\t\tgroup: IEditorGroup,\n\t\t@ITelemetryService telemetryService: ITelemetryService,\n\t\t@IInstantiationService instantiationService: IInstantiationService,\n\t\t@IThemeService themeService: IThemeService,\n\t\t@IStorageService storageService: IStorageService,\n\t\t@IConfigurationService private readonly configurationService: IConfigurationService,\n\t\t@ITextResourceConfigurationService textResourceConfigurationService: ITextResourceConfigurationService,\n\t\t@IEditorService editorService: IEditorService,\n\t\t@IEditorGroupsService editorGroupService: IEditorGroupsService\n\t)"
+    lines:
+    - 124
+    - 140
+    detail:
+      calls:
+      - super
+      - this.configurationService.getValue
+      - this.registerListeners
+  - name: onConfigurationUpdated
+    sig: 'onConfigurationUpdated(event: IConfigurationChangeEvent): void'
+    vis: private
+    lines:
+    - 146
+    - 157
+    detail:
+      calls:
+      - event.affectsConfiguration
+      - this.configurationService.getValue
+      - this.recreateSplitview
+  - name: recreateSplitview
+    sig: 'recreateSplitview(): void'
+    vis: private
+    lines:
+    - 159
+    - 173
+    detail:
+      calls:
+      - assertIsDefined
+      - this.createSplitView
+      - this.getContainer
+      - this.getSplitViewRatio
+      - this.layout
+      - this.splitview.el.remove
+      - this.splitviewDisposables.clear
+  - name: createSplitView
+    sig: 'createSplitView(parent: HTMLElement, ratio?: number): void'
+    vis: private
+    lines:
+    - 204
+    - 251
+    detail:
+      calls:
+      - Math.round
+      - assertIsDefined
+      - new SplitView
+      - this.splitview.addView
+      - this.splitview.layout
+      - this.splitview.onDidSashReset
+      - this.splitviewDisposables.add
+      - this.updateStyles
+  - name: getTitle
+    sig: 'getTitle(): string'
+    lines:
+    - 253
+    - 259
+    detail:
+      calls:
+      - localize
+      - this.input.getName
+  - name: setInput
+    sig: 'setInput(input: SideBySideEditorInput, options: ISideBySideEditorOptions | undefined, context: IEditorOpenContext, token: CancellationToken): Promise<void>'
+    is_async: true
+    lines:
+    - 261
+    - 297
+    detail:
+      calls:
+      - Math.round
+      - Promise.all
+      - input.matches
+      - super.setInput
+      - this.createEditors
+      - this.disposeEditors
+      - this.loadViewState
+      - this.primaryEditorPane?.setInput
+      - this.secondaryEditorPane?.setInput
+      - this.splitview.resizeView
+      - this.splitview?.distributeViewSizes
+  - name: loadViewState
+    sig: 'loadViewState(input: SideBySideEditorInput, options: ISideBySideEditorOptions | undefined, context: IEditorOpenContext): { primary: IEditorOptions | undefined; secondary: IEditorOptions | undefined; viewState: ISideBySideEditorViewState | undefined }'
+    vis: private
+    lines:
+    - 299
+    - 326
+    detail:
+      calls:
+      - Object.create
+      - isSideBySideEditorViewState
+      - this.loadEditorViewState
+  - name: createEditors
+    sig: 'createEditors(newInput: SideBySideEditorInput): void'
+    vis: private
+    lines:
+    - 328
+    - 347
+    detail:
+      calls:
+      - Event.any
+      - Event.map
+      - assertIsDefined
+      - this.doCreateEditor
+      - this.editorDisposables.add
+      - this.layout
+      - this.onDidCreateEditors.fire
+      - this.primaryEditorPane.onDidFocus
+      - this.secondaryEditorPane.onDidFocus
+  - name: doCreateEditor
+    sig: 'doCreateEditor(editorInput: EditorInput, container: HTMLElement): EditorPane'
+    vis: private
+    lines:
+    - 349
+    - 369
+    detail:
+      calls:
+      - Registry.as
+      - Registry.as<IEditorPaneRegistry>(EditorExtensions.EditorPane).getEditorPane
+      - editorPane.create
+      - editorPane.onDidChangeSelection
+      - editorPane.setVisible
+      - editorPaneDescriptor.instantiate
+      - isEditorPaneWithSelection
+      - new Error
+      - this.editorDisposables.add
+      - this.isVisible
+  - name: getSelection
+    sig: 'getSelection(): IEditorPaneSelection | undefined'
+    lines:
+    - 378
+    - 388
+    detail:
+      calls:
+      - isEditorPaneWithSelection
+      - lastFocusedEditorPane.getSelection
+      - new SideBySideAwareEditorPaneSelection
+      - this.getLastFocusedEditorPane
+  - name: setOptions
+    sig: 'setOptions(options: ISideBySideEditorOptions | undefined): void'
+    lines:
+    - 390
+    - 400
+    detail:
+      calls:
+      - super.setOptions
+      - this.getLastFocusedEditorPane
+      - this.getLastFocusedEditorPane()?.setOptions
+  - name: setEditorVisible
+    sig: 'setEditorVisible(visible: boolean): void'
+    vis: protected
+    lines:
+    - 402
+    - 409
+    detail:
+      calls:
+      - super.setEditorVisible
+      - this.primaryEditorPane?.setVisible
+      - this.secondaryEditorPane?.setVisible
+  - name: clearInput
+    sig: 'clearInput(): void'
+    lines:
+    - 411
+    - 421
+    detail:
+      calls:
+      - super.clearInput
+      - this.disposeEditors
+      - this.primaryEditorPane?.clearInput
+      - this.secondaryEditorPane?.clearInput
+  - name: focus
+    sig: 'focus(): void'
+    lines:
+    - 423
+    - 427
+    detail:
+      calls:
+      - super.focus
+      - this.getLastFocusedEditorPane
+      - this.getLastFocusedEditorPane()?.focus
+  - name: layout
+    sig: 'layout(dimension: Dimension): void'
+    lines:
+    - 437
+    - 442
+    detail:
+      calls:
+      - assertIsDefined
+      - splitview.layout
+  - name: setBoundarySashes
+    sig: 'setBoundarySashes(sashes: IBoundarySashes)'
+    lines:
+    - 444
+    - 450
+    detail: {}
+  - name: getControl
+    sig: 'getControl(): IEditorControl | undefined'
+    lines:
+    - 456
+    - 458
+    detail:
+      calls:
+      - this.getLastFocusedEditorPane
+      - this.getLastFocusedEditorPane()?.getControl
+  - name: getPrimaryEditorPane
+    sig: 'getPrimaryEditorPane(): IEditorPane | undefined'
+    lines:
+    - 460
+    - 462
+    detail: {}
+  - name: getSecondaryEditorPane
+    sig: 'getSecondaryEditorPane(): IEditorPane | undefined'
+    lines:
+    - 464
+    - 466
+    detail: {}
+  - name: computeEditorViewState
+    sig: 'computeEditorViewState(resource: URI): ISideBySideEditorViewState | undefined'
+    vis: protected
+    lines:
+    - 472
+    - 490
+    detail:
+      calls:
+      - isEqual
+      - this.getSplitViewRatio
+      - this.primaryEditorPane?.getViewState
+      - this.secondaryEditorPane?.getViewState
+      - this.toEditorViewStateResource
+  - name: toEditorViewStateResource
+    sig: 'toEditorViewStateResource(input: EditorInput): URI | undefined'
+    vis: protected
+    lines:
+    - 492
+    - 507
+    detail:
+      calls:
+      - URI.from
+      - multibyteAwareBtoa
+      - primary.toString
+      - secondary.toString
+  - name: updateStyles
+    sig: 'updateStyles(): void'
+    lines:
+    - 509
+    - 527
+    detail:
+      calls:
+      - super.updateStyles
+      - this.getColor
+  - name: dispose
+    sig: 'dispose(): void'
+    lines:
+    - 529
+    - 533
+    detail:
+      calls:
+      - super.dispose
+      - this.disposeEditors
+  lines:
+  - 62
+  - 551
+- name: SideBySideAwareEditorPaneSelection
+  kind: struct
+  bases:
+  - IEditorPaneSelection
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tprivate readonly selection: IEditorPaneSelection,\n\t\tprivate readonly side: Side.PRIMARY | Side.SECONDARY\n\t)"
+    lines:
+    - 555
+    - 558
+    detail: {}
+  - name: compare
+    sig: 'compare(other: IEditorPaneSelection): EditorPaneSelectionCompareResult'
+    lines:
+    - 560
+    - 570
+    detail:
+      calls:
+      - this.selection.compare
+  - name: restore
+    sig: 'restore(options: IEditorOptions): ISideBySideEditorOptions'
+    lines:
+    - 572
+    - 579
+    detail:
+      calls:
+      - this.selection.restore
+  lines:
+  - 553
+  - 580
+functions:
+- name: isSideBySideEditorViewState
+  sig: 'isSideBySideEditorViewState(thing: unknown)'
+  lines:
+  - 43
+  - 47
+  detail: {}
+exports:
+- name: ISideBySideEditorViewState
+  kind: type
+- name: ISideBySideEditorOptions
+  kind: type
+- name: SideBySideEditor
+  kind: type
+- name: SideBySideAwareEditorPaneSelection
+  kind: type
+- name: isSideBySideEditorViewState
+  kind: func

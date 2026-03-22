@@ -1,0 +1,624 @@
+## Roska File Descriptor — src/AADHelper.ts
+file: src/AADHelper.ts
+lines: 979
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: vscode.vscode
+- sym: path.path
+- sym: ./common/uri.isSupportedEnvironment
+- sym: ./common/async.IntervalTimer
+- sym: ./common/async.raceCancellationAndTimeoutError
+- sym: ./common/async.SequencerByKey
+- sym: ./cryptoUtils.generateCodeChallenge
+- sym: ./cryptoUtils.generateCodeVerifier
+- sym: ./cryptoUtils.randomUUID
+- sym: ./betterSecretStorage.BetterTokenStorage
+- sym: ./betterSecretStorage.IDidChangeInOtherWindowEvent
+- sym: ./node/authServer.LoopbackAuthServer
+- sym: ./node/buffer.base64Decode
+- sym: ./node/fetch.fetch
+- sym: ./UriEventHandler.UriEventHandler
+- sym: '@vscode/extension-telemetry.TelemetryReporter'
+- sym: '@azure/ms-rest-azure-env.Environment'
+data:
+- name: redirectUrl
+  type: string
+  val: '''https://vscode.dev/redirect'''
+- name: defaultActiveDirectoryEndpointUrl
+  type: any
+  val: Environment.AzureCloud.activeDirectoryEndpointUrl
+- name: DEFAULT_CLIENT_ID
+  type: string
+  val: '''aebc6443-996d-45c2-90f0-388ff96faa56'''
+- name: DEFAULT_TENANT
+  type: string
+  val: '''organizations'''
+- name: MSA_TID
+  type: string
+  val: '''9188040d-6c67-4c5b-b112-36a304b66dad'''
+- name: MSA_PASSTHRU_TID
+  type: string
+  val: '''f8cdef31-a31e-4b4a-93e4-5f571e91255a'''
+- name: REFRESH_NETWORK_FAILURE
+  type: string
+  val: '''Network failure'''
+types:
+- name: MicrosoftAccountType
+  kind: enum
+  variants:
+  - name: AAD
+    val: '''aad'''
+  - name: MSA
+    val: '''msa'''
+  - name: Unknown
+    val: '''unknown'''
+  lines:
+  - 26
+  - 30
+- name: IToken
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: accessToken
+    type: string
+  - name: idToken
+    type: string
+  - name: expiresIn
+    type: number
+  - name: expiresAt
+    type: number
+  - name: refreshToken
+    type: string
+  - name: account
+    type: "{\n\t\tlabel: string;\n\t\tid: string;\n\t\ttype: MicrosoftAccountType;\n\t}"
+  - name: scope
+    type: string
+  - name: sessionId
+    type: string
+  lines:
+  - 32
+  - 47
+- name: IStoredSession
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: id
+    type: string
+  - name: refreshToken
+    type: string
+  - name: scope
+    type: string
+  - name: account
+    type: "{\n\t\tlabel: string;\n\t\tid: string;\n\t}"
+  - name: endpoint
+    type: string | undefined
+  lines:
+  - 49
+  - 58
+- name: ITokenResponse
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: access_token
+    type: string
+  - name: expires_in
+    type: number
+  - name: ext_expires_in
+    type: number
+  - name: refresh_token
+    type: string
+  - name: scope
+    type: string
+  - name: token_type
+    type: string
+  - name: id_token
+    type: string
+  lines:
+  - 60
+  - 68
+- name: IMicrosoftTokens
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: accessToken
+    type: string
+  - name: idToken
+    type: string
+  lines:
+  - 70
+  - 73
+- name: IScopeData
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: originalScopes
+    type: string[]
+  - name: scopes
+    type: string[]
+  - name: scopeStr
+    type: string
+  - name: scopesToSend
+    type: string
+  - name: clientId
+    type: string
+  - name: tenant
+    type: string
+  lines:
+  - 75
+  - 82
+- name: AzureActiveDirectoryService
+  kind: struct
+  ctx: For details on why this is set to 2/3... see https://github.com/microsoft/vscode/issues/133201#issuecomment-966668197
+  fields:
+  - name: REFRESH_TIMEOUT_MODIFIER
+    type: any
+    default: 1000 * 2 / 3
+  - name: POLLING_CONSTANT
+    type: any
+    default: 1000 * 60 * 30
+  - name: _tokens
+    type: IToken[]
+    default: '[]'
+  - name: _refreshTimeouts
+    type: Map<string, NodeJS.Timeout>
+    default: new Map<string, NodeJS.Timeout>()
+  - name: _sessionChangeEmitter
+    type: vscode.EventEmitter<vscode.AuthenticationProviderAuthenticationSessionsChangeEvent>
+    default: new vscode.EventEmitter<vscode.AuthenticationProviderAuthenticationSessionsChang...
+  - name: _pendingNonces
+    type: any
+    default: new Map<string, string[]>()
+  - name: _codeExchangePromises
+    type: any
+    default: new Map<string, Promise<vscode.AuthenticationSession>>()
+  - name: _codeVerfifiers
+    type: any
+    default: new Map<string, string>()
+  - name: _pendingTokensToStore
+    type: Map<string, IToken>
+    default: new Map<string, IToken>()
+  - name: _sequencer
+    type: any
+    default: new SequencerByKey<string>()
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tprivate readonly _logger: vscode.LogOutputChannel,\n\t\t_context: vscode.ExtensionContext,\n\t\tprivate readonly _uriHandler: UriEventHandler,\n\t\tprivate readonly _tokenStorage: BetterTokenStorage<IStoredSession>,\n\t\tprivate readonly _telemetryReporter: TelemetryReporter,\n\t\tprivate readonly _env: Environment\n\t)"
+    lines:
+    - 106
+    - 124
+    detail:
+      calls:
+      - Math.floor
+      - Math.random
+      - _context.subscriptions.push
+      - new IntervalTimer
+      - this._tokenStorage.onDidChangeInOtherWindow
+      - timer.cancelAndSet
+      - vscode.window.onDidChangeWindowState
+  - name: initialize
+    sig: 'initialize(): Promise<void>'
+    is_async: true
+    lines:
+    - 126
+    - 198
+    detail:
+      calls:
+      - JSON.stringify
+      - Promise.allSettled
+      - sessions.map
+      - this._logger.error
+      - this._logger.trace
+      - this._telemetryReporter.sendTelemetryEvent
+      - this._tokenStorage.getAll
+      - this.clearSessions
+      - token.scope.replace
+      - token.scope.replace(/[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}/i, '{guid}').split
+  - name: onDidChangeSessions
+    sig: 'onDidChangeSessions(): vscode.Event<vscode.AuthenticationProviderAuthenticationSessionsChangeEvent>'
+    lines:
+    - 202
+    - 204
+    detail: {}
+  - name: getSessions
+    sig: 'getSessions(scopes?: string[], account?: vscode.AuthenticationSessionAccountInformation): Promise<vscode.AuthenticationSession[]>'
+    lines:
+    - 206
+    - 245
+    detail:
+      calls:
+      - Promise.resolve
+      - modifiedScopes.filter
+      - modifiedScopes.filter(s => !s.startsWith('VSCODE_')).join
+      - modifiedScopes.includes
+      - modifiedScopes.join
+      - modifiedScopes.push
+      - modifiedScopes.sort
+      - this._logger.info
+      - this._logger.trace
+      - this._sequencer.queue
+      - "this._tokens\n\t\t\t\t.filter"
+      - "this._tokens\n\t\t\t\t.filter(token => !account?.label || token.account.label === account.label)\n\t\t\t\t.map"
+      - this.getClientId
+      - this.getTenantId
+  - name: doGetSessions
+    sig: 'doGetSessions(scopeData: IScopeData, account?: vscode.AuthenticationSessionAccountInformation): Promise<vscode.AuthenticationSession[]>'
+    is_async: true
+    vis: private
+    lines:
+    - 247
+    - 298
+    detail:
+      calls:
+      - Promise.allSettled
+      - matchingTokens.map
+      - matchingTokens.push
+      - "results\n\t\t\t.filter"
+      - "results\n\t\t\t.filter(result => result.status === 'fulfilled')\n\t\t\t.map"
+      - t.scope.includes
+      - this._logger.error
+      - this._logger.info
+      - this._logger.trace
+      - this._sessionChangeEmitter.fire
+      - "this._tokens\n\t\t\t.filter"
+      - "this._tokens\n\t\t\t.filter(token => token.scope === scopeData.scopeStr)\n\t\t\t.filter"
+      - this.convertToSessionSync
+      - this.doRefreshToken
+  - name: createSession
+    sig: 'createSession(scopes: string[], account?: vscode.AuthenticationSessionAccountInformation): Promise<vscode.AuthenticationSession>'
+    lines:
+    - 300
+    - 327
+    detail:
+      calls:
+      - modifiedScopes.filter
+      - modifiedScopes.filter(s => !s.startsWith('VSCODE_')).join
+      - modifiedScopes.includes
+      - modifiedScopes.join
+      - modifiedScopes.push
+      - modifiedScopes.sort
+      - this._logger.trace
+      - this._sequencer.queue
+      - this.getClientId
+      - this.getTenantId
+  - name: doCreateSession
+    sig: 'doCreateSession(scopeData: IScopeData, account?: vscode.AuthenticationSessionAccountInformation): Promise<vscode.AuthenticationSession>'
+    is_async: true
+    vis: private
+    lines:
+    - 329
+    - 357
+    detail:
+      calls:
+      - new Error
+      - this._logger.info
+      - vscode.l10n.t
+      - vscode.window.withProgress
+  - name: createSessionWithLocalServer
+    sig: 'createSessionWithLocalServer(scopeData: IScopeData, loginHint: string | undefined, token: vscode.CancellationToken): Promise<vscode.AuthenticationSession>'
+    is_async: true
+    vis: private
+    lines:
+    - 359
+    - 397
+    detail:
+      calls:
+      - encodeURIComponent
+      - generateCodeChallenge
+      - generateCodeVerifier
+      - new LoopbackAuthServer
+      - new URL
+      - new URL(`${scopeData.tenant}/oauth2/v2.0/authorize?${qs.toString()}`, this._env.activeDirectoryEndpo...
+      - new URLSearchParams
+      - path.join
+      - qs.set
+      - qs.toString
+      - raceCancellationAndTimeoutError
+      - server.start
+      - server.waitForOAuthResponse
+      - setTimeout
+      - this._logger.info
+      - this._logger.trace
+      - this._sessionChangeEmitter.fire
+      - this.exchangeCodeForSession
+      - vscode.Uri.parse
+      - vscode.env.openExternal
+  - name: createSessionWithoutLocalServer
+    sig: 'createSessionWithoutLocalServer(scopeData: IScopeData, loginHint: string | undefined, token: vscode.CancellationToken): Promise<vscode.AuthenticationSession>'
+    is_async: true
+    vis: private
+    lines:
+    - 399
+    - 458
+    detail:
+      calls:
+      - callbackQuery.set
+      - callbackQuery.toString
+      - callbackUri.toString
+      - callbackUri.with
+      - encodeURIComponent
+      - generateCodeChallenge
+      - generateCodeVerifier
+      - isSupportedEnvironment
+      - new URL
+      - new URLSearchParams
+      - qs.append
+      - qs.toString
+      - raceCancellationAndTimeoutError
+      - "raceCancellationAndTimeoutError(existingPromise, token, 1000 * 60 * 5) // 5 minutes\n\t\t\t.finally"
+      - signInUrl.toString
+      - this._codeExchangePromises.get
+      - this._codeExchangePromises.set
+      - this._codeVerfifiers.set
+      - this._logger.trace
+      - this._pendingNonces.get
+      - this._pendingNonces.set
+      - this.handleCodeInputBox
+      - this.handleCodeResponse
+      - vscode.Uri.parse
+      - vscode.env.asExternalUri
+      - vscode.env.openExternal
+      - vscode.window.createInputBox
+  - name: removeSessionById
+    sig: 'removeSessionById(sessionId: string, writeToDisk: boolean = true): Promise<vscode.AuthenticationSession | undefined>'
+    is_async: true
+    lines:
+    - 460
+    - 470
+    detail:
+      calls:
+      - Promise.resolve
+      - this._logger.trace
+      - this._logger.warn
+      - this._sequencer.queue
+      - this._tokens.findIndex
+      - this._tokens.splice
+  - name: clearSessions
+    sig: clearSessions()
+    is_async: true
+    lines:
+    - 472
+    - 483
+    detail:
+      calls:
+      - this._logger.trace
+      - this._refreshTimeouts.clear
+      - this._refreshTimeouts.forEach
+      - this._tokenStorage.deleteAll
+  - name: removeSessionByIToken
+    sig: 'removeSessionByIToken(token: IToken, writeToDisk: boolean = true): Promise<vscode.AuthenticationSession | undefined>'
+    is_async: true
+    vis: private
+    lines:
+    - 485
+    - 503
+    detail:
+      calls:
+      - this._logger.info
+      - this._logger.trace
+      - this._sessionChangeEmitter.fire
+      - this._tokenStorage.delete
+      - this._tokens.findIndex
+      - this._tokens.splice
+      - this.convertToSessionSync
+      - this.removeSessionTimeout
+  - name: setSessionTimeout
+    sig: 'setSessionTimeout(sessionId: string, refreshToken: string, scopeData: IScopeData, timeout: number)'
+    vis: private
+    lines:
+    - 509
+    - 525
+    detail:
+      calls:
+      - setTimeout
+      - this._logger.trace
+      - this._refreshTimeouts.set
+      - this.removeSessionTimeout
+  - name: convertToTokenSync
+    sig: 'convertToTokenSync(json: ITokenResponse, scopeData: IScopeData, existingId?: string): IToken'
+    vis: private
+    lines:
+    - 539
+    - 571
+    detail:
+      calls:
+      - Date.now
+      - JSON.parse
+      - base64Decode
+      - json.access_token.split
+      - json.id_token.split
+      - randomUUID
+      - this._logger.trace
+      - this._logger.warn
+  - name: convertToSession
+    sig: 'convertToSession(token: IToken, scopeData: IScopeData): Promise<vscode.AuthenticationSession>'
+    is_async: true
+    vis: private
+    lines:
+    - 587
+    - 617
+    detail:
+      calls:
+      - Date.now
+      - new Error
+      - this._logger.trace
+      - this.refreshToken
+  - name: doRefreshToken
+    sig: 'doRefreshToken(refreshToken: string, scopeData: IScopeData, sessionId?: string): Promise<IToken>'
+    is_async: true
+    vis: private
+    lines:
+    - 628
+    - 658
+    detail:
+      calls:
+      - new URLSearchParams
+      - "new URLSearchParams({\n\t\t\trefresh_token: refreshToken,\n\t\t\tclient_id: scopeData.clientId,\n\t\t\tgrant_typ..."
+      - this._logger.error
+      - this._logger.trace
+      - this.convertToTokenSync
+      - this.fetchTokenResponse
+      - this.setSessionTimeout
+      - this.setToken
+  - name: handleCodeResponse
+    sig: 'handleCodeResponse(scopeData: IScopeData): Promise<vscode.AuthenticationSession>'
+    is_async: true
+    vis: private
+    lines:
+    - 686
+    - 733
+    detail:
+      calls:
+      - new Promise
+      - "new Promise((resolve: (value: vscode.AuthenticationSession) => void, reject) => {\n\t\t\turiEventListene..."
+  - name: handleCodeInputBox
+    sig: 'handleCodeInputBox(inputBox: vscode.InputBox, verifier: string, scopeData: IScopeData): Promise<vscode.AuthenticationSession>'
+    is_async: true
+    vis: private
+    lines:
+    - 735
+    - 761
+    detail:
+      calls:
+      - new Promise
+      - this._logger.trace
+      - vscode.l10n.t
+  - name: exchangeCodeForSession
+    sig: 'exchangeCodeForSession(code: string, codeVerifier: string, scopeData: IScopeData): Promise<vscode.AuthenticationSession>'
+    is_async: true
+    vis: private
+    lines:
+    - 763
+    - 790
+    detail:
+      calls:
+      - new URLSearchParams
+      - "new URLSearchParams({\n\t\t\t\tgrant_type: 'authorization_code',\n\t\t\t\tcode: code,\n\t\t\t\tclient_id: scopeData..."
+      - this._logger.error
+      - this._logger.trace
+      - this.convertToSession
+      - this.convertToTokenSync
+      - this.fetchTokenResponse
+      - this.setSessionTimeout
+      - this.setToken
+  - name: fetchTokenResponse
+    sig: 'fetchTokenResponse(postData: string, scopeData: IScopeData): Promise<ITokenResponse>'
+    is_async: true
+    vis: private
+    lines:
+    - 792
+    - 839
+    detail:
+      calls:
+      - endpoint.toString
+      - fetch
+      - new Error
+      - new Promise
+      - new URL
+      - result.json
+      - result.text
+      - this._logger.error
+      - vscode.commands.executeCommand
+  - name: setToken
+    sig: 'setToken(token: IToken, scopeData: IScopeData): void'
+    vis: private
+    lines:
+    - 845
+    - 857
+    detail:
+      calls:
+      - this._logger.trace
+      - this._tokens.findIndex
+      - this._tokens.push
+      - this._tokens.splice
+      - this.storeToken
+  - name: storeToken
+    sig: 'storeToken(token: IToken, scopeData: IScopeData): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 859
+    - 878
+    detail:
+      calls:
+      - this._logger.trace
+      - this._pendingTokensToStore.has
+      - this._pendingTokensToStore.set
+      - this._tokenStorage.store
+  - name: storePendingTokens
+    sig: 'storePendingTokens(): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 880
+    - 902
+    detail:
+      calls:
+      - Promise.allSettled
+      - this._logger.trace
+      - this._pendingTokensToStore.clear
+      - this._pendingTokensToStore.values
+      - tokens.map
+  - name: checkForUpdates
+    sig: 'checkForUpdates(e: IDidChangeInOtherWindowEvent<IStoredSession>): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 904
+    - 969
+    detail:
+      calls:
+      - scopes.filter
+      - scopes.filter(s => !s.startsWith('VSCODE_')).join
+      - session.scope.split
+      - this._logger.error
+      - this._logger.trace
+      - this._pendingTokensToStore.delete
+      - this._sessionChangeEmitter.fire
+      - this._tokenStorage.get
+      - this._tokens.some
+      - this.convertToSessionSync
+      - this.getClientId
+      - this.getTenantId
+      - this.refreshToken
+      - this.removeSessionById
+      - this.sessionMatchesEndpoint
+      - vscode.l10n.t
+      - vscode.window.showErrorMessage
+  lines:
+  - 86
+  - 979
+exports:
+- name: MicrosoftAccountType
+  kind: type
+- name: IToken
+  kind: type
+- name: IStoredSession
+  kind: type
+- name: ITokenResponse
+  kind: type
+- name: IMicrosoftTokens
+  kind: type
+- name: IScopeData
+  kind: type
+- name: AzureActiveDirectoryService
+  kind: type
+- name: redirectUrl
+  kind: data
+- name: defaultActiveDirectoryEndpointUrl
+  kind: data
+- name: DEFAULT_CLIENT_ID
+  kind: data
+- name: DEFAULT_TENANT
+  kind: data
+- name: MSA_TID
+  kind: data
+- name: MSA_PASSTHRU_TID
+  kind: data
+- name: REFRESH_NETWORK_FAILURE
+  kind: data

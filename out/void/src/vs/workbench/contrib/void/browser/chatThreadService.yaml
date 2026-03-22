@@ -1,0 +1,722 @@
+## Roska File Descriptor — browser/chatThreadService.ts
+file: browser/chatThreadService.ts
+lines: 1884
+layer: logic
+purpose: '-------------------------------------------------------------------------------------- Copyright 2025 Glass Devtools, Inc. All rights reserved. Licensed under the Apache License, Version 2.0. See LICENSE.txt for more information. --------------------------------------------------------------------------------------'
+imports:
+- sym: ../../../../base/common/lifecycle.js.Disposable
+- sym: ../../../../platform/instantiation/common/extensions.js.registerSingleton
+- sym: ../../../../platform/instantiation/common/extensions.js.InstantiationType
+- sym: ../../../../platform/instantiation/common/instantiation.js.createDecorator
+- sym: ../../../../platform/storage/common/storage.js.IStorageService
+- sym: ../../../../platform/storage/common/storage.js.StorageScope
+- sym: ../../../../platform/storage/common/storage.js.StorageTarget
+- sym: ../../../../base/common/uri.js.URI
+- sym: ../../../../base/common/event.js.Emitter
+- sym: ../../../../base/common/event.js.Event
+- sym: ../common/sendLLMMessageService.js.ILLMMessageService
+- sym: ../common/prompt/prompts.js.chat_userMessageContent
+- sym: ../common/prompt/prompts.js.isABuiltinToolName
+- sym: ../common/sendLLMMessageTypes.js.AnthropicReasoning
+- sym: ../common/sendLLMMessageTypes.js.getErrorMessage
+- sym: ../common/sendLLMMessageTypes.js.RawToolCallObj
+- sym: ../common/sendLLMMessageTypes.js.RawToolParamsObj
+- sym: ../../../../base/common/uuid.js.generateUuid
+- sym: ../common/voidSettingsTypes.js.FeatureName
+- sym: ../common/voidSettingsTypes.js.ModelSelection
+- sym: ../common/voidSettingsTypes.js.ModelSelectionOptions
+- sym: ../common/voidSettingsService.js.IVoidSettingsService
+- sym: ../common/toolsServiceTypes.js.approvalTypeOfBuiltinToolName
+- sym: ../common/toolsServiceTypes.js.BuiltinToolCallParams
+- sym: ../common/toolsServiceTypes.js.ToolCallParams
+- sym: ../common/toolsServiceTypes.js.ToolName
+- sym: ../common/toolsServiceTypes.js.ToolResult
+- sym: ./toolsService.js.IToolsService
+- sym: ../../../../base/common/cancellation.js.CancellationToken
+- sym: ../../../../editor/common/services/languageFeatures.js.ILanguageFeaturesService
+- sym: ../common/chatThreadServiceTypes.js.ChatMessage
+- sym: ../common/chatThreadServiceTypes.js.CheckpointEntry
+- sym: ../common/chatThreadServiceTypes.js.CodespanLocationLink
+- sym: ../common/chatThreadServiceTypes.js.StagingSelectionItem
+- sym: ../common/chatThreadServiceTypes.js.ToolMessage
+- sym: ../../../../editor/common/core/position.js.Position
+- sym: ../common/metricsService.js.IMetricsService
+- sym: ../../../../base/common/labels.js.shorten
+- sym: ../common/voidModelService.js.IVoidModelService
+- sym: ../../../../base/common/arraysFind.js.findLast
+- sym: ../../../../base/common/arraysFind.js.findLastIdx
+- sym: ./editCodeServiceInterface.js.IEditCodeService
+- sym: ../common/editCodeServiceTypes.js.VoidFileSnapshot
+- sym: ../../../../platform/notification/common/notification.js.INotificationService
+- sym: ../../../../platform/notification/common/notification.js.Severity
+- sym: ../../../../base/common/strings.js.truncate
+- sym: ../common/storageKeys.js.THREAD_STORAGE_KEY
+- sym: ./convertToLLMMessageService.js.IConvertToLLMMessageService
+- sym: ../../../../base/common/async.js.timeout
+- sym: ../../../../base/common/objects.js.deepClone
+- sym: ../../../../platform/workspace/common/workspace.js.IWorkspaceContextService
+- sym: ../common/directoryStrService.js.IDirectoryStrService
+- sym: ../../../../platform/files/common/files.js.IFileService
+- sym: ../common/mcpService.js.IMCPService
+- sym: ../common/mcpServiceTypes.js.RawMCPToolCall
+data:
+- name: CHAT_RETRIES
+  type: number
+  val: '3'
+- name: RETRY_DELAY
+  type: number
+  val: '2500'
+- name: defaultMessageState
+  type: UserMessageState
+  val: "{\n\tstagingSelections: [],\n\tisBeingEdited: false,\n}"
+- name: IChatThreadService
+  type: any
+  val: createDecorator<IChatThreadService>('voidChatThreadService')
+types:
+- name: UserMessageType
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 98
+  - 98
+- name: UserMessageState
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 99
+  - 99
+- name: WhenMounted
+  kind: typealias
+  decorators:
+  - type
+  fields:
+  - name: textAreaRef
+    type: '{ current: HTMLTextAreaElement | null }'
+  - name: scrollToBottom
+    type: () => void
+  lines:
+  - 107
+  - 110
+- name: ThreadType
+  kind: typealias
+  decorators:
+  - type
+  fields:
+  - name: id
+    type: string
+  - name: createdAt
+    type: string
+  - name: lastModified
+    type: string
+  - name: messages
+    type: ChatMessage[]
+  - name: filesWithUserChanges
+    type: Set<string>
+  - name: state
+    type: "{\n\t\tcurrCheckpointIdx: number | null; // the latest checkpoint we're at (null if not at a particular checkpoint, like if the chat is streaming, or chat just finished and we haven't clicked on a checkpt)\n\n\t\tstagingSelections: StagingSelectionItem[];\n\t\tfocusedMessageIdx: number | undefined; // index of the user message that is being edited (undefined if none)\n\n\t\tlinksOfMessageIdx: { // eg. link = linksOfMessageIdx[4]['RangeFunction']\n\t\t\t[messageIdx: number]: {\n\t\t\t\t[codespanName: string]: CodespanLocationLink\n\t\t\t}\n\t\t}\n\n\n\t\tmountedInfo?: {\n\t\t\twhenMounted: Promise<WhenMounted>\n\t\t\t_whenMountedResolver: (res: WhenMounted) => void\n\t\t\tmountedIsResolvedRef: { current: boolean };\n\t\t}\n\n\n\t}"
+  lines:
+  - 114
+  - 144
+- name: ChatThreads
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 146
+  - 148
+- name: ThreadsState
+  kind: typealias
+  decorators:
+  - type
+  fields:
+  - name: allThreads
+    type: ChatThreads
+  - name: currentThreadId
+    type: string
+  lines:
+  - 151
+  - 154
+- name: IsRunningType
+  kind: enum
+  decorators:
+  - type
+  variants:
+  - name: undefined
+  lines:
+  - 156
+  - 161
+- name: ThreadStreamState
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 163
+  - 206
+- name: IChatThreadService
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: readonly
+    type: undefined
+  - name: readonly
+    type: ThreadsState
+  - name: readonly
+    type: ThreadStreamState
+  - name: onDidChangeCurrentThread
+    type: Event<void>
+  - name: onDidChangeStreamState
+    type: 'Event<{ threadId: string }>'
+  - name: getCurrentThread
+    type: 'method: getCurrentThread(): ThreadType'
+  - name: openNewThread
+    type: 'method: openNewThread(): void'
+  - name: switchToThread
+    type: 'method: switchToThread(threadId: string): void'
+  - name: deleteThread
+    type: 'method: deleteThread(threadId: string): void'
+  - name: duplicateThread
+    type: 'method: duplicateThread(threadId: string): void'
+  - name: getCurrentMessageState
+    type: '(messageIdx: number) => UserMessageState'
+  - name: setCurrentMessageState
+    type: '(messageIdx: number, newState: Partial<UserMessageState>) => void'
+  - name: getCurrentThreadState
+    type: () => ThreadType['state']
+  - name: setCurrentThreadState
+    type: '(newState: Partial<ThreadType[''state'']>) => void'
+  - name: getCurrentFocusedMessageIdx
+    type: 'method: getCurrentFocusedMessageIdx(): number | undefined'
+  - name: isCurrentlyFocusingMessage
+    type: 'method: isCurrentlyFocusingMessage(): boolean'
+  - name: setCurrentlyFocusedMessageIdx
+    type: 'method: setCurrentlyFocusedMessageIdx(messageIdx: number | undefined): void'
+  - name: popStagingSelections
+    type: 'method: popStagingSelections(numPops?: number): void'
+  - name: addNewStagingSelection
+    type: 'method: addNewStagingSelection(newSelection: StagingSelectionItem): void'
+  - name: dangerousSetState
+    type: '(newState: ThreadsState) => void'
+  - name: resetState
+    type: () => void
+  - name: getCodespanLink
+    type: 'method: getCodespanLink(opts: { codespanStr: string, messageIdx: number, threadId: string }): CodespanLocationLink | undefined'
+  - name: addCodespanLink
+    type: 'method: addCodespanLink(opts: { newLinkText: string, newLinkLocation: CodespanLocationLink, messageIdx: number, threadId: string }): void'
+  - name: generateCodespanLink
+    type: 'method: generateCodespanLink(opts: { codespanStr: string, threadId: string }): Promise<CodespanLocationLink>'
+  - name: getRelativeStr
+    type: 'method: getRelativeStr(uri: URI): string | undefined'
+  - name: abortRunning
+    type: 'method: abortRunning(threadId: string): Promise<void>'
+  - name: dismissStreamError
+    type: 'method: dismissStreamError(threadId: string): void'
+  - name: editUserMessageAndStreamResponse
+    type: 'method: editUserMessageAndStreamResponse({ userMessage, messageIdx, threadId }: { userMessage: string, messageIdx: number, threadId: string }): Promise<void>'
+  - name: addUserMessageAndStreamResponse
+    type: 'method: addUserMessageAndStreamResponse({ userMessage, threadId }: { userMessage: string, threadId: string }): Promise<void>'
+  - name: approveLatestToolRequest
+    type: 'method: approveLatestToolRequest(threadId: string): void'
+  - name: rejectLatestToolRequest
+    type: 'method: rejectLatestToolRequest(threadId: string): void'
+  - name: jumpToCheckpointBeforeMessageIdx
+    type: 'method: jumpToCheckpointBeforeMessageIdx(opts: { threadId: string, messageIdx: number, jumpToUserModified: boolean }): void'
+  - name: focusCurrentChat
+    type: () => Promise<void>
+  - name: blurCurrentChat
+    type: () => Promise<void>
+  lines:
+  - 230
+  - 294
+- name: ChatThreadService
+  kind: struct
+  ctx: this fires when the current thread changes at all (a switch of currentThread, or a message added to it, etc)
+  bases:
+  - Disposable
+  - IChatThreadService
+  fields:
+  - name: _serviceBrand
+    type: undefined
+  - name: _onDidChangeCurrentThread
+    type: any
+    default: new Emitter<void>()
+  - name: onDidChangeCurrentThread
+    type: Event<void>
+    default: this._onDidChangeCurrentThread.event
+  - name: _onDidChangeStreamState
+    type: any
+    default: 'new Emitter<{ threadId: string }>()'
+  - name: onDidChangeStreamState
+    type: 'Event<{ threadId: string }>'
+    default: this._onDidChangeStreamState.event
+  - name: streamState
+    type: ThreadStreamState
+    default: '{}'
+  - name: state
+    type: ThreadsState
+  - name: dangerousSetState
+    type: any
+    default: "(newState: ThreadsState) => {\n\t\tthis.state = newState\n\t\tthis._onDidChangeCurrent..."
+  - name: resetState
+    type: any
+    default: "() => {\n\t\tthis.state = { allThreads: {}, currentThreadId: null as unknown as str..."
+  - name: _currentModelSelectionProps
+    type: any
+    default: "() => {\n\t\t// these settings should not change throughout the loop (eg anthropic ..."
+  - name: _swapOutLatestStreamingToolWithResult
+    type: any
+    default: "(threadId: string, tool: ChatMessage & { role: 'tool' }) => {\n\t\tconst messages =..."
+  - name: _updateLatestTool
+    type: any
+    default: "(threadId: string, tool: ChatMessage & { role: 'tool' }) => {\n\t\tconst swapped = ..."
+  - name: _computeMCPServerOfToolName
+    type: any
+    default: "(toolName: string) => {\n\t\treturn this._mcpService.getMCPTools()?.find(t => t.nam..."
+  - name: toolErrMsgs
+    type: any
+    default: "{\n\t\trejected: 'Tool call was rejected by the user.',\n\t\tinterrupted: 'Tool call w..."
+  - name: _runToolCall
+    type: any
+    default: "async (\n\t\tthreadId: string,\n\t\ttoolName: ToolName,\n\t\ttoolId: string,\n\t\tmcpServerN..."
+  - name: _getCheckpointInfo
+    type: any
+    default: '(checkpointMessage: ChatMessage & { role: ''checkpoint'' }, fsPath: string, opts: ...'
+  - name: _getCheckpointBeforeMessage
+    type: any
+    default: '({ threadId, messageIdx }: { threadId: string, messageIdx: number }): [Checkpoin...'
+  - name: editUserMessageAndStreamResponse
+    type: IChatThreadService['editUserMessageAndStreamResponse']
+    default: "async ({ userMessage, messageIdx, threadId }) => {\n\n\t\tconst thread = this.state...."
+  - name: getRelativeStr
+    type: any
+    default: "(uri: URI) => {\n\t\tconst isInside = this._workspaceContextService.isInsideWorkspa..."
+  - name: generateCodespanLink
+    type: IChatThreadService['generateCodespanLink']
+    default: "async ({ codespanStr: _codespanStr, threadId }) => {\n\n\t\t// process codespan to u..."
+  - name: getCurrentThreadState
+    type: any
+    default: "() => {\n\t\tconst currentThread = this.getCurrentThread()\n\t\treturn currentThread.s..."
+  - name: setCurrentThreadState
+    type: any
+    default: "(newState: Partial<ThreadType['state']>) => {\n\t\tthis._setThreadState(this.state...."
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\t@IStorageService private readonly _storageService: IStorageService,\n\t\t@IVoidModelService private readonly _voidModelService: IVoidModelService,\n\t\t@ILLMMessageService private readonly _llmMessageService: ILLMMessageService,\n\t\t@IToolsService private readonly _toolsService: IToolsService,\n\t\t@IVoidSettingsService private readonly _settingsService: IVoidSettingsService,\n\t\t@ILanguageFeaturesService private readonly _languageFeaturesService: ILanguageFeaturesService,\n\t\t@IMetricsService private readonly _metricsService: IMetricsService,\n\t\t@IEditCodeService private readonly _editCodeService: IEditCodeService,\n\t\t@INotificationService private readonly _notificationService: INotificationService,\n\t\t@IConvertToLLMMessageService private readonly _convertToLLMMessagesService: IConvertToLLMMessageService,\n\t\t@IWorkspaceContextService private readonly _workspaceContextService: IWorkspaceContextService,\n\t\t@IDirectoryStrService private readonly _directoryStringService: IDirectoryStrService,\n\t\t@IFileService private readonly _fileService: IFileService,\n\t\t@IMCPService private readonly _mcpService: IMCPService,\n\t)"
+    lines:
+    - 315
+    - 361
+    detail:
+      calls:
+      - super
+      - this._readAllThreads
+      - this.openNewThread
+  - name: focusCurrentChat
+    sig: focusCurrentChat()
+    is_async: true
+    lines:
+    - 363
+    - 371
+    detail:
+      calls:
+      - s?.textAreaRef.current?.focus
+      - this.isCurrentlyFocusingMessage
+  - name: blurCurrentChat
+    sig: blurCurrentChat()
+    is_async: true
+    lines:
+    - 372
+    - 380
+    detail:
+      calls:
+      - s?.textAreaRef.current?.blur
+      - this.isCurrentlyFocusingMessage
+  - name: _setState
+    sig: '_setState(state: Partial<ThreadsState>, doNotRefreshMountInfo?: boolean)'
+    vis: private
+    lines:
+    - 427
+    - 479
+    detail:
+      calls:
+      - new Promise
+      - this._onDidChangeCurrentThread.fire
+      - this._setStreamState
+      - this._setThreadState
+      - this._updateLatestTool
+  - name: approveLatestToolRequest
+    sig: 'approveLatestToolRequest(threadId: string)'
+    lines:
+    - 520
+    - 533
+    detail:
+      calls:
+      - this._currentModelSelectionProps
+      - this._runChatAgent
+      - this._wrapRunAgentToNotify
+  - name: rejectLatestToolRequest
+    sig: 'rejectLatestToolRequest(threadId: string)'
+    lines:
+    - 534
+    - 551
+    detail:
+      calls:
+      - this._setStreamState
+      - this._updateLatestTool
+  - name: abortRunning
+    sig: 'abortRunning(threadId: string)'
+    is_async: true
+    lines:
+    - 557
+    - 590
+    detail:
+      calls:
+      - interrupt
+      - this._addMessageToThread
+      - this._addUserCheckpoint
+      - this._computeMCPServerOfToolName
+      - this._setStreamState
+      - this._updateLatestTool
+      - this.rejectLatestToolRequest
+  - name: _runChatAgent
+    sig: "_runChatAgent({\n\t\tthreadId,\n\t\tmodelSelection,\n\t\tmodelSelectionOptions,\n\t\tcallThisToolFirst,\n\t}: {\n\t\tthreadId: string,\n\t\tmodelSelection: ModelSelection | null,\n\t\tmodelSelectionOptions: ModelSelectionOptions | undefined,\n\n\t\tcallThisToolFirst?: ToolMessage<ToolName> & { type: 'tool_request' }\n\t})"
+    is_async: true
+    vis: private
+    lines:
+    - 732
+    - 911
+    detail:
+      calls:
+      - Promise.resolve
+      - mcpTools?.find
+      - new Promise
+      - this._addMessageToThread
+      - this._addUserCheckpoint
+      - this._computeMCPServerOfToolName
+      - this._convertToLLMMessagesService.prepareLLMChatMessages
+      - this._llmMessageService.sendLLMMessage
+      - this._mcpService.getMCPTools
+      - this._metricsService.capture
+      - this._runToolCall
+      - this._setStreamState
+      - timeout
+  - name: _editMessageInThread
+    sig: '_editMessageInThread(threadId: string, messageIdx: number, newMessage: ChatMessage,)'
+    vis: private
+    lines:
+    - 925
+    - 944
+    detail:
+      calls:
+      - new Date
+      - new Date().toISOString
+      - oldThread.messages.slice
+      - this._setState
+      - this._storeAllThreads
+  - name: _computeNewCheckpointInfo
+    sig: '_computeNewCheckpointInfo({ threadId }: { threadId: string })'
+    vis: private
+    lines:
+    - 955
+    - 991
+    detail:
+      calls:
+      - URI.file
+      - findLastIdx
+      - this._editCodeService.getVoidFileSnapshot
+      - this._getCheckpointInfo
+      - this._getCheckpointsBetween
+      - this._voidModelService.getModelFromFsPath
+  - name: _addToolEditCheckpoint
+    sig: '_addToolEditCheckpoint({ threadId, uri, }: { threadId: string, uri: URI })'
+    vis: private
+    lines:
+    - 1004
+    - 1016
+    detail:
+      calls:
+      - this._addCheckpoint
+      - this._editCodeService.getVoidFileSnapshot
+      - this._voidModelService.getModel
+  - name: _addUserModificationsToCurrCheckpoint
+    sig: '_addUserModificationsToCurrCheckpoint({ threadId }: { threadId: string })'
+    vis: private
+    lines:
+    - 1057
+    - 1066
+    detail:
+      calls:
+      - this._computeNewCheckpointInfo
+      - this._editMessageInThread
+      - this._readCurrentCheckpoint
+  - name: jumpToCheckpointBeforeMessageIdx
+    sig: 'jumpToCheckpointBeforeMessageIdx({ threadId, messageIdx, jumpToUserModified }: { threadId: string, messageIdx: number, jumpToUserModified: boolean })'
+    lines:
+    - 1080
+    - 1185
+    detail:
+      calls:
+      - URI.file
+      - idxes
+      - this._addUserModificationsToCurrCheckpoint
+      - this._editCodeService.restoreVoidFileSnapshot
+      - this._getCheckpointBeforeMessage
+      - this._getCheckpointInfo
+      - this._getCheckpointsBetween
+      - this._makeUsStandOnCheckpoint
+      - this._setThreadState
+  - name: _wrapRunAgentToNotify
+    sig: '_wrapRunAgentToNotify(p: Promise<void>, threadId: string)'
+    vis: private
+    lines:
+    - 1188
+    - 1227
+    detail:
+      calls:
+      - p.then
+      - "p.then(() => {\n\t\t\tif (threadId !== this.state.currentThreadId) notify({ error: null })\n\t\t}).catch"
+  - name: dismissStreamError
+    sig: 'dismissStreamError(threadId: string): void'
+    lines:
+    - 1229
+    - 1231
+    detail:
+      calls:
+      - this._setStreamState
+  - name: _addUserMessageAndStreamResponse
+    sig: '_addUserMessageAndStreamResponse({ userMessage, _chatSelections, threadId }: { userMessage: string, _chatSelections?: StagingSelectionItem[], threadId: string })'
+    is_async: true
+    vis: private
+    lines:
+    - 1234
+    - 1268
+    detail:
+      calls:
+      - chat_userMessageContent
+      - this._addMessageToThread
+      - this._addUserCheckpoint
+      - this._currentModelSelectionProps
+      - this._runChatAgent
+      - this._setThreadState
+      - this._wrapRunAgentToNotify
+      - this.abortRunning
+      - this.state.allThreads[threadId]?.state.mountedInfo?.whenMounted.then
+  - name: addUserMessageAndStreamResponse
+    sig: 'addUserMessageAndStreamResponse({ userMessage, _chatSelections, threadId }: { userMessage: string, _chatSelections?: StagingSelectionItem[], threadId: string })'
+    is_async: true
+    lines:
+    - 1271
+    - 1296
+    detail:
+      calls:
+      - new Date
+      - new Date().toISOString
+      - this._addUserMessageAndStreamResponse
+      - this._setState
+      - this._storeAllThreads
+      - thread.messages.slice
+  - name: getCodespanLink
+    sig: 'getCodespanLink({ codespanStr, messageIdx, threadId }: { codespanStr: string, messageIdx: number, threadId: string }): CodespanLocationLink | undefined'
+    lines:
+    - 1558
+    - 1568
+    detail: {}
+  - name: addCodespanLink
+    sig: 'addCodespanLink({ newLinkText, newLinkLocation, messageIdx, threadId }: { newLinkText: string, newLinkLocation: CodespanLocationLink, messageIdx: number, threadId: string })'
+    is_async: true
+    lines:
+    - 1570
+    - 1594
+    detail:
+      calls:
+      - this._setState
+  - name: getCurrentThread
+    sig: 'getCurrentThread(): ThreadType'
+    lines:
+    - 1597
+    - 1602
+    detail:
+      calls:
+      - new Error
+  - name: getCurrentFocusedMessageIdx
+    sig: getCurrentFocusedMessageIdx()
+    lines:
+    - 1604
+    - 1617
+    detail:
+      calls:
+      - this.getCurrentThread
+  - name: isCurrentlyFocusingMessage
+    sig: isCurrentlyFocusingMessage()
+    lines:
+    - 1619
+    - 1621
+    detail:
+      calls:
+      - this.getCurrentFocusedMessageIdx
+  - name: switchToThread
+    sig: 'switchToThread(threadId: string)'
+    lines:
+    - 1623
+    - 1625
+    detail:
+      calls:
+      - this._setState
+  - name: openNewThread
+    sig: openNewThread()
+    lines:
+    - 1628
+    - 1648
+    detail:
+      calls:
+      - newThreadObject
+      - this._setState
+      - this._storeAllThreads
+      - this.switchToThread
+  - name: deleteThread
+    sig: 'deleteThread(threadId: string): void'
+    lines:
+    - 1651
+    - 1661
+    detail:
+      calls:
+      - this._setState
+      - this._storeAllThreads
+  - name: duplicateThread
+    sig: 'duplicateThread(threadId: string)'
+    lines:
+    - 1663
+    - 1677
+    detail:
+      calls:
+      - deepClone
+      - generateUuid
+      - this._setState
+      - this._storeAllThreads
+  - name: _addMessageToThread
+    sig: '_addMessageToThread(threadId: string, message: ChatMessage)'
+    vis: private
+    lines:
+    - 1680
+    - 1698
+    detail:
+      calls:
+      - new Date
+      - new Date().toISOString
+      - this._setState
+      - this._storeAllThreads
+  - name: setCurrentlyFocusedMessageIdx
+    sig: 'setCurrentlyFocusedMessageIdx(messageIdx: number | undefined)'
+    lines:
+    - 1701
+    - 1723
+    detail:
+      calls:
+      - this._setState
+  - name: addNewStagingSelection
+    sig: 'addNewStagingSelection(newSelection: StagingSelectionItem): void'
+    lines:
+    - 1726
+    - 1755
+    detail:
+      calls:
+      - findStagingSelectionIndex
+      - selections!.slice
+      - setSelections
+      - this.getCurrentFocusedMessageIdx
+      - this.getCurrentMessageState
+      - this.getCurrentThreadState
+  - name: popStagingSelections
+    sig: 'popStagingSelections(numPops: number): void'
+    lines:
+    - 1759
+    - 1781
+    detail:
+      calls:
+      - selections.slice
+      - setSelections
+      - this.getCurrentFocusedMessageIdx
+      - this.getCurrentMessageState
+      - this.getCurrentThreadState
+  - name: _setCurrentMessageState
+    sig: '_setCurrentMessageState(state: Partial<UserMessageState>, messageIdx: number): void'
+    vis: private
+    lines:
+    - 1784
+    - 1808
+    detail:
+      calls:
+      - this._setState
+      - thread.messages.map
+  - name: getCurrentMessageState
+    sig: 'getCurrentMessageState(messageIdx: number): UserMessageState'
+    lines:
+    - 1869
+    - 1873
+    detail:
+      calls:
+      - this.getCurrentThread
+  - name: setCurrentMessageState
+    sig: 'setCurrentMessageState(messageIdx: number, newState: Partial<UserMessageState>)'
+    lines:
+    - 1874
+    - 1878
+    detail:
+      calls:
+      - this._setCurrentMessageState
+      - this.getCurrentThread
+  lines:
+  - 297
+  - 1882
+functions:
+- name: findStagingSelectionIndex
+  sig: 'findStagingSelectionIndex(currentSelections: StagingSelectionItem[] | undefined, newSelection: StagingSelectionItem): number | null'
+  lines:
+  - 49
+  - 73
+  detail: {}
+- name: newThreadObject
+  sig: newThreadObject()
+  lines:
+  - 208
+  - 223
+  detail:
+    calls:
+    - generateUuid
+    - new Date
+    - new Date().toISOString
+    - new Set
+exports:
+- name: UserMessageType
+  kind: type
+- name: UserMessageState
+  kind: type
+- name: WhenMounted
+  kind: type
+- name: ThreadType
+  kind: type
+- name: ChatThreads
+  kind: type
+- name: ThreadsState
+  kind: type
+- name: IsRunningType
+  kind: type
+- name: ThreadStreamState
+  kind: type
+- name: IChatThreadService
+  kind: type
+- name: ChatThreadService
+  kind: type
+- name: findStagingSelectionIndex
+  kind: func
+- name: newThreadObject
+  kind: func
+- name: CHAT_RETRIES
+  kind: data
+- name: RETRY_DELAY
+  kind: data
+- name: defaultMessageState
+  kind: data
+- name: IChatThreadService
+  kind: data

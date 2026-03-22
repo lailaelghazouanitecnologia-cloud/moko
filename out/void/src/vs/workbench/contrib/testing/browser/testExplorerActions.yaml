@@ -1,0 +1,2089 @@
+## Roska File Descriptor — browser/testExplorerActions.ts
+file: browser/testExplorerActions.ts
+lines: 1939
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: ../../../../base/common/arrays.js.distinct
+- sym: ../../../../base/common/cancellation.js.CancellationToken
+- sym: ../../../../base/common/codicons.js.Codicon
+- sym: ../../../../base/common/iterator.js.Iterable
+- sym: ../../../../base/common/keyCodes.js.KeyChord
+- sym: ../../../../base/common/keyCodes.js.KeyCode
+- sym: ../../../../base/common/keyCodes.js.KeyMod
+- sym: ../../../../base/common/lifecycle.js.DisposableStore
+- sym: ../../../../base/common/types.js.isDefined
+- sym: ../../../../base/common/uri.js.URI
+- sym: ../../../../editor/browser/editorBrowser.js.IActiveCodeEditor
+- sym: ../../../../editor/browser/editorBrowser.js.ICodeEditor
+- sym: ../../../../editor/browser/services/codeEditorService.js.ICodeEditorService
+- sym: ../../../../editor/browser/widget/codeEditor/embeddedCodeEditorWidget.js.EmbeddedCodeEditorWidget
+- sym: ../../../../editor/common/config/editorOptions.js.EditorOption
+- sym: ../../../../editor/common/config/editorOptions.js.GoToLocationValues
+- sym: ../../../../editor/common/core/position.js.Position
+- sym: ../../../../editor/common/core/range.js.Range
+- sym: ../../../../editor/common/editorContextKeys.js.EditorContextKeys
+- sym: ../../../../editor/common/model.js.ITextModel
+- sym: ../../../../editor/contrib/gotoSymbol/browser/goToCommands.js.SymbolNavigationAction
+- sym: ../../../../editor/contrib/gotoSymbol/browser/referencesModel.js.ReferencesModel
+- sym: ../../../../editor/contrib/message/browser/messageController.js.MessageController
+- sym: ../../../../editor/contrib/peekView/browser/peekView.js.PeekContext
+- sym: ../../../../nls.js.localize
+- sym: ../../../../nls.js.localize2
+- sym: ../../../../platform/action/common/actionCommonCategories.js.Categories
+- sym: ../../../../platform/actions/common/actions.js.Action2
+- sym: ../../../../platform/actions/common/actions.js.IAction2Options
+- sym: ../../../../platform/actions/common/actions.js.MenuId
+- sym: ../../../../platform/commands/common/commands.js.ICommandService
+- sym: ../../../../platform/configuration/common/configuration.js.IConfigurationService
+- sym: ../../../../platform/contextkey/common/contextkey.js.ContextKeyExpr
+- sym: ../../../../platform/contextkey/common/contextkey.js.ContextKeyExpression
+- sym: ../../../../platform/contextkey/common/contextkey.js.ContextKeyGreaterExpr
+- sym: ../../../../platform/instantiation/common/instantiation.js.ServicesAccessor
+- sym: ../../../../platform/keybinding/common/keybindingsRegistry.js.KeybindingWeight
+- sym: ../../../../platform/notification/common/notification.js.INotificationService
+- sym: ../../../../platform/notification/common/notification.js.Severity
+- sym: ../../../../platform/progress/common/progress.js.IProgressService
+- sym: ../../../../platform/progress/common/progress.js.ProgressLocation
+- sym: ../../../../platform/quickinput/common/quickInput.js.IQuickInputService
+- sym: ../../../../platform/quickinput/common/quickInput.js.IQuickPickItem
+- sym: ../../../../platform/quickinput/common/quickInput.js.IQuickPickSeparator
+- sym: ../../../../platform/theme/common/iconRegistry.js.widgetClose
+- sym: ../../../../platform/uriIdentity/common/uriIdentity.js.IUriIdentityService
+- sym: ../../../browser/parts/views/viewPane.js.ViewAction
+- sym: ../../../common/contextkeys.js.FocusedViewContext
+- sym: ../../extensions/common/extensions.js.IExtensionsWorkbenchService
+- sym: ./explorerProjections/index.js.TestExplorerTreeElement
+- sym: ./explorerProjections/index.js.TestItemTreeElement
+- sym: ./icons.js.icons
+- sym: ./testingExplorerView.js.TestingExplorerView
+- sym: ./testingOutputPeek.js.TestResultsView
+- sym: ../common/configuration.js.TestingConfigKeys
+- sym: ../common/configuration.js.getTestingConfiguration
+- sym: ../common/constants.js.TestCommandId
+- sym: ../common/constants.js.TestExplorerViewMode
+- sym: ../common/constants.js.TestExplorerViewSorting
+- sym: ../common/constants.js.Testing
+- sym: ../common/constants.js.testConfigurationGroupNames
+- sym: ../common/testCoverageService.js.ITestCoverageService
+- sym: ../common/testId.js.TestId
+- sym: ../common/testProfileService.js.ITestProfileService
+- sym: ../common/testProfileService.js.canUseProfileWithTest
+- sym: ../common/testResult.js.ITestResult
+- sym: ../common/testResultService.js.ITestResultService
+- sym: ../common/testService.js.IMainThreadTestCollection
+- sym: ../common/testService.js.IMainThreadTestController
+- sym: ../common/testService.js.ITestService
+- sym: ../common/testService.js.expandAndGetTestById
+- sym: ../common/testService.js.testsInFile
+- sym: ../common/testService.js.testsUnderUri
+- sym: ../common/testTypes.js.ExtTestRunProfileKind
+- sym: ../common/testTypes.js.ITestRunProfile
+- sym: ../common/testTypes.js.InternalTestItem
+- sym: ../common/testTypes.js.TestItemExpandState
+- sym: ../common/testTypes.js.TestRunProfileBitset
+- sym: ../common/testingContextKeys.js.TestingContextKeys
+- sym: ../common/testingContinuousRunService.js.ITestingContinuousRunService
+- sym: ../common/testingPeekOpener.js.ITestingPeekOpener
+- sym: ../common/testingStates.js.isFailedState
+- sym: ../../../services/editor/common/editorService.js.IEditorService
+- sym: ../../../services/views/common/viewsService.js.IViewsService
+data:
+- name: category
+  type: any
+  val: Categories.Test
+- name: hasAnyTestProvider
+  type: any
+  val: ContextKeyGreaterExpr.create(TestingContextKeys.providerCount.key, 0)
+- name: LABEL_RUN_TESTS
+  type: any
+  val: localize2('runSelectedTests', "Run Tests")
+- name: LABEL_DEBUG_TESTS
+  type: any
+  val: localize2('debugSelectedTests', "Debug Tests")
+- name: LABEL_COVERAGE_TESTS
+  type: any
+  val: localize2('coverageSelectedTests', "Run Tests with Coverage")
+- name: allTestActions
+  type: array
+  val: "[\n\tCancelTestRefreshAction,\n\tCancelTestRunAction,\n\tCleareCoverage,\n\tClearTestResultsAction,\n\tCollapseAllAction,\n\tConfigu..."
+types:
+- name: ActionOrder
+  kind: enum
+  variants:
+  - name: Refresh
+    val: '10'
+  - name: Run
+  - name: Debug
+  - name: Coverage
+  - name: RunContinuous
+  - name: RunUsing
+  - name: Collapse
+  - name: ClearResults
+  - name: DisplayMode
+  - name: Sort
+  - name: GoToTest
+  - name: HideTest
+  - name: ContinuousRunTest
+    val: -1 >>> 1
+  lines:
+  - 64
+  - 81
+- name: HideTestAction
+  kind: struct
+  bases:
+  - Action2
+  methods:
+  - name: constructor
+    sig: constructor()
+    lines:
+    - 90
+    - 100
+    detail:
+      calls:
+      - TestingContextKeys.testItemIsHidden.isEqualTo
+      - localize2
+      - super
+  - name: run
+    sig: 'run(accessor: ServicesAccessor, ...elements: TestItemTreeElement[])'
+    lines:
+    - 102
+    - 108
+    detail:
+      calls:
+      - Promise.resolve
+      - accessor.get
+      - service.excluded.toggle
+  lines:
+  - 89
+  - 109
+- name: UnhideTestAction
+  kind: struct
+  bases:
+  - Action2
+  methods:
+  - name: constructor
+    sig: constructor()
+    lines:
+    - 112
+    - 122
+    detail:
+      calls:
+      - TestingContextKeys.testItemIsHidden.isEqualTo
+      - localize2
+      - super
+  - name: run
+    sig: 'run(accessor: ServicesAccessor, ...elements: InternalTestItem[])'
+    lines:
+    - 124
+    - 132
+    detail:
+      calls:
+      - Promise.resolve
+      - accessor.get
+      - service.excluded.toggle
+  lines:
+  - 111
+  - 133
+- name: UnhideAllTestsAction
+  kind: struct
+  bases:
+  - Action2
+  methods:
+  - name: constructor
+    sig: constructor()
+    lines:
+    - 136
+    - 141
+    detail:
+      calls:
+      - localize2
+      - super
+  - name: run
+    sig: 'run(accessor: ServicesAccessor)'
+    lines:
+    - 143
+    - 147
+    detail:
+      calls:
+      - Promise.resolve
+      - accessor.get
+      - service.excluded.clear
+  lines:
+  - 135
+  - 148
+- name: RunVisibleAction
+  kind: trait
+  ctx: ''
+  bases:
+  - ViewAction
+  decorators:
+  - abstract
+  methods:
+  - name: constructor
+    sig: 'constructor(private readonly bitset: TestRunProfileBitset, desc: Readonly<IAction2Options>)'
+    lines:
+    - 165
+    - 170
+    detail:
+      calls:
+      - super
+  - name: runInView
+    sig: 'runInView(accessor: ServicesAccessor, view: TestingExplorerView, ...elements: TestItemTreeElement[]): Promise<unknown>'
+    lines:
+    - 175
+    - 182
+    detail:
+      calls:
+      - accessor.get
+      - accessor.get(ITestService).runTests
+      - elements.map
+      - view.getTreeIncludeExclude
+  lines:
+  - 164
+  - 183
+- name: DebugAction
+  kind: struct
+  bases:
+  - RunVisibleAction
+  methods:
+  - name: constructor
+    sig: constructor()
+    lines:
+    - 186
+    - 193
+    detail:
+      calls:
+      - TestingContextKeys.hasDebuggableTests.isEqualTo
+      - localize2
+      - super
+      - testItemInlineAndInContext
+  lines:
+  - 185
+  - 194
+- name: CoverageAction
+  kind: struct
+  bases:
+  - RunVisibleAction
+  methods:
+  - name: constructor
+    sig: constructor()
+    lines:
+    - 197
+    - 204
+    detail:
+      calls:
+      - TestingContextKeys.hasCoverableTests.isEqualTo
+      - localize2
+      - super
+      - testItemInlineAndInContext
+  lines:
+  - 196
+  - 205
+- name: RunUsingProfileAction
+  kind: struct
+  bases:
+  - Action2
+  methods:
+  - name: constructor
+    sig: constructor()
+    lines:
+    - 208
+    - 220
+    detail:
+      calls:
+      - TestingContextKeys.hasNonDefaultProfile.isEqualTo
+      - localize2
+      - super
+  - name: run
+    sig: 'run(acessor: ServicesAccessor, ...elements: TestItemTreeElement[]): Promise<any>'
+    is_async: true
+    lines:
+    - 222
+    - 240
+    detail:
+      calls:
+      - acessor.get
+      - commandService.executeCommand
+      - elements.filter
+      - elements.filter(t => canUseProfileWithTest(profile, t.test)).map
+      - testService.runResolvedTests
+  lines:
+  - 207
+  - 241
+- name: RunAction
+  kind: struct
+  bases:
+  - RunVisibleAction
+  methods:
+  - name: constructor
+    sig: constructor()
+    lines:
+    - 244
+    - 251
+    detail:
+      calls:
+      - TestingContextKeys.hasRunnableTests.isEqualTo
+      - localize2
+      - super
+      - testItemInlineAndInContext
+  lines:
+  - 243
+  - 252
+- name: SelectDefaultTestProfiles
+  kind: struct
+  bases:
+  - Action2
+  methods:
+  - name: constructor
+    sig: constructor()
+    lines:
+    - 255
+    - 262
+    detail:
+      calls:
+      - localize2
+      - super
+  - name: run
+    sig: 'run(acessor: ServicesAccessor, onlyGroup: TestRunProfileBitset)'
+    is_async: true
+    lines:
+    - 264
+    - 276
+    detail:
+      calls:
+      - acessor.get
+      - await commands.executeCommand
+      - testProfileService.getGroupDefaultProfiles
+      - testProfileService.setGroupDefaultProfiles
+  lines:
+  - 254
+  - 277
+- name: ContinuousRunTestAction
+  kind: struct
+  bases:
+  - Action2
+  methods:
+  - name: constructor
+    sig: constructor()
+    lines:
+    - 280
+    - 296
+    detail:
+      calls:
+      - ContextKeyExpr.or
+      - TestingContextKeys.isContinuousModeOn.isEqualTo
+      - TestingContextKeys.isParentRunningContinuously.isEqualTo
+      - TestingContextKeys.supportsContinuousRun.isEqualTo
+      - localize
+      - localize2
+      - super
+      - testItemInlineAndInContext
+  - name: run
+    sig: 'run(accessor: ServicesAccessor, ...elements: TestItemTreeElement[]): Promise<any>'
+    is_async: true
+    lines:
+    - 298
+    - 309
+    detail:
+      calls:
+      - accessor.get
+      - crService.isSpecificallyEnabledFor
+      - crService.start
+      - crService.stop
+  lines:
+  - 279
+  - 310
+- name: ContinuousRunUsingProfileTestAction
+  kind: struct
+  bases:
+  - Action2
+  methods:
+  - name: constructor
+    sig: constructor()
+    lines:
+    - 313
+    - 330
+    detail:
+      calls:
+      - ContextKeyExpr.and
+      - TestingContextKeys.isContinuousModeOn.isEqualTo
+      - TestingContextKeys.supportsContinuousRun.isEqualTo
+      - localize2
+      - super
+  - name: run
+    sig: 'run(accessor: ServicesAccessor, ...elements: TestItemTreeElement[]): Promise<any>'
+    is_async: true
+    lines:
+    - 332
+    - 346
+    detail:
+      calls:
+      - accessor.get
+      - crService.start
+      - profileService.getControllerProfiles
+      - selectContinuousRunProfiles
+  lines:
+  - 312
+  - 347
+- name: ConfigureTestProfilesAction
+  kind: struct
+  bases:
+  - Action2
+  methods:
+  - name: constructor
+    sig: constructor()
+    lines:
+    - 350
+    - 362
+    detail:
+      calls:
+      - TestingContextKeys.hasConfigurableProfile.isEqualTo
+      - localize2
+      - super
+  - name: run
+    sig: 'run(acessor: ServicesAccessor, onlyGroup?: TestRunProfileBitset)'
+    is_async: true
+    lines:
+    - 364
+    - 377
+    detail:
+      calls:
+      - acessor.get
+      - await commands.executeCommand
+      - localize
+      - testProfileService.configure
+  lines:
+  - 349
+  - 378
+- name: StopContinuousRunAction
+  kind: struct
+  bases:
+  - Action2
+  methods:
+  - name: constructor
+    sig: constructor()
+    lines:
+    - 398
+    - 406
+    detail:
+      calls:
+      - continuousMenus
+      - localize2
+      - super
+  - name: run
+    sig: 'run(accessor: ServicesAccessor): void'
+    lines:
+    - 408
+    - 410
+    detail:
+      calls:
+      - accessor.get
+      - accessor.get(ITestingContinuousRunService).stop
+  lines:
+  - 397
+  - 411
+- name: StartContinuousRunAction
+  kind: struct
+  bases:
+  - Action2
+  methods:
+  - name: constructor
+    sig: constructor()
+    lines:
+    - 488
+    - 496
+    detail:
+      calls:
+      - continuousMenus
+      - localize2
+      - super
+  - name: run
+    sig: 'run(accessor: ServicesAccessor): Promise<void>'
+    is_async: true
+    lines:
+    - 497
+    - 510
+    detail:
+      calls:
+      - '[...profileService.all()].flatMap'
+      - accessor.get
+      - accessor.get(ITestProfileService).all
+      - crs.start
+      - profileService.all
+      - selectContinuousRunProfiles
+  lines:
+  - 487
+  - 511
+- name: ExecuteSelectedAction
+  kind: trait
+  ctx: ''
+  bases:
+  - ViewAction
+  decorators:
+  - abstract
+  methods:
+  - name: constructor
+    sig: 'constructor(options: IAction2Options, private readonly group: TestRunProfileBitset)'
+    lines:
+    - 514
+    - 534
+    detail:
+      calls:
+      - ContextKeyExpr.and
+      - ContextKeyExpr.equals
+      - TestingContextKeys.capabilityToContextKey[group].isEqualTo
+      - TestingContextKeys.isRunning.isEqualTo
+      - super
+  - name: runInView
+    sig: 'runInView(accessor: ServicesAccessor, view: TestingExplorerView): Promise<ITestResult | undefined>'
+    lines:
+    - 539
+    - 542
+    detail:
+      calls:
+      - accessor.get
+      - accessor.get(ITestService).runTests
+      - view.getTreeIncludeExclude
+  lines:
+  - 513
+  - 543
+- name: GetSelectedProfiles
+  kind: struct
+  ctx: ''
+  bases:
+  - Action2
+  methods:
+  - name: constructor
+    sig: constructor()
+    lines:
+    - 546
+    - 548
+    detail:
+      calls:
+      - localize2
+      - super
+  - name: run
+    sig: 'run(accessor: ServicesAccessor)'
+    lines:
+    - 553
+    - 568
+    detail:
+      calls:
+      - "[\n\t\t\t...profiles.getGroupDefaultProfiles(TestRunProfileBitset.Run),\n\t\t\t...profiles.getGroupDefaultPr..."
+      - accessor.get
+      - profiles.getGroupDefaultProfiles
+  lines:
+  - 545
+  - 569
+- name: GetExplorerSelection
+  kind: struct
+  ctx: ''
+  bases:
+  - ViewAction
+  methods:
+  - name: constructor
+    sig: constructor()
+    lines:
+    - 572
+    - 574
+    detail:
+      calls:
+      - localize2
+      - super
+  - name: runInView
+    sig: 'runInView(_accessor: ServicesAccessor, view: TestingExplorerView)'
+    lines:
+    - 579
+    - 583
+    detail:
+      calls:
+      - exclude.map
+      - include.map
+      - view.getTreeIncludeExclude
+  lines:
+  - 571
+  - 584
+- name: RunSelectedAction
+  kind: struct
+  bases:
+  - ExecuteSelectedAction
+  methods:
+  - name: constructor
+    sig: constructor()
+    lines:
+    - 587
+    - 593
+    detail:
+      calls:
+      - super
+  lines:
+  - 586
+  - 594
+- name: DebugSelectedAction
+  kind: struct
+  bases:
+  - ExecuteSelectedAction
+  methods:
+  - name: constructor
+    sig: constructor()
+    lines:
+    - 597
+    - 603
+    detail:
+      calls:
+      - super
+  lines:
+  - 596
+  - 604
+- name: CoverageSelectedAction
+  kind: struct
+  bases:
+  - ExecuteSelectedAction
+  methods:
+  - name: constructor
+    sig: constructor()
+    lines:
+    - 607
+    - 613
+    detail:
+      calls:
+      - super
+  lines:
+  - 606
+  - 614
+- name: RunOrDebugAllTestsAction
+  kind: trait
+  bases:
+  - Action2
+  decorators:
+  - abstract
+  methods:
+  - name: constructor
+    sig: 'constructor(options: IAction2Options, private readonly group: TestRunProfileBitset, private noTestsFoundError: string)'
+    lines:
+    - 627
+    - 636
+    detail:
+      calls:
+      - TestingContextKeys.capabilityToContextKey[group].isEqualTo
+      - super
+  - name: run
+    sig: 'run(accessor: ServicesAccessor)'
+    is_async: true
+    lines:
+    - 638
+    - 650
+    detail:
+      calls:
+      - '[...testService.collection.rootItems].filter'
+      - accessor.get
+      - notifications.info
+      - testService.runTests
+  lines:
+  - 626
+  - 651
+- name: RunAllAction
+  kind: struct
+  bases:
+  - RunOrDebugAllTestsAction
+  methods:
+  - name: constructor
+    sig: constructor()
+    lines:
+    - 654
+    - 668
+    detail:
+      calls:
+      - KeyChord
+      - localize
+      - localize2
+      - super
+  lines:
+  - 653
+  - 669
+- name: DebugAllAction
+  kind: struct
+  bases:
+  - RunOrDebugAllTestsAction
+  methods:
+  - name: constructor
+    sig: constructor()
+    lines:
+    - 672
+    - 686
+    detail:
+      calls:
+      - KeyChord
+      - localize
+      - localize2
+      - super
+  lines:
+  - 671
+  - 687
+- name: CoverageAllAction
+  kind: struct
+  bases:
+  - RunOrDebugAllTestsAction
+  methods:
+  - name: constructor
+    sig: constructor()
+    lines:
+    - 690
+    - 704
+    detail:
+      calls:
+      - KeyChord
+      - localize
+      - localize2
+      - super
+  lines:
+  - 689
+  - 705
+- name: CancelTestRunAction
+  kind: struct
+  ctx: ''
+  bases:
+  - Action2
+  methods:
+  - name: constructor
+    sig: constructor()
+    lines:
+    - 708
+    - 727
+    detail:
+      calls:
+      - ContextKeyExpr.and
+      - ContextKeyExpr.equals
+      - KeyChord
+      - TestingContextKeys.isRunning.serialize
+      - localize2
+      - super
+  - name: run
+    sig: 'run(accessor: ServicesAccessor, resultId?: string, taskId?: string)'
+    is_async: true
+    lines:
+    - 732
+    - 744
+    detail:
+      calls:
+      - accessor.get
+      - testService.cancelTestRun
+  lines:
+  - 707
+  - 745
+- name: TestingViewAsListAction
+  kind: struct
+  ctx: ''
+  bases:
+  - ViewAction
+  methods:
+  - name: constructor
+    sig: constructor()
+    lines:
+    - 748
+    - 761
+    detail:
+      calls:
+      - ContextKeyExpr.equals
+      - TestingContextKeys.viewMode.isEqualTo
+      - localize2
+      - super
+  - name: runInView
+    sig: 'runInView(_accessor: ServicesAccessor, view: TestingExplorerView)'
+    lines:
+    - 766
+    - 768
+    detail: {}
+  lines:
+  - 747
+  - 769
+- name: TestingViewAsTreeAction
+  kind: struct
+  ctx: ''
+  bases:
+  - ViewAction
+  methods:
+  - name: constructor
+    sig: constructor()
+    lines:
+    - 772
+    - 785
+    detail:
+      calls:
+      - ContextKeyExpr.equals
+      - TestingContextKeys.viewMode.isEqualTo
+      - localize2
+      - super
+  - name: runInView
+    sig: 'runInView(_accessor: ServicesAccessor, view: TestingExplorerView)'
+    lines:
+    - 790
+    - 792
+    detail: {}
+  lines:
+  - 771
+  - 793
+- name: TestingSortByStatusAction
+  kind: struct
+  ctx: ''
+  bases:
+  - ViewAction
+  methods:
+  - name: constructor
+    sig: constructor()
+    lines:
+    - 797
+    - 810
+    detail:
+      calls:
+      - ContextKeyExpr.equals
+      - TestingContextKeys.viewSorting.isEqualTo
+      - localize2
+      - super
+  - name: runInView
+    sig: 'runInView(_accessor: ServicesAccessor, view: TestingExplorerView)'
+    lines:
+    - 815
+    - 817
+    detail: {}
+  lines:
+  - 796
+  - 818
+- name: TestingSortByLocationAction
+  kind: struct
+  ctx: ''
+  bases:
+  - ViewAction
+  methods:
+  - name: constructor
+    sig: constructor()
+    lines:
+    - 821
+    - 834
+    detail:
+      calls:
+      - ContextKeyExpr.equals
+      - TestingContextKeys.viewSorting.isEqualTo
+      - localize2
+      - super
+  - name: runInView
+    sig: 'runInView(_accessor: ServicesAccessor, view: TestingExplorerView)'
+    lines:
+    - 839
+    - 841
+    detail: {}
+  lines:
+  - 820
+  - 842
+- name: TestingSortByDurationAction
+  kind: struct
+  ctx: ''
+  bases:
+  - ViewAction
+  methods:
+  - name: constructor
+    sig: constructor()
+    lines:
+    - 845
+    - 858
+    detail:
+      calls:
+      - ContextKeyExpr.equals
+      - TestingContextKeys.viewSorting.isEqualTo
+      - localize2
+      - super
+  - name: runInView
+    sig: 'runInView(_accessor: ServicesAccessor, view: TestingExplorerView)'
+    lines:
+    - 863
+    - 865
+    detail: {}
+  lines:
+  - 844
+  - 866
+- name: ShowMostRecentOutputAction
+  kind: struct
+  bases:
+  - Action2
+  methods:
+  - name: constructor
+    sig: constructor()
+    lines:
+    - 869
+    - 890
+    detail:
+      calls:
+      - ContextKeyExpr.equals
+      - KeyChord
+      - TestingContextKeys.hasAnyResults.isEqualTo
+      - localize2
+      - super
+  - name: run
+    sig: 'run(accessor: ServicesAccessor)'
+    is_async: true
+    lines:
+    - 892
+    - 896
+    detail:
+      calls:
+      - accessor.get
+      - await viewService.openView
+      - testView?.showLatestRun
+  lines:
+  - 868
+  - 897
+- name: CollapseAllAction
+  kind: struct
+  ctx: ''
+  bases:
+  - ViewAction
+  methods:
+  - name: constructor
+    sig: constructor()
+    lines:
+    - 900
+    - 913
+    detail:
+      calls:
+      - ContextKeyExpr.equals
+      - localize2
+      - super
+  - name: runInView
+    sig: 'runInView(_accessor: ServicesAccessor, view: TestingExplorerView)'
+    lines:
+    - 918
+    - 920
+    detail:
+      calls:
+      - view.viewModel.collapseAll
+  lines:
+  - 899
+  - 921
+- name: ClearTestResultsAction
+  kind: struct
+  ctx: ''
+  bases:
+  - Action2
+  methods:
+  - name: constructor
+    sig: constructor()
+    lines:
+    - 924
+    - 947
+    detail:
+      calls:
+      - ContextKeyExpr.equals
+      - TestingContextKeys.hasAnyResults.isEqualTo
+      - localize2
+      - super
+  - name: run
+    sig: 'run(accessor: ServicesAccessor)'
+    lines:
+    - 952
+    - 954
+    detail:
+      calls:
+      - accessor.get
+      - accessor.get(ITestResultService).clear
+  lines:
+  - 923
+  - 955
+- name: GoToTest
+  kind: struct
+  bases:
+  - Action2
+  methods:
+  - name: constructor
+    sig: constructor()
+    lines:
+    - 958
+    - 975
+    detail:
+      calls:
+      - FocusedViewContext.isEqualTo
+      - TestingContextKeys.testItemHasUri.isEqualTo
+      - localize2
+      - super
+  - name: run
+    sig: 'run(accessor: ServicesAccessor, element?: TestExplorerTreeElement, preserveFocus?: boolean)'
+    is_async: true
+    lines:
+    - 977
+    - 986
+    detail:
+      calls:
+      - accessor.get
+      - accessor.get(ICommandService).executeCommand
+      - accessor.get(IViewsService).getActiveViewWithId
+  lines:
+  - 957
+  - 987
+- name: EditorContextOrder
+  kind: enum
+  variants:
+  - name: RunAtCursor
+  - name: DebugAtCursor
+  - name: RunInFile
+  - name: DebugInFile
+  - name: GoToRelated
+  - name: PeekRelated
+  lines:
+  - 1033
+  - 1040
+- name: ExecuteTestAtCursor
+  kind: trait
+  ctx: ''
+  bases:
+  - Action2
+  decorators:
+  - abstract
+  methods:
+  - name: constructor
+    sig: 'constructor(options: IAction2Options, protected readonly group: TestRunProfileBitset)'
+    lines:
+    - 1043
+    - 1056
+    detail:
+      calls:
+      - ContextKeyExpr.and
+      - super
+  - name: run
+    sig: 'run(accessor: ServicesAccessor)'
+    is_async: true
+    lines:
+    - 1061
+    - 1124
+    detail:
+      calls:
+      - MessageController.get
+      - MessageController.get(editor)?.showMessage
+      - accessor.get
+      - codeEditorService.getActiveCodeEditor
+      - editor.getParentEditor
+      - editor?.getModel
+      - editor?.getPosition
+      - editorService.save
+      - getTestingConfiguration
+      - getTestsAtCursor
+      - localize
+      - showDiscoveringWhile
+      - testService.getTestsRelatedToCode
+      - testService.runTests
+      - testService.syncTests
+  lines:
+  - 1042
+  - 1125
+- name: RunAtCursor
+  kind: struct
+  bases:
+  - ExecuteTestAtCursor
+  methods:
+  - name: constructor
+    sig: constructor()
+    lines:
+    - 1128
+    - 1139
+    detail:
+      calls:
+      - KeyChord
+      - localize2
+      - super
+  lines:
+  - 1127
+  - 1140
+- name: DebugAtCursor
+  kind: struct
+  bases:
+  - ExecuteTestAtCursor
+  methods:
+  - name: constructor
+    sig: constructor()
+    lines:
+    - 1143
+    - 1154
+    detail:
+      calls:
+      - KeyChord
+      - localize2
+      - super
+  lines:
+  - 1142
+  - 1155
+- name: CoverageAtCursor
+  kind: struct
+  bases:
+  - ExecuteTestAtCursor
+  methods:
+  - name: constructor
+    sig: constructor()
+    lines:
+    - 1158
+    - 1169
+    detail:
+      calls:
+      - KeyChord
+      - localize2
+      - super
+  lines:
+  - 1157
+  - 1170
+- name: ExecuteTestsUnderUriAction
+  kind: trait
+  bases:
+  - Action2
+  decorators:
+  - abstract
+  methods:
+  - name: constructor
+    sig: 'constructor(options: IAction2Options, protected readonly group: TestRunProfileBitset)'
+    lines:
+    - 1173
+    - 1183
+    detail:
+      calls:
+      - TestingContextKeys.capabilityToContextKey[group].isEqualTo
+      - super
+  - name: run
+    sig: 'run(accessor: ServicesAccessor, uri: URI): Promise<unknown>'
+    is_async: true
+    lines:
+    - 1185
+    - 1200
+    detail:
+      calls:
+      - Iterable.asyncToArray
+      - accessor.get
+      - localize
+      - notificationService.notify
+      - testService.runTests
+      - testsUnderUri
+  lines:
+  - 1172
+  - 1201
+- name: RunTestsUnderUri
+  kind: struct
+  bases:
+  - ExecuteTestsUnderUriAction
+  methods:
+  - name: constructor
+    sig: constructor()
+    lines:
+    - 1204
+    - 1210
+    detail:
+      calls:
+      - super
+  lines:
+  - 1203
+  - 1211
+- name: DebugTestsUnderUri
+  kind: struct
+  bases:
+  - ExecuteTestsUnderUriAction
+  methods:
+  - name: constructor
+    sig: constructor()
+    lines:
+    - 1214
+    - 1220
+    detail:
+      calls:
+      - super
+  lines:
+  - 1213
+  - 1221
+- name: CoverageTestsUnderUri
+  kind: struct
+  bases:
+  - ExecuteTestsUnderUriAction
+  methods:
+  - name: constructor
+    sig: constructor()
+    lines:
+    - 1224
+    - 1230
+    detail:
+      calls:
+      - super
+  lines:
+  - 1223
+  - 1231
+- name: ExecuteTestsInCurrentFile
+  kind: trait
+  ctx: ''
+  bases:
+  - Action2
+  decorators:
+  - abstract
+  methods:
+  - name: constructor
+    sig: 'constructor(options: IAction2Options, protected readonly group: TestRunProfileBitset)'
+    lines:
+    - 1234
+    - 1247
+    detail:
+      calls:
+      - ContextKeyExpr.and
+      - TestingContextKeys.capabilityToContextKey[group].isEqualTo
+      - super
+  - name: run
+    sig: 'run(accessor: ServicesAccessor)'
+    lines:
+    - 1252
+    - 1296
+    detail:
+      calls:
+      - MessageController.get
+      - MessageController.get(editor)?.showMessage
+      - accessor.get
+      - accessor.get(ICodeEditorService).getActiveCodeEditor
+      - discovered.push
+      - editor.getParentEditor
+      - editor?.getModel
+      - editor?.getPosition
+      - localize
+      - model.uri.toString
+      - node.item.uri?.toString
+      - queue.pop
+      - queue.push
+      - testService.collection.getNodeById
+      - testService.runTests
+  lines:
+  - 1233
+  - 1297
+- name: RunCurrentFile
+  kind: struct
+  bases:
+  - ExecuteTestsInCurrentFile
+  methods:
+  - name: constructor
+    sig: constructor()
+    lines:
+    - 1301
+    - 1312
+    detail:
+      calls:
+      - KeyChord
+      - localize2
+      - super
+  lines:
+  - 1299
+  - 1313
+- name: DebugCurrentFile
+  kind: struct
+  bases:
+  - ExecuteTestsInCurrentFile
+  methods:
+  - name: constructor
+    sig: constructor()
+    lines:
+    - 1316
+    - 1327
+    detail:
+      calls:
+      - KeyChord
+      - localize2
+      - super
+  lines:
+  - 1315
+  - 1328
+- name: CoverageCurrentFile
+  kind: struct
+  bases:
+  - ExecuteTestsInCurrentFile
+  methods:
+  - name: constructor
+    sig: constructor()
+    lines:
+    - 1331
+    - 1342
+    detail:
+      calls:
+      - KeyChord
+      - localize2
+      - super
+  lines:
+  - 1330
+  - 1343
+- name: RunOrDebugExtsByPath
+  kind: trait
+  ctx: ''
+  bases:
+  - Action2
+  decorators:
+  - abstract
+  methods:
+  - name: run
+    sig: 'run(accessor: ServicesAccessor, ...args: unknown[])'
+    is_async: true
+    lines:
+    - 1360
+    - 1368
+    detail:
+      calls:
+      - accessor.get
+      - discoverAndRunTests
+      - this.getTestExtIdsToRun
+  lines:
+  - 1356
+  - 1373
+- name: RunOrDebugFailedTests
+  kind: trait
+  ctx: ''
+  bases:
+  - RunOrDebugExtsByPath
+  decorators:
+  - abstract
+  methods:
+  - name: constructor
+    sig: 'constructor(options: IAction2Options)'
+    lines:
+    - 1376
+    - 1384
+    detail:
+      calls:
+      - super
+  - name: getTestExtIdsToRun
+    sig: 'getTestExtIdsToRun(accessor: ServicesAccessor)'
+    vis: protected
+    lines:
+    - 1388
+    - 1403
+    detail:
+      calls:
+      - accessor.get
+      - ids.add
+      - ids.delete
+      - isFailedState
+      - new Set
+  lines:
+  - 1375
+  - 1404
+- name: RunOrDebugLastRun
+  kind: trait
+  ctx: ''
+  bases:
+  - Action2
+  decorators:
+  - abstract
+  methods:
+  - name: constructor
+    sig: 'constructor(options: IAction2Options)'
+    lines:
+    - 1408
+    - 1419
+    detail:
+      calls:
+      - ContextKeyExpr.and
+      - TestingContextKeys.hasAnyResults.isEqualTo
+      - super
+  - name: run
+    sig: 'run(accessor: ServicesAccessor, runId?: string)'
+    is_async: true
+    lines:
+    - 1430
+    - 1461
+    detail:
+      calls:
+      - accessor.get
+      - discoverAndRunTests
+      - req.targets.flatMap
+      - resultService.results.find
+  lines:
+  - 1407
+  - 1462
+- name: ReRunFailedTests
+  kind: struct
+  bases:
+  - RunOrDebugFailedTests
+  methods:
+  - name: constructor
+    sig: constructor()
+    lines:
+    - 1465
+    - 1475
+    detail:
+      calls:
+      - KeyChord
+      - localize2
+      - super
+  lines:
+  - 1464
+  - 1483
+- name: DebugFailedTests
+  kind: struct
+  bases:
+  - RunOrDebugFailedTests
+  methods:
+  - name: constructor
+    sig: constructor()
+    lines:
+    - 1486
+    - 1496
+    detail:
+      calls:
+      - KeyChord
+      - localize2
+      - super
+  lines:
+  - 1485
+  - 1504
+- name: ReRunLastRun
+  kind: struct
+  bases:
+  - RunOrDebugLastRun
+  methods:
+  - name: constructor
+    sig: constructor()
+    lines:
+    - 1507
+    - 1517
+    detail:
+      calls:
+      - KeyChord
+      - localize2
+      - super
+  lines:
+  - 1506
+  - 1522
+- name: DebugLastRun
+  kind: struct
+  bases:
+  - RunOrDebugLastRun
+  methods:
+  - name: constructor
+    sig: constructor()
+    lines:
+    - 1525
+    - 1535
+    detail:
+      calls:
+      - KeyChord
+      - localize2
+      - super
+  lines:
+  - 1524
+  - 1540
+- name: CoverageLastRun
+  kind: struct
+  bases:
+  - RunOrDebugLastRun
+  methods:
+  - name: constructor
+    sig: constructor()
+    lines:
+    - 1543
+    - 1553
+    detail:
+      calls:
+      - KeyChord
+      - localize2
+      - super
+  lines:
+  - 1542
+  - 1558
+- name: SearchForTestExtension
+  kind: struct
+  bases:
+  - Action2
+  methods:
+  - name: constructor
+    sig: constructor()
+    lines:
+    - 1561
+    - 1566
+    detail:
+      calls:
+      - localize2
+      - super
+  - name: run
+    sig: 'run(accessor: ServicesAccessor)'
+    is_async: true
+    lines:
+    - 1568
+    - 1570
+    detail:
+      calls:
+      - accessor.get
+      - accessor.get(IExtensionsWorkbenchService).openSearch
+  lines:
+  - 1560
+  - 1571
+- name: OpenOutputPeek
+  kind: struct
+  bases:
+  - Action2
+  methods:
+  - name: constructor
+    sig: constructor()
+    lines:
+    - 1574
+    - 1588
+    detail:
+      calls:
+      - KeyChord
+      - TestingContextKeys.hasAnyResults.isEqualTo
+      - localize2
+      - super
+  - name: run
+    sig: 'run(accessor: ServicesAccessor)'
+    is_async: true
+    lines:
+    - 1590
+    - 1592
+    detail:
+      calls:
+      - accessor.get
+      - accessor.get(ITestingPeekOpener).open
+  lines:
+  - 1573
+  - 1593
+- name: ToggleInlineTestOutput
+  kind: struct
+  bases:
+  - Action2
+  methods:
+  - name: constructor
+    sig: constructor()
+    lines:
+    - 1596
+    - 1610
+    detail:
+      calls:
+      - KeyChord
+      - TestingContextKeys.hasAnyResults.isEqualTo
+      - localize2
+      - super
+  - name: run
+    sig: 'run(accessor: ServicesAccessor)'
+    is_async: true
+    lines:
+    - 1612
+    - 1615
+    detail:
+      calls:
+      - accessor.get
+  lines:
+  - 1595
+  - 1616
+- name: RefreshTestsAction
+  kind: struct
+  bases:
+  - Action2
+  methods:
+  - name: constructor
+    sig: constructor()
+    lines:
+    - 1645
+    - 1658
+    detail:
+      calls:
+      - KeyChord
+      - TestingContextKeys.canRefreshTests.isEqualTo
+      - localize2
+      - refreshMenus
+      - super
+  - name: run
+    sig: 'run(accessor: ServicesAccessor, ...elements: TestItemTreeElement[])'
+    is_async: true
+    lines:
+    - 1660
+    - 1672
+    detail:
+      calls:
+      - accessor.get
+      - distinct
+      - elements.filter
+      - elements.filter(isDefined).map
+      - progressService.withProgress
+  lines:
+  - 1644
+  - 1673
+- name: CancelTestRefreshAction
+  kind: struct
+  bases:
+  - Action2
+  methods:
+  - name: constructor
+    sig: constructor()
+    lines:
+    - 1676
+    - 1684
+    detail:
+      calls:
+      - localize2
+      - refreshMenus
+      - super
+  - name: run
+    sig: 'run(accessor: ServicesAccessor)'
+    is_async: true
+    lines:
+    - 1686
+    - 1688
+    detail:
+      calls:
+      - accessor.get
+      - accessor.get(ITestService).cancelRefreshTests
+  lines:
+  - 1675
+  - 1689
+- name: CleareCoverage
+  kind: struct
+  bases:
+  - Action2
+  methods:
+  - name: constructor
+    sig: constructor()
+    lines:
+    - 1692
+    - 1708
+    detail:
+      calls:
+      - ContextKeyExpr.equals
+      - TestingContextKeys.isTestCoverageOpen.isEqualTo
+      - localize2
+      - super
+  - name: run
+    sig: 'run(accessor: ServicesAccessor)'
+    lines:
+    - 1710
+    - 1712
+    detail:
+      calls:
+      - accessor.get
+      - accessor.get(ITestCoverageService).closeCoverage
+  lines:
+  - 1691
+  - 1713
+- name: OpenCoverage
+  kind: struct
+  bases:
+  - Action2
+  methods:
+  - name: constructor
+    sig: constructor()
+    lines:
+    - 1716
+    - 1726
+    detail:
+      calls:
+      - TestingContextKeys.hasAnyResults.isEqualTo
+      - localize2
+      - super
+  - name: run
+    sig: 'run(accessor: ServicesAccessor)'
+    lines:
+    - 1728
+    - 1738
+    detail:
+      calls:
+      - accessor.get
+      - accessor.get(ITestCoverageService).openCoverage
+      - localize
+      - notificationService.info
+      - results[0].tasks.find
+  lines:
+  - 1715
+  - 1739
+- name: TestNavigationAction
+  kind: trait
+  ctx: little hack...
+  bases:
+  - SymbolNavigationAction
+  decorators:
+  - abstract
+  fields:
+  - name: testService
+    type: ITestService
+  - name: uriIdentityService
+    type: IUriIdentityService
+  methods:
+  - name: runEditorCommand
+    sig: 'runEditorCommand(accessor: ServicesAccessor, editor: ICodeEditor, ...args: any[])'
+    lines:
+    - 1745
+    - 1749
+    detail:
+      calls:
+      - accessor.get
+      - super.runEditorCommand
+  lines:
+  - 1741
+  - 1757
+- name: GoToRelatedTestAction
+  kind: trait
+  bases:
+  - TestNavigationAction
+  decorators:
+  - abstract
+  methods:
+  - name: _getLocationModel
+    sig: '_getLocationModel(_languageFeaturesService: unknown, model: ITextModel, position: Position, token: CancellationToken): Promise<ReferencesModel | undefined>'
+    is_async: true
+    vis: protected
+    lines:
+    - 1760
+    - 1766
+    detail:
+      calls:
+      - localize
+      - new ReferencesModel
+      - tests.map
+      - 'tests.map(t => t.item.uri && ({ uri: t.item.uri, range: t.item.range || new Range(1, 1, 1, 1) })).fi...'
+      - this.testService.getTestsRelatedToCode
+  lines:
+  - 1759
+  - 1771
+- name: GoToRelatedTest
+  kind: struct
+  bases:
+  - GoToRelatedTestAction
+  methods:
+  - name: constructor
+    sig: constructor()
+    lines:
+    - 1774
+    - 1793
+    detail:
+      calls:
+      - ContextKeyExpr.and
+      - ContextKeyExpr.not
+      - localize2
+      - super
+  lines:
+  - 1773
+  - 1794
+- name: PeekRelatedTest
+  kind: struct
+  bases:
+  - GoToRelatedTestAction
+  methods:
+  - name: constructor
+    sig: constructor()
+    lines:
+    - 1797
+    - 1819
+    detail:
+      calls:
+      - ContextKeyExpr.and
+      - ContextKeyExpr.not
+      - EditorContextKeys.isInEmbeddedEditor.toNegated
+      - localize2
+      - super
+  lines:
+  - 1796
+  - 1820
+- name: GoToRelatedCodeAction
+  kind: trait
+  bases:
+  - TestNavigationAction
+  decorators:
+  - abstract
+  methods:
+  - name: _getLocationModel
+    sig: '_getLocationModel(_languageFeaturesService: unknown, model: ITextModel, position: Position, token: CancellationToken): Promise<ReferencesModel | undefined>'
+    is_async: true
+    vis: protected
+    lines:
+    - 1823
+    - 1827
+    detail:
+      calls:
+      - Promise.all
+      - code.flat
+      - getTestsAtCursor
+      - localize
+      - new ReferencesModel
+      - testsAtCursor.map
+  lines:
+  - 1822
+  - 1832
+- name: GoToRelatedCode
+  kind: struct
+  bases:
+  - GoToRelatedCodeAction
+  methods:
+  - name: constructor
+    sig: constructor()
+    lines:
+    - 1835
+    - 1854
+    detail:
+      calls:
+      - ContextKeyExpr.and
+      - localize2
+      - super
+  lines:
+  - 1834
+  - 1855
+- name: PeekRelatedCode
+  kind: struct
+  bases:
+  - GoToRelatedCodeAction
+  methods:
+  - name: constructor
+    sig: constructor()
+    lines:
+    - 1858
+    - 1879
+    detail:
+      calls:
+      - ContextKeyExpr.and
+      - EditorContextKeys.isInEmbeddedEditor.toNegated
+      - localize2
+      - super
+  lines:
+  - 1857
+  - 1880
+functions:
+- name: testItemInlineAndInContext
+  sig: 'testItemInlineAndInContext(order: ActionOrder, when?: ContextKeyExpression)'
+  lines:
+  - 150
+  - 162
+  detail: {}
+- name: continuousMenus
+  sig: 'continuousMenus(whenIsContinuousOn: boolean): IAction2Options[''menu'']'
+  lines:
+  - 380
+  - 395
+  detail: {}
+- name: selectContinuousRunProfiles
+  sig: "selectContinuousRunProfiles(\n\tcrs: ITestingContinuousRunService,\n\tnotificationService: INotificationService,\n\tquickInputService: IQuickInputService,\n\tprofilesToPickFrom: Iterable<Readonly<{\n\t\tcontroller?: IMainThreadTestController;\n\t\tprofiles: ITestRunProfile[];\n\t}>>,\n): Promise<ITestRunProfile[]>"
+  lines:
+  - 413
+  - 485
+  detail:
+    calls:
+    - Promise.resolve
+    - controller?.label.get
+    - disposables.add
+    - items.push
+    - items.sort
+    - lastRun.has
+    - localize
+    - new DisposableStore
+    - new Promise
+    - notificationService.info
+    - qpItems.push
+    - quickInputService.createQuickPick
+    - quickpick.show
+    - selectedItems.push
+- name: showDiscoveringWhile
+  sig: 'showDiscoveringWhile(progress: IProgressService, task: Promise<R>): Promise<R>'
+  lines:
+  - 616
+  - 624
+  detail:
+    calls:
+    - localize
+    - progress.withProgress
+- name: getTestsAtCursor
+  sig: 'getTestsAtCursor(testService: ITestService, uriIdentityService: IUriIdentityService, uri: URI, position: Position, filter?: (test: InternalTestItem) => boolean)'
+  is_async: true
+  lines:
+  - 989
+  - 1031
+  detail:
+    calls:
+    - Position.isBefore
+    - Range.equalsRange
+    - Range.lift
+    - bestNodes.push
+    - bestNodes.some
+    - bestNodesBefore.push
+    - bestNodesBefore.some
+    - bestRangeBefore.getStartPosition
+    - bestRangeBefore.getStartPosition().isBefore
+    - filter
+    - irange.containsPosition
+    - irange.equalsRange
+    - irange.getStartPosition
+    - testsInFile
+- name: discoverAndRunTests
+  sig: "discoverAndRunTests(\n\tcollection: IMainThreadTestCollection,\n\tprogress: IProgressService,\n\tids: ReadonlyArray<string>,\n\trunTests: (tests: ReadonlyArray<InternalTestItem>) => Promise<ITestResult>,\n): Promise<ITestResult | undefined>"
+  is_async: true
+  lines:
+  - 1345
+  - 1354
+  detail:
+    calls:
+    - (await showDiscoveringWhile(progress, todo)).filter
+    - Promise.all
+    - ids.map
+    - runTests
+    - showDiscoveringWhile
+- name: refreshMenus
+  sig: 'refreshMenus(whenIsRefreshing: boolean): IAction2Options[''menu'']'
+  lines:
+  - 1618
+  - 1642
+  detail: {}
+exports:
+- name: ActionOrder
+  kind: type
+- name: HideTestAction
+  kind: type
+- name: UnhideTestAction
+  kind: type
+- name: UnhideAllTestsAction
+  kind: type
+- name: RunVisibleAction
+  kind: type
+- name: DebugAction
+  kind: type
+- name: CoverageAction
+  kind: type
+- name: RunUsingProfileAction
+  kind: type
+- name: RunAction
+  kind: type
+- name: SelectDefaultTestProfiles
+  kind: type
+- name: ContinuousRunTestAction
+  kind: type
+- name: ContinuousRunUsingProfileTestAction
+  kind: type
+- name: ConfigureTestProfilesAction
+  kind: type
+- name: StopContinuousRunAction
+  kind: type
+- name: StartContinuousRunAction
+  kind: type
+- name: ExecuteSelectedAction
+  kind: type
+- name: GetSelectedProfiles
+  kind: type
+- name: GetExplorerSelection
+  kind: type
+- name: RunSelectedAction
+  kind: type
+- name: DebugSelectedAction
+  kind: type
+- name: CoverageSelectedAction
+  kind: type
+- name: RunOrDebugAllTestsAction
+  kind: type
+- name: RunAllAction
+  kind: type
+- name: DebugAllAction
+  kind: type
+- name: CoverageAllAction
+  kind: type
+- name: CancelTestRunAction
+  kind: type
+- name: TestingViewAsListAction
+  kind: type
+- name: TestingViewAsTreeAction
+  kind: type
+- name: TestingSortByStatusAction
+  kind: type
+- name: TestingSortByLocationAction
+  kind: type
+- name: TestingSortByDurationAction
+  kind: type
+- name: ShowMostRecentOutputAction
+  kind: type
+- name: CollapseAllAction
+  kind: type
+- name: ClearTestResultsAction
+  kind: type
+- name: GoToTest
+  kind: type
+- name: EditorContextOrder
+  kind: type
+- name: ExecuteTestAtCursor
+  kind: type
+- name: RunAtCursor
+  kind: type
+- name: DebugAtCursor
+  kind: type
+- name: CoverageAtCursor
+  kind: type
+- name: ExecuteTestsUnderUriAction
+  kind: type
+- name: RunTestsUnderUri
+  kind: type
+- name: DebugTestsUnderUri
+  kind: type
+- name: CoverageTestsUnderUri
+  kind: type
+- name: ExecuteTestsInCurrentFile
+  kind: type
+- name: RunCurrentFile
+  kind: type
+- name: DebugCurrentFile
+  kind: type
+- name: CoverageCurrentFile
+  kind: type
+- name: RunOrDebugExtsByPath
+  kind: type
+- name: RunOrDebugFailedTests
+  kind: type
+- name: RunOrDebugLastRun
+  kind: type
+- name: ReRunFailedTests
+  kind: type
+- name: DebugFailedTests
+  kind: type
+- name: ReRunLastRun
+  kind: type
+- name: DebugLastRun
+  kind: type
+- name: CoverageLastRun
+  kind: type
+- name: SearchForTestExtension
+  kind: type
+- name: OpenOutputPeek
+  kind: type
+- name: ToggleInlineTestOutput
+  kind: type
+- name: RefreshTestsAction
+  kind: type
+- name: CancelTestRefreshAction
+  kind: type
+- name: CleareCoverage
+  kind: type
+- name: OpenCoverage
+  kind: type
+- name: TestNavigationAction
+  kind: type
+- name: GoToRelatedTestAction
+  kind: type
+- name: GoToRelatedTest
+  kind: type
+- name: PeekRelatedTest
+  kind: type
+- name: GoToRelatedCodeAction
+  kind: type
+- name: GoToRelatedCode
+  kind: type
+- name: PeekRelatedCode
+  kind: type
+- name: testItemInlineAndInContext
+  kind: func
+- name: continuousMenus
+  kind: func
+- name: selectContinuousRunProfiles
+  kind: func
+- name: showDiscoveringWhile
+  kind: func
+- name: getTestsAtCursor
+  kind: func
+- name: discoverAndRunTests
+  kind: func
+- name: refreshMenus
+  kind: func
+- name: category
+  kind: data
+- name: hasAnyTestProvider
+  kind: data
+- name: LABEL_RUN_TESTS
+  kind: data
+- name: LABEL_DEBUG_TESTS
+  kind: data
+- name: LABEL_COVERAGE_TESTS
+  kind: data
+- name: allTestActions
+  kind: data

@@ -1,0 +1,536 @@
+## Roska File Descriptor — services/editorWorkerService.ts
+file: services/editorWorkerService.ts
+lines: 491
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: ../../../base/common/async.js.timeout
+- sym: ../../../base/common/lifecycle.js.Disposable
+- sym: ../../../base/common/lifecycle.js.IDisposable
+- sym: ../../../base/common/uri.js.URI
+- sym: ../../../base/common/worker/webWorker.js.logOnceWebWorkerWarning
+- sym: ../../../base/common/worker/webWorker.js.IWebWorkerClient
+- sym: ../../../base/common/worker/webWorker.js.Proxied
+- sym: ../../../base/browser/webWorkerFactory.js.createWebWorker
+- sym: ../../../base/browser/webWorkerFactory.js.IWebWorkerDescriptor
+- sym: ../../common/core/position.js.Position
+- sym: ../../common/core/range.js.IRange
+- sym: ../../common/core/range.js.Range
+- sym: ../../common/model.js.ITextModel
+- sym: ../../common/languages.js.languages
+- sym: ../../common/languages/languageConfigurationRegistry.js.ILanguageConfigurationService
+- sym: ../../common/services/editorWebWorker.js.EditorWorker
+- sym: ../../common/services/editorWorker.js.DiffAlgorithmName
+- sym: ../../common/services/editorWorker.js.IEditorWorkerService
+- sym: ../../common/services/editorWorker.js.ILineChange
+- sym: ../../common/services/editorWorker.js.IUnicodeHighlightsResult
+- sym: ../../common/services/model.js.IModelService
+- sym: ../../common/services/textResourceConfiguration.js.ITextResourceConfigurationService
+- sym: ../../../base/common/arrays.js.isNonEmptyArray
+- sym: ../../../platform/log/common/log.js.ILogService
+- sym: ../../../base/common/stopwatch.js.StopWatch
+- sym: ../../../base/common/errors.js.canceled
+- sym: ../../../base/common/errors.js.onUnexpectedError
+- sym: ../../common/services/unicodeTextModelHighlighter.js.UnicodeHighlighterOptions
+- sym: ../../common/services/languageFeatures.js.ILanguageFeaturesService
+- sym: ../../common/diff/legacyLinesDiffComputer.js.IChange
+- sym: ../../common/diff/documentDiffProvider.js.IDocumentDiff
+- sym: ../../common/diff/documentDiffProvider.js.IDocumentDiffProviderOptions
+- sym: ../../common/diff/linesDiffComputer.js.ILinesDiffComputerOptions
+- sym: ../../common/diff/linesDiffComputer.js.MovedText
+- sym: ../../common/diff/rangeMapping.js.DetailedLineRangeMapping
+- sym: ../../common/diff/rangeMapping.js.RangeMapping
+- sym: ../../common/diff/rangeMapping.js.LineRangeMapping
+- sym: ../../common/core/lineRange.js.LineRange
+- sym: ../../common/services/findSectionHeaders.js.SectionHeader
+- sym: ../../common/services/findSectionHeaders.js.FindSectionHeaderOptions
+- sym: ../../../base/browser/window.js.mainWindow
+- sym: ../../../base/browser/dom.js.WindowIntervalTimer
+- sym: ../../common/services/textModelSync/textModelSync.impl.js.WorkerTextModelSyncClient
+- sym: ../../common/services/editorWorkerHost.js.EditorWorkerHost
+data:
+- name: STOP_WORKER_DELTA_TIME_MS
+  type: any
+  val: 5 * 60 * 1000
+types:
+- name: EditorWorkerService
+  kind: trait
+  bases:
+  - Disposable
+  - IEditorWorkerService
+  decorators:
+  - abstract
+  fields:
+  - name: _serviceBrand
+    type: undefined
+  - name: _modelService
+    type: IModelService
+  - name: _workerManager
+    type: WorkerManager
+  - name: _logService
+    type: ILogService
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tworkerDescriptor: IWebWorkerDescriptor,\n\t\t@IModelService modelService: IModelService,\n\t\t@ITextResourceConfigurationService configurationService: ITextResourceConfigurationService,\n\t\t@ILogService logService: ILogService,\n\t\t@ILanguageConfigurationService private readonly _languageConfigurationService: ILanguageConfigurationService,\n\t\t@ILanguageFeaturesService languageFeaturesService: ILanguageFeaturesService,\n\t)"
+    lines:
+    - 61
+    - 86
+    detail:
+      calls:
+      - languageFeaturesService.completionProvider.register
+      - languageFeaturesService.linkProvider.register
+      - new WordBasedCompletionItemProvider
+      - new WorkerManager
+      - super
+      - this._register
+  - name: dispose
+    sig: 'dispose(): void'
+    lines:
+    - 88
+    - 90
+    detail:
+      calls:
+      - super.dispose
+  - name: canComputeUnicodeHighlights
+    sig: 'canComputeUnicodeHighlights(uri: URI): boolean'
+    lines:
+    - 92
+    - 94
+    detail:
+      calls:
+      - canSyncModel
+  - name: computedUnicodeHighlights
+    sig: 'computedUnicodeHighlights(uri: URI, options: UnicodeHighlighterOptions, range?: IRange): Promise<IUnicodeHighlightsResult>'
+    is_async: true
+    lines:
+    - 96
+    - 99
+    detail:
+      calls:
+      - this._workerWithResources
+      - uri.toString
+      - worker.$computeUnicodeHighlights
+  - name: computeDiff
+    sig: 'computeDiff(original: URI, modified: URI, options: IDocumentDiffProviderOptions, algorithm: DiffAlgorithmName): Promise<IDocumentDiff | null>'
+    is_async: true
+    lines:
+    - 101
+    - 133
+    detail:
+      calls:
+      - modified.toString
+      - original.toString
+      - result.moves.map
+      - this._workerWithResources
+      - toLineRangeMappings
+      - worker.$computeDiff
+  - name: canComputeDirtyDiff
+    sig: 'canComputeDirtyDiff(original: URI, modified: URI): boolean'
+    lines:
+    - 135
+    - 137
+    detail:
+      calls:
+      - canSyncModel
+  - name: computeDirtyDiff
+    sig: 'computeDirtyDiff(original: URI, modified: URI, ignoreTrimWhitespace: boolean): Promise<IChange[] | null>'
+    is_async: true
+    lines:
+    - 139
+    - 142
+    detail:
+      calls:
+      - modified.toString
+      - original.toString
+      - this._workerWithResources
+      - worker.$computeDirtyDiff
+  - name: computeMoreMinimalEdits
+    sig: 'computeMoreMinimalEdits(resource: URI, edits: languages.TextEdit[] | null | undefined, pretty: boolean = false): Promise<languages.TextEdit[] | undefined>'
+    is_async: true
+    lines:
+    - 144
+    - 157
+    detail:
+      calls:
+      - Promise.race
+      - Promise.resolve
+      - StopWatch.create
+      - canSyncModel
+      - isNonEmptyArray
+      - result.finally
+      - this._workerWithResources
+      - this._workerWithResources([resource]).then
+      - timeout
+      - timeout(1000).then
+  - name: computeHumanReadableDiff
+    sig: 'computeHumanReadableDiff(resource: URI, edits: languages.TextEdit[] | null | undefined): Promise<languages.TextEdit[] | undefined>'
+    lines:
+    - 159
+    - 181
+    detail:
+      calls:
+      - Promise.resolve
+      - StopWatch.create
+      - canSyncModel
+      - isNonEmptyArray
+      - result.finally
+      - this._workerWithResources
+      - "this._workerWithResources([resource])\n\t\t\t\t\t.then"
+      - "this._workerWithResources([resource])\n\t\t\t\t\t.then(worker => worker.$computeHumanReadableDiff(resource..."
+  - name: canNavigateValueSet
+    sig: 'canNavigateValueSet(resource: URI): boolean'
+    lines:
+    - 183
+    - 185
+    detail:
+      calls:
+      - canSyncModel
+  - name: navigateValueSet
+    sig: 'navigateValueSet(resource: URI, range: IRange, up: boolean): Promise<languages.IInplaceReplaceSupportResult | null>'
+    is_async: true
+    lines:
+    - 187
+    - 197
+    detail:
+      calls:
+      - model.getLanguageId
+      - resource.toString
+      - this._languageConfigurationService.getLanguageConfiguration
+      - this._languageConfigurationService.getLanguageConfiguration(model.getLanguageId()).getWordDefinition
+      - this._modelService.getModel
+      - this._workerWithResources
+      - worker.$navigateValueSet
+  - name: canComputeWordRanges
+    sig: 'canComputeWordRanges(resource: URI): boolean'
+    lines:
+    - 199
+    - 201
+    detail:
+      calls:
+      - canSyncModel
+  - name: computeWordRanges
+    sig: 'computeWordRanges(resource: URI, range: IRange): Promise<{ [word: string]: IRange[] } | null>'
+    is_async: true
+    lines:
+    - 203
+    - 213
+    detail:
+      calls:
+      - Promise.resolve
+      - model.getLanguageId
+      - resource.toString
+      - this._languageConfigurationService.getLanguageConfiguration
+      - this._languageConfigurationService.getLanguageConfiguration(model.getLanguageId()).getWordDefinition
+      - this._modelService.getModel
+      - this._workerWithResources
+      - worker.$computeWordRanges
+  - name: findSectionHeaders
+    sig: 'findSectionHeaders(uri: URI, options: FindSectionHeaderOptions): Promise<SectionHeader[]>'
+    is_async: true
+    lines:
+    - 215
+    - 218
+    detail:
+      calls:
+      - this._workerWithResources
+      - uri.toString
+      - worker.$findSectionHeaders
+  - name: computeDefaultDocumentColors
+    sig: 'computeDefaultDocumentColors(uri: URI): Promise<languages.IColorInformation[] | null>'
+    is_async: true
+    lines:
+    - 220
+    - 223
+    detail:
+      calls:
+      - this._workerWithResources
+      - uri.toString
+      - worker.$computeDefaultDocumentColors
+  - name: _workerWithResources
+    sig: '_workerWithResources(resources: URI[], forceLargeModels: boolean = false): Promise<Proxied<EditorWorker>>'
+    is_async: true
+    vis: private
+    lines:
+    - 225
+    - 228
+    detail:
+      calls:
+      - this._workerManager.withWorker
+      - worker.workerWithSyncedResources
+  lines:
+  - 53
+  - 229
+- name: WordBasedCompletionItemProvider
+  kind: struct
+  fields:
+  - name: _workerManager
+    type: WorkerManager
+  - name: _configurationService
+    type: ITextResourceConfigurationService
+  - name: _modelService
+    type: IModelService
+  - name: _debugDisplayName
+    type: any
+    default: '''wordbasedCompletions'''
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tworkerManager: WorkerManager,\n\t\tconfigurationService: ITextResourceConfigurationService,\n\t\tmodelService: IModelService,\n\t\tprivate readonly languageConfigurationService: ILanguageConfigurationService\n\t)"
+    lines:
+    - 239
+    - 248
+    detail: {}
+  - name: provideCompletionItems
+    sig: 'provideCompletionItems(model: ITextModel, position: Position): Promise<languages.CompletionList | undefined>'
+    is_async: true
+    lines:
+    - 250
+    - 306
+    detail:
+      calls:
+      - Range.fromPositions
+      - canSyncModel
+      - candidate.getLanguageId
+      - client.textualSuggest
+      - data.words.map
+      - model.getLanguageId
+      - model.getWordAtPosition
+      - models.push
+      - models.unshift
+      - new Range
+      - replace.setEndPosition
+      - this._configurationService.getValue
+      - this._modelService.getModels
+      - this._workerManager.withWorker
+      - this.languageConfigurationService.getLanguageConfiguration
+      - this.languageConfigurationService.getLanguageConfiguration(model.getLanguageId()).getWordDefinition
+  lines:
+  - 231
+  - 307
+- name: WorkerManager
+  kind: struct
+  ctx: Check if the model service has no more models and stop the worker if that is the case.
+  bases:
+  - Disposable
+  fields:
+  - name: _modelService
+    type: IModelService
+  - name: _editorWorkerClient
+    type: EditorWorkerClient | null
+  - name: _lastWorkerUsedTime
+    type: number
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tprivate readonly _workerDescriptor: IWebWorkerDescriptor,\n\t\t@IModelService modelService: IModelService\n\t)"
+    lines:
+    - 315
+    - 328
+    detail:
+      calls:
+      - (new Date()).getTime
+      - Math.round
+      - new Date
+      - new WindowIntervalTimer
+      - stopWorkerInterval.cancelAndSet
+      - super
+      - this._modelService.onModelRemoved
+      - this._register
+  - name: dispose
+    sig: 'dispose(): void'
+    lines:
+    - 330
+    - 336
+    detail:
+      calls:
+      - super.dispose
+      - this._editorWorkerClient.dispose
+  - name: withWorker
+    sig: 'withWorker(): Promise<EditorWorkerClient>'
+    lines:
+    - 369
+    - 375
+    detail:
+      calls:
+      - (new Date()).getTime
+      - Promise.resolve
+      - new Date
+      - new EditorWorkerClient
+  lines:
+  - 309
+  - 376
+- name: SynchronousWorkerClient
+  kind: struct
+  bases:
+  - IWebWorkerClient<T>
+  fields:
+  - name: _instance
+    type: T
+  - name: proxy
+    type: Proxied<T>
+  methods:
+  - name: constructor
+    sig: 'constructor(instance: T)'
+    lines:
+    - 382
+    - 385
+    detail: {}
+  - name: dispose
+    sig: 'dispose(): void'
+    lines:
+    - 387
+    - 389
+    detail:
+      calls:
+      - this._instance.dispose
+  - name: setChannel
+    sig: 'setChannel(channel: string, handler: T): void'
+    lines:
+    - 391
+    - 393
+    detail:
+      calls:
+      - new Error
+  - name: getChannel
+    sig: 'getChannel(channel: string): Proxied<T>'
+    lines:
+    - 395
+    - 397
+    detail:
+      calls:
+      - new Error
+  lines:
+  - 378
+  - 398
+- name: IEditorWorkerClient
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: fhr
+    type: 'method: fhr(method: string, args: any[]): Promise<any>'
+  lines:
+  - 400
+  - 402
+- name: EditorWorkerClient
+  kind: struct
+  ctx: foreign host request
+  bases:
+  - Disposable
+  - IEditorWorkerClient
+  fields:
+  - name: _modelService
+    type: IModelService
+  - name: _keepIdleModels
+    type: boolean
+  - name: _worker
+    type: IWebWorkerClient<EditorWorker> | null
+  - name: _modelManager
+    type: WorkerTextModelSyncClient | null
+  - name: _disposed
+    type: any
+    default: 'false'
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tprivate readonly _workerDescriptorOrWorker: IWebWorkerDescriptor | Worker,\n\t\tkeepIdleModels: boolean,\n\t\t@IModelService modelService: IModelService,\n\t)"
+    lines:
+    - 412
+    - 422
+    detail:
+      calls:
+      - super
+  - name: fhr
+    sig: 'fhr(method: string, args: any[]): Promise<any>'
+    lines:
+    - 425
+    - 427
+    detail:
+      calls:
+      - new Error
+  - name: _getOrCreateWorker
+    sig: '_getOrCreateWorker(): IWebWorkerClient<EditorWorker>'
+    vis: private
+    lines:
+    - 429
+    - 440
+    detail:
+      calls:
+      - EditorWorkerHost.setChannel
+      - createWebWorker
+      - logOnceWebWorkerWarning
+      - this._createEditorWorkerHost
+      - this._createFallbackLocalWorker
+      - this._register
+  - name: _getProxy
+    sig: '_getProxy(): Promise<Proxied<EditorWorker>>'
+    is_async: true
+    vis: protected
+    lines:
+    - 442
+    - 452
+    detail:
+      calls:
+      - logOnceWebWorkerWarning
+      - proxy.$ping
+      - this._createFallbackLocalWorker
+      - this._getOrCreateWorker
+  - name: workerWithSyncedResources
+    sig: 'workerWithSyncedResources(resources: URI[], forceLargeModels: boolean = false): Promise<Proxied<EditorWorker>>'
+    is_async: true
+    lines:
+    - 471
+    - 478
+    detail:
+      calls:
+      - Promise.reject
+      - canceled
+      - this._getOrCreateModelManager
+      - this._getOrCreateModelManager(proxy).ensureSyncedResources
+      - this._getProxy
+  - name: textualSuggest
+    sig: 'textualSuggest(resources: URI[], leadingWord: string | undefined, wordDefRegExp: RegExp): Promise<{ words: string[]; duration: number } | null>'
+    is_async: true
+    lines:
+    - 480
+    - 485
+    detail:
+      calls:
+      - proxy.$textualSuggest
+      - resources.map
+      - this.workerWithSyncedResources
+  - name: dispose
+    sig: 'dispose(): void'
+    lines:
+    - 487
+    - 490
+    detail:
+      calls:
+      - super.dispose
+  lines:
+  - 404
+  - 491
+functions:
+- name: canSyncModel
+  sig: 'canSyncModel(modelService: IModelService, resource: URI): boolean'
+  lines:
+  - 42
+  - 51
+  detail:
+    calls:
+    - model.isTooLargeForSyncing
+    - modelService.getModel
+exports:
+- name: EditorWorkerService
+  kind: type
+- name: WordBasedCompletionItemProvider
+  kind: type
+- name: WorkerManager
+  kind: type
+- name: SynchronousWorkerClient
+  kind: type
+- name: IEditorWorkerClient
+  kind: type
+- name: EditorWorkerClient
+  kind: type
+- name: canSyncModel
+  kind: func
+- name: STOP_WORKER_DELTA_TIME_MS
+  kind: data

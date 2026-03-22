@@ -1,0 +1,338 @@
+## Roska File Descriptor — browser/issueTroubleshoot.ts
+file: browser/issueTroubleshoot.ts
+lines: 380
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: ../../../../nls.js.localize
+- sym: ../../../../nls.js.localize2
+- sym: ../../../../platform/extensionManagement/common/extensionManagement.js.IExtensionManagementService
+- sym: ../../../../platform/extensions/common/extensions.js.ExtensionType
+- sym: ../../../../platform/product/common/productService.js.IProductService
+- sym: ../common/issue.js.IWorkbenchIssueService
+- sym: ../../../../base/common/lifecycle.js.Disposable
+- sym: ../../../../platform/actions/common/actions.js.Action2
+- sym: ../../../../platform/actions/common/actions.js.registerAction2
+- sym: ../../../services/userDataProfile/common/userDataProfile.js.IUserDataProfileImportExportService
+- sym: ../../../services/userDataProfile/common/userDataProfile.js.IUserDataProfileManagementService
+- sym: ../../../services/userDataProfile/common/userDataProfile.js.IUserDataProfileService
+- sym: ../../../../platform/dialogs/common/dialogs.js.IDialogService
+- sym: ../../../services/extensionManagement/browser/extensionBisect.js.IExtensionBisectService
+- sym: ../../../../platform/notification/common/notification.js.INotificationHandle
+- sym: ../../../../platform/notification/common/notification.js.INotificationService
+- sym: ../../../../platform/notification/common/notification.js.IPromptChoice
+- sym: ../../../../platform/notification/common/notification.js.NotificationPriority
+- sym: ../../../../platform/notification/common/notification.js.Severity
+- sym: ../../../services/extensionManagement/common/extensionManagement.js.IWorkbenchExtensionEnablementService
+- sym: ../../../services/host/browser/host.js.IHostService
+- sym: ../../../../platform/userDataProfile/common/userDataProfile.js.IUserDataProfile
+- sym: ../../../../platform/userDataProfile/common/userDataProfile.js.IUserDataProfilesService
+- sym: ../../../../platform/instantiation/common/instantiation.js.ServicesAccessor
+- sym: ../../../../platform/instantiation/common/instantiation.js.createDecorator
+- sym: ../../../../platform/action/common/actionCommonCategories.js.Categories
+- sym: ../../../../platform/instantiation/common/extensions.js.InstantiationType
+- sym: ../../../../platform/instantiation/common/extensions.js.registerSingleton
+- sym: ../../../../platform/contextkey/common/contextkey.js.ContextKeyExpr
+- sym: ../../../../platform/contextkey/common/contextkey.js.IContextKeyService
+- sym: ../../../../platform/contextkey/common/contextkey.js.RawContextKey
+- sym: ../../../../platform/registry/common/platform.js.Registry
+- sym: ../../../common/contributions.js.Extensions
+- sym: ../../../common/contributions.js.IWorkbenchContributionsRegistry
+- sym: ../../../services/lifecycle/common/lifecycle.js.LifecyclePhase
+- sym: ../../../../platform/storage/common/storage.js.IStorageService
+- sym: ../../../../platform/storage/common/storage.js.StorageScope
+- sym: ../../../../platform/storage/common/storage.js.StorageTarget
+- sym: ../../../../platform/opener/common/opener.js.IOpenerService
+- sym: ../../../../base/common/uri.js.URI
+- sym: ../../../common/contextkeys.js.RemoteNameContext
+- sym: ../../../../platform/contextkey/common/contextkeys.js.IsWebContext
+data:
+- name: ITroubleshootIssueService
+  type: any
+  val: createDecorator<ITroubleshootIssueService>('ITroubleshootIssueService')
+types:
+- name: ITroubleshootIssueService
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: _serviceBrand
+    type: undefined
+  - name: isActive
+    type: 'method: isActive(): boolean'
+  - name: start
+    type: 'method: start(): Promise<void>'
+  - name: resume
+    type: 'method: resume(): Promise<void>'
+  - name: stop
+    type: 'method: stop(): Promise<void>'
+  lines:
+  - 35
+  - 41
+- name: TroubleshootStage
+  kind: enum
+  variants:
+  - name: EXTENSIONS
+    val: '1'
+  - name: WORKBENCH
+  lines:
+  - 43
+  - 46
+- name: TroubleShootResult
+  kind: enum
+  decorators:
+  - type
+  variants:
+  - name: '''stop'''
+  lines:
+  - 48
+  - 48
+- name: TroubleShootState
+  kind: struct
+  methods:
+  - name: fromJSON
+    sig: 'fromJSON(raw: string | undefined): TroubleShootState | undefined'
+    decorators:
+    - static
+    lines:
+    - 52
+    - 67
+    detail:
+      calls:
+      - JSON.parse
+      - new TroubleShootState
+  - name: constructor
+    sig: "constructor(\n\t\treadonly stage: TroubleshootStage,\n\t\treadonly profile: string,\n\t)"
+    lines:
+    - 69
+    - 72
+    detail: {}
+  lines:
+  - 50
+  - 73
+- name: TroubleshootIssueService
+  kind: struct
+  bases:
+  - Disposable
+  - ITroubleshootIssueService
+  fields:
+  - name: _serviceBrand
+    type: undefined
+  - name: storageKey
+    type: any
+    default: '''issueTroubleshootState'''
+  - name: notificationHandle
+    type: INotificationHandle | undefined
+  - name: _state
+    type: TroubleShootState | undefined | null
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\t@IUserDataProfileService private readonly userDataProfileService: IUserDataProfileService,\n\t\t@IUserDataProfilesService private readonly userDataProfilesService: IUserDataProfilesService,\n\t\t@IUserDataProfileManagementService private readonly userDataProfileManagementService: IUserDataProfileManagementService,\n\t\t@IUserDataProfileImportExportService private readonly userDataProfileImportExportService: IUserDataProfileImportExportService,\n\t\t@IDialogService private readonly dialogService: IDialogService,\n\t\t@IExtensionBisectService private readonly extensionBisectService: IExtensionBisectService,\n\t\t@INotificationService private readonly notificationService: INotificationService,\n\t\t@IExtensionManagementService private readonly extensionManagementService: IExtensionManagementService,\n\t\t@IWorkbenchExtensionEnablementService private readonly extensionEnablementService: IWorkbenchExtensionEnablementService,\n\t\t@IWorkbenchIssueService private readonly issueService: IWorkbenchIssueService,\n\t\t@IProductService private readonly productService: IProductService,\n\t\t@IHostService private readonly hostService: IHostService,\n\t\t@IStorageService private readonly storageService: IStorageService,\n\t\t@IOpenerService private readonly openerService: IOpenerService,\n\t)"
+    lines:
+    - 83
+    - 100
+    detail:
+      calls:
+      - super
+  - name: isActive
+    sig: 'isActive(): boolean'
+    lines:
+    - 102
+    - 104
+    detail: {}
+  - name: start
+    sig: 'start(): Promise<void>'
+    is_async: true
+    lines:
+    - 106
+    - 126
+    detail:
+      calls:
+      - localize
+      - new Error
+      - new TroubleShootState
+      - this.dialogService.confirm
+      - this.isActive
+      - this.resume
+      - this.userDataProfileImportExportService.createTroubleshootProfile
+  - name: resume
+    sig: 'resume(): Promise<void>'
+    is_async: true
+    lines:
+    - 128
+    - 142
+    detail:
+      calls:
+      - this.isActive
+      - this.reproduceIssueWithEmptyProfile
+      - this.reproduceIssueWithExtensionsDisabled
+      - this.stop
+  - name: stop
+    sig: 'stop(): Promise<void>'
+    is_async: true
+    lines:
+    - 144
+    - 161
+    detail:
+      calls:
+      - this.extensionBisectService.reset
+      - this.isActive
+      - this.notificationHandle.close
+      - this.userDataProfileManagementService.switchProfile
+      - this.userDataProfilesService.profiles.find
+  - name: reproduceIssueWithExtensionsDisabled
+    sig: 'reproduceIssueWithExtensionsDisabled(): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 163
+    - 180
+    detail:
+      calls:
+      - localize
+      - new TroubleShootState
+      - this.askToReproduceIssue
+      - this.extensionManagementService.getInstalled
+      - this.reproduceIssueWithExtensionsBisect
+      - this.stop
+      - this.userDataProfilesService.profiles.find
+  - name: reproduceIssueWithEmptyProfile
+    sig: 'reproduceIssueWithEmptyProfile(): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 182
+    - 195
+    detail:
+      calls:
+      - localize
+      - this.askToReportIssue
+      - this.askToReproduceIssue
+      - this.stop
+      - this.updateState
+      - this.userDataProfileManagementService.createAndEnterTransientProfile
+  - name: reproduceIssueWithExtensionsBisect
+    sig: 'reproduceIssueWithExtensionsBisect(profile: IUserDataProfile): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 197
+    - 202
+    detail:
+      calls:
+      - (await this.extensionManagementService.getInstalled(ExtensionType.User)).filter
+      - this.extensionBisectService.start
+      - this.extensionManagementService.getInstalled
+      - this.hostService.reload
+      - this.userDataProfileManagementService.switchProfile
+  - name: askToReportIssue
+    sig: 'askToReportIssue(message: string): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 227
+    - 252
+    detail:
+      calls:
+      - localize
+      - this.askToReproduceIssueWithInsiders
+      - this.dialogService.prompt
+      - this.issueService.openReporter
+      - this.stop
+  - name: askToReproduceIssueWithInsiders
+    sig: 'askToReproduceIssueWithInsiders(): Promise<TroubleShootResult | undefined>'
+    is_async: true
+    vis: private
+    lines:
+    - 254
+    - 296
+    detail:
+      calls:
+      - URI.parse
+      - await this.dialogService.prompt
+      - localize
+      - this.dialogService.confirm
+      - this.openerService.open
+  - name: state
+    sig: 'state(): TroubleShootState | undefined'
+    lines:
+    - 299
+    - 305
+    detail:
+      calls:
+      - TroubleShootState.fromJSON
+      - this.storageService.get
+  - name: state
+    sig: 'state(state: TroubleShootState | undefined)'
+    lines:
+    - 307
+    - 310
+    detail:
+      calls:
+      - this.updateState
+  - name: updateState
+    sig: 'updateState(state: TroubleShootState | undefined)'
+    vis: private
+    lines:
+    - 312
+    - 318
+    detail:
+      calls:
+      - JSON.stringify
+      - this.storageService.remove
+      - this.storageService.store
+  lines:
+  - 75
+  - 319
+- name: IssueTroubleshootUi
+  kind: struct
+  bases:
+  - Disposable
+  fields:
+  - name: ctxIsTroubleshootActive
+    type: any
+    default: new RawContextKey<boolean>('isIssueTroubleshootActive', false)
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\t@IContextKeyService private readonly contextKeyService: IContextKeyService,\n\t\t@ITroubleshootIssueService private readonly troubleshootIssueService: ITroubleshootIssueService,\n\t\t@IStorageService storageService: IStorageService,\n\t)"
+    lines:
+    - 325
+    - 338
+    detail:
+      calls:
+      - storageService.onDidChangeValue
+      - storageService.onDidChangeValue(StorageScope.PROFILE, TroubleshootIssueService.storageKey, this._sto...
+      - super
+      - this._register
+      - this.updateContext
+      - troubleshootIssueService.isActive
+      - troubleshootIssueService.resume
+  - name: updateContext
+    sig: 'updateContext(): void'
+    vis: private
+    lines:
+    - 340
+    - 342
+    detail:
+      calls:
+      - IssueTroubleshootUi.ctxIsTroubleshootActive.bindTo
+      - IssueTroubleshootUi.ctxIsTroubleshootActive.bindTo(this.contextKeyService).set
+      - this.troubleshootIssueService.isActive
+  lines:
+  - 321
+  - 344
+exports:
+- name: ITroubleshootIssueService
+  kind: type
+- name: TroubleshootStage
+  kind: type
+- name: TroubleShootResult
+  kind: type
+- name: TroubleShootState
+  kind: type
+- name: TroubleshootIssueService
+  kind: type
+- name: IssueTroubleshootUi
+  kind: type
+- name: ITroubleshootIssueService
+  kind: data

@@ -1,0 +1,448 @@
+## Roska File Descriptor — saveParticipants/saveParticipants.ts
+file: saveParticipants/saveParticipants.ts
+lines: 668
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: ../../../../../../base/common/cancellation.js.CancellationToken
+- sym: ../../../../../../base/common/hierarchicalKind.js.HierarchicalKind
+- sym: ../../../../../../base/common/lifecycle.js.Disposable
+- sym: ../../../../../../base/common/lifecycle.js.DisposableStore
+- sym: ../../../../../../base/common/resources.js.isEqual
+- sym: ../../../../../../editor/browser/editorBrowser.js.ICodeEditor
+- sym: ../../../../../../editor/browser/services/bulkEditService.js.IBulkEditService
+- sym: ../../../../../../editor/browser/services/bulkEditService.js.ResourceEdit
+- sym: ../../../../../../editor/browser/services/bulkEditService.js.ResourceTextEdit
+- sym: ../../../../../../editor/common/commands/trimTrailingWhitespaceCommand.js.trimTrailingWhitespace
+- sym: ../../../../../../editor/common/core/position.js.Position
+- sym: ../../../../../../editor/common/core/range.js.Range
+- sym: ../../../../../../editor/common/core/selection.js.Selection
+- sym: ../../../../../../editor/common/languages.js.CodeActionProvider
+- sym: ../../../../../../editor/common/languages.js.CodeActionTriggerType
+- sym: ../../../../../../editor/common/languages.js.IWorkspaceTextEdit
+- sym: ../../../../../../editor/common/model.js.IReadonlyTextBuffer
+- sym: ../../../../../../editor/common/model.js.ITextModel
+- sym: ../../../../../../editor/common/services/editorWorker.js.IEditorWorkerService
+- sym: ../../../../../../editor/common/services/languageFeatures.js.ILanguageFeaturesService
+- sym: ../../../../../../editor/common/services/resolverService.js.ITextModelService
+- sym: ../../../../../../editor/contrib/codeAction/browser/codeAction.js.ApplyCodeActionReason
+- sym: ../../../../../../editor/contrib/codeAction/browser/codeAction.js.applyCodeAction
+- sym: ../../../../../../editor/contrib/codeAction/browser/codeAction.js.getCodeActions
+- sym: ../../../../../../editor/contrib/codeAction/common/types.js.CodeActionItem
+- sym: ../../../../../../editor/contrib/codeAction/common/types.js.CodeActionKind
+- sym: ../../../../../../editor/contrib/codeAction/common/types.js.CodeActionTriggerSource
+- sym: ../../../../../../editor/contrib/format/browser/format.js.FormattingMode
+- sym: ../../../../../../editor/contrib/format/browser/format.js.getDocumentFormattingEditsWithSelectedProvider
+- sym: ../../../../../../editor/contrib/snippet/browser/snippetController2.js.SnippetController2
+- sym: ../../../../../../nls.js.localize
+- sym: ../../../../../../platform/configuration/common/configuration.js.IConfigurationService
+- sym: ../../../../../../platform/instantiation/common/instantiation.js.IInstantiationService
+- sym: ../../../../../../platform/instantiation/common/instantiation.js.ServicesAccessor
+- sym: ../../../../../../platform/log/common/log.js.ILogService
+- sym: ../../../../../../platform/progress/common/progress.js.IProgress
+- sym: ../../../../../../platform/progress/common/progress.js.IProgressStep
+- sym: ../../../../../../platform/registry/common/platform.js.Registry
+- sym: ../../../../../../platform/workspace/common/workspaceTrust.js.IWorkspaceTrustManagementService
+- sym: ../../../../../common/contributions.js.IWorkbenchContribution
+- sym: ../../../../../common/contributions.js.IWorkbenchContributionsRegistry
+- sym: ../../../../../common/contributions.js.Extensions as WorkbenchContributionsExtensions
+- sym: ../../../../../common/editor.js.SaveReason
+- sym: ../../notebookBrowser.js.getNotebookEditorFromEditorPane
+- sym: ../../../common/model/notebookTextModel.js.NotebookTextModel
+- sym: ../../../common/notebookCommon.js.CellKind
+- sym: ../../../common/notebookCommon.js.NotebookSetting
+- sym: ../../../common/notebookEditorModel.js.NotebookFileWorkingCopyModel
+- sym: ../../../../../services/editor/common/editorService.js.IEditorService
+- sym: ../../../../../services/lifecycle/common/lifecycle.js.LifecyclePhase
+- sym: ../../../../../services/workingCopy/common/storedFileWorkingCopy.js.IStoredFileWorkingCopy
+- sym: ../../../../../services/workingCopy/common/storedFileWorkingCopy.js.IStoredFileWorkingCopyModel
+- sym: ../../../../../services/workingCopy/common/workingCopyFileService.js.IStoredFileWorkingCopySaveParticipant
+- sym: ../../../../../services/workingCopy/common/workingCopyFileService.js.IStoredFileWorkingCopySaveParticipantContext
+- sym: ../../../../../services/workingCopy/common/workingCopyFileService.js.IWorkingCopyFileService
+- sym: ../multicursor/notebookMulticursor.js.NotebookMultiCursorController
+- sym: ../multicursor/notebookMulticursor.js.NotebookMultiCursorState
+data:
+- name: workbenchContributionsRegistry
+  type: any
+  val: Registry.as<IWorkbenchContributionsRegistry>(WorkbenchContributionsExtensions.Workbench)
+types:
+- name: NotebookSaveParticipant
+  kind: trait
+  bases:
+  - IStoredFileWorkingCopySaveParticipant
+  decorators:
+  - abstract
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tprivate readonly _editorService: IEditorService,\n\t)"
+    lines:
+    - 45
+    - 47
+    detail: {}
+  lines:
+  - 44
+  - 59
+- name: FormatOnSaveParticipant
+  kind: struct
+  bases:
+  - IStoredFileWorkingCopySaveParticipant
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\t@IEditorWorkerService private readonly editorWorkerService: IEditorWorkerService,\n\t\t@ILanguageFeaturesService private readonly languageFeaturesService: ILanguageFeaturesService,\n\t\t@IInstantiationService private readonly instantiationService: IInstantiationService,\n\t\t@ITextModelService private readonly textModelService: ITextModelService,\n\t\t@IBulkEditService private readonly bulkEditService: IBulkEditService,\n\t\t@IConfigurationService private readonly configurationService: IConfigurationService,\n\t)"
+    lines:
+    - 62
+    - 69
+    detail: {}
+  - name: participate
+    sig: 'participate(workingCopy: IStoredFileWorkingCopy<IStoredFileWorkingCopyModel>, context: IStoredFileWorkingCopySaveParticipantContext, progress: IProgress<IProgressStep>, token: CancellationToken): Promise<void>'
+    is_async: true
+    lines:
+    - 71
+    - 122
+    detail:
+      calls:
+      - Promise.all
+      - allCellEdits.flat
+      - disposable.dispose
+      - localize
+      - new DisposableStore
+      - notebook.cells.map
+      - progress.report
+      - this.bulkEditService.apply
+      - this.configurationService.getValue
+      - this.instantiationService.invokeFunction
+  lines:
+  - 61
+  - 123
+- name: TrimWhitespaceParticipant
+  kind: struct
+  bases:
+  - NotebookSaveParticipant
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\t@IConfigurationService private readonly configurationService: IConfigurationService,\n\t\t@IEditorService private readonly editorService: IEditorService,\n\t\t@ITextModelService private readonly textModelService: ITextModelService,\n\t\t@IBulkEditService private readonly bulkEditService: IBulkEditService,\n\t)"
+    lines:
+    - 127
+    - 134
+    detail:
+      calls:
+      - super
+  - name: participate
+    sig: 'participate(workingCopy: IStoredFileWorkingCopy<IStoredFileWorkingCopyModel>, context: IStoredFileWorkingCopySaveParticipantContext, progress: IProgress<IProgressStep>, _token: CancellationToken): Promise<void>'
+    is_async: true
+    lines:
+    - 136
+    - 142
+    detail:
+      calls:
+      - this.canParticipate
+      - this.configurationService.getValue
+      - this.doTrimTrailingWhitespace
+  - name: doTrimTrailingWhitespace
+    sig: 'doTrimTrailingWhitespace(workingCopy: IStoredFileWorkingCopy<IStoredFileWorkingCopyModel>, isAutoSaved: boolean, trimInRegexesAndStrings: boolean, progress: IProgress<IProgressStep>)'
+    is_async: true
+    vis: private
+    lines:
+    - 144
+    - 194
+    detail:
+      calls:
+      - Promise.all
+      - allCellEdits.flat
+      - allCellEdits.flat().filter
+      - disposable.dispose
+      - getActiveCellCodeEditor
+      - localize
+      - new DisposableStore
+      - notebook.cells.map
+      - progress.report
+      - this.bulkEditService.apply
+  lines:
+  - 125
+  - 195
+- name: TrimFinalNewLinesParticipant
+  kind: struct
+  ctx: returns 0 if the entire file is empty
+  bases:
+  - NotebookSaveParticipant
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\t@IConfigurationService private readonly configurationService: IConfigurationService,\n\t\t@IEditorService private readonly editorService: IEditorService,\n\t\t@IBulkEditService private readonly bulkEditService: IBulkEditService,\n\t)"
+    lines:
+    - 199
+    - 205
+    detail:
+      calls:
+      - super
+  - name: participate
+    sig: 'participate(workingCopy: IStoredFileWorkingCopy<IStoredFileWorkingCopyModel>, context: IStoredFileWorkingCopySaveParticipantContext, progress: IProgress<IProgressStep>, _token: CancellationToken): Promise<void>'
+    is_async: true
+    lines:
+    - 208
+    - 212
+    detail:
+      calls:
+      - this.canParticipate
+      - this.configurationService.getValue
+      - this.doTrimFinalNewLines
+  - name: doTrimFinalNewLines
+    sig: 'doTrimFinalNewLines(workingCopy: IStoredFileWorkingCopy<IStoredFileWorkingCopyModel>, isAutoSaved: boolean, progress: IProgress<IProgressStep>): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 229
+    - 277
+    detail:
+      calls:
+      - Promise.all
+      - allCellEdits.flat
+      - allCellEdits.flat().filter
+      - disposable.dispose
+      - getActiveCellCodeEditor
+      - localize
+      - new DisposableStore
+      - notebook.cells.map
+      - progress.report
+      - this.bulkEditService.apply
+  lines:
+  - 197
+  - 278
+- name: InsertFinalNewLineParticipant
+  kind: struct
+  bases:
+  - NotebookSaveParticipant
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\t@IConfigurationService private readonly configurationService: IConfigurationService,\n\t\t@IBulkEditService private readonly bulkEditService: IBulkEditService,\n\t\t@IEditorService private readonly editorService: IEditorService,\n\t)"
+    lines:
+    - 282
+    - 288
+    detail:
+      calls:
+      - super
+  - name: participate
+    sig: 'participate(workingCopy: IStoredFileWorkingCopy<IStoredFileWorkingCopyModel>, context: IStoredFileWorkingCopySaveParticipantContext, progress: IProgress<IProgressStep>, _token: CancellationToken): Promise<void>'
+    is_async: true
+    lines:
+    - 290
+    - 297
+    detail:
+      calls:
+      - this.canParticipate
+      - this.configurationService.getValue
+      - this.doInsertFinalNewLine
+  - name: doInsertFinalNewLine
+    sig: 'doInsertFinalNewLine(workingCopy: IStoredFileWorkingCopy<IStoredFileWorkingCopyModel>, isAutoSaved: boolean, progress: IProgress<IProgressStep>): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 299
+    - 341
+    detail:
+      calls:
+      - Promise.all
+      - activeCellEditor.getSelections
+      - activeCellEditor.setSelections
+      - allCellEdits.filter
+      - disposable.dispose
+      - getActiveCellCodeEditor
+      - localize
+      - new DisposableStore
+      - notebook.cells.map
+      - progress.report
+      - this.bulkEditService.apply
+  lines:
+  - 280
+  - 342
+- name: CodeActionOnSaveParticipant
+  kind: struct
+  bases:
+  - IStoredFileWorkingCopySaveParticipant
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\t@IConfigurationService private readonly configurationService: IConfigurationService,\n\t\t@ILogService private readonly logService: ILogService,\n\t\t@IWorkspaceTrustManagementService private readonly workspaceTrustManagementService: IWorkspaceTrustManagementService,\n\t\t@ITextModelService private readonly textModelService: ITextModelService,\n\t\t@IInstantiationService private readonly instantiationService: IInstantiationService,\n\t)"
+    lines:
+    - 345
+    - 352
+    detail: {}
+  - name: participate
+    sig: 'participate(workingCopy: IStoredFileWorkingCopy<IStoredFileWorkingCopyModel>, context: IStoredFileWorkingCopySaveParticipantContext, progress: IProgress<IProgressStep>, token: CancellationToken): Promise<void>'
+    is_async: true
+    lines:
+    - 354
+    - 449
+    detail:
+      calls:
+      - Array.isArray
+      - Object.keys
+      - Object.keys(setting).filter
+      - Promise.all
+      - "allCodeActions\n\t\t\t.filter"
+      - cellDisposable.dispose
+      - editorCodeActionsOnSave.sort
+      - includedActions.filter
+      - localize
+      - nbDisposable.add
+      - nbDisposable.dispose
+      - new DisposableStore
+      - notebookModel.cells.map
+      - progress.report
+      - this.configurationService.getValue
+      - this.createCodeActionsOnSave
+      - this.instantiationService.invokeFunction
+      - this.logService.error
+      - this.textModelService.createModelReference
+      - this.workspaceTrustManagementService.isWorkspaceTrusted
+  lines:
+  - 344
+  - 459
+- name: CodeActionParticipantUtils
+  kind: struct
+  ctx: ''
+  methods:
+  - name: checkAndRunFormatCodeAction
+    sig: "checkAndRunFormatCodeAction(\n\t\taccessor: ServicesAccessor,\n\t\tnotebookModel: NotebookTextModel,\n\t\tprogress: IProgress<IProgressStep>,\n\t\ttoken: CancellationToken): Promise<boolean>"
+    is_async: true
+    decorators:
+    - static
+    lines:
+    - 463
+    - 492
+    detail:
+      calls:
+      - accessor.get
+      - configurationService.getValue
+      - formatDisposable.add
+      - formatDisposable.dispose
+      - instantiationService.invokeFunction
+      - localize
+      - logService.error
+      - new DisposableStore
+      - new HierarchicalKind
+      - progress.report
+      - textModelService.createModelReference
+  - name: applyOnSaveGenericCodeActions
+    sig: "applyOnSaveGenericCodeActions(\n\t\taccessor: ServicesAccessor,\n\t\tmodel: ITextModel,\n\t\tcodeActionsOnSave: readonly HierarchicalKind[],\n\t\texcludes: readonly HierarchicalKind[],\n\t\tprogress: IProgress<IProgressStep>,\n\t\ttoken: CancellationToken): Promise<void>"
+    is_async: true
+    decorators:
+    - static
+    lines:
+    - 494
+    - 565
+    detail:
+      calls:
+      - CodeActionParticipantUtils.getActionsToRun
+      - '[...this._names].map'
+      - '[...this._names].map(name => `''${name}''`).join'
+      - accessor.get
+      - action.action.kind?.startsWith
+      - actionsToRun.dispose
+      - instantiationService.invokeFunction
+      - isEqual
+      - localize
+      - logService.warn
+      - new Set
+      - "new class implements IProgress<CodeActionProvider> {\n\t\t\tprivate _names = new Set<string>();\n\t\t\tprivate _report(): void {\n\t\t\t\tprogress.report({\n\t\t\t\t\tmessage: localize(\n\t\t\t\t\t\t{ key: 'codeaction.get2', comment: ['[configure]({1}) is a link. Only translate `configure`. Do not change brackets and parentheses or {1}'] },\n\t\t\t\t\t\t\"Getting code actions from '{0}' ([configure]({1})).\",\n\t\t\t\t\t\t[...this._names].map(name => `'${name}'`).join(', '),\n\t\t\t\t\t\t'command:workbench.action.openSettings?%5B%22notebook.codeActionsOnSave%22%5D'\n\t\t\t\t\t)\n\t\t\t\t});\n\t\t\t}\n\t\t\treport(provider: CodeActionProvider) {\n\t\t\t\tif (provider.displayName && !this._names.has(provider.displayName)) {\n\t\t\t\t\tthis._names.add(provider.displayName);\n\t\t\t\t\tthis._report();\n\t\t\t\t}\n\t\t\t}\n\t\t}"
+      - progress.report
+      - this._names.add
+      - this._names.has
+      - this._report
+  - name: applyOnSaveFormatCodeAction
+    sig: "applyOnSaveFormatCodeAction(\n\t\taccessor: ServicesAccessor,\n\t\tmodel: ITextModel,\n\t\tformatCodeActionOnSave: HierarchicalKind,\n\t\texcludes: readonly HierarchicalKind[],\n\t\textensionId: string | undefined,\n\t\tprogress: IProgress<IProgressStep>,\n\t\ttoken: CancellationToken): Promise<boolean>"
+    is_async: true
+    decorators:
+    - static
+    lines:
+    - 567
+    - 629
+    detail:
+      calls:
+      - CodeActionParticipantUtils.getActionsToRun
+      - '[...this._names].map'
+      - '[...this._names].map(name => `''${name}''`).join'
+      - accessor.get
+      - instantiationService.invokeFunction
+      - localize
+      - logService.error
+      - logService.warn
+      - new Set
+      - "new class implements IProgress<CodeActionProvider> {\n\t\t\tprivate _names = new Set<string>();\n\t\t\tprivate _report(): void {\n\t\t\t\tprogress.report({\n\t\t\t\t\tmessage: localize(\n\t\t\t\t\t\t{ key: 'codeaction.get2', comment: ['[configure]({1}) is a link. Only translate `configure`. Do not change brackets and parentheses or {1}'] },\n\t\t\t\t\t\t\"Getting code actions from '{0}' ([configure]({1})).\",\n\t\t\t\t\t\t[...this._names].map(name => `'${name}'`).join(', '),\n\t\t\t\t\t\t'command:workbench.action.openSettings?%5B%22notebook.defaultFormatter%22%5D'\n\t\t\t\t\t)\n\t\t\t\t});\n\t\t\t}\n\t\t\treport(provider: CodeActionProvider) {\n\t\t\t\tif (provider.displayName && !this._names.has(provider.displayName)) {\n\t\t\t\t\tthis._names.add(provider.displayName);\n\t\t\t\t\tthis._report();\n\t\t\t\t}\n\t\t\t}\n\t\t}"
+      - progress.report
+      - providedActions.dispose
+      - providedActions.validActions.find
+      - this._names.add
+      - this._names.has
+      - this._report
+  - name: getActionsToRun
+    sig: 'getActionsToRun(model: ITextModel, codeActionKind: HierarchicalKind, excludes: readonly HierarchicalKind[], languageFeaturesService: ILanguageFeaturesService, progress: IProgress<CodeActionProvider>, token: CancellationToken)'
+    decorators:
+    - static
+    lines:
+    - 632
+    - 638
+    detail:
+      calls:
+      - getCodeActions
+      - model.getFullModelRange
+  lines:
+  - 461
+  - 640
+- name: SaveParticipantsContribution
+  kind: struct
+  bases:
+  - Disposable
+  - IWorkbenchContribution
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\t@IInstantiationService private readonly instantiationService: IInstantiationService,\n\t\t@IWorkingCopyFileService private readonly workingCopyFileService: IWorkingCopyFileService)"
+    lines:
+    - 650
+    - 656
+    detail:
+      calls:
+      - super
+      - this.registerSaveParticipants
+  - name: registerSaveParticipants
+    sig: 'registerSaveParticipants(): void'
+    vis: private
+    lines:
+    - 658
+    - 664
+    detail:
+      calls:
+      - this._register
+      - this.instantiationService.createInstance
+      - this.workingCopyFileService.addSaveParticipant
+  lines:
+  - 649
+  - 665
+functions:
+- name: getActiveCellCodeEditor
+  sig: 'getActiveCellCodeEditor(editorService: IEditorService): ICodeEditor | undefined'
+  lines:
+  - 642
+  - 647
+  detail:
+    calls:
+    - getNotebookEditorFromEditorPane
+exports:
+- name: NotebookSaveParticipant
+  kind: type
+- name: FormatOnSaveParticipant
+  kind: type
+- name: TrimWhitespaceParticipant
+  kind: type
+- name: TrimFinalNewLinesParticipant
+  kind: type
+- name: InsertFinalNewLineParticipant
+  kind: type
+- name: CodeActionOnSaveParticipant
+  kind: type
+- name: CodeActionParticipantUtils
+  kind: type
+- name: SaveParticipantsContribution
+  kind: type
+- name: getActiveCellCodeEditor
+  kind: func
+- name: workbenchContributionsRegistry
+  kind: data

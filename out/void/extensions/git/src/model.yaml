@@ -1,0 +1,1015 @@
+## Roska File Descriptor — src/model.ts
+file: src/model.ts
+lines: 1117
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: vscode.workspace
+- sym: vscode.WorkspaceFoldersChangeEvent
+- sym: vscode.Uri
+- sym: vscode.window
+- sym: vscode.Event
+- sym: vscode.EventEmitter
+- sym: vscode.QuickPickItem
+- sym: vscode.Disposable
+- sym: vscode.SourceControl
+- sym: vscode.SourceControlResourceGroup
+- sym: vscode.TextEditor
+- sym: vscode.Memento
+- sym: vscode.commands
+- sym: vscode.LogOutputChannel
+- sym: vscode.l10n
+- sym: vscode.ProgressLocation
+- sym: vscode.WorkspaceFolder
+- sym: '@vscode/extension-telemetry.TelemetryReporter'
+- sym: ./repository.IRepositoryResolver
+- sym: ./repository.Repository
+- sym: ./repository.RepositoryState
+- sym: ./decorators.memoize
+- sym: ./decorators.sequentialize
+- sym: ./decorators.debounce
+- sym: ./util.dispose
+- sym: ./util.anyEvent
+- sym: ./util.filterEvent
+- sym: ./util.isDescendant
+- sym: ./util.pathEquals
+- sym: ./util.toDisposable
+- sym: ./util.eventToPromise
+- sym: ./git.Git
+- sym: path.path
+- sym: fs.fs
+- sym: ./uri.fromGitUri
+- sym: ./api/git.APIState as State
+- sym: ./api/git.CredentialsProvider
+- sym: ./api/git.PushErrorHandler
+- sym: ./api/git.PublishEvent
+- sym: ./api/git.RemoteSourcePublisher
+- sym: ./api/git.PostCommitCommandsProvider
+- sym: ./api/git.BranchProtectionProvider
+- sym: ./api/git.SourceControlHistoryItemDetailsProvider
+- sym: ./askpass.Askpass
+- sym: ./pushError.IPushErrorHandlerRegistry
+- sym: ./api/api1.ApiRepository
+- sym: ./remotePublisher.IRemoteSourcePublisherRegistry
+- sym: ./postCommitCommands.IPostCommitCommandsProviderRegistry
+- sym: ./branchProtection.IBranchProtectionProviderRegistry
+- sym: ./historyItemDetailsProvider.ISourceControlHistoryItemDetailsProviderRegistry
+types:
+- name: RepositoryPick
+  kind: struct
+  bases:
+  - QuickPickItem
+  methods:
+  - name: label
+    sig: 'label(): string'
+    lines:
+    - 25
+    - 27
+    detail:
+      calls:
+      - path.basename
+  - name: description
+    sig: 'description(): string'
+    lines:
+    - 29
+    - 33
+    detail:
+      calls:
+      - "[this.repository.headLabel, this.repository.syncLabel]\n\t\t\t.filter"
+      - "[this.repository.headLabel, this.repository.syncLabel]\n\t\t\t.filter(l => !!l)\n\t\t\t.join"
+  - name: constructor
+    sig: 'constructor(public readonly repository: Repository, public readonly index: number)'
+    lines:
+    - 35
+    - 35
+    detail: {}
+  lines:
+  - 24
+  - 36
+- name: ModelChangeEvent
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: repository
+    type: Repository
+  - name: uri
+    type: Uri
+  lines:
+  - 38
+  - 41
+- name: OriginalResourceChangeEvent
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: repository
+    type: Repository
+  - name: uri
+    type: Uri
+  lines:
+  - 43
+  - 46
+- name: OpenRepository
+  kind: trait
+  bases:
+  - Disposable
+  decorators:
+  - interface
+  fields:
+  - name: repository
+    type: Repository
+  lines:
+  - 48
+  - 50
+- name: ClosedRepositoriesManager
+  kind: struct
+  fields:
+  - name: _repositories
+    type: Set<string>
+  methods:
+  - name: repositories
+    sig: 'repositories(): string[]'
+    lines:
+    - 55
+    - 57
+    detail:
+      calls:
+      - this._repositories.values
+  - name: constructor
+    sig: 'constructor(private readonly workspaceState: Memento)'
+    lines:
+    - 59
+    - 62
+    detail:
+      calls:
+      - new Set
+      - this.onDidChangeRepositories
+      - workspaceState.get
+  - name: addRepository
+    sig: 'addRepository(repository: string): void'
+    lines:
+    - 64
+    - 67
+    detail:
+      calls:
+      - this._repositories.add
+      - this.onDidChangeRepositories
+  - name: deleteRepository
+    sig: 'deleteRepository(repository: string): boolean'
+    lines:
+    - 69
+    - 76
+    detail:
+      calls:
+      - this._repositories.delete
+      - this.onDidChangeRepositories
+  - name: isRepositoryClosed
+    sig: 'isRepositoryClosed(repository: string): boolean'
+    lines:
+    - 78
+    - 80
+    detail:
+      calls:
+      - this._repositories.has
+  - name: onDidChangeRepositories
+    sig: 'onDidChangeRepositories(): void'
+    vis: private
+    lines:
+    - 82
+    - 85
+    detail:
+      calls:
+      - commands.executeCommand
+      - this._repositories.values
+      - this.workspaceState.update
+  lines:
+  - 52
+  - 86
+- name: ParentRepositoriesManager
+  kind: struct
+  ctx: Key   - normalized path used in user interface Value - value indicating whether the repository should be opened
+  fields:
+  - name: _repositories
+    type: any
+    default: new Set<string>
+  methods:
+  - name: repositories
+    sig: 'repositories(): string[]'
+    lines:
+    - 95
+    - 97
+    detail:
+      calls:
+      - this._repositories.values
+  - name: constructor
+    sig: 'constructor(private readonly globalState: Memento)'
+    lines:
+    - 99
+    - 101
+    detail:
+      calls:
+      - this.onDidChangeRepositories
+  - name: addRepository
+    sig: 'addRepository(repository: string): void'
+    lines:
+    - 103
+    - 106
+    detail:
+      calls:
+      - this._repositories.add
+      - this.onDidChangeRepositories
+  - name: deleteRepository
+    sig: 'deleteRepository(repository: string): boolean'
+    lines:
+    - 108
+    - 115
+    detail:
+      calls:
+      - this._repositories.delete
+      - this.onDidChangeRepositories
+  - name: hasRepository
+    sig: 'hasRepository(repository: string): boolean'
+    lines:
+    - 117
+    - 119
+    detail:
+      calls:
+      - this._repositories.has
+  - name: openRepository
+    sig: 'openRepository(repository: string): void'
+    lines:
+    - 121
+    - 124
+    detail:
+      calls:
+      - this.deleteRepository
+      - this.globalState.update
+  lines:
+  - 88
+  - 129
+- name: UnsafeRepositoriesManager
+  kind: struct
+  ctx: Key   - normalized path used in user interface Value - path extracted from the output of the `git status` command used when calling `git config --global --add safe.directory`
+  fields:
+  - name: _repositories
+    type: any
+    default: new Map<string, string>()
+  methods:
+  - name: repositories
+    sig: 'repositories(): string[]'
+    lines:
+    - 139
+    - 141
+    detail:
+      calls:
+      - this._repositories.keys
+  - name: constructor
+    sig: constructor()
+    lines:
+    - 143
+    - 145
+    detail:
+      calls:
+      - this.onDidChangeRepositories
+  - name: addRepository
+    sig: 'addRepository(repository: string, path: string): void'
+    lines:
+    - 147
+    - 150
+    detail:
+      calls:
+      - this._repositories.set
+      - this.onDidChangeRepositories
+  - name: deleteRepository
+    sig: 'deleteRepository(repository: string): boolean'
+    lines:
+    - 152
+    - 159
+    detail:
+      calls:
+      - this._repositories.delete
+      - this.onDidChangeRepositories
+  - name: getRepositoryPath
+    sig: 'getRepositoryPath(repository: string): string | undefined'
+    lines:
+    - 161
+    - 163
+    detail:
+      calls:
+      - this._repositories.get
+  - name: hasRepository
+    sig: 'hasRepository(repository: string): boolean'
+    lines:
+    - 165
+    - 167
+    detail:
+      calls:
+      - this._repositories.has
+  lines:
+  - 131
+  - 172
+- name: Model
+  kind: struct
+  ctx: We maintain a map containing both the path and the canonical path of the workspace folders. We are doing this as `git.exe` expands the symbolic links while there are scenarios in which VS Code does not. Key   - path of the workspace folder Value - canonical path of the workspace folder
+  bases:
+  - IRepositoryResolver
+  - IBranchProtectionProviderRegistry
+  - IRemoteSourcePublisherRegistry
+  - IPostCommitCommandsProviderRegistry
+  - IPushErrorHandlerRegistry
+  - ISourceControlHistoryItemDetailsProviderRegistry
+  fields:
+  - name: _onDidOpenRepository
+    type: any
+    default: new EventEmitter<Repository>()
+  - name: onDidOpenRepository
+    type: Event<Repository>
+    default: this._onDidOpenRepository.event
+  - name: _onDidCloseRepository
+    type: any
+    default: new EventEmitter<Repository>()
+  - name: onDidCloseRepository
+    type: Event<Repository>
+    default: this._onDidCloseRepository.event
+  - name: _onDidChangeRepository
+    type: any
+    default: new EventEmitter<ModelChangeEvent>()
+  - name: onDidChangeRepository
+    type: Event<ModelChangeEvent>
+    default: this._onDidChangeRepository.event
+  - name: _onDidChangeOriginalResource
+    type: any
+    default: new EventEmitter<OriginalResourceChangeEvent>()
+  - name: onDidChangeOriginalResource
+    type: Event<OriginalResourceChangeEvent>
+    default: this._onDidChangeOriginalResource.event
+  - name: openRepositories
+    type: OpenRepository[]
+    default: '[]'
+  - name: possibleGitRepositoryPaths
+    type: any
+    default: new Set<string>()
+  - name: _onDidChangeState
+    type: any
+    default: new EventEmitter<State>()
+  - name: onDidChangeState
+    type: any
+    default: this._onDidChangeState.event
+  - name: _onDidPublish
+    type: any
+    default: new EventEmitter<PublishEvent>()
+  - name: onDidPublish
+    type: any
+    default: this._onDidPublish.event
+  - name: _state
+    type: State
+    default: '''uninitialized'''
+  - name: remoteSourcePublishers
+    type: any
+    default: new Set<RemoteSourcePublisher>()
+  - name: _onDidAddRemoteSourcePublisher
+    type: any
+    default: new EventEmitter<RemoteSourcePublisher>()
+  - name: onDidAddRemoteSourcePublisher
+    type: any
+    default: this._onDidAddRemoteSourcePublisher.event
+  - name: _onDidRemoveRemoteSourcePublisher
+    type: any
+    default: new EventEmitter<RemoteSourcePublisher>()
+  - name: onDidRemoveRemoteSourcePublisher
+    type: any
+    default: this._onDidRemoveRemoteSourcePublisher.event
+  - name: postCommitCommandsProviders
+    type: any
+    default: new Set<PostCommitCommandsProvider>()
+  - name: _onDidChangePostCommitCommandsProviders
+    type: any
+    default: new EventEmitter<void>()
+  - name: onDidChangePostCommitCommandsProviders
+    type: any
+    default: this._onDidChangePostCommitCommandsProviders.event
+  - name: branchProtectionProviders
+    type: any
+    default: new Map<string, Set<BranchProtectionProvider>>()
+  - name: _onDidChangeBranchProtectionProviders
+    type: any
+    default: new EventEmitter<Uri>()
+  - name: onDidChangeBranchProtectionProviders
+    type: any
+    default: this._onDidChangeBranchProtectionProviders.event
+  - name: pushErrorHandlers
+    type: any
+    default: new Set<PushErrorHandler>()
+  - name: historyItemDetailsProviders
+    type: any
+    default: new Set<SourceControlHistoryItemDetailsProvider>()
+  - name: _unsafeRepositoriesManager
+    type: UnsafeRepositoriesManager
+  - name: _parentRepositoriesManager
+    type: ParentRepositoriesManager
+  - name: _closedRepositoriesManager
+    type: ClosedRepositoriesManager
+  - name: _workspaceFolders
+    type: any
+    default: new Map<string, string>()
+  - name: disposables
+    type: Disposable[]
+    default: '[]'
+  methods:
+  - name: repositories
+    sig: 'repositories(): Repository[]'
+    lines:
+    - 189
+    - 189
+    detail:
+      calls:
+      - this.openRepositories.map
+  - name: firePublishEvent
+    sig: 'firePublishEvent(repository: Repository, branch?: string)'
+    lines:
+    - 199
+    - 201
+    detail:
+      calls:
+      - new ApiRepository
+      - this._onDidPublish.fire
+  - name: state
+    sig: 'state(): State'
+    lines:
+    - 204
+    - 204
+    detail: {}
+  - name: setState
+    sig: 'setState(state: State): void'
+    lines:
+    - 206
+    - 210
+    detail:
+      calls:
+      - commands.executeCommand
+      - this._onDidChangeState.fire
+  - name: isInitialized
+    sig: 'isInitialized(): Promise<void>'
+    lines:
+    - 213
+    - 219
+    detail:
+      calls:
+      - Promise.resolve
+      - eventToPromise
+      - filterEvent
+  - name: unsafeRepositories
+    sig: 'unsafeRepositories(): string[]'
+    lines:
+    - 243
+    - 245
+    detail: {}
+  - name: parentRepositories
+    sig: 'parentRepositories(): string[]'
+    lines:
+    - 248
+    - 250
+    detail: {}
+  - name: closedRepositories
+    sig: 'closedRepositories(): string[]'
+    lines:
+    - 253
+    - 255
+    detail: {}
+  - name: constructor
+    sig: 'constructor(readonly git: Git, private readonly askpass: Askpass, private globalState: Memento, readonly workspaceState: Memento, private logger: LogOutputChannel, private telemetryReporter: TelemetryReporter)'
+    lines:
+    - 269
+    - 290
+    detail:
+      calls:
+      - anyEvent
+      - filterEvent
+      - new ClosedRepositoriesManager
+      - new ParentRepositoriesManager
+      - new UnsafeRepositoriesManager
+      - onPossibleGitRepositoryChange
+      - this.disposables.push
+      - this.doInitialScan
+      - this.doInitialScan().finally
+      - this.setState
+      - window.onDidChangeActiveTextEditor
+      - window.onDidChangeVisibleTextEditors
+      - workspace.createFileSystemWatcher
+      - workspace.onDidChangeConfiguration
+      - workspace.onDidChangeWorkspaceFolders
+  - name: doInitialScan
+    sig: 'doInitialScan(): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 292
+    - 332
+    detail:
+      calls:
+      - String
+      - config.get
+      - initialScanFn
+      - this.logger.info
+      - this.logger.trace
+      - this.showParentRepositoryNotification
+      - this.showUnsafeRepositoryNotification
+      - this.telemetryReporter.sendTelemetryEvent
+      - window.withProgress
+      - workspace.getConfiguration
+  - name: scanWorkspaceFolders
+    sig: 'scanWorkspaceFolders(): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 339
+    - 385
+    detail:
+      calls:
+      - (workspace.workspaceFolders || []).map
+      - Promise.all
+      - config.get
+      - this.logger.warn
+      - workspace.getConfiguration
+  - name: traverseWorkspaceFolder
+    sig: 'traverseWorkspaceFolder(workspaceFolder: string, maxDepth: number, repositoryScanIgnoredFolders: string[]): Promise<string[]>'
+    is_async: true
+    vis: private
+    lines:
+    - 387
+    - 421
+    detail:
+      calls:
+      - "children\n\t\t\t\t\t.filter"
+      - "children\n\t\t\t\t\t.filter(dirent =>\n\t\t\t\t\t\tdirent.isDirectory() && dirent.name !== '.git' &&\n\t\t\t\t\t\t!repos..."
+      - children.push
+      - childrenFolders.map
+      - foldersToTravers.push
+      - foldersToTravers.shift
+      - fs.promises.readdir
+      - result.push
+      - this.logger.warn
+  - name: onPossibleGitRepositoryChange
+    sig: 'onPossibleGitRepositoryChange(uri: Uri): void'
+    vis: private
+    lines:
+    - 423
+    - 432
+    detail:
+      calls:
+      - config.get
+      - this.eventuallyScanPossibleGitRepository
+      - uri.fsPath.replace
+      - workspace.getConfiguration
+  - name: onDidChangeWorkspaceFolders
+    sig: 'onDidChangeWorkspaceFolders({ added, removed }: WorkspaceFoldersChangeEvent): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 448
+    - 471
+    detail:
+      calls:
+      - Promise.all
+      - "added\n\t\t\t\t.filter"
+      - new Set
+      - openRepositoriesToDispose.forEach
+      - possibleRepositoryFolders.map
+      - possibleRepositoryFolders.map(p => p.uri.fsPath).join
+      - "removed\n\t\t\t\t.map"
+      - "removed\n\t\t\t\t.map(folder => this.getOpenRepository(folder.uri))\n\t\t\t\t.filter"
+      - "removed\n\t\t\t\t.map(folder => this.getOpenRepository(folder.uri))\n\t\t\t\t.filter(r => !!r)\n\t\t\t\t.filter"
+      - "removed\n\t\t\t\t.map(folder => this.getOpenRepository(folder.uri))\n\t\t\t\t.filter(r => !!r)\n\t\t\t\t.filter(r =..."
+      - this.logger.trace
+      - this.logger.warn
+      - "window.visibleTextEditors\n\t\t\t\t.map"
+      - "window.visibleTextEditors\n\t\t\t\t.map(editor => this.getRepository(editor.document.uri))\n\t\t\t\t.filter"
+  - name: onDidChangeConfiguration
+    sig: 'onDidChangeConfiguration(): void'
+    vis: private
+    lines:
+    - 473
+    - 486
+    detail:
+      calls:
+      - "(workspace.workspaceFolders || [])\n\t\t\t.filter"
+      - "(workspace.workspaceFolders || [])\n\t\t\t.filter(folder => workspace.getConfiguration('git', folder.uri..."
+      - openRepositoriesToDispose.forEach
+      - possibleRepositoryFolders.forEach
+      - possibleRepositoryFolders.map
+      - possibleRepositoryFolders.map(p => p.uri.fsPath).join
+      - this.logger.trace
+      - "this.openRepositories\n\t\t\t.map"
+      - "this.openRepositories\n\t\t\t.map(repository => ({ repository, root: Uri.file(repository.repository.root..."
+  - name: onDidChangeVisibleTextEditors
+    sig: 'onDidChangeVisibleTextEditors(editors: readonly TextEditor[]): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 488
+    - 523
+    detail:
+      calls:
+      - Promise.all
+      - config.get
+      - editors.map
+      - this.logger.trace
+      - this.logger.warn
+      - workspace.getConfiguration
+  - name: onDidChangeActiveTextEditor
+    sig: 'onDidChangeActiveTextEditor(): void'
+    vis: private
+    lines:
+    - 525
+    - 548
+    detail:
+      calls:
+      - commands.executeCommand
+      - "repository.indexGroup.resourceStates\n\t\t\t.find"
+      - "repository.workingTreeGroup.resourceStates\n\t\t\t.find"
+      - this.getRepository
+  - name: openRepository
+    sig: 'openRepository(repoPath: string, openIfClosed = false): Promise<void>'
+    is_async: true
+    lines:
+    - 551
+    - 652
+    detail:
+      calls:
+      - Promise.all
+      - Uri.file
+      - config.get
+      - fs.accessSync
+      - new Repository
+      - path.join
+      - repository.status
+      - result.stderr.trim
+      - result.stdout.trim
+      - this._closedRepositoriesManager.deleteRepository
+      - this._closedRepositoriesManager.isRepositoryClosed
+      - this._parentRepositoriesManager.addRepository
+      - this._parentRepositoriesManager.hasRepository
+      - this._unsafeRepositoriesManager.addRepository
+      - this._unsafeRepositoriesManager.hasRepository
+      - this.getRepositoryExact
+      - this.getRepositoryRoot
+      - this.getRepositoryRootRealPath
+      - this.git.exec
+      - this.git.getRepositoryDotGit
+      - this.git.open
+      - this.globalState.get
+      - this.isRepositoryOutsideWorkspace
+      - this.logger.info
+      - this.logger.trace
+      - this.open
+      - this.shouldRepositoryBeIgnored
+      - this.showParentRepositoryNotification
+      - this.showUnsafeRepositoryNotification
+      - workspace.getConfiguration
+  - name: openParentRepository
+    sig: 'openParentRepository(repoPath: string): Promise<void>'
+    is_async: true
+    lines:
+    - 654
+    - 657
+    detail:
+      calls:
+      - this._parentRepositoriesManager.openRepository
+      - this.openRepository
+  - name: getRepositoryRoot
+    sig: 'getRepositoryRoot(repoPath: string): Promise<{ repositoryRoot: string; unsafeRepositoryMatch: RegExpMatchArray | null }>'
+    is_async: true
+    vis: private
+    lines:
+    - 659
+    - 675
+    detail:
+      calls:
+      - '/^fatal: detected dubious ownership in repository at \''([^'']+)\''[\s\S]*git config --global --add saf...'
+      - Uri.file
+      - path.normalize
+      - this.git.getRepositoryRoot
+  - name: getRepositoryRootRealPath
+    sig: 'getRepositoryRootRealPath(repositoryRoot: string): Promise<string | undefined>'
+    is_async: true
+    vis: private
+    lines:
+    - 677
+    - 685
+    detail:
+      calls:
+      - fs.promises.realpath
+      - pathEquals
+      - this.logger.warn
+  - name: shouldRepositoryBeIgnored
+    sig: 'shouldRepositoryBeIgnored(repositoryRoot: string): boolean'
+    vis: private
+    lines:
+    - 687
+    - 706
+    detail:
+      calls:
+      - config.get
+      - path.isAbsolute
+      - path.join
+      - pathEquals
+      - workspace.getConfiguration
+  - name: open
+    sig: 'open(repository: Repository): void'
+    vis: private
+    lines:
+    - 708
+    - 794
+    detail:
+      calls:
+      - Uri.file
+      - anyEvent
+      - checkForSubmodules
+      - filterEvent
+      - onDidDisappearRepository
+      - operationEvent
+      - repository.onDidChangeOriginalResource
+      - repository.onDidChangeRepository
+      - repository.onDidRunGitStatus
+      - this._onDidOpenRepository.fire
+      - this.logger.trace
+      - this.onDidChangeActiveTextEditor
+      - this.openRepositories.push
+      - updateMergeChanges
+      - updateOperationInProgressContext
+      - "workspace\n\t\t\t.getConfiguration"
+      - "workspace\n\t\t\t.getConfiguration('git', Uri.file(repository.root))\n\t\t\t.get"
+  - name: close
+    sig: 'close(repository: Repository): void'
+    lines:
+    - 796
+    - 807
+    detail:
+      calls:
+      - openRepository.dispose
+      - this._closedRepositoriesManager.addRepository
+      - this.getOpenRepository
+      - this.logger.info
+  - name: pickRepository
+    sig: 'pickRepository(): Promise<Repository | undefined>'
+    is_async: true
+    lines:
+    - 809
+    - 828
+    detail:
+      calls:
+      - l10n.t
+      - new Error
+      - picks.findIndex
+      - picks.splice
+      - picks.unshift
+      - this.getRepository
+      - this.openRepositories.map
+      - window.showQuickPick
+  - name: getRepository
+    sig: 'getRepository(hint: any): Repository | undefined'
+    lines:
+    - 834
+    - 837
+    detail:
+      calls:
+      - this.getOpenRepository
+  - name: getRepositoryExact
+    sig: 'getRepositoryExact(repoPath: string): Promise<Repository | undefined>'
+    is_async: true
+    vis: private
+    lines:
+    - 839
+    - 859
+    detail:
+      calls:
+      - fs.promises.realpath
+      - this.logger.warn
+      - "this.openRepositories\n\t\t\t\t.find"
+      - "this.openRepositories\n\t\t\t.find"
+  - name: getOpenRepository
+    sig: 'getOpenRepository(hint: any): OpenRepository | undefined'
+    vis: private
+    lines:
+    - 866
+    - 925
+    detail:
+      calls:
+      - Uri.file
+      - fromGitUri
+      - isDescendant
+      - path.join
+      - this.openRepositories.filter
+      - this.openRepositories.sort
+  - name: getRepositoryForSubmodule
+    sig: 'getRepositoryForSubmodule(submoduleUri: Uri): Repository | undefined'
+    lines:
+    - 927
+    - 939
+    detail:
+      calls:
+      - path.join
+  - name: registerRemoteSourcePublisher
+    sig: 'registerRemoteSourcePublisher(publisher: RemoteSourcePublisher): Disposable'
+    lines:
+    - 941
+    - 949
+    detail:
+      calls:
+      - this._onDidAddRemoteSourcePublisher.fire
+      - this.remoteSourcePublishers.add
+      - toDisposable
+  - name: getRemoteSourcePublishers
+    sig: 'getRemoteSourcePublishers(): RemoteSourcePublisher[]'
+    lines:
+    - 951
+    - 953
+    detail:
+      calls:
+      - this.remoteSourcePublishers.values
+  - name: registerBranchProtectionProvider
+    sig: 'registerBranchProtectionProvider(root: Uri, provider: BranchProtectionProvider): Disposable'
+    lines:
+    - 955
+    - 974
+    detail:
+      calls:
+      - (this.branchProtectionProviders.get(root.toString()) ?? new Set()).add
+      - new Set
+      - provider.onDidChangeBranchProtection
+      - providerDisposables.push
+      - root.toString
+      - this._onDidChangeBranchProtectionProviders.fire
+      - this.branchProtectionProviders.get
+      - this.branchProtectionProviders.set
+      - toDisposable
+  - name: getBranchProtectionProviders
+    sig: 'getBranchProtectionProviders(root: Uri): BranchProtectionProvider[]'
+    lines:
+    - 976
+    - 978
+    detail:
+      calls:
+      - (this.branchProtectionProviders.get(root.toString()) ?? new Set()).values
+      - new Set
+      - root.toString
+      - this.branchProtectionProviders.get
+  - name: registerPostCommitCommandsProvider
+    sig: 'registerPostCommitCommandsProvider(provider: PostCommitCommandsProvider): Disposable'
+    lines:
+    - 980
+    - 988
+    detail:
+      calls:
+      - this._onDidChangePostCommitCommandsProviders.fire
+      - this.postCommitCommandsProviders.add
+      - toDisposable
+  - name: getPostCommitCommandsProviders
+    sig: 'getPostCommitCommandsProviders(): PostCommitCommandsProvider[]'
+    lines:
+    - 990
+    - 992
+    detail:
+      calls:
+      - this.postCommitCommandsProviders.values
+  - name: registerCredentialsProvider
+    sig: 'registerCredentialsProvider(provider: CredentialsProvider): Disposable'
+    lines:
+    - 994
+    - 996
+    detail:
+      calls:
+      - this.askpass.registerCredentialsProvider
+  - name: registerPushErrorHandler
+    sig: 'registerPushErrorHandler(handler: PushErrorHandler): Disposable'
+    lines:
+    - 998
+    - 1001
+    detail:
+      calls:
+      - this.pushErrorHandlers.add
+      - toDisposable
+  - name: getPushErrorHandlers
+    sig: 'getPushErrorHandlers(): PushErrorHandler[]'
+    lines:
+    - 1003
+    - 1005
+    detail: {}
+  - name: registerSourceControlHistoryItemDetailsProvider
+    sig: 'registerSourceControlHistoryItemDetailsProvider(provider: SourceControlHistoryItemDetailsProvider): Disposable'
+    lines:
+    - 1007
+    - 1010
+    detail:
+      calls:
+      - this.historyItemDetailsProviders.add
+      - toDisposable
+  - name: getSourceControlHistoryItemDetailsProviders
+    sig: 'getSourceControlHistoryItemDetailsProviders(): SourceControlHistoryItemDetailsProvider[]'
+    lines:
+    - 1012
+    - 1014
+    detail: {}
+  - name: getUnsafeRepositoryPath
+    sig: 'getUnsafeRepositoryPath(repository: string): string | undefined'
+    lines:
+    - 1016
+    - 1018
+    detail:
+      calls:
+      - this._unsafeRepositoriesManager.getRepositoryPath
+  - name: deleteUnsafeRepository
+    sig: 'deleteUnsafeRepository(repository: string): boolean'
+    lines:
+    - 1020
+    - 1022
+    detail:
+      calls:
+      - this._unsafeRepositoriesManager.deleteRepository
+  - name: isRepositoryOutsideWorkspace
+    sig: 'isRepositoryOutsideWorkspace(repositoryPath: string): Promise<boolean>'
+    is_async: true
+    vis: private
+    lines:
+    - 1024
+    - 1040
+    detail:
+      calls:
+      - "(workspace.workspaceFolders || [])\n\t\t\t.filter"
+      - Array.from
+      - Array.from(workspaceFolderPaths).some
+      - Promise.all
+      - new Set
+      - workspaceFolders.map
+  - name: getWorkspaceFolderRealPath
+    sig: 'getWorkspaceFolderRealPath(workspaceFolder: WorkspaceFolder): Promise<string | undefined>'
+    is_async: true
+    vis: private
+    lines:
+    - 1042
+    - 1056
+    detail:
+      calls:
+      - fs.promises.realpath
+      - this._workspaceFolders.get
+      - this._workspaceFolders.set
+      - this.logger.trace
+  - name: showParentRepositoryNotification
+    sig: 'showParentRepositoryNotification(): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 1058
+    - 1082
+    detail:
+      calls:
+      - commands.executeCommand
+      - config.update
+      - l10n.t
+      - this.openParentRepository
+      - window.showInformationMessage
+      - workspace.getConfiguration
+  - name: showUnsafeRepositoryNotification
+    sig: 'showUnsafeRepositoryNotification(): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 1084
+    - 1107
+    detail:
+      calls:
+      - Uri.parse
+      - commands.executeCommand
+      - l10n.t
+      - window.showErrorMessage
+  - name: dispose
+    sig: 'dispose(): void'
+    lines:
+    - 1109
+    - 1116
+    detail:
+      calls:
+      - dispose
+      - openRepositories.forEach
+      - this.possibleGitRepositoryPaths.clear
+  lines:
+  - 174
+  - 1117
+exports:
+- name: RepositoryPick
+  kind: type
+- name: ModelChangeEvent
+  kind: type
+- name: OriginalResourceChangeEvent
+  kind: type
+- name: OpenRepository
+  kind: type
+- name: ClosedRepositoriesManager
+  kind: type
+- name: ParentRepositoriesManager
+  kind: type
+- name: UnsafeRepositoriesManager
+  kind: type
+- name: Model
+  kind: type

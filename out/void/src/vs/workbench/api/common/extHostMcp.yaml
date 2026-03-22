@@ -1,0 +1,202 @@
+## Roska File Descriptor — common/extHostMcp.ts
+file: common/extHostMcp.ts
+lines: 242
+layer: logic
+purpose: '--------------------------------------------------------------------------------------------- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. See License.txt in the project root for license information. --------------------------------------------------------------------------------------------'
+imports:
+- sym: '@c4312/eventsource-umd.ES'
+- sym: vscode.vscode
+- sym: ../../../amdX.js.importAMDNodeModule
+- sym: ../../../base/common/async.js.DeferredPromise
+- sym: ../../../base/common/async.js.Sequencer
+- sym: ../../../base/common/cancellation.js.CancellationToken
+- sym: ../../../base/common/lazy.js.Lazy
+- sym: ../../../base/common/lifecycle.js.Disposable
+- sym: ../../../base/common/lifecycle.js.DisposableMap
+- sym: ../../../base/common/lifecycle.js.DisposableStore
+- sym: ../../../base/common/lifecycle.js.IDisposable
+- sym: ../../../base/common/lifecycle.js.toDisposable
+- sym: ../../../platform/extensions/common/extensions.js.ExtensionIdentifier
+- sym: ../../../platform/extensions/common/extensions.js.IExtensionDescription
+- sym: ../../../platform/instantiation/common/instantiation.js.createDecorator
+- sym: ../../../platform/storage/common/storage.js.StorageScope
+- sym: ../../contrib/mcp/common/mcpTypes.js.extensionPrefixedIdentifier
+- sym: ../../contrib/mcp/common/mcpTypes.js.McpCollectionDefinition
+- sym: ../../contrib/mcp/common/mcpTypes.js.McpConnectionState
+- sym: ../../contrib/mcp/common/mcpTypes.js.McpServerDefinition
+- sym: ../../contrib/mcp/common/mcpTypes.js.McpServerLaunch
+- sym: ../../contrib/mcp/common/mcpTypes.js.McpServerTransportSSE
+- sym: ../../contrib/mcp/common/mcpTypes.js.McpServerTransportType
+- sym: ./extHost.protocol.js.ExtHostMcpShape
+- sym: ./extHost.protocol.js.MainContext
+- sym: ./extHost.protocol.js.MainThreadMcpShape
+- sym: ./extHostRpcService.js.IExtHostRpcService
+- sym: ../../../platform/log/common/log.js.LogLevel
+data:
+- name: IExtHostMpcService
+  type: any
+  val: createDecorator<IExtHostMpcService>('IExtHostMpcService')
+types:
+- name: IExtHostMpcService
+  kind: trait
+  bases:
+  - ExtHostMcpShape
+  decorators:
+  - interface
+  fields:
+  - name: registerMcpConfigurationProvider
+    type: 'method: registerMcpConfigurationProvider(extension: IExtensionDescription, id: string, provider: vscode.McpConfigurationProvider): IDisposable'
+  lines:
+  - 23
+  - 25
+- name: ExtHostMcpService
+  kind: struct
+  ctx: '{@link vscode.lm.registerMcpConfigurationProvider}'
+  bases:
+  - Disposable
+  - IExtHostMpcService
+  fields:
+  - name: _proxy
+    type: MainThreadMcpShape
+  - name: _initialProviderPromises
+    type: any
+    default: new Set<Promise<void>>()
+  - name: _sseEventSources
+    type: any
+    default: this._register(new DisposableMap<number, McpSSEHandle>())
+  - name: _eventSource
+    type: any
+    default: "new Lazy(async () => {\n\t\tconst es = await importAMDNodeModule<typeof ES>('@c4312..."
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\t@IExtHostRpcService extHostRpc: IExtHostRpcService,\n\t)"
+    lines:
+    - 36
+    - 41
+    detail:
+      calls:
+      - extHostRpc.getProxy
+      - super
+  - name: $startMcp
+    sig: '$startMcp(id: number, launch: McpServerLaunch.Serialized): void'
+    lines:
+    - 43
+    - 45
+    detail:
+      calls:
+      - McpServerLaunch.fromSerialized
+      - this._startMcp
+  - name: $stopMcp
+    sig: '$stopMcp(id: number): void'
+    lines:
+    - 56
+    - 61
+    detail:
+      calls:
+      - this._proxy.$onDidChangeState
+      - this._sseEventSources.deleteAndDispose
+      - this._sseEventSources.has
+  - name: $sendMessage
+    sig: '$sendMessage(id: number, message: string): void'
+    lines:
+    - 63
+    - 65
+    detail:
+      calls:
+      - this._sseEventSources.get
+      - this._sseEventSources.get(id)?.send
+  - name: $waitForInitialCollectionProviders
+    sig: '$waitForInitialCollectionProviders(): Promise<void>'
+    is_async: true
+    lines:
+    - 67
+    - 69
+    detail:
+      calls:
+      - Promise.all
+  - name: registerMcpConfigurationProvider
+    sig: 'registerMcpConfigurationProvider(extension: IExtensionDescription, id: string, provider: vscode.McpConfigurationProvider): IDisposable'
+    lines:
+    - 72
+    - 139
+    detail:
+      calls:
+      - extension.contributes?.modelContextServerCollections?.find
+      - extensionPrefixedIdentifier
+      - new DisposableStore
+      - new Error
+      - new Promise
+      - provider.onDidChange
+      - store.add
+      - this._initialProviderPromises.add
+      - toDisposable
+  lines:
+  - 27
+  - 140
+- name: McpSSEHandle
+  kind: struct
+  bases:
+  - Disposable
+  fields:
+  - name: _requestSequencer
+    type: any
+    default: new Sequencer()
+  - name: _postEndpoint
+    type: any
+    default: new DeferredPromise<string>()
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\teventSourceCtor: Promise<typeof ES.EventSource>,\n\t\tprivate readonly _id: number,\n\t\tlaunch: McpServerTransportSSE,\n\t\tprivate readonly _proxy: MainThreadMcpShape\n\t)"
+    lines:
+    - 145
+    - 153
+    detail:
+      calls:
+      - eventSourceCtor.then
+      - super
+  - name: _attach
+    sig: '_attach(EventSourceCtor: typeof ES.EventSource, launch: McpServerTransportSSE)'
+    vis: private
+    lines:
+    - 155
+    - 208
+    detail:
+      calls:
+      - eventSource.addEventListener
+      - launch.uri.toString
+      - new EventSourceCtor
+      - this._register
+      - toDisposable
+  - name: send
+    sig: 'send(message: string)'
+    is_async: true
+    lines:
+    - 210
+    - 233
+    detail:
+      calls:
+      - this._getErrText
+      - this._proxy.$onDidPublishLog
+      - this._requestSequencer.queue
+  - name: _getErrText
+    sig: '_getErrText(res: Response)'
+    is_async: true
+    vis: private
+    lines:
+    - 235
+    - 241
+    detail:
+      calls:
+      - res.text
+  lines:
+  - 142
+  - 242
+exports:
+- name: IExtHostMpcService
+  kind: type
+- name: ExtHostMcpService
+  kind: type
+- name: McpSSEHandle
+  kind: type
+- name: IExtHostMpcService
+  kind: data
