@@ -1,0 +1,249 @@
+## Roska File Descriptor — src/agent.py
+file: src/agent.py
+lines: 243
+layer: logic
+imports:
+- sym: backoff
+- sym: tiktoken
+- sym: loguru.logger
+- sym: openai.OpenAI
+- sym: openai.RateLimitError
+- sym: pydantic.BaseModel
+- sym: sweepai.config.server.OPENAI_API_KEY
+data:
+- name: Self
+  type: Any
+  val: TypeVar("Self", bound="RegexExtractModel")
+- name: client
+  type: Any
+  val: OpenAI(api_key=OPENAI_API_KEY) if OPENAI_API_KEY else None
+- name: OpenAIModel
+  type: tuple
+  val: |-
+    (
+        Literal["gpt-3.5-turbo"]
+        | Literal["gpt-3.5-turbo-1106"]
+        | Literal["gpt-3.5-turbo-16k"]
+        | Literal["gpt...
+- name: model_to_max_tokens
+  type: dict
+  val: |-
+    {
+        "gpt-3.5-turbo": 4096,
+        "gpt-3.5-turbo-1106": 16385,
+        "gpt-3.5-turbo-16k": 16385,
+        "gpt-4": 8192,
+        "gp...
+- name: R
+  type: Any
+  val: TypeVar("R", bound="RegexExtractModel")
+types:
+- name: RegexExtractModel
+  kind: model
+  bases:
+  - BaseModel
+  fields:
+  - name: _regex
+    type: Any
+    default: ClassVar[str]
+  methods:
+  - name: from_string
+    sig: 'from_string(cls: Type[Self], string: str, **kwargs) -> Self'
+    decorators:
+    - classmethod
+    lines:
+    - 21
+    - 28
+    detail:
+      calls:
+      - Exception
+      - cls
+      - match.groupdict
+      - match.groupdict().items
+      - re.search
+  lines:
+  - 17
+  - 28
+- name: Message
+  kind: model
+  bases:
+  - BaseModel
+  fields:
+  - name: role
+    type: Any
+    default: |-
+      Literal["system"] | Literal["user"] | Literal["assistant"] | Literal[
+              "function"
+          ]
+  - name: content
+    type: Any
+    default: str | None
+  - name: key
+    type: Any
+    default: str | None
+  methods:
+  - name: to_openai
+    sig: to_openai(self) -> str
+    lines:
+    - 38
+    - 43
+    detail: {}
+  lines:
+  - 31
+  - 43
+- name: SweepChatGPT
+  kind: model
+  bases:
+  - BaseModel
+  fields:
+  - name: messages
+    type: Any
+    default: list[Message]
+  - name: model
+    type: Any
+    default: OpenAIModel
+  - name: temperature
+    type: Any
+    default: float
+  methods:
+  - name: chat
+    sig: |-
+      chat(
+              self,
+              content: str,
+              model: OpenAIModel | None = None,
+              message_key: str | None = None,
+              temperature: float | None = None,
+              max_tokens: int | None = None,
+          )
+    lines:
+    - 74
+    - 94
+    detail:
+      calls:
+      - Message
+      - self.call_openai
+      - self.messages.append
+  - name: call_openai
+    sig: |-
+      call_openai(
+              self,
+              model: OpenAIModel | None = None,
+              temperature: float | None = 0.1,
+              requested_max_tokens: int | None = None,
+          )
+    lines:
+    - 96
+    - 150
+    detail:
+      calls:
+      - backoff.on_exception
+      - backoff_openai_call
+      - count_tokens
+      - int
+      - len
+      - messages_dicts.append
+      - min
+      - sum
+      - tiktoken.encoding_for_model
+      - tiktoken.encoding_for_model(model).encode
+  - name: messages_dicts
+    sig: messages_dicts(self)
+    decorators:
+    - property
+    lines:
+    - 153
+    - 154
+    detail:
+      calls:
+      - message.to_openai
+  - name: undo_last_message
+    sig: undo_last_message(self)
+    lines:
+    - 156
+    - 159
+    detail:
+      calls:
+      - len
+      - self.messages.pop
+  lines:
+  - 69
+  - 159
+- name: SweepAgent
+  kind: struct
+  bases:
+  - SweepChatGPT
+  fields:
+  - name: regex_extract_model
+    type: Any
+    default: ClassVar[Type[R]]
+  - name: system_prompt
+    type: Any
+    default: ClassVar[str]
+  - name: user_prompt
+    type: Any
+    default: ClassVar[str]
+  methods:
+  - name: handle_task
+    sig: |-
+      handle_task(
+              self,
+              system_prompt_args: dict[str, str] = {},
+              user_prompt_args: dict[str, str] = {},
+              **kwargs,
+          ) -> R
+    lines:
+    - 170
+    - 186
+    detail:
+      calls:
+      - Message
+      - self.chat
+      - self.messages.append
+      - self.regex_extract_model.from_string
+      - self.system_prompt.format
+      - self.user_prompt.format
+  - name: handle_task_with_retries
+    sig: |-
+      handle_task_with_retries(
+              self,
+              system_prompt_args: dict[str, str],
+              user_prompt_args: dict[str, str],
+              **kwargs,
+          ) -> R
+    lines:
+    - 188
+    - 219
+    detail:
+      calls:
+      - Message
+      - kwargs.get
+      - logger.error
+      - range
+      - self.chat
+      - self.messages.append
+      - self.regex_extract_model.from_string
+      - self.system_prompt.format
+      - self.user_prompt.format
+  lines:
+  - 165
+  - 219
+exports:
+- name: RegexExtractModel
+  kind: type
+- name: Message
+  kind: type
+- name: SweepChatGPT
+  kind: type
+- name: SweepAgent
+  kind: type
+- name: Self
+  kind: data
+- name: client
+  kind: data
+- name: OpenAIModel
+  kind: data
+- name: model_to_max_tokens
+  kind: data
+- name: R
+  kind: data

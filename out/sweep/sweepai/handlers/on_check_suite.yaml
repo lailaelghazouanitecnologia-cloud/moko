@@ -1,0 +1,248 @@
+## Roska File Descriptor — handlers/on_check_suite.py
+file: handlers/on_check_suite.py
+lines: 397
+layer: logic
+purpose: This module is responsible for handling the check suite event, called from sweepai/api.py
+imports:
+- sym: subprocess
+- sym: zipfile
+- sym: loguru.logger
+- sym: requests
+- sym: github.Repository.Repository
+- sym: github.CommitStatus.CommitStatus
+- sym: sweepai.config.client.get_config_key_value
+- sym: sweepai.config.server.CIRCLE_CI_PAT
+- sym: sweepai.config.server.DOCKERFILE_CONFIG_LOCATION
+- sym: sweepai.dataclasses.check_status.CheckStatus
+- sym: sweepai.dataclasses.dockerfile_config.DockerfileConfig
+- sym: sweepai.dataclasses.dockerfile_config.load_dockerfile_configs_from_path
+- sym: sweepai.logn.cache.file_cache
+- sym: sweepai.utils.github_utils.ClonedRepo
+- sym: sweepai.utils.github_utils.get_token
+- sym: sweepai.utils.streamable_functions.streamable
+- sym: sweepai.utils.timer.Timer
+data:
+- name: MAX_LINES
+  type: int
+  val: '500'
+- name: LINES_TO_KEEP
+  type: int
+  val: '100'
+- name: CIRCLECI_SLEEP_DURATION_SECONDS
+  type: int
+  val: '15'
+- name: log_message
+  type: str
+  val: |-
+    """GitHub actions yielded the following error.
+
+    {error_logs}
+
+    Fix the code changed by the PR, don't modify the existing ...
+- name: gha_prompt
+  type: str
+  val: |-
+    """\
+    The below command yielded the following errors:
+    <command>
+    {command_line}
+    </command>
+    <errors>
+    {error_content}
+    </erro...
+functions:
+- name: get_dirs
+  sig: 'get_dirs(zipfile: zipfile.ZipFile)'
+  lines:
+  - 37
+  - 38
+  detail:
+    calls:
+    - file.endswith
+    - zipfile.namelist
+- name: get_files_in_dir
+  sig: 'get_files_in_dir(zipfile: zipfile.ZipFile, dir: str)'
+  lines:
+  - 41
+  - 46
+  detail:
+    calls:
+    - file.endswith
+    - file.startswith
+    - zipfile.namelist
+- name: remove_ansi_tags
+  sig: 'remove_ansi_tags(logs: str) -> str'
+  lines:
+  - 48
+  - 49
+  detail:
+    calls:
+    - re.sub
+- name: download_logs
+  sig: 'download_logs(repo_full_name: str, run_id: int, installation_id: int, get_errors_only=True)'
+  decorators:
+  - file_cache()
+  lines:
+  - 52
+  - 77
+  detail:
+    calls:
+    - f.read
+    - f.read().decode
+    - file.endswith
+    - get_token
+    - io.BytesIO
+    - logs.splitlines
+    - requests.get
+    - zip_file.namelist
+    - zip_file.open
+    - zipfile.ZipFile
+- name: change_dir
+  sig: change_dir(destination)
+  decorators:
+  - contextmanager
+  lines:
+  - 94
+  - 100
+  detail:
+    calls:
+    - os.chdir
+    - os.getcwd
+- name: get_failing_docker_logs
+  sig: 'get_failing_docker_logs(cloned_repo: ClonedRepo)'
+  decorators:
+  - streamable
+  lines:
+  - 103
+  - 222
+  detail:
+    calls:
+    - enumerate
+    - hash
+    - load_dockerfile_configs_from_path
+    - run_dockerfile_config.stream
+    - str
+- name: delete_docker_images
+  sig: 'delete_docker_images(docker_image_names: str)'
+  lines:
+  - 224
+  - 232
+  detail:
+    calls:
+    - logger.info
+    - logger.warning
+    - str
+    - subprocess.run
+- name: clean_gh_logs
+  sig: 'clean_gh_logs(logs_str: str)'
+  lines:
+  - 235
+  - 252
+  detail:
+    calls:
+    - '"\n".join'
+    - clean_cicd_logs
+    - log.find
+    - logs_str.split
+    - match.group
+    - match.group(1).strip
+    - match.group(2).strip
+    - match.group(3).strip
+    - re.search
+- name: clean_cicd_logs
+  sig: 'clean_cicd_logs(command: str, error: str, logs: str)'
+  lines:
+  - 254
+  - 299
+  detail:
+    calls:
+    - '"\n".join'
+    - any
+    - gha_prompt.format
+    - len
+    - log.strip
+    - log.strip().startswith
+    - logs.split
+- name: get_circleci_job_details
+  sig: get_circleci_job_details(job_number, project_slug, vcs_type='github')
+  lines:
+  - 301
+  - 306
+  detail:
+    calls:
+    - requests.get
+    - response.json
+- name: get_failing_circleci_log_from_url
+  sig: 'get_failing_circleci_log_from_url(circleci_run_url: str, repo_full_name: str)'
+  lines:
+  - 309
+  - 344
+  detail:
+    calls:
+    - action.get
+    - circleci_run_url.split
+    - clean_cicd_logs
+    - failing_steps.append
+    - get_circleci_job_details
+    - len
+    - log_response.json
+    - log_response[1].get
+    - logger.warning
+    - remove_ansi_tags
+    - requests.get
+- name: get_failing_circleci_logs
+  sig: |-
+    get_failing_circleci_logs(
+        repo: Repository,
+        current_commit: str,
+    )
+  lines:
+  - 346
+  - 397
+  detail:
+    calls:
+    - all
+    - any
+    - commit.get_combined_status
+    - get_config_key_value
+    - get_failing_circleci_log_from_url
+    - logger.debug
+    - repo.get_commit
+    - sleep
+    - status.context.lower
+    - status_detail.context.lower
+exports:
+- name: get_dirs
+  kind: func
+- name: get_files_in_dir
+  kind: func
+- name: remove_ansi_tags
+  kind: func
+- name: download_logs
+  kind: func
+- name: change_dir
+  kind: func
+- name: get_failing_docker_logs
+  kind: func
+- name: delete_docker_images
+  kind: func
+- name: clean_gh_logs
+  kind: func
+- name: clean_cicd_logs
+  kind: func
+- name: get_circleci_job_details
+  kind: func
+- name: get_failing_circleci_log_from_url
+  kind: func
+- name: get_failing_circleci_logs
+  kind: func
+- name: MAX_LINES
+  kind: data
+- name: LINES_TO_KEEP
+  kind: data
+- name: CIRCLECI_SLEEP_DURATION_SECONDS
+  kind: data
+- name: log_message
+  kind: data
+- name: gha_prompt
+  kind: data

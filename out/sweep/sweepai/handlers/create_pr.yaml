@@ -1,0 +1,147 @@
+## Roska File Descriptor — handlers/create_pr.py
+file: handlers/create_pr.py
+lines: 313
+layer: logic
+purpose: create_pr is a function that creates a pull request from a list of file change requests. It is also responsible for handling Sweep config PR creation. test
+imports:
+- sym: openai
+- sym: github.Repository.Repository
+- sym: loguru.logger
+- sym: sweepai.agents.modify.modify
+- sym: sweepai.config.client.DEFAULT_RULES_STRING
+- sym: sweepai.config.server.ENV
+- sym: sweepai.config.server.GITHUB_BOT_USERNAME
+- sym: sweepai.config.server.GITHUB_CONFIG_BRANCH
+- sym: sweepai.config.server.GITHUB_DEFAULT_CONFIG
+- sym: sweepai.config.server.GITHUB_LABEL_NAME
+- sym: sweepai.core.entities.FileChangeRequest
+- sym: sweepai.core.entities.MaxTokensExceeded
+- sym: sweepai.utils.event_logger.posthog
+- sym: sweepai.utils.github_utils.ClonedRepo
+data:
+- name: num_of_snippets_to_query
+  type: int
+  val: '10'
+- name: max_num_of_snippets
+  type: int
+  val: '5'
+- name: INSTRUCTIONS_FOR_REVIEW
+  type: str
+  val: |-
+    """\
+    > [!TIP]
+    > To get Sweep to edit this pull request, you can:
+    > * Comment below, and Sweep can edit the entire PR
+    > *...
+- name: SWEEP_TEMPLATE
+  type: str
+  val: |-
+    """\
+    name: Sweep Issue
+    title: 'Sweep: '
+    description: For small bugs, features, refactors, and tests to be handled by Swe...
+functions:
+- name: handle_file_change_requests
+  sig: |-
+    handle_file_change_requests(
+        file_change_requests: list[FileChangeRequest],
+        request: str,
+        cloned_repo: ClonedRepo,
+        username: str,
+        installation_id: int,
+        previous_modify_files_dict: dict = {},
+        renames_dict: dict = {},
+    )
+  lines:
+  - 39
+  - 150
+  detail:
+    calls:
+    - cloned_repo.repo.full_name.split
+    - copy.deepcopy
+    - len
+    - logger.error
+    - logger.info
+    - logger.warning
+    - modify
+    - modify_files_dict.items
+    - posthog.capture
+    - relevant_filepaths.append
+    - str
+- name: safe_delete_sweep_branch
+  sig: |-
+    safe_delete_sweep_branch(
+        pr,  # Github PullRequest
+        repo: Repository,
+    ) -> bool
+  lines:
+  - 152
+  - 176
+  detail:
+    calls:
+    - branch.delete
+    - len
+    - pr.get_commits
+    - pr.head.ref.startswith
+    - repo.get_git_ref
+    - set
+- name: create_config_pr
+  sig: |-
+    create_config_pr(
+        repo: Repository = None, cloned_repo: ClonedRepo = None
+    )
+  lines:
+  - 178
+  - 258
+  detail:
+    calls:
+    - |-
+      """🎉 Thank you for installing Sweep! We're thrilled to announce the latest update for Sweep, your AI junior developer on GitHub. This PR creates a `sweep.yaml` config file, allowing you to personalize Sweep's performance according to your project requirements.
+
+              ## What's new?
+              - **Sweep is now configurable**.
+              - To configure Sweep, simply edit the `sweep.yaml` file in the root of your repository.
+              - If you need help, check out the [Sweep Default Config](https://github.com/sweepai/sweep/blob/main/sweep.yaml) or [Join Our Discourse](https://community.sweep.dev/) for help.
+
+              If you would like me to stop creating this PR, go to issues and say "Sweep: create an empty `sweep.yaml` file".
+              Thank you for using Sweep! 🧹""".replace
+    - GITHUB_DEFAULT_CONFIG.format
+    - logger.error
+    - logger.print
+    - pr.add_to_labels
+    - repo.create_file
+    - repo.create_git_ref
+    - repo.create_pull
+    - repo.get_branch
+    - repo.get_contents
+    - repo.get_pulls
+- name: create_gha_pr
+  sig: create_gha_pr(g, repo)
+  lines:
+  - 260
+  - 288
+  detail:
+    calls:
+    - repo.create_git_ref
+    - repo.create_pull
+    - repo.get_branch
+    - repo.get_contents
+    - repo.get_contents("sweep.yaml", ref=branch_name).decoded_content.decode
+    - repo.update_file
+exports:
+- name: handle_file_change_requests
+  kind: func
+- name: safe_delete_sweep_branch
+  kind: func
+- name: create_config_pr
+  kind: func
+- name: create_gha_pr
+  kind: func
+- name: num_of_snippets_to_query
+  kind: data
+- name: max_num_of_snippets
+  kind: data
+- name: INSTRUCTIONS_FOR_REVIEW
+  kind: data
+- name: SWEEP_TEMPLATE
+  kind: data

@@ -1,0 +1,481 @@
+## Roska File Descriptor — utils/github_utils.py
+file: utils/github_utils.py
+lines: 1143
+layer: logic
+imports:
+- sym: difflib
+- sym: shutil
+- sym: subprocess
+- sym: tempfile
+- sym: traceback
+- sym: git
+- sym: requests
+- sym: github.Github
+- sym: github.Auth.Token
+- sym: github.Requester.Requester
+- sym: github.Repository.Repository
+- sym: github.GithubException.BadCredentialsException
+- sym: github.GithubException.UnknownObjectException
+- sym: github.PullRequest
+- sym: github.InputGitTreeElement
+- sym: github.GithubException
+- sym: jwt.encode
+- sym: loguru.logger
+- sym: urllib3.Retry
+- sym: sweepai.config.client.SweepConfig
+- sym: sweepai.config.server.CACHE_DIRECTORY
+- sym: sweepai.config.server.GITHUB_APP_ID
+- sym: sweepai.config.server.GITHUB_APP_PEM
+- sym: sweepai.config.server.GITHUB_BASE_URL
+- sym: sweepai.config.server.GITHUB_BOT_USERNAME
+- sym: sweepai.core.entities.FileChangeRequest
+- sym: sweepai.utils.str_utils.get_hash
+- sym: sweepai.utils.tree_utils.DirectoryTree
+- sym: sweepai.utils.tree_utils.remove_all_not_included
+data:
+- name: MAX_FILE_COUNT
+  type: int
+  val: '50'
+- name: REPO_CACHE_BASE_DIR
+  type: Any
+  val: os.path.join(CACHE_DIRECTORY, "repos")
+types:
+- name: CustomRequester
+  kind: struct
+  bases:
+  - Requester
+  fields:
+  - name: token
+    type: Any
+    default: token
+  - name: installation_id
+    type: Any
+    default: installation_id
+  - name: signing_key
+    type: Any
+    default: signing_key
+  - name: app_id
+    type: Any
+    default: app_id
+  methods:
+  - name: __init__
+    sig: |-
+      __init__(
+              self,
+              token,
+              timeout: int = 15,
+              user_agent: str = "PyGithub/Python",
+              per_page: int = 30,
+              verify: bool = True,
+              retry=None,
+              pool_size=None,
+              installation_id: int = None,
+              signing_key: str = "",
+              app_id: str = "",
+          ) -> "CustomRequester"
+    lines:
+    - 114
+    - 145
+    detail:
+      calls:
+      - Retry
+      - Token
+      - super
+      - super().__init__
+  - name: requestJsonAndCheck
+    sig: |-
+      requestJsonAndCheck(
+              self, *args, **kwargs
+          )
+    lines:
+    - 153
+    - 160
+    detail:
+      calls:
+      - self._refresh_token
+      - super
+      - super().requestJsonAndCheck
+  lines:
+  - 113
+  - 160
+- name: CustomGithub
+  kind: struct
+  bases:
+  - Github
+  fields:
+  - name: installation_id
+    type: Any
+    default: installation_id
+  - name: token
+    type: Any
+    default: self._get_token(signing_key=signing_key, app_id=app_id)
+  - name: signing_key
+    type: Any
+    default: signing_key
+  - name: app_id
+    type: Any
+    default: app_id
+  - name: _Github__requester
+    type: Any
+    default: "CustomRequester(\n            self.token, \n            installation_id=self.installation_id, \n            signing_key=self.signing_key, \n            app_id=self.app_id\n        )"
+  methods:
+  - name: __init__
+    sig: "__init__(\n        self, \n        installation_id: int,\n        signing_key: str = \"\",\n        app_id: str = \"\",\n        *args, \n        **kwargs\n    ) -> \"CustomGithub\""
+    lines:
+    - 164
+    - 182
+    detail:
+      calls:
+      - CustomRequester
+      - self._get_token
+      - super
+      - super().__init__
+  lines:
+  - 163
+  - 187
+functions:
+- name: make_valid_string
+  sig: 'make_valid_string(string: str)'
+  lines:
+  - 48
+  - 50
+  detail:
+    calls:
+    - re.sub
+- name: get_jwt
+  sig: 'get_jwt(signing_key: str = "", app_id: str = "")'
+  lines:
+  - 53
+  - 59
+  detail:
+    calls:
+    - encode
+    - int
+    - time.time
+- name: get_token
+  sig: 'get_token(installation_id: int, signing_key: str = "", app_id: str = "")'
+  lines:
+  - 62
+  - 99
+  detail:
+    calls:
+    - Exception
+    - get_jwt
+    - int
+    - logger.error
+    - logger.warning
+    - requests.post
+    - response.json
+    - time.sleep
+- name: get_app
+  sig: 'get_app(signing_key: str = "", app_id: str = "")'
+  lines:
+  - 102
+  - 110
+  detail:
+    calls:
+    - get_jwt
+    - requests.get
+    - response.json
+- name: get_github_client
+  sig: "get_github_client(\n    installation_id: int, \n    signing_key: str = \"\", \n    app_id: str = \"\"\n) -> tuple[str, CustomGithub]"
+  lines:
+  - 190
+  - 204
+  detail:
+    calls:
+    - CustomGithub
+    - Github
+- name: get_installation
+  sig: 'get_installation(username: str, signing_key: str = "", app_id: str = "")'
+  lines:
+  - 208
+  - 238
+  detail:
+    calls:
+    - Exception
+    - get_jwt
+    - logger.error
+    - requests.get
+    - response.json
+- name: get_installation_id
+  sig: 'get_installation_id(username: str, signing_key: str = "", app_id: str = "") -> str'
+  lines:
+  - 241
+  - 271
+  detail:
+    calls:
+    - Exception
+    - get_jwt
+    - logger.error
+    - requests.get
+    - response.json
+- name: file_exists_in_repo
+  sig: 'file_exists_in_repo(repo: Repository, filepath: str)'
+  lines:
+  - 275
+  - 281
+  detail:
+    calls:
+    - repo.get_contents
+- name: validate_and_sanitize_multi_file_changes
+  sig: |-
+    validate_and_sanitize_multi_file_changes(
+        repo: Repository, file_changes: dict[str, str], fcrs: list[FileChangeRequest]
+    )
+  lines:
+  - 284
+  - 300
+  detail:
+    calls:
+    - copy.deepcopy
+    - file_changes.keys
+    - file_exists_in_repo
+    - list
+    - os.path.normpath
+    - set
+- name: commit_multi_file_changes
+  sig: |-
+    commit_multi_file_changes(
+        cloned_repo: "ClonedRepo",
+        file_changes: dict[str, str],
+        commit_message: str,
+        branch: str,
+        renames_dict: dict[str, str] = {},
+    )
+  lines:
+  - 304
+  - 378
+  detail:
+    calls:
+    - '", ".join'
+    - InputGitTreeElement
+    - blobs_to_commit.append
+    - cloned_repo.get_file_contents
+    - file_changes.items
+    - len
+    - os.path.normpath
+    - renames_dict.items
+    - renames_dict.values
+    - repo.create_git_blob
+    - repo.create_git_commit
+    - repo.create_git_tree
+    - repo.get_branch
+    - repo.get_git_commit
+    - repo.get_git_ref
+    - repo.get_git_ref(ref).edit
+    - repo.get_git_tree
+- name: clean_branch_name
+  sig: 'clean_branch_name(branch: str) -> str'
+  lines:
+  - 381
+  - 386
+  detail:
+    calls:
+    - branch.strip
+    - re.sub
+- name: create_branch
+  sig: |-
+    create_branch(
+        repo: Repository, branch: str, base_branch: str = None, retry=True
+    ) -> str
+  lines:
+  - 389
+  - 431
+  detail:
+    calls:
+    - SweepConfig.get_branch
+    - branch.replace
+    - clean_branch_name
+    - get_hash
+    - logger.error
+    - logger.warning
+    - range
+    - repo.create_git_ref
+    - repo.get_branch
+- name: ClonedRepo
+  sig: ''
+  decorators:
+  - dataclass
+  lines:
+  - 437
+  - 805
+- name: update_file
+  sig: 'update_file(root_dir: str, file_path: str, new_contents: str)'
+  lines:
+  - 809
+  - 817
+  detail:
+    calls:
+    - f.write
+    - logger.error
+    - open
+    - os.path.join
+- name: MockClonedRepo
+  sig: ''
+  decorators:
+  - dataclass
+  lines:
+  - 820
+  - 865
+- name: TemporarilyCopiedClonedRepo
+  sig: ''
+  decorators:
+  - dataclass
+  lines:
+  - 868
+  - 914
+- name: get_file_names_from_query
+  sig: 'get_file_names_from_query(query: str) -> list[str]'
+  lines:
+  - 917
+  - 923
+  detail:
+    calls:
+    - len
+    - re.findall
+- name: get_hunks
+  sig: 'get_hunks(a: str, b: str, context=10)'
+  lines:
+  - 926
+  - 952
+  detail:
+    calls:
+    - '"\n".join'
+    - a.splitlines
+    - b.splitlines
+    - differ.compare
+    - difflib.Differ
+    - enumerate
+    - hunks.append
+    - len
+    - line.startswith
+    - max
+    - min
+    - range
+    - set
+    - show.update
+- name: parse_collection_name
+  sig: 'parse_collection_name(name: str) -> str'
+  lines:
+  - 955
+  - 960
+  detail:
+    calls:
+    - name[:63].ljust
+    - re.sub
+- name: convert_pr_draft_field
+  sig: |-
+    convert_pr_draft_field(
+        pr: PullRequest, is_draft: bool = False, installation_id: int = 0
+    ) -> bool
+  lines:
+  - 964
+  - 1002
+  detail:
+    calls:
+    - |-
+      """
+          mutation MarkPRReady {
+          markPullRequestReadyForReview(input: {pullRequestId: {pull_request_id}}) {
+          pullRequest {
+          id
+          }
+          }
+          }
+          """.replace
+    - get_token
+    - json.dumps
+    - logger.error
+    - requests.post
+- name: get_review_threads
+  sig: |-
+    get_review_threads(
+        repo_full_name: str,
+        pr_number: int,
+        installation_id: int
+    )
+  lines:
+  - 1005
+  - 1064
+  detail:
+    calls:
+    - get_token
+    - json.dumps
+    - repo_full_name.split
+    - requests.post
+    - response.json
+- name: sanitize_string_for_github
+  sig: 'sanitize_string_for_github(message: str)'
+  lines:
+  - 1068
+  - 1098
+  detail:
+    calls:
+    - len
+    - message.replace
+    - os.environ.get
+- name: refresh_token
+  sig: 'refresh_token(repo_full_name: str, installation_id: int)'
+  lines:
+  - 1102
+  - 1105
+  detail:
+    calls:
+    - g.get_repo
+    - get_github_client
+exports:
+- name: CustomRequester
+  kind: type
+- name: CustomGithub
+  kind: type
+- name: make_valid_string
+  kind: func
+- name: get_jwt
+  kind: func
+- name: get_token
+  kind: func
+- name: get_app
+  kind: func
+- name: get_github_client
+  kind: func
+- name: get_installation
+  kind: func
+- name: get_installation_id
+  kind: func
+- name: file_exists_in_repo
+  kind: func
+- name: validate_and_sanitize_multi_file_changes
+  kind: func
+- name: commit_multi_file_changes
+  kind: func
+- name: clean_branch_name
+  kind: func
+- name: create_branch
+  kind: func
+- name: ClonedRepo
+  kind: func
+- name: update_file
+  kind: func
+- name: MockClonedRepo
+  kind: func
+- name: TemporarilyCopiedClonedRepo
+  kind: func
+- name: get_file_names_from_query
+  kind: func
+- name: get_hunks
+  kind: func
+- name: parse_collection_name
+  kind: func
+- name: convert_pr_draft_field
+  kind: func
+- name: get_review_threads
+  kind: func
+- name: sanitize_string_for_github
+  kind: func
+- name: refresh_token
+  kind: func
+- name: MAX_FILE_COUNT
+  kind: data
+- name: REPO_CACHE_BASE_DIR
+  kind: data

@@ -1,0 +1,176 @@
+## Roska File Descriptor — public/redis_vector_db.py
+file: public/redis_vector_db.py
+lines: 133
+layer: logic
+imports:
+- sym: multiprocessing
+- sym: backoff
+- sym: numpy as np
+- sym: requests
+- sym: loguru.logger
+- sym: openai.BadRequestError
+- sym: openai.OpenAI
+- sym: redis.Redis
+- sym: tiktoken.encoding_for_model
+data:
+- name: BATCH_SIZE
+  type: int
+  val: '512'
+- name: REDIS_URL
+  type: Any
+  val: os.environ.get("REDIS_URL", "redis://0.0.0.0:6379/0")
+- name: CACHE_VERSION
+  type: str
+  val: '"v-2.0.1"'
+- name: DIMENSIONS_TO_KEEP
+  type: int
+  val: '512'
+- name: openai_client
+  type: Any
+  val: OpenAI()
+- name: redis_client
+  type: Any
+  val: Redis
+functions:
+- name: count_tiktoken
+  sig: 'count_tiktoken(text: str, model: str = "gpt-4") -> int'
+  lines:
+  - 23
+  - 25
+  detail:
+    calls:
+    - encoding_for_model
+    - len
+    - tiktoken_encoding.encode
+- name: truncate_string_tiktoken
+  sig: 'truncate_string_tiktoken(text: str, model: str = "gpt-4", max_tokens: int = 8192) -> str'
+  lines:
+  - 27
+  - 30
+  detail:
+    calls:
+    - encoding_for_model
+    - tiktoken_encoding.decode
+    - tiktoken_encoding.encode
+- name: hash_text
+  sig: 'hash_text(text: str) -> str'
+  lines:
+  - 32
+  - 33
+  detail:
+    calls:
+    - hashlib.sha256
+    - hashlib.sha256(text.encode("utf-8")).hexdigest
+    - text.encode
+- name: normalize_l2
+  sig: normalize_l2(x)
+  lines:
+  - 35
+  - 44
+  detail:
+    calls:
+    - np.array
+    - np.linalg.norm
+    - np.where
+- name: embed_text_array
+  sig: 'embed_text_array(texts: tuple[str]) -> list[np.ndarray]'
+  lines:
+  - 46
+  - 52
+  detail:
+    calls:
+    - len
+    - multiprocessing.Pool
+    - pool.map
+    - range
+- name: openai_call_embedding
+  sig: openai_call_embedding(batch)
+  lines:
+  - 54
+  - 60
+  detail:
+    calls:
+    - normalize_l2
+    - np.array
+    - openai_client.embeddings.create
+- name: openai_with_expo_backoff
+  sig: 'openai_with_expo_backoff(batch: tuple[str])'
+  decorators:
+  - |-
+    backoff.on_exception(
+        backoff.expo,
+        requests.exceptions.Timeout,
+        max_tries=5,
+    )
+  lines:
+  - 67
+  - 108
+  detail:
+    calls:
+    - embedding.tolist
+    - enumerate
+    - hash_text
+    - isinstance
+    - json.dumps
+    - json.loads
+    - len
+    - logger.exception
+    - np.array
+    - openai_call_embedding
+    - redis_client.mget
+    - redis_client.mset
+    - truncate_string_tiktoken
+    - type
+    - zip
+- name: get_query_text_similarity
+  sig: 'get_query_text_similarity(query: str, texts: str) -> float'
+  lines:
+  - 110
+  - 116
+  detail:
+    calls:
+    - embed_text_array
+    - np.concatenate
+    - np.dot
+    - np.dot(embeddings, query_embedding.T).flatten
+    - similarity.tolist
+- name: get_most_similar_texts
+  sig: 'get_most_similar_texts(query: str, texts: list[str], top_n: int = 5) -> list[str]'
+  lines:
+  - 118
+  - 121
+  detail:
+    calls:
+    - get_query_text_similarity
+    - np.argsort
+exports:
+- name: count_tiktoken
+  kind: func
+- name: truncate_string_tiktoken
+  kind: func
+- name: hash_text
+  kind: func
+- name: normalize_l2
+  kind: func
+- name: embed_text_array
+  kind: func
+- name: openai_call_embedding
+  kind: func
+- name: openai_with_expo_backoff
+  kind: func
+- name: get_query_text_similarity
+  kind: func
+- name: get_most_similar_texts
+  kind: func
+- name: BATCH_SIZE
+  kind: data
+- name: REDIS_URL
+  kind: data
+- name: CACHE_VERSION
+  kind: data
+- name: DIMENSIONS_TO_KEEP
+  kind: data
+- name: openai_client
+  kind: data
+- name: redis_client
+  kind: data

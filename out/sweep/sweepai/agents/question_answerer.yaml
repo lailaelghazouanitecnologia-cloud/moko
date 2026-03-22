@@ -1,0 +1,491 @@
+## Roska File Descriptor — agents/question_answerer.py
+file: agents/question_answerer.py
+lines: 837
+layer: logic
+imports:
+- sym: subprocess
+- sym: loguru.logger
+- sym: sweepai.agents.agent_utils.Parameter
+- sym: sweepai.agents.agent_utils.get_function_call
+- sym: sweepai.agents.agent_utils.tool
+- sym: sweepai.core.chat.ChatGPT
+- sym: sweepai.core.snippet_utils.merge_snippet_ranges
+- sym: sweepai.utils.github_utils.ClonedRepo
+- sym: sweepai.utils.github_utils.MockClonedRepo
+- sym: sweepai.utils.ticket_utils.prep_snippets
+- sym: sweepai.core.entities.SNIPPET_FORMAT
+- sym: sweepai.core.entities.Snippet
+data:
+- name: file_search_agent_dependency_tree_initialisation
+  type: str
+  val: |-
+    """
+    You must also build and maintain a dependency tree of all code entities that you are working with.
+    Begin by identify...
+- name: file_search_agent_dependency_tree_update
+  type: str
+  val: "\"\"\"\nYou must also update the dependency tree with the new code entity that you have discovered. \nThen check if there are..."
+- name: DUPLICATE_QUESTION_MESSAGE
+  type: str
+  val: |-
+    """You've already asked this question: {question}
+
+    Please ask a different question. If you can not find the answer in th...
+- name: SEARCH_RESULT_INSTRUCTIONS
+  type: str
+  val: |-
+    """
+
+    First, think step-by-step in a scratchpad to analyze the search results and determine whether the answers provided ...
+- name: SEARCH_RESULT_INSTRUCTIONS_FILE_SEARCHER
+  type: str
+  val: |-
+    """
+
+    First, think step-by-step in a scratchpad to analyze the search results and determine whether the answers provided ...
+- name: RIPGREP_SEARCH_RESULT_INSTRUCTIONS
+  type: str
+  val: |-
+    """
+
+    First, think step-by-step in a scratchpad to analyze the search results and determine whether the answers provided ...
+- name: CORRECTED_SUBMIT_SOURCES_FORMAT
+  type: str
+  val: |-
+    """ERROR
+
+    Invalid sources format. Please provide the sources in the following format, including a file path, start and e...
+- name: FILE_NOT_FOUND_ERROR
+  type: str
+  val: |-
+    """ERROR
+
+    The following files do not exist in the codebase:
+    {file_paths}
+
+    Solve this by following these steps:
+    1. Think ...
+- name: tools
+  type: list
+  val: '[semantic_search, ripgrep, view_file, submit_task]'
+- name: tools_available
+  type: str
+  val: |-
+    """You have access to the following tools to assist in fulfilling the user request:
+
+    """ + "\n\n".join(tool.get_xml() fo...
+- name: example_tool_calls
+  type: str
+  val: |-
+    """Here are a list of illustrative examples of how to use the tools:
+
+    <examples>
+    To search the codebase for relevant sni...
+- name: example_tool_calls_file_searcher
+  type: str
+  val: |-
+    """Here are a list of illustrative examples of how to use the tools:
+
+    <examples>
+    To search the codebase for relevant sni...
+- name: search_agent_instructions
+  type: str
+  val: '"""You are an expert software developer tasked with finding relevant information in the codebase to resolve the user''s r...'
+- name: file_search_agent_instructions
+  type: str
+  val: |-
+    """You are an expert software developer assigned to solve a user provided request.
+    In order to resolve the user request ...
+- name: file_search_agent_user_message
+  type: str
+  val: |-
+    """Here is the user's request:
+
+    <user_request>
+    {question}
+    </user_request>
+
+    Now find all the relevant code files in the c...
+- name: search_agent_user_message
+  type: str
+  val: |-
+    """Here is the user's question:
+
+    <request>
+    {question}
+    </request>
+
+    Now find the relevant code snippets in the codebase to...
+- name: NO_TOOL_CALL_PROMPT
+  type: str
+  val: |-
+    """FAILURE
+    Your last function call was incorrectly formatted.
+
+    Make sure you provide XML tags for function_call, tool_na...
+- name: DEFAULT_FUNCTION_CALL
+  type: str
+  val: |-
+    """<function_call>
+    <semantic_search>
+    <question>{question}</question>
+    </semantic_search>
+    </function_call>"""
+- name: file_searcher_tools
+  type: list
+  val: '[vector_search, ripgrep, view_file, add_files_to_context, done_file_search]'
+- name: file_searcher_tools_available
+  type: str
+  val: |-
+    """You have access to the following tools to assist in identifying relevant files:
+
+    """ + "\n\n".join(tool.get_xml() for...
+- name: existing_snippet_format
+  type: str
+  val: |-
+    """
+    <snippet>
+    <file_name>
+    {file_name}
+    </file_name>
+    <source>
+    {source}
+    </source>
+    </snippet>
+    """
+types:
+- name: QuestionAnswererException
+  kind: struct
+  bases:
+  - Exception
+  fields:
+  - name: message
+    type: Any
+    default: message
+  methods:
+  - name: __init__
+    sig: __init__(self, ...1 params)
+    lines:
+    - 14
+    - 15
+  lines:
+  - 13
+  - 15
+functions:
+- name: search_codebase
+  sig: |-
+    search_codebase(
+        question: str,
+        cloned_repo: ClonedRepo,
+        k=5,
+        *args,
+        **kwargs,
+    )
+  lines:
+  - 121
+  - 137
+  detail:
+    calls:
+    - prep_snippets
+- name: semantic_search
+  sig: |-
+    semantic_search(
+        question: Parameter("A single, detailed, specific natural language search question to search the codebase for relevant snippets."),
+        cloned_repo: ClonedRepo,
+        llm_state: dict,
+    )
+  decorators:
+  - tool()
+  lines:
+  - 140
+  - 178
+  detail:
+    calls:
+    - '"\n".join'
+    - '"\n\n".join'
+    - DUPLICATE_QUESTION_MESSAGE.format
+    - SEARCH_RESULT_INSTRUCTIONS.format
+    - SNIPPET_FORMAT.format
+    - deepcopy
+    - list
+    - llm_state["visited_questions"].add
+    - llm_state["visited_snippets"].add
+    - question.strip
+    - search_codebase
+    - snippet.expand
+    - snippet.expand(expand_size).get_snippet
+    - snippets.append
+    - sorted
+- name: vector_search
+  sig: |-
+    vector_search(
+        question: Parameter("A single, detailed, specific natural language search question to search the codebase for relevant code snippets."),
+        cloned_repo: ClonedRepo,
+        llm_state: dict,
+    )
+  decorators:
+  - tool()
+  lines:
+  - 181
+  - 219
+  detail:
+    calls:
+    - '"\n".join'
+    - '"\n\n".join'
+    - DUPLICATE_QUESTION_MESSAGE.format
+    - SEARCH_RESULT_INSTRUCTIONS_FILE_SEARCHER.format
+    - SNIPPET_FORMAT.format
+    - deepcopy
+    - list
+    - llm_state["visited_questions"].add
+    - llm_state["visited_snippets"].add
+    - question.strip
+    - search_codebase
+    - snippet.expand
+    - snippet.expand(expand_size).get_snippet
+    - snippets.append
+    - sorted
+- name: post_filter_ripgrep_results
+  sig: |-
+    post_filter_ripgrep_results(
+        results: str,
+        max_line_length: int = 300,
+    )
+  lines:
+  - 249
+  - 259
+  detail:
+    calls:
+    - len
+    - output.strip
+    - results.splitlines
+- name: ripgrep
+  sig: |-
+    ripgrep(
+        query: Parameter("The keyword to search for in the codebase."),
+        cloned_repo: ClonedRepo,
+        llm_state: dict,
+    )
+  decorators:
+  - tool()
+  lines:
+  - 262
+  - 295
+  detail:
+    calls:
+    - '" ".join'
+    - '"\n".join'
+    - RIPGREP_SEARCH_RESULT_INSTRUCTIONS.format
+    - list
+    - post_filter_ripgrep_results
+    - sorted
+    - subprocess.run
+- name: view_file
+  sig: |-
+    view_file(
+        justification: Parameter("Justification for why you want to view this file."),
+        file_path: Parameter("The path to the file you want to view."),
+        cloned_repo: ClonedRepo,
+    )
+  decorators:
+  - tool()
+  lines:
+  - 298
+  - 312
+  detail:
+    calls:
+    - cloned_repo.get_file_contents
+    - file_contents.splitlines
+    - len
+    - logger.error
+- name: parse_sources
+  sig: 'parse_sources(sources: str, cloned_repo: ClonedRepo)'
+  lines:
+  - 348
+  - 371
+  detail:
+    calls:
+    - '"\n".join'
+    - Exception
+    - FILE_NOT_FOUND_ERROR.format
+    - Snippet
+    - cloned_repo.get_file_contents
+    - int
+    - max
+    - missing_files.append
+    - re.compile
+    - snippets.append
+    - source.group
+    - source_pattern.finditer
+- name: submit_task
+  sig: |-
+    submit_task(
+        answer: Parameter("The answer to the user's question."),
+        sources: Parameter("The sources of the answer."),
+        cloned_repo: ClonedRepo,
+        justification: str = "", # breaks without this line
+    )
+  decorators:
+  - tool()
+  lines:
+  - 374
+  - 391
+  detail:
+    calls:
+    - parse_sources
+    - str
+- name: add_files_to_context
+  sig: |-
+    add_files_to_context(
+        file_names: Parameter("The full paths of the files you want to add to context. Ensure correct spelling and capitalization. Separate multiple files with a comma."),
+        cloned_repo: ClonedRepo,
+        relevant_files: list[Snippet],
+        llm_state: dict,
+    )
+  decorators:
+  - tool()
+  lines:
+  - 394
+  - 499
+  detail:
+    calls:
+    - '", ".join'
+    - ''', ''.join'
+    - Snippet
+    - all_ranges.append
+    - bad_files.append
+    - cloned_repo.get_file_contents
+    - enumerate
+    - file_contents.splitlines
+    - file_name.split
+    - file_name.strip
+    - file_names.split
+    - file_range.split
+    - int
+    - len
+    - merge_snippet_ranges
+    - relevant_files.append
+    - relevant_files.pop
+    - set
+    - snippet_indexes.append
+- name: done_file_search
+  sig: |-
+    done_file_search(
+        reason: Parameter("Justification for why you are calling this tool and why you have found all relevant files."),
+        justification: str = "", # breaks without this line
+    )
+  decorators:
+  - tool()
+  lines:
+  - 502
+  - 509
+  detail: {}
+- name: rag
+  sig: |-
+    rag(
+        question: str,
+        cloned_repo: ClonedRepo,
+        model="claude-3-5-sonnet-20240620"
+    )
+  lines:
+  - 719
+  - 752
+  detail:
+    calls:
+    - ChatGPT.from_system_message_string
+    - QuestionAnswererException
+    - function_call.function_parameters.get
+    - get_function_call
+    - range
+    - search_agent_user_message.format
+    - set
+- name: file_searcher
+  sig: |-
+    file_searcher(
+        question: str,
+        cloned_repo: ClonedRepo,
+        existing_context: list[Snippet] = [],
+        model="claude-3-5-sonnet-20240620"
+    )
+  lines:
+  - 773
+  - 821
+  detail:
+    calls:
+    - ChatGPT.from_system_message_string
+    - QuestionAnswererException
+    - existing_snippet_format.format
+    - file_search_agent_user_message.format
+    - get_function_call
+    - range
+    - set
+    - snippet.get_snippet
+exports:
+- name: QuestionAnswererException
+  kind: type
+- name: search_codebase
+  kind: func
+- name: semantic_search
+  kind: func
+- name: vector_search
+  kind: func
+- name: post_filter_ripgrep_results
+  kind: func
+- name: ripgrep
+  kind: func
+- name: view_file
+  kind: func
+- name: parse_sources
+  kind: func
+- name: submit_task
+  kind: func
+- name: add_files_to_context
+  kind: func
+- name: done_file_search
+  kind: func
+- name: rag
+  kind: func
+- name: file_searcher
+  kind: func
+- name: file_search_agent_dependency_tree_initialisation
+  kind: data
+- name: file_search_agent_dependency_tree_update
+  kind: data
+- name: DUPLICATE_QUESTION_MESSAGE
+  kind: data
+- name: SEARCH_RESULT_INSTRUCTIONS
+  kind: data
+- name: SEARCH_RESULT_INSTRUCTIONS_FILE_SEARCHER
+  kind: data
+- name: RIPGREP_SEARCH_RESULT_INSTRUCTIONS
+  kind: data
+- name: CORRECTED_SUBMIT_SOURCES_FORMAT
+  kind: data
+- name: FILE_NOT_FOUND_ERROR
+  kind: data
+- name: tools
+  kind: data
+- name: tools_available
+  kind: data
+- name: example_tool_calls
+  kind: data
+- name: example_tool_calls_file_searcher
+  kind: data
+- name: search_agent_instructions
+  kind: data
+- name: file_search_agent_instructions
+  kind: data
+- name: file_search_agent_user_message
+  kind: data
+- name: search_agent_user_message
+  kind: data
+- name: NO_TOOL_CALL_PROMPT
+  kind: data
+- name: DEFAULT_FUNCTION_CALL
+  kind: data
+- name: file_searcher_tools
+  kind: data
+- name: file_searcher_tools_available
+  kind: data
+- name: existing_snippet_format
+  kind: data

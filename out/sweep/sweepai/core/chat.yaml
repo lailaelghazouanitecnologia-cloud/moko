@@ -1,0 +1,375 @@
+## Roska File Descriptor — core/chat.py
+file: core/chat.py
+lines: 711
+layer: logic
+imports:
+- sym: traceback
+- sym: anthropic.Anthropic
+- sym: anthropic.BadRequestError
+- sym: anthropic.AnthropicBedrock
+- sym: anthropic.Stream
+- sym: anthropic.types.MessageStreamEvent
+- sym: openai.OpenAI
+- sym: backoff
+- sym: loguru.logger
+- sym: pydantic.BaseModel
+- sym: sweepai.config.server.ALTERNATE_AWS
+- sym: sweepai.config.server.ANTHROPIC_AVAILABLE
+- sym: sweepai.config.server.AWS_ACCESS_KEY
+- sym: sweepai.config.server.AWS_REGION
+- sym: sweepai.config.server.AWS_SECRET_KEY
+- sym: sweepai.config.server.DEFAULT_GPT4_MODEL
+- sym: sweepai.config.server.PAREA_API_KEY
+- sym: sweepai.core.entities.Message
+- sym: sweepai.core.prompts.system_message_prompt
+- sym: sweepai.core.viz_utils.save_messages_for_visualization
+- sym: sweepai.logn.cache.file_cache
+- sym: sweepai.utils.anthropic_client.sanitize_anthropic_messages
+- sym: sweepai.utils.chat_logger.ChatLogger
+- sym: sweepai.utils.event_logger.posthog
+- sym: sweepai.utils.image_utils.create_message_with_images
+- sym: sweepai.utils.openai_proxy.OpenAIProxy
+- sym: sweepai.utils.str_utils.truncate_text_based_on_stop_sequence
+- sym: sweepai.utils.tiktoken_utils.Tiktoken
+- sym: parea.Parea
+data:
+- name: parea_client
+  type: None
+  val: None
+- name: openai_proxy
+  type: Any
+  val: OpenAIProxy()
+- name: OpenAIModel
+  type: tuple
+  val: |-
+    (
+        Literal["gpt-3.5-turbo"]
+        | Literal["gpt-3.5-turbo-1106"]
+        | Literal["gpt-3.5-turbo-16k"]
+        | Literal["gpt...
+- name: AnthropicModel
+  type: tuple
+  val: |-
+    (
+        Literal["claude-3-haiku-20240307"]
+        | Literal["claude-3-sonnet-20240229"]
+        | Literal["claude-3-5-sonnet-2024...
+- name: ChatModel
+  type: Any
+  val: OpenAIModel | AnthropicModel
+- name: model_to_max_tokens
+  type: dict
+  val: |-
+    {
+        "gpt-3.5-turbo": 4096,
+        "gpt-3.5-turbo-1106": 16385,
+        "gpt-3.5-turbo-16k": 16385,
+        "gpt-4-1106-preview": ...
+- name: default_temperature
+  type: float
+  val: '0.1'
+- name: MAX_CHARS
+  type: int
+  val: '32000'
+- name: tool_call_parameters
+  type: dict
+  val: |-
+    {
+        "make_change": ["justification", "file_name", "original_code", "new_code", "replace_all"],
+        "create_file": ["ju...
+types:
+- name: MessageList
+  kind: model
+  bases:
+  - BaseModel
+  fields:
+  - name: messages
+    type: Any
+    default: list[Message]
+  methods:
+  - name: messages_dicts
+    sig: messages_dicts(self)
+    decorators:
+    - property
+    lines:
+    - 120
+    - 123
+    detail:
+      calls:
+      - message.to_openai
+  lines:
+  - 111
+  - 123
+- name: ChatGPT
+  kind: struct
+  bases:
+  - MessageList
+  fields:
+  - name: prev_message_states
+    type: Any
+    default: list[list[Message]]
+  - name: model
+    type: Any
+    default: ChatModel
+  - name: chat_logger
+    type: Any
+    default: ChatLogger | None
+  - name: file_change_paths
+    type: Any
+    default: list[str]
+  - name: temperature
+    type: Any
+    default: float
+  methods:
+  - name: from_system_message_string
+    sig: |-
+      from_system_message_string(
+              cls, prompt_string: str, chat_logger: ChatLogger | None = None, **kwargs
+          ) -> Any
+    decorators:
+    - classmethod
+    lines:
+    - 216
+    - 223
+    detail:
+      calls:
+      - Message
+      - cls
+  - name: chat
+    sig: |-
+      chat(
+              self,
+              content: str,
+              model: ChatModel | None = None,
+              message_key: str | None = None,
+              temperature: float | None = None,
+              max_tokens: int | None = None,
+              stop_sequences: list[str] = [],
+          )
+    lines:
+    - 225
+    - 251
+    detail:
+      calls:
+      - Message
+      - self.call_openai
+      - self.messages.append
+      - self.prev_message_states.append
+  - name: call_openai
+    sig: |-
+      call_openai(
+              self,
+              model: ChatModel | None = None,
+              temperature=temperature,
+              requested_max_tokens: int | None = None,
+              stop_sequences: list[str] = [],
+          )
+    decorators:
+    - file_cache(ignore_params=["chat_logger", "cloned_repo"])
+    lines:
+    - 254
+    - 352
+    detail:
+      calls:
+      - '"\n".join'
+      - Tiktoken
+      - ValueError
+      - backoff.on_exception
+      - count_tokens
+      - determine_model_from_chat_logger
+      - fetch
+      - int
+      - len
+      - logger.info
+      - messages_dicts.append
+      - min
+      - self.file_change_paths.remove
+      - sum
+  - name: chat_anthropic
+    sig: |-
+      chat_anthropic(
+              self,
+              content: str,
+              assistant_message_content: str = "",
+              model: ChatModel = "claude-3-haiku-20240307",
+              message_key: str | None = None,
+              temperature: float | None = None,
+              stop_sequences: list[str] = [],
+              max_tokens: int = 4096,
+              use_openai: bool = False,
+              verbose: bool = True,
+              images: list[tuple[str, str, str]] | None = None,
+              stream: bool = False,
+              seed: int | None = None,
+          ) -> str | Iterator[str]
+    lines:
+    - 354
+    - 630
+    detail:
+      calls:
+      - '"\n\n".join'
+      - Exception
+      - Message
+      - add_images_to_messages
+      - call_anthropic
+      - file_cache
+      - llm_stream
+      - logger.debug
+      - logger.exception
+      - os.environ.get
+      - range
+      - sanitize_anthropic_messages
+      - save_messages_for_visualization
+      - self.messages.append
+      - self.prev_message_states.append
+      - time.sleep
+  - name: messages_dicts
+    sig: messages_dicts(self)
+    decorators:
+    - property
+    lines:
+    - 633
+    - 636
+    detail:
+      calls:
+      - message.to_openai
+  - name: undo
+    sig: undo(self)
+    lines:
+    - 638
+    - 641
+    detail:
+      calls:
+      - len
+      - self.prev_message_states.pop
+  lines:
+  - 205
+  - 641
+functions:
+- name: ensure_additional_messages_length
+  sig: 'ensure_additional_messages_length(additional_messages: list[Message]) -> list[Message]'
+  lines:
+  - 89
+  - 109
+  detail:
+    calls:
+    - Message
+    - additional_messages.insert
+    - enumerate
+    - len
+    - textwrap.TextWrapper
+    - wrapper.wrap
+- name: determine_model_from_chat_logger
+  sig: 'determine_model_from_chat_logger(chat_logger: ChatLogger, model: str)'
+  lines:
+  - 126
+  - 155
+  detail:
+    calls:
+    - ValueError
+    - chat_logger.get_ticket_count
+    - chat_logger.is_consumer_tier
+    - chat_logger.is_paying_user
+    - logger.info
+- name: parse_function_call_parameters
+  sig: 'parse_function_call_parameters(tool_call_contents: str, parameters: list[str]) -> dict[str, Any]'
+  lines:
+  - 167
+  - 175
+  detail:
+    calls:
+    - match.group
+    - re.search
+- name: parse_function_calls
+  sig: 'parse_function_calls(response_contents: str) -> list[dict[str, str]]'
+  lines:
+  - 178
+  - 193
+  detail:
+    calls:
+    - parse_function_call_parameters
+    - re.finditer
+    - tool_call_match.group
+    - tool_call_parameters.keys
+    - tool_calls.append
+- name: add_images_to_messages
+  sig: 'add_images_to_messages(message_dicts: list[dict[str, str]], images: list[tuple[str, str, str]], use_openai: bool = False)'
+  lines:
+  - 196
+  - 203
+  detail:
+    calls:
+    - create_message_with_images
+    - new_message_dicts.append
+- name: call_llm
+  sig: |-
+    call_llm(
+        system_prompt: str,
+        user_prompt: str,
+        params: dict = {},
+        *args,
+        **kwargs,
+    )
+  lines:
+  - 643
+  - 661
+  detail:
+    calls:
+    - ChatGPT.from_system_message_string
+    - chat_gpt.chat_anthropic
+    - user_prompt.format
+- name: continuous_llm_calls
+  sig: "continuous_llm_calls(\n    chat_gpt: ChatGPT,\n    *args,\n    stop_sequences: list[str] = [\"</plan>\"],\n    MAX_CALLS = 10,\n    use_openai: bool = False,\n    response_cleanup: Callable[[str], str] = lambda x: x,\n    **kwargs    \n)"
+  lines:
+  - 663
+  - 711
+  detail:
+    calls:
+    - '"\n".join'
+    - any
+    - chat_gpt.chat_anthropic
+    - kwargs.pop
+    - len
+    - logger.error
+    - max
+    - response.rfind
+    - response.split
+    - response[:last_line_index].rstrip
+    - response_cleanup
+exports:
+- name: MessageList
+  kind: type
+- name: ChatGPT
+  kind: type
+- name: ensure_additional_messages_length
+  kind: func
+- name: determine_model_from_chat_logger
+  kind: func
+- name: parse_function_call_parameters
+  kind: func
+- name: parse_function_calls
+  kind: func
+- name: add_images_to_messages
+  kind: func
+- name: call_llm
+  kind: func
+- name: continuous_llm_calls
+  kind: func
+- name: parea_client
+  kind: data
+- name: openai_proxy
+  kind: data
+- name: OpenAIModel
+  kind: data
+- name: AnthropicModel
+  kind: data
+- name: ChatModel
+  kind: data
+- name: model_to_max_tokens
+  kind: data
+- name: default_temperature
+  kind: data
+- name: MAX_CHARS
+  kind: data
+- name: tool_call_parameters
+  kind: data

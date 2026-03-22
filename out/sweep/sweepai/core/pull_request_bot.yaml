@@ -1,0 +1,148 @@
+## Roska File Descriptor — core/pull_request_bot.py
+file: core/pull_request_bot.py
+lines: 221
+layer: logic
+imports:
+- sym: loguru.logger
+- sym: sweepai.core.chat.ChatGPT
+- sym: sweepai.core.chat.call_llm
+- sym: sweepai.core.entities.Message
+- sym: sweepai.handlers.create_pr.INSTRUCTIONS_FOR_REVIEW
+- sym: sweepai.utils.chat_logger.ChatLogger
+- sym: sweepai.utils.diff.generate_diff
+- sym: sweepai.utils.str_utils.BOT_SUFFIX
+- sym: sweepai.utils.str_utils.extract_xml_tag
+- sym: sweepai.utils.ticket_rendering_utils.get_branch_diff_text
+data:
+- name: commit_message_system_prompt
+  type: str
+  val: |-
+    """Create a concise, informative commit message for GitHub from the code changes.
+
+    The output must:
+    1. Use an imperative...
+- name: commit_message_user_prompt
+  type: str
+  val: |-
+    """Below are a series of file diffs to create a github commit message for:
+
+    {file_diffs}"""
+- name: pr_summary_system_prompt
+  type: str
+  val: '"""You are a helpful, excellent developer who is creating a pull request for a feature or bug fix. You need to write a p...'
+- name: pr_summary_prompt
+  type: str
+  val: |-
+    """\
+    Write a pull request description that reflects all changes in this pull request. Here is the issue that this pull r...
+- name: GHA_SUMMARY_START
+  type: str
+  val: '"<!-- GHA_SUMMARY_START -->"'
+- name: GHA_SUMMARY_END
+  type: str
+  val: '"<!-- GHA_SUMMARY_END -->"'
+- name: pr_summary_for_chat_system_prompt
+  type: str
+  val: '"""You are a helpful, excellent developer who is creating a pull request for a feature or bug fix. You need to write a p...'
+- name: pr_summary_for_chat_prompt
+  type: str
+  val: |-
+    """\
+    Write a pull request description that reflects all changes in this pull request, for the repository {repo_name}.
+
+    H...
+types:
+- name: PRSummaryBot
+  kind: struct
+  bases:
+  - ChatGPT
+  methods:
+  - name: get_commit_message
+    sig: "get_commit_message(\n        self, \n        modify_files_dict: dict[str, dict[str, str]], \n        renames_dict: dict[str, str] = {},\n        previous_modify_files_dict: dict[str, dict[str, str]] = {},\n        chat_logger: ChatLogger = None\n    )"
+    lines:
+    - 71
+    - 124
+    detail:
+      calls:
+      - Message
+      - commit_message_user_prompt.format
+      - file_diffs.strip
+      - generate_diff
+      - len
+      - logger.error
+      - modify_files_dict.items
+      - renames_dict.items
+      - self.chat_anthropic
+      - self.extract_commit_message
+  - name: extract_commit_message
+    sig: 'extract_commit_message(self, response: str)'
+    lines:
+    - 126
+    - 132
+    detail:
+      calls:
+      - commit_message_match.group
+      - commit_message_match.group("commit_message").strip
+      - re.search
+  - name: get_pull_request_summary
+    sig: |-
+      get_pull_request_summary(
+              problem_statement,
+              issue_number,
+              repo,
+              overrided_branch_name,
+              pull_request,
+              pr_changes
+          )
+    lines:
+    - 134
+    - 170
+    detail:
+      calls:
+      - call_llm
+      - get_branch_diff_text
+      - pr_desc_matches.group
+      - pr_title_matches.group
+      - re.search
+  lines:
+  - 68
+  - 170
+functions:
+- name: get_pr_summary_for_chat
+  sig: |-
+    get_pr_summary_for_chat(
+        repo_name: str,
+        messages: list[Message],
+        modify_files_dict: dict,
+    )
+  lines:
+  - 200
+  - 221
+  detail:
+    calls:
+    - '"\n\n".join'
+    - call_llm
+    - extract_xml_tag
+    - generate_diff
+    - modify_files_dict.items
+exports:
+- name: PRSummaryBot
+  kind: type
+- name: get_pr_summary_for_chat
+  kind: func
+- name: commit_message_system_prompt
+  kind: data
+- name: commit_message_user_prompt
+  kind: data
+- name: pr_summary_system_prompt
+  kind: data
+- name: pr_summary_prompt
+  kind: data
+- name: GHA_SUMMARY_START
+  kind: data
+- name: GHA_SUMMARY_END
+  kind: data
+- name: pr_summary_for_chat_system_prompt
+  kind: data
+- name: pr_summary_for_chat_prompt
+  kind: data
