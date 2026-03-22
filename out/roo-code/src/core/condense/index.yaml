@@ -1,0 +1,251 @@
+## Roska File Descriptor — condense/index.ts
+file: condense/index.ts
+lines: 701
+layer: logic
+imports:
+- sym: '@anthropic-ai/sdk.Anthropic'
+- sym: crypto.crypto
+- sym: '@roo-code/telemetry.TelemetryService'
+- sym: ../../i18n.t
+- sym: ../../api.ApiHandler
+- sym: ../../api.ApiHandlerCreateMessageMetadata
+- sym: ../task-persistence/apiMessages.ApiMessage
+- sym: ../../api/transform/image-cleaning.maybeRemoveImageBlocks
+- sym: ../../shared/array.findLast
+- sym: ../../shared/support-prompt.supportPrompt
+- sym: ../ignore/RooIgnoreController.RooIgnoreController
+- sym: ./foldedFileContext.generateFoldedFileContext
+data:
+- name: MIN_CONDENSE_THRESHOLD
+  type: number
+  val: '5'
+- name: MAX_CONDENSE_THRESHOLD
+  type: number
+  val: '100'
+- name: SUMMARY_PROMPT
+  type: string
+  val: |-
+    `You are a helpful AI assistant tasked with summarizing conversations.
+
+    CRITICAL: This is a summarization-only request. ...
+types:
+- name: SummarizeResponse
+  kind: typealias
+  decorators:
+  - type
+  fields:
+  - name: messages
+    type: ApiMessage[]
+  - name: summary
+    type: string
+  - name: cost
+    type: number
+  - name: newContextTokens
+    type: number
+  - name: error
+    type: string
+  - name: errorDetails
+    type: string
+  - name: condenseId
+    type: string
+  lines:
+  - 214
+  - 222
+- name: SummarizeConversationOptions
+  kind: typealias
+  decorators:
+  - type
+  fields:
+  - name: messages
+    type: ApiMessage[]
+  - name: apiHandler
+    type: ApiHandler
+  - name: systemPrompt
+    type: string
+  - name: taskId
+    type: string
+  - name: isAutomaticTrigger
+    type: boolean
+  - name: customCondensingPrompt
+    type: string
+  - name: metadata
+    type: ApiHandlerCreateMessageMetadata
+  - name: environmentDetails
+    type: string
+  - name: filesReadByRoo
+    type: string[]
+  - name: cwd
+    type: string
+  - name: rooIgnoreController
+    type: RooIgnoreController
+  lines:
+  - 224
+  - 236
+functions:
+- name: toolUseToText
+  sig: 'toolUseToText(block: Anthropic.Messages.ToolUseBlockParam): string'
+  lines:
+  - 21
+  - 35
+  detail:
+    calls:
+    - Object.entries
+    - "Object.entries(block.input)\n\t\t\t.map"
+    - "Object.entries(block.input)\n\t\t\t.map(([key, value]) => {\n\t\t\t\tconst formattedValue =\n\t\t\t\t\ttypeof value..."
+    - String
+- name: toolResultToText
+  sig: 'toolResultToText(block: Anthropic.Messages.ToolResultBlockParam): string'
+  lines:
+  - 41
+  - 61
+  detail:
+    calls:
+    - Array.isArray
+    - "block.content\n\t\t\t.map"
+    - "block.content\n\t\t\t.map((contentBlock) => {\n\t\t\t\tif (contentBlock.type === \"text\") {\n\t\t\t\t\treturn conten..."
+- name: convertToolBlocksToText
+  sig: "convertToolBlocksToText(\n\tcontent: string | Anthropic.Messages.ContentBlockParam[],\n): string | Anthropic.Messages.ContentBlockParam[]"
+  lines:
+  - 71
+  - 93
+  detail:
+    calls:
+    - content.map
+- name: transformMessagesForCondensing
+  sig: 'transformMessagesForCondensing(messages: T[]): T[]'
+  lines:
+  - 102
+  - 109
+  detail:
+    calls:
+    - messages.map
+- name: injectSyntheticToolResults
+  sig: 'injectSyntheticToolResults(messages: ApiMessage[]): ApiMessage[]'
+  lines:
+  - 134
+  - 178
+  detail:
+    calls:
+    - Array.isArray
+    - Date.now
+    - '[...toolCallIds].filter'
+    - new Set
+    - orphanIds.map
+    - toolCallIds.add
+    - toolResultIds.add
+- name: extractCommandBlocks
+  sig: 'extractCommandBlocks(message: ApiMessage): string'
+  lines:
+  - 187
+  - 212
+  detail:
+    calls:
+    - Array.isArray
+    - "content\n\t\t\t.filter"
+    - "content\n\t\t\t.filter((block): block is Anthropic.Messages.TextBlockParam => block.type === \"text\")\n\t\t\t..."
+    - matches.join
+    - text.match
+- name: summarizeConversation
+  sig: 'summarizeConversation(options: SummarizeConversationOptions): Promise<SummarizeResponse>'
+  is_async: true
+  lines:
+  - 256
+  - 510
+  detail:
+    calls:
+    - Date.now
+    - JSON.stringify
+    - String
+    - TelemetryService.instance.captureContextCondensed
+    - '[systemPromptMessage, summaryMessage].flatMap'
+    - apiHandler.countTokens
+    - apiHandler.createMessage
+    - console.error
+    - crypto.randomUUID
+    - customCondensingPrompt?.trim
+    - environmentDetails?.trim
+    - extractCommandBlocks
+    - generateFoldedFileContext
+    - getMessagesSinceLastSummary
+    - injectSyntheticToolResults
+    - maybeRemoveImageBlocks
+    - messages.map
+    - messagesToSummarize.some
+    - messagesWithTextToolBlocks.map
+    - newMessages.push
+    - section.trim
+    - summary.trim
+    - summaryContent.push
+    - t
+    - transformMessagesForCondensing
+- name: getMessagesSinceLastSummary
+  sig: 'getMessagesSinceLastSummary(messages: ApiMessage[]): ApiMessage[]'
+  lines:
+  - 519
+  - 528
+  detail:
+    calls:
+    - '[...messages].reverse'
+    - '[...messages].reverse().findIndex'
+    - messages.slice
+- name: getEffectiveApiHistory
+  sig: 'getEffectiveApiHistory(messages: ApiMessage[]): ApiMessage[]'
+  lines:
+  - 546
+  - 640
+  detail:
+    calls:
+    - Array.isArray
+    - existingSummaryIds.add
+    - existingTruncationIds.add
+    - findLast
+    - messages.filter
+    - messages.indexOf
+    - messages.slice
+    - "messagesFromSummary\n\t\t\t.map"
+    - "messagesFromSummary\n\t\t\t.map((msg) => {\n\t\t\t\tif (msg.role === \"user\" && Array.isArray(msg.content)) {\n..."
+    - messagesFromSummary.filter
+    - new Set
+    - toolUseIds.add
+- name: cleanupAfterTruncation
+  sig: 'cleanupAfterTruncation(messages: ApiMessage[]): ApiMessage[]'
+  lines:
+  - 653
+  - 701
+  detail:
+    calls:
+    - existingSummaryIds.add
+    - existingTruncationIds.add
+    - messages.map
+    - new Set
+exports:
+- name: SummarizeResponse
+  kind: type
+- name: SummarizeConversationOptions
+  kind: type
+- name: toolUseToText
+  kind: func
+- name: toolResultToText
+  kind: func
+- name: convertToolBlocksToText
+  kind: func
+- name: transformMessagesForCondensing
+  kind: func
+- name: injectSyntheticToolResults
+  kind: func
+- name: extractCommandBlocks
+  kind: func
+- name: summarizeConversation
+  kind: func
+- name: getMessagesSinceLastSummary
+  kind: func
+- name: getEffectiveApiHistory
+  kind: func
+- name: cleanupAfterTruncation
+  kind: func
+- name: MIN_CONDENSE_THRESHOLD
+  kind: data
+- name: MAX_CONDENSE_THRESHOLD
+  kind: data
+- name: SUMMARY_PROMPT
+  kind: data

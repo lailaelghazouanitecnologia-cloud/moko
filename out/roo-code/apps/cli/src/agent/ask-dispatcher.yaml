@@ -1,0 +1,320 @@
+## Roska File Descriptor — agent/ask-dispatcher.ts
+file: agent/ask-dispatcher.ts
+lines: 664
+layer: logic
+purpose: 'AskDispatcher - Routes ask messages to appropriate handlers This dispatcher is responsible for: - Categorizing ask types using type guards from client module - Routing to the appropriate handler based on ask category - Coordinating between OutputManager and PromptManager - Tracking which asks have been handled (to avoid duplicates) Design notes: - Uses isIdleAsk, isInteractiveAsk, isResumableAsk, isNonBlockingAsk type guards - Single responsibility: Ask routing and handling only - Delegates output to OutputManager, input to PromptManager - Sends responses back through a provided callback'
+imports:
+- sym: '@roo-code/types.type WebviewMessage'
+- sym: '@roo-code/types.type ClineMessage'
+- sym: '@roo-code/types.type ClineAsk'
+- sym: '@roo-code/types.type ClineAskResponse'
+- sym: '@roo-code/types.isIdleAsk'
+- sym: '@roo-code/types.isInteractiveAsk'
+- sym: '@roo-code/types.isResumableAsk'
+- sym: '@roo-code/types.isNonBlockingAsk'
+- sym: '@roo-code/core/cli.debugLog'
+- sym: '@/types/index.js.FOLLOWUP_TIMEOUT_SECONDS'
+- sym: ./output-manager.js.OutputManager
+  kind: typing
+- sym: ./prompt-manager.js.PromptManager
+  kind: typing
+types:
+- name: AskDispatcherOptions
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: outputManager
+    type: OutputManager
+  - name: promptManager
+    type: PromptManager
+  - name: sendMessage
+    type: '(message: WebviewMessage) => void'
+  - name: nonInteractive
+    type: boolean
+  - name: exitOnError
+    type: boolean
+  - name: disabled
+    type: boolean
+  lines:
+  - 41
+  - 72
+- name: AskHandleResult
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: handled
+    type: boolean
+  - name: response
+    type: ClineAskResponse
+  - name: error
+    type: Error
+  lines:
+  - 77
+  - 84
+- name: AskDispatcher
+  kind: struct
+  ctx: 'Track which asks have been handled to avoid duplicates. Key: message ts'
+  fields:
+  - name: outputManager
+    type: OutputManager
+  - name: promptManager
+    type: PromptManager
+  - name: sendMessage
+    type: '(message: WebviewMessage) => void'
+  - name: nonInteractive
+    type: boolean
+  - name: exitOnError
+    type: boolean
+  - name: disabled
+    type: boolean
+  - name: handledAsks
+    type: any
+    default: new Set<number>()
+  methods:
+  - name: constructor
+    sig: 'constructor(options: AskDispatcherOptions)'
+    lines:
+    - 104
+    - 111
+    detail: {}
+  - name: handleAsk
+    sig: 'handleAsk(message: ClineMessage): Promise<AskHandleResult>'
+    is_async: true
+    lines:
+    - 124
+    - 181
+    detail:
+      calls:
+      - String
+      - debugLog
+      - isIdleAsk
+      - isInteractiveAsk
+      - isNonBlockingAsk
+      - isResumableAsk
+      - new Error
+      - this.handleIdleAsk
+      - this.handleInteractiveAsk
+      - this.handleNonBlockingAsk
+      - this.handleResumableAsk
+      - this.handleUnknownAsk
+      - this.handledAsks.add
+      - this.handledAsks.delete
+      - this.handledAsks.has
+  - name: isHandled
+    sig: 'isHandled(ts: number): boolean'
+    lines:
+    - 186
+    - 188
+    detail:
+      calls:
+      - this.handledAsks.has
+  - name: clear
+    sig: 'clear(): void'
+    lines:
+    - 193
+    - 195
+    detail:
+      calls:
+      - this.handledAsks.clear
+  - name: handleNonBlockingAsk
+    sig: 'handleNonBlockingAsk(_ts: number, _ask: ClineAsk, _text: string): Promise<AskHandleResult>'
+    is_async: true
+    vis: private
+    lines:
+    - 205
+    - 210
+    detail:
+      calls:
+      - this.sendApprovalResponse
+  - name: handleIdleAsk
+    sig: 'handleIdleAsk(ts: number, ask: ClineAsk, text: string): Promise<AskHandleResult>'
+    is_async: true
+    vis: private
+    lines:
+    - 216
+    - 237
+    detail:
+      calls:
+      - this.handleApiFailedRetry
+      - this.handleAutoApprovalMaxReached
+      - this.handleMistakeLimitReached
+      - this.handleResumeTask
+  - name: handleResumableAsk
+    sig: 'handleResumableAsk(ts: number, ask: ClineAsk, text: string): Promise<AskHandleResult>'
+    is_async: true
+    vis: private
+    lines:
+    - 242
+    - 244
+    detail:
+      calls:
+      - this.handleResumeTask
+  - name: handleInteractiveAsk
+    sig: 'handleInteractiveAsk(ts: number, ask: ClineAsk, text: string): Promise<AskHandleResult>'
+    is_async: true
+    vis: private
+    lines:
+    - 250
+    - 267
+    detail:
+      calls:
+      - this.handleCommandApproval
+      - this.handleFollowupQuestion
+      - this.handleMcpApproval
+      - this.handleToolApproval
+  - name: handleUnknownAsk
+    sig: 'handleUnknownAsk(ts: number, ask: ClineAsk, text: string): Promise<AskHandleResult>'
+    is_async: true
+    vis: private
+    lines:
+    - 272
+    - 281
+    detail:
+      calls:
+      - this.handleGenericApproval
+      - this.outputManager.output
+  - name: handleFollowupQuestion
+    sig: 'handleFollowupQuestion(ts: number, text: string): Promise<AskHandleResult>'
+    is_async: true
+    vis: private
+    lines:
+    - 290
+    - 357
+    detail:
+      calls:
+      - Array.isArray
+      - JSON.parse
+      - Math.round
+      - answer.trim
+      - result.value.trim
+      - suggestions.forEach
+      - this.outputManager.output
+      - this.promptManager.promptForInput
+      - this.promptManager.promptWithTimeout
+      - this.resolveNumberedSuggestion
+      - this.sendFollowupResponse
+  - name: handleCommandApproval
+    sig: 'handleCommandApproval(ts: number, text: string): Promise<AskHandleResult>'
+    is_async: true
+    vis: private
+    lines:
+    - 362
+    - 381
+    detail:
+      calls:
+      - this.outputManager.markDisplayed
+      - this.outputManager.output
+      - this.promptManager.promptForYesNo
+      - this.sendApprovalResponse
+  - name: handleToolApproval
+    sig: 'handleToolApproval(ts: number, text: string): Promise<AskHandleResult>'
+    is_async: true
+    vis: private
+    lines:
+    - 386
+    - 442
+    detail:
+      calls:
+      - JSON.parse
+      - JSON.stringify
+      - Object.entries
+      - String
+      - json.substring
+      - this.outputManager.markDisplayed
+      - this.outputManager.output
+      - this.promptManager.promptForYesNo
+      - this.sendApprovalResponse
+      - value.substring
+  - name: handleMcpApproval
+    sig: 'handleMcpApproval(ts: number, text: string): Promise<AskHandleResult>'
+    is_async: true
+    vis: private
+    lines:
+    - 447
+    - 489
+    detail:
+      calls:
+      - JSON.parse
+      - this.outputManager.markDisplayed
+      - this.outputManager.output
+      - this.promptManager.promptForYesNo
+      - this.sendApprovalResponse
+  - name: handleApiFailedRetry
+    sig: 'handleApiFailedRetry(ts: number, text: string): Promise<AskHandleResult>'
+    is_async: true
+    vis: private
+    lines:
+    - 494
+    - 519
+    detail:
+      calls:
+      - console.error
+      - process.exit
+      - this.outputManager.markDisplayed
+      - this.outputManager.output
+      - this.promptManager.promptForYesNo
+      - this.sendApprovalResponse
+  - name: handleMistakeLimitReached
+    sig: 'handleMistakeLimitReached(ts: number, text: string): Promise<AskHandleResult>'
+    is_async: true
+    vis: private
+    lines:
+    - 524
+    - 546
+    detail:
+      calls:
+      - this.outputManager.markDisplayed
+      - this.outputManager.output
+      - this.promptManager.promptForYesNo
+      - this.sendApprovalResponse
+  - name: handleAutoApprovalMaxReached
+    sig: 'handleAutoApprovalMaxReached(ts: number, text: string): Promise<AskHandleResult>'
+    is_async: true
+    vis: private
+    lines:
+    - 551
+    - 573
+    detail:
+      calls:
+      - this.outputManager.markDisplayed
+      - this.outputManager.output
+      - this.promptManager.promptForYesNo
+      - this.sendApprovalResponse
+  - name: handleResumeTask
+    sig: 'handleResumeTask(ts: number, ask: ClineAsk, text: string): Promise<AskHandleResult>'
+    is_async: true
+    vis: private
+    lines:
+    - 578
+    - 602
+    detail:
+      calls:
+      - this.outputManager.markDisplayed
+      - this.outputManager.output
+      - this.promptManager.promptForYesNo
+      - this.sendApprovalResponse
+  - name: handleGenericApproval
+    sig: 'handleGenericApproval(ts: number, ask: ClineAsk, text: string): Promise<AskHandleResult>'
+    is_async: true
+    vis: private
+    lines:
+    - 607
+    - 623
+    detail:
+      calls:
+      - this.outputManager.markDisplayed
+      - this.outputManager.output
+      - this.promptManager.promptForYesNo
+      - this.sendApprovalResponse
+  lines:
+  - 90
+  - 664
+exports:
+- name: AskDispatcherOptions
+  kind: type
+- name: AskHandleResult
+  kind: type
+- name: AskDispatcher
+  kind: type

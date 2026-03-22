@@ -1,0 +1,301 @@
+## Roska File Descriptor — providers/openai-native.ts
+file: providers/openai-native.ts
+lines: 1585
+layer: logic
+imports:
+- sym: '@anthropic-ai/sdk.Anthropic'
+- sym: openai.OpenAI
+- sym: ../../shared/package.Package
+- sym: '@roo-code/types.type ModelInfo'
+- sym: '@roo-code/types.openAiNativeDefaultModelId'
+- sym: '@roo-code/types.OpenAiNativeModelId'
+- sym: '@roo-code/types.openAiNativeModels'
+- sym: '@roo-code/types.OPENAI_NATIVE_DEFAULT_TEMPERATURE'
+- sym: '@roo-code/types.type ReasoningEffort'
+- sym: '@roo-code/types.type VerbosityLevel'
+- sym: '@roo-code/types.type ReasoningEffortExtended'
+- sym: '@roo-code/types.type ServiceTier'
+- sym: '@roo-code/types.ApiProviderError'
+- sym: '@roo-code/telemetry.TelemetryService'
+- sym: ../../shared/api.ApiHandlerOptions
+  kind: typing
+- sym: ../../shared/cost.calculateApiCostOpenAI
+- sym: ../transform/stream.ApiStream
+- sym: ../transform/stream.ApiStreamUsageChunk
+- sym: ../transform/model-params.getModelParams
+- sym: ./base-provider.BaseProvider
+- sym: ../index.SingleCompletionHandler
+  kind: typing
+- sym: ../index.ApiHandlerCreateMessageMetadata
+  kind: typing
+- sym: ../../utils/mcp-name.isMcpTool
+- sym: ../../utils/tool-id.sanitizeOpenAiCallId
+types:
+- name: OpenAiNativeModel
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 33
+  - 33
+- name: OpenAiNativeHandler
+  kind: struct
+  ctx: Session ID for request tracking (persists for the lifetime of the handler)
+  bases:
+  - BaseProvider
+  - SingleCompletionHandler
+  fields:
+  - name: options
+    type: ApiHandlerOptions
+  - name: client
+    type: OpenAI
+  - name: providerName
+    type: any
+    default: '"OpenAI Native"'
+  - name: sessionId
+    type: string
+  - name: pendingToolCallId
+    type: string | undefined
+  - name: pendingToolCallName
+    type: string | undefined
+  - name: sawTextOutputInCurrentResponse
+    type: any
+    default: 'false'
+  - name: sawTextDeltaInCurrentResponse
+    type: any
+    default: 'false'
+  - name: streamedToolCallIds
+    type: any
+    default: new Set<string>()
+  - name: lastServiceTier
+    type: ServiceTier | undefined
+  - name: lastResponseOutput
+    type: any[] | undefined
+  - name: lastResponseId
+    type: string | undefined
+  - name: abortController
+    type: AbortController
+  - name: coreHandledEventTypes
+    type: any
+    default: "new Set<string>([\n\t\t\"response.text.delta\",\n\t\t\"response.output_text.delta\",\n\t\t\"re..."
+  methods:
+  - name: constructor
+    sig: 'constructor(options: ApiHandlerOptions)'
+    lines:
+    - 86
+    - 108
+    detail:
+      calls:
+      - new OpenAI
+      - os.arch
+      - os.platform
+      - os.release
+      - process.version.slice
+      - super
+      - uuidv7
+  - name: normalizeUsage
+    sig: 'normalizeUsage(usage: any, model: OpenAiNativeModel): ApiStreamUsageChunk | undefined'
+    vis: private
+    lines:
+    - 110
+    - 170
+    detail:
+      calls:
+      - calculateApiCostOpenAI
+      - this.applyServiceTierPricing
+  - name: createMessage
+    sig: "createMessage(\n\t\tsystemPrompt: string,\n\t\tmessages: Anthropic.Messages.MessageParam[],\n\t\tmetadata?: ApiHandlerCreateMessageMetadata,\n\t): ApiStream"
+    is_async: true
+    lines:
+    - 172
+    - 181
+    detail:
+      calls:
+      - this.getModel
+      - this.handleResponsesApiMessage
+  - name: handleResponsesApiMessage
+    sig: "handleResponsesApiMessage(\n\t\tmodel: OpenAiNativeModel,\n\t\tsystemPrompt: string,\n\t\tmessages: Anthropic.Messages.MessageParam[],\n\t\tmetadata?: ApiHandlerCreateMessageMetadata,\n\t): ApiStream"
+    is_async: true
+    vis: private
+    lines:
+    - 183
+    - 223
+    detail:
+      calls:
+      - this.buildRequestBody
+      - this.executeRequest
+      - this.formatFullConversation
+      - this.getModel
+      - this.getReasoningEffort
+      - this.streamedToolCallIds.clear
+  - name: buildRequestBody
+    sig: "buildRequestBody(\n\t\tmodel: OpenAiNativeModel,\n\t\tformattedInput: any,\n\t\tsystemPrompt: string,\n\t\tverbosity: any,\n\t\treasoningEffort: ReasoningEffortExtended | undefined,\n\t\tmetadata?: ApiHandlerCreateMessageMetadata,\n\t): any"
+    vis: private
+    lines:
+    - 225
+    - 404
+    detail:
+      calls:
+      - "(metadata?.tools ?? [])\n\t\t\t\t.filter"
+      - "(metadata?.tools ?? [])\n\t\t\t\t.filter((tool) => tool.type === \"function\")\n\t\t\t\t.map"
+      - allowedTierNames.has
+      - model.info.tiers?.map
+      - model.info.tiers?.map((t) => t.name).filter
+      - new Set
+      - this.getPromptCacheRetention
+  - name: executeRequest
+    sig: "executeRequest(\n\t\trequestBody: any,\n\t\tmodel: OpenAiNativeModel,\n\t\tmetadata?: ApiHandlerCreateMessageMetadata,\n\t\tsystemPrompt?: string,\n\t\tmessages?: Anthropic.Messages.MessageParam[],\n\t): ApiStream"
+    is_async: true
+    vis: private
+    lines:
+    - 406
+    - 454
+    detail:
+      calls:
+      - (this.client as any).responses.create
+      - new AbortController
+      - new Error
+      - os.arch
+      - os.platform
+      - os.release
+      - process.version.slice
+      - this.makeResponsesApiRequest
+      - this.processEvent
+  - name: formatFullConversation
+    sig: 'formatFullConversation(systemPrompt: string, messages: Anthropic.Messages.MessageParam[]): any'
+    vis: private
+    lines:
+    - 456
+    - 548
+    detail:
+      calls:
+      - Array.isArray
+      - JSON.stringify
+      - block.content?.map
+      - 'block.content?.map((c) => (c.type === "text" ? c.text : "")).join'
+      - content.push
+      - formattedInput.push
+      - sanitizeOpenAiCallId
+      - toolCalls.push
+      - toolResults.push
+  - name: makeResponsesApiRequest
+    sig: "makeResponsesApiRequest(\n\t\trequestBody: any,\n\t\tmodel: OpenAiNativeModel,\n\t\tmetadata?: ApiHandlerCreateMessageMetadata,\n\t\tsystemPrompt?: string,\n\t\tmessages?: Anthropic.Messages.MessageParam[],\n\t): ApiStream"
+    is_async: true
+    vis: private
+    lines:
+    - 550
+    - 663
+    detail:
+      calls:
+      - JSON.parse
+      - JSON.stringify
+      - String
+      - TelemetryService.instance.captureException
+      - error.message.includes
+      - fetch
+      - new AbortController
+      - new ApiProviderError
+      - new Error
+      - os.arch
+      - os.platform
+      - os.release
+      - process.version.slice
+      - response.text
+      - this.getModel
+      - this.handleStreamResponse
+  - name: handleStreamResponse
+    sig: 'handleStreamResponse(body: ReadableStream<Uint8Array>, model: OpenAiNativeModel): ApiStream'
+    is_async: true
+    vis: private
+    lines:
+    - 672
+    - 1139
+    detail:
+      calls:
+      - Array.isArray
+      - JSON.parse
+      - String
+      - TelemetryService.instance.captureException
+      - body.getReader
+      - buffer.split
+      - decoder.decode
+      - line.slice
+      - line.slice(6).trim
+      - line.startsWith
+      - line.trim
+      - lines.pop
+      - new ApiProviderError
+      - new Error
+      - new TextDecoder
+      - reader.read
+      - reader.releaseLock
+      - this.coreHandledEventTypes.has
+      - this.normalizeUsage
+      - this.processEvent
+  - name: processEvent
+    sig: 'processEvent(event: any, model: OpenAiNativeModel): ApiStream'
+    is_async: true
+    vis: private
+    lines:
+    - 1144
+    - 1388
+    detail:
+      calls:
+      - Array.isArray
+      - JSON.stringify
+      - this.normalizeUsage
+      - this.streamedToolCallIds.add
+      - this.streamedToolCallIds.has
+  - name: getModel
+    sig: getModel()
+    lines:
+    - 1435
+    - 1457
+    detail:
+      calls:
+      - getModelParams
+      - id.startsWith
+  - name: getEncryptedContent
+    sig: 'getEncryptedContent(): { encrypted_content: string; id?: string } | undefined'
+    lines:
+    - 1465
+    - 1479
+    detail:
+      calls:
+      - this.lastResponseOutput.find
+  - name: getResponseId
+    sig: 'getResponseId(): string | undefined'
+    lines:
+    - 1481
+    - 1483
+    detail: {}
+  - name: completePrompt
+    sig: 'completePrompt(prompt: string): Promise<string>'
+    is_async: true
+    lines:
+    - 1485
+    - 1584
+    detail:
+      calls:
+      - (this.client as any).responses.create
+      - Array.isArray
+      - String
+      - TelemetryService.instance.captureException
+      - allowedTierNames.has
+      - model.info.tiers?.map
+      - model.info.tiers?.map((t) => t.name).filter
+      - new AbortController
+      - new ApiProviderError
+      - new Error
+      - new Set
+      - this.getModel
+      - this.getPromptCacheRetention
+      - this.getReasoningEffort
+  lines:
+  - 35
+  - 1585
+exports:
+- name: OpenAiNativeModel
+  kind: type
+- name: OpenAiNativeHandler
+  kind: type

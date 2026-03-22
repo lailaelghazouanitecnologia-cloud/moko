@@ -1,0 +1,607 @@
+## Roska File Descriptor — src/cloud.ts
+file: src/cloud.ts
+lines: 572
+layer: logic
+imports:
+- sym: events.EventEmitter
+- sym: zod.z
+- sym: ./events.js.RooCodeEventName
+- sym: ./task.js.TaskStatus
+- sym: ./task.js.taskMetadataSchema
+- sym: ./global-settings.js.globalSettingsSchema
+- sym: ./provider-settings.js.providerSettingsWithIdSchema
+- sym: ./marketplace.js.mcpMarketplaceItemSchema
+- sym: ./message.js.clineMessageSchema
+- sym: ./message.js.queuedMessageSchema
+- sym: ./message.js.tokenUsageSchema
+- sym: ./telemetry.js.staticAppPropertiesSchema
+- sym: ./telemetry.js.gitPropertiesSchema
+data:
+- name: organizationAllowListSchema
+  type: any
+  val: "z.object({\n\tallowAll: z.boolean(),\n\tproviders: z.record(\n\t\tz.object({\n\t\t\tallowAll: z.boolean(),\n\t\t\tmodels: z.array(z.str..."
+- name: organizationDefaultSettingsSchema
+  type: any
+  val: "globalSettingsSchema\n\t.pick({\n\t\tenableCheckpoints: true,\n\t\tmaxOpenTabsContext: true,\n\t\tmaxWorkspaceFiles: true,\n\t\tshowRo..."
+- name: workspaceTaskVisibilitySchema
+  type: any
+  val: z.enum(["all", "list-only", "admins-and-creator", "creator", "full-lockdown"])
+- name: organizationCloudSettingsSchema
+  type: any
+  val: "z.object({\n\trecordTaskMessages: z.boolean().optional(),\n\tenableTaskSharing: z.boolean().optional(),\n\tallowPublicTaskShar..."
+- name: organizationFeaturesSchema
+  type: any
+  val: z.object({})
+- name: organizationSettingsSchema
+  type: any
+  val: "z.object({\n\tversion: z.number(),\n\tcloudSettings: organizationCloudSettingsSchema.optional(),\n\tdefaultSettings: organizat..."
+- name: userFeaturesSchema
+  type: any
+  val: z.object({})
+- name: userSettingsConfigSchema
+  type: any
+  val: "z.object({\n\ttaskSyncEnabled: z.boolean().optional(),\n\tllmEnhancedFeaturesEnabled: z.boolean().optional(),\n})"
+- name: userSettingsDataSchema
+  type: any
+  val: "z.object({\n\tfeatures: userFeaturesSchema,\n\tsettings: userSettingsConfigSchema,\n\tversion: z.number(),\n})"
+- name: ORGANIZATION_ALLOW_ALL
+  type: OrganizationAllowList
+  val: "{\n\tallowAll: true,\n\tproviders: {},\n} as const"
+- name: ORGANIZATION_DEFAULT
+  type: OrganizationSettings
+  val: "{\n\tversion: 0,\n\tcloudSettings: {\n\t\trecordTaskMessages: true,\n\t\tenableTaskSharing: true,\n\t\tallowPublicTaskSharing: true,\n..."
+- name: shareResponseSchema
+  type: any
+  val: "z.object({\n\tsuccess: z.boolean(),\n\tshareUrl: z.string().optional(),\n\terror: z.string().optional(),\n\tisNewShare: z.boolea..."
+- name: HEARTBEAT_INTERVAL_MS
+  type: any
+  val: 20_000
+- name: INSTANCE_TTL_SECONDS
+  type: number
+  val: '60'
+- name: extensionTaskSchema
+  type: any
+  val: "z.object({\n\ttaskId: z.string(),\n\ttaskStatus: z.nativeEnum(TaskStatus),\n\ttaskAsk: clineMessageSchema.optional(),\n\tqueuedM..."
+- name: extensionInstanceSchema
+  type: any
+  val: "z.object({\n\tinstanceId: z.string(),\n\tuserId: z.string(),\n\tworkspacePath: z.string(),\n\tappProperties: staticAppProperties..."
+- name: taskBridgeEventSchema
+  type: any
+  val: "z.discriminatedUnion(\"type\", [\n\tz.object({\n\t\ttype: z.literal(TaskBridgeEventName.Message),\n\t\ttaskId: z.string(),\n\t\tactio..."
+- name: taskBridgeCommandSchema
+  type: any
+  val: "z.discriminatedUnion(\"type\", [\n\tz.object({\n\t\ttype: z.literal(TaskBridgeCommandName.Message),\n\t\ttaskId: z.string(),\n\t\tpay..."
+- name: usageStatsSchema
+  type: any
+  val: "z.object({\n\tsuccess: z.boolean(),\n\tdata: z.object({\n\t\tdates: z.array(z.string()), // Array of date strings\n\t\ttasks: z.ar..."
+types:
+- name: JWTPayload
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: iss
+    type: string
+  - name: sub
+    type: string
+  - name: exp
+    type: number
+  - name: iat
+    type: number
+  - name: nbf
+    type: number
+  - name: v
+    type: number
+  - name: r
+    type: "{\n\t\tu?: string // User ID (always present in valid tokens)\n\t\to?: string // Organization ID (optional - undefined when orgId is null)\n\t\tt?: string // Token type: 'cj' for job tokens, 'auth' for auth tokens\n\t}"
+  lines:
+  - 17
+  - 29
+- name: CloudUserInfo
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: id
+    type: string
+  - name: email
+    type: string
+  - name: picture
+    type: string
+  - name: organizationId
+    type: string
+  - name: organizationRole
+    type: string
+  - name: organizationImageUrl
+    type: string
+  lines:
+  - 35
+  - 44
+- name: CloudOrganization
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: id
+    type: string
+  - name: slug
+    type: string
+  - name: image_url
+    type: string
+  - name: has_image
+    type: boolean
+  - name: created_at
+    type: number
+  - name: updated_at
+    type: number
+  lines:
+  - 50
+  - 58
+- name: CloudOrganizationMembership
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: id
+    type: string
+  - name: organization
+    type: CloudOrganization
+  - name: role
+    type: string
+  - name: permissions
+    type: string[]
+  - name: created_at
+    type: number
+  - name: updated_at
+    type: number
+  lines:
+  - 64
+  - 71
+- name: OrganizationAllowList
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 87
+  - 87
+- name: OrganizationDefaultSettings
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 115
+  - 115
+- name: WorkspaceTaskVisibility
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 123
+  - 123
+- name: OrganizationCloudSettings
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 139
+  - 139
+- name: OrganizationFeatures
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 147
+  - 147
+- name: OrganizationSettings
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 165
+  - 165
+- name: UserFeatures
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 173
+  - 173
+- name: UserSettingsConfig
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 180
+  - 180
+- name: UserSettingsData
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 188
+  - 188
+- name: ShareVisibility
+  kind: enum
+  decorators:
+  - type
+  variants:
+  - name: '"organization"'
+  - name: '"public"'
+  lines:
+  - 217
+  - 217
+- name: ShareResponse
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 231
+  - 231
+- name: AuthState
+  kind: enum
+  decorators:
+  - type
+  variants:
+  - name: '"inactive-session"'
+  lines:
+  - 237
+  - 237
+- name: AuthService
+  kind: trait
+  bases:
+  - EventEmitter<AuthServiceEvents>
+  decorators:
+  - interface
+  fields:
+  - name: initialize
+    type: 'method: initialize(): Promise<void>'
+  - name: broadcast
+    type: 'method: broadcast(): void'
+  - name: login
+    type: 'method: login(landingPageSlug?: string, useProviderSignup?: boolean): Promise<void>'
+  - name: logout
+    type: 'method: logout(): Promise<void>'
+  - name: handleCallback
+    type: "method: handleCallback(\n\t\tcode: string | null,\n\t\tstate: string | null,\n\t\torganizationId?: string | null,\n\t\tproviderModel?: string | null,\n\t): Promise<void>"
+  - name: switchOrganization
+    type: 'method: switchOrganization(organizationId: string | null): Promise<void>'
+  - name: getState
+    type: 'method: getState(): AuthState'
+  - name: isAuthenticated
+    type: 'method: isAuthenticated(): boolean'
+  - name: hasActiveSession
+    type: 'method: hasActiveSession(): boolean'
+  - name: hasOrIsAcquiringActiveSession
+    type: 'method: hasOrIsAcquiringActiveSession(): boolean'
+  - name: getSessionToken
+    type: 'method: getSessionToken(): string | undefined'
+  - name: getUserInfo
+    type: 'method: getUserInfo(): CloudUserInfo | null'
+  - name: getStoredOrganizationId
+    type: 'method: getStoredOrganizationId(): string | null'
+  - name: getOrganizationMemberships
+    type: 'method: getOrganizationMemberships(): Promise<CloudOrganizationMembership[]>'
+  lines:
+  - 239
+  - 268
+- name: AuthServiceEvents
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: '"auth-state-changed"'
+    type: "[\n\t\tdata: {\n\t\t\tstate: AuthState\n\t\t\tpreviousState: AuthState\n\t\t},\n\t]"
+  - name: '"user-info"'
+    type: '[data: { userInfo: CloudUserInfo }]'
+  lines:
+  - 274
+  - 282
+- name: SettingsService
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: getAllowList
+    type: 'method: getAllowList(): OrganizationAllowList'
+  - name: getSettings
+    type: 'method: getSettings(): OrganizationSettings | undefined'
+  - name: getUserSettings
+    type: 'method: getUserSettings(): UserSettingsData | undefined'
+  - name: getUserFeatures
+    type: 'method: getUserFeatures(): UserFeatures'
+  - name: getUserSettingsConfig
+    type: 'method: getUserSettingsConfig(): UserSettingsConfig'
+  - name: updateUserSettings
+    type: 'method: updateUserSettings(settings: Partial<UserSettingsConfig>): Promise<boolean>'
+  - name: isTaskSyncEnabled
+    type: 'method: isTaskSyncEnabled(): boolean'
+  - name: dispose
+    type: 'method: dispose(): void'
+  lines:
+  - 291
+  - 341
+- name: SettingsServiceEvents
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: '"settings-updated"'
+    type: '[data: Record<string, never>]'
+  lines:
+  - 347
+  - 349
+- name: CloudServiceEvents
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 355
+  - 355
+- name: ConnectionState
+  kind: enum
+  variants:
+  - name: DISCONNECTED
+    val: '"disconnected"'
+  - name: CONNECTING
+    val: '"connecting"'
+  - name: CONNECTED
+    val: '"connected"'
+  - name: RETRYING
+    val: '"retrying"'
+  - name: FAILED
+    val: '"failed"'
+  lines:
+  - 361
+  - 367
+- name: RetryConfig
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: maxInitialAttempts
+    type: number
+  - name: initialDelay
+    type: number
+  - name: maxDelay
+    type: number
+  - name: backoffMultiplier
+    type: number
+  lines:
+  - 373
+  - 378
+- name: ExtensionTask
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 402
+  - 402
+- name: ExtensionInstance
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 425
+  - 425
+- name: TaskBridgeEventName
+  kind: enum
+  variants:
+  - name: Message
+    val: RooCodeEventName.Message
+  - name: TaskModeSwitched
+    val: RooCodeEventName.TaskModeSwitched
+  - name: TaskInteractive
+    val: RooCodeEventName.TaskInteractive
+  lines:
+  - 431
+  - 435
+- name: TaskBridgeEvent
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 455
+  - 455
+- name: TaskBridgeCommandName
+  kind: enum
+  variants:
+  - name: Message
+    val: '"message"'
+  - name: ApproveAsk
+    val: '"approve_ask"'
+  - name: DenyAsk
+    val: '"deny_ask"'
+  lines:
+  - 461
+  - 465
+- name: TaskBridgeCommand
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 499
+  - 499
+- name: ExtensionSocketEvents
+  kind: enum
+  variants:
+  - name: CONNECTED
+    val: '"extension:connected"'
+  - name: REGISTER
+    val: '"extension:register"'
+  - name: UNREGISTER
+    val: '"extension:unregister"'
+  - name: HEARTBEAT
+    val: '"extension:heartbeat"'
+  - name: EVENT
+    val: '"extension:event"'
+  - name: RELAYED_EVENT
+    val: '"extension:relayed_event"'
+  - name: COMMAND
+    val: '"extension:command"'
+  - name: RELAYED_COMMAND
+    val: '"extension:relayed_command"'
+  lines:
+  - 505
+  - 518
+- name: TaskSocketEvents
+  kind: enum
+  variants:
+  - name: JOIN
+    val: '"task:join"'
+  - name: LEAVE
+    val: '"task:leave"'
+  - name: EVENT
+    val: '"task:event"'
+  - name: RELAYED_EVENT
+    val: '"task:relayed_event"'
+  - name: COMMAND
+    val: '"task:command"'
+  - name: RELAYED_COMMAND
+    val: '"task:relayed_command"'
+  lines:
+  - 524
+  - 533
+- name: JoinResponse
+  kind: typealias
+  decorators:
+  - type
+  fields:
+  - name: success
+    type: boolean
+  - name: error
+    type: string
+  - name: taskId
+    type: string
+  - name: timestamp
+    type: string
+  lines:
+  - 539
+  - 544
+- name: LeaveResponse
+  kind: typealias
+  decorators:
+  - type
+  fields:
+  - name: success
+    type: boolean
+  - name: taskId
+    type: string
+  - name: timestamp
+    type: string
+  lines:
+  - 546
+  - 550
+- name: UsageStats
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 572
+  - 572
+exports:
+- name: JWTPayload
+  kind: type
+- name: CloudUserInfo
+  kind: type
+- name: CloudOrganization
+  kind: type
+- name: CloudOrganizationMembership
+  kind: type
+- name: OrganizationAllowList
+  kind: type
+- name: OrganizationDefaultSettings
+  kind: type
+- name: WorkspaceTaskVisibility
+  kind: type
+- name: OrganizationCloudSettings
+  kind: type
+- name: OrganizationFeatures
+  kind: type
+- name: OrganizationSettings
+  kind: type
+- name: UserFeatures
+  kind: type
+- name: UserSettingsConfig
+  kind: type
+- name: UserSettingsData
+  kind: type
+- name: ShareVisibility
+  kind: type
+- name: ShareResponse
+  kind: type
+- name: AuthState
+  kind: type
+- name: AuthService
+  kind: type
+- name: AuthServiceEvents
+  kind: type
+- name: SettingsService
+  kind: type
+- name: SettingsServiceEvents
+  kind: type
+- name: CloudServiceEvents
+  kind: type
+- name: ConnectionState
+  kind: type
+- name: RetryConfig
+  kind: type
+- name: ExtensionTask
+  kind: type
+- name: ExtensionInstance
+  kind: type
+- name: TaskBridgeEventName
+  kind: type
+- name: TaskBridgeEvent
+  kind: type
+- name: TaskBridgeCommandName
+  kind: type
+- name: TaskBridgeCommand
+  kind: type
+- name: ExtensionSocketEvents
+  kind: type
+- name: TaskSocketEvents
+  kind: type
+- name: JoinResponse
+  kind: type
+- name: LeaveResponse
+  kind: type
+- name: UsageStats
+  kind: type
+- name: organizationAllowListSchema
+  kind: data
+- name: organizationDefaultSettingsSchema
+  kind: data
+- name: workspaceTaskVisibilitySchema
+  kind: data
+- name: organizationCloudSettingsSchema
+  kind: data
+- name: organizationFeaturesSchema
+  kind: data
+- name: organizationSettingsSchema
+  kind: data
+- name: userFeaturesSchema
+  kind: data
+- name: userSettingsConfigSchema
+  kind: data
+- name: userSettingsDataSchema
+  kind: data
+- name: ORGANIZATION_ALLOW_ALL
+  kind: data
+- name: ORGANIZATION_DEFAULT
+  kind: data
+- name: shareResponseSchema
+  kind: data
+- name: HEARTBEAT_INTERVAL_MS
+  kind: data
+- name: INSTANCE_TTL_SECONDS
+  kind: data
+- name: extensionTaskSchema
+  kind: data
+- name: extensionInstanceSchema
+  kind: data
+- name: taskBridgeEventSchema
+  kind: data
+- name: taskBridgeCommandSchema
+  kind: data
+- name: usageStatsSchema
+  kind: data

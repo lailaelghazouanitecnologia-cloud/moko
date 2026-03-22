@@ -1,0 +1,111 @@
+## Roska File Descriptor — providers/lite-llm.ts
+file: providers/lite-llm.ts
+lines: 331
+layer: logic
+imports:
+- sym: openai.OpenAI
+- sym: '@anthropic-ai/sdk.Anthropic'
+- sym: '@roo-code/types.litellmDefaultModelId'
+- sym: '@roo-code/types.litellmDefaultModelInfo'
+- sym: ../../shared/cost.calculateApiCostOpenAI
+- sym: ../../shared/api.ApiHandlerOptions
+- sym: ../transform/stream.ApiStream
+- sym: ../transform/stream.ApiStreamUsageChunk
+- sym: ../transform/openai-format.convertToOpenAiMessages
+- sym: ../../utils/tool-id.sanitizeOpenAiCallId
+- sym: ../index.SingleCompletionHandler
+  kind: typing
+- sym: ../index.ApiHandlerCreateMessageMetadata
+  kind: typing
+- sym: ./router-provider.RouterProvider
+types:
+- name: LiteLLMHandler
+  kind: struct
+  ctx: Detect if the model is a Gemini model that requires thought signature handling. Gemini 3 models validate thought signatures for tool/function calling steps.
+  bases:
+  - RouterProvider
+  - SingleCompletionHandler
+  methods:
+  - name: constructor
+    sig: 'constructor(options: ApiHandlerOptions)'
+    lines:
+    - 24
+    - 34
+    detail:
+      calls:
+      - super
+  - name: isGeminiModel
+    sig: 'isGeminiModel(modelId: string): boolean'
+    vis: private
+    lines:
+    - 46
+    - 65
+    detail:
+      calls:
+      - /\b(gemini|google|vertex_ai|vertex)\/gemini[-\s](3|2\.5)/i.test
+      - lowerModelId.includes
+      - modelId.toLowerCase
+  - name: injectThoughtSignatureForGemini
+    sig: "injectThoughtSignatureForGemini(\n\t\topenAiMessages: OpenAI.Chat.ChatCompletionMessageParam[],\n\t): OpenAI.Chat.ChatCompletionMessageParam[]"
+    vis: private
+    lines:
+    - 80
+    - 110
+    detail:
+      calls:
+      - Buffer.from
+      - Buffer.from("skip_thought_signature_validator").toString
+      - openAiMessages.map
+  - name: createMessage
+    sig: "createMessage(\n\t\tsystemPrompt: string,\n\t\tmessages: Anthropic.Messages.MessageParam[],\n\t\tmetadata?: ApiHandlerCreateMessageMetadata,\n\t): ApiStream"
+    is_async: true
+    lines:
+    - 112
+    - 292
+    detail:
+      calls:
+      - calculateApiCostOpenAI
+      - convertToOpenAiMessages
+      - new Error
+      - openAiMessages.map
+      - openAiMessages.reduce
+      - this.client.chat.completions.create
+      - this.client.chat.completions.create(requestOptions).withResponse
+      - this.convertToolsForOpenAI
+      - this.fetchModel
+      - this.injectThoughtSignatureForGemini
+      - this.isGeminiModel
+      - this.isGpt5
+      - this.supportsTemperature
+  - name: completePrompt
+    sig: 'completePrompt(prompt: string): Promise<string>'
+    is_async: true
+    lines:
+    - 294
+    - 325
+    detail:
+      calls:
+      - new Error
+      - this.client.chat.completions.create
+      - this.fetchModel
+      - this.isGpt5
+      - this.supportsTemperature
+  lines:
+  - 23
+  - 326
+- name: LiteLLMUsage
+  kind: trait
+  ctx: LiteLLM usage may include an extra field for Anthropic use cases.
+  decorators:
+  - interface
+  fields:
+  - name: cache_creation_input_tokens
+    type: number
+  lines:
+  - 329
+  - 331
+exports:
+- name: LiteLLMHandler
+  kind: type
+- name: LiteLLMUsage
+  kind: type

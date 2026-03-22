@@ -1,0 +1,375 @@
+## Roska File Descriptor — agent/extension-host.ts
+file: agent/extension-host.ts
+lines: 614
+layer: logic
+purpose: 'ExtensionHost - Loads and runs the Roo Code extension in CLI mode This class is a thin coordination layer responsible for: 1. Creating the vscode-shim mock 2. Loading the extension bundle via require() 3. Activating the extension 4. Wiring up managers for output, prompting, and ask handling'
+imports:
+- sym: module.createRequire
+- sym: path.path
+- sym: url.fileURLToPath
+- sym: fs.fs
+- sym: events.EventEmitter
+- sym: p-wait-for.pWaitFor
+- sym: '@roo-code/types.ClineMessage'
+  kind: typing
+- sym: '@roo-code/types.ExtensionMessage'
+  kind: typing
+- sym: '@roo-code/types.ReasoningEffortExtended'
+  kind: typing
+- sym: '@roo-code/types.RooCodeSettings'
+  kind: typing
+- sym: '@roo-code/types.WebviewMessage'
+  kind: typing
+- sym: '@roo-code/vscode-shim.createVSCodeAPI'
+- sym: '@roo-code/vscode-shim.IExtensionHost'
+- sym: '@roo-code/vscode-shim.ExtensionHostEventMap'
+- sym: '@roo-code/vscode-shim.setRuntimeConfigValues'
+- sym: '@roo-code/core/cli.DebugLogger'
+- sym: '@roo-code/core/cli.setDebugLogEnabled'
+- sym: '@/types/index.js.DEFAULT_FLAGS'
+- sym: '@/types/index.js.type SupportedProvider'
+- sym: '@/lib/sdk/index.js.User'
+  kind: typing
+- sym: '@/lib/utils/provider.js.getProviderSettings'
+- sym: '@/lib/storage/index.js.createEphemeralStorageDir'
+- sym: ./events.js.WaitingForInputEvent
+  kind: typing
+- sym: ./events.js.TaskCompletedEvent
+  kind: typing
+- sym: ./agent-state.js.AgentStateInfo
+  kind: typing
+- sym: ./extension-client.js.ExtensionClient
+- sym: ./output-manager.js.OutputManager
+- sym: ./prompt-manager.js.PromptManager
+- sym: ./ask-dispatcher.js.AskDispatcher
+data:
+- name: cliLogger
+  type: any
+  val: new DebugLogger("CLI")
+- name: __dirname
+  type: any
+  val: path.dirname(fileURLToPath(import.meta.url))
+- name: CLI_PACKAGE_ROOT
+  type: any
+  val: process.env.ROO_CLI_ROOT || findCliPackageRoot()
+types:
+- name: ExtensionHostOptions
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: mode
+    type: string
+  - name: reasoningEffort
+    type: ReasoningEffortExtended | "unspecified" | "disabled"
+  - name: consecutiveMistakeLimit
+    type: number
+  - name: user
+    type: User | null
+  - name: provider
+    type: SupportedProvider
+  - name: apiKey
+    type: string
+  - name: model
+    type: string
+  - name: workspacePath
+    type: string
+  - name: extensionPath
+    type: string
+  - name: nonInteractive
+    type: boolean
+  - name: ephemeral
+    type: boolean
+  - name: debug
+    type: boolean
+  - name: exitOnComplete
+    type: boolean
+  - name: terminalShell
+    type: string
+  - name: exitOnError
+    type: boolean
+  - name: disableOutput
+    type: boolean
+  - name: integrationTest
+    type: boolean
+  lines:
+  - 66
+  - 98
+- name: ExtensionModule
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: activate
+    type: '(context: unknown) => Promise<unknown>'
+  - name: deactivate
+    type: () => Promise<void>
+  lines:
+  - 100
+  - 103
+- name: WebviewViewProvider
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: resolveWebviewView
+    type: 'method: resolveWebviewView?(webviewView: unknown, context: unknown, token: unknown): void | Promise<void>'
+  lines:
+  - 105
+  - 107
+- name: ExtensionHostInterface
+  kind: trait
+  bases:
+  - IExtensionHost<ExtensionHostEventMap>
+  decorators:
+  - interface
+  fields:
+  - name: client
+    type: ExtensionClient
+  - name: activate
+    type: 'method: activate(): Promise<void>'
+  - name: runTask
+    type: 'method: runTask(prompt: string, taskId?: string, configuration?: RooCodeSettings, images?: string[]): Promise<void>'
+  - name: resumeTask
+    type: 'method: resumeTask(taskId: string): Promise<void>'
+  - name: sendToExtension
+    type: 'method: sendToExtension(message: WebviewMessage): void'
+  - name: dispose
+    type: 'method: dispose(): Promise<void>'
+  lines:
+  - 109
+  - 116
+- name: ExtensionHost
+  kind: struct
+  ctx: Extension lifecycle.
+  bases:
+  - EventEmitter
+  - ExtensionHostInterface
+  fields:
+  - name: vscode
+    type: ReturnType<typeof createVSCodeAPI> | null
+    default: 'null'
+  - name: extensionModule
+    type: ExtensionModule | null
+    default: 'null'
+  - name: extensionAPI
+    type: unknown
+    default: 'null'
+  - name: options
+    type: ExtensionHostOptions
+  - name: isReady
+    type: any
+    default: 'false'
+  - name: messageListener
+    type: '((message: ExtensionMessage) => void) | null'
+    default: 'null'
+  - name: initialSettings
+    type: RooCodeSettings
+  - name: originalConsole
+    type: "{\n\t\tlog: typeof console.log\n\t\twarn: typeof console.warn\n\t\terror: typeof console.error\n\t\tdebug: typeof console.debug\n\t\tinfo: typeof console.info\n\t} | null"
+    default: 'null'
+  - name: originalProcessEmitWarning
+    type: typeof process.emitWarning | null
+    default: 'null'
+  - name: ephemeralStorageDir
+    type: string | null
+    default: 'null'
+  - name: previousCliRuntimeEnv
+    type: string | undefined
+  - name: client
+    type: ExtensionClient
+  - name: outputManager
+    type: OutputManager
+  - name: promptManager
+    type: PromptManager
+  - name: askDispatcher
+    type: AskDispatcher
+  methods:
+  - name: constructor
+    sig: 'constructor(options: ExtensionHostOptions)'
+    lines:
+    - 175
+    - 266
+    detail:
+      calls:
+      - getProviderSettings
+      - new AskDispatcher
+      - new ExtensionClient
+      - new OutputManager
+      - new PromptManager
+      - setDebugLogEnabled
+      - super
+      - this.setupClientEventHandlers
+      - this.setupQuietMode
+  - name: setupClientEventHandlers
+    sig: 'setupClientEventHandlers(): void'
+    vis: private
+    lines:
+    - 276
+    - 302
+    detail:
+      calls:
+      - this.client.on
+  - name: setupQuietMode
+    sig: 'setupQuietMode(): void'
+    vis: private
+    lines:
+    - 308
+    - 332
+    detail:
+      calls:
+      - process.on
+  - name: logMessageDebug
+    sig: 'logMessageDebug(msg: ClineMessage, type: "new" | "updated"): void'
+    vis: private
+    lines:
+    - 352
+    - 362
+    detail:
+      calls:
+      - cliLogger.debug
+      - this.outputManager.clearLoggedFirstPartial
+      - this.outputManager.hasLoggedFirstPartial
+      - this.outputManager.setLoggedFirstPartial
+  - name: activate
+    sig: 'activate(): Promise<void>'
+    is_async: true
+    lines:
+    - 368
+    - 437
+    detail:
+      calls:
+      - String
+      - createEphemeralStorageDir
+      - createRequire
+      - createVSCodeAPI
+      - fs.existsSync
+      - new Error
+      - originalResolve.call
+      - pWaitFor
+      - path.join
+      - require
+      - this.extensionModule.activate
+      - this.on
+      - this.restoreConsole
+  - name: registerWebviewProvider
+    sig: 'registerWebviewProvider(_viewId: string, _provider: WebviewViewProvider): void'
+    lines:
+    - 439
+    - 439
+    detail: {}
+  - name: unregisterWebviewProvider
+    sig: 'unregisterWebviewProvider(_viewId: string): void'
+    lines:
+    - 441
+    - 441
+    detail: {}
+  - name: markWebviewReady
+    sig: 'markWebviewReady(): void'
+    lines:
+    - 443
+    - 456
+    detail:
+      calls:
+      - setRuntimeConfigValues
+      - this.sendToExtension
+  - name: isInInitialSetup
+    sig: 'isInInitialSetup(): boolean'
+    lines:
+    - 458
+    - 460
+    detail: {}
+  - name: sendToExtension
+    sig: 'sendToExtension(message: WebviewMessage): void'
+    lines:
+    - 466
+    - 472
+    detail:
+      calls:
+      - new Error
+      - this.emit
+  - name: runTask
+    sig: "runTask(\n\t\tprompt: string,\n\t\ttaskId?: string,\n\t\tconfiguration?: RooCodeSettings,\n\t\timages?: string[],\n\t): Promise<void>"
+    is_async: true
+    lines:
+    - 519
+    - 533
+    detail:
+      calls:
+      - this.sendToExtension
+      - this.waitForTaskCompletion
+  - name: resumeTask
+    sig: 'resumeTask(taskId: string): Promise<void>'
+    is_async: true
+    lines:
+    - 535
+    - 538
+    detail:
+      calls:
+      - this.sendToExtension
+      - this.waitForTaskCompletion
+  - name: getAgentState
+    sig: 'getAgentState(): AgentStateInfo'
+    lines:
+    - 547
+    - 549
+    detail:
+      calls:
+      - this.client.getAgentState
+  - name: isWaitingForInput
+    sig: 'isWaitingForInput(): boolean'
+    lines:
+    - 554
+    - 556
+    detail:
+      calls:
+      - this.client.getAgentState
+  - name: dispose
+    sig: 'dispose(): Promise<void>'
+    is_async: true
+    lines:
+    - 562
+    - 613
+    detail:
+      calls:
+      - fs.promises.rm
+      - this.askDispatcher.clear
+      - this.client.reset
+      - this.extensionModule.deactivate
+      - this.off
+      - this.outputManager.clear
+      - this.restoreConsole
+  lines:
+  - 118
+  - 614
+functions:
+- name: findCliPackageRoot
+  sig: 'findCliPackageRoot(): string'
+  lines:
+  - 50
+  - 62
+  detail:
+    calls:
+    - fs.existsSync
+    - path.dirname
+    - path.join
+    - path.resolve
+exports:
+- name: ExtensionHostOptions
+  kind: type
+- name: ExtensionModule
+  kind: type
+- name: WebviewViewProvider
+  kind: type
+- name: ExtensionHostInterface
+  kind: type
+- name: ExtensionHost
+  kind: type
+- name: findCliPackageRoot
+  kind: func
+- name: cliLogger
+  kind: data
+- name: __dirname
+  kind: data
+- name: CLI_PACKAGE_ROOT
+  kind: data

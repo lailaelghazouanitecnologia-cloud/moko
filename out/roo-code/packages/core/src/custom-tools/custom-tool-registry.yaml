@@ -1,0 +1,298 @@
+## Roska File Descriptor — custom-tools/custom-tool-registry.ts
+file: custom-tools/custom-tool-registry.ts
+lines: 432
+layer: logic
+purpose: 'CustomToolRegistry - A reusable class for dynamically loading and managing TypeScript tools. Features: - Dynamic TypeScript/JavaScript tool loading with esbuild transpilation. - Runtime validation of tool definitions. - Tool execution with context. - JSON Schema generation for LLM integration.'
+imports:
+- sym: fs.fs
+- sym: path.path
+- sym: crypto.createHash
+- sym: '@roo-code/types.CustomToolDefinition'
+  kind: typing
+- sym: '@roo-code/types.SerializedCustomToolDefinition'
+  kind: typing
+- sym: '@roo-code/types.CustomToolParametersSchema'
+  kind: typing
+- sym: ./types.js.StoredCustomTool
+  kind: typing
+- sym: ./types.js.LoadResult
+  kind: typing
+- sym: ./serialize.js.serializeCustomTool
+- sym: ./esbuild-runner.js.runEsbuild
+- sym: ./esbuild-runner.js.NODE_BUILTIN_MODULES
+- sym: ./esbuild-runner.js.COMMONJS_REQUIRE_BANNER
+data:
+- name: customToolRegistry
+  type: any
+  val: new CustomToolRegistry()
+types:
+- name: RegistryOptions
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: cacheDir
+    type: string
+  - name: nodePaths
+    type: string[]
+  - name: extensionPath
+    type: string
+  lines:
+  - 22
+  - 29
+- name: CustomToolRegistry
+  kind: struct
+  ctx: Load all tools from a directory. Supports both .ts and .js files.
+  fields:
+  - name: tools
+    type: any
+    default: new Map<string, StoredCustomTool>()
+  - name: tsCache
+    type: any
+    default: new Map<string, string>()
+  - name: cacheDir
+    type: string
+  - name: nodePaths
+    type: string[]
+  - name: extensionPath
+    type: string
+  - name: lastLoaded
+    type: Map<string, number>
+    default: new Map()
+  methods:
+  - name: constructor
+    sig: 'constructor(options?: RegistryOptions)'
+    lines:
+    - 39
+    - 44
+    detail:
+      calls:
+      - os.tmpdir
+      - path.join
+      - process.cwd
+  - name: loadFromDirectory
+    sig: 'loadFromDirectory(toolDir: string): Promise<LoadResult>'
+    is_async: true
+    lines:
+    - 53
+    - 93
+    detail:
+      calls:
+      - Object.entries
+      - String
+      - console.error
+      - console.log
+      - fs.existsSync
+      - fs.readdirSync
+      - fs.readdirSync(toolDir).filter
+      - path.join
+      - result.failed.push
+      - result.loaded.push
+      - this.import
+      - this.tools.set
+      - this.validate
+  - name: loadFromDirectoryIfStale
+    sig: 'loadFromDirectoryIfStale(toolDir: string): Promise<LoadResult>'
+    is_async: true
+    lines:
+    - 95
+    - 110
+    detail:
+      calls:
+      - fs.existsSync
+      - fs.statSync
+      - this.lastLoaded.get
+      - this.lastLoaded.set
+      - this.list
+      - this.loadFromDirectory
+  - name: loadFromDirectories
+    sig: 'loadFromDirectories(toolDirs: string[]): Promise<LoadResult>'
+    is_async: true
+    lines:
+    - 120
+    - 130
+    detail:
+      calls:
+      - result.failed.push
+      - result.loaded.push
+      - this.loadFromDirectory
+  - name: loadFromDirectoriesIfStale
+    sig: 'loadFromDirectoriesIfStale(toolDirs: string[]): Promise<LoadResult>'
+    is_async: true
+    lines:
+    - 139
+    - 149
+    detail:
+      calls:
+      - result.failed.push
+      - result.loaded.push
+      - this.loadFromDirectoryIfStale
+  - name: register
+    sig: 'register(definition: CustomToolDefinition, source?: string): void'
+    lines:
+    - 154
+    - 164
+    detail:
+      calls:
+      - new Error
+      - this.tools.set
+      - this.validate
+  - name: unregister
+    sig: 'unregister(id: string): boolean'
+    lines:
+    - 169
+    - 171
+    detail:
+      calls:
+      - this.tools.delete
+  - name: get
+    sig: 'get(id: string): CustomToolDefinition | undefined'
+    lines:
+    - 176
+    - 178
+    detail:
+      calls:
+      - this.tools.get
+  - name: has
+    sig: 'has(id: string): boolean'
+    lines:
+    - 183
+    - 185
+    detail:
+      calls:
+      - this.tools.has
+  - name: list
+    sig: 'list(): string[]'
+    lines:
+    - 190
+    - 192
+    detail:
+      calls:
+      - Array.from
+      - this.tools.keys
+  - name: getAll
+    sig: 'getAll(): CustomToolDefinition[]'
+    lines:
+    - 197
+    - 199
+    detail:
+      calls:
+      - Array.from
+      - this.tools.values
+  - name: getAllSerialized
+    sig: 'getAllSerialized(): SerializedCustomToolDefinition[]'
+    lines:
+    - 204
+    - 206
+    detail:
+      calls:
+      - this.getAll
+      - this.getAll().map
+  - name: size
+    sig: 'size(): number'
+    lines:
+    - 211
+    - 213
+    detail: {}
+  - name: clear
+    sig: 'clear(): void'
+    lines:
+    - 218
+    - 220
+    detail:
+      calls:
+      - this.tools.clear
+  - name: setExtensionPath
+    sig: 'setExtensionPath(extensionPath: string): void'
+    lines:
+    - 226
+    - 228
+    detail: {}
+  - name: getExtensionPath
+    sig: 'getExtensionPath(): string | undefined'
+    lines:
+    - 233
+    - 235
+    detail: {}
+  - name: clearCache
+    sig: 'clearCache(): void'
+    lines:
+    - 241
+    - 263
+    detail:
+      calls:
+      - String
+      - console.error
+      - entry.isDirectory
+      - entry.name.endsWith
+      - fs.existsSync
+      - fs.readdirSync
+      - fs.rmSync
+      - fs.unlinkSync
+      - path.join
+      - this.tsCache.clear
+  - name: import
+    sig: 'import(filePath: string): Promise<Record<string, CustomToolDefinition>>'
+    is_async: true
+    vis: private
+    lines:
+    - 274
+    - 340
+    detail:
+      calls:
+      - createHash
+      - createHash("sha256").update
+      - createHash("sha256").update(cacheKey).digest
+      - createHash("sha256").update(cacheKey).digest("hex").slice
+      - fs.existsSync
+      - fs.mkdirSync
+      - fs.statSync
+      - import
+      - path.dirname
+      - path.extname
+      - path.join
+      - path.resolve
+      - runEsbuild
+      - this.copyEnvFiles
+      - this.tsCache.get
+      - this.tsCache.has
+      - this.tsCache.set
+  - name: copyEnvFiles
+    sig: 'copyEnvFiles(toolDir: string, destDir: string): void'
+    vis: private
+    lines:
+    - 350
+    - 372
+    detail:
+      calls:
+      - String
+      - console.log
+      - console.warn
+      - files.filter
+      - fs.copyFileSync
+      - fs.readdirSync
+      - fs.statSync
+      - path.join
+      - stat.isFile
+  - name: validate
+    sig: 'validate(exportName: string, value: unknown): CustomToolDefinition | null'
+    vis: private
+    lines:
+    - 391
+    - 429
+    detail:
+      calls:
+      - errors.join
+      - errors.push
+      - new Error
+      - this.isParametersSchema
+  lines:
+  - 31
+  - 430
+exports:
+- name: RegistryOptions
+  kind: type
+- name: CustomToolRegistry
+  kind: type
+- name: customToolRegistry
+  kind: data

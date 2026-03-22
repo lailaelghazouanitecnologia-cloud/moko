@@ -1,0 +1,418 @@
+## Roska File Descriptor — agent/json-event-emitter.ts
+file: agent/json-event-emitter.ts
+lines: 905
+layer: logic
+purpose: 'JsonEventEmitter - Handles structured JSON output for the CLI This class transforms internal CLI events (ClineMessage, state changes, etc.) into structured JSON events and outputs them to stdout. Supports two output modes: - "stream-json": NDJSON format (one JSON object per line) for real-time streaming - "json": Single JSON object at the end with accumulated events Schema is optimized for efficiency with high message volume: - Minimal fields per event - No redundant wrappers - `done` flag instead of partial:false'
+imports:
+- sym: '@roo-code/types.ClineMessage'
+  kind: typing
+- sym: '@/types/json-events.js.JsonEvent'
+  kind: typing
+- sym: '@/types/json-events.js.JsonEventCost'
+  kind: typing
+- sym: '@/types/json-events.js.JsonEventQueueItem'
+  kind: typing
+- sym: '@/types/json-events.js.JsonFinalOutput'
+  kind: typing
+- sym: ./extension-client.js.ExtensionClient
+  kind: typing
+- sym: ./events.js.AgentStateChangeEvent
+  kind: typing
+- sym: ./events.js.TaskCompletedEvent
+  kind: typing
+- sym: ./agent-state.js.AgentLoopState
+data:
+- name: SKIP_SAY_TYPES
+  type: any
+  val: "new Set([\n\t\"api_req_finished\",\n\t\"api_req_retried\",\n\t\"api_req_retry_delayed\",\n\t\"api_req_rate_limit_wait\",\n\t\"api_req_delet..."
+- name: REASONING_KEY_OFFSET
+  type: any
+  val: 1_000_000_000
+- name: COMMAND_OUTPUT_EXIT_GRACE_MS
+  type: number
+  val: '250'
+types:
+- name: JsonEventEmitterOptions
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: mode
+    type: '"json" | "stream-json"'
+  - name: stdout
+    type: NodeJS.WriteStream
+  - name: requestIdProvider
+    type: () => string | undefined
+  - name: schemaVersion
+    type: number
+  - name: protocol
+    type: string
+  - name: capabilities
+    type: string[]
+  lines:
+  - 28
+  - 41
+- name: JsonEventEmitter
+  kind: struct
+  ctx: Track previous content for delta computation
+  fields:
+  - name: mode
+    type: '"json" | "stream-json"'
+  - name: stdout
+    type: NodeJS.WriteStream
+  - name: events
+    type: JsonEvent[]
+    default: '[]'
+  - name: unsubscribers
+    type: (() => void)[]
+    default: '[]'
+  - name: pendingWrites
+    type: any
+    default: new Set<Promise<void>>()
+  - name: lastCost
+    type: JsonEventCost | undefined
+  - name: requestIdProvider
+    type: () => string | undefined
+  - name: schemaVersion
+    type: number
+  - name: protocol
+    type: string
+  - name: capabilities
+    type: string[]
+  - name: seenMessageIds
+    type: any
+    default: new Set<number>()
+  - name: previousContent
+    type: any
+    default: new Map<number, string>()
+  - name: previousToolUseContent
+    type: any
+    default: new Map<number, string>()
+  - name: activeCommandToolUseId
+    type: number | undefined
+  - name: previousCommandOutputByToolUseId
+    type: any
+    default: new Map<number, string>()
+  - name: statusDrivenCommandOutputIds
+    type: any
+    default: new Set<number>()
+  - name: completedCommandOutputIds
+    type: any
+    default: new Set<number>()
+  - name: pendingCommandCompletionByToolUseId
+    type: any
+    default: 'new Map<number, { exitCode?: number; timer: NodeJS.Timeout }>()'
+  - name: completionResultContent
+    type: string | undefined
+  - name: lastAssistantText
+    type: string | undefined
+  - name: expectPromptEchoAsUser
+    type: any
+    default: 'true'
+  methods:
+  - name: constructor
+    sig: 'constructor(options: JsonEventEmitterOptions)'
+    lines:
+    - 129
+    - 142
+    detail: {}
+  - name: attachToClient
+    sig: 'attachToClient(client: ExtensionClient): void'
+    lines:
+    - 147
+    - 166
+    detail:
+      calls:
+      - client.on
+      - this.emitEvent
+      - this.unsubscribers.push
+  - name: emitControl
+    sig: "emitControl(event: {\n\t\tsubtype: \"ack\" | \"done\" | \"error\"\n\t\trequestId?: string\n\t\tcommand?: JsonEvent[\"command\"]\n\t\ttaskId?: string\n\t\tcontent?: string\n\t\tsuccess?: boolean\n\t\tcode?: string\n\t}): void"
+    lines:
+    - 168
+    - 188
+    detail:
+      calls:
+      - this.emitEvent
+  - name: emitQueue
+    sig: "emitQueue(event: {\n\t\tsubtype: \"snapshot\" | \"enqueued\" | \"dequeued\" | \"drained\" | \"updated\"\n\t\ttaskId?: string\n\t\tcontent?: string\n\t\tqueueDepth: number\n\t\tqueue: JsonEventQueueItem[]\n\t}): void"
+    lines:
+    - 190
+    - 205
+    detail:
+      calls:
+      - this.emitEvent
+  - name: detach
+    sig: 'detach(): void'
+    lines:
+    - 220
+    - 225
+    detail:
+      calls:
+      - unsub
+  - name: computeDelta
+    sig: 'computeDelta(msgId: number, fullContent: string | undefined): string | null'
+    vis: private
+    lines:
+    - 231
+    - 240
+    detail:
+      calls:
+      - fullContent.slice
+      - fullContent.startsWith
+      - this.previousContent.get
+      - this.previousContent.set
+  - name: computeStructuredDelta
+    sig: 'computeStructuredDelta(msgId: number, fullContent: string | undefined): string | null'
+    vis: private
+    lines:
+    - 250
+    - 294
+    detail:
+      calls:
+      - fullContent.slice
+      - fullContent.startsWith
+      - this.previousToolUseContent.get
+      - this.previousToolUseContent.set
+  - name: computeCommandOutputDelta
+    sig: 'computeCommandOutputDelta(commandId: number, fullOutput: string | undefined): string | null'
+    vis: private
+    lines:
+    - 303
+    - 313
+    detail:
+      calls:
+      - normalized.slice
+      - normalized.startsWith
+      - this.previousCommandOutputByToolUseId.get
+      - this.previousCommandOutputByToolUseId.set
+  - name: emitCommandOutputEvent
+    sig: "emitCommandOutputEvent(\n\t\tcommandId: number,\n\t\tfullOutput: string | undefined,\n\t\tisDone: boolean,\n\t\texitCode?: number,\n\t): void"
+    vis: private
+    lines:
+    - 315
+    - 382
+    detail:
+      calls:
+      - this.clearPendingCommandCompletion
+      - this.completedCommandOutputIds.add
+      - this.computeCommandOutputDelta
+      - this.emitEvent
+      - this.previousCommandOutputByToolUseId.delete
+      - this.statusDrivenCommandOutputIds.delete
+  - name: emitCommandOutputChunk
+    sig: 'emitCommandOutputChunk(outputSnapshot: string): void'
+    lines:
+    - 384
+    - 392
+    detail:
+      calls:
+      - this.emitCommandOutputEvent
+      - this.statusDrivenCommandOutputIds.add
+  - name: markCommandOutputExited
+    sig: 'markCommandOutputExited(exitCode?: number): void'
+    lines:
+    - 394
+    - 414
+    detail:
+      calls:
+      - setTimeout
+      - this.clearPendingCommandCompletion
+      - this.pendingCommandCompletionByToolUseId.set
+      - this.statusDrivenCommandOutputIds.add
+      - timer.unref
+  - name: emitCommandOutputDone
+    sig: 'emitCommandOutputDone(exitCode?: number): void'
+    lines:
+    - 416
+    - 424
+    detail:
+      calls:
+      - this.emitCommandOutputEvent
+      - this.statusDrivenCommandOutputIds.add
+  - name: handleMessage
+    sig: 'handleMessage(msg: ClineMessage, _isUpdate: boolean): void'
+    vis: private
+    lines:
+    - 476
+    - 509
+    detail:
+      calls:
+      - this.getContentToSend
+      - this.handleAskMessage
+      - this.handleSayMessage
+      - this.isEmptyStreamingDelta
+      - this.previousContent.delete
+      - this.previousToolUseContent.delete
+      - this.seenMessageIds.add
+      - this.seenMessageIds.has
+  - name: handleSayMessage
+    sig: 'handleSayMessage(msg: ClineMessage, contentToSend: string | null, isDone: boolean): void'
+    vis: private
+    lines:
+    - 514
+    - 581
+    detail:
+      calls:
+      - SKIP_SAY_TYPES.has
+      - parseApiReqCost
+      - this.buildTextEvent
+      - this.emitEvent
+      - this.handleCommandOutputMessage
+      - this.handleReasoningMessage
+  - name: handleReasoningMessage
+    sig: 'handleReasoningMessage(msg: ClineMessage, isDone: boolean): void'
+    vis: private
+    lines:
+    - 586
+    - 600
+    detail:
+      calls:
+      - this.buildTextEvent
+      - this.emitEvent
+      - this.getContentToSend
+      - this.isEmptyStreamingDelta
+      - this.previousContent.delete
+  - name: handleAskMessage
+    sig: 'handleAskMessage(msg: ClineMessage, isDone: boolean): void'
+    vis: private
+    lines:
+    - 605
+    - 654
+    detail:
+      calls:
+      - this.buildTextEvent
+      - this.emitEvent
+      - this.getContentToSend
+      - this.handleToolUseAsk
+      - this.isEmptyStreamingDelta
+  - name: handleToolUseAsk
+    sig: 'handleToolUseAsk(msg: ClineMessage, subtype: "tool" | "command" | "mcp", isDone: boolean): void'
+    vis: private
+    lines:
+    - 656
+    - 751
+    detail:
+      calls:
+      - clearTimeout
+      - parseToolInfo
+      - this.clearPendingCommandCompletion
+      - this.completedCommandOutputIds.delete
+      - this.computeStructuredDelta
+      - this.emitCommandOutputEvent
+      - this.emitEvent
+      - this.pendingCommandCompletionByToolUseId.delete
+      - this.pendingCommandCompletionByToolUseId.get
+  - name: handleCommandOutputMessage
+    sig: 'handleCommandOutputMessage(msg: ClineMessage, isDone: boolean): void'
+    vis: private
+    lines:
+    - 753
+    - 775
+    detail:
+      calls:
+      - clearTimeout
+      - this.completedCommandOutputIds.has
+      - this.emitCommandOutputEvent
+      - this.pendingCommandCompletionByToolUseId.delete
+      - this.pendingCommandCompletionByToolUseId.get
+      - this.statusDrivenCommandOutputIds.has
+  - name: handleTaskCompleted
+    sig: 'handleTaskCompleted(event: TaskCompletedEvent): void'
+    vis: private
+    lines:
+    - 780
+    - 802
+    detail:
+      calls:
+      - Date.now
+      - this.emitEvent
+      - this.outputFinalResult
+  - name: emitEvent
+    sig: 'emitEvent(event: JsonEvent): void'
+    vis: private
+    lines:
+    - 820
+    - 829
+    detail:
+      calls:
+      - this.events.push
+      - this.outputLine
+      - this.requestIdProvider
+  - name: outputFinalResult
+    sig: 'outputFinalResult(success: boolean, content?: string): void'
+    vis: private
+    lines:
+    - 841
+    - 851
+    detail:
+      calls:
+      - JSON.stringify
+      - this.events.filter
+      - this.writeToStdout
+  - name: flush
+    sig: 'flush(): Promise<void>'
+    is_async: true
+    lines:
+    - 871
+    - 875
+    detail:
+      calls:
+      - Promise.all
+  - name: getEvents
+    sig: 'getEvents(): JsonEvent[]'
+    lines:
+    - 880
+    - 882
+    detail: {}
+  - name: clear
+    sig: 'clear(): void'
+    lines:
+    - 887
+    - 904
+    detail:
+      calls:
+      - clearTimeout
+      - this.completedCommandOutputIds.clear
+      - this.pendingCommandCompletionByToolUseId.clear
+      - this.pendingCommandCompletionByToolUseId.values
+      - this.previousCommandOutputByToolUseId.clear
+      - this.previousContent.clear
+      - this.previousToolUseContent.clear
+      - this.seenMessageIds.clear
+      - this.statusDrivenCommandOutputIds.clear
+  lines:
+  - 96
+  - 905
+functions:
+- name: parseToolInfo
+  sig: 'parseToolInfo(text: string | undefined): { name: string; input: Record<string, unknown> } | null'
+  lines:
+  - 47
+  - 55
+  detail:
+    calls:
+    - JSON.parse
+- name: parseApiReqCost
+  sig: 'parseApiReqCost(text: string | undefined): JsonEventCost | undefined'
+  lines:
+  - 60
+  - 76
+  detail:
+    calls:
+    - JSON.parse
+exports:
+- name: JsonEventEmitterOptions
+  kind: type
+- name: JsonEventEmitter
+  kind: type
+- name: parseToolInfo
+  kind: func
+- name: parseApiReqCost
+  kind: func
+- name: SKIP_SAY_TYPES
+  kind: data
+- name: REASONING_KEY_OFFSET
+  kind: data
+- name: COMMAND_OUTPUT_EXIT_GRACE_MS
+  kind: data

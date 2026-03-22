@@ -1,0 +1,268 @@
+## Roska File Descriptor — agent/state-store.ts
+file: agent/state-store.ts
+lines: 415
+layer: logic
+purpose: 'State Store This module manages the client''s internal state, including: - The clineMessages array (source of truth for agent state) - The computed agent state info - Any extension state we want to cache The store is designed to be: - Immutable: State updates create new objects, not mutations - Observable: Changes trigger notifications - Queryable: Current state is always accessible'
+imports:
+- sym: '@roo-code/types.ClineMessage'
+- sym: '@roo-code/types.ExtensionState'
+- sym: ./agent-state.js.detectAgentState
+- sym: ./agent-state.js.AgentStateInfo
+- sym: ./agent-state.js.AgentLoopState
+- sym: ./events.js.Observable
+data:
+- name: defaultStore
+  type: StateStore | null
+  val: 'null'
+types:
+- name: StoreState
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: messages
+    type: ClineMessage[]
+  - name: agentState
+    type: AgentStateInfo
+  - name: isInitialized
+    type: boolean
+  - name: lastUpdatedAt
+    type: number
+  - name: currentMode
+    type: string | undefined
+  - name: extensionState
+    type: Partial<ExtensionState>
+  lines:
+  - 27
+  - 62
+- name: StateStore
+  kind: struct
+  ctx: 'Optional: Track state history for debugging. Set maxHistorySize to enable.'
+  fields:
+  - name: state
+    type: StoreState
+  - name: stateObservable
+    type: Observable<StoreState>
+  - name: agentStateObservable
+    type: Observable<AgentStateInfo>
+  - name: stateHistory
+    type: StoreState[]
+    default: '[]'
+  - name: maxHistorySize
+    type: number
+  methods:
+  - name: constructor
+    sig: 'constructor(options: { maxHistorySize?: number } = {})'
+    lines:
+    - 118
+    - 123
+    detail:
+      calls:
+      - createInitialState
+      - new Observable
+  - name: getState
+    sig: 'getState(): StoreState'
+    lines:
+    - 132
+    - 134
+    detail: {}
+  - name: getAgentState
+    sig: 'getAgentState(): AgentStateInfo'
+    lines:
+    - 140
+    - 142
+    detail: {}
+  - name: getMessages
+    sig: 'getMessages(): ClineMessage[]'
+    lines:
+    - 147
+    - 149
+    detail: {}
+  - name: getLastMessage
+    sig: 'getLastMessage(): ClineMessage | undefined'
+    lines:
+    - 154
+    - 156
+    detail: {}
+  - name: isInitialized
+    sig: 'isInitialized(): boolean'
+    lines:
+    - 161
+    - 163
+    detail: {}
+  - name: isWaitingForInput
+    sig: 'isWaitingForInput(): boolean'
+    lines:
+    - 168
+    - 170
+    detail: {}
+  - name: isRunning
+    sig: 'isRunning(): boolean'
+    lines:
+    - 175
+    - 177
+    detail: {}
+  - name: isStreaming
+    sig: 'isStreaming(): boolean'
+    lines:
+    - 182
+    - 184
+    detail: {}
+  - name: getCurrentState
+    sig: 'getCurrentState(): AgentLoopState'
+    lines:
+    - 189
+    - 191
+    detail: {}
+  - name: getCurrentMode
+    sig: 'getCurrentMode(): string | undefined'
+    lines:
+    - 196
+    - 198
+    detail: {}
+  - name: setMessages
+    sig: 'setMessages(messages: ClineMessage[]): AgentStateInfo'
+    lines:
+    - 211
+    - 224
+    detail:
+      calls:
+      - Date.now
+      - detectAgentState
+      - this.updateState
+  - name: addMessage
+    sig: 'addMessage(message: ClineMessage): AgentStateInfo'
+    lines:
+    - 233
+    - 236
+    detail:
+      calls:
+      - this.setMessages
+  - name: updateMessage
+    sig: 'updateMessage(message: ClineMessage): AgentStateInfo | undefined'
+    lines:
+    - 245
+    - 255
+    detail:
+      calls:
+      - this.addMessage
+      - this.setMessages
+      - this.state.messages.findIndex
+  - name: clear
+    sig: 'clear(): void'
+    lines:
+    - 261
+    - 270
+    detail:
+      calls:
+      - Date.now
+      - detectAgentState
+      - this.updateState
+  - name: setCurrentMode
+    sig: 'setCurrentMode(mode: string | undefined): void'
+    lines:
+    - 278
+    - 286
+    detail:
+      calls:
+      - Date.now
+      - this.updateState
+  - name: reset
+    sig: 'reset(): void'
+    lines:
+    - 292
+    - 296
+    detail:
+      calls:
+      - createInitialState
+  - name: setExtensionState
+    sig: 'setExtensionState(extensionState: Partial<ExtensionState>): void'
+    lines:
+    - 304
+    - 318
+    detail:
+      calls:
+      - this.setMessages
+      - this.updateState
+  - name: subscribe
+    sig: 'subscribe(observer: (state: StoreState) => void): () => void'
+    lines:
+    - 330
+    - 332
+    detail:
+      calls:
+      - this.stateObservable.subscribe
+  - name: subscribeToAgentState
+    sig: 'subscribeToAgentState(observer: (state: AgentStateInfo) => void): () => void'
+    lines:
+    - 341
+    - 343
+    detail:
+      calls:
+      - this.agentStateObservable.subscribe
+  - name: getHistory
+    sig: 'getHistory(): StoreState[]'
+    lines:
+    - 352
+    - 354
+    detail: {}
+  - name: clearHistory
+    sig: 'clearHistory(): void'
+    lines:
+    - 359
+    - 361
+    detail: {}
+  - name: updateState
+    sig: 'updateState(newState: StoreState): void'
+    vis: private
+    lines:
+    - 370
+    - 384
+    detail:
+      calls:
+      - this.agentStateObservable.next
+      - this.stateHistory.push
+      - this.stateHistory.shift
+      - this.stateObservable.next
+  lines:
+  - 106
+  - 385
+functions:
+- name: createInitialState
+  sig: 'createInitialState(): StoreState'
+  lines:
+  - 67
+  - 75
+  detail:
+    calls:
+    - Date.now
+    - detectAgentState
+- name: getDefaultStore
+  sig: 'getDefaultStore(): StateStore'
+  lines:
+  - 397
+  - 403
+  detail:
+    calls:
+    - new StateStore
+- name: resetDefaultStore
+  sig: 'resetDefaultStore(): void'
+  lines:
+  - 409
+  - 415
+  detail:
+    calls:
+    - defaultStore.reset
+exports:
+- name: StoreState
+  kind: type
+- name: StateStore
+  kind: type
+- name: createInitialState
+  kind: func
+- name: getDefaultStore
+  kind: func
+- name: resetDefaultStore
+  kind: func
+- name: defaultStore
+  kind: data

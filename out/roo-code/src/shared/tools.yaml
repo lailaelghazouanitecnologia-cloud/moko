@@ -1,0 +1,509 @@
+## Roska File Descriptor — shared/tools.ts
+file: shared/tools.ts
+lines: 385
+layer: logic
+imports:
+- sym: '@anthropic-ai/sdk.Anthropic'
+- sym: '@roo-code/types.ClineAsk'
+  kind: typing
+- sym: '@roo-code/types.ToolProgressStatus'
+  kind: typing
+- sym: '@roo-code/types.ToolGroup'
+  kind: typing
+- sym: '@roo-code/types.ToolName'
+  kind: typing
+- sym: '@roo-code/types.GenerateImageParams'
+  kind: typing
+data:
+- name: toolParamNames
+  type: array
+  val: "[\n\t\"command\",\n\t\"path\",\n\t\"content\",\n\t\"regex\",\n\t\"file_pattern\",\n\t\"recursive\",\n\t\"action\",\n\t\"url\",\n\t\"coordinate\",\n\t\"text\",\n\t..."
+- name: TOOL_DISPLAY_NAMES
+  type: Record<ToolName, string>
+  val: "{\n\texecute_command: \"run commands\",\n\tread_file: \"read files\",\n\tread_command_output: \"read command output\",\n\twrite_to_fil..."
+- name: TOOL_GROUPS
+  type: Record<ToolGroup, ToolGroupConfig>
+  val: "{\n\tread: {\n\t\ttools: [\"read_file\", \"search_files\", \"list_files\", \"codebase_search\"],\n\t},\n\tedit: {\n\t\ttools: [\"apply_diff\",..."
+- name: ALWAYS_AVAILABLE_TOOLS
+  type: ToolName[]
+  val: "[\n\t\"ask_followup_question\",\n\t\"attempt_completion\",\n\t\"switch_mode\",\n\t\"new_task\",\n\t\"update_todo_list\",\n\t\"run_slash_command..."
+- name: TOOL_ALIASES
+  type: Record<string, ToolName>
+  val: "{\n\twrite_file: \"write_to_file\",\n\tsearch_and_replace: \"edit\",\n} as const"
+types:
+- name: ToolResponse
+  kind: enum
+  decorators:
+  - type
+  variants:
+  - name: Array<Anthropic.TextBlockParam | Anthropic.ImageBlockParam>
+  lines:
+  - 5
+  - 5
+- name: AskApproval
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 7
+  - 12
+- name: HandleError
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 14
+  - 14
+- name: PushToolResult
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 16
+  - 16
+- name: AskFinishSubTaskApproval
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 18
+  - 18
+- name: TextContent
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: type
+    type: '"text"'
+  - name: content
+    type: string
+  - name: partial
+    type: boolean
+  lines:
+  - 20
+  - 24
+- name: ToolParamName
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 86
+  - 86
+- name: NativeToolArgs
+  kind: typealias
+  decorators:
+  - type
+  fields:
+  - name: access_mcp_resource
+    type: '{ server_name: string; uri: string }'
+  - name: read_file
+    type: import("@roo-code/types").ReadFileToolParams
+  - name: read_command_output
+    type: '{ artifact_id: string; search?: string; offset?: number; limit?: number }'
+  - name: attempt_completion
+    type: '{ result: string }'
+  - name: execute_command
+    type: '{ command: string; cwd?: string; timeout?: number | null }'
+  - name: apply_diff
+    type: '{ path: string; diff: string }'
+  - name: edit
+    type: '{ file_path: string; old_string: string; new_string: string; replace_all?: boolean }'
+  - name: search_and_replace
+    type: '{ file_path: string; old_string: string; new_string: string; replace_all?: boolean }'
+  - name: search_replace
+    type: '{ file_path: string; old_string: string; new_string: string }'
+  - name: edit_file
+    type: '{ file_path: string; old_string: string; new_string: string; expected_replacements?: number }'
+  - name: apply_patch
+    type: '{ patch: string }'
+  - name: list_files
+    type: '{ path: string; recursive?: boolean }'
+  - name: new_task
+    type: '{ mode: string; message: string; todos?: string }'
+  - name: ask_followup_question
+    type: "{\n\t\tquestion: string\n\t\tfollow_up: Array<{ text: string; mode?: string }>\n\t}"
+  - name: codebase_search
+    type: '{ query: string; path?: string }'
+  - name: generate_image
+    type: GenerateImageParams
+  - name: run_slash_command
+    type: '{ command: string; args?: string }'
+  - name: skill
+    type: '{ skill: string; args?: string }'
+  - name: search_files
+    type: '{ path: string; regex: string; file_pattern?: string | null }'
+  - name: switch_mode
+    type: '{ mode_slug: string; reason: string }'
+  - name: update_todo_list
+    type: '{ todos: string }'
+  - name: use_mcp_tool
+    type: '{ server_name: string; tool_name: string; arguments?: Record<string, unknown> }'
+  - name: write_to_file
+    type: '{ path: string; content: string }'
+  lines:
+  - 92
+  - 120
+- name: ToolUse
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: type
+    type: '"tool_use"'
+  - name: id
+    type: string
+  - name: name
+    type: TName
+  - name: params
+    type: Partial<Record<ToolParamName, string>>
+  - name: partial
+    type: boolean
+  - name: nativeArgs
+    type: 'TName extends keyof NativeToolArgs ? NativeToolArgs[TName] : never'
+  - name: usedLegacyFormat
+    type: boolean
+  lines:
+  - 127
+  - 147
+- name: McpToolUse
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: type
+    type: '"mcp_tool_use"'
+  - name: id
+    type: string
+  - name: arguments
+    type: Record<string, unknown>
+  - name: partial
+    type: boolean
+  lines:
+  - 155
+  - 167
+- name: ExecuteCommandToolUse
+  kind: trait
+  bases:
+  - ToolUse<"execute_command">
+  decorators:
+  - interface
+  fields:
+  - name: name
+    type: '"execute_command"'
+  - name: params
+    type: Partial<Pick<Record<ToolParamName, string>, "command" | "cwd" | "timeout">>
+  lines:
+  - 169
+  - 173
+- name: ReadFileToolUse
+  kind: trait
+  bases:
+  - ToolUse<"read_file">
+  decorators:
+  - interface
+  fields:
+  - name: name
+    type: '"read_file"'
+  - name: params
+    type: "Partial<\n\t\tPick<\n\t\t\tRecord<ToolParamName, string>,\n\t\t\t| \"args\"\n\t\t\t| \"path\"\n\t\t\t| \"start_line\"\n\t\t\t| \"end_line\"\n\t\t\t| \"mode\"\n\t\t\t| \"offset\"\n\t\t\t| \"limit\"\n\t\t\t| \"indentation\"\n\t\t\t| \"anchor_line\"\n\t\t\t| \"max_levels\"\n\t\t\t| \"include_siblings\"\n\t\t\t| \"include_header\"\n\t\t>\n\t>"
+  lines:
+  - 175
+  - 194
+- name: WriteToFileToolUse
+  kind: trait
+  bases:
+  - ToolUse<"write_to_file">
+  decorators:
+  - interface
+  fields:
+  - name: name
+    type: '"write_to_file"'
+  - name: params
+    type: Partial<Pick<Record<ToolParamName, string>, "path" | "content">>
+  lines:
+  - 196
+  - 199
+- name: CodebaseSearchToolUse
+  kind: trait
+  bases:
+  - ToolUse<"codebase_search">
+  decorators:
+  - interface
+  fields:
+  - name: name
+    type: '"codebase_search"'
+  - name: params
+    type: Partial<Pick<Record<ToolParamName, string>, "query" | "path">>
+  lines:
+  - 201
+  - 204
+- name: SearchFilesToolUse
+  kind: trait
+  bases:
+  - ToolUse<"search_files">
+  decorators:
+  - interface
+  fields:
+  - name: name
+    type: '"search_files"'
+  - name: params
+    type: Partial<Pick<Record<ToolParamName, string>, "path" | "regex" | "file_pattern">>
+  lines:
+  - 206
+  - 209
+- name: ListFilesToolUse
+  kind: trait
+  bases:
+  - ToolUse<"list_files">
+  decorators:
+  - interface
+  fields:
+  - name: name
+    type: '"list_files"'
+  - name: params
+    type: Partial<Pick<Record<ToolParamName, string>, "path" | "recursive">>
+  lines:
+  - 211
+  - 214
+- name: UseMcpToolToolUse
+  kind: trait
+  bases:
+  - ToolUse<"use_mcp_tool">
+  decorators:
+  - interface
+  fields:
+  - name: name
+    type: '"use_mcp_tool"'
+  - name: params
+    type: Partial<Pick<Record<ToolParamName, string>, "server_name" | "tool_name" | "arguments">>
+  lines:
+  - 216
+  - 219
+- name: AccessMcpResourceToolUse
+  kind: trait
+  bases:
+  - ToolUse<"access_mcp_resource">
+  decorators:
+  - interface
+  fields:
+  - name: name
+    type: '"access_mcp_resource"'
+  - name: params
+    type: Partial<Pick<Record<ToolParamName, string>, "server_name" | "uri">>
+  lines:
+  - 221
+  - 224
+- name: AskFollowupQuestionToolUse
+  kind: trait
+  bases:
+  - ToolUse<"ask_followup_question">
+  decorators:
+  - interface
+  fields:
+  - name: name
+    type: '"ask_followup_question"'
+  - name: params
+    type: Partial<Pick<Record<ToolParamName, string>, "question" | "follow_up">>
+  lines:
+  - 226
+  - 229
+- name: AttemptCompletionToolUse
+  kind: trait
+  bases:
+  - ToolUse<"attempt_completion">
+  decorators:
+  - interface
+  fields:
+  - name: name
+    type: '"attempt_completion"'
+  - name: params
+    type: Partial<Pick<Record<ToolParamName, string>, "result">>
+  lines:
+  - 231
+  - 234
+- name: SwitchModeToolUse
+  kind: trait
+  bases:
+  - ToolUse<"switch_mode">
+  decorators:
+  - interface
+  fields:
+  - name: name
+    type: '"switch_mode"'
+  - name: params
+    type: Partial<Pick<Record<ToolParamName, string>, "mode_slug" | "reason">>
+  lines:
+  - 236
+  - 239
+- name: NewTaskToolUse
+  kind: trait
+  bases:
+  - ToolUse<"new_task">
+  decorators:
+  - interface
+  fields:
+  - name: name
+    type: '"new_task"'
+  - name: params
+    type: Partial<Pick<Record<ToolParamName, string>, "mode" | "message" | "todos">>
+  lines:
+  - 241
+  - 244
+- name: RunSlashCommandToolUse
+  kind: trait
+  bases:
+  - ToolUse<"run_slash_command">
+  decorators:
+  - interface
+  fields:
+  - name: name
+    type: '"run_slash_command"'
+  - name: params
+    type: Partial<Pick<Record<ToolParamName, string>, "command" | "args">>
+  lines:
+  - 246
+  - 249
+- name: SkillToolUse
+  kind: trait
+  bases:
+  - ToolUse<"skill">
+  decorators:
+  - interface
+  fields:
+  - name: name
+    type: '"skill"'
+  - name: params
+    type: Partial<Pick<Record<ToolParamName, string>, "skill" | "args">>
+  lines:
+  - 251
+  - 254
+- name: GenerateImageToolUse
+  kind: trait
+  bases:
+  - ToolUse<"generate_image">
+  decorators:
+  - interface
+  fields:
+  - name: name
+    type: '"generate_image"'
+  - name: params
+    type: Partial<Pick<Record<ToolParamName, string>, "prompt" | "path" | "image">>
+  lines:
+  - 256
+  - 259
+- name: ToolGroupConfig
+  kind: typealias
+  decorators:
+  - type
+  fields:
+  - name: tools
+    type: readonly string[]
+  - name: alwaysAvailable
+    type: boolean
+  - name: customTools
+    type: readonly string[]
+  lines:
+  - 262
+  - 266
+- name: DiffResult
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 342
+  - 355
+- name: DiffItem
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: content
+    type: string
+  - name: startLine
+    type: number
+  lines:
+  - 357
+  - 360
+- name: DiffStrategy
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: getName
+    type: 'method: getName(): string'
+  - name: applyDiff
+    type: "method: applyDiff(\n\t\toriginalContent: string,\n\t\tdiffContent: string | DiffItem[],\n\t\tstartLine?: number,\n\t\tendLine?: number,\n\t): Promise<DiffResult>"
+  - name: getProgressStatus
+    type: 'method: getProgressStatus?(toolUse: ToolUse, result?: any): ToolProgressStatus'
+  lines:
+  - 362
+  - 385
+exports:
+- name: ToolResponse
+  kind: type
+- name: AskApproval
+  kind: type
+- name: HandleError
+  kind: type
+- name: PushToolResult
+  kind: type
+- name: AskFinishSubTaskApproval
+  kind: type
+- name: TextContent
+  kind: type
+- name: ToolParamName
+  kind: type
+- name: NativeToolArgs
+  kind: type
+- name: ToolUse
+  kind: type
+- name: McpToolUse
+  kind: type
+- name: ExecuteCommandToolUse
+  kind: type
+- name: ReadFileToolUse
+  kind: type
+- name: WriteToFileToolUse
+  kind: type
+- name: CodebaseSearchToolUse
+  kind: type
+- name: SearchFilesToolUse
+  kind: type
+- name: ListFilesToolUse
+  kind: type
+- name: UseMcpToolToolUse
+  kind: type
+- name: AccessMcpResourceToolUse
+  kind: type
+- name: AskFollowupQuestionToolUse
+  kind: type
+- name: AttemptCompletionToolUse
+  kind: type
+- name: SwitchModeToolUse
+  kind: type
+- name: NewTaskToolUse
+  kind: type
+- name: RunSlashCommandToolUse
+  kind: type
+- name: SkillToolUse
+  kind: type
+- name: GenerateImageToolUse
+  kind: type
+- name: ToolGroupConfig
+  kind: type
+- name: DiffResult
+  kind: type
+- name: DiffItem
+  kind: type
+- name: DiffStrategy
+  kind: type
+- name: toolParamNames
+  kind: data
+- name: TOOL_DISPLAY_NAMES
+  kind: data
+- name: TOOL_GROUPS
+  kind: data
+- name: ALWAYS_AVAILABLE_TOOLS
+  kind: data
+- name: TOOL_ALIASES
+  kind: data

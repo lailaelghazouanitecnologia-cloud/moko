@@ -1,0 +1,265 @@
+## Roska File Descriptor — processors/file-watcher.ts
+file: processors/file-watcher.ts
+lines: 603
+layer: logic
+imports:
+- sym: vscode.vscode
+- sym: ../constants.QDRANT_CODE_BLOCK_NAMESPACE
+- sym: ../constants.MAX_FILE_SIZE_BYTES
+- sym: ../constants.BATCH_SEGMENT_THRESHOLD
+- sym: ../constants.MAX_BATCH_RETRIES
+- sym: ../constants.INITIAL_RETRY_DELAY_MS
+- sym: crypto.createHash
+- sym: ../../../core/ignore/RooIgnoreController.RooIgnoreController
+- sym: ignore.Ignore
+- sym: ../shared/supported-extensions.scannerExtensions
+- sym: ../interfaces.IFileWatcher
+- sym: ../interfaces.FileProcessingResult
+- sym: ../interfaces.IEmbedder
+- sym: ../interfaces.IVectorStore
+- sym: ../interfaces.PointStruct
+- sym: ../interfaces.BatchProcessingSummary
+- sym: ./parser.codeParser
+- sym: ../cache-manager.CacheManager
+- sym: ../shared/get-relative-path.generateNormalizedAbsolutePath
+- sym: ../shared/get-relative-path.generateRelativeFilePath
+- sym: ../../glob/ignore-utils.isPathInIgnoredDirectory
+- sym: '@roo-code/telemetry.TelemetryService'
+- sym: '@roo-code/types.TelemetryEventName'
+- sym: ../shared/validation-helpers.sanitizeErrorMessage
+- sym: ../../../shared/package.Package
+types:
+- name: FileWatcher
+  kind: struct
+  ctx: Event emitted when a batch of files begins processing
+  bases:
+  - IFileWatcher
+  fields:
+  - name: ignoreInstance
+    type: Ignore
+  - name: fileWatcher
+    type: vscode.FileSystemWatcher
+  - name: ignoreController
+    type: RooIgnoreController
+  - name: accumulatedEvents
+    type: 'Map<string, { uri: vscode.Uri; type: "create" | "change" | "delete" }>'
+    default: new Map()
+  - name: batchProcessDebounceTimer
+    type: NodeJS.Timeout
+  - name: BATCH_DEBOUNCE_DELAY_MS
+    type: any
+    default: '500'
+  - name: FILE_PROCESSING_CONCURRENCY_LIMIT
+    type: any
+    default: '10'
+  - name: batchSegmentThreshold
+    type: number
+  - name: _onDidStartBatchProcessing
+    type: any
+    default: new vscode.EventEmitter<string[]>()
+  - name: _onBatchProgressUpdate
+    type: any
+    default: "new vscode.EventEmitter<{\n\t\tprocessedInBatch: number\n\t\ttotalInBatch: number\n\t\tcu..."
+  - name: _onDidFinishBatchProcessing
+    type: any
+    default: new vscode.EventEmitter<BatchProcessingSummary>()
+  - name: onDidStartBatchProcessing
+    type: any
+    default: this._onDidStartBatchProcessing.event
+  - name: onBatchProgressUpdate
+    type: any
+    default: this._onBatchProgressUpdate.event
+  - name: onDidFinishBatchProcessing
+    type: any
+    default: this._onDidFinishBatchProcessing.event
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tprivate workspacePath: string,\n\t\tprivate context: vscode.ExtensionContext,\n\t\tprivate readonly cacheManager: CacheManager,\n\t\tprivate embedder?: IEmbedder,\n\t\tprivate vectorStore?: IVectorStore,\n\t\tignoreInstance?: Ignore,\n\t\tignoreController?: RooIgnoreController,\n\t\tbatchSegmentThreshold?: number,\n\t)"
+    lines:
+    - 75
+    - 103
+    detail:
+      calls:
+      - new RooIgnoreController
+      - "vscode.workspace\n\t\t\t\t\t.getConfiguration"
+      - "vscode.workspace\n\t\t\t\t\t.getConfiguration(Package.name)\n\t\t\t\t\t.get"
+  - name: initialize
+    sig: 'initialize(): Promise<void>'
+    is_async: true
+    lines:
+    - 108
+    - 120
+    detail:
+      calls:
+      - new vscode.RelativePattern
+      - scannerExtensions.map
+      - scannerExtensions.map((e) => e.substring(1)).join
+      - this.fileWatcher.onDidChange
+      - this.fileWatcher.onDidCreate
+      - this.fileWatcher.onDidDelete
+      - this.handleFileChanged.bind
+      - this.handleFileCreated.bind
+      - this.handleFileDeleted.bind
+      - vscode.workspace.createFileSystemWatcher
+  - name: dispose
+    sig: 'dispose(): void'
+    lines:
+    - 125
+    - 134
+    detail:
+      calls:
+      - clearTimeout
+      - this._onBatchProgressUpdate.dispose
+      - this._onDidFinishBatchProcessing.dispose
+      - this._onDidStartBatchProcessing.dispose
+      - this.accumulatedEvents.clear
+      - this.fileWatcher?.dispose
+  - name: handleFileCreated
+    sig: 'handleFileCreated(uri: vscode.Uri): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 140
+    - 143
+    detail:
+      calls:
+      - this.accumulatedEvents.set
+      - this.scheduleBatchProcessing
+  - name: handleFileChanged
+    sig: 'handleFileChanged(uri: vscode.Uri): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 149
+    - 152
+    detail:
+      calls:
+      - this.accumulatedEvents.set
+      - this.scheduleBatchProcessing
+  - name: handleFileDeleted
+    sig: 'handleFileDeleted(uri: vscode.Uri): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 158
+    - 161
+    detail:
+      calls:
+      - this.accumulatedEvents.set
+      - this.scheduleBatchProcessing
+  - name: triggerBatchProcessing
+    sig: 'triggerBatchProcessing(): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 176
+    - 188
+    detail:
+      calls:
+      - Array.from
+      - eventsToProcess.keys
+      - new Map
+      - this._onDidStartBatchProcessing.fire
+      - this.accumulatedEvents.clear
+      - this.processBatch
+  - name: _handleBatchDeletions
+    sig: "_handleBatchDeletions(\n\t\tbatchResults: FileProcessingResult[],\n\t\tprocessedCountInBatch: number,\n\t\ttotalFilesInBatch: number,\n\t\tpathsToExplicitlyDelete: string[],\n\t\tfilesToUpsertDetails: Array<{ path: string; uri: vscode.Uri; originalType: \"create\" | \"change\" }>,\n\t): Promise<{ overallBatchError?: Error; clearedPaths: Set<string>; processedCount: number }>"
+    is_async: true
+    vis: private
+    lines:
+    - 194
+    - 251
+    detail:
+      calls:
+      - Array.from
+      - String
+      - TelemetryService.instance.captureEvent
+      - allPathsToClearFromDB.add
+      - batchResults.push
+      - new Set
+      - sanitizeErrorMessage
+      - this._onBatchProgressUpdate.fire
+      - this.cacheManager.deleteHash
+      - this.vectorStore.deletePointsByMultipleFilePaths
+  - name: _processFilesAndPrepareUpserts
+    sig: "_processFilesAndPrepareUpserts(\n\t\tfilesToUpsertDetails: Array<{ path: string; uri: vscode.Uri; originalType: \"create\" | \"change\" }>,\n\t\tbatchResults: FileProcessingResult[],\n\t\tprocessedCountInBatch: number,\n\t\ttotalFilesInBatch: number,\n\t\tpathsToExplicitlyDelete: string[],\n\t): Promise<{\n\t\tpointsForBatchUpsert: PointStruct[]\n\t\tsuccessfullyProcessedForUpsert: Array<{ path: string; newHash?: string }>\n\t\tprocessedCount: number\n\t}>"
+    is_async: true
+    vis: private
+    lines:
+    - 253
+    - 351
+    detail:
+      calls:
+      - Promise.allSettled
+      - batchResults.push
+      - chunkToProcess.map
+      - console.error
+      - filesToProcessConcurrently.slice
+      - new Error
+      - pathsToExplicitlyDelete.includes
+      - pointsForBatchUpsert.push
+      - successfullyProcessedForUpsert.push
+      - this._onBatchProgressUpdate.fire
+  - name: _executeBatchUpsertOperations
+    sig: "_executeBatchUpsertOperations(\n\t\tpointsForBatchUpsert: PointStruct[],\n\t\tsuccessfullyProcessedForUpsert: Array<{ path: string; newHash?: string }>,\n\t\tbatchResults: FileProcessingResult[],\n\t\toverallBatchError?: Error,\n\t): Promise<Error | undefined>"
+    is_async: true
+    vis: private
+    lines:
+    - 353
+    - 419
+    detail:
+      calls:
+      - TelemetryService.instance.captureEvent
+      - batchResults.push
+      - new Error
+      - new Promise
+      - pointsForBatchUpsert.slice
+      - sanitizeErrorMessage
+      - this.cacheManager.updateHash
+      - this.vectorStore.upsertPoints
+  - name: processBatch
+    sig: "processBatch(\n\t\teventsToProcess: Map<string, { uri: vscode.Uri; type: \"create\" | \"change\" | \"delete\" }>,\n\t): Promise<void>"
+    is_async: true
+    vis: private
+    lines:
+    - 421
+    - 502
+    detail:
+      calls:
+      - eventsToProcess.values
+      - filesToUpsertDetails.push
+      - pathsToExplicitlyDelete.push
+      - this._executeBatchUpsertOperations
+      - this._handleBatchDeletions
+      - this._onBatchProgressUpdate.fire
+      - this._onDidFinishBatchProcessing.fire
+      - this._processFilesAndPrepareUpserts
+  - name: processFile
+    sig: 'processFile(filePath: string): Promise<FileProcessingResult>'
+    is_async: true
+    lines:
+    - 509
+    - 602
+    detail:
+      calls:
+      - blocks.map
+      - codeParser.parseFile
+      - createHash
+      - createHash("sha256").update
+      - createHash("sha256").update(content).digest
+      - fileContent.toString
+      - generateRelativeFilePath
+      - isPathInIgnoredDirectory
+      - this.cacheManager.getHash
+      - this.embedder.createEmbeddings
+      - this.ignoreController.validateAccess
+      - this.ignoreInstance.ignores
+      - vscode.Uri.file
+      - vscode.workspace.fs.readFile
+      - vscode.workspace.fs.stat
+  lines:
+  - 34
+  - 603
+exports:
+- name: FileWatcher
+  kind: type

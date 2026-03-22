@@ -1,0 +1,189 @@
+## Roska File Descriptor — tools/filter-tools-for-mode.ts
+file: tools/filter-tools-for-mode.ts
+lines: 456
+layer: logic
+imports:
+- sym: openai.OpenAI
+  kind: typing
+- sym: '@roo-code/types.ModeConfig'
+  kind: typing
+- sym: '@roo-code/types.ToolName'
+  kind: typing
+- sym: '@roo-code/types.ToolGroup'
+  kind: typing
+- sym: '@roo-code/types.ModelInfo'
+  kind: typing
+- sym: ../../../shared/modes.getModeBySlug
+- sym: ../../../shared/modes.getToolsForMode
+- sym: ../../../shared/tools.TOOL_GROUPS
+- sym: ../../../shared/tools.ALWAYS_AVAILABLE_TOOLS
+- sym: ../../../shared/tools.TOOL_ALIASES
+- sym: ../../../shared/modes.defaultModeSlug
+- sym: ../../../services/code-index/manager.CodeIndexManager
+  kind: typing
+- sym: ../../../services/mcp/McpHub.McpHub
+  kind: typing
+- sym: ../../../core/tools/validateToolUse.isToolAllowedForMode
+data:
+- name: ALIAS_TO_CANONICAL
+  type: Map<string, string>
+  val: "new Map(\n\tObject.entries(TOOL_ALIASES).map(([alias, canonical]) => [alias, canonical]),\n)"
+- name: CANONICAL_TO_ALIASES
+  type: Map<string, string[]>
+  val: new Map()
+- name: ALIAS_GROUPS
+  type: Map<string, readonly string[]>
+  val: new Map()
+- name: RENAMED_TOOL_CACHE
+  type: Map<string, OpenAI.Chat.ChatCompletionTool>
+  val: new Map()
+types:
+- name: ModelToolCustomizationResult
+  kind: trait
+  ctx: Result of applying model tool customization. Contains the set of allowed tools and any alias renames to apply.
+  decorators:
+  - interface
+  fields:
+  - name: allowedTools
+    type: Set<string>
+  - name: aliasRenames
+    type: Map<string, string>
+  lines:
+  - 146
+  - 150
+functions:
+- name: getOrCreateRenamedTool
+  sig: "getOrCreateRenamedTool(\n\ttool: OpenAI.Chat.ChatCompletionTool,\n\taliasName: string,\n): OpenAI.Chat.ChatCompletionTool"
+  lines:
+  - 63
+  - 86
+  detail:
+    calls:
+    - RENAMED_TOOL_CACHE.get
+    - RENAMED_TOOL_CACHE.set
+- name: resolveToolAlias
+  sig: 'resolveToolAlias(toolName: string): string'
+  lines:
+  - 96
+  - 99
+  detail:
+    calls:
+    - ALIAS_TO_CANONICAL.get
+- name: applyToolAliases
+  sig: 'applyToolAliases(allowedTools: Set<string>): Set<string>'
+  lines:
+  - 108
+  - 117
+  detail:
+    calls:
+    - new Set
+    - resolveToolAlias
+    - result.add
+- name: getToolAliasGroup
+  sig: 'getToolAliasGroup(toolName: string): readonly string[]'
+  lines:
+  - 126
+  - 128
+  detail:
+    calls:
+    - ALIAS_GROUPS.get
+- name: applyModelToolCustomization
+  sig: "applyModelToolCustomization(\n\tallowedTools: Set<string>,\n\tmodeConfig: ModeConfig,\n\tmodelInfo?: ModelInfo,\n): ModelToolCustomizationResult"
+  lines:
+  - 152
+  - 210
+  detail:
+    calls:
+    - Object.entries
+    - groupConfig.customTools.forEach
+    - groupConfig.tools.forEach
+    - modeConfig.groups.map
+    - modelInfo.excludedTools.forEach
+    - modelInfo.includedTools.forEach
+    - new Map
+    - new Set
+- name: filterNativeToolsForMode
+  sig: "filterNativeToolsForMode(\n\tnativeTools: OpenAI.Chat.ChatCompletionTool[],\n\tmode: string | undefined,\n\tcustomModes: ModeConfig[] | undefined,\n\texperiments: Record<string, boolean> | undefined,\n\tcodeIndexManager?: CodeIndexManager,\n\tsettings?: Record<string, any>,\n\tmcpHub?: McpHub,\n): OpenAI.Chat.ChatCompletionTool[]"
+  lines:
+  - 225
+  - 330
+  detail:
+    calls:
+    - aliasRenames.get
+    - allToolsForMode.filter
+    - allowedToolNames.delete
+    - allowedToolNames.has
+    - applyModelToolCustomization
+    - filteredTools.push
+    - getModeBySlug
+    - getOrCreateRenamedTool
+    - getToolsForMode
+    - hasAnyMcpResources
+    - new Set
+    - resolveToolAlias
+- name: hasAnyMcpResources
+  sig: 'hasAnyMcpResources(mcpHub: McpHub): boolean'
+  lines:
+  - 335
+  - 338
+  detail:
+    calls:
+    - mcpHub.getServers
+    - servers.some
+- name: isToolAllowedInMode
+  sig: "isToolAllowedInMode(\n\ttoolName: ToolName,\n\tmode: string | undefined,\n\tcustomModes: ModeConfig[] | undefined,\n\texperiments: Record<string, boolean> | undefined,\n\tcodeIndexManager?: CodeIndexManager,\n\tsettings?: Record<string, any>,\n): boolean"
+  lines:
+  - 352
+  - 396
+  detail:
+    calls:
+    - ALWAYS_AVAILABLE_TOOLS.includes
+    - isToolAllowedForMode
+    - resolveToolAlias
+- name: getAvailableToolsInGroup
+  sig: "getAvailableToolsInGroup(\n\tgroupName: ToolGroup,\n\tmode: string | undefined,\n\tcustomModes: ModeConfig[] | undefined,\n\texperiments: Record<string, boolean> | undefined,\n\tcodeIndexManager?: CodeIndexManager,\n\tsettings?: Record<string, any>,\n): ToolName[]"
+  lines:
+  - 410
+  - 426
+  detail:
+    calls:
+    - toolGroup.tools.filter
+- name: filterMcpToolsForMode
+  sig: "filterMcpToolsForMode(\n\tmcpTools: OpenAI.Chat.ChatCompletionTool[],\n\tmode: string | undefined,\n\tcustomModes: ModeConfig[] | undefined,\n\texperiments: Record<string, boolean> | undefined,\n): OpenAI.Chat.ChatCompletionTool[]"
+  lines:
+  - 437
+  - 456
+  detail:
+    calls:
+    - isToolAllowedForMode
+exports:
+- name: ModelToolCustomizationResult
+  kind: type
+- name: getOrCreateRenamedTool
+  kind: func
+- name: resolveToolAlias
+  kind: func
+- name: applyToolAliases
+  kind: func
+- name: getToolAliasGroup
+  kind: func
+- name: applyModelToolCustomization
+  kind: func
+- name: filterNativeToolsForMode
+  kind: func
+- name: hasAnyMcpResources
+  kind: func
+- name: isToolAllowedInMode
+  kind: func
+- name: getAvailableToolsInGroup
+  kind: func
+- name: filterMcpToolsForMode
+  kind: func
+- name: ALIAS_TO_CANONICAL
+  kind: data
+- name: CANONICAL_TO_ALIASES
+  kind: data
+- name: ALIAS_GROUPS
+  kind: data
+- name: RENAMED_TOOL_CACHE
+  kind: data

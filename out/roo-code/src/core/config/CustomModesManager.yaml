@@ -1,0 +1,495 @@
+## Roska File Descriptor — config/CustomModesManager.ts
+file: config/CustomModesManager.ts
+lines: 1015
+layer: logic
+imports:
+- sym: vscode.vscode
+- sym: path.path
+- sym: fs/promises.fs
+- sym: yaml.yaml
+- sym: strip-bom.stripBom
+- sym: '@roo-code/types.type ModeConfig'
+- sym: '@roo-code/types.type PromptComponent'
+- sym: '@roo-code/types.customModesSettingsSchema'
+- sym: '@roo-code/types.modeConfigSchema'
+- sym: ../../utils/fs.fileExistsAtPath
+- sym: ../../utils/path.getWorkspacePath
+- sym: ../../services/roo-config.getGlobalRooDirectory
+- sym: ../../utils/logging.logger
+- sym: ../../shared/globalFileNames.GlobalFileNames
+- sym: ../../utils/globalContext.ensureSettingsDirectoryExists
+- sym: ../../i18n.t
+data:
+- name: ROOMODES_FILENAME
+  type: string
+  val: '".roomodes"'
+types:
+- name: RuleFile
+  kind: trait
+  ctx: Type definitions for import/export functionality
+  decorators:
+  - interface
+  fields:
+  - name: relativePath
+    type: string
+  - name: content
+    type: string
+  lines:
+  - 22
+  - 25
+- name: ExportedModeConfig
+  kind: trait
+  bases:
+  - ModeConfig
+  decorators:
+  - interface
+  fields:
+  - name: rulesFiles
+    type: RuleFile[]
+  lines:
+  - 27
+  - 29
+- name: ImportData
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: customModes
+    type: ExportedModeConfig[]
+  lines:
+  - 31
+  - 33
+- name: ExportResult
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: success
+    type: boolean
+  - name: yaml
+    type: string
+  - name: error
+    type: string
+  lines:
+  - 35
+  - 39
+- name: ImportResult
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: success
+    type: boolean
+  - name: slug
+    type: string
+  - name: error
+    type: string
+  lines:
+  - 41
+  - 45
+- name: CustomModesManager
+  kind: struct
+  ctx: 'Regex pattern for problematic characters that need to be cleaned from YAML content Includes: - \u00A0: Non-breaking space - \u200B-\u200D: Zero-width spaces and joiners - \u2010-\u2015, \u2212: Various dash characters - \u2018-\u2019: Smart single quotes - \u201C-\u201D: Smart double quotes'
+  fields:
+  - name: cacheTTL
+    type: any
+    default: 10_000
+  - name: disposables
+    type: vscode.Disposable[]
+    default: '[]'
+  - name: isWriting
+    type: any
+    default: 'false'
+  - name: writeQueue
+    type: Array<() => Promise<void>>
+    default: '[]'
+  - name: cachedModes
+    type: ModeConfig[] | null
+    default: 'null'
+  - name: cachedAt
+    type: number
+    default: '0'
+  - name: PROBLEMATIC_CHARS_REGEX
+    type: any
+    default: // eslint-disable-next-line no-misleading-character-class
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tprivate readonly context: vscode.ExtensionContext,\n\t\tprivate readonly onUpdate: () => Promise<void>,\n\t)"
+    lines:
+    - 56
+    - 63
+    detail:
+      calls:
+      - this.watchCustomModesFiles
+      - this.watchCustomModesFiles().catch
+  - name: queueWrite
+    sig: 'queueWrite(operation: () => Promise<void>): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 65
+    - 71
+    detail:
+      calls:
+      - this.processWriteQueue
+      - this.writeQueue.push
+  - name: processWriteQueue
+    sig: 'processWriteQueue(): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 73
+    - 91
+    detail:
+      calls:
+      - operation
+      - this.writeQueue.shift
+  - name: getWorkspaceRoomodes
+    sig: 'getWorkspaceRoomodes(): Promise<string | undefined>'
+    is_async: true
+    vis: private
+    lines:
+    - 93
+    - 104
+    detail:
+      calls:
+      - fileExistsAtPath
+      - getWorkspacePath
+      - path.join
+  - name: parseYamlSafely
+    sig: 'parseYamlSafely(content: string, filePath: string): any'
+    vis: private
+    lines:
+    - 147
+    - 181
+    detail:
+      calls:
+      - JSON.parse
+      - String
+      - console.error
+      - errorMsg.match
+      - filePath.endsWith
+      - stripBom
+      - t
+      - this.cleanInvisibleCharacters
+      - vscode.window.showErrorMessage
+      - yaml.parse
+  - name: loadModesFromFile
+    sig: 'loadModesFromFile(filePath: string): Promise<ModeConfig[]>'
+    is_async: true
+    vis: private
+    lines:
+    - 183
+    - 224
+    detail:
+      calls:
+      - String
+      - console.error
+      - customModesSettingsSchema.safeParse
+      - filePath.endsWith
+      - fs.readFile
+      - result.data.customModes.map
+      - "result.error.issues\n\t\t\t\t\t\t.map"
+      - "result.error.issues\n\t\t\t\t\t\t.map((issue) => `• ${issue.path.join(\".\")}: ${issue.message}`)\n\t\t\t\t\t\t.jo..."
+      - t
+      - this.parseYamlSafely
+      - vscode.window.showErrorMessage
+  - name: mergeCustomModes
+    sig: 'mergeCustomModes(projectModes: ModeConfig[], globalModes: ModeConfig[]): Promise<ModeConfig[]>'
+    is_async: true
+    vis: private
+    lines:
+    - 226
+    - 247
+    detail:
+      calls:
+      - merged.push
+      - new Set
+      - slugs.add
+      - slugs.has
+  - name: getCustomModesFilePath
+    sig: 'getCustomModesFilePath(): Promise<string>'
+    is_async: true
+    lines:
+    - 249
+    - 259
+    detail:
+      calls:
+      - ensureSettingsDirectoryExists
+      - fileExistsAtPath
+      - path.join
+      - this.queueWrite
+  - name: watchCustomModesFiles
+    sig: 'watchCustomModesFiles(): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 261
+    - 354
+    detail:
+      calls:
+      - getWorkspacePath
+      - path.join
+      - roomodesWatcher.onDidChange
+      - roomodesWatcher.onDidCreate
+      - roomodesWatcher.onDidDelete
+      - settingsWatcher.onDidChange
+      - settingsWatcher.onDidCreate
+      - settingsWatcher.onDidDelete
+      - this.disposables.push
+      - this.getCustomModesFilePath
+      - vscode.workspace.createFileSystemWatcher
+  - name: getCustomModes
+    sig: 'getCustomModes(): Promise<ModeConfig[]>'
+    is_async: true
+    lines:
+    - 356
+    - 402
+    detail:
+      calls:
+      - Date.now
+      - globalModes.set
+      - new Map
+      - projectModes.has
+      - projectModes.set
+      - roomodesModes.map
+      - "settingsModes\n\t\t\t\t.filter"
+      - "settingsModes\n\t\t\t\t.filter((mode) => !projectModes.has(mode.slug))\n\t\t\t\t.map"
+      - this.context.globalState.update
+      - this.getCustomModesFilePath
+      - this.getWorkspaceRoomodes
+      - this.loadModesFromFile
+  - name: updateCustomMode
+    sig: 'updateCustomMode(slug: string, config: ModeConfig): Promise<void>'
+    is_async: true
+    lines:
+    - 404
+    - 463
+    detail:
+      calls:
+      - String
+      - fileExistsAtPath
+      - getWorkspacePath
+      - logger.error
+      - logger.info
+      - modeConfigSchema.safeParse
+      - new Error
+      - path.join
+      - t
+      - this.getCustomModesFilePath
+      - this.queueWrite
+      - "validationResult.error.errors\n\t\t\t\t\t.map"
+      - "validationResult.error.errors\n\t\t\t\t\t.map((err) => `${err.path.join(\".\")}: ${err.message}`)\n\t\t\t\t\t.join"
+      - vscode.window.showErrorMessage
+  - name: updateModesInFile
+    sig: 'updateModesInFile(filePath: string, operation: (modes: ModeConfig[]) => ModeConfig[]): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 465
+    - 494
+    detail:
+      calls:
+      - fs.readFile
+      - fs.writeFile
+      - operation
+      - this.parseYamlSafely
+      - yaml.stringify
+  - name: refreshMergedState
+    sig: 'refreshMergedState(): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 496
+    - 509
+    detail:
+      calls:
+      - this.clearCache
+      - this.context.globalState.update
+      - this.getCustomModesFilePath
+      - this.getWorkspaceRoomodes
+      - this.loadModesFromFile
+      - this.mergeCustomModes
+      - this.onUpdate
+  - name: deleteCustomMode
+    sig: 'deleteCustomMode(slug: string, fromMarketplace = false): Promise<void>'
+    is_async: true
+    lines:
+    - 511
+    - 554
+    detail:
+      calls:
+      - String
+      - new Error
+      - roomodesModes.find
+      - settingsModes.find
+      - t
+      - this.getCustomModesFilePath
+      - this.getWorkspaceRoomodes
+      - this.loadModesFromFile
+      - this.queueWrite
+      - vscode.window.showErrorMessage
+  - name: deleteRulesFolder
+    sig: 'deleteRulesFolder(slug: string, mode: ModeConfig, fromMarketplace = false): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 561
+    - 602
+    detail:
+      calls:
+      - String
+      - fileExistsAtPath
+      - fs.rm
+      - getWorkspacePath
+      - logger.error
+      - logger.info
+      - os.homedir
+      - path.join
+      - t
+      - vscode.window.showWarningMessage
+  - name: resetCustomModes
+    sig: 'resetCustomModes(): Promise<void>'
+    is_async: true
+    lines:
+    - 604
+    - 615
+    detail:
+      calls:
+      - String
+      - fs.writeFile
+      - t
+      - this.clearCache
+      - this.context.globalState.update
+      - this.getCustomModesFilePath
+      - this.onUpdate
+      - vscode.window.showErrorMessage
+      - yaml.stringify
+  - name: checkRulesDirectoryHasContent
+    sig: 'checkRulesDirectoryHasContent(slug: string): Promise<boolean>'
+    is_async: true
+    lines:
+    - 622
+    - 708
+    detail:
+      calls:
+      - String
+      - allModes.find
+      - content.trim
+      - entry.isFile
+      - fileExistsAtPath
+      - fs.readFile
+      - fs.readdir
+      - fs.stat
+      - getGlobalRooDirectory
+      - getWorkspacePath
+      - logger.error
+      - path.join
+      - roomodesModes.find
+      - stats.isDirectory
+      - this.getCustomModes
+      - yaml.parse
+  - name: exportModeWithRules
+    sig: 'exportModeWithRules(slug: string, customPrompts?: PromptComponent): Promise<ExportResult>'
+    is_async: true
+    lines:
+    - 716
+    - 838
+    detail:
+      calls:
+      - String
+      - allModes.find
+      - builtInModes.find
+      - content.trim
+      - entry.isFile
+      - fileExistsAtPath
+      - fs.readFile
+      - fs.readdir
+      - fs.stat
+      - getGlobalRooDirectory
+      - getWorkspacePath
+      - import
+      - logger.error
+      - path.join
+      - path.relative
+      - relativePath.replace
+      - roomodesModes.find
+      - rulesFiles.push
+      - stats.isDirectory
+      - this.getCustomModes
+      - yaml.parse
+      - yaml.stringify
+  - name: importRulesFiles
+    sig: "importRulesFiles(\n\t\timportMode: ExportedModeConfig,\n\t\trulesFiles: RuleFile[],\n\t\tsource: \"global\" | \"project\",\n\t): Promise<void>"
+    is_async: true
+    vis: private
+    lines:
+    - 846
+    - 919
+    detail:
+      calls:
+      - Array.isArray
+      - fs.mkdir
+      - fs.rm
+      - fs.writeFile
+      - getGlobalRooDirectory
+      - getWorkspacePath
+      - logger.debug
+      - logger.error
+      - logger.info
+      - normalizedRelativePath.includes
+      - normalizedRelativePath.match
+      - normalizedRelativePath.substring
+      - normalizedTargetPath.startsWith
+      - path.dirname
+      - path.isAbsolute
+      - path.join
+      - path.normalize
+  - name: importModeWithRules
+    sig: "importModeWithRules(\n\t\tyamlContent: string,\n\t\tsource: \"global\" | \"project\" = \"project\",\n\t): Promise<ImportResult>"
+    is_async: true
+    lines:
+    - 927
+    - 1001
+    detail:
+      calls:
+      - Array.isArray
+      - String
+      - existingModes.find
+      - getWorkspacePath
+      - logger.error
+      - logger.info
+      - modeConfigSchema.safeParse
+      - this.getCustomModes
+      - this.importRulesFiles
+      - this.refreshMergedState
+      - this.updateCustomMode
+      - validationResult.error.errors.map
+      - validationResult.error.errors.map((e) => e.message).join
+      - yaml.parse
+  - name: dispose
+    sig: 'dispose(): void'
+    lines:
+    - 1008
+    - 1014
+    detail:
+      calls:
+      - disposable.dispose
+  lines:
+  - 47
+  - 1015
+exports:
+- name: RuleFile
+  kind: type
+- name: ExportedModeConfig
+  kind: type
+- name: ImportData
+  kind: type
+- name: ExportResult
+  kind: type
+- name: ImportResult
+  kind: type
+- name: CustomModesManager
+  kind: type
+- name: ROOMODES_FILENAME
+  kind: data
