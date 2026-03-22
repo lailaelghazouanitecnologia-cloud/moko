@@ -1,0 +1,711 @@
+## Roska File Descriptor — aider/models.py
+file: aider/models.py
+lines: 1323
+layer: logic
+imports:
+- sym: difflib
+- sym: importlib.resources
+- sym: platform
+- sym: json5
+- sym: yaml
+- sym: PIL.Image
+- sym: aider.__version__
+- sym: aider.dump.dump
+- sym: aider.llm.litellm
+- sym: aider.openrouter.OpenRouterModelManager
+- sym: aider.sendchat.ensure_alternating_roles
+- sym: aider.sendchat.sanity_check_messages
+- sym: aider.utils.check_pip_install_extra
+data:
+- name: RETRY_TIMEOUT
+  type: int
+  val: '60'
+- name: request_timeout
+  type: int
+  val: '600'
+- name: DEFAULT_MODEL_NAME
+  type: str
+  val: '"gpt-4o"'
+- name: ANTHROPIC_BETA_HEADER
+  type: str
+  val: '"prompt-caching-2024-07-31,pdfs-2024-09-25"'
+- name: OPENAI_MODELS
+  type: str
+  val: |-
+    """
+    o1
+    o1-preview
+    o1-mini
+    o3-mini
+    gpt-4
+    gpt-4o
+    gpt-4o-2024-05-13
+    gpt-4-turbo-preview
+    gpt-4-0314
+    gpt-4-0613
+    gpt-4-32k
+    gpt...
+- name: OPENAI_MODELS
+  type: list
+  val: '[ln.strip() for ln in OPENAI_MODELS.splitlines() if ln.strip()]'
+- name: ANTHROPIC_MODELS
+  type: str
+  val: |-
+    """
+    claude-2
+    claude-2.1
+    claude-3-haiku-20240307
+    claude-3-5-haiku-20241022
+    claude-3-opus-20240229
+    claude-3-sonnet-2024022...
+- name: ANTHROPIC_MODELS
+  type: list
+  val: '[ln.strip() for ln in ANTHROPIC_MODELS.splitlines() if ln.strip()]'
+- name: MODEL_ALIASES
+  type: dict
+  val: |-
+    {
+        # Claude models
+        "sonnet": "claude-sonnet-4-5",
+        "haiku": "claude-haiku-4-5",
+        "opus": "claude-opus-4-6",...
+- name: MODEL_SETTINGS
+  type: list
+  val: '[]'
+- name: model_info_manager
+  type: Any
+  val: ModelInfoManager()
+types:
+- name: ModelInfoManager
+  kind: struct
+  fields:
+  - name: MODEL_INFO_URL
+    type: tuple
+    default: |-
+      (
+              "https://raw.githubusercontent.com/BerriAI/litellm/main/"
+              "model_prices_and_context_window.json"
+          )
+  - name: CACHE_TTL
+    type: Any
+    default: 60 * 60 * 24
+  - name: cache_dir
+    type: Any
+    default: Path.home() / ".aider" / "caches"
+  - name: cache_file
+    type: Any
+    default: self.cache_dir / "model_prices_and_context_window.json"
+  - name: content
+    type: None
+    default: None
+  - name: local_model_metadata
+    type: dict
+    default: '{}'
+  - name: verify_ssl
+    type: bool
+    default: 'True'
+  - name: _cache_loaded
+    type: bool
+    default: 'False'
+  - name: openrouter_manager
+    type: Any
+    default: OpenRouterModelManager()
+  methods:
+  - name: __init__
+    sig: __init__(self)
+    lines:
+    - 156
+    - 165
+    detail:
+      calls:
+      - OpenRouterModelManager
+      - Path.home
+  - name: set_verify_ssl
+    sig: set_verify_ssl(self, verify_ssl)
+    lines:
+    - 167
+    - 170
+    detail:
+      calls:
+      - hasattr
+      - self.openrouter_manager.set_verify_ssl
+  - name: _update_cache
+    sig: _update_cache(self)
+    vis: protected
+    lines:
+    - 191
+    - 209
+    detail:
+      calls:
+      - json.dumps
+      - print
+      - requests.get
+      - response.json
+      - self.cache_file.write_text
+      - str
+  - name: get_model_from_cached_json_db
+    sig: get_model_from_cached_json_db(self, model)
+    lines:
+    - 211
+    - 235
+    detail:
+      calls:
+      - dict
+      - info.get
+      - len
+      - model.split
+      - self._load_cache
+      - self._update_cache
+      - self.content.get
+      - self.local_model_metadata.get
+  - name: get_model_info
+    sig: get_model_info(self, model)
+    lines:
+    - 237
+    - 262
+    detail:
+      calls:
+      - litellm.get_model_info
+      - model.startswith
+      - print
+      - self.fetch_openrouter_model_info
+      - self.get_model_from_cached_json_db
+      - self.openrouter_manager.get_model_info
+      - str
+  - name: fetch_openrouter_model_info
+    sig: fetch_openrouter_model_info(self, model)
+    lines:
+    - 264
+    - 311
+    detail:
+      calls:
+      - context_match.group
+      - context_match.group(1).replace
+      - float
+      - input_cost_match.group
+      - int
+      - len
+      - output_cost_match.group
+      - print
+      - re.escape
+      - re.search
+      - re.sub
+      - requests.get
+      - str
+  lines:
+  - 149
+  - 311
+- name: Model
+  kind: struct
+  ctx: +1 dunder methods
+  bases:
+  - ModelSettings
+  fields:
+  - name: name
+    type: Any
+    default: model
+  - name: verbose
+    type: Any
+    default: verbose
+  - name: weak_model
+    type: None
+    default: None
+  - name: editor_model
+    type: None
+    default: None
+  - name: extra_model_settings
+    type: Any
+    default: |-
+      next(
+                  (ms for ms in MODEL_SETTINGS if ms.name == "aider/extra_params"), None
+              )
+  - name: info
+    type: Any
+    default: self.get_model_info(model)
+  - name: missing_keys
+    type: Any
+    default: res.get("missing_keys")
+  - name: keys_in_environment
+    type: Any
+    default: res.get("keys_in_environment")
+  - name: weak_model_name
+    type: None
+    default: None
+  - name: editor_model_name
+    type: None
+    default: None
+  methods:
+  - name: __init__
+    sig: |-
+      __init__(
+              self, model, weak_model=None, editor_model=None, editor_edit_format=None, verbose=False
+          )
+    lines:
+    - 318
+    - 357
+    detail:
+      calls:
+      - MODEL_ALIASES.get
+      - max
+      - min
+      - next
+      - res.get
+      - self.configure_model_settings
+      - self.get_editor_model
+      - self.get_model_info
+      - self.get_weak_model
+      - self.info.get
+      - self.validate_environment
+  - name: get_model_info
+    sig: get_model_info(self, model)
+    lines:
+    - 359
+    - 360
+    detail:
+      calls:
+      - model_info_manager.get_model_info
+  - name: configure_model_settings
+    sig: configure_model_settings(self, model)
+    lines:
+    - 373
+    - 419
+    detail:
+      calls:
+      - isinstance
+      - model.lower
+      - self._copy_fields
+      - self.accepts_settings.append
+      - self.apply_generic_model_settings
+      - self.extra_model_settings.extra_params.items
+      - self.extra_params.get
+      - self.name.startswith
+  - name: apply_generic_model_settings
+    sig: apply_generic_model_settings(self, model)
+    lines:
+    - 421
+    - 583
+    detail:
+      calls:
+      - dict
+      - model.split
+      - model.startswith
+      - self.accepts_settings.append
+  - name: get_weak_model
+    sig: get_weak_model(self, provided_weak_model_name)
+    lines:
+    - 588
+    - 605
+    detail:
+      calls:
+      - Model
+  - name: commit_message_models
+    sig: commit_message_models(self)
+    lines:
+    - 607
+    - 608
+    detail: {}
+  - name: get_editor_model
+    sig: get_editor_model(self, provided_editor_model_name, editor_edit_format)
+    lines:
+    - 610
+    - 630
+    detail:
+      calls:
+      - Model
+  - name: tokenizer
+    sig: tokenizer(self, text)
+    lines:
+    - 632
+    - 633
+    detail:
+      calls:
+      - litellm.encode
+  - name: token_count
+    sig: token_count(self, messages)
+    lines:
+    - 635
+    - 655
+    detail:
+      calls:
+      - json.dumps
+      - len
+      - litellm.token_counter
+      - print
+      - self.tokenizer
+      - type
+  - name: token_count_for_image
+    sig: token_count_for_image(self, fname)
+    lines:
+    - 657
+    - 686
+    detail:
+      calls:
+      - int
+      - math.ceil
+      - max
+      - min
+      - self.get_image_size
+  - name: get_image_size
+    sig: get_image_size(self, fname)
+    lines:
+    - 688
+    - 695
+    detail:
+      calls:
+      - Image.open
+  - name: fast_validate_environment
+    sig: fast_validate_environment(self)
+    lines:
+    - 697
+    - 726
+    detail:
+      calls:
+      - dict
+      - keymap.get
+      - len
+      - model.split
+      - os.environ.get
+  - name: validate_environment
+    sig: validate_environment(self)
+    lines:
+    - 728
+    - 765
+    detail:
+      calls:
+      - any
+      - litellm.validate_environment
+      - model.startswith
+      - os.environ.get
+      - self.fast_validate_environment
+      - self.info.get
+      - self.info.get("litellm_provider", "").lower
+      - validate_variables
+  - name: get_repo_map_tokens
+    sig: get_repo_map_tokens(self)
+    lines:
+    - 767
+    - 774
+    detail:
+      calls:
+      - max
+      - min
+      - self.info.get
+  - name: set_reasoning_effort
+    sig: set_reasoning_effort(self, effort)
+    lines:
+    - 776
+    - 790
+    detail:
+      calls:
+      - self.name.startswith
+  - name: parse_token_value
+    sig: parse_token_value(self, value)
+    lines:
+    - 792
+    - 821
+    detail:
+      calls:
+      - float
+      - int
+      - isinstance
+      - value.endswith
+      - value.strip
+      - value.strip().upper
+  - name: set_thinking_tokens
+    sig: set_thinking_tokens(self, value)
+    lines:
+    - 823
+    - 849
+    detail:
+      calls:
+      - self.name.startswith
+      - self.parse_token_value
+  - name: get_raw_thinking_tokens
+    sig: get_raw_thinking_tokens(self)
+    lines:
+    - 851
+    - 870
+    detail:
+      calls:
+      - self.name.startswith
+  - name: get_thinking_tokens
+    sig: get_thinking_tokens(self)
+    lines:
+    - 872
+    - 889
+    detail:
+      calls:
+      - int
+      - self.get_raw_thinking_tokens
+  - name: get_reasoning_effort
+    sig: get_reasoning_effort(self)
+    lines:
+    - 891
+    - 908
+    detail:
+      calls:
+      - self.name.startswith
+  - name: is_deepseek_r1
+    sig: is_deepseek_r1(self)
+    lines:
+    - 910
+    - 914
+    detail:
+      calls:
+      - self.name.lower
+  - name: is_ollama
+    sig: is_ollama(self)
+    lines:
+    - 916
+    - 917
+    detail:
+      calls:
+      - self.name.startswith
+  - name: github_copilot_token_to_open_ai_key
+    sig: github_copilot_token_to_open_ai_key(self, extra_headers)
+    lines:
+    - 919
+    - 968
+    detail:
+      calls:
+      - GitHubCopilotTokenError
+      - KeyError
+      - datetime.now
+      - datetime.now().timestamp
+      - dict
+      - github_token.strip
+      - headers.items
+      - int
+      - json.dumps
+      - len
+      - os.environ[openai_api_key].split
+      - requests.get
+      - res.json
+      - response_data.get
+      - x.split
+  - name: send_completion
+    sig: send_completion(self, messages, functions, stream, temperature=None)
+    lines:
+    - 970
+    - 1022
+    detail:
+      calls:
+      - dict
+      - dump
+      - ensure_alternating_roles
+      - float
+      - hashlib.sha1
+      - int
+      - isinstance
+      - json.dumps
+      - json.dumps(kwargs, sort_keys=True).encode
+      - kwargs.update
+      - litellm.completion
+      - os.environ.get
+      - sanity_check_messages
+      - self.github_copilot_token_to_open_ai_key
+      - self.is_deepseek_r1
+      - self.is_ollama
+      - self.token_count
+  - name: simple_send_with_retries
+    sig: simple_send_with_retries(self, messages)
+    lines:
+    - 1024
+    - 1067
+    detail:
+      calls:
+      - LiteLLMExceptions
+      - dump
+      - ensure_alternating_roles
+      - hasattr
+      - litellm_ex.exceptions_tuple
+      - litellm_ex.get_ex_info
+      - print
+      - remove_reasoning_content
+      - self.send_completion
+      - str
+      - time.sleep
+  lines:
+  - 317
+  - 1067
+functions:
+- name: ModelSettings
+  sig: ''
+  decorators:
+  - dataclass
+  lines:
+  - 115
+  - 138
+- name: register_models
+  sig: register_models(model_settings_fnames)
+  lines:
+  - 1070
+  - 1094
+  detail:
+    calls:
+    - Exception
+    - MODEL_SETTINGS.append
+    - ModelSettings
+    - Path
+    - Path(model_settings_fname).read_text
+    - Path(model_settings_fname).read_text().strip
+    - files_loaded.append
+    - open
+    - os.path.exists
+    - yaml.safe_load
+- name: register_litellm_models
+  sig: register_litellm_models(model_fnames)
+  lines:
+  - 1097
+  - 1118
+  detail:
+    calls:
+    - Exception
+    - Path
+    - Path(model_fname).read_text
+    - data.strip
+    - files_loaded.append
+    - json5.loads
+    - model_info_manager.local_model_metadata.update
+    - os.path.exists
+- name: validate_variables
+  sig: validate_variables(vars)
+  lines:
+  - 1121
+  - 1128
+  detail:
+    calls:
+    - dict
+    - missing.append
+- name: sanity_check_models
+  sig: sanity_check_models(io, main_model)
+  lines:
+  - 1131
+  - 1146
+  detail:
+    calls:
+    - sanity_check_model
+- name: sanity_check_model
+  sig: sanity_check_model(io, model)
+  lines:
+  - 1149
+  - 1185
+  detail:
+    calls:
+    - check_for_dependencies
+    - fuzzy_match_models
+    - io.tool_output
+    - io.tool_warning
+    - os.environ.get
+    - platform.system
+- name: check_for_dependencies
+  sig: check_for_dependencies(io, model_name)
+  lines:
+  - 1188
+  - 1209
+  detail:
+    calls:
+    - check_pip_install_extra
+    - model_name.startswith
+- name: fuzzy_match_models
+  sig: fuzzy_match_models(name)
+  lines:
+  - 1212
+  - 1254
+  detail:
+    calls:
+    - attrs.get
+    - attrs.get("litellm_provider", "").lower
+    - chat_models.add
+    - difflib.get_close_matches
+    - list
+    - litellm.model_cost.items
+    - model.startswith
+    - model_info_manager.local_model_metadata.items
+    - name.lower
+    - orig_model.lower
+    - set
+    - sorted
+- name: print_matching_models
+  sig: print_matching_models(io, search)
+  lines:
+  - 1257
+  - 1264
+  detail:
+    calls:
+    - fuzzy_match_models
+    - io.tool_output
+- name: get_model_settings_as_yaml
+  sig: get_model_settings_as_yaml()
+  lines:
+  - 1267
+  - 1299
+  detail:
+    calls:
+    - fields
+    - getattr
+    - model_settings_list.append
+    - sorted
+    - yaml.dump
+    - yaml_str.replace
+- name: main
+  sig: main()
+  lines:
+  - 1302
+  - 1319
+  detail:
+    calls:
+    - fuzzy_match_models
+    - get_model_settings_as_yaml
+    - len
+    - print
+    - sys.exit
+exports:
+- name: ModelInfoManager
+  kind: type
+- name: Model
+  kind: type
+- name: ModelSettings
+  kind: func
+- name: register_models
+  kind: func
+- name: register_litellm_models
+  kind: func
+- name: validate_variables
+  kind: func
+- name: sanity_check_models
+  kind: func
+- name: sanity_check_model
+  kind: func
+- name: check_for_dependencies
+  kind: func
+- name: fuzzy_match_models
+  kind: func
+- name: print_matching_models
+  kind: func
+- name: get_model_settings_as_yaml
+  kind: func
+- name: main
+  kind: func
+- name: RETRY_TIMEOUT
+  kind: data
+- name: request_timeout
+  kind: data
+- name: DEFAULT_MODEL_NAME
+  kind: data
+- name: ANTHROPIC_BETA_HEADER
+  kind: data
+- name: OPENAI_MODELS
+  kind: data
+- name: OPENAI_MODELS
+  kind: data
+- name: ANTHROPIC_MODELS
+  kind: data
+- name: ANTHROPIC_MODELS
+  kind: data
+- name: MODEL_ALIASES
+  kind: data
+- name: MODEL_SETTINGS
+  kind: data
+- name: model_info_manager
+  kind: data

@@ -1,0 +1,801 @@
+## Roska File Descriptor — aider/io.py
+file: aider/io.py
+lines: 1191
+layer: logic
+imports:
+- sym: base64
+- sym: shutil
+- sym: signal
+- sym: subprocess
+- sym: webbrowser
+- sym: prompt_toolkit.completion.Completer
+- sym: prompt_toolkit.completion.Completion
+- sym: prompt_toolkit.completion.ThreadedCompleter
+- sym: prompt_toolkit.cursor_shapes.ModalCursorShapeConfig
+- sym: prompt_toolkit.enums.EditingMode
+- sym: prompt_toolkit.filters.Condition
+- sym: prompt_toolkit.filters.is_searching
+- sym: prompt_toolkit.history.FileHistory
+- sym: prompt_toolkit.key_binding.KeyBindings
+- sym: prompt_toolkit.key_binding.vi_state.InputMode
+- sym: prompt_toolkit.keys.Keys
+- sym: prompt_toolkit.lexers.PygmentsLexer
+- sym: prompt_toolkit.output.vt100.is_dumb_terminal
+- sym: prompt_toolkit.shortcuts.CompleteStyle
+- sym: prompt_toolkit.shortcuts.PromptSession
+- sym: prompt_toolkit.styles.Style
+- sym: pygments.lexers.MarkdownLexer
+- sym: pygments.lexers.guess_lexer_for_filename
+- sym: pygments.token.Token
+- sym: rich.color.ColorParseError
+- sym: rich.columns.Columns
+- sym: rich.console.Console
+- sym: rich.markdown.Markdown
+- sym: rich.style.Style
+- sym: rich.text.Text
+- sym: aider.mdstream.MarkdownStream
+data:
+- name: NOTIFICATION_MESSAGE
+  type: str
+  val: '"Aider is waiting for your input"'
+types:
+- name: CommandCompletionException
+  kind: struct
+  ctx: Raised when a command should use the normal autocompleter instead of command-specific completion.
+  bases:
+  - Exception
+  lines:
+  - 74
+  - 78
+- name: AutoCompleter
+  kind: struct
+  bases:
+  - Completer
+  fields:
+  - name: addable_rel_fnames
+    type: Any
+    default: addable_rel_fnames
+  - name: rel_fnames
+    type: Any
+    default: rel_fnames
+  - name: encoding
+    type: Any
+    default: encoding
+  - name: abs_read_only_fnames
+    type: Any
+    default: abs_read_only_fnames or []
+  - name: fname_to_rel_fnames
+    type: Any
+    default: fname_to_rel_fnames
+  - name: words
+    type: Any
+    default: set()
+  - name: commands
+    type: Any
+    default: commands
+  - name: command_completions
+    type: Any
+    default: dict()
+  - name: command_names
+    type: Any
+    default: self.commands.get_commands()
+  - name: all_fnames
+    type: Any
+    default: all_fnames
+  - name: tokenized
+    type: bool
+    default: 'False'
+  methods:
+  - name: __init__
+    sig: |-
+      __init__(
+              self, root, rel_fnames, addable_rel_fnames, commands, encoding, abs_read_only_fnames=None
+          )
+    lines:
+    - 92
+    - 125
+    detail:
+      calls:
+      - Path
+      - all_fnames.extend
+      - defaultdict
+      - dict
+      - fname_to_rel_fnames[fname].append
+      - os.path.basename
+      - self.commands.get_commands
+      - self.words.add
+      - set
+  - name: tokenize
+    sig: tokenize(self)
+    lines:
+    - 127
+    - 146
+    detail:
+      calls:
+      - f.read
+      - guess_lexer_for_filename
+      - lexer.get_tokens
+      - list
+      - open
+      - self.words.update
+  - name: get_command_completions
+    sig: get_command_completions(self, document, complete_event, text, words)
+    lines:
+    - 148
+    - 184
+    detail:
+      calls:
+      - Completion
+      - cmd.startswith
+      - len
+      - raw_completer
+      - self.commands.get_completions
+      - self.commands.get_raw_completions
+      - self.commands.matching_commands
+      - sorted
+      - text[-1].isspace
+      - word.lower
+      - words[-1].lower
+      - words[0].lower
+  - name: get_completions
+    sig: get_completions(self, document, complete_event)
+    lines:
+    - 186
+    - 227
+    detail:
+      calls:
+      - Completion
+      - candidates.update
+      - completions.append
+      - last_word.lower
+      - len
+      - self.fname_to_rel_fnames.get
+      - self.get_command_completions
+      - self.tokenize
+      - set
+      - sorted
+      - text.split
+      - text[-1].isspace
+      - type
+      - word_match.lower
+      - word_match.lower().startswith
+  lines:
+  - 91
+  - 227
+- name: InputOutput
+  kind: struct
+  fields:
+  - name: clipboard_watcher
+    type: None
+    default: None
+  - name: bell_on_next_input
+    type: bool
+    default: 'False'
+  - name: notifications_command
+    type: None
+    default: None
+  - name: placeholder
+    type: None
+    default: None
+  - name: interrupted
+    type: bool
+    default: 'False'
+  - name: never_prompts
+    type: Any
+    default: set()
+  - name: editingmode
+    type: Any
+    default: editingmode
+  - name: multiline_mode
+    type: Any
+    default: multiline_mode
+  - name: notifications
+    type: Any
+    default: notifications
+  - name: user_input_color
+    type: Any
+    default: ensure_hash_prefix(user_input_color) if pretty else None
+  - name: tool_output_color
+    type: Any
+    default: ensure_hash_prefix(tool_output_color) if pretty else None
+  - name: tool_error_color
+    type: Any
+    default: ensure_hash_prefix(tool_error_color) if pretty else None
+  - name: tool_warning_color
+    type: Any
+    default: ensure_hash_prefix(tool_warning_color) if pretty else None
+  - name: assistant_output_color
+    type: Any
+    default: ensure_hash_prefix(assistant_output_color)
+  - name: completion_menu_color
+    type: Any
+    default: ensure_hash_prefix(completion_menu_color) if pretty else None
+  - name: completion_menu_bg_color
+    type: tuple
+    default: |-
+      (
+                  ensure_hash_prefix(completion_menu_bg_color) if pretty else None
+              )
+  - name: completion_menu_current_color
+    type: tuple
+    default: |-
+      (
+                  ensure_hash_prefix(completion_menu_current_color) if pretty else None
+              )
+  - name: completion_menu_current_bg_color
+    type: tuple
+    default: |-
+      (
+                  ensure_hash_prefix(completion_menu_current_bg_color) if pretty else None
+              )
+  - name: code_theme
+    type: Any
+    default: code_theme
+  - name: input
+    type: Any
+    default: input
+  - name: output
+    type: Any
+    default: output
+  - name: pretty
+    type: Any
+    default: pretty
+  - name: yes
+    type: Any
+    default: yes
+  - name: input_history_file
+    type: Any
+    default: input_history_file
+  - name: llm_history_file
+    type: Any
+    default: llm_history_file
+  - name: chat_history_file
+    type: Any
+    default: Path(chat_history_file)
+  - name: encoding
+    type: Any
+    default: encoding
+  - name: newline
+    type: tuple
+    default: |-
+      (
+                  None if line_endings == "platform" else "\n" if line_endings == "lf" else "\r\n"
+              )
+  - name: dry_run
+    type: Any
+    default: dry_run
+  - name: prompt_session
+    type: None
+    default: None
+  - name: is_dumb_terminal
+    type: Any
+    default: is_dumb_terminal()
+  - name: console
+    type: Any
+    default: Console()
+  - name: file_watcher
+    type: Any
+    default: file_watcher
+  - name: root
+    type: Any
+    default: root
+  methods:
+  - name: __init__
+    sig: |-
+      __init__(
+              self,
+              pretty=True,
+              yes=None,
+              input_history_file=None,
+              chat_history_file=None,
+              input=None,
+              output=None,
+              user_input_color="blue",
+              tool_output_color=None,
+              tool_error_color="red",
+              tool_warning_color="#FFA500",
+              assistant_output_color="blue",
+              completion_menu_color=None,
+              completion_menu_bg_color=None,
+              completion_menu_current_color=None,
+              completion_menu_current_bg_color=None,
+              code_theme="default",
+              encoding="utf-8",
+              line_endings="platform",
+              dry_run=False,
+              llm_history_file=None,
+              editingmode=EditingMode.EMACS,
+              fancy_input=True,
+              file_watcher=None,
+              multiline_mode=False,
+              root=".",
+              notifications=False,
+              notifications_command=None,
+          )
+    lines:
+    - 237
+    - 372
+    detail:
+      calls:
+      - ''', ''.join'
+      - Console
+      - FileHistory
+      - ModalCursorShapeConfig
+      - Path
+      - Path(self.input_history_file).parent.mkdir
+      - PromptSession
+      - PygmentsLexer
+      - ValueError
+      - datetime.now
+      - datetime.now().strftime
+      - ensure_hash_prefix
+      - is_dumb_terminal
+      - os.environ.get
+      - self._validate_color_settings
+      - self.append_chat_history
+      - self.get_default_notification_command
+      - self.tool_error
+      - self.tool_output
+      - self.tool_warning
+      - set
+  - name: _get_style
+    sig: _get_style(self)
+    vis: protected
+    lines:
+    - 400
+    - 433
+    detail:
+      calls:
+      - '" ".join'
+      - Style.from_dict
+      - completion_menu_current_style.append
+      - completion_menu_style.append
+      - style_dict.setdefault
+      - style_dict.update
+  - name: read_image
+    sig: read_image(self, filename)
+    lines:
+    - 435
+    - 451
+    detail:
+      calls:
+      - base64.b64encode
+      - encoded_string.decode
+      - image_file.read
+      - open
+      - self.tool_error
+      - str
+  - name: read_text
+    sig: read_text(self, filename, silent=False)
+    lines:
+    - 453
+    - 476
+    detail:
+      calls:
+      - f.read
+      - is_image_file
+      - open
+      - self.read_image
+      - self.tool_error
+      - str
+  - name: write_text
+    sig: write_text(self, filename, content, max_retries=5, initial_delay=0.1)
+    lines:
+    - 478
+    - 507
+    detail:
+      calls:
+      - f.write
+      - open
+      - range
+      - self.tool_error
+      - str
+      - time.sleep
+  - name: rule
+    sig: rule(self)
+    lines:
+    - 509
+    - 514
+    detail:
+      calls:
+      - dict
+      - print
+      - self.console.rule
+  - name: interrupt_input
+    sig: interrupt_input(self)
+    lines:
+    - 516
+    - 521
+    detail:
+      calls:
+      - self.prompt_session.app.exit
+  - name: get_input
+    sig: |-
+      get_input(
+              self,
+              root,
+              rel_fnames,
+              addable_rel_fnames,
+              commands,
+              abs_read_only_fnames=None,
+              edit_format=None,
+          )
+    lines:
+    - 523
+    - 734
+    detail:
+      calls:
+      - '"".join'
+      - AutoCompleter
+      - Condition
+      - KeyBindings
+      - ThreadedCompleter
+      - c.isalnum
+      - get_rel_fname
+      - hasattr
+      - input
+      - kb.add
+      - line.strip
+      - list
+      - print
+      - self._get_style
+      - self.clipboard_watcher.start
+      - self.clipboard_watcher.stop
+      - self.file_watcher.process_changes
+      - self.file_watcher.start
+      - self.file_watcher.stop
+      - self.format_files_for_input
+      - self.prompt_session.prompt
+      - self.ring_bell
+      - self.rule
+      - self.tool_error
+      - self.user_input
+      - str
+      - traceback.format_exc
+  - name: add_to_input_history
+    sig: add_to_input_history(self, inp)
+    lines:
+    - 736
+    - 745
+    detail:
+      calls:
+      - FileHistory
+      - FileHistory(self.input_history_file).append_string
+      - self.prompt_session.history.append_string
+      - self.tool_warning
+  - name: get_input_history
+    sig: get_input_history(self)
+    lines:
+    - 747
+    - 752
+    detail:
+      calls:
+      - FileHistory
+      - fh.load_history_strings
+  - name: log_llm_history
+    sig: log_llm_history(self, role, content)
+    lines:
+    - 754
+    - 765
+    detail:
+      calls:
+      - Path
+      - Path(self.llm_history_file).parent.mkdir
+      - datetime.now
+      - datetime.now().isoformat
+      - log_file.write
+      - open
+      - role.upper
+      - self.tool_warning
+  - name: display_user_input
+    sig: display_user_input(self, inp)
+    lines:
+    - 767
+    - 773
+    detail:
+      calls:
+      - Text
+      - dict
+      - self.console.print
+  - name: user_input
+    sig: user_input(self, inp, log_only=True)
+    lines:
+    - 775
+    - 789
+    detail:
+      calls:
+      - f"  \n{prefix} ".join
+      - inp.splitlines
+      - self.append_chat_history
+      - self.display_user_input
+  - name: ai_output
+    sig: ai_output(self, content)
+    lines:
+    - 793
+    - 795
+    detail:
+      calls:
+      - content.strip
+      - self.append_chat_history
+  - name: offer_url
+    sig: offer_url(self, url, prompt="Open URL for more info?", allow_never=True)
+    lines:
+    - 797
+    - 804
+    detail:
+      calls:
+      - self.confirm_ask
+      - webbrowser.open
+  - name: confirm_ask
+    sig: |-
+      confirm_ask(
+              self,
+              question,
+              default="y",
+              subject=None,
+              explicit_yes_required=False,
+              group=None,
+              allow_never=False,
+          )
+    decorators:
+    - restore_multiline
+    lines:
+    - 807
+    - 925
+    detail:
+      calls:
+      - '"\n".join'
+      - ''', ''.join'
+      - any
+      - default.lower
+      - default.lower().startswith
+      - input
+      - len
+      - line.ljust
+      - max
+      - question.strip
+      - res.lower
+      - self._get_style
+      - self.append_chat_history
+      - self.never_prompts.add
+      - self.prompt_session.prompt
+      - self.ring_bell
+      - self.tool_error
+      - self.tool_output
+      - self.user_input
+      - subject.splitlines
+      - valid_response.startswith
+      - valid_responses.append
+  - name: prompt_ask
+    sig: prompt_ask(self, question, default="", subject=None)
+    decorators:
+    - restore_multiline
+    lines:
+    - 928
+    - 964
+    detail:
+      calls:
+      - input
+      - question.strip
+      - res.strip
+      - self._get_style
+      - self.append_chat_history
+      - self.prompt_session.prompt
+      - self.ring_bell
+      - self.tool_output
+  - name: _tool_message
+    sig: _tool_message(self, message="", strip=True, color=None)
+    vis: protected
+    lines:
+    - 966
+    - 986
+    detail:
+      calls:
+      - Text
+      - dict
+      - ensure_hash_prefix
+      - isinstance
+      - message.splitlines
+      - message.strip
+      - self.append_chat_history
+      - self.console.print
+      - str
+      - str(message).encode
+      - str(message).encode("ascii", errors="replace").decode
+  - name: tool_error
+    sig: tool_error(self, message="", strip=True)
+    lines:
+    - 988
+    - 990
+    detail:
+      calls:
+      - self._tool_message
+  - name: tool_warning
+    sig: tool_warning(self, message="", strip=True)
+    lines:
+    - 992
+    - 993
+    detail:
+      calls:
+      - self._tool_message
+  - name: tool_output
+    sig: tool_output(self, *messages, log_only=False, bold=False)
+    lines:
+    - 995
+    - 1012
+    detail:
+      calls:
+      - '" ".join'
+      - RichStyle
+      - dict
+      - ensure_hash_prefix
+      - hist.strip
+      - list
+      - map
+      - self.append_chat_history
+      - self.console.print
+  - name: get_assistant_mdstream
+    sig: get_assistant_mdstream(self)
+    lines:
+    - 1014
+    - 1021
+    detail:
+      calls:
+      - MarkdownStream
+      - dict
+  - name: assistant_output
+    sig: assistant_output(self, message, pretty=None)
+    lines:
+    - 1023
+    - 1041
+    detail:
+      calls:
+      - Markdown
+      - Text
+      - self.console.print
+      - self.tool_warning
+  - name: set_placeholder
+    sig: set_placeholder(self, placeholder)
+    lines:
+    - 1043
+    - 1045
+    detail: {}
+  - name: print
+    sig: print(self, message="")
+    lines:
+    - 1047
+    - 1048
+    detail:
+      calls:
+      - print
+  - name: llm_started
+    sig: llm_started(self)
+    lines:
+    - 1050
+    - 1052
+    detail: {}
+  - name: get_default_notification_command
+    sig: get_default_notification_command(self)
+    lines:
+    - 1054
+    - 1086
+    detail:
+      calls:
+      - platform.system
+      - shutil.which
+  - name: ring_bell
+    sig: ring_bell(self)
+    lines:
+    - 1088
+    - 1103
+    detail:
+      calls:
+      - print
+      - result.stderr.decode
+      - self.tool_warning
+      - subprocess.run
+  - name: toggle_multiline_mode
+    sig: toggle_multiline_mode(self)
+    lines:
+    - 1105
+    - 1115
+    detail:
+      calls:
+      - self.tool_output
+  - name: append_chat_history
+    sig: append_chat_history(self, text, linebreak=False, blockquote=False, strip=True)
+    lines:
+    - 1117
+    - 1136
+    detail:
+      calls:
+      - f.write
+      - print
+      - self.chat_history_file.open
+      - self.chat_history_file.parent.mkdir
+      - text.endswith
+      - text.rstrip
+      - text.strip
+  - name: format_files_for_input
+    sig: format_files_for_input(self, rel_fnames, rel_read_only_fnames)
+    lines:
+    - 1138
+    - 1184
+    detail:
+      calls:
+      - '"\n".join'
+      - Columns
+      - Console
+      - Console(file=editable_output, force_terminal=False).print
+      - Console(file=read_only_output, force_terminal=False).print
+      - StringIO
+      - Text
+      - console.print
+      - editable_files.append
+      - editable_output.getvalue
+      - editable_output.getvalue().splitlines
+      - len
+      - os.path.abspath
+      - os.path.join
+      - output.getvalue
+      - read_only_files.append
+      - read_only_output.getvalue
+      - read_only_output.getvalue().splitlines
+      - ro_paths.append
+      - sorted
+  lines:
+  - 230
+  - 1184
+functions:
+- name: ensure_hash_prefix
+  sig: ensure_hash_prefix(color)
+  lines:
+  - 46
+  - 54
+  detail:
+    calls:
+    - all
+    - color.startswith
+    - color.strip
+    - isinstance
+    - len
+- name: restore_multiline
+  sig: restore_multiline(func)
+  lines:
+  - 57
+  - 71
+  detail:
+    calls:
+    - functools.wraps
+- name: ConfirmGroup
+  sig: ''
+  decorators:
+  - dataclass
+  lines:
+  - 81
+  - 88
+- name: get_rel_fname
+  sig: get_rel_fname(fname, root)
+  lines:
+  - 1187
+  - 1191
+  detail:
+    calls:
+    - os.path.relpath
+exports:
+- name: CommandCompletionException
+  kind: type
+- name: AutoCompleter
+  kind: type
+- name: InputOutput
+  kind: type
+- name: ensure_hash_prefix
+  kind: func
+- name: restore_multiline
+  kind: func
+- name: ConfirmGroup
+  kind: func
+- name: get_rel_fname
+  kind: func
+- name: NOTIFICATION_MESSAGE
+  kind: data

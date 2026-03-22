@@ -1,0 +1,1445 @@
+## Roska File Descriptor — coders/base_coder.py
+file: coders/base_coder.py
+lines: 2485
+layer: logic
+imports:
+- sym: base64
+- sym: locale
+- sym: mimetypes
+- sym: platform
+- sym: threading
+- sym: traceback
+- sym: rich.console.Console
+- sym: aider.__version__
+- sym: aider.models
+- sym: aider.prompts
+- sym: aider.urls
+- sym: aider.utils
+- sym: aider.analytics.Analytics
+- sym: aider.commands.Commands
+- sym: aider.exceptions.LiteLLMExceptions
+- sym: aider.history.ChatSummary
+- sym: aider.io.ConfirmGroup
+- sym: aider.io.InputOutput
+- sym: aider.linter.Linter
+- sym: aider.llm.litellm
+- sym: aider.models.RETRY_TIMEOUT
+- sym: aider.reasoning_tags.REASONING_TAG
+- sym: aider.reasoning_tags.format_reasoning_content
+- sym: aider.reasoning_tags.remove_reasoning_content
+- sym: aider.reasoning_tags.replace_reasoning_tags
+- sym: aider.repo.ANY_GIT_ERROR
+- sym: aider.repo.GitRepo
+- sym: aider.repomap.RepoMap
+- sym: aider.run_cmd.run_cmd
+- sym: aider.utils.format_content
+- sym: aider.utils.format_messages
+- sym: aider.utils.format_tokens
+- sym: aider.utils.is_image_file
+- sym: aider.waiting.WaitingSpinner
+data:
+- name: all_fences
+  type: list
+  val: |-
+    [
+        ("`" * 3, "`" * 3),
+        ("`" * 4, "`" * 4),  # LLMs ignore and revert to triple-backtick, causing #2879
+        wrap_f...
+types:
+- name: UnknownEditFormat
+  kind: struct
+  bases:
+  - ValueError
+  fields:
+  - name: edit_format
+    type: Any
+    default: edit_format
+  - name: valid_formats
+    type: Any
+    default: valid_formats
+  methods:
+  - name: __init__
+    sig: __init__(self, edit_format, valid_formats)
+    lines:
+    - 57
+    - 62
+    detail:
+      calls:
+      - ''', ''.join'
+      - super
+      - super().__init__
+  lines:
+  - 56
+  - 62
+- name: MissingAPIKeyError
+  kind: struct
+  bases:
+  - ValueError
+  lines:
+  - 65
+  - 66
+- name: FinishReasonLength
+  kind: struct
+  bases:
+  - Exception
+  lines:
+  - 69
+  - 70
+- name: Coder
+  kind: struct
+  ctx: +1 dunder methods
+  fields:
+  - name: abs_fnames
+    type: None
+    default: None
+  - name: abs_read_only_fnames
+    type: None
+    default: None
+  - name: repo
+    type: None
+    default: None
+  - name: last_aider_commit_hash
+    type: None
+    default: None
+  - name: aider_edited_files
+    type: None
+    default: None
+  - name: last_asked_for_commit_time
+    type: int
+    default: '0'
+  - name: repo_map
+    type: None
+    default: None
+  - name: functions
+    type: None
+    default: None
+  - name: last_keyboard_interrupt
+    type: None
+    default: None
+  - name: edit_format
+    type: None
+    default: None
+  - name: yield_stream
+    type: bool
+    default: 'False'
+  - name: temperature
+    type: None
+    default: None
+  - name: auto_lint
+    type: bool
+    default: 'True'
+  - name: auto_test
+    type: bool
+    default: 'False'
+  - name: test_cmd
+    type: None
+    default: None
+  - name: lint_outcome
+    type: None
+    default: None
+  - name: test_outcome
+    type: None
+    default: None
+  - name: multi_response_content
+    type: str
+    default: '""'
+  - name: partial_response_content
+    type: str
+    default: '""'
+  - name: commit_before_message
+    type: list
+    default: '[]'
+  - name: message_cost
+    type: float
+    default: '0.0'
+  - name: add_cache_headers
+    type: bool
+    default: 'False'
+  - name: cache_warming_thread
+    type: None
+    default: None
+  - name: suggest_shell_commands
+    type: bool
+    default: 'True'
+  - name: detect_urls
+    type: bool
+    default: 'True'
+  - name: ignore_mentions
+    type: None
+    default: None
+  - name: chat_language
+    type: None
+    default: None
+  - name: commit_language
+    type: None
+    default: None
+  - name: file_watcher
+    type: None
+    default: None
+  - name: ok_to_warm_cache
+    type: bool
+    default: 'False'
+  - name: analytics
+    type: Any
+    default: analytics if analytics is not None else Analytics()
+  - name: event
+    type: Any
+    default: self.analytics.event
+  - name: aider_commit_hashes
+    type: Any
+    default: set()
+  - name: rejected_urls
+    type: Any
+    default: set()
+  - name: abs_root_path_cache
+    type: dict
+    default: '{}'
+  - name: auto_copy_context
+    type: Any
+    default: auto_copy_context
+  - name: auto_accept_architect
+    type: Any
+    default: auto_accept_architect
+  - name: file_watcher.coder
+    type: Any
+    default: self
+  - name: chat_completion_call_hashes
+    type: list
+    default: '[]'
+  - name: chat_completion_response_hashes
+    type: list
+    default: '[]'
+  - name: need_commit_before_edits
+    type: Any
+    default: set()
+  - name: total_cost
+    type: Any
+    default: total_cost
+  - name: total_tokens_sent
+    type: Any
+    default: total_tokens_sent
+  - name: total_tokens_received
+    type: Any
+    default: total_tokens_received
+  - name: message_tokens_sent
+    type: int
+    default: '0'
+  - name: message_tokens_received
+    type: int
+    default: '0'
+  - name: verbose
+    type: Any
+    default: verbose
+  - name: add_gitignore_files
+    type: Any
+    default: add_gitignore_files
+  - name: cur_messages
+    type: Any
+    default: cur_messages
+  - name: done_messages
+    type: Any
+    default: done_messages
+  - name: io
+    type: Any
+    default: io
+  - name: shell_commands
+    type: list
+    default: '[]'
+  - name: auto_commits
+    type: Any
+    default: auto_commits
+  - name: dirty_commits
+    type: Any
+    default: dirty_commits
+  - name: dry_run
+    type: Any
+    default: dry_run
+  - name: pretty
+    type: Any
+    default: self.io.pretty
+  - name: main_model
+    type: Any
+    default: main_model
+  - name: reasoning_tag_name
+    type: tuple
+    default: |-
+      (
+                  self.main_model.reasoning_tag if self.main_model.reasoning_tag else REASONING_TAG
+              )
+  - name: stream
+    type: Any
+    default: stream and main_model.streaming
+  - name: show_diffs
+    type: Any
+    default: show_diffs
+  - name: commands
+    type: Any
+    default: commands or Commands(self.io, self)
+  - name: commands.coder
+    type: Any
+    default: self
+  - name: root
+    type: Any
+    default: self.repo.root
+  - name: summarizer
+    type: Any
+    default: |-
+      summarizer or ChatSummary(
+                  [self.main_model.weak_model, self.main_model],
+                  self.main_model.max_chat_history_tokens,
+              )
+  - name: summarizer_thread
+    type: None
+    default: None
+  - name: summarized_done_messages
+    type: list
+    default: '[]'
+  - name: summarizing_messages
+    type: None
+    default: None
+  - name: linter
+    type: Any
+    default: Linter(root=self.root, encoding=io.encoding)
+  - name: lint_cmds
+    type: Any
+    default: lint_cmds
+  - name: fences
+    type: Any
+    default: all_fences
+  - name: fence
+    type: Any
+    default: fences[0]
+  - name: warning_given
+    type: bool
+    default: 'False'
+  methods:
+  - name: create
+    sig: |-
+      create(
+              self,
+              main_model=None,
+              edit_format=None,
+              io=None,
+              from_coder=None,
+              summarize_from_coder=True,
+              **kwargs,
+          )
+    decorators:
+    - classmethod
+    lines:
+    - 125
+    - 201
+    detail:
+      calls:
+      - UnknownEditFormat
+      - coder
+      - dict
+      - from_coder.commands.clone
+      - from_coder.summarizer.summarize_all
+      - hasattr
+      - io.tool_warning
+      - list
+      - models.Model
+      - str
+      - use_kwargs.update
+  - name: clone
+    sig: clone(self, **kwargs)
+    lines:
+    - 203
+    - 205
+    detail:
+      calls:
+      - Coder.create
+  - name: get_announcements
+    sig: get_announcements(self)
+    lines:
+    - 207
+    - 295
+    detail:
+      calls:
+      - len
+      - lines.append
+      - main_model.get_reasoning_effort
+      - main_model.get_thinking_tokens
+      - main_model.info.get
+      - self.get_inchat_relative_files
+      - self.get_rel_fname
+      - self.main_model.get_repo_map_tokens
+      - self.repo.get_rel_repo_dir
+      - self.repo.get_tracked_files
+  - name: __init__
+    sig: |-
+      __init__(
+              self,
+              main_model,
+              io,
+              repo=None,
+              fnames=None,
+              add_gitignore_files=False,
+              read_only_fnames=None,
+              show_diffs=False,
+              auto_commits=True,
+              dirty_commits=True,
+              dry_run=False,
+              map_tokens=1024,
+              verbose=False,
+              stream=True,
+              use_git=True,
+              cur_messages=None,
+              done_messages=None,
+              restore_chat_history=False,
+              auto_lint=True,
+              auto_test=False,
+              lint_cmds=None,
+              test_cmd=None,
+              aider_commit_hashes=None,
+              map_mul_no_files=8,
+              commands=None,
+              summarizer=None,
+              total_cost=0.0,
+              analytics=None,
+              map_refresh="auto",
+              cache_prompts=False,
+              num_cache_warming_pings=0,
+              suggest_shell_commands=True,
+              chat_language=None,
+              commit_language=None,
+              detect_urls=True,
+              ignore_mentions=None,
+              total_tokens_sent=0,
+              total_tokens_received=0,
+              file_watcher=None,
+              auto_copy_context=False,
+              auto_accept_architect=True,
+          )
+    lines:
+    - 299
+    - 542
+    detail:
+      calls:
+      - Analytics
+      - ChatSummary
+      - Commands
+      - Draft7Validator.check_schema
+      - GitRepo
+      - InputOutput
+      - Linter
+      - Path
+      - RepoMap
+      - fname.exists
+      - fname.is_file
+      - fname.resolve
+      - hasattr
+      - json.dumps
+      - main_model.commit_message_models
+      - os.path.exists
+      - self.abs_fnames.add
+      - self.abs_read_only_fnames.add
+      - self.abs_root_path
+      - self.check_added_files
+      - self.io.read_text
+      - self.io.tool_output
+      - self.io.tool_warning
+      - self.main_model.info.get
+      - self.repo.git_ignored_file
+      - self.repo.ignored_file
+      - self.setup_lint_cmds
+      - self.summarize_start
+      - set
+      - str
+      - utils.find_common_root
+      - utils.split_chat_history_markdown
+      - utils.touch_file
+  - name: setup_lint_cmds
+    sig: setup_lint_cmds(self, lint_cmds)
+    lines:
+    - 544
+    - 548
+    detail:
+      calls:
+      - lint_cmds.items
+      - self.linter.set_linter
+  - name: show_announcements
+    sig: show_announcements(self)
+    lines:
+    - 550
+    - 554
+    detail:
+      calls:
+      - self.get_announcements
+      - self.io.tool_output
+  - name: add_rel_fname
+    sig: add_rel_fname(self, rel_fname)
+    lines:
+    - 556
+    - 558
+    detail:
+      calls:
+      - self.abs_fnames.add
+      - self.abs_root_path
+      - self.check_added_files
+  - name: drop_rel_fname
+    sig: drop_rel_fname(self, fname)
+    lines:
+    - 560
+    - 564
+    detail:
+      calls:
+      - self.abs_fnames.remove
+      - self.abs_root_path
+  - name: abs_root_path
+    sig: abs_root_path(self, path)
+    lines:
+    - 566
+    - 574
+    detail:
+      calls:
+      - Path
+      - utils.safe_abs_path
+  - name: show_pretty
+    sig: show_pretty(self)
+    lines:
+    - 579
+    - 587
+    detail: {}
+  - name: get_abs_fnames_content
+    sig: get_abs_fnames_content(self)
+    lines:
+    - 598
+    - 607
+    detail:
+      calls:
+      - list
+      - self.abs_fnames.remove
+      - self.get_rel_fname
+      - self.io.read_text
+      - self.io.tool_warning
+  - name: choose_fence
+    sig: choose_fence(self)
+    lines:
+    - 609
+    - 635
+    detail:
+      calls:
+      - all_content.splitlines
+      - any
+      - line.startswith
+      - self.get_abs_fnames_content
+      - self.io.read_text
+      - self.io.tool_warning
+  - name: get_files_content
+    sig: get_files_content(self, fnames=None)
+    lines:
+    - 637
+    - 657
+    detail:
+      calls:
+      - is_image_file
+      - self.get_abs_fnames_content
+      - self.get_rel_fname
+  - name: get_read_only_files_content
+    sig: get_read_only_files_content(self)
+    lines:
+    - 659
+    - 670
+    detail:
+      calls:
+      - is_image_file
+      - self.get_rel_fname
+      - self.io.read_text
+  - name: get_cur_message_text
+    sig: get_cur_message_text(self)
+    lines:
+    - 672
+    - 676
+    detail: {}
+  - name: get_ident_mentions
+    sig: get_ident_mentions(self, text)
+    lines:
+    - 678
+    - 682
+    detail:
+      calls:
+      - re.split
+      - set
+  - name: get_ident_filename_matches
+    sig: get_ident_filename_matches(self, idents)
+    lines:
+    - 684
+    - 707
+    detail:
+      calls:
+      - Path
+      - all_fnames[base].add
+      - defaultdict
+      - ident.lower
+      - len
+      - matches.update
+      - path.stem.lower
+      - self.get_all_relative_files
+      - set
+  - name: get_repo_map
+    sig: get_repo_map(self, force_refresh=False)
+    lines:
+    - 709
+    - 748
+    detail:
+      calls:
+      - mentioned_fnames.update
+      - self.get_all_abs_files
+      - self.get_cur_message_text
+      - self.get_file_mentions
+      - self.get_ident_filename_matches
+      - self.get_ident_mentions
+      - self.repo_map.get_repo_map
+      - set
+  - name: get_repo_messages
+    sig: get_repo_messages(self)
+    lines:
+    - 750
+    - 761
+    detail:
+      calls:
+      - dict
+      - self.get_repo_map
+  - name: get_readonly_files_messages
+    sig: get_readonly_files_messages(self)
+    lines:
+    - 763
+    - 787
+    detail:
+      calls:
+      - dict
+      - self.get_images_message
+      - self.get_read_only_files_content
+  - name: get_chat_files_messages
+    sig: get_chat_files_messages(self)
+    lines:
+    - 789
+    - 815
+    detail:
+      calls:
+      - dict
+      - self.get_files_content
+      - self.get_images_message
+      - self.get_repo_map
+  - name: get_images_message
+    sig: get_images_message(self, fnames)
+    lines:
+    - 817
+    - 857
+    detail:
+      calls:
+      - base64.b64encode
+      - base64.b64encode(image_file.read()).decode
+      - image_file.read
+      - is_image_file
+      - mime_type.startswith
+      - mimetypes.guess_type
+      - open
+      - self.get_rel_fname
+      - self.main_model.info.get
+  - name: run_stream
+    sig: run_stream(self, user_message)
+    lines:
+    - 859
+    - 862
+    detail:
+      calls:
+      - self.init_before_message
+      - self.io.user_input
+      - self.send_message
+  - name: init_before_message
+    sig: init_before_message(self)
+    lines:
+    - 864
+    - 874
+    detail:
+      calls:
+      - self.commit_before_message.append
+      - self.repo.get_head_commit_sha
+      - set
+  - name: run
+    sig: run(self, with_message=None, preproc=True)
+    lines:
+    - 876
+    - 892
+    detail:
+      calls:
+      - self.copy_context
+      - self.get_input
+      - self.io.user_input
+      - self.keyboard_interrupt
+      - self.run_one
+      - self.show_undo_hint
+  - name: copy_context
+    sig: copy_context(self)
+    lines:
+    - 894
+    - 896
+    detail:
+      calls:
+      - self.commands.cmd_copy_context
+  - name: get_input
+    sig: get_input(self)
+    lines:
+    - 898
+    - 910
+    detail:
+      calls:
+      - self.get_addable_relative_files
+      - self.get_inchat_relative_files
+      - self.get_rel_fname
+      - self.io.get_input
+      - set
+      - sorted
+  - name: preproc_user_input
+    sig: preproc_user_input(self, inp)
+    lines:
+    - 912
+    - 922
+    detail:
+      calls:
+      - self.check_for_file_mentions
+      - self.check_for_urls
+      - self.commands.is_command
+      - self.commands.run
+  - name: run_one
+    sig: run_one(self, user_message, preproc)
+    lines:
+    - 924
+    - 944
+    detail:
+      calls:
+      - list
+      - self.init_before_message
+      - self.io.tool_warning
+      - self.preproc_user_input
+      - self.send_message
+  - name: check_and_open_urls
+    sig: check_and_open_urls(self, exc, friendly_msg=None)
+    lines:
+    - 946
+    - 962
+    detail:
+      calls:
+      - list
+      - re.compile
+      - self.io.offer_url
+      - self.io.tool_error
+      - self.io.tool_warning
+      - set
+      - str
+      - url.rstrip
+      - url_pattern.findall
+  - name: check_for_urls
+    sig: 'check_for_urls(self, inp: str) -> List[str]'
+    lines:
+    - 964
+    - 984
+    detail:
+      calls:
+      - ConfirmGroup
+      - list
+      - re.compile
+      - self.commands.cmd_web
+      - self.io.confirm_ask
+      - self.rejected_urls.add
+      - set
+      - url.rstrip
+      - url_pattern.findall
+  - name: keyboard_interrupt
+    sig: keyboard_interrupt(self)
+    lines:
+    - 986
+    - 1000
+    detail:
+      calls:
+      - Console
+      - Console().show_cursor
+      - self.event
+      - self.io.tool_warning
+      - sys.exit
+      - time.time
+  - name: summarize_start
+    sig: summarize_start(self)
+    lines:
+    - 1002
+    - 1012
+    detail:
+      calls:
+      - self.io.tool_output
+      - self.summarize_end
+      - self.summarizer.too_big
+      - self.summarizer_thread.start
+      - threading.Thread
+  - name: summarize_worker
+    sig: summarize_worker(self)
+    lines:
+    - 1014
+    - 1022
+    detail:
+      calls:
+      - list
+      - self.io.tool_output
+      - self.io.tool_warning
+      - self.summarizer.summarize
+  - name: summarize_end
+    sig: summarize_end(self)
+    lines:
+    - 1024
+    - 1034
+    detail:
+      calls:
+      - self.summarizer_thread.join
+  - name: move_back_cur_messages
+    sig: move_back_cur_messages(self, message)
+    lines:
+    - 1036
+    - 1046
+    detail:
+      calls:
+      - dict
+      - self.summarize_start
+  - name: normalize_language
+    sig: normalize_language(self, lang_code)
+    lines:
+    - 1048
+    - 1092
+    detail:
+      calls:
+      - Locale.parse
+      - fallback.get
+      - lang_code.replace
+      - lang_code.replace("-", "_").split
+      - lang_code.replace("-", "_").split("_")[0].lower
+      - lang_code.upper
+      - lang_code[0].isupper
+      - len
+      - loc.get_display_name
+      - loc.get_display_name("en").capitalize
+  - name: get_user_language
+    sig: get_user_language(self)
+    lines:
+    - 1094
+    - 1125
+    detail:
+      calls:
+      - lang.split
+      - locale.getlocale
+      - os.environ.get
+      - self.normalize_language
+  - name: get_platform_info
+    sig: get_platform_info(self)
+    lines:
+    - 1127
+    - 1172
+    detail:
+      calls:
+      - datetime.now
+      - datetime.now().astimezone
+      - datetime.now().astimezone().strftime
+      - os.getenv
+      - platform.platform
+      - self.get_user_language
+      - self.lint_cmds.items
+  - name: fmt_system_prompt
+    sig: fmt_system_prompt(self, prompt)
+    lines:
+    - 1174
+    - 1224
+    detail:
+      calls:
+      - '"\n\n".join'
+      - final_reminders.append
+      - prompt.format
+      - self.get_platform_info
+      - self.get_user_language
+      - self.gpt_prompts.no_shell_cmd_prompt.format
+      - self.gpt_prompts.no_shell_cmd_reminder.format
+      - self.gpt_prompts.shell_cmd_prompt.format
+      - self.gpt_prompts.shell_cmd_reminder.format
+  - name: format_chat_chunks
+    sig: format_chat_chunks(self)
+    lines:
+    - 1226
+    - 1331
+    detail:
+      calls:
+      - ChatChunks
+      - chunks.all_messages
+      - dict
+      - example_messages.append
+      - list
+      - main_sys.strip
+      - role.upper
+      - self.choose_fence
+      - self.fmt_system_prompt
+      - self.get_chat_files_messages
+      - self.get_readonly_files_messages
+      - self.get_repo_messages
+      - self.main_model.info.get
+      - self.main_model.token_count
+      - self.summarize_end
+  - name: format_messages
+    sig: format_messages(self)
+    lines:
+    - 1333
+    - 1338
+    detail:
+      calls:
+      - chunks.add_cache_control_headers
+      - self.format_chat_chunks
+  - name: warm_cache
+    sig: warm_cache(self, chunks)
+    lines:
+    - 1340
+    - 1394
+    detail:
+      calls:
+      - float
+      - os.environ.get
+      - self.cache_warming_thread.start
+      - threading.Timer
+      - time.time
+  - name: check_tokens
+    sig: check_tokens(self, messages)
+    lines:
+    - 1396
+    - 1417
+    detail:
+      calls:
+      - self.io.confirm_ask
+      - self.io.tool_error
+      - self.io.tool_output
+      - self.main_model.info.get
+      - self.main_model.token_count
+  - name: send_message
+    sig: send_message(self, inp)
+    lines:
+    - 1419
+    - 1623
+    detail:
+      calls:
+      - '"".join'
+      - LiteLLMExceptions
+      - WaitingSpinner
+      - args.get
+      - chunks.all_messages
+      - dict
+      - hasattr
+      - litellm_ex.exceptions_tuple
+      - litellm_ex.get_ex_info
+      - messages.append
+      - self._stop_waiting_spinner
+      - self.add_assistant_reply_to_cur_messages
+      - self.aider_edited_files.update
+      - self.apply_updates
+      - self.auto_commit
+      - self.check_and_open_urls
+      - self.check_for_file_mentions
+      - self.check_tokens
+      - self.commands.cmd_test
+      - self.event
+      - self.format_messages
+      - self.get_multi_response_content_in_progress
+      - self.io.confirm_ask
+      - self.io.get_assistant_mdstream
+      - self.io.llm_started
+      - self.io.tool_error
+      - self.io.tool_output
+      - self.io.tool_warning
+      - self.lint_edited
+      - self.live_incremental_response
+      - self.main_model.info.get
+      - self.move_back_cur_messages
+      - self.parse_partial_args
+      - self.remove_reasoning_content
+      - self.reply_completed
+      - self.run_shell_commands
+      - self.send
+      - self.show_exhausted_error
+      - self.show_pretty
+      - self.show_usage_report
+      - self.waiting_spinner.start
+      - self.warm_cache
+      - str
+      - time.sleep
+      - traceback.format_exception
+      - type
+      - utils.show_messages
+  - name: reply_completed
+    sig: reply_completed(self)
+    lines:
+    - 1625
+    - 1626
+    detail: {}
+  - name: show_exhausted_error
+    sig: show_exhausted_error(self)
+    lines:
+    - 1628
+    - 1679
+    detail:
+      calls:
+      - '"".join'
+      - res.append
+      - self.format_messages
+      - self.format_messages().all_messages
+      - self.io.offer_url
+      - self.io.tool_error
+      - self.main_model.info.get
+      - self.main_model.token_count
+  - name: lint_edited
+    sig: lint_edited(self, fnames)
+    lines:
+    - 1681
+    - 1696
+    detail:
+      calls:
+      - self.abs_root_path
+      - self.io.tool_warning
+      - self.linter.lint
+  - name: add_assistant_reply_to_cur_messages
+    sig: add_assistant_reply_to_cur_messages(self)
+    lines:
+    - 1702
+    - 1712
+    detail:
+      calls:
+      - dict
+  - name: get_file_mentions
+    sig: get_file_mentions(self, content, ignore_current=False)
+    lines:
+    - 1714
+    - 1759
+    detail:
+      calls:
+      - content.split
+      - fname_to_rel_fnames.items
+      - fname_to_rel_fnames[fname].append
+      - len
+      - mentioned_rel_fnames.add
+      - os.path.basename
+      - rel_fname.replace
+      - self.get_addable_relative_files
+      - self.get_all_relative_files
+      - self.get_inchat_relative_files
+      - self.get_rel_fname
+      - set
+      - word.replace
+      - word.rstrip
+      - word.strip
+  - name: check_for_file_mentions
+    sig: check_for_file_mentions(self, content)
+    lines:
+    - 1761
+    - 1781
+    detail:
+      calls:
+      - '", ".join'
+      - ConfirmGroup
+      - added_fnames.append
+      - prompts.added_files.format
+      - self.add_rel_fname
+      - self.get_file_mentions
+      - self.ignore_mentions.add
+      - self.io.confirm_ask
+      - sorted
+  - name: send
+    sig: send(self, messages, model=None, functions=None)
+    lines:
+    - 1783
+    - 1834
+    detail:
+      calls:
+      - LiteLLMExceptions
+      - LiteLLMExceptions().exceptions_tuple
+      - LiteLLMExceptions().get_ex_info
+      - dict
+      - format_content
+      - format_messages
+      - hash_object.hexdigest
+      - json.dumps
+      - model.send_completion
+      - self.calculate_and_show_tokens_and_cost
+      - self.chat_completion_call_hashes.append
+      - self.io.ai_output
+      - self.io.log_llm_history
+      - self.keyboard_interrupt
+      - self.parse_partial_args
+      - self.show_send_output
+      - self.show_send_output_stream
+  - name: show_send_output
+    sig: show_send_output(self, completion)
+    lines:
+    - 1836
+    - 1898
+    detail:
+      calls:
+      - Exception
+      - FinishReasonLength
+      - dict
+      - format_reasoning_content
+      - hasattr
+      - hashlib.sha1
+      - json.dumps
+      - json.dumps(resp_hash, sort_keys=True).encode
+      - print
+      - replace_reasoning_tags
+      - resp_hash.hexdigest
+      - self._stop_waiting_spinner
+      - self.chat_completion_response_hashes.append
+      - self.io.assistant_output
+      - self.io.tool_error
+      - self.render_incremental_response
+      - self.show_pretty
+      - str
+  - name: show_send_output_stream
+    sig: show_send_output_stream(self, completion)
+    lines:
+    - 1900
+    - 1975
+    detail:
+      calls:
+      - FinishReasonLength
+      - func.items
+      - hasattr
+      - len
+      - replace_reasoning_tags
+      - self._stop_waiting_spinner
+      - self.io.tool_warning
+      - self.live_incremental_response
+      - self.show_pretty
+      - sys.stdout.flush
+      - sys.stdout.write
+      - text.encode
+      - text.encode(sys.stdout.encoding, errors="backslashreplace").decode
+  - name: live_incremental_response
+    sig: live_incremental_response(self, final)
+    lines:
+    - 1977
+    - 1981
+    detail:
+      calls:
+      - replace_reasoning_tags
+      - self.mdstream.update
+      - self.render_incremental_response
+  - name: render_incremental_response
+    sig: render_incremental_response(self, final)
+    lines:
+    - 1983
+    - 1984
+    detail:
+      calls:
+      - self.get_multi_response_content_in_progress
+  - name: remove_reasoning_content
+    sig: remove_reasoning_content(self)
+    lines:
+    - 1986
+    - 1992
+    detail:
+      calls:
+      - remove_reasoning_content
+  - name: calculate_and_show_tokens_and_cost
+    sig: calculate_and_show_tokens_and_cost(self, messages, completion=None)
+    lines:
+    - 1994
+    - 2068
+    detail:
+      calls:
+      - format_cost
+      - format_tokens
+      - getattr
+      - hasattr
+      - litellm.completion_cost
+      - self.compute_costs_from_tokens
+      - self.main_model.info.get
+      - self.main_model.token_count
+  - name: compute_costs_from_tokens
+    sig: |-
+      compute_costs_from_tokens(
+              self, prompt_tokens, completion_tokens, cache_write_tokens, cache_hit_tokens
+          )
+    lines:
+    - 2070
+    - 2100
+    detail:
+      calls:
+      - self.main_model.info.get
+  - name: show_usage_report
+    sig: show_usage_report(self)
+    lines:
+    - 2102
+    - 2126
+    detail:
+      calls:
+      - self.event
+      - self.io.tool_output
+  - name: get_multi_response_content_in_progress
+    sig: get_multi_response_content_in_progress(self, final=False)
+    lines:
+    - 2128
+    - 2135
+    detail:
+      calls:
+      - new.rstrip
+  - name: get_rel_fname
+    sig: get_rel_fname(self, fname)
+    lines:
+    - 2137
+    - 2141
+    detail:
+      calls:
+      - os.path.relpath
+  - name: get_inchat_relative_files
+    sig: get_inchat_relative_files(self)
+    lines:
+    - 2143
+    - 2145
+    detail:
+      calls:
+      - self.get_rel_fname
+      - set
+      - sorted
+  - name: is_file_safe
+    sig: is_file_safe(self, fname)
+    lines:
+    - 2147
+    - 2151
+    detail:
+      calls:
+      - Path
+      - Path(self.abs_root_path(fname)).is_file
+      - self.abs_root_path
+  - name: get_all_relative_files
+    sig: get_all_relative_files(self)
+    lines:
+    - 2153
+    - 2162
+    detail:
+      calls:
+      - self.get_inchat_relative_files
+      - self.repo.get_tracked_files
+      - set
+      - sorted
+  - name: get_all_abs_files
+    sig: get_all_abs_files(self)
+    lines:
+    - 2164
+    - 2167
+    detail:
+      calls:
+      - self.abs_root_path
+      - self.get_all_relative_files
+  - name: get_addable_relative_files
+    sig: get_addable_relative_files(self)
+    lines:
+    - 2169
+    - 2173
+    detail:
+      calls:
+      - self.get_all_relative_files
+      - self.get_inchat_relative_files
+      - self.get_rel_fname
+      - set
+  - name: check_for_dirty_commit
+    sig: check_for_dirty_commit(self, path)
+    lines:
+    - 2175
+    - 2189
+    detail:
+      calls:
+      - self.io.tool_output
+      - self.need_commit_before_edits.add
+      - self.repo.is_dirty
+  - name: allowed_to_edit
+    sig: allowed_to_edit(self, path)
+    lines:
+    - 2191
+    - 2240
+    detail:
+      calls:
+      - Path
+      - Path(full_path).exists
+      - self.abs_fnames.add
+      - self.abs_root_path
+      - self.check_added_files
+      - self.check_for_dirty_commit
+      - self.io.confirm_ask
+      - self.io.tool_error
+      - self.io.tool_output
+      - self.io.tool_warning
+      - self.repo.git_ignored_file
+      - self.repo.path_in_repo
+      - self.repo.repo.git.add
+      - utils.touch_file
+  - name: check_added_files
+    sig: check_added_files(self)
+    lines:
+    - 2244
+    - 2267
+    detail:
+      calls:
+      - is_image_file
+      - len
+      - self.io.read_text
+      - self.io.tool_warning
+      - self.main_model.token_count
+  - name: prepare_to_edit
+    sig: prepare_to_edit(self, edits)
+    lines:
+    - 2269
+    - 2294
+    detail:
+      calls:
+      - dict
+      - dump
+      - res.append
+      - self.allowed_to_edit
+      - self.dirty_commit
+      - set
+  - name: apply_updates
+    sig: apply_updates(self)
+    lines:
+    - 2296
+    - 2336
+    detail:
+      calls:
+      - self.apply_edits
+      - self.apply_edits_dry_run
+      - self.get_edits
+      - self.io.tool_error
+      - self.io.tool_output
+      - self.prepare_to_edit
+      - set
+      - str
+      - traceback.print_exc
+  - name: parse_partial_args
+    sig: parse_partial_args(self)
+    lines:
+    - 2338
+    - 2363
+    detail:
+      calls:
+      - json.loads
+      - self.partial_response_function_call.get
+  - name: get_context_from_history
+    sig: get_context_from_history(self, history)
+    lines:
+    - 2367
+    - 2373
+    detail:
+      calls:
+      - msg["role"].upper
+  - name: auto_commit
+    sig: auto_commit(self, edited, context=None)
+    lines:
+    - 2375
+    - 2395
+    detail:
+      calls:
+      - self.get_context_from_history
+      - self.gpt_prompts.files_content_gpt_edits.format
+      - self.io.tool_error
+      - self.repo.commit
+      - self.show_auto_commit_outcome
+      - str
+  - name: show_auto_commit_outcome
+    sig: show_auto_commit_outcome(self, res)
+    lines:
+    - 2397
+    - 2403
+    detail:
+      calls:
+      - self.aider_commit_hashes.add
+      - self.commands.cmd_diff
+  - name: show_undo_hint
+    sig: show_undo_hint(self)
+    lines:
+    - 2405
+    - 2409
+    detail:
+      calls:
+      - self.io.tool_output
+      - self.repo.get_head_commit_sha
+  - name: dirty_commit
+    sig: dirty_commit(self)
+    lines:
+    - 2411
+    - 2423
+    detail:
+      calls:
+      - self.repo.commit
+  - name: get_edits
+    sig: get_edits(self, mode="update")
+    lines:
+    - 2425
+    - 2426
+    detail: {}
+  - name: apply_edits
+    sig: apply_edits(self, edits)
+    lines:
+    - 2428
+    - 2429
+    detail: {}
+  - name: apply_edits_dry_run
+    sig: apply_edits_dry_run(self, edits)
+    lines:
+    - 2431
+    - 2432
+    detail: {}
+  - name: run_shell_commands
+    sig: run_shell_commands(self)
+    lines:
+    - 2434
+    - 2448
+    detail:
+      calls:
+      - ConfirmGroup
+      - done.add
+      - self.handle_shell_commands
+      - set
+  - name: handle_shell_commands
+    sig: handle_shell_commands(self, commands_str, group)
+    lines:
+    - 2450
+    - 2485
+    detail:
+      calls:
+      - '"\n".join'
+      - accumulated_output.strip
+      - accumulated_output.strip().splitlines
+      - cmd.strip
+      - cmd.strip().startswith
+      - command.startswith
+      - command.strip
+      - commands_str.strip
+      - commands_str.strip().splitlines
+      - len
+      - run_cmd
+      - self.io.add_to_input_history
+      - self.io.confirm_ask
+      - self.io.tool_output
+      - sum
+  lines:
+  - 88
+  - 2485
+functions:
+- name: wrap_fence
+  sig: wrap_fence(name)
+  lines:
+  - 73
+  - 74
+exports:
+- name: UnknownEditFormat
+  kind: type
+- name: MissingAPIKeyError
+  kind: type
+- name: FinishReasonLength
+  kind: type
+- name: Coder
+  kind: type
+- name: wrap_fence
+  kind: func
+- name: all_fences
+  kind: data
