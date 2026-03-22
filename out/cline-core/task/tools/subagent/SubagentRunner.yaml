@@ -1,0 +1,512 @@
+## Roska File Descriptor — subagent/SubagentRunner.ts
+file: subagent/SubagentRunner.ts
+lines: 878
+layer: logic
+imports:
+- sym: node:path.path
+- sym: node:timers/promises.setTimeout as delay
+- sym: '@core/api.ApiHandler'
+  kind: typing
+- sym: '@core/api.buildApiHandler'
+  kind: typing
+- sym: '@core/assistant-message.parseAssistantMessageV2'
+- sym: '@core/assistant-message.ToolUse'
+- sym: '@core/context/instructions/user-instructions/skills.discoverSkills'
+- sym: '@core/context/instructions/user-instructions/skills.getAvailableSkills'
+- sym: '@core/prompts/responses.formatResponse'
+- sym: '@core/prompts/system-prompt.PromptRegistry'
+- sym: '@core/prompts/system-prompt/types.SystemPromptContext'
+  kind: typing
+- sym: '@core/task/StreamResponseHandler.StreamResponseHandler'
+- sym: '@shared/messages.ClineAssistantToolUseBlock'
+- sym: '@shared/messages.ClineStorageMessage'
+- sym: '@shared/messages.ClineTextContentBlock'
+- sym: '@shared/messages.ClineUserContent'
+- sym: '@shared/services/Logger.Logger'
+- sym: '@shared/tools.ClineDefaultTool'
+- sym: '@shared/tools.ClineTool'
+- sym: '@/core/context/context-management/ContextManager.ContextManager'
+- sym: '@/core/context/context-management/context-error-handling.checkContextWindowExceededError'
+- sym: '@/core/context/context-management/context-window-utils.getContextWindowInfo'
+- sym: '@/registry.HostRegistryInfo'
+- sym: '@/services/error.ClineError'
+- sym: '@/services/error.ClineErrorType'
+- sym: '@/shared/proto/cline/models.ApiFormat'
+- sym: '@/utils/cost.calculateApiCostAnthropic'
+- sym: '@/utils/model-utils.isNextGenModelFamily'
+- sym: ../../TaskState.TaskState
+- sym: ../ToolExecutorCoordinator.ToolExecutorCoordinator
+- sym: ../ToolValidator.ToolValidator
+- sym: ../types/TaskConfig.TaskConfig
+  kind: typing
+- sym: ./SubagentBuilder.SubagentBuilder
+data:
+- name: MAX_EMPTY_ASSISTANT_RETRIES
+  type: number
+  val: '3'
+- name: MAX_INITIAL_STREAM_ATTEMPTS
+  type: number
+  val: '3'
+- name: INITIAL_STREAM_RETRY_BASE_DELAY_MS
+  type: any
+  val: 2_000
+types:
+- name: SubagentRunStatus
+  kind: enum
+  decorators:
+  - type
+  variants:
+  - name: '"completed"'
+  - name: '"failed"'
+  lines:
+  - 31
+  - 31
+- name: SubagentRunResult
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: status
+    type: SubagentRunStatus
+  - name: result
+    type: string
+  - name: error
+    type: string
+  - name: stats
+    type: SubagentRunStats
+  lines:
+  - 33
+  - 38
+- name: SubagentProgressUpdate
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: stats
+    type: SubagentRunStats
+  - name: latestToolCall
+    type: string
+  - name: status
+    type: '"running" | "completed" | "failed"'
+  - name: result
+    type: string
+  - name: error
+    type: string
+  lines:
+  - 40
+  - 46
+- name: SubagentRunStats
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: toolCalls
+    type: number
+  - name: inputTokens
+    type: number
+  - name: outputTokens
+    type: number
+  - name: cacheWriteTokens
+    type: number
+  - name: cacheReadTokens
+    type: number
+  - name: totalCost
+    type: number
+  - name: contextTokens
+    type: number
+  - name: contextWindow
+    type: number
+  - name: contextUsagePercentage
+    type: number
+  lines:
+  - 48
+  - 58
+- name: SubagentRequestUsageState
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: inputTokens
+    type: number
+  - name: outputTokens
+    type: number
+  - name: cacheWriteTokens
+    type: number
+  - name: cacheReadTokens
+    type: number
+  - name: totalTokens
+    type: number
+  - name: totalCost
+    type: number
+  lines:
+  - 60
+  - 67
+- name: SubagentUsageState
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: currentRequest
+    type: SubagentRequestUsageState
+  - name: lastRequest
+    type: SubagentRequestUsageState
+  lines:
+  - 69
+  - 72
+- name: SubagentToolCall
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: toolUseId
+    type: string
+  - name: id
+    type: string
+  - name: call_id
+    type: string
+  - name: signature
+    type: string
+  - name: input
+    type: unknown
+  - name: isNativeToolCall
+    type: boolean
+  lines:
+  - 74
+  - 82
+- name: SubagentContextState
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: conversationHistoryDeletedRange
+    type: '[number, number]'
+  lines:
+  - 84
+  - 86
+- name: SubagentRunner
+  kind: struct
+  fields:
+  - name: agent
+    type: SubagentBuilder
+  - name: apiHandler
+    type: ApiHandler
+  - name: allowedTools
+    type: ClineDefaultTool[]
+  - name: activeApiAbort
+    type: (() => void) | undefined
+  - name: abortRequested
+    type: any
+    default: 'false'
+  - name: activeCommandExecutions
+    type: any
+    default: '0'
+  - name: abortingCommands
+    type: any
+    default: 'false'
+  methods:
+  - name: constructor
+    sig: "constructor(\n\t\tprivate baseConfig: TaskConfig,\n\t\tsubagentName = \"subagent\",\n\t)"
+    lines:
+    - 238
+    - 245
+    detail:
+      calls:
+      - new SubagentBuilder
+      - this.agent.getAllowedTools
+      - this.agent.getApiHandler
+  - name: abort
+    sig: 'abort(): Promise<void>'
+    is_async: true
+    lines:
+    - 247
+    - 266
+    detail:
+      calls:
+      - Logger.error
+      - this.activeApiAbort
+      - this.baseConfig.callbacks.cancelRunningCommandTool
+  - name: getWorkspaceMetadataEnvironmentBlock
+    sig: 'getWorkspaceMetadataEnvironmentBlock(): Promise<string | null>'
+    is_async: true
+    vis: private
+    lines:
+    - 272
+    - 293
+    detail:
+      calls:
+      - JSON.stringify
+      - Logger.warn
+      - path.basename
+      - this.baseConfig.workspaceManager?.buildWorkspacesJson
+  - name: run
+    sig: 'run(prompt: string, onProgress: (update: SubagentProgressUpdate) => void): Promise<SubagentRunResult>'
+    is_async: true
+    lines:
+    - 295
+    - 688
+    detail:
+      calls:
+      - HostRegistryInfo.get
+      - Logger.error
+      - Logger.warn
+      - PromptRegistry.getInstance
+      - api.abort?.bind
+      - api.getModel
+      - assistantContent.push
+      - assistantText.trim
+      - calculateApiCostAnthropic
+      - "configuredSkillNames\n\t\t\t\t\t\t\t.map"
+      - "configuredSkillNames\n\t\t\t\t\t\t\t.map((skillName) => {\n\t\t\t\t\t\t\t\tconst skill = availableSkills.find((candid..."
+      - conversation.push
+      - createEmptyRequestUsageState
+      - delay
+      - discoverSkills
+      - finalizedToolCalls.map
+      - formatResponse.missingToolParameterError
+      - formatResponse.noToolsUsed
+      - formatResponse.toolError
+      - formatToolCallPreview
+      - getAvailableSkills
+      - handler.execute
+      - handler?.getDescription
+      - nativeFinalizedToolCalls.map
+      - new ContextManager
+      - new StreamResponseHandler
+      - new TaskState
+      - normalizeToolCallArguments
+      - onProgress
+      - parseNonNativeToolCalls
+      - promptRegistry.get
+      - pushSubagentToolResultBlock
+      - serializeToolResult
+      - state.toolUseIdMap.set
+      - streamHandler.getHandlers
+      - this.abort
+      - this.agent.buildNativeTools
+      - this.agent.buildSystemPrompt
+      - this.agent.getConfiguredSkills
+      - this.allowedTools.includes
+      - this.baseConfig.coordinator.getHandler
+      - this.baseConfig.services.stateManager.getApiConfiguration
+      - this.baseConfig.services.stateManager.getGlobalSettingsKey
+      - this.baseConfig.services.stateManager.getGlobalStateKey
+      - this.compactConversationForContextWindow
+      - this.createMessageWithInitialChunkRetry
+      - this.createSubagentTaskConfig
+      - this.getWorkspaceMetadataEnvironmentBlock
+      - this.shouldAbort
+      - this.shouldCompactBeforeNextRequest
+      - toToolUseParams
+      - toolCallParams.result?.trim
+      - toolUseHandler.getAllFinalizedToolUses
+      - toolUseHandler.getAllFinalizedToolUses().map
+      - toolUseHandler.processToolUseDelta
+  - name: createSubagentTaskConfig
+    sig: 'createSubagentTaskConfig(state: TaskState): TaskConfig'
+    vis: private
+    lines:
+    - 690
+    - 724
+    detail:
+      calls:
+      - coordinator.registerByName
+      - new ToolExecutorCoordinator
+      - new ToolValidator
+  - name: compactConversationForContextWindow
+    sig: "compactConversationForContextWindow(\n\t\tcontextManager: ContextManager,\n\t\tconversation: ClineStorageMessage[],\n\t\tconversationHistoryDeletedRange: [number, number] | undefined,\n\t): {\n\t\tdidCompact: boolean\n\t\tconversationHistoryDeletedRange: [number, number] | undefined\n\t}"
+    vis: private
+    lines:
+    - 739
+    - 783
+    detail:
+      calls:
+      - contextManager.getNextTruncationRange
+      - this.optimizeConversationForContextWindow
+  - name: optimizeConversationForContextWindow
+    sig: "optimizeConversationForContextWindow(\n\t\tcontextManager: ContextManager,\n\t\tconversation: ClineStorageMessage[],\n\t): {\n\t\tdidOptimize: boolean\n\t\tneedToTruncate: boolean\n\t}"
+    vis: private
+    lines:
+    - 785
+    - 803
+    detail:
+      calls:
+      - Date.now
+      - contextManager.attemptFileReadOptimizationInMemory
+      - conversation.splice
+      - optimizationResult.optimizedConversationHistory.map
+  - name: shouldCompactBeforeNextRequest
+    sig: "shouldCompactBeforeNextRequest(\n\t\trequestTotalTokens: number,\n\t\tapi: ReturnType<typeof buildApiHandler>,\n\t\tmodelId: string,\n\t): boolean"
+    vis: private
+    lines:
+    - 805
+    - 820
+    detail:
+      calls:
+      - Math.floor
+      - Math.min
+      - getContextWindowInfo
+      - isNextGenModelFamily
+      - this.baseConfig.services.stateManager.getGlobalSettingsKey
+  - name: createMessageWithInitialChunkRetry
+    sig: "createMessageWithInitialChunkRetry(\n\t\tapi: ReturnType<typeof buildApiHandler>,\n\t\tsystemPrompt: string,\n\t\tfullConversation: ClineStorageMessage[],\n\t\tnativeTools: ClineTool[] | undefined,\n\t\tproviderId: string,\n\t\tmodelId: string,\n\t\tcontextManager: ContextManager,\n\t\tcontextState: SubagentContextState,\n\t)"
+    is_async: true
+    vis: private
+    lines:
+    - 822
+    - 877
+    detail:
+      calls:
+      - Logger.warn
+      - api.createMessage
+      - checkContextWindowExceededError
+      - "contextManager\n\t\t\t\t.getTruncatedMessages"
+      - "contextManager\n\t\t\t\t.getTruncatedMessages(fullConversation, contextState.conversationHistoryDeletedRa..."
+      - delay
+      - iterator.next
+      - stream[Symbol.asyncIterator]
+      - this.compactConversationForContextWindow
+      - this.shouldAbort
+      - this.shouldRetryInitialStreamError
+  lines:
+  - 229
+  - 878
+functions:
+- name: createEmptyRequestUsageState
+  sig: 'createEmptyRequestUsageState(): SubagentRequestUsageState'
+  lines:
+  - 88
+  - 96
+  detail: {}
+- name: serializeToolResult
+  sig: 'serializeToolResult(result: unknown): string'
+  lines:
+  - 98
+  - 121
+  detail:
+    calls:
+    - Array.isArray
+    - JSON.stringify
+    - "result\n\t\t\t.map"
+    - "result\n\t\t\t.map((item) => {\n\t\t\t\tif (!item || typeof item !== \"object\") {\n\t\t\t\t\treturn String(item)\n\t\t\t..."
+- name: toToolUseParams
+  sig: 'toToolUseParams(input: unknown): Partial<Record<string, string>>'
+  lines:
+  - 123
+  - 134
+  detail:
+    calls:
+    - JSON.stringify
+    - Object.entries
+- name: formatToolArgPreview
+  sig: 'formatToolArgPreview(value: string, maxLength = 48): string'
+  lines:
+  - 136
+  - 142
+  detail:
+    calls:
+    - normalized.slice
+    - value.replace
+    - value.replace(/\s+/g, " ").trim
+- name: formatToolCallPreview
+  sig: 'formatToolCallPreview(toolName: string, params: Partial<Record<string, string>>): string'
+  lines:
+  - 144
+  - 155
+  detail:
+    calls:
+    - Math.max
+    - Object.entries
+    - Object.entries(params).filter
+    - entries.slice
+    - "visibleEntries\n\t\t.map"
+    - "visibleEntries\n\t\t.map(([key, value]) => `${key}=${formatToolArgPreview(value ?? \"\")}`)\n\t\t.concat"
+    - "visibleEntries\n\t\t.map(([key, value]) => `${key}=${formatToolArgPreview(value ?? \"\")}`)\n\t\t.concat(omi..."
+- name: normalizeToolCallArguments
+  sig: 'normalizeToolCallArguments(argumentsPayload: unknown): string'
+  lines:
+  - 157
+  - 167
+  detail:
+    calls:
+    - JSON.stringify
+- name: resolveToolUseId
+  sig: 'resolveToolUseId(call: { id?: string; call_id?: string; name?: string }, index: number): string'
+  lines:
+  - 169
+  - 183
+  detail:
+    calls:
+    - Date.now
+    - Logger.warn
+    - call.call_id?.trim
+    - call.id?.trim
+- name: toAssistantToolUseBlock
+  sig: 'toAssistantToolUseBlock(call: SubagentToolCall): ClineAssistantToolUseBlock'
+  lines:
+  - 185
+  - 194
+  detail: {}
+- name: parseNonNativeToolCalls
+  sig: 'parseNonNativeToolCalls(assistantText: string): SubagentToolCall[]'
+  lines:
+  - 196
+  - 210
+  detail:
+    calls:
+    - parseAssistantMessageV2
+    - "parsedBlocks\n\t\t.filter"
+    - "parsedBlocks\n\t\t.filter((block): block is ToolUse => block.type === \"tool_use\")\n\t\t.filter"
+    - "parsedBlocks\n\t\t.filter((block): block is ToolUse => block.type === \"tool_use\")\n\t\t.filter((block) => ..."
+- name: pushSubagentToolResultBlock
+  sig: 'pushSubagentToolResultBlock(toolResultBlocks: any[], call: SubagentToolCall, label: string, content: string): void'
+  lines:
+  - 212
+  - 227
+  detail:
+    calls:
+    - toolResultBlocks.push
+exports:
+- name: SubagentRunStatus
+  kind: type
+- name: SubagentRunResult
+  kind: type
+- name: SubagentProgressUpdate
+  kind: type
+- name: SubagentRunStats
+  kind: type
+- name: SubagentRequestUsageState
+  kind: type
+- name: SubagentUsageState
+  kind: type
+- name: SubagentToolCall
+  kind: type
+- name: SubagentContextState
+  kind: type
+- name: SubagentRunner
+  kind: type
+- name: createEmptyRequestUsageState
+  kind: func
+- name: serializeToolResult
+  kind: func
+- name: toToolUseParams
+  kind: func
+- name: formatToolArgPreview
+  kind: func
+- name: formatToolCallPreview
+  kind: func
+- name: normalizeToolCallArguments
+  kind: func
+- name: resolveToolUseId
+  kind: func
+- name: toAssistantToolUseBlock
+  kind: func
+- name: parseNonNativeToolCalls
+  kind: func
+- name: pushSubagentToolResultBlock
+  kind: func
+- name: MAX_EMPTY_ASSISTANT_RETRIES
+  kind: data
+- name: MAX_INITIAL_STREAM_ATTEMPTS
+  kind: data
+- name: INITIAL_STREAM_RETRY_BASE_DELAY_MS
+  kind: data

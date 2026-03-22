@@ -1,0 +1,221 @@
+## Roska File Descriptor — providers/oca.ts
+file: providers/oca.ts
+lines: 473
+layer: logic
+imports:
+- sym: '@anthropic-ai/sdk.Anthropic'
+- sym: '@anthropic-ai/sdk.APIError as AnthropicAPIError'
+- sym: '@shared/api.liteLlmDefaultModelId'
+- sym: '@shared/api.liteLlmModelInfoSaneDefaults'
+- sym: '@shared/api.ModelInfo'
+- sym: openai.APIError as OpenAIAPIError
+- sym: openai.OpenAIError
+- sym: openai/resources/chat/completions.ChatCompletionTool as OpenAITool
+  kind: typing
+- sym: '@/services/auth/oca/OcaAuthService.OcaAuthService'
+- sym: '@/services/auth/oca/utils/constants.DEFAULT_EXTERNAL_OCA_BASE_URL'
+- sym: '@/services/auth/oca/utils/constants.DEFAULT_INTERNAL_OCA_BASE_URL'
+- sym: '@/services/auth/oca/utils/constants.OCI_HEADER_OPC_REQUEST_ID'
+- sym: '@/services/auth/oca/utils/utils.createOcaHeaders'
+- sym: '@/services/EnvUtils.buildExternalBasicHeaders'
+- sym: '@/shared/api.OcaModelInfo'
+- sym: '@/shared/messages/content.ClineStorageMessage'
+- sym: '@/shared/net.fetch'
+- sym: '@/shared/proto/index.cline.ApiFormat'
+- sym: '@/shared/services/Logger.Logger'
+- sym: '...ApiHandler'
+- sym: '...type CommonApiHandlerOptions'
+- sym: ../retry.withRetry
+- sym: ../transform/anthropic-format.sanitizeAnthropicMessages
+- sym: ../transform/openai-format.convertToOpenAiMessages
+- sym: ../transform/openai-response-format.convertToOpenAIResponsesInput
+- sym: ../transform/stream.ApiStream
+- sym: ../transform/tool-call-processor.getOpenAIToolParams
+- sym: ../transform/tool-call-processor.ToolCallProcessor
+- sym: ../utils/messages_api_support.convertOpenAIToolsToAnthropicTools
+- sym: ../utils/messages_api_support.handleAnthropicMessagesApiStreamResponse
+- sym: ../utils/responses_api_support.handleResponsesApiStreamResponse
+types:
+- name: OcaHandlerOptions
+  kind: trait
+  bases:
+  - CommonApiHandlerOptions
+  decorators:
+  - interface
+  fields:
+  - name: ocaBaseUrl
+    type: string
+  - name: ocaModelId
+    type: string
+  - name: ocaModelInfo
+    type: OcaModelInfo
+  - name: ocaReasoningEffort
+    type: string
+  - name: thinkingBudgetTokens
+    type: number
+  - name: ocaUsePromptCache
+    type: boolean
+  - name: taskId
+    type: string
+  - name: ocaMode
+    type: string
+  lines:
+  - 28
+  - 37
+- name: OcaHandler
+  kind: struct
+  bases:
+  - ApiHandler
+  fields:
+  - name: options
+    type: OcaHandlerOptions
+  - name: openAIClient
+    type: OpenAI | undefined
+  - name: anthropicClient
+    type: Anthropic | undefined
+  - name: externalHeaders
+    type: Record<string, string>
+    default: '{}'
+  methods:
+  - name: constructor
+    sig: 'constructor(options: OcaHandlerOptions)'
+    lines:
+    - 45
+    - 47
+    detail: {}
+  - name: initializeOpenAIClient
+    sig: 'initializeOpenAIClient(options: OcaHandlerOptions): OpenAI'
+    vis: protected
+    lines:
+    - 49
+    - 99
+    detail:
+      calls:
+      - JSON.stringify
+      - Logger.log
+      - OcaAuthService.getInstance
+      - OcaAuthService.getInstance().getAuthToken
+      - buildExternalBasicHeaders
+      - createOcaHeaders
+      - "new (class OCIOpenAI extends OpenAI {\n\t\t\tprotected override async prepareOptions(opts: any): Promise<void> {\n\t\t\t\tconst token = await OcaAuthService.getInstance().getAuthToken()\n\t\t\t\tif (!token) {\n\t\t\t\t\tthrow new OpenAIError(\"Unable to handle auth, Oracle Code Assist (OCA) access token is not available\")\n\t\t\t\t}\n\t\t\t\topts.headers ??= {}\n\t\t\t\t// OCA Headers\n\t\t\t\tconst ociHeaders = await createOcaHeaders(token, options.taskId!)\n\t\t\t\topts.headers = { ...opts.headers, ...externalHeaders, ...ociHeaders }\n\t\t\t\tLogger.log(`Making request with customer opc-request-id: ${opts.headers?.[\"opc-request-id\"]}`)\n\t\t\t\treturn super.prepareOptions(opts)\n\t\t\t}\n\n\t\t\tprotected override makeStatusError(\n\t\t\t\tstatus: number | undefined,\n\t\t\t\terror: Object | undefined,\n\t\t\t\tmessage: string | undefined,\n\t\t\t\theaders: any | undefined,\n\t\t\t): OpenAIAPIError {\n\t\t\t\tinterface OciError {\n\t\t\t\t\tcode?: string\n\t\t\t\t\tmessage?: string\n\t\t\t\t}\n\t\t\t\tlet ociErrorMessage = message\n\t\t\t\tif (typeof error === \"object\" && error !== null) {\n\t\t\t\t\ttry {\n\t\t\t\t\t\tociErrorMessage = JSON.stringify(error)\n\t\t\t\t\t\tconst ociErr = error as OciError\n\t\t\t\t\t\tif (ociErr.code !== undefined && ociErr.message !== undefined) {\n\t\t\t\t\t\t\tociErrorMessage = `${ociErr.code}: ${ociErr.message}`\n\t\t\t\t\t\t}\n\t\t\t\t\t} catch {}\n\t\t\t\t}\n\t\t\t\tconst opcRequestId = headers?.[OCI_HEADER_OPC_REQUEST_ID]\n\t\t\t\tif (opcRequestId) {\n\t\t\t\t\tociErrorMessage += `\\n(${OCI_HEADER_OPC_REQUEST_ID}: ${opcRequestId})`\n\t\t\t\t}\n\t\t\t\tconst statusCode = typeof status === \"number\" ? status : 500\n\t\t\t\treturn super.makeStatusError(statusCode, error ?? {}, ociErrorMessage, headers)\n\t\t\t}\n\t\t})"
+      - new OpenAIError
+      - super.makeStatusError
+      - super.prepareOptions
+  - name: initializeAnthropicClient
+    sig: 'initializeAnthropicClient(options: OcaHandlerOptions): Anthropic'
+    vis: protected
+    lines:
+    - 101
+    - 151
+    detail:
+      calls:
+      - JSON.stringify
+      - Logger.log
+      - OcaAuthService.getInstance
+      - OcaAuthService.getInstance().getAuthToken
+      - buildExternalBasicHeaders
+      - createOcaHeaders
+      - "new (class OCIAnthropic extends Anthropic {\n\t\t\tprotected override async prepareOptions(opts: any): Promise<void> {\n\t\t\t\tconst token = await OcaAuthService.getInstance().getAuthToken()\n\t\t\t\tif (!token) {\n\t\t\t\t\tthrow new OpenAIError(\"Unable to handle auth, Oracle Code Assist (OCA) access token is not available\")\n\t\t\t\t}\n\t\t\t\topts.headers ??= {}\n\t\t\t\t// OCA Headers\n\t\t\t\tconst ociHeaders = await createOcaHeaders(token, options.taskId!)\n\t\t\t\topts.headers = { ...opts.headers, ...externalHeaders, ...ociHeaders }\n\t\t\t\tLogger.log(`Making request with customer opc-request-id: ${opts.headers?.[\"opc-request-id\"]}`)\n\t\t\t\treturn super.prepareOptions(opts)\n\t\t\t}\n\n\t\t\tprotected override makeStatusError(\n\t\t\t\tstatus: number | undefined,\n\t\t\t\terror: Object | undefined,\n\t\t\t\tmessage: string | undefined,\n\t\t\t\theaders: any | undefined,\n\t\t\t): AnthropicAPIError {\n\t\t\t\tinterface OciError {\n\t\t\t\t\tcode?: string\n\t\t\t\t\tmessage?: string\n\t\t\t\t}\n\t\t\t\tlet ociErrorMessage = message\n\t\t\t\tif (typeof error === \"object\" && error !== null) {\n\t\t\t\t\ttry {\n\t\t\t\t\t\tociErrorMessage = JSON.stringify(error)\n\t\t\t\t\t\tconst ociErr = error as OciError\n\t\t\t\t\t\tif (ociErr.code !== undefined && ociErr.message !== undefined) {\n\t\t\t\t\t\t\tociErrorMessage = `${ociErr.code}: ${ociErr.message}`\n\t\t\t\t\t\t}\n\t\t\t\t\t} catch {}\n\t\t\t\t}\n\t\t\t\tconst opcRequestId = headers?.[OCI_HEADER_OPC_REQUEST_ID]\n\t\t\t\tif (opcRequestId) {\n\t\t\t\t\tociErrorMessage += `\\n(${OCI_HEADER_OPC_REQUEST_ID}: ${opcRequestId})`\n\t\t\t\t}\n\t\t\t\tconst statusCode = typeof status === \"number\" ? status : 500\n\t\t\t\treturn super.makeStatusError(statusCode, error ?? {}, ociErrorMessage, headers)\n\t\t\t}\n\t\t})"
+      - new OpenAIError
+      - super.makeStatusError
+      - super.prepareOptions
+  - name: getApiCosts
+    sig: 'getApiCosts(prompt_tokens: number, completion_tokens: number): Promise<number | undefined>'
+    is_async: true
+    lines:
+    - 181
+    - 217
+    detail:
+      calls:
+      - JSON.stringify
+      - Logger.error
+      - Logger.log
+      - OcaAuthService.getInstance
+      - OcaAuthService.getInstance().getAuthToken
+      - buildExternalBasicHeaders
+      - createOcaHeaders
+      - fetch
+      - new OpenAIError
+      - response.json
+      - this.ensureOpenAIClient
+  - name: calculateCost
+    sig: "calculateCost(\n\t\tmodelInfo: ModelInfo,\n\t\tinputTokens: number,\n\t\toutputTokens: number,\n\t\t_cacheWriteTokens?: number,\n\t\t_cacheReadTokens?: number,\n\t)"
+    is_async: true
+    lines:
+    - 219
+    - 230
+    detail:
+      calls:
+      - this.getApiCosts
+  - name: createMessage
+    sig: 'createMessage(systemPrompt: string, messages: ClineStorageMessage[], tools?: OpenAITool[]): ApiStream'
+    is_async: true
+    lines:
+    - 233
+    - 241
+    detail:
+      calls:
+      - this.createMessageChatApi
+      - this.createMessageMessagesApi
+      - this.createMessageResponsesApi
+  - name: createMessageChatApi
+    sig: 'createMessageChatApi(systemPrompt: string, messages: ClineStorageMessage[], tools?: OpenAITool[]): ApiStream'
+    is_async: true
+    lines:
+    - 243
+    - 378
+    detail:
+      calls:
+      - client.chat.completions.create
+      - convertToOpenAiMessages
+      - formattedMessages.map
+      - formattedMessages.reduce
+      - getOpenAIToolParams
+      - modelId.includes
+      - new ToolCallProcessor
+      - this.calculateCost
+      - this.ensureOpenAIClient
+      - toolCallProcessor.processToolCallDeltas
+  - name: createMessageResponsesApi
+    sig: 'createMessageResponsesApi(systemPrompt: string, messages: ClineStorageMessage[], tools?: OpenAITool[]): ApiStream'
+    is_async: true
+    lines:
+    - 380
+    - 427
+    detail:
+      calls:
+      - client.responses.create
+      - convertToOpenAIResponsesInput
+      - handleResponsesApiStreamResponse
+      - new Error
+      - this.calculateCost.bind
+      - this.ensureOpenAIClient
+      - "tools\n\t\t\t?.filter"
+      - "tools\n\t\t\t?.filter((tool) => tool?.type === \"function\")\n\t\t\t.map"
+  - name: createMessageMessagesApi
+    sig: 'createMessageMessagesApi(systemPrompt: string, messages: ClineStorageMessage[], tools?: OpenAITool[]): ApiStream'
+    is_async: true
+    lines:
+    - 429
+    - 465
+    detail:
+      calls:
+      - client.messages.create
+      - convertOpenAIToolsToAnthropicTools
+      - handleAnthropicMessagesApiStreamResponse
+      - sanitizeAnthropicMessages
+      - this.ensureAnthropicClient
+  - name: getModel
+    sig: getModel()
+    lines:
+    - 467
+    - 472
+    detail: {}
+  lines:
+  - 39
+  - 473
+exports:
+- name: OcaHandlerOptions
+  kind: type
+- name: OcaHandler
+  kind: type

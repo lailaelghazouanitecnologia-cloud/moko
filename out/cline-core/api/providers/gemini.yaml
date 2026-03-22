@@ -1,0 +1,180 @@
+## Roska File Descriptor — providers/gemini.ts
+file: providers/gemini.ts
+lines: 570
+layer: logic
+purpose: Restore GenerateContentConfig import and add GenerateContentResponseUsageMetadata
+imports:
+- sym: '@google/genai.ApiError'
+- sym: '@google/genai.FunctionCallingConfigMode'
+- sym: '@google/genai.type GenerateContentConfig'
+- sym: '@google/genai.type GenerateContentResponseUsageMetadata'
+- sym: '@google/genai.GoogleGenAI'
+- sym: '@google/genai.FunctionDeclaration as GoogleTool'
+- sym: '@google/genai.ThinkingLevel'
+- sym: '@shared/api.GeminiModelId'
+- sym: '@shared/api.geminiDefaultModelId'
+- sym: '@shared/api.geminiModels'
+- sym: '@shared/api.ModelInfo'
+- sym: '@utils/model-utils.GEMINI_FLASH_MAX_OUTPUT_TOKENS'
+- sym: '@utils/model-utils.isGeminiFlashModel'
+- sym: '@/services/EnvUtils.buildExternalBasicHeaders'
+- sym: '@/services/telemetry.telemetryService'
+- sym: '@/shared/messages/content.ClineStorageMessage'
+- sym: '@/shared/services/Logger.Logger'
+- sym: ../.ApiHandler
+- sym: ../.CommonApiHandlerOptions
+- sym: ../retry.RetriableError
+- sym: ../retry.withRetry
+- sym: ../transform/gemini-format.convertAnthropicMessageToGemini
+- sym: ../transform/stream.ApiStream
+data:
+- name: rateLimitPatterns
+  type: array
+  val: '[/got status: 429/i, /429 Too Many Requests/i, /rate limit exceeded/i, /too many requests/i]'
+types:
+- name: GeminiHandlerOptions
+  kind: trait
+  bases:
+  - CommonApiHandlerOptions
+  decorators:
+  - interface
+  fields:
+  - name: isVertex
+    type: boolean
+  - name: vertexProjectId
+    type: string
+  - name: vertexRegion
+    type: string
+  - name: geminiApiKey
+    type: string
+  - name: geminiBaseUrl
+    type: string
+  - name: thinkingBudgetTokens
+    type: number
+  - name: reasoningEffort
+    type: string
+  - name: apiModelId
+    type: string
+  - name: ulid
+    type: string
+  lines:
+  - 24
+  - 34
+- name: GeminiHandler
+  kind: struct
+  ctx: 'Creates a message using the Gemini API with implicit caching. Cost accounting: - Immediate costs (returned in the usage object): Input tokens, output tokens, cache read costs'
+  bases:
+  - ApiHandler
+  fields:
+  - name: options
+    type: GeminiHandlerOptions
+  - name: client
+    type: GoogleGenAI | undefined
+  methods:
+  - name: constructor
+    sig: 'constructor(options: GeminiHandlerOptions)'
+    lines:
+    - 85
+    - 88
+    detail: {}
+  - name: createMessage
+    sig: 'createMessage(systemPrompt: string, messages: ClineStorageMessage[], tools?: GoogleTool[]): ApiStream'
+    is_async: true
+    lines:
+    - 148
+    - 387
+    detail:
+      calls:
+      - "(() => {\n\t\t\t\t\t\t\t\t\tconst sequenceNumber = responseToolCallCount.get(responseKey) ?? 0\n\t\t\t\t\t\t\t\t\trespon..."
+      - (this.options.reasoningEffort || "").toLowerCase
+      - Date.now
+      - JSON.stringify
+      - Logger.warn
+      - Math.min
+      - Object.entries
+      - Object.entries(functionCall.args || {}).filter
+      - String
+      - client.models.generateContentStream
+      - functionCall.id?.trim
+      - getGeminiMaxOutputTokens
+      - mapReasoningEffortToGeminiThinkingLevel
+      - messages.map
+      - new Map
+      - new RetriableError
+      - rateLimitPatterns.some
+      - responseBody.error.details?.find
+      - telemetryService.captureGeminiApiPerformance
+      - this.attemptParse
+      - this.calculateCost
+      - this.ensureClient
+      - this.getModel
+      - this.parseRetryDelay
+  - name: calculateCost
+    sig: "calculateCost({\n\t\tinfo,\n\t\tinputTokens,\n\t\toutputTokens,\n\t\tthoughtsTokenCount = 0,\n\t\tcacheReadTokens = 0,\n\t}: {\n\t\tinfo: ModelInfo\n\t\tinputTokens: number\n\t\toutputTokens: number\n\t\tthoughtsTokenCount: number\n\t\tcacheReadTokens?: number\n\t})"
+    lines:
+    - 399
+    - 462
+    detail:
+      calls:
+      - info.tiers.find
+  - name: getModel
+    sig: 'getModel(): { id: GeminiModelId; info: ModelInfo }'
+    lines:
+    - 467
+    - 477
+    detail: {}
+  - name: countTokens
+    sig: 'countTokens(content: Array<any>): Promise<number>'
+    is_async: true
+    lines:
+    - 482
+    - 511
+    detail:
+      calls:
+      - Logger.warn
+      - client.models.countTokens
+      - content.map
+      - this.ensureClient
+      - this.estimateTokens
+      - this.getModel
+  - name: parseRetryDelay
+    sig: 'parseRetryDelay(retryAfter?: string): number'
+    vis: private
+    lines:
+    - 538
+    - 561
+    detail:
+      calls:
+      - Number.isNaN
+      - Number.parseInt
+      - retryAfter.at
+  lines:
+  - 81
+  - 570
+functions:
+- name: mapReasoningEffortToGeminiThinkingLevel
+  sig: 'mapReasoningEffortToGeminiThinkingLevel(effort: string): ThinkingLevel'
+  lines:
+  - 36
+  - 47
+  detail: {}
+- name: getGeminiMaxOutputTokens
+  sig: 'getGeminiMaxOutputTokens(modelId: string, modelMaxTokens?: number): number | undefined'
+  lines:
+  - 49
+  - 59
+  detail:
+    calls:
+    - Math.min
+    - isGeminiFlashModel
+exports:
+- name: GeminiHandlerOptions
+  kind: type
+- name: GeminiHandler
+  kind: type
+- name: mapReasoningEffortToGeminiThinkingLevel
+  kind: func
+- name: getGeminiMaxOutputTokens
+  kind: func
+- name: rateLimitPatterns
+  kind: data

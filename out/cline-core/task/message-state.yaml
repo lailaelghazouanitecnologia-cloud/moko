@@ -1,0 +1,262 @@
+## Roska File Descriptor — task/message-state.ts
+file: task/message-state.ts
+lines: 291
+layer: logic
+imports:
+- sym: '@integrations/checkpoints/CheckpointTracker.CheckpointTracker'
+- sym: events.EventEmitter
+- sym: get-folder-size.getFolderSize
+- sym: p-mutex.Mutex
+- sym: '@/shared/array.findLastIndex'
+- sym: '@/shared/combineApiRequests.combineApiRequests'
+- sym: '@/shared/combineCommandSequences.combineCommandSequences'
+- sym: '@/shared/ExtensionMessage.ClineMessage'
+- sym: '@/shared/getApiMetrics.getApiMetrics'
+- sym: '@/shared/HistoryItem.HistoryItem'
+- sym: '@/shared/messages/content.ClineStorageMessage'
+- sym: '@/shared/services/Logger.Logger'
+- sym: '@/utils/path.getCwd'
+- sym: '@/utils/path.getDesktopDir'
+- sym: ../storage/disk.ensureTaskDirectoryExists
+- sym: ../storage/disk.saveApiConversationHistory
+- sym: ../storage/disk.saveClineMessages
+- sym: ./TaskState.TaskState
+types:
+- name: ClineMessageChangeType
+  kind: enum
+  decorators:
+  - type
+  variants:
+  - name: '"set"'
+  lines:
+  - 18
+  - 18
+- name: ClineMessageChange
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: type
+    type: ClineMessageChangeType
+  - name: messages
+    type: ClineMessage[]
+  - name: index
+    type: number
+  - name: message
+    type: ClineMessage
+  - name: previousMessage
+    type: ClineMessage
+  - name: previousMessages
+    type: ClineMessage[]
+  lines:
+  - 20
+  - 32
+- name: MessageStateHandlerEvents
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: clineMessagesChanged
+    type: '[change: ClineMessageChange]'
+  lines:
+  - 35
+  - 37
+- name: MessageStateHandlerParams
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: taskId
+    type: string
+  - name: ulid
+    type: string
+  - name: taskIsFavorited
+    type: boolean
+  - name: updateTaskHistory
+    type: '(historyItem: HistoryItem) => Promise<HistoryItem[]>'
+  - name: taskState
+    type: TaskState
+  - name: checkpointManagerErrorMessage
+    type: string
+  lines:
+  - 39
+  - 46
+- name: MessageStateHandler
+  kind: struct
+  ctx: Mutex to prevent concurrent state modifications (RC-4)
+  bases:
+  - EventEmitter
+  fields:
+  - name: apiConversationHistory
+    type: ClineStorageMessage[]
+    default: '[]'
+  - name: clineMessages
+    type: ClineMessage[]
+    default: '[]'
+  - name: taskIsFavorited
+    type: boolean
+  - name: checkpointTracker
+    type: CheckpointTracker | undefined
+  - name: updateTaskHistory
+    type: '(historyItem: HistoryItem) => Promise<HistoryItem[]>'
+  - name: taskId
+    type: string
+  - name: ulid
+    type: string
+  - name: taskState
+    type: TaskState
+  - name: stateMutex
+    type: any
+    default: new Mutex()
+  methods:
+  - name: constructor
+    sig: 'constructor(params: MessageStateHandlerParams)'
+    lines:
+    - 64
+    - 71
+    detail:
+      calls:
+      - super
+  - name: setCheckpointTracker
+    sig: 'setCheckpointTracker(tracker: CheckpointTracker | undefined)'
+    lines:
+    - 80
+    - 82
+    detail: {}
+  - name: withStateLock
+    sig: 'withStateLock(fn: () => T | Promise<T>): Promise<T>'
+    is_async: true
+    vis: private
+    lines:
+    - 89
+    - 91
+    detail:
+      calls:
+      - this.stateMutex.withLock
+  - name: getApiConversationHistory
+    sig: 'getApiConversationHistory(): ClineStorageMessage[]'
+    lines:
+    - 93
+    - 95
+    detail: {}
+  - name: setApiConversationHistory
+    sig: 'setApiConversationHistory(newHistory: ClineStorageMessage[]): void'
+    lines:
+    - 97
+    - 99
+    detail: {}
+  - name: getClineMessages
+    sig: 'getClineMessages(): ClineMessage[]'
+    lines:
+    - 101
+    - 103
+    detail: {}
+  - name: setClineMessages
+    sig: 'setClineMessages(newMessages: ClineMessage[])'
+    lines:
+    - 105
+    - 113
+    detail:
+      calls:
+      - this.emitClineMessagesChanged
+  - name: saveClineMessagesAndUpdateHistoryInternal
+    sig: 'saveClineMessagesAndUpdateHistoryInternal(): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 120
+    - 166
+    detail:
+      calls:
+      - Logger.error
+      - '[...this.apiConversationHistory].reverse'
+      - '[...this.apiConversationHistory].reverse().find'
+      - combineApiRequests
+      - combineCommandSequences
+      - ensureTaskDirectoryExists
+      - findLastIndex
+      - getApiMetrics
+      - getCwd
+      - getDesktopDir
+      - getFolderSize.loose
+      - saveClineMessages
+      - this.checkpointTracker?.getShadowGitConfigWorkTree
+      - this.clineMessages.slice
+      - this.updateTaskHistory
+  - name: saveClineMessagesAndUpdateHistory
+    sig: 'saveClineMessagesAndUpdateHistory(): Promise<void>'
+    is_async: true
+    lines:
+    - 172
+    - 176
+    detail:
+      calls:
+      - this.withStateLock
+  - name: addToApiConversationHistory
+    sig: 'addToApiConversationHistory(message: ClineStorageMessage)'
+    is_async: true
+    lines:
+    - 178
+    - 184
+    detail:
+      calls:
+      - this.withStateLock
+  - name: overwriteApiConversationHistory
+    sig: 'overwriteApiConversationHistory(newHistory: ClineStorageMessage[]): Promise<void>'
+    is_async: true
+    lines:
+    - 186
+    - 192
+    detail:
+      calls:
+      - this.withStateLock
+  - name: addToClineMessages
+    sig: 'addToClineMessages(message: ClineMessage)'
+    is_async: true
+    lines:
+    - 200
+    - 216
+    detail:
+      calls:
+      - this.withStateLock
+  - name: overwriteClineMessages
+    sig: 'overwriteClineMessages(newMessages: ClineMessage[])'
+    is_async: true
+    lines:
+    - 222
+    - 233
+    detail:
+      calls:
+      - this.withStateLock
+  - name: updateClineMessage
+    sig: 'updateClineMessage(index: number, updates: Partial<ClineMessage>): Promise<void>'
+    is_async: true
+    lines:
+    - 239
+    - 262
+    detail:
+      calls:
+      - this.withStateLock
+  - name: deleteClineMessage
+    sig: 'deleteClineMessage(index: number): Promise<void>'
+    is_async: true
+    lines:
+    - 268
+    - 290
+    detail:
+      calls:
+      - this.withStateLock
+  lines:
+  - 48
+  - 291
+exports:
+- name: ClineMessageChangeType
+  kind: type
+- name: ClineMessageChange
+  kind: type
+- name: MessageStateHandlerEvents
+  kind: type
+- name: MessageStateHandlerParams
+  kind: type
+- name: MessageStateHandler
+  kind: type

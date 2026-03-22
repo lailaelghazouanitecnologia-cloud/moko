@@ -1,0 +1,229 @@
+## Roska File Descriptor — hooks/HookDiscoveryCache.ts
+file: hooks/HookDiscoveryCache.ts
+lines: 329
+layer: logic
+imports:
+- sym: '@/shared/services/Logger.Logger'
+- sym: ../../services/telemetry.telemetryService
+- sym: ../storage/disk.getAllHooksDirs
+- sym: ./hook-factory.HookFactory
+- sym: ./hook-factory.Hooks
+types:
+- name: HookName
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 6
+  - 6
+- name: HookCacheEntry
+  kind: trait
+  ctx: Cached hook discovery results
+  decorators:
+  - interface
+  fields:
+  - name: scriptPaths
+    type: string[]
+  - name: timestamp
+    type: number
+  lines:
+  - 11
+  - 14
+- name: Disposable
+  kind: trait
+  ctx: Generic disposable interface for resource cleanup
+  decorators:
+  - interface
+  fields:
+  - name: dispose
+    type: 'method: dispose(): void'
+  lines:
+  - 19
+  - 21
+- name: FileWatcher
+  kind: trait
+  ctx: Generic file watcher interface
+  bases:
+  - Disposable
+  decorators:
+  - interface
+  fields:
+  - name: onDidCreate
+    type: 'method: onDidCreate(listener: () => void): void'
+  - name: onDidChange
+    type: 'method: onDidChange(listener: () => void): void'
+  - name: onDidDelete
+    type: 'method: onDidDelete(listener: () => void): void'
+  lines:
+  - 26
+  - 30
+- name: ExtensionContext
+  kind: trait
+  ctx: Generic context interface for managing subscriptions
+  decorators:
+  - interface
+  fields:
+  - name: subscriptions
+    type: Disposable[]
+  lines:
+  - 35
+  - 37
+- name: HookDiscoveryCache
+  kind: struct
+  ctx: 'Cache: hookName -> discovered script paths'
+  fields:
+  - name: instance
+    type: HookDiscoveryCache | null
+    default: 'null'
+  - name: cache
+    type: any
+    default: new Map<HookName, HookCacheEntry>()
+  - name: watchers
+    type: any
+    default: new Map<string, FileWatcher>()
+  - name: watchedDirs
+    type: any
+    default: new Set<string>()
+  - name: scanningPromises
+    type: any
+    default: new Map<HookName, Promise<string[]>>()
+  - name: context
+    type: ExtensionContext | null
+    default: 'null'
+  - name: createFileWatcher
+    type: '((dir: string) => FileWatcher | null) | null'
+    default: 'null'
+  - name: disposed
+    type: any
+    default: 'false'
+  - name: debug
+    type: any
+    default: process.env.DEBUG_HOOKS === "true"
+  methods:
+  - name: getInstance
+    sig: 'getInstance(): HookDiscoveryCache'
+    decorators:
+    - static
+    lines:
+    - 74
+    - 79
+    detail:
+      calls:
+      - new HookDiscoveryCache
+  - name: initialize
+    sig: "initialize(\n\t\tcontext: ExtensionContext,\n\t\tcreateFileWatcher?: (dir: string) => FileWatcher | null,\n\t\tonWorkspaceFoldersChanged?: (callback: () => void) => Disposable,\n\t): void"
+    lines:
+    - 84
+    - 101
+    detail:
+      calls:
+      - context.subscriptions.push
+      - onWorkspaceFoldersChanged
+  - name: get
+    sig: 'get(hookName: HookName): Promise<string[]>'
+    is_async: true
+    lines:
+    - 106
+    - 145
+    detail:
+      calls:
+      - telemetryService.safeCapture
+      - this.cache.get
+      - this.log
+      - this.scan
+      - this.scanningPromises.get
+  - name: scan
+    sig: 'scan(hookName: HookName): Promise<string[]>'
+    is_async: true
+    vis: private
+    lines:
+    - 150
+    - 199
+    detail:
+      calls:
+      - "(async () => {\n\t\t\ttry {\n\t\t\t\t// Get all current hooks directories\n\t\t\t\tconst hooksDirs = await getAllH..."
+      - this.log
+      - this.scanningPromises.get
+      - this.scanningPromises.set
+  - name: ensureWatcher
+    sig: 'ensureWatcher(dir: string): void'
+    vis: private
+    lines:
+    - 204
+    - 253
+    detail:
+      calls:
+      - this.context.subscriptions.push
+      - this.createFileWatcher
+      - this.log
+      - this.watchedDirs.add
+      - this.watchedDirs.has
+      - this.watchers.set
+      - watcher.onDidChange
+      - watcher.onDidCreate
+      - watcher.onDidDelete
+  - name: invalidateDirectory
+    sig: 'invalidateDirectory(dir: string): void'
+    vis: private
+    lines:
+    - 258
+    - 269
+    detail:
+      calls:
+      - entry.scriptPaths.some
+      - this.cache.delete
+      - this.log
+  - name: invalidateAll
+    sig: 'invalidateAll(): void'
+    lines:
+    - 274
+    - 278
+    detail:
+      calls:
+      - this.cache.clear
+      - this.log
+  - name: getStats
+    sig: getStats()
+    lines:
+    - 283
+    - 289
+    detail: {}
+  - name: dispose
+    sig: 'dispose(): void'
+    lines:
+    - 303
+    - 318
+    detail:
+      calls:
+      - this.cache.clear
+      - this.log
+      - this.watchedDirs.clear
+      - this.watchers.clear
+      - this.watchers.values
+      - watcher.dispose
+  - name: resetForTesting
+    sig: 'resetForTesting(): void'
+    decorators:
+    - static
+    lines:
+    - 323
+    - 328
+    detail:
+      calls:
+      - HookDiscoveryCache.instance.dispose
+  lines:
+  - 49
+  - 329
+exports:
+- name: HookName
+  kind: type
+- name: HookCacheEntry
+  kind: type
+- name: Disposable
+  kind: type
+- name: FileWatcher
+  kind: type
+- name: ExtensionContext
+  kind: type
+- name: HookDiscoveryCache
+  kind: type
