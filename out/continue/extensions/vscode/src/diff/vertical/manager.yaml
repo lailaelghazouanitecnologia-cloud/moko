@@ -1,0 +1,303 @@
+## Roska File Descriptor — vertical/manager.ts
+file: vertical/manager.ts
+lines: 632
+layer: logic
+imports:
+- sym: core.ChatMessage
+- sym: core.DiffLine
+- sym: core.IDE
+- sym: core.ILLM
+- sym: core.RuleWithSource
+- sym: core/edit/streamDiffLines.streamDiffLines
+- sym: core/llm/countTokens.pruneLinesFromBottom
+- sym: core/llm/countTokens.pruneLinesFromTop
+- sym: core/util.getMarkdownLanguageTagForFile
+- sym: uri-js.URI
+- sym: vscode.vscode
+- sym: ../../apply/utils.isFastApplyModel
+- sym: ../../quickEdit/EditDecorationManager.EditDecorationManager
+- sym: ../../util/errorHandling.handleLLMError
+- sym: ../../webviewProtocol.VsCodeWebviewProtocol
+- sym: core/diff/myers.myersDiff
+- sym: core/edit/applyAbortManager.ApplyAbortManager
+- sym: core/edit/constants.EDIT_MODE_STREAM_ID
+- sym: core/util/messageContent.stripImages
+- sym: core/util/uri.getLastNPathParts
+- sym: ../../extension/EditOutcomeTracker.editOutcomeTracker
+- sym: ./handler.VerticalDiffHandler
+- sym: ./handler.VerticalDiffHandlerOptions
+- sym: ./util.getFirstChangedLine
+types:
+- name: VerticalDiffCodeLens
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: start
+    type: number
+  - name: numRed
+    type: number
+  - name: numGreen
+    type: number
+  lines:
+  - 22
+  - 26
+- name: VerticalDiffManager
+  kind: struct
+  ctx: Creates a listener for document changes by user.
+  fields:
+  - name: refreshCodeLens
+    type: () => void
+    default: () => {}
+  - name: fileUriToHandler
+    type: Map<string, VerticalDiffHandler>
+    default: new Map()
+  - name: fileUriToCodeLens
+    type: Map<string, VerticalDiffCodeLens[]>
+    default: new Map()
+  - name: userChangeListener
+    type: vscode.Disposable | undefined
+  - name: logDiffs
+    type: DiffLine[] | undefined
+  methods:
+  - name: constructor
+    sig: |-
+      constructor(
+          private readonly webviewProtocol: VsCodeWebviewProtocol,
+          private readonly editDecorationManager: EditDecorationManager,
+          private readonly ide: IDE,
+        )
+    lines:
+    - 38
+    - 44
+    detail: {}
+  - name: createVerticalDiffHandler
+    sig: |-
+      createVerticalDiffHandler(
+          fileUri: string,
+          startLine: number,
+          endLine: number,
+          options: VerticalDiffHandlerOptions,
+        ): VerticalDiffHandler | undefined
+    lines:
+    - 46
+    - 72
+    detail:
+      calls:
+      - URI.equal
+      - editor.document.uri.toString
+      - new VerticalDiffHandler
+      - this.clearForfileUri.bind
+      - this.fileUriToHandler.delete
+      - this.fileUriToHandler.get
+      - this.fileUriToHandler.get(fileUri)?.clear
+      - this.fileUriToHandler.has
+      - this.fileUriToHandler.set
+  - name: getHandlerForFile
+    sig: 'getHandlerForFile(fileUri: string)'
+    lines:
+    - 74
+    - 76
+    detail:
+      calls:
+      - this.fileUriToHandler.get
+  - name: getStreamIdForFile
+    sig: 'getStreamIdForFile(fileUri: string): string | undefined'
+    lines:
+    - 78
+    - 80
+    detail:
+      calls:
+      - this.fileUriToHandler.get
+  - name: disableDocumentChangeListener
+    sig: disableDocumentChangeListener()
+    lines:
+    - 103
+    - 108
+    detail:
+      calls:
+      - this.userChangeListener.dispose
+  - name: clearForfileUri
+    sig: 'clearForfileUri(fileUri: string | undefined, accept: boolean)'
+    lines:
+    - 130
+    - 157
+    detail:
+      calls:
+      - activeEditor.document.uri.toString
+      - handler.clear
+      - this.disableDocumentChangeListener
+      - this.fileUriToHandler.delete
+      - this.fileUriToHandler.get
+      - this.webviewProtocol.request
+      - vscode.commands.executeCommand
+  - name: acceptRejectVerticalDiffBlock
+    sig: |-
+      acceptRejectVerticalDiffBlock(
+          accept: boolean,
+          fileUri?: string,
+          index?: number,
+        )
+    is_async: true
+    lines:
+    - 159
+    - 206
+    detail:
+      calls:
+      - activeEditor.document.uri.toString
+      - handler.acceptRejectBlock
+      - this.clearForfileUri
+      - this.disableDocumentChangeListener
+      - this.enableDocumentChangeListener
+      - this.fileUriToCodeLens.get
+      - this.getHandlerForFile
+      - this.refreshCodeLens
+  - name: streamDiffLines
+    sig: |-
+      streamDiffLines(
+          diffStream: AsyncGenerator<DiffLine>,
+          instant: boolean,
+          streamId: string,
+          toolCallId?: string,
+        )
+    is_async: true
+    lines:
+    - 208
+    - 296
+    detail:
+      calls:
+      - console.warn
+      - diffHandler.run
+      - editor.document.uri.toString
+      - existingHandler.clear
+      - handleLLMError
+      - new Error
+      - new Promise
+      - new vscode.Selection
+      - this.createVerticalDiffHandler
+      - this.disableDocumentChangeListener
+      - this.enableDocumentChangeListener
+      - this.getHandlerForFile
+      - vscode.commands.executeCommand
+  - name: instantApplyDiff
+    sig: |-
+      instantApplyDiff(
+          oldContent: string,
+          newContent: string,
+          streamId: string,
+          toolCallId?: string,
+        )
+    is_async: true
+    lines:
+    - 298
+    - 355
+    detail:
+      calls:
+      - console.warn
+      - diffHandler.reapplyWithMyersDiff
+      - editor.document.getText
+      - editor.document.uri.toString
+      - editor.revealRange
+      - getFirstChangedLine
+      - myersDiff
+      - new vscode.Range
+      - this.createVerticalDiffHandler
+      - this.enableDocumentChangeListener
+      - this.fileUriToCodeLens.get
+      - this.webviewProtocol.request
+      - vscode.commands.executeCommand
+  - name: streamEdit
+    sig: |-
+      streamEdit({
+          input,
+          llm,
+          streamId,
+          quickEdit,
+          range,
+          newCode,
+          toolCallId,
+          rulesToInclude,
+          isApply,
+        }: {
+          input: string;
+          llm: ILLM;
+          streamId?: string;
+          quickEdit?: string;
+          range?: vscode.Range;
+          newCode?: string;
+          toolCallId?: string;
+          rulesToInclude: undefined | RuleWithSource[];
+          isApply: boolean;
+        }): Promise<string | undefined>
+    is_async: true
+    lines:
+    - 357
+    - 595
+    detail:
+      calls:
+      - ApplyAbortManager.getInstance
+      - abortManager.get
+      - console.warn
+      - diffHandler.run
+      - editor.document.getText
+      - editor.document.uri.toString
+      - editor.selection.end.with
+      - editor.selection.start.with
+      - existingHandler.clear
+      - getLastNPathParts
+      - getMarkdownLanguageTagForFile
+      - handleLLMError
+      - isFastApplyModel
+      - llm.renderPromptTemplate
+      - new Error
+      - new Promise
+      - new vscode.Position
+      - new vscode.Range
+      - new vscode.Selection
+      - pruneLinesFromBottom
+      - pruneLinesFromTop
+      - recordedStream
+      - streamDiffLines
+      - streamedLines.join
+      - streamedLines.push
+      - this.createVerticalDiffHandler
+      - this.disableDocumentChangeListener
+      - this.editDecorationManager.clear
+      - this.enableDocumentChangeListener
+      - this.getHandlerForFile
+      - this.trackEditInteraction
+      - vscode.commands.executeCommand
+  - name: trackEditInteraction
+    sig: |-
+      trackEditInteraction({
+          model,
+          filepath,
+          prompt,
+          fileAfterEdit,
+        }: {
+          model: ILLM;
+          filepath: string;
+          prompt: string;
+          fileAfterEdit: string | undefined;
+        })
+    is_async: true
+    lines:
+    - 597
+    - 631
+    detail:
+      calls:
+      - editOutcomeTracker.trackEditInteraction
+      - new Date
+      - new Date().toISOString
+      - newCode.split
+      - previousCode.split
+      - stripImages
+      - this.ide.readFile
+  lines:
+  - 28
+  - 632
+exports:
+- name: VerticalDiffCodeLens
+  kind: type
+- name: VerticalDiffManager
+  kind: type

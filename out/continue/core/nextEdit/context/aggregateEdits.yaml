@@ -1,0 +1,353 @@
+## Roska File Descriptor — context/aggregateEdits.ts
+file: context/aggregateEdits.ts
+lines: 628
+layer: logic
+imports:
+- sym: ../...Position
+- sym: ../...RangeInFileWithNextEditInfo
+- sym: ./diffFormatting.BeforeAfterDiff
+- sym: ./diffFormatting.DiffFormatType
+- sym: ./diffFormatting.createBeforeAfterDiff
+- sym: ./diffFormatting.createDiff
+types:
+- name: ClusterState
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: beforeState
+    type: string
+  - name: startRange
+    type: '{ minLine: number; maxLine: number }'
+  - name: currentRange
+    type: '{ minLine: number; maxLine: number }'
+  - name: edits
+    type: RangeInFileWithNextEditInfo[]
+  - name: firstTimestamp
+    type: number
+  - name: lastTimestamp
+    type: number
+  - name: lastLine
+    type: number
+  - name: firstEditBeforeCursor
+    type: '{ line: number; character: number }'
+  - name: lastEditAfterCursor
+    type: '{ line: number; character: number }'
+  lines:
+  - 9
+  - 19
+- name: FileState
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: activeClusters
+    type: ClusterState[]
+  - name: currentContent
+    type: string
+  - name: priorComparisons
+    type: string[]
+  - name: processingQueue
+    type: Array<() => Promise<void>>
+  - name: isProcessing
+    type: boolean
+  lines:
+  - 21
+  - 27
+- name: EditClusterConfig
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: deltaT
+    type: number
+  - name: deltaL
+    type: number
+  - name: maxEdits
+    type: number
+  - name: maxDuration
+    type: number
+  - name: contextSize
+    type: number
+  - name: contextLines
+    type: number
+  lines:
+  - 29
+  - 36
+- name: EditAggregator
+  kind: struct
+  ctx: Finalizes all clusters for a specific file
+  fields:
+  - name: fileStates
+    type: Map<string, FileState>
+    default: new Map()
+  - name: config
+    type: EditClusterConfig
+  - name: previousEditFinalCursorPosition
+    type: Position
+  - name: lastProcessedFilePath
+    type: string | null
+    default: 'null'
+  - name: onComparisonFinalized
+    type: |-
+      (
+          diff: BeforeAfterDiff,
+          beforeCursorPos: Position,
+          afterPrevEditCursorPos: Position,
+        ) => void
+  - name: _instance
+    type: EditAggregator | null
+    default: 'null'
+  methods:
+  - name: getInstance
+    sig: |-
+      getInstance(
+          config?: Partial<EditClusterConfig>,
+          onComparisonFinalized?: (
+            diff: BeforeAfterDiff,
+            beforeCursorPos: Position,
+            afterPrevEditCursorPos: Position,
+          ) => void,
+        ): EditAggregator
+    decorators:
+    - static
+    lines:
+    - 51
+    - 88
+    detail:
+      calls:
+      - new EditAggregator
+  - name: constructor
+    sig: |-
+      constructor(
+          config: Partial<EditClusterConfig> = {},
+          onComparisonFinalized: (
+            diff: BeforeAfterDiff,
+            beforeCursorPos: Position,
+            afterPrevEditCursorPos: Position,
+          ) => void = () => {},
+        )
+    lines:
+    - 90
+    - 108
+    detail: {}
+  - name: processEdit
+    sig: |-
+      processEdit(
+          edit: RangeInFileWithNextEditInfo,
+          timestamp: number = Date.now(),
+        ): Promise<void>
+    is_async: true
+    lines:
+    - 110
+    - 144
+    detail:
+      calls:
+      - fileState.processingQueue.push
+      - this._processQueue
+      - this.fileStates.get
+      - this.fileStates.has
+      - this.fileStates.set
+      - this.finalizeClustersForFile
+  - name: _processQueue
+    sig: '_processQueue(filePath: string): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 146
+    - 168
+    detail:
+      calls:
+      - Promise.all
+      - console.error
+      - fileState.processingQueue.splice
+      - new Promise
+      - tasks.map
+      - this.fileStates.get
+  - name: _processEditInternal
+    sig: |-
+      _processEditInternal(
+          edit: RangeInFileWithNextEditInfo,
+          timestamp: number,
+          fileState: FileState,
+        ): Promise<void>
+    is_async: true
+    vis: private
+    lines:
+    - 170
+    - 291
+    detail:
+      calls:
+      - Math.max
+      - Math.min
+      - edit.editText.includes
+      - fileState.activeClusters.filter
+      - fileState.activeClusters.push
+      - fileState.currentContent.split
+      - suitableCluster.edits.push
+      - this.finalizeCluster
+      - this.findSuitableCluster
+      - this.identifyClustersToFinalize
+      - this.isWhitespaceOnlyEdit
+  - name: isWhitespaceOnlyEdit
+    sig: |-
+      isWhitespaceOnlyEdit(
+          edit: RangeInFileWithNextEditInfo,
+          currentContent: string,
+        ): boolean
+    vis: private
+    lines:
+    - 293
+    - 313
+    detail:
+      calls:
+      - afterEdit.trim
+      - beforeEdit.substring
+      - beforeEdit.trim
+      - currentContent.split
+  - name: processEdits
+    sig: 'processEdits(edits: RangeInFileWithNextEditInfo[]): Promise<void>'
+    is_async: true
+    lines:
+    - 327
+    - 341
+    detail:
+      calls:
+      - Date.now
+      - this.getProcessingQueueSize
+      - this.processEdit
+  - name: finalizeClustersForFile
+    sig: 'finalizeClustersForFile(filePath: string): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 346
+    - 356
+    detail:
+      calls:
+      - this.fileStates.get
+      - this.finalizeCluster
+  - name: finalizeAllClusters
+    sig: 'finalizeAllClusters(): Promise<void>'
+    is_async: true
+    lines:
+    - 358
+    - 367
+    detail:
+      calls:
+      - Promise.all
+      - this.fileStates.forEach
+  - name: findSuitableCluster
+    sig: |-
+      findSuitableCluster(
+          fileState: FileState,
+          editLine: number,
+          timestamp: number,
+        ): ClusterState | null
+    vis: private
+    lines:
+    - 369
+    - 417
+    detail:
+      calls:
+      - this.finalizeCluster
+  - name: identifyClustersToFinalize
+    sig: |-
+      identifyClustersToFinalize(
+          fileState: FileState,
+          edit: RangeInFileWithNextEditInfo,
+          timestamp: number,
+          isStructuralEdit: boolean,
+        ): ClusterState[]
+    vis: private
+    lines:
+    - 419
+    - 468
+    detail:
+      calls:
+      - fileState.activeClusters.forEach
+  - name: finalizeCluster
+    sig: |-
+      finalizeCluster(
+          filePath: string,
+          cluster: ClusterState,
+          fileState: FileState,
+        ): Promise<void>
+    is_async: true
+    vis: private
+    lines:
+    - 470
+    - 530
+    detail:
+      calls:
+      - afterContent.replace
+      - beforeContent.replace
+      - createBeforeAfterDiff
+      - createDiff
+      - fileState.activeClusters.filter
+      - fileState.priorComparisons.push
+      - fileState.priorComparisons.shift
+      - this.countChangedLines
+      - this.onComparisonFinalized
+  - name: countChangedLines
+    sig: 'countChangedLines(diff: string): number'
+    vis: private
+    lines:
+    - 532
+    - 558
+    detail:
+      calls:
+      - Math.max
+      - addedLines.add
+      - diff.split
+      - line.startsWith
+      - new Set
+      - removedLines.add
+  - name: getActiveClusterCount
+    sig: 'getActiveClusterCount(): number'
+    lines:
+    - 560
+    - 566
+    detail:
+      calls:
+      - this.fileStates.forEach
+  - name: getProcessingQueueSize
+    sig: 'getProcessingQueueSize(): number'
+    lines:
+    - 568
+    - 574
+    detail:
+      calls:
+      - this.fileStates.forEach
+  - name: resetState
+    sig: 'resetState(): void'
+    lines:
+    - 576
+    - 579
+    detail:
+      calls:
+      - this.fileStates.clear
+  - name: getInProgressDiff
+    sig: 'getInProgressDiff(filePath: string): string | null'
+    lines:
+    - 589
+    - 627
+    detail:
+      calls:
+      - afterContent.replace
+      - beforeContent.replace
+      - createDiff
+      - fileState.activeClusters.reduce
+      - this.fileStates.get
+  lines:
+  - 38
+  - 628
+exports:
+- name: ClusterState
+  kind: type
+- name: FileState
+  kind: type
+- name: EditClusterConfig
+  kind: type
+- name: EditAggregator
+  kind: type

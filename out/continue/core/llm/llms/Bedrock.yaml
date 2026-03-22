@@ -1,0 +1,303 @@
+## Roska File Descriptor — llms/Bedrock.ts
+file: llms/Bedrock.ts
+lines: 754
+layer: logic
+imports:
+- sym: '@aws-sdk/client-bedrock-runtime.BedrockRuntimeClient'
+- sym: '@aws-sdk/client-bedrock-runtime.ContentBlock'
+- sym: '@aws-sdk/client-bedrock-runtime.ContentBlockDelta'
+- sym: '@aws-sdk/client-bedrock-runtime.ContentBlockStart'
+- sym: '@aws-sdk/client-bedrock-runtime.ContentBlockStartEvent'
+- sym: '@aws-sdk/client-bedrock-runtime.ConversationRole'
+- sym: '@aws-sdk/client-bedrock-runtime.ConverseStreamCommand'
+- sym: '@aws-sdk/client-bedrock-runtime.ConverseStreamCommandOutput'
+- sym: '@aws-sdk/client-bedrock-runtime.ImageFormat'
+- sym: '@aws-sdk/client-bedrock-runtime.InvokeModelCommand'
+- sym: '@aws-sdk/client-bedrock-runtime.Message'
+- sym: '@aws-sdk/client-bedrock-runtime.ReasoningContentBlockDelta'
+- sym: '@aws-sdk/client-bedrock-runtime.ToolConfiguration'
+- sym: '@aws-sdk/client-bedrock-runtime.ToolUseBlock'
+- sym: '@aws-sdk/client-bedrock-runtime.ToolUseBlockDelta'
+- sym: '@aws-sdk/credential-providers.fromNodeProviderChain'
+- sym: ../../index.js.CompletionOptions
+  kind: typing
+- sym: ../../index.js.ChatMessage
+- sym: ../../index.js.Chunk
+- sym: ../../index.js.LLMOptions
+- sym: ../../index.js.MessageContent
+- sym: ../../tools/parseArgs.js.safeParseToolCallArgs
+- sym: ../../util/messageContent.js.renderChatMessage
+- sym: ../../util/messageContent.js.stripImages
+- sym: ../../util/url.js.parseDataUrl
+- sym: ../index.js.BaseLLM
+- sym: ../toolSupport.js.PROVIDER_TOOL_SUPPORT
+- sym: ../utils/getSecureID.js.getSecureID
+- sym: ../utils/retry.js.withLLMRetry
+types:
+- name: ModelConfig
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: formatPayload
+    type: '(text: string) => any'
+  - name: extractEmbeddings
+    type: '(responseBody: any) => number[][]'
+  lines:
+  - 30
+  - 33
+- name: PromptCachingMetrics
+  kind: trait
+  ctx: Interface for prompt caching metrics
+  decorators:
+  - interface
+  fields:
+  - name: cacheReadInputTokens
+    type: number
+  - name: cacheWriteInputTokens
+    type: number
+  lines:
+  - 38
+  - 41
+- name: Bedrock
+  kind: struct
+  ctx: Generates the input payload for the Bedrock Converse API
+  bases:
+  - BaseLLM
+  fields:
+  - name: providerName
+    type: any
+    default: '"bedrock"'
+  - name: defaultOptions
+    type: Partial<LLMOptions>
+    default: |-
+      {
+          region: "us-east-1",
+          model: "anthropic.claude-3-sonnet-20240229-v1:0",...
+  - name: _promptCachingMetrics
+    type: PromptCachingMetrics
+    default: |-
+      {
+          cacheReadInputTokens: 0,
+          cacheWriteInputTokens: 0,
+        }
+  - name: requestOptions
+    type: |-
+      {
+          region?: string;
+          credentials?: any;
+          headers?: Record<string, string>;
+        }
+  methods:
+  - name: constructor
+    sig: 'constructor(options: LLMOptions)'
+    lines:
+    - 62
+    - 72
+    detail:
+      calls:
+      - super
+  - name: _streamComplete
+    sig: |-
+      _streamComplete(
+          prompt: string,
+          signal: AbortSignal,
+          options: CompletionOptions,
+        ): AsyncGenerator<string>
+    is_async: true
+    vis: protected
+    lines:
+    - 74
+    - 83
+    detail:
+      calls:
+      - renderChatMessage
+      - this._streamChat
+  - name: _streamChat
+    sig: |-
+      _streamChat(
+          messages: ChatMessage[],
+          signal: AbortSignal,
+          options: CompletionOptions,
+        ): AsyncGenerator<ChatMessage>
+    is_async: true
+    vis: protected
+    lines:
+    - 86
+    - 244
+    detail:
+      calls:
+      - JSON.stringify
+      - client.middlewareStack.add
+      - client.send
+      - console.log
+      - new BedrockRuntimeClient
+      - new ConverseStreamCommand
+      - new Error
+      - this._generateConverseInput
+      - this._getCredentials
+  - name: _generateConverseInput
+    sig: |-
+      _generateConverseInput(
+          messages: ChatMessage[],
+          options: CompletionOptions,
+        ): any
+    vis: private
+    lines:
+    - 252
+    - 344
+    detail:
+      calls:
+      - PROVIDER_TOOL_SUPPORT.bedrock
+      - messages.find
+      - new Set
+      - options.model.includes
+      - |-
+        options.stop
+                  ?.filter
+      - |-
+        options.stop
+                  ?.filter((stop) => stop.trim() !== "")
+                  .slice
+      - options.tools.forEach
+      - options.tools.map
+      - stripImages
+      - this._convertMessages
+      - toolConfig.tools!.push
+  - name: _convertMessages
+    sig: |-
+      _convertMessages(
+          messages: ChatMessage[],
+          availableTools: Set<string>,
+        ): Message[]
+    vis: private
+    lines:
+    - 350
+    - 515
+    detail:
+      calls:
+      - Buffer.from
+      - JSON.stringify
+      - availableTools.has
+      - console.warn
+      - currentBlocks.push
+      - hasAddedToolCallIds.add
+      - hasAddedToolCallIds.has
+      - message.content.trim
+      - messages.filter
+      - new Set
+      - new Uint8Array
+      - pushCurrentMessage
+      - safeParseToolCallArgs
+      - this._addCachingToLastTwoUserMessages
+      - this._convertMessageContentToBlocks
+  - name: _convertMessageContentToBlocks
+    sig: |-
+      _convertMessageContentToBlocks(
+          content: MessageContent,
+        ): ContentBlock[]
+    vis: private
+    lines:
+    - 538
+    - 580
+    detail:
+      calls:
+      - Buffer.from
+      - Uint8Array.from
+      - blocks.push
+      - console.warn
+      - mimeType.split
+      - mimeType.split("/")[1]?.split
+      - parseDataUrl
+  - name: _getCredentials
+    sig: _getCredentials()
+    is_async: true
+    vis: private
+    lines:
+    - 582
+    - 601
+    detail:
+      calls:
+      - console.warn
+      - fromNodeProviderChain
+      - fromNodeProviderChain()
+      - |-
+        fromNodeProviderChain({
+                profile: profile,
+                ignoreCache: true,
+              })
+  - name: _embed
+    sig: '_embed(chunks: string[]): Promise<number[][]>'
+    is_async: true
+    lines:
+    - 604
+    - 635
+    detail:
+      calls:
+      - |-
+        (
+              await Promise.all(
+                chunks.map(async (chunk) => {
+                  const input = this._gener...
+      - Promise.all
+      - chunks.map
+      - new BedrockRuntimeClient
+      - this._getCredentials
+  - name: _generateInvokeModelCommandInput
+    sig: '_generateInvokeModelCommandInput(text: string): any'
+    vis: private
+    lines:
+    - 637
+    - 647
+    detail:
+      calls:
+      - JSON.stringify
+      - modelConfig.formatPayload
+      - this._getModelConfig
+  - name: _getModelConfig
+    sig: _getModelConfig()
+    vis: private
+    lines:
+    - 654
+    - 680
+    detail:
+      calls:
+      - Object.keys
+      - Object.keys(modelConfigs).find
+      - new Error
+  - name: rerank
+    sig: 'rerank(query: string, chunks: Chunk[]): Promise<number[]>'
+    is_async: true
+    lines:
+    - 682
+    - 751
+    detail:
+      calls:
+      - JSON.parse
+      - JSON.stringify
+      - chunks.map
+      - client.send
+      - decoder.decode
+      - new BedrockRuntimeClient
+      - new Error
+      - new InvokeModelCommand
+      - new TextDecoder
+      - |-
+        responseBody.results
+                  .sort
+      - |-
+        responseBody.results
+                  .sort((a: any, b: any) => a.index - b.index)
+                  .map
+      - this._getCredentials
+      - this.model.startsWith
+  lines:
+  - 43
+  - 752
+exports:
+- name: ModelConfig
+  kind: type
+- name: PromptCachingMetrics
+  kind: type
+- name: Bedrock
+  kind: type

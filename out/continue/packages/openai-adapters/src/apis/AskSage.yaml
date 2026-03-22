@@ -1,0 +1,334 @@
+## Roska File Descriptor — apis/AskSage.ts
+file: apis/AskSage.ts
+lines: 501
+layer: logic
+imports:
+- sym: openai/resources/index.ChatCompletion
+- sym: openai/resources/index.ChatCompletionChunk
+- sym: openai/resources/index.ChatCompletionCreateParamsNonStreaming
+- sym: openai/resources/index.ChatCompletionCreateParamsStreaming
+- sym: openai/resources/index.ChatCompletionMessageToolCall
+- sym: openai/resources/index.Completion
+- sym: openai/resources/index.CompletionCreateParamsNonStreaming
+- sym: openai/resources/index.CompletionCreateParamsStreaming
+- sym: openai/resources/index.CreateEmbeddingResponse
+- sym: openai/resources/index.EmbeddingCreateParams
+- sym: openai/resources/index.Model
+- sym: ../types.js.AskSageConfig
+- sym: ../types.js.AskSageTool
+- sym: ../types.js.AskSageToolChoice
+- sym: ../types.js.AskSageToolCall
+- sym: ../types.js.AskSageResponse
+- sym: ../types.js.AskSageTokenResponse
+- sym: ../util.js.chatChunk
+- sym: ../util.js.chatChunkFromDelta
+- sym: ../util.js.customFetch
+- sym: ./base.js.BaseLlmApi
+- sym: ./base.js.CreateRerankResponse
+- sym: ./base.js.FimCreateParamsStreaming
+- sym: ./base.js.RerankCreateParams
+data:
+- name: DEFAULT_API_URL
+  type: string
+  val: '"https://api.asksage.ai/server"'
+- name: DEFAULT_USER_API_URL
+  type: string
+  val: '"https://api.asksage.ai/user"'
+- name: TOKEN_TTL
+  type: number
+  val: '3600000'
+types:
+- name: AskSageRequestBody
+  kind: trait
+  ctx: AskSage API request body format
+  decorators:
+  - interface
+  fields:
+  - name: message
+    type: 'string | Array<{ user: string; message: string }>'
+  - name: model
+    type: string
+  - name: temperature
+    type: number
+  - name: mode
+    type: '"chat" | "deep_agent"'
+  - name: limit_references
+    type: 0 | 1
+  - name: persona
+    type: number
+  - name: system_prompt
+    type: string
+  - name: tools
+    type: AskSageTool[]
+  - name: tool_choice
+    type: AskSageToolChoice
+  - name: reasoning_effort
+    type: '"low" | "medium" | "high"'
+  - name: streaming
+    type: boolean
+  lines:
+  - 38
+  - 50
+- name: AskSageApi
+  kind: struct
+  ctx: Get session token from API key + email, or use API key directly
+  bases:
+  - BaseLlmApi
+  fields:
+  - name: apiBase
+    type: string
+  - name: userApiUrl
+    type: string
+  - name: apiKey
+    type: string
+  - name: email
+    type: string
+  - name: sessionTokenPromise
+    type: Promise<string> | null
+    default: 'null'
+  - name: tokenTimestamp
+    type: number
+    default: '0'
+  - name: fetchFn
+    type: typeof fetch
+  methods:
+  - name: constructor
+    sig: 'constructor(private config: AskSageConfig)'
+    lines:
+    - 61
+    - 67
+    detail:
+      calls:
+      - customFetch
+  - name: getSessionToken
+    sig: 'getSessionToken(): Promise<string>'
+    is_async: true
+    vis: private
+    lines:
+    - 72
+    - 96
+    detail:
+      calls:
+      - JSON.stringify
+      - String
+      - new Error
+      - parseInt
+      - res.json
+      - this.fetchFn
+      - this.userApiUrl.replace
+  - name: getToken
+    sig: 'getToken(): Promise<string>'
+    is_async: true
+    vis: private
+    lines:
+    - 101
+    - 114
+    detail:
+      calls:
+      - Date.now
+      - this.getSessionToken
+      - this.sessionTokenPromise.catch
+  - name: getHeaders
+    sig: 'getHeaders(): Promise<Record<string, string>>'
+    is_async: true
+    vis: private
+    lines:
+    - 127
+    - 134
+    detail:
+      calls:
+      - this.getToken
+  - name: convertMessages
+    sig: |-
+      convertMessages(
+          messages: ChatCompletionCreateParamsNonStreaming["messages"],
+        ): {
+          systemPrompt?: string;
+          messageArray: Array<{ user: string; message: string }>;
+        }
+    vis: private
+    lines:
+    - 139
+    - 197
+    detail:
+      calls:
+      - Array.isArray
+      - JSON.stringify
+      - messageArray.push
+      - |-
+        msg.content
+                          .filter
+      - |-
+        msg.content
+                          .filter((p) => p.type === "text")
+                          .map
+      - |-
+        msg.content
+                          .filter((p) => p.type === "text")
+                          .map((p) => (p as ...
+      - |-
+        msg.content
+                    .filter
+      - |-
+        msg.content
+                    .filter((p) => p.type === "text")
+                    .map
+      - |-
+        msg.content
+                    .filter((p) => p.type === "text")
+                    .map((p) => (p as { type: "tex...
+  - name: buildRequestBody
+    sig: |-
+      buildRequestBody(
+          body:
+            | ChatCompletionCreateParamsNonStreaming
+            | ChatCompletionCreateParamsStreaming,
+        ): AskSageRequestBody
+    vis: private
+    lines:
+    - 248
+    - 284
+    detail:
+      calls:
+      - this.convertMessages
+      - this.convertToolChoice
+      - this.convertTools
+  - name: parseResponse
+    sig: 'parseResponse(data: AskSageResponse, model: string): ChatCompletion'
+    vis: private
+    lines:
+    - 289
+    - 335
+    detail:
+      calls:
+      - Date.now
+      - Math.floor
+      - |-
+        rawToolCalls
+              ?.filter
+      - |-
+        rawToolCalls
+              ?.filter((tc) => tc.function?.name) // Filter out malformed tool calls
+              .map
+      - uuidv4
+  - name: chatCompletionNonStream
+    sig: |-
+      chatCompletionNonStream(
+          body: ChatCompletionCreateParamsNonStreaming,
+          signal: AbortSignal,
+        ): Promise<ChatCompletion>
+    is_async: true
+    lines:
+    - 337
+    - 374
+    detail:
+      calls:
+      - JSON.stringify
+      - new Error
+      - response.json
+      - response.text
+      - this.apiBase.replace
+      - this.buildRequestBody
+      - this.clearTokenCache
+      - this.fetchFn
+      - this.getHeaders
+      - this.parseResponse
+  - name: chatCompletionStream
+    sig: |-
+      chatCompletionStream(
+          body: ChatCompletionCreateParamsStreaming,
+          signal: AbortSignal,
+        ): AsyncGenerator<ChatCompletionChunk>
+    is_async: true
+    lines:
+    - 376
+    - 465
+    detail:
+      calls:
+      - JSON.stringify
+      - chatChunk
+      - chatChunkFromDelta
+      - new Error
+      - rawToolCalls?.filter
+      - response.json
+      - response.text
+      - this.apiBase.replace
+      - this.buildRequestBody
+      - this.clearTokenCache
+      - this.fetchFn
+      - this.getHeaders
+  - name: completionNonStream
+    sig: |-
+      completionNonStream(
+          _body: CompletionCreateParamsNonStreaming,
+          _signal: AbortSignal,
+        ): Promise<Completion>
+    lines:
+    - 467
+    - 472
+    detail:
+      calls:
+      - new Error
+  - name: completionStream
+    sig: |-
+      completionStream(
+          _body: CompletionCreateParamsStreaming,
+          _signal: AbortSignal,
+        ): AsyncGenerator<Completion>
+    lines:
+    - 474
+    - 479
+    detail:
+      calls:
+      - new Error
+  - name: fimStream
+    sig: |-
+      fimStream(
+          _body: FimCreateParamsStreaming,
+          _signal: AbortSignal,
+        ): AsyncGenerator<ChatCompletionChunk>
+    lines:
+    - 481
+    - 486
+    detail:
+      calls:
+      - new Error
+  - name: embed
+    sig: 'embed(_body: EmbeddingCreateParams): Promise<CreateEmbeddingResponse>'
+    is_async: true
+    lines:
+    - 488
+    - 490
+    detail:
+      calls:
+      - new Error
+  - name: rerank
+    sig: 'rerank(_body: RerankCreateParams): Promise<CreateRerankResponse>'
+    is_async: true
+    lines:
+    - 492
+    - 494
+    detail:
+      calls:
+      - new Error
+  - name: list
+    sig: 'list(): Promise<Model[]>'
+    is_async: true
+    lines:
+    - 496
+    - 500
+    detail: {}
+  lines:
+  - 52
+  - 501
+exports:
+- name: AskSageRequestBody
+  kind: type
+- name: AskSageApi
+  kind: type
+- name: DEFAULT_API_URL
+  kind: data
+- name: DEFAULT_USER_API_URL
+  kind: data
+- name: TOKEN_TTL
+  kind: data

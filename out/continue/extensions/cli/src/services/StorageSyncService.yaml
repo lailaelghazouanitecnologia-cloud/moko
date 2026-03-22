@@ -1,0 +1,288 @@
+## Roska File Descriptor — services/StorageSyncService.ts
+file: services/StorageSyncService.ts
+lines: 415
+layer: logic
+imports:
+- sym: chalk.chalk
+- sym: ../env.js.env
+- sym: ../util/formatError.js.formatError
+- sym: ../util/git.js.getGitDiffSnapshot
+- sym: ../util/logger.js.logger
+- sym: ./types.js.StorageSyncServiceState
+  kind: typing
+data:
+- name: DEFAULT_UPLOAD_INTERVAL_MS
+  type: any
+  val: 30_000
+types:
+- name: StoragePresignedLocation
+  kind: typealias
+  decorators:
+  - type
+  fields:
+  - name: key
+    type: string
+  - name: putUrl
+    type: string
+  lines:
+  - 12
+  - 15
+- name: StoragePresignResponse
+  kind: typealias
+  decorators:
+  - type
+  fields:
+  - name: session
+    type: StoragePresignedLocation
+  - name: diff
+    type: StoragePresignedLocation
+  lines:
+  - 17
+  - 20
+- name: StorageTargets
+  kind: typealias
+  decorators:
+  - type
+  fields:
+  - name: sessionUrl
+    type: string
+  - name: diffUrl
+    type: string
+  lines:
+  - 22
+  - 25
+- name: StorageSyncStartOptions
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: storageId
+    type: string
+  - name: accessToken
+    type: string
+  - name: intervalMs
+    type: number
+  - name: syncSessionHistory
+    type: () => void
+  - name: getCompleteStateSnapshot
+    type: () => unknown
+  - name: isActive
+    type: () => boolean
+  lines:
+  - 27
+  - 34
+- name: StorageSyncService
+  kind: struct
+  fields:
+  - name: state
+    type: StorageSyncServiceState
+    default: |-
+      {
+          isEnabled: false,
+          lastError: null,
+        }
+  - name: intervalHandle
+    type: NodeJS.Timeout | null
+    default: 'null'
+  - name: stopped
+    type: any
+    default: 'true'
+  - name: uploadInFlight
+    type: any
+    default: 'false'
+  - name: missingRepoLogged
+    type: any
+    default: 'false'
+  - name: targets
+    type: StorageTargets | null
+    default: 'null'
+  - name: options
+    type: StorageSyncStartOptions | null
+    default: 'null'
+  - name: targetsExpiresAt
+    type: number | null
+    default: 'null'
+  - name: refreshTimer
+    type: NodeJS.Timeout | null
+    default: 'null'
+  - name: isRefreshing
+    type: any
+    default: 'false'
+  methods:
+  - name: initialize
+    sig: 'initialize(): Promise<StorageSyncServiceState>'
+    is_async: true
+    lines:
+    - 52
+    - 55
+    detail:
+      calls:
+      - this.getState
+      - this.stop
+  - name: getState
+    sig: 'getState(): StorageSyncServiceState'
+    lines:
+    - 57
+    - 59
+    detail: {}
+  - name: getDefaultInterval
+    sig: 'getDefaultInterval(): number'
+    lines:
+    - 61
+    - 63
+    detail: {}
+  - name: startFromOptions
+    sig: |-
+      startFromOptions(
+          options: {
+            storageOption?: string;
+            accessToken?: string | null;
+          } & Omit<StorageSyncStartOptions, "storageId" | "accessToken">,
+        ): Promise<boolean>
+    is_async: true
+    lines:
+    - 65
+    - 97
+    detail:
+      calls:
+      - logger.warn
+      - storageOption.trim
+      - this.start
+  - name: start
+    sig: 'start(options: StorageSyncStartOptions): Promise<boolean>'
+    is_async: true
+    lines:
+    - 99
+    - 151
+    detail:
+      calls:
+      - Date.now
+      - Math.round
+      - chalk.dim
+      - logger.info
+      - setInterval
+      - this.performUpload
+      - this.requestStorageTargets
+      - this.scheduleProactiveRefresh
+      - this.setState
+      - this.stop
+  - name: markAgentStatusUnread
+    sig: 'markAgentStatusUnread(): Promise<void>'
+    is_async: true
+    lines:
+    - 153
+    - 187
+    detail:
+      calls:
+      - JSON.stringify
+      - '`${response.status} ${response.statusText}`.trim'
+      - encodeURIComponent
+      - fetch
+      - formatError
+      - logger.debug
+      - new URL
+  - name: stop
+    sig: 'stop(): void'
+    lines:
+    - 189
+    - 215
+    detail:
+      calls:
+      - clearInterval
+      - clearTimeout
+      - this.setState
+  - name: requestStorageTargets
+    sig: |-
+      requestStorageTargets(
+          storageId: string,
+          accessToken: string,
+        ): Promise<StorageTargets | null>
+    is_async: true
+    vis: private
+    lines:
+    - 221
+    - 264
+    detail:
+      calls:
+      - JSON.stringify
+      - '`${response.status} ${response.statusText}`.trim'
+      - fetch
+      - formatError
+      - logger.warn
+      - new URL
+      - response.json
+  - name: refreshStorageTargets
+    sig: 'refreshStorageTargets(): Promise<boolean>'
+    is_async: true
+    vis: private
+    lines:
+    - 266
+    - 301
+    detail:
+      calls:
+      - Date.now
+      - formatError
+      - logger.info
+      - logger.warn
+      - this.requestStorageTargets
+      - this.scheduleProactiveRefresh
+  - name: uploadToPresignedUrl
+    sig: |-
+      uploadToPresignedUrl(
+          url: string,
+          body: string,
+          contentType: string,
+        ): Promise<void>
+    is_async: true
+    vis: private
+    lines:
+    - 319
+    - 357
+    detail:
+      calls:
+      - '`${response.status} ${response.statusText}`.trim'
+      - fetch
+      - logger.warn
+      - new Error
+      - new URL
+      - parsedUrl.searchParams.get
+      - response.text
+      - signedHeaders?.includes
+      - this.refreshStorageTargets
+      - this.refreshStorageTargets().catch
+  - name: performUpload
+    sig: 'performUpload(): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 359
+    - 414
+    detail:
+      calls:
+      - Date.now
+      - JSON.stringify
+      - formatError
+      - getGitDiffSnapshot
+      - logger.debug
+      - logger.warn
+      - options.getCompleteStateSnapshot
+      - options.syncSessionHistory
+      - this.options.isActive
+      - this.setState
+      - this.uploadToPresignedUrl
+  lines:
+  - 36
+  - 415
+exports:
+- name: StoragePresignedLocation
+  kind: type
+- name: StoragePresignResponse
+  kind: type
+- name: StorageTargets
+  kind: type
+- name: StorageSyncStartOptions
+  kind: type
+- name: StorageSyncService
+  kind: type
+- name: DEFAULT_UPLOAD_INTERVAL_MS
+  kind: data

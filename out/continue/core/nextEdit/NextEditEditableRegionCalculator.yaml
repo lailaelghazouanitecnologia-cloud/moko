@@ -1,0 +1,315 @@
+## Roska File Descriptor — nextEdit/NextEditEditableRegionCalculator.ts
+file: nextEdit/NextEditEditableRegionCalculator.ts
+lines: 911
+layer: logic
+imports:
+- sym: web-tree-sitter.Parser
+- sym: '...Chunk'
+- sym: '...IDE'
+- sym: '...ILLM'
+- sym: '...Position'
+- sym: '...Range'
+- sym: '...RangeInFile'
+- sym: ../autocomplete/util/ast.getAst
+- sym: ../llm/constants.NEXT_EDIT_MODELS
+- sym: ./DocumentHistoryTracker.DocumentHistoryTracker
+- sym: ./constants.MODEL_WINDOW_SIZES
+types:
+- name: EditableRegionStrategy
+  kind: enum
+  variants:
+  - name: Naive
+    val: '"naive"'
+  - name: Sliding
+    val: '"sliding"'
+  - name: Rerank
+    val: '"rerank"'
+  - name: StaticRerank
+    val: '"staticRerank"'
+  - name: Static
+    val: '"static"'
+  lines:
+  - 8
+  - 14
+functions:
+- name: getNextEditableRegion
+  sig: |-
+    getNextEditableRegion(
+      strategy: EditableRegionStrategy,
+      ctx: any,
+    ): Promise<RangeInFile[] | null>
+  is_async: true
+  lines:
+  - 20
+  - 38
+  detail:
+    calls:
+    - naiveJump
+    - rerankJump
+    - slidingJump
+    - staticJump
+    - staticRerankJump
+- name: naiveJump
+  sig: 'naiveJump(ctx: any): RangeInFile[] | null'
+  lines:
+  - 42
+  - 61
+  detail:
+    calls:
+    - console.warn
+    - fileLines.at
+- name: slidingJump
+  sig: 'slidingJump(ctx: any): RangeInFile[] | null'
+  lines:
+  - 64
+  - 163
+  detail:
+    calls:
+    - Math.floor
+    - Math.max
+    - Math.min
+    - console.warn
+    - ranges.push
+- name: rerankJump
+  sig: |-
+    rerankJump(ctx: {
+      fileContent: string;
+      query: string;
+      filepath: string;
+      reranker: ILLM;
+      chunkSize: number;
+    }): Promise<RangeInFile[] | null>
+  is_async: true
+  lines:
+  - 167
+  - 243
+  detail:
+    calls:
+    - Math.floor
+    - Math.min
+    - chunks.push
+    - chunks.sort
+    - console.error
+    - console.warn
+    - fileContent.split
+    - lines.slice
+    - lines.slice(i, endLine + 1).join
+    - reranker.rerank
+- name: staticRerankJump
+  sig: |-
+    staticRerankJump(ctx: {
+      oldFileContent: string;
+      newFileContent: string;
+      completionRange: Range;
+      filepath: string;
+      ide: IDE;
+      reranker?: ILLM;
+      chunkSize?: number;
+    }): Promise<RangeInFile[] | null>
+  is_async: true
+  lines:
+  - 247
+  - 452
+  detail:
+    calls:
+    - changedNodes.sort
+    - compareAsts
+    - console.error
+    - console.log
+    - console.warn
+    - ctx.reranker.rerank
+    - filteredSymbols.find
+    - filteredSymbols.map
+    - findTextOccurrences
+    - findTextOccurrences(oldFileContent, nodeText).map
+    - getAst
+    - getNodePosition
+    - getNodeText
+    - ide.getDocumentSymbols
+    - nodeQueue.map
+    - nodeQueue.shift
+    - nodeText.trim
+    - references.filter
+    - symbolChunks.sort
+    - symbols.filter
+- name: staticJump
+  sig: |-
+    staticJump(ctx: {
+      cursorPosition: { line: number; character: number };
+      filepath: string;
+      ide: IDE;
+    }): Promise<RangeInFile[] | null>
+  is_async: true
+  lines:
+  - 456
+  - 532
+  detail:
+    calls:
+    - DocumentHistoryTracker.getInstance
+    - DocumentHistoryTracker.getInstance().getMostRecentAst
+    - console.error
+    - console.log
+    - console.warn
+    - findClosestIdentifierNode
+    - ide.getReferences
+    - references.slice
+    - tree.rootNode.descendantForPosition
+- name: findClosestIdentifierNode
+  sig: |-
+    findClosestIdentifierNode(
+      node: Parser.SyntaxNode | null,
+    ): Parser.SyntaxNode | null
+  lines:
+  - 537
+  - 568
+  detail:
+    calls:
+    - findClosestIdentifierNode
+    - findLeftmostIdentifier
+    - isDeclarationNode
+    - isIdentifierNode
+    - parent.child
+- name: findLeftmostIdentifier
+  sig: |-
+    findLeftmostIdentifier(
+      node: Parser.SyntaxNode,
+    ): Parser.SyntaxNode | null
+  lines:
+  - 570
+  - 584
+  detail:
+    calls:
+    - findLeftmostIdentifier
+    - isIdentifierNode
+    - node.child
+- name: isIdentifierNode
+  sig: 'isIdentifierNode(node: Parser.SyntaxNode)'
+  lines:
+  - 587
+  - 598
+  detail:
+    calls:
+    - nodeType.includes
+    - specialIdentifiers.includes
+- name: isDeclarationNode
+  sig: 'isDeclarationNode(node: Parser.SyntaxNode)'
+  lines:
+  - 601
+  - 635
+  detail:
+    calls:
+    - declarationTypes.includes
+    - nodeType.endsWith
+- name: compareAsts
+  sig: 'compareAsts(oldAst: Parser.Tree, newAst: Parser.Tree)'
+  lines:
+  - 699
+  - 746
+  detail:
+    calls:
+    - traverse
+- name: getNodeText
+  sig: 'getNodeText(node: Parser.SyntaxNode): string'
+  lines:
+  - 749
+  - 753
+  detail: {}
+- name: getNodePosition
+  sig: 'getNodePosition(node: Parser.SyntaxNode): Position | null'
+  lines:
+  - 756
+  - 764
+  detail: {}
+- name: findTextOccurrences
+  sig: 'findTextOccurrences(text: string, searchText: string): Range[]'
+  lines:
+  - 769
+  - 791
+  detail:
+    calls:
+    - line.indexOf
+    - results.push
+    - text.split
+- name: isRangeWithin
+  sig: 'isRangeWithin(innerRange: Range, outerRange: Range): boolean'
+  lines:
+  - 794
+  - 808
+  detail: {}
+- name: doRangesOverlap
+  sig: 'doRangesOverlap(range1: Range, range2: Range): boolean'
+  lines:
+  - 811
+  - 825
+  detail: {}
+- name: doesUpperPartOverlap
+  sig: 'doesUpperPartOverlap(range1: Range, range2: Range): boolean'
+  lines:
+  - 828
+  - 844
+  detail: {}
+- name: doesLowerPartOverlap
+  sig: 'doesLowerPartOverlap(range1: Range, range2: Range): boolean'
+  lines:
+  - 847
+  - 866
+  detail: {}
+- name: doesRangePartiallyOverlap
+  sig: 'doesRangePartiallyOverlap(range1: Range, range2: Range): boolean'
+  lines:
+  - 869
+  - 895
+  detail: {}
+- name: printChunks
+  sig: 'printChunks(chunks: Chunk[])'
+  lines:
+  - 898
+  - 911
+  detail:
+    calls:
+    - JSON.stringify
+    - chunks.map
+    - console.log
+exports:
+- name: EditableRegionStrategy
+  kind: type
+- name: getNextEditableRegion
+  kind: func
+- name: naiveJump
+  kind: func
+- name: slidingJump
+  kind: func
+- name: rerankJump
+  kind: func
+- name: staticRerankJump
+  kind: func
+- name: staticJump
+  kind: func
+- name: findClosestIdentifierNode
+  kind: func
+- name: findLeftmostIdentifier
+  kind: func
+- name: isIdentifierNode
+  kind: func
+- name: isDeclarationNode
+  kind: func
+- name: compareAsts
+  kind: func
+- name: getNodeText
+  kind: func
+- name: getNodePosition
+  kind: func
+- name: findTextOccurrences
+  kind: func
+- name: isRangeWithin
+  kind: func
+- name: doRangesOverlap
+  kind: func
+- name: doesUpperPartOverlap
+  kind: func
+- name: doesLowerPartOverlap
+  kind: func
+- name: doesRangePartiallyOverlap
+  kind: func
+- name: printChunks
+  kind: func

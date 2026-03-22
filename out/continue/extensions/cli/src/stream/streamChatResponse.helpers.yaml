@@ -1,0 +1,288 @@
+## Roska File Descriptor — stream/streamChatResponse.helpers.ts
+file: stream/streamChatResponse.helpers.ts
+lines: 692
+layer: logic
+purpose: Helper functions extracted from streamChatResponse.ts to reduce file size
+imports:
+- sym: core/index.js.ToolStatus
+  kind: typing
+- sym: core/index.js.Usage
+  kind: typing
+- sym: core/llm/utils/calculateRequestCost.js.calculateRequestCost
+- sym: core/util/errors.js.ContinueError
+- sym: core/util/errors.js.ContinueErrorReason
+- sym: openai/resources/chat/completions.mjs.ChatCompletionToolMessageParam
+- sym: src/services/ToolPermissionService.js.ToolPermissionServiceState
+- sym: ../permissions/permissionChecker.js.checkToolPermission
+- sym: ../permissions/permissionManager.js.toolPermissionManager
+- sym: ../permissions/types.js.ToolCallRequest
+- sym: ../permissions/types.js.ToolPermissions
+- sym: ../services/index.js.SERVICE_NAMES
+- sym: ../services/index.js.serviceContainer
+- sym: ../services/index.js.services
+- sym: ../session.js.trackSessionUsage
+- sym: ../telemetry/posthogService.js.posthogService
+- sym: ../telemetry/telemetryService.js.telemetryService
+- sym: ../tools/index.js.executeToolCall
+- sym: ../tools/index.js.getAllAvailableTools
+- sym: ../tools/index.js.Tool
+- sym: ../tools/index.js.validateToolCallArgsPresent
+- sym: ../tools/types.js.PreprocessedToolCall
+- sym: ../tools/types.js.ToolCall
+- sym: ../util/logger.js.logger
+- sym: ./streamChatResponse.types.js.StreamCallbacks
+types:
+- name: ToolResultWithStatus
+  kind: trait
+  bases:
+  - ChatCompletionToolMessageParam
+  decorators:
+  - interface
+  fields:
+  - name: status
+    type: ToolStatus
+  lines:
+  - 33
+  - 35
+functions:
+- name: handlePermissionDenied
+  sig: |-
+    handlePermissionDenied(
+      toolCall: PreprocessedToolCall,
+      chatHistoryEntries: ChatCompletionToolMessageParam[],
+      callbacks?: StreamCallbacks,
+      reason: "user" | "policy" = "user",
+    ): void
+  lines:
+  - 38
+  - 63
+  detail:
+    calls:
+    - callbacks?.onToolResult
+    - chatHistoryEntries.push
+    - logger.debug
+    - logger.info
+- name: requestUserPermission
+  sig: |-
+    requestUserPermission(
+      toolCall: PreprocessedToolCall,
+      callbacks?: StreamCallbacks,
+    ): Promise<boolean>
+  is_async: true
+  lines:
+  - 66
+  - 111
+  detail:
+    calls:
+    - toolPermissionManager.off
+    - toolPermissionManager.on
+    - toolPermissionManager.requestPermission
+- name: checkToolPermissionApproval
+  sig: |-
+    checkToolPermissionApproval(
+      permissions: ToolPermissions,
+      toolCall: PreprocessedToolCall,
+      callbacks?: StreamCallbacks,
+      isHeadless?: boolean,
+    ): Promise<{ approved: boolean; denialReason?: "user" | "policy" }>
+  is_async: true
+  lines:
+  - 114
+  - 139
+  detail:
+    calls:
+    - checkToolPermission
+    - requestUserPermission
+- name: trackFirstTokenTime
+  sig: |-
+    trackFirstTokenTime(
+      firstTokenTime: number | null,
+      chunk: any,
+      requestStartTime: number,
+      model: any,
+      tools?: any[],
+    ): number | null
+  lines:
+  - 142
+  - 164
+  detail:
+    calls:
+    - Date.now
+    - telemetryService.recordResponseTime
+- name: processChunkContent
+  sig: |-
+    processChunkContent(
+      content: string,
+      aiResponse: string,
+      callbacks?: StreamCallbacks,
+      isHeadless?: boolean,
+    ): string
+  lines:
+  - 167
+  - 182
+  detail:
+    calls:
+    - callbacks.onContent
+    - process.stdout.write
+- name: processToolCallDelta
+  sig: |-
+    processToolCallDelta(
+      toolCallDelta: any,
+      toolCallsMap: Map<string, ToolCall>,
+      indexToIdMap: Map<number, string>,
+    ): void
+  lines:
+  - 185
+  - 244
+  detail:
+    calls:
+    - JSON.parse
+    - indexToIdMap.get
+    - indexToIdMap.set
+    - logger.warn
+    - toolCallsMap.get
+    - toolCallsMap.has
+    - toolCallsMap.set
+- name: detectProvider
+  sig: 'detectProvider(modelName: string): string'
+  lines:
+  - 247
+  - 257
+  detail:
+    calls:
+    - modelName.toLowerCase
+    - normalized.includes
+- name: calculateFallbackCost
+  sig: |-
+    calculateFallbackCost(
+      inputTokens: number,
+      outputTokens: number,
+    ): number
+  lines:
+  - 260
+  - 266
+  detail: {}
+- name: recordStreamTelemetry
+  sig: |-
+    recordStreamTelemetry(options: {
+      requestStartTime: number;
+      responseEndTime: number;
+      inputTokens: number;
+      outputTokens: number;
+      model: any;
+      tools?: any[];
+      fullUsage?: any;
+    }): number
+  lines:
+  - 269
+  - 409
+  detail:
+    calls:
+    - calculateFallbackCost
+    - calculateRequestCost
+    - detectProvider
+    - posthogService.capture
+    - telemetryService.logApiRequest
+    - telemetryService.recordCost
+    - telemetryService.recordResponseTime
+    - telemetryService.recordTokenUsage
+    - trackSessionUsage
+- name: preprocessStreamedToolCalls
+  sig: |-
+    preprocessStreamedToolCalls(
+      isHeadless: boolean,
+      toolCalls: ToolCall[],
+      callbacks?: StreamCallbacks,
+    ): Promise<{
+      preprocessedCalls: PreprocessedToolCall[];
+      errorChatEntries: ChatCompletionToolMessageParam[];
+    }>
+  is_async: true
+  lines:
+  - 417
+  - 504
+  detail:
+    calls:
+    - Date.now
+    - String
+    - availableTools.find
+    - callbacks?.onToolError
+    - callbacks?.onToolStart
+    - errorChatEntries.push
+    - getAllAvailableTools
+    - logger.debug
+    - logger.error
+    - new Error
+    - posthogService.capture
+    - preprocessedCalls.push
+    - telemetryService.logToolResult
+    - tool.preprocess
+    - validateToolCallArgsPresent
+- name: executeStreamedToolCalls
+  sig: |-
+    executeStreamedToolCalls(
+      preprocessedCalls: PreprocessedToolCall[],
+      callbacks?: StreamCallbacks,
+      isHeadless?: boolean,
+    ): Promise<{
+      hasRejection: boolean;
+      chatHistoryEntries: ToolResultWithStatus[];
+    }>
+  is_async: true
+  lines:
+  - 512
+  - 692
+  detail:
+    calls:
+    - |-
+      (async () => {
+                try {
+                  logger.debug("Executing tool", {
+                    name: call...
+    - Promise.all
+    - String
+    - await serviceContainer.get
+    - callbacks?.onToolError
+    - callbacks?.onToolResult
+    - callbacks?.onToolStart
+    - checkToolPermissionApproval
+    - entriesByIndex.set
+    - execPromises.push
+    - logger.debug
+    - logger.error
+    - new Map
+    - |-
+      preprocessedCalls
+          .map
+    - |-
+      preprocessedCalls
+          .map((_, index) => entriesByIndex.get(index))
+          .filter
+    - preprocessedCalls.map
+    - services.chatHistory.addToolResult
+    - services.chatHistory.updateToolStatus
+exports:
+- name: ToolResultWithStatus
+  kind: type
+- name: handlePermissionDenied
+  kind: func
+- name: requestUserPermission
+  kind: func
+- name: checkToolPermissionApproval
+  kind: func
+- name: trackFirstTokenTime
+  kind: func
+- name: processChunkContent
+  kind: func
+- name: processToolCallDelta
+  kind: func
+- name: detectProvider
+  kind: func
+- name: calculateFallbackCost
+  kind: func
+- name: recordStreamTelemetry
+  kind: func
+- name: preprocessStreamedToolCalls
+  kind: func
+- name: executeStreamedToolCalls
+  kind: func

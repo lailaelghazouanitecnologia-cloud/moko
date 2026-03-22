@@ -1,0 +1,407 @@
+## Roska File Descriptor — llm/countTokens.ts
+file: llm/countTokens.ts
+lines: 561
+layer: logic
+imports:
+- sym: js-tiktoken.Tiktoken
+- sym: js-tiktoken.encodingForModel as _encodingForModel
+- sym: ../index.js.ChatMessage
+- sym: ../index.js.CompiledMessagesResult
+- sym: ../index.js.MessageContent
+- sym: ../index.js.MessagePart
+- sym: ../index.js.Tool
+- sym: ./autodetect.js.autodetectTemplateType
+- sym: ./messages.js.addSpaceToAnyEmptyMessages
+- sym: ./messages.js.chatMessageIsEmpty
+- sym: ./messages.js.isUserOrToolMsg
+- sym: ./messages.js.messageHasToolCallId
+- sym: ../util/messageContent.js.renderChatMessage
+- sym: ./asyncEncoder.js.AsyncEncoder
+- sym: ./asyncEncoder.js.LlamaAsyncEncoder
+- sym: ./constants.js.DEFAULT_PRUNING_LENGTH
+- sym: ./getAdjustedTokenCount.js.getAdjustedTokenCountFromModel
+- sym: ./llamaTokenizer.js.llamaTokenizer
+data:
+- name: gptEncoding
+  type: Encoding | null
+  val: 'null'
+- name: llamaEncoding
+  type: any
+  val: new LlamaEncoding()
+- name: llamaAsyncEncoder
+  type: any
+  val: new LlamaAsyncEncoder()
+- name: MAX_TOKEN_SAFETY_BUFFER
+  type: number
+  val: '1000'
+- name: TOKEN_SAFETY_PROPORTION
+  type: number
+  val: '0.02'
+- name: MIN_RESPONSE_TOKENS
+  type: number
+  val: '1000'
+types:
+- name: Encoding
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: encode
+    type: Tiktoken["encode"]
+  - name: decode
+    type: Tiktoken["decode"]
+  lines:
+  - 23
+  - 26
+- name: LlamaEncoding
+  kind: struct
+  bases:
+  - Encoding
+  methods:
+  - name: encode
+    sig: 'encode(text: string): number[]'
+    lines:
+    - 29
+    - 31
+    detail:
+      calls:
+      - llamaTokenizer.encode
+  - name: decode
+    sig: 'decode(tokens: number[]): string'
+    lines:
+    - 33
+    - 35
+    detail:
+      calls:
+      - llamaTokenizer.decode
+  lines:
+  - 28
+  - 36
+- name: NonWorkerAsyncEncoder
+  kind: struct
+  bases:
+  - AsyncEncoder
+  methods:
+  - name: constructor
+    sig: 'constructor(private readonly encoding: Encoding)'
+    lines:
+    - 39
+    - 39
+    detail: {}
+  - name: close
+    sig: 'close(): Promise<void>'
+    is_async: true
+    lines:
+    - 41
+    - 41
+    detail: {}
+  - name: encode
+    sig: 'encode(text: string): Promise<number[]>'
+    is_async: true
+    lines:
+    - 43
+    - 45
+    detail:
+      calls:
+      - this.encoding.encode
+  - name: decode
+    sig: 'decode(tokens: number[]): Promise<string>'
+    is_async: true
+    lines:
+    - 47
+    - 49
+    detail:
+      calls:
+      - this.encoding.decode
+  lines:
+  - 38
+  - 50
+functions:
+- name: asyncEncoderForModel
+  sig: 'asyncEncoderForModel(modelName: string): AsyncEncoder'
+  lines:
+  - 56
+  - 71
+  detail:
+    calls:
+    - autodetectTemplateType
+    - encodingForModel
+    - new NonWorkerAsyncEncoder
+- name: encodingForModel
+  sig: 'encodingForModel(modelName: string): Encoding'
+  lines:
+  - 73
+  - 85
+  detail:
+    calls:
+    - _encodingForModel
+    - autodetectTemplateType
+- name: countImageTokens
+  sig: 'countImageTokens(content: MessagePart): number'
+  lines:
+  - 87
+  - 92
+  detail:
+    calls:
+    - new Error
+- name: countTokensAsync
+  sig: |-
+    countTokensAsync(
+      content: MessageContent,
+      // defaults to llama2 because the tokenizer tends to produce more tokens
+      modelName = "llama2",
+    ): Promise<number>
+  is_async: true
+  lines:
+  - 94
+  - 110
+  detail:
+    calls:
+    - (await Promise.all(promises)).reduce
+    - Array.isArray
+    - Promise.all
+    - asyncEncoderForModel
+    - content.map
+    - encoding.encode
+- name: countTokens
+  sig: |-
+    countTokens(
+      content: MessageContent,
+      // defaults to llama2 because the tokenizer tends to produce more tokens
+      modelName = "llama2",
+    ): number
+  lines:
+  - 112
+  - 132
+  detail:
+    calls:
+    - Array.isArray
+    - content.reduce
+    - encoding.encode
+    - encodingForModel
+    - getAdjustedTokenCountFromModel
+- name: countToolsTokens
+  sig: 'countToolsTokens(tools: Tool[], modelName: string): number'
+  lines:
+  - 135
+  - 177
+  detail:
+    calls:
+    - Array.isArray
+    - count
+- name: countChatMessageTokens
+  sig: |-
+    countChatMessageTokens(
+      modelName: string,
+      chatMessage: ChatMessage,
+    ): number
+  lines:
+  - 179
+  - 218
+  detail:
+    calls:
+    - JSON.stringify
+    - countTokens
+- name: extractToolSequence
+  sig: 'extractToolSequence(messages: ChatMessage[]): ChatMessage[]'
+  lines:
+  - 228
+  - 271
+  detail:
+    calls:
+    - isUserOrToolMsg
+    - messageHasToolCallId
+    - messages.pop
+    - new Error
+    - toolSequence.push
+    - toolSequence.slice
+    - toolSequence.unshift
+- name: pruneLinesFromTop
+  sig: |-
+    pruneLinesFromTop(
+      prompt: string,
+      maxTokens: number,
+      modelName: string,
+    ): string
+  lines:
+  - 273
+  - 300
+  detail:
+    calls:
+    - Math.max
+    - lineTokens.reduce
+    - lines.map
+    - lines.slice
+    - lines.slice(start).join
+    - prompt.split
+- name: pruneLinesFromBottom
+  sig: |-
+    pruneLinesFromBottom(
+      prompt: string,
+      maxTokens: number,
+      modelName: string,
+    ): string
+  lines:
+  - 302
+  - 327
+  detail:
+    calls:
+    - Math.max
+    - lineTokens.reduce
+    - lines.map
+    - lines.slice
+    - lines.slice(0, end).join
+    - prompt.split
+- name: pruneStringFromBottom
+  sig: |-
+    pruneStringFromBottom(
+      modelName: string,
+      maxTokens: number,
+      prompt: string,
+    ): string
+  lines:
+  - 329
+  - 342
+  detail:
+    calls:
+    - encoding.decode
+    - encoding.encode
+    - encodingForModel
+    - tokens.slice
+- name: pruneStringFromTop
+  sig: |-
+    pruneStringFromTop(
+      modelName: string,
+      maxTokens: number,
+      prompt: string,
+    ): string
+  lines:
+  - 344
+  - 357
+  detail:
+    calls:
+    - encoding.decode
+    - encoding.encode
+    - encodingForModel
+    - tokens.slice
+- name: getTokenCountingBufferSafety
+  sig: 'getTokenCountingBufferSafety(contextLength: number)'
+  lines:
+  - 361
+  - 366
+  detail:
+    calls:
+    - Math.min
+- name: pruneRawPromptFromTop
+  sig: |-
+    pruneRawPromptFromTop(
+      modelName: string,
+      contextLength: number,
+      prompt: string,
+      tokensForCompletion: number,
+    ): string
+  lines:
+  - 370
+  - 381
+  detail:
+    calls:
+    - getTokenCountingBufferSafety
+    - pruneStringFromTop
+- name: compileChatMessages
+  sig: |-
+    compileChatMessages({
+      modelName,
+      msgs,
+      knownContextLength,
+      maxTokens,
+      supportsImages,
+      tools,
+    }: {
+      modelName: string;
+      msgs: ChatMessage[];
+      knownContextLength: number | undefined;
+      maxTokens: number;
+      supportsImages: boolean;
+      tools?: Tool[];
+    }): CompiledMessagesResult
+  lines:
+  - 413
+  - 542
+  detail:
+    calls:
+    - Array.isArray
+    - Math.min
+    - addSpaceToAnyEmptyMessages
+    - countChatMessageTokens
+    - countToolsTokens
+    - extractToolSequence
+    - getTokenCountingBufferSafety
+    - historyWithTokens.map
+    - historyWithTokens.shift
+    - msgs.map
+    - msgsCopy.filter
+    - msgsCopy.find
+    - msgsCopy.map
+    - new Error
+    - reassembled.push
+    - renderChatMessage
+- name: cleanupAsyncEncoders
+  sig: 'cleanupAsyncEncoders(): Promise<void>'
+  is_async: true
+  lines:
+  - 544
+  - 548
+  detail:
+    calls:
+    - llamaAsyncEncoder.close
+exports:
+- name: Encoding
+  kind: type
+- name: LlamaEncoding
+  kind: type
+- name: NonWorkerAsyncEncoder
+  kind: type
+- name: asyncEncoderForModel
+  kind: func
+- name: encodingForModel
+  kind: func
+- name: countImageTokens
+  kind: func
+- name: countTokensAsync
+  kind: func
+- name: countTokens
+  kind: func
+- name: countToolsTokens
+  kind: func
+- name: countChatMessageTokens
+  kind: func
+- name: extractToolSequence
+  kind: func
+- name: pruneLinesFromTop
+  kind: func
+- name: pruneLinesFromBottom
+  kind: func
+- name: pruneStringFromBottom
+  kind: func
+- name: pruneStringFromTop
+  kind: func
+- name: getTokenCountingBufferSafety
+  kind: func
+- name: pruneRawPromptFromTop
+  kind: func
+- name: compileChatMessages
+  kind: func
+- name: cleanupAsyncEncoders
+  kind: func
+- name: gptEncoding
+  kind: data
+- name: llamaEncoding
+  kind: data
+- name: llamaAsyncEncoder
+  kind: data
+- name: MAX_TOKEN_SAFETY_BUFFER
+  kind: data
+- name: TOKEN_SAFETY_PROPORTION
+  kind: data
+- name: MIN_RESPONSE_TOKENS
+  kind: data

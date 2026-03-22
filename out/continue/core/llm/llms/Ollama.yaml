@@ -1,0 +1,492 @@
+## Roska File Descriptor — llms/Ollama.ts
+file: llms/Ollama.ts
+lines: 742
+layer: logic
+imports:
+- sym: async-mutex.Mutex
+- sym: json-schema.JSONSchema7
+- sym: json-schema.JSONSchema7Object
+- sym: '@continuedev/fetch.streamResponse'
+- sym: ../../index.js.ChatMessage
+- sym: ../../index.js.ChatMessageRole
+- sym: ../../index.js.CompletionOptions
+- sym: ../../index.js.LLMOptions
+- sym: ../../index.js.ModelInstaller
+- sym: ../../index.js.ThinkingChatMessage
+- sym: ../../util/messageContent.js.renderChatMessage
+- sym: ../../util/ollamaHelper.js.getRemoteModelInfo
+- sym: ../../util/url.js.extractBase64FromDataUrl
+- sym: ../index.js.BaseLLM
+types:
+- name: OllamaChatMessage
+  kind: typealias
+  decorators:
+  - type
+  fields:
+  - name: role
+    type: ChatMessageRole
+  - name: content
+    type: string
+  - name: images
+    type: string[] | null
+  - name: thinking
+    type: string
+  - name: tool_calls
+    type: |-
+      {
+          function: {
+            name: string;
+            arguments: JSONSchema7Object;
+          };
+        }[]
+  lines:
+  - 19
+  - 30
+- name: OllamaModelFileParams
+  kind: trait
+  ctx: See https://github.com/ollama/ollama/blob/main/docs/modelfile.md for details on each parameter
+  decorators:
+  - interface
+  fields:
+  - name: mirostat
+    type: number
+  - name: mirostat_eta
+    type: number
+  - name: mirostat_tau
+    type: number
+  - name: num_ctx
+    type: number
+  - name: repeat_last_n
+    type: number
+  - name: repeat_penalty
+    type: number
+  - name: temperature
+    type: number
+  - name: seed
+    type: number
+  - name: stop
+    type: string | string[]
+  - name: tfs_z
+    type: number
+  - name: num_predict
+    type: number
+  - name: top_k
+    type: number
+  - name: top_p
+    type: number
+  - name: min_p
+    type: number
+  - name: num_gpu
+    type: number
+  - name: num_thread
+    type: number
+  - name: use_mmap
+    type: boolean
+  - name: num_gqa
+    type: number
+  - name: num_keep
+    type: number
+  - name: typical_p
+    type: number
+  - name: presence_penalty
+    type: number
+  - name: frequency_penalty
+    type: number
+  - name: penalize_newline
+    type: boolean
+  - name: numa
+    type: boolean
+  - name: num_batch
+    type: number
+  - name: main_gpu
+    type: number
+  - name: low_vram
+    type: boolean
+  - name: vocab_only
+    type: boolean
+  - name: use_mlock
+    type: boolean
+  lines:
+  - 33
+  - 65
+- name: OllamaBaseOptions
+  kind: trait
+  ctx: See https://github.com/ollama/ollama/blob/main/docs/api.md
+  decorators:
+  - interface
+  fields:
+  - name: model
+    type: string
+  - name: options
+    type: OllamaModelFileParams
+  - name: format
+    type: '"json"'
+  - name: stream
+    type: boolean
+  - name: keep_alive
+    type: number
+  lines:
+  - 68
+  - 74
+- name: OllamaRawOptions
+  kind: trait
+  bases:
+  - OllamaBaseOptions
+  decorators:
+  - interface
+  fields:
+  - name: prompt
+    type: string
+  - name: suffix
+    type: string
+  - name: images
+    type: string[]
+  - name: system
+    type: string
+  - name: template
+    type: string
+  - name: context
+    type: string
+  - name: raw
+    type: boolean
+  lines:
+  - 76
+  - 84
+- name: OllamaChatOptions
+  kind: trait
+  bases:
+  - OllamaBaseOptions
+  decorators:
+  - interface
+  fields:
+  - name: messages
+    type: OllamaChatMessage[]
+  - name: tools
+    type: OllamaTool[]
+  - name: think
+    type: boolean
+  lines:
+  - 86
+  - 92
+- name: OllamaBaseResponse
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 94
+  - 112
+- name: OllamaErrorResponse
+  kind: typealias
+  decorators:
+  - type
+  fields:
+  - name: error
+    type: string
+  lines:
+  - 114
+  - 116
+- name: N8nChatReponse
+  kind: typealias
+  decorators:
+  - type
+  fields:
+  - name: type
+    type: string
+  - name: content
+    type: string
+  - name: metadata
+    type: |-
+      {
+          nodeId: string;
+          nodeName: string;
+          itemIndex: number;
+          runIndex: number;
+          timestamps: number;
+        }
+  lines:
+  - 118
+  - 128
+- name: OllamaRawResponse
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 130
+  - 134
+- name: OllamaChatResponse
+  kind: enum
+  decorators:
+  - type
+  variants:
+  - name: N8nChatReponse
+  lines:
+  - 136
+  - 141
+- name: OllamaTool
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: type
+    type: '"function"'
+  - name: function
+    type: |-
+      {
+          name: string;
+          description?: string;
+          parameters?: JSONSchema7;
+        }
+  lines:
+  - 143
+  - 150
+- name: Ollama
+  kind: model
+  ctx: Map of "continue model name" to Ollama actual model name
+  bases:
+  - BaseLLM
+  - ModelInstaller
+  fields:
+  - name: providerName
+    type: any
+    default: '"ollama"'
+  - name: defaultOptions
+    type: Partial<LLMOptions>
+    default: |-
+      {
+          apiBase: "http://localhost:11434/",
+          model: "codellama-7b",
+          maxEmbe...
+  - name: modelsBeingInstalled
+    type: Set<string>
+    default: new Set()
+  - name: modelsBeingInstalledMutex
+    type: any
+    default: new Mutex()
+  - name: fimSupported
+    type: boolean
+    default: 'false'
+  - name: modelMap
+    type: Record<string, string>
+    default: |-
+      {
+          "mistral-7b": "mistral:7b",
+          "mixtral-8x7b": "mixtral:8x7b",
+          "llama...
+  methods:
+  - name: constructor
+    sig: 'constructor(options: LLMOptions)'
+    lines:
+    - 164
+    - 234
+    detail:
+      calls:
+      - JSON.stringify
+      - super
+      - this._getModel
+      - this.fetch
+      - |-
+        this.fetch(this.getEndpoint("api/show"), {
+              method: "POST",
+              headers: headers,
+              body:...
+      - this.getEndpoint
+  - name: contextLength
+    sig: contextLength()
+    lines:
+    - 286
+    - 289
+    detail: {}
+  - name: _convertToOllamaMessage
+    sig: '_convertToOllamaMessage(message: ChatMessage): OllamaChatMessage'
+    vis: private
+    lines:
+    - 309
+    - 339
+    detail:
+      calls:
+      - Array.isArray
+      - message.content.forEach
+      - renderChatMessage
+  - name: _streamComplete
+    sig: |-
+      _streamComplete(
+          prompt: string,
+          signal: AbortSignal,
+          options: CompletionOptions,
+        ): AsyncGenerator<string>
+    is_async: true
+    vis: protected
+    lines:
+    - 367
+    - 410
+    detail:
+      calls:
+      - JSON.parse
+      - JSON.stringify
+      - buffer.split
+      - chunk.trim
+      - chunks.pop
+      - new Error
+      - streamResponse
+      - this._getGenerateOptions
+      - this.fetch
+      - this.getEndpoint
+  - name: _streamChat
+    sig: |-
+      _streamChat(
+          messages: ChatMessage[],
+          signal: AbortSignal,
+          options: CompletionOptions,
+        ): AsyncGenerator<ChatMessage>
+    is_async: true
+    vis: protected
+    lines:
+    - 412
+    - 565
+    detail:
+      calls:
+      - JSON.parse
+      - JSON.stringify
+      - buffer.split
+      - chunk.trim
+      - chunks.pop
+      - convertChatMessage
+      - messages.map
+      - new Error
+      - ollamaMessages.at
+      - options.tools.map
+      - response.json
+      - streamResponse
+      - this._getModel
+      - this._getModelFileParams
+      - this.fetch
+      - this.getEndpoint
+  - name: supportsFim
+    sig: 'supportsFim(): boolean'
+    lines:
+    - 567
+    - 569
+    detail: {}
+  - name: _streamFim
+    sig: |-
+      _streamFim(
+          prefix: string,
+          suffix: string,
+          signal: AbortSignal,
+          options: CompletionOptions,
+        ): AsyncGenerator<string>
+    is_async: true
+    vis: protected
+    lines:
+    - 571
+    - 615
+    detail:
+      calls:
+      - JSON.parse
+      - JSON.stringify
+      - buffer.split
+      - chunk.trim
+      - chunks.pop
+      - new Error
+      - streamResponse
+      - this._getGenerateOptions
+      - this.fetch
+      - this.getEndpoint
+  - name: listModels
+    sig: 'listModels(): Promise<string[]>'
+    is_async: true
+    lines:
+    - 617
+    - 641
+    detail:
+      calls:
+      - data.models.map
+      - new Error
+      - response.json
+      - this.fetch
+      - this.getEndpoint
+  - name: _embed
+    sig: '_embed(chunks: string[]): Promise<number[][]>'
+    is_async: true
+    vis: protected
+    lines:
+    - 643
+    - 671
+    detail:
+      calls:
+      - JSON.stringify
+      - new Error
+      - new URL
+      - resp.json
+      - resp.text
+      - this.fetch
+  - name: installModel
+    sig: |-
+      installModel(
+          modelName: string,
+          signal: AbortSignal,
+          progressReporter?: (task: string, increment: number, total: number) => void,
+        ): Promise<any>
+    is_async: true
+    lines:
+    - 673
+    - 730
+    detail:
+      calls:
+      - JSON.parse
+      - JSON.stringify
+      - Ollama.modelsBeingInstalled.add
+      - Ollama.modelsBeingInstalled.delete
+      - Ollama.modelsBeingInstalled.has
+      - Ollama.modelsBeingInstalledMutex.acquire
+      - chunk.split
+      - chunk.split("\n").filter
+      - fetch
+      - getRemoteModelInfo
+      - new Error
+      - new TextDecoder
+      - new TextDecoder().decode
+      - progressReporter
+      - reader?.read
+      - release
+      - response.body?.getReader
+      - this.getEndpoint
+  - name: isInstallingModel
+    sig: 'isInstallingModel(modelName: string): Promise<boolean>'
+    is_async: true
+    lines:
+    - 732
+    - 739
+    detail:
+      calls:
+      - Ollama.modelsBeingInstalled.has
+      - Ollama.modelsBeingInstalledMutex.acquire
+      - release
+  lines:
+  - 152
+  - 740
+exports:
+- name: OllamaChatMessage
+  kind: type
+- name: OllamaModelFileParams
+  kind: type
+- name: OllamaBaseOptions
+  kind: type
+- name: OllamaRawOptions
+  kind: type
+- name: OllamaChatOptions
+  kind: type
+- name: OllamaBaseResponse
+  kind: type
+- name: OllamaErrorResponse
+  kind: type
+- name: N8nChatReponse
+  kind: type
+- name: OllamaRawResponse
+  kind: type
+- name: OllamaChatResponse
+  kind: type
+- name: OllamaTool
+  kind: type
+- name: Ollama
+  kind: type

@@ -1,0 +1,419 @@
+## Roska File Descriptor — stubs/WorkOsAuthProvider.ts
+file: stubs/WorkOsAuthProvider.ts
+lines: 640
+layer: logic
+imports:
+- sym: crypto.crypto
+- sym: node:events.EventEmitter as NodeEventEmitter
+- sym: core/control-plane/AuthTypes.AuthType
+- sym: core/control-plane/AuthTypes.ControlPlaneSessionInfo
+- sym: core/control-plane/AuthTypes.HubEnv
+- sym: core/control-plane/AuthTypes.isHubEnv
+- sym: core/control-plane/env.getControlPlaneEnvSync
+- sym: core/util/Logger.Logger
+- sym: node-fetch.fetch
+- sym: vscode.authentication
+- sym: vscode.AuthenticationProvider
+- sym: vscode.AuthenticationProviderAuthenticationSessionsChangeEvent
+- sym: vscode.AuthenticationSession
+- sym: vscode.Disposable
+- sym: vscode.env
+- sym: vscode.EventEmitter
+- sym: vscode.ExtensionContext
+- sym: vscode.ProgressLocation
+- sym: vscode.Uri
+- sym: vscode.window
+- sym: ./promiseUtils.PromiseAdapter
+- sym: ./promiseUtils.promiseFromEvent
+- sym: ./SecretStorage.SecretStorage
+- sym: ./uriHandler.UriEventHandler
+data:
+- name: AUTH_NAME
+  type: string
+  val: '"Continue"'
+- name: controlPlaneEnv
+  type: any
+  val: 'getControlPlaneEnvSync(true ? "production" : "none")'
+- name: SESSIONS_SECRET_KEY
+  type: string
+  val: '`${controlPlaneEnv.AUTH_TYPE}.sessions`'
+types:
+- name: ContinueAuthenticationSession
+  kind: trait
+  bases:
+  - AuthenticationSession
+  decorators:
+  - interface
+  fields:
+  - name: refreshToken
+    type: string
+  - name: expiresInMs
+    type: number
+  - name: loginNeeded
+    type: boolean
+  lines:
+  - 66
+  - 70
+- name: WorkOsAuthProvider
+  kind: struct
+  ctx: 15 minutes
+  bases:
+  - AuthenticationProvider
+  - Disposable
+  fields:
+  - name: _sessionChangeEmitter
+    type: any
+    default: new EventEmitter<AuthenticationProviderAuthenticationSessionsChangeEvent>()
+  - name: _disposable
+    type: Disposable
+  - name: _pendingStates
+    type: string[]
+    default: '[]'
+  - name: _codeExchangePromises
+    type: any
+    default: |-
+      new Map<
+          string,
+          { promise: Promise<string>; cancel: EventEmitter<void> ...
+  - name: _refreshInterval
+    type: NodeJS.Timeout | null
+    default: 'null'
+  - name: _isRefreshing
+    type: any
+    default: 'false'
+  - name: EXPIRATION_TIME_MS
+    type: any
+    default: 1000 * 60 * 15
+  - name: REFRESH_INTERVAL_MS
+    type: any
+    default: 1000 * 60 * 10
+  - name: secretStorage
+    type: SecretStorage
+  - name: useOnboardingUri
+    type: boolean
+    default: 'false'
+  - name: hasAttemptedRefresh
+    type: Promise<void>
+  - name: attemptEmitter
+    type: NodeEventEmitter
+  - name: handleUri
+    type: |-
+      (
+          scopes: readonly string[],
+        ) => PromiseAdapter<Uri, string>
+    default: |-
+      (scopes) => async (uri, resolve, reject) => {
+            const query = new URLSearchP...
+  methods:
+  - name: constructor
+    sig: |-
+      constructor(
+          private readonly context: ExtensionContext,
+          private readonly _uriHandler: UriEventHandler,
+        )
+    lines:
+    - 89
+    - 116
+    detail:
+      calls:
+      - Disposable.from
+      - authentication.registerAuthenticationProvider
+      - new NodeEventEmitter
+      - new Promise
+      - new SecretStorage
+      - setInterval
+      - this.refreshSessions
+      - window.registerUriHandler
+  - name: decodeJwt
+    sig: 'decodeJwt(jwt: string): Record<string, any> | null'
+    vis: private
+    lines:
+    - 118
+    - 135
+    detail:
+      calls:
+      - Buffer.from
+      - Buffer.from(jwt.split(".")[1], "base64").toString
+      - JSON.parse
+      - Logger.error
+      - console.warn
+      - jwt.split
+      - jwt.substring
+  - name: storeSessions
+    sig: 'storeSessions(value: ContinueAuthenticationSession[])'
+    is_async: true
+    vis: private
+    lines:
+    - 155
+    - 158
+    detail:
+      calls:
+      - JSON.stringify
+      - this.secretStorage.store
+  - name: getSessions
+    sig: |-
+      getSessions(
+          scopes?: string[],
+        ): Promise<ContinueAuthenticationSession[]>
+    is_async: true
+    lines:
+    - 160
+    - 194
+    detail:
+      calls:
+      - JSON.parse
+      - Logger.error
+      - console.error
+      - console.warn
+      - this.secretStorage.delete
+      - this.secretStorage.get
+  - name: onDidChangeSessions
+    sig: onDidChangeSessions()
+    lines:
+    - 196
+    - 198
+    detail: {}
+  - name: ideRedirectUri
+    sig: ideRedirectUri()
+    lines:
+    - 200
+    - 205
+    detail:
+      calls:
+      - new URL
+      - url.toString
+  - name: redirectUri
+    sig: redirectUri()
+    lines:
+    - 208
+    - 210
+    detail: {}
+  - name: refreshSessions
+    sig: refreshSessions()
+    is_async: true
+    lines:
+    - 214
+    - 234
+    detail:
+      calls:
+      - Logger.error
+      - console.error
+      - this._refreshSessions
+  - name: _refreshSessions
+    sig: '_refreshSessions(): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 238
+    - 280
+    detail:
+      calls:
+      - Logger.error
+      - console.debug
+      - finalSessions.push
+      - this._refreshSessionWithRetry
+      - this._sessionChangeEmitter.fire
+      - this.attemptEmitter.emit
+      - this.getSessions
+      - this.storeSessions
+  - name: _refreshSessionWithRetry
+    sig: |-
+      _refreshSessionWithRetry(
+          refreshToken: string,
+          attempt = 1,
+          baseDelay = 1000,
+        ): Promise<{
+          accessToken: string;
+          refreshToken: string;
+          expiresInMs: number;
+        }>
+    is_async: true
+    vis: private
+    lines:
+    - 282
+    - 331
+    detail:
+      calls:
+      - Logger.error
+      - Math.min
+      - Math.pow
+      - Math.random
+      - error.message?.includes
+      - new Promise
+      - this._refreshSession
+      - this.attemptEmitter.emit
+  - name: _refreshSession
+    sig: |-
+      _refreshSession(refreshToken: string): Promise<{
+          accessToken: string;
+          refreshToken: string;
+          expiresInMs: number;
+        }>
+    is_async: true
+    vis: private
+    lines:
+    - 333
+    - 360
+    detail:
+      calls:
+      - JSON.stringify
+      - fetch
+      - new Error
+      - new URL
+      - response.json
+      - response.text
+      - this.getExpirationTimeMs
+  - name: createSession
+    sig: |-
+      createSession(
+          scopes: string[],
+        ): Promise<ContinueAuthenticationSession>
+    is_async: true
+    lines:
+    - 374
+    - 430
+    detail:
+      calls:
+      - Logger.error
+      - generateCodeChallenge
+      - generateRandomString
+      - isHubEnv
+      - new Error
+      - scopes.join
+      - this._formatProfileLabel
+      - this._sessionChangeEmitter.fire
+      - this.getExpirationTimeMs
+      - this.getUserInfo
+      - this.login
+      - this.storeSessions
+      - uuidv4
+      - window.showErrorMessage
+  - name: removeSession
+    sig: 'removeSession(sessionId: string): Promise<void>'
+    is_async: true
+    lines:
+    - 436
+    - 451
+    detail:
+      calls:
+      - sessions.findIndex
+      - sessions.splice
+      - this._sessionChangeEmitter.fire
+      - this.getSessions
+      - this.storeSessions
+  - name: dispose
+    sig: dispose()
+    is_async: true
+    lines:
+    - 456
+    - 462
+    detail:
+      calls:
+      - clearInterval
+      - this._disposable.dispose
+  - name: login
+    sig: |-
+      login(
+          codeChallenge: string,
+          hubEnv: HubEnv,
+          scopes: string[] = [],
+        )
+    is_async: true
+    vis: private
+    lines:
+    - 467
+    - 542
+    detail:
+      calls:
+      - await window.withProgress
+  - name: getUserInfo
+    sig: |-
+      getUserInfo(
+          token: string,
+          codeVerifier: string,
+          hubEnv: HubEnv,
+        )
+    is_async: true
+    vis: private
+    lines:
+    - 580
+    - 603
+    detail:
+      calls:
+      - JSON.parse
+      - JSON.stringify
+      - fetch
+      - resp.text
+  lines:
+  - 72
+  - 604
+functions:
+- name: generateRandomString
+  sig: 'generateRandomString(length: number): string'
+  lines:
+  - 39
+  - 48
+  detail:
+    calls:
+    - Math.floor
+    - Math.random
+- name: generateCodeChallenge
+  sig: 'generateCodeChallenge(verifier: string)'
+  is_async: true
+  lines:
+  - 52
+  - 64
+  detail:
+    calls:
+    - crypto.createHash
+    - crypto.createHash("sha256").update
+    - crypto.createHash("sha256").update(verifier).digest
+    - |-
+      hash
+          .toString
+    - |-
+      hash
+          .toString("base64")
+          .replace
+    - |-
+      hash
+          .toString("base64")
+          .replace(/\+/g, "-")
+          .replace
+    - |-
+      hash
+          .toString("base64")
+          .replace(/\+/g, "-")
+          .replace(/\//g, "_")
+          .replace
+- name: getControlPlaneSessionInfo
+  sig: |-
+    getControlPlaneSessionInfo(
+      silent: boolean,
+      useOnboarding: boolean,
+    ): Promise<ControlPlaneSessionInfo | undefined>
+  is_async: true
+  lines:
+  - 606
+  - 640
+  detail:
+    calls:
+    - authentication.getSession
+    - isHubEnv
+exports:
+- name: ContinueAuthenticationSession
+  kind: type
+- name: WorkOsAuthProvider
+  kind: type
+- name: generateRandomString
+  kind: func
+- name: generateCodeChallenge
+  kind: func
+- name: getControlPlaneSessionInfo
+  kind: func
+- name: AUTH_NAME
+  kind: data
+- name: controlPlaneEnv
+  kind: data
+- name: SESSIONS_SECRET_KEY
+  kind: data

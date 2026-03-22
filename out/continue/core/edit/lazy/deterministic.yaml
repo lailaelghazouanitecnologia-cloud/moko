@@ -1,0 +1,242 @@
+## Roska File Descriptor — lazy/deterministic.ts
+file: lazy/deterministic.ts
+lines: 442
+layer: logic
+imports:
+- sym: path.path
+- sym: fastest-levenshtein.distance
+- sym: web-tree-sitter.Parser
+- sym: ../...DiffLine
+- sym: ../../autocomplete/constants/AutocompleteLanguageInfo.LANGUAGES
+- sym: ../../diff/myers.myersDiff
+- sym: ../../util/treeSitter.getParserForFile
+- sym: ./findInAst.findInAst
+data:
+- name: LAZY_COMMENT_REGEX
+  type: any
+  val: /\.{3}\s*(.+?)\s*\.{3}/
+- name: REMOVAL_PERCENTAGE_THRESHOLD
+  type: number
+  val: '0.3'
+types:
+- name: AstReplacements
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 13
+  - 16
+functions:
+- name: isLazyText
+  sig: 'isLazyText(text: string): boolean'
+  lines:
+  - 19
+  - 21
+  detail:
+    calls:
+    - LAZY_COMMENT_REGEX.test
+- name: reconstructNewFile
+  sig: |-
+    reconstructNewFile(
+      oldFile: string,
+      newFile: string,
+      lazyBlockReplacements: AstReplacements,
+    ): string
+  lines:
+  - 23
+  - 99
+  detail:
+    calls:
+    - |-
+      lazyBlockReplacements
+          .sort
+    - |-
+      lazyBlockReplacements
+          .sort((a, b) => a.nodeToReplace.startIndex - b.nodeToReplace.startIndex)
+       ...
+    - newFile.split
+    - newFileChars.join
+    - newFileChars.splice
+    - newFileChars[startIndex - 1]?.trim
+    - oldFile.split
+    - oldFileLines.slice
+    - replacementLines.join
+    - |-
+      replacementLines[
+              replacementLines.length - 1
+            ].slice
+    - replacementLines[0].slice
+- name: shouldRejectDiff
+  sig: 'shouldRejectDiff(diff: DiffLine[]): boolean'
+  lines:
+  - 102
+  - 108
+  detail:
+    calls:
+    - diff.filter
+- name: nodeSurroundedInLazyBlocks
+  sig: |-
+    nodeSurroundedInLazyBlocks(
+      parser: Parser,
+
+      file: string,
+      filename: string,
+    ): { newTree: Parser.Tree; newFile: string } | undefined
+  lines:
+  - 110
+  - 126
+  detail:
+    calls:
+    - parser.parse
+    - path.extname
+    - path.extname(filename).slice
+- name: deterministicApplyLazyEdit
+  sig: |-
+    deterministicApplyLazyEdit({
+      oldFile,
+      newLazyFile,
+      filename,
+      /**
+       * Using this as a flag to slowly reintroduce lazy applies.
+       * With this set, we will only attempt to deterministically apply
+       * when there are no lazy blocks and then just replace the whole file,
+       * and otherwise never use instant apply
+       */
+      onlyFullFileRewrite = false,
+    }: {
+      oldFile: string;
+      newLazyFile: string;
+      filename: string;
+      onlyFullFileRewrite?: boolean;
+    }): Promise<DiffLine[] | undefined>
+  is_async: true
+  lines:
+  - 129
+  - 230
+  detail:
+    calls:
+    - console.warn
+    - findInAst
+    - findLazyBlockReplacements
+    - firstSimilarNode?.parent?.equals
+    - getParserForFile
+    - isLazyText
+    - myersDiff
+    - newTree.rootNode.text.split
+    - nodeSurroundedInLazyBlocks
+    - oldText.slice
+    - parser.parse
+    - reconstructNewFile
+    - shouldRejectDiff
+- name: isLazyBlock
+  sig: 'isLazyBlock(node: Parser.SyntaxNode): boolean'
+  lines:
+  - 232
+  - 243
+  detail:
+    calls:
+    - isLazyBlock
+    - isLazyText
+    - node.type.includes
+- name: stringsWithinLevDistThreshold
+  sig: |-
+    stringsWithinLevDistThreshold(
+      a: string,
+      b: string,
+      threshold: number,
+    )
+  lines:
+  - 245
+  - 252
+  detail:
+    calls:
+    - Math.min
+    - distance
+- name: programNodeIsSimilar
+  sig: |-
+    programNodeIsSimilar(
+      programNode: Parser.SyntaxNode,
+      otherNode: Parser.SyntaxNode,
+    ): boolean
+  lines:
+  - 254
+  - 296
+  detail:
+    calls:
+    - Math.max
+    - Math.min
+    - newLines[i].trim
+    - newLines[matchForOldFirstLine + i].trim
+    - newLines[newLines.length - 1].trim
+    - oldLines[0].trim
+    - oldLines[i].trim
+    - oldLines[oldLines.length - 1].trim
+    - otherNode.text.split
+    - programNode.text.split
+- name: nodesAreSimilar
+  sig: 'nodesAreSimilar(a: Parser.SyntaxNode, b: Parser.SyntaxNode): boolean'
+  lines:
+  - 304
+  - 341
+  detail:
+    calls:
+    - a.childForFieldName
+    - a.text.split
+    - b.childForFieldName
+    - b.text.split
+    - stringsWithinLevDistThreshold
+- name: nodesAreExact
+  sig: 'nodesAreExact(a: Parser.SyntaxNode, b: Parser.SyntaxNode): boolean'
+  lines:
+  - 343
+  - 345
+- name: findLazyBlockReplacements
+  sig: |-
+    findLazyBlockReplacements(
+      oldNode: Parser.SyntaxNode,
+      newNode: Parser.SyntaxNode,
+      replacements: AstReplacements,
+    ): void
+  lines:
+  - 353
+  - 442
+  detail:
+    calls:
+    - currentLazyBlockReplacementNodes.push
+    - findInAst
+    - findLazyBlockReplacements
+    - isLazyBlock
+    - leftChildren.shift
+    - nodesAreExact
+    - replacements.push
+    - rightChildren.findIndex
+    - rightChildren.shift
+exports:
+- name: AstReplacements
+  kind: type
+- name: isLazyText
+  kind: func
+- name: reconstructNewFile
+  kind: func
+- name: shouldRejectDiff
+  kind: func
+- name: nodeSurroundedInLazyBlocks
+  kind: func
+- name: deterministicApplyLazyEdit
+  kind: func
+- name: isLazyBlock
+  kind: func
+- name: stringsWithinLevDistThreshold
+  kind: func
+- name: programNodeIsSimilar
+  kind: func
+- name: nodesAreSimilar
+  kind: func
+- name: nodesAreExact
+  kind: func
+- name: findLazyBlockReplacements
+  kind: func
+- name: LAZY_COMMENT_REGEX
+  kind: data
+- name: REMOVAL_PERCENTAGE_THRESHOLD
+  kind: data

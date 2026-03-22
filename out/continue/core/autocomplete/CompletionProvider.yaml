@@ -1,0 +1,212 @@
+## Roska File Descriptor — autocomplete/CompletionProvider.ts
+file: autocomplete/CompletionProvider.ts
+lines: 318
+layer: logic
+imports:
+- sym: ../config/ConfigHandler.js.ConfigHandler
+- sym: ../index.js.IDE
+- sym: ../index.js.ILLM
+- sym: ../llm/llms/OpenAI.js.OpenAI
+- sym: ../util/parameters.js.DEFAULT_AUTOCOMPLETE_OPTS
+- sym: ./classification/shouldCompleteMultiline.js.shouldCompleteMultiline
+- sym: ./context/ContextRetrievalService.js.ContextRetrievalService
+- sym: ../indexing/ignore.js.isSecurityConcern
+- sym: ./filtering/BracketMatchingService.js.BracketMatchingService
+- sym: ./generation/CompletionStreamer.js.CompletionStreamer
+- sym: ./postprocessing/index.js.postprocessCompletion
+- sym: ./prefiltering/index.js.shouldPrefilter
+- sym: ./snippets/index.js.getAllSnippetsWithoutRace
+- sym: ./templating/index.js.renderPromptWithTokenLimit
+- sym: ./types.js.GetLspDefinitionsFunction
+- sym: ./util/AutocompleteDebouncer.js.AutocompleteDebouncer
+- sym: ./util/AutocompleteLoggingService.js.AutocompleteLoggingService
+- sym: ./util/AutocompleteLruCache.js.AutocompleteLruCache
+- sym: ./util/HelperVars.js.HelperVars
+- sym: ./util/types.js.AutocompleteInput
+- sym: ./util/types.js.AutocompleteOutcome
+data:
+- name: autocompleteCachePromise
+  type: any
+  val: AutocompleteLruCache.get()
+- name: ERRORS_TO_IGNORE
+  type: array
+  val: |-
+    [
+      // From Ollama
+      "unexpected server status",
+      "operation was aborted",
+    ]
+types:
+- name: CompletionProvider
+  kind: struct
+  fields:
+  - name: autocompleteCache
+    type: AutocompleteLruCache
+  - name: errorsShown
+    type: Set<string>
+    default: new Set()
+  - name: bracketMatchingService
+    type: any
+    default: new BracketMatchingService()
+  - name: debouncer
+    type: any
+    default: new AutocompleteDebouncer()
+  - name: completionStreamer
+    type: CompletionStreamer
+  - name: loggingService
+    type: any
+    default: new AutocompleteLoggingService()
+  - name: contextRetrievalService
+    type: ContextRetrievalService
+  methods:
+  - name: constructor
+    sig: |-
+      constructor(
+          private readonly configHandler: ConfigHandler,
+          private readonly ide: IDE,
+          private readonly _injectedGetLlm: () => Promise<ILLM | undefined>,
+          private readonly _onError: (e: any) => void,
+          private readonly getDefinitionsFromLsp: GetLspDefinitionsFunction,
+        )
+    lines:
+    - 42
+    - 52
+    detail:
+      calls:
+      - new CompletionStreamer
+      - new ContextRetrievalService
+      - this.initCache
+      - this.onError.bind
+  - name: initCache
+    sig: initCache()
+    is_async: true
+    vis: private
+    lines:
+    - 54
+    - 60
+    detail:
+      calls:
+      - console.error
+  - name: _prepareLlm
+    sig: '_prepareLlm(): Promise<ILLM | undefined>'
+    is_async: true
+    vis: private
+    lines:
+    - 69
+    - 97
+    detail:
+      calls:
+      - this._injectedGetLlm
+  - name: onError
+    sig: 'onError(e: any)'
+    vis: private
+    lines:
+    - 99
+    - 113
+    detail:
+      calls:
+      - ERRORS_TO_IGNORE.some
+      - console.warn
+      - this._onError
+      - this.errorsShown.add
+      - this.errorsShown.has
+  - name: cancel
+    sig: cancel()
+    lines:
+    - 115
+    - 117
+    detail:
+      calls:
+      - this.loggingService.cancel
+  - name: accept
+    sig: 'accept(completionId: string)'
+    lines:
+    - 119
+    - 128
+    detail:
+      calls:
+      - this.bracketMatchingService.handleAcceptedCompletion
+      - this.loggingService.accept
+  - name: markDisplayed
+    sig: 'markDisplayed(completionId: string, outcome: AutocompleteOutcome)'
+    lines:
+    - 130
+    - 132
+    detail:
+      calls:
+      - this.loggingService.markDisplayed
+  - name: _getAutocompleteOptions
+    sig: '_getAutocompleteOptions(llm: ILLM)'
+    is_async: true
+    vis: private
+    lines:
+    - 134
+    - 148
+    detail:
+      calls:
+      - this.configHandler.loadConfig
+  - name: provideInlineCompletionItems
+    sig: |-
+      provideInlineCompletionItems(
+          input: AutocompleteInput,
+          token: AbortSignal | undefined,
+          force?: boolean,
+        ): Promise<AutocompleteOutcome | undefined>
+    is_async: true
+    lines:
+    - 150
+    - 311
+    detail:
+      calls:
+      - Date.now
+      - HelperVars.create
+      - Promise.all
+      - |-
+        cache
+                  .put
+      - |-
+        cache
+                  .put(outcome.prefix, outcome.completion)
+                  .catch
+      - cache.get
+      - completion.split
+      - getAllSnippetsWithoutRace
+      - isSecurityConcern
+      - new Date
+      - new Date().toISOString
+      - postprocessCompletion
+      - renderPromptWithTokenLimit
+      - shouldCompleteMultiline
+      - shouldPrefilter
+      - this._getAutocompleteOptions
+      - this._prepareLlm
+      - this.completionStreamer.streamCompletionWithFilters
+      - this.debouncer.delayAndShouldDebounce
+      - this.getCache
+      - this.ide.getIdeInfo
+      - this.ide.getRepoName
+      - this.ide.getUniqueId
+      - this.ide.getWorkspaceDirs
+      - this.loggingService.createAbortController
+      - this.loggingService.deleteAbortController
+      - this.markDisplayed
+      - this.onError
+  - name: dispose
+    sig: dispose()
+    is_async: true
+    lines:
+    - 313
+    - 317
+    detail:
+      calls:
+      - this.autocompleteCache.close
+  lines:
+  - 33
+  - 318
+exports:
+- name: CompletionProvider
+  kind: type
+- name: autocompleteCachePromise
+  kind: data
+- name: ERRORS_TO_IGNORE
+  kind: data

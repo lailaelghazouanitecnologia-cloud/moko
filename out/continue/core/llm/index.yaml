@@ -1,0 +1,700 @@
+## Roska File Descriptor — llm/index.ts
+file: llm/index.ts
+lines: 1526
+layer: logic
+imports:
+- sym: '@continuedev/config-yaml.ModelRole'
+- sym: '@continuedev/fetch.fetchwithRequestOptions'
+- sym: '@continuedev/llm-info.findLlmInfo'
+- sym: '@continuedev/openai-adapters.BaseLlmApi'
+- sym: '@continuedev/openai-adapters.ChatCompletionCreateParams'
+- sym: '@continuedev/openai-adapters.constructLlmApi'
+- sym: handlebars.Handlebars
+- sym: ../data/devdataSqlite.js.DevDataSqliteDb
+- sym: ../data/log.js.DataLogger
+- sym: ../index.js.CacheBehavior
+- sym: ../index.js.ChatMessage
+- sym: ../index.js.Chunk
+- sym: ../index.js.CompletionOptions
+- sym: ../index.js.ILLM
+- sym: ../index.js.ILLMInteractionLog
+- sym: ../index.js.ILLMLogger
+- sym: ../index.js.LLMFullCompletionOptions
+- sym: ../index.js.LLMOptions
+- sym: ../index.js.MessageOption
+- sym: ../index.js.ModelCapability
+- sym: ../index.js.ModelInstaller
+- sym: ../index.js.PromptLog
+- sym: ../index.js.PromptTemplate
+- sym: ../index.js.RequestOptions
+- sym: ../index.js.TabAutocompleteOptions
+- sym: ../index.js.TemplateType
+- sym: ../index.js.ToolOverride
+- sym: ../index.js.Usage
+- sym: ../util/isAbortError.js.isAbortError
+- sym: ../util/lemonadeHelper.js.isLemonadeInstalled
+- sym: ../util/Logger.js.Logger
+- sym: ../util/merge.js.mergeJson
+- sym: ../util/messageContent.js.renderChatMessage
+- sym: ../util/ollamaHelper.js.isOllamaInstalled
+- sym: ../util/TokensBatchingService.js.TokensBatchingService
+- sym: ../util/withExponentialBackoff.js.withExponentialBackoff
+- sym: ./autodetect.js.autodetectPromptTemplates
+- sym: ./autodetect.js.autodetectTemplateFunction
+- sym: ./autodetect.js.autodetectTemplateType
+- sym: ./autodetect.js.modelSupportsImages
+- sym: ./constants.js.DEFAULT_ARGS
+- sym: ./constants.js.DEFAULT_CONTEXT_LENGTH
+- sym: ./constants.js.DEFAULT_MAX_BATCH_SIZE
+- sym: ./constants.js.DEFAULT_MAX_CHUNK_SIZE
+- sym: ./constants.js.DEFAULT_MAX_TOKENS
+- sym: ./constants.js.LLMConfigurationStatuses
+- sym: ./countTokens.js.compileChatMessages
+- sym: ./countTokens.js.countTokens
+- sym: ./countTokens.js.pruneRawPromptFromTop
+- sym: ./openaiTypeConverters.js.fromChatCompletionChunk
+- sym: ./openaiTypeConverters.js.fromChatResponse
+- sym: ./openaiTypeConverters.js.LlmApiRequestType
+- sym: ./openaiTypeConverters.js.toChatBody
+- sym: ./openaiTypeConverters.js.toCompleteBody
+- sym: ./openaiTypeConverters.js.toFimBody
+- sym: ../tools/applyToolOverrides.js.applyToolOverrides
+types:
+- name: LLMError
+  kind: struct
+  bases:
+  - Error
+  methods:
+  - name: constructor
+    sig: |-
+      constructor(
+          message: string,
+          public llm: ILLM,
+        )
+    lines:
+    - 73
+    - 78
+    detail:
+      calls:
+      - super
+  lines:
+  - 72
+  - 79
+- name: InteractionStatus
+  kind: enum
+  decorators:
+  - type
+  variants:
+  - name: '"cancelled"'
+  lines:
+  - 89
+  - 89
+- name: BaseLLM
+  kind: trait
+  ctx: Provider capabilities (overridable by subclasses)
+  bases:
+  - ILLM
+  decorators:
+  - abstract
+  fields:
+  - name: defaultOptions
+    type: Partial<LLMOptions> | undefined
+    default: undefined
+  - name: supportsReasoningField
+    type: boolean
+    default: 'false'
+  - name: supportsReasoningDetailsField
+    type: boolean
+    default: 'false'
+  - name: supportsReasoningContentField
+    type: boolean
+    default: 'false'
+  - name: autocompleteOptions
+    type: Partial<TabAutocompleteOptions>
+  - name: uniqueId
+    type: string
+  - name: model
+    type: string
+  - name: baseChatSystemMessage
+    type: string
+  - name: basePlanSystemMessage
+    type: string
+  - name: baseAgentSystemMessage
+    type: string
+  - name: _contextLength
+    type: number | undefined
+  - name: maxStopWords
+    type: number | undefined
+  - name: completionOptions
+    type: CompletionOptions
+  - name: requestOptions
+    type: RequestOptions
+  - name: template
+    type: TemplateType
+  - name: promptTemplates
+    type: Record<string, PromptTemplate>
+  - name: templateMessages
+    type: '(messages: ChatMessage[]) => string'
+  - name: logger
+    type: ILLMLogger
+  - name: llmRequestHook
+    type: '(model: string, prompt: string) => any'
+  - name: apiKey
+    type: string
+  - name: apiKeyLocation
+    type: string
+  - name: envSecretLocations
+    type: Record<string, string>
+  - name: apiBase
+    type: string
+  - name: orgScopeId
+    type: string | null
+  - name: onPremProxyUrl
+    type: string | null
+  - name: cacheBehavior
+    type: CacheBehavior
+  - name: capabilities
+    type: ModelCapability
+  - name: roles
+    type: ModelRole[]
+  - name: deployment
+    type: string
+  - name: apiVersion
+    type: string
+  - name: apiType
+    type: string
+  - name: region
+    type: string
+  - name: projectId
+    type: string
+  - name: accountId
+    type: string
+  - name: aiGatewaySlug
+    type: string
+  - name: profile
+    type: string | undefined
+  - name: accessKeyId
+    type: string
+  - name: secretAccessKey
+    type: string
+  - name: deploymentId
+    type: string
+  - name: embeddingId
+    type: string
+  - name: maxEmbeddingChunkSize
+    type: number
+  - name: maxEmbeddingBatchSize
+    type: number
+  - name: sourceFile
+    type: string
+  - name: isFromAutoDetect
+    type: boolean
+  - name: toolOverrides
+    type: ToolOverride[]
+  - name: lastRequestId
+    type: string | undefined
+  - name: _llmOptions
+    type: LLMOptions
+  - name: openaiAdapter
+    type: BaseLlmApi
+  - name: useOpenAIAdapterFor
+    type: (LlmApiRequestType | "*")[]
+    default: '[]'
+  methods:
+  - name: providerName
+    sig: 'providerName(): string'
+    lines:
+    - 99
+    - 101
+    detail: {}
+  - name: underlyingProviderName
+    sig: 'underlyingProviderName(): string'
+    lines:
+    - 107
+    - 109
+    detail: {}
+  - name: supportsFim
+    sig: 'supportsFim(): boolean'
+    lines:
+    - 113
+    - 115
+    detail: {}
+  - name: supportsImages
+    sig: 'supportsImages(): boolean'
+    lines:
+    - 117
+    - 124
+    detail:
+      calls:
+      - modelSupportsImages
+  - name: supportsCompletions
+    sig: 'supportsCompletions(): boolean'
+    lines:
+    - 126
+    - 144
+    detail:
+      calls:
+      - '["groq", "mistral", "deepseek"].includes'
+      - '["openai", "azure"].includes'
+      - this._llmOptions.useLegacyCompletionsEndpoint?.valueOf
+      - this.apiBase?.includes
+  - name: supportsPrefill
+    sig: 'supportsPrefill(): boolean'
+    lines:
+    - 146
+    - 148
+    detail:
+      calls:
+      - '["ollama", "anthropic", "mistral"].includes'
+  - name: constructor
+    sig: 'constructor(_options: LLMOptions)'
+    lines:
+    - 213
+    - 315
+    detail:
+      calls:
+      - Math.min
+      - autodetectPromptTemplates
+      - autodetectTemplateFunction
+      - autodetectTemplateType
+      - findLlmInfo
+      - this.apiBase.endsWith
+      - this.createOpenAiAdapter
+      - this.model?.split
+      - this.model?.split("/").pop
+  - name: contextLength
+    sig: contextLength()
+    lines:
+    - 317
+    - 319
+    detail: {}
+  - name: getConfigurationStatus
+    sig: getConfigurationStatus()
+    lines:
+    - 321
+    - 323
+    detail: {}
+  - name: listModels
+    sig: 'listModels(): Promise<string[]>'
+    lines:
+    - 335
+    - 337
+    detail:
+      calls:
+      - Promise.resolve
+  - name: _logEnd
+    sig: |-
+      _logEnd(
+          model: string,
+          prompt: string,
+          completion: string,
+          thinking: string | undefined,
+          interaction: ILLMInteractionLog | undefined,
+          usage: Usage | undefined,
+          error?: any,
+        ): InteractionStatus
+    vis: private
+    lines:
+    - 351
+    - 421
+    detail:
+      calls:
+      - DataLogger.getInstance
+      - DataLogger.getInstance().logDevData
+      - DevDataSqliteDb.logTokensGenerated
+      - TokensBatchingService.getInstance
+      - TokensBatchingService.getInstance().addTokens
+      - console.log
+      - interaction?.logItem
+      - isAbortError
+      - this.countTokens
+  - name: parseError
+    sig: 'parseError(resp: any): Promise<Error>'
+    is_async: true
+    vis: private
+    lines:
+    - 423
+    - 465
+    detail:
+      calls:
+      - JSON.parse
+      - error?.match
+      - errorMessageRaw.replace
+      - new Error
+      - new LLMError
+      - resp.text
+      - resp.url.includes
+      - resp.url.match
+      - text.includes
+  - name: fetch
+    sig: 'fetch(url: RequestInfo | URL, init?: RequestInit): Promise<Response>'
+    lines:
+    - 467
+    - 548
+    detail:
+      calls:
+      - withExponentialBackoff
+  - name: streamFim
+    sig: |-
+      streamFim(
+          prefix: string,
+          suffix: string,
+          signal: AbortSignal,
+          options: LLMFullCompletionOptions = {},
+        ): AsyncGenerator<string>
+    is_async: true
+    lines:
+    - 606
+    - 721
+    detail:
+      calls:
+      - Logger.error
+      - fromChatCompletionChunk
+      - interaction?.logItem
+      - renderChatMessage
+      - this._formatChatMessage
+      - this._logEnd
+      - this._parseCompletionOptions
+      - this._streamFim
+      - this.llmRequestHook
+      - this.logger?.createInteractionLog
+      - this.openaiAdapter.fimStream
+      - this.shouldUseOpenAIAdapter
+      - toFimBody
+  - name: streamComplete
+    sig: |-
+      streamComplete(
+          _prompt: string,
+          signal: AbortSignal,
+          options: LLMFullCompletionOptions = {},
+        )
+    is_async: true
+    lines:
+    - 723
+    - 855
+    detail:
+      calls:
+      - Logger.error
+      - interaction?.logItem
+      - pruneRawPromptFromTop
+      - this._logEnd
+      - this._parseCompletionOptions
+      - this._streamComplete
+      - this._templatePromptLikeMessages
+      - this.llmRequestHook
+      - this.logger?.createInteractionLog
+      - this.openaiAdapter.completionNonStream
+      - this.openaiAdapter.completionStream
+      - this.shouldUseOpenAIAdapter
+      - toCompleteBody
+  - name: complete
+    sig: |-
+      complete(
+          _prompt: string,
+          signal: AbortSignal,
+          options: LLMFullCompletionOptions = {},
+        )
+    is_async: true
+    lines:
+    - 857
+    - 957
+    detail:
+      calls:
+      - Logger.error
+      - interaction?.logItem
+      - pruneRawPromptFromTop
+      - this._complete
+      - this._logEnd
+      - this._parseCompletionOptions
+      - this._templatePromptLikeMessages
+      - this.llmRequestHook
+      - this.logger?.createInteractionLog
+      - this.openaiAdapter.completionNonStream
+      - this.shouldUseOpenAIAdapter
+      - toCompleteBody
+  - name: chat
+    sig: |-
+      chat(
+          messages: ChatMessage[],
+          signal: AbortSignal,
+          options: LLMFullCompletionOptions = {},
+        )
+    is_async: true
+    lines:
+    - 959
+    - 969
+    detail:
+      calls:
+      - renderChatMessage
+      - this.streamChat
+  - name: compileChatMessages
+    sig: |-
+      compileChatMessages(
+          message: ChatMessage[],
+          options: LLMFullCompletionOptions,
+        )
+    lines:
+    - 971
+    - 986
+    detail:
+      calls:
+      - compileChatMessages
+      - this._modifyCompletionOptions
+      - this._parseCompletionOptions
+      - this.supportsImages
+  - name: processChatChunk
+    sig: |-
+      processChatChunk(
+          chunk: ChatMessage,
+          interaction: ILLMInteractionLog | undefined,
+        ): {
+          completion: string[];
+          thinking: string[];
+          usage: Usage | null;
+          chunk: ChatMessage;
+        }
+    vis: private
+    lines:
+    - 1009
+    - 1043
+    detail:
+      calls:
+      - completion.push
+      - interaction?.logItem
+      - thinking.push
+      - this._formatChatMessage
+  - name: openAIAdapterStream
+    sig: |-
+      openAIAdapterStream(
+          body: ChatCompletionCreateParams,
+          signal: AbortSignal,
+          onCitations: (c: string[]) => void,
+        ): AsyncGenerator<ChatMessage>
+    is_async: true
+    vis: private
+    lines:
+    - 1053
+    - 1074
+    detail:
+      calls:
+      - Array.isArray
+      - fromChatCompletionChunk
+      - onCitations
+      - this.openaiAdapter!.chatCompletionStream
+  - name: openAIAdapterNonStream
+    sig: |-
+      openAIAdapterNonStream(
+          body: ChatCompletionCreateParams,
+          signal: AbortSignal,
+        ): AsyncGenerator<ChatMessage>
+    is_async: true
+    vis: private
+    lines:
+    - 1076
+    - 1089
+    detail:
+      calls:
+      - fromChatResponse
+      - this.openaiAdapter!.chatCompletionNonStream
+  - name: responsesStream
+    sig: |-
+      responsesStream(
+          messages: ChatMessage[],
+          signal: AbortSignal,
+          options: CompletionOptions,
+        ): AsyncGenerator<ChatMessage>
+    is_async: true
+    vis: private
+    lines:
+    - 1091
+    - 1104
+    detail:
+      calls:
+      - (this as any)._streamResponses
+  - name: responsesNonStream
+    sig: |-
+      responsesNonStream(
+          messages: ChatMessage[],
+          signal: AbortSignal,
+          options: CompletionOptions,
+        ): AsyncGenerator<ChatMessage>
+    is_async: true
+    vis: private
+    lines:
+    - 1106
+    - 1113
+    detail:
+      calls:
+      - (this as any)._responses
+  - name: streamChat
+    sig: |-
+      streamChat(
+          _messages: ChatMessage[],
+          signal: AbortSignal,
+          options: LLMFullCompletionOptions = {},
+          messageOptions?: MessageOption,
+        ): AsyncGenerator<ChatMessage, PromptLog>
+    is_async: true
+    lines:
+    - 1116
+    - 1358
+    detail:
+      calls:
+      - Logger.error
+      - applyToolOverrides
+      - cits.map
+      - 'cits.map((c: string, i: number) => `${i + 1}: ${c}`).join'
+      - compileChatMessages
+      - completion.join
+      - completion.push
+      - console.warn
+      - interaction?.logItem
+      - thinking.join
+      - thinking.push
+      - this._formatChatMessages
+      - this._logEnd
+      - this._modifyCompletionOptions
+      - this._parseCompletionOptions
+      - this._streamChat
+      - this._streamComplete
+      - this.canUseOpenAIResponses
+      - this.llmRequestHook
+      - this.logger?.createInteractionLog
+      - this.modifyChatBody
+      - this.openAIAdapterNonStream
+      - this.openAIAdapterStream
+      - this.processChatChunk
+      - this.responsesNonStream
+      - this.responsesStream
+      - this.shouldUseOpenAIAdapter
+      - this.supportsImages
+      - this.templateMessages
+      - toChatBody
+  - name: getBatchedChunks
+    sig: 'getBatchedChunks(chunks: string[]): string[][]'
+    lines:
+    - 1360
+    - 1368
+    detail:
+      calls:
+      - batchedChunks.push
+      - chunks.slice
+  - name: embed
+    sig: 'embed(chunks: string[]): Promise<number[][]>'
+    is_async: true
+    lines:
+    - 1370
+    - 1398
+    detail:
+      calls:
+      - |-
+        (
+              await Promise.all(
+                batches.map(async (batch) => {
+                  if (batch.length === 0) ...
+      - Promise.all
+      - batches.map
+      - this.getBatchedChunks
+  - name: rerank
+    sig: 'rerank(query: string, chunks: Chunk[]): Promise<number[]>'
+    is_async: true
+    lines:
+    - 1400
+    - 1424
+    detail:
+      calls:
+      - Array.isArray
+      - JSON.stringify
+      - Object.keys
+      - chunks.map
+      - new Error
+      - |-
+        results.data
+                  .sort
+      - |-
+        results.data
+                  .sort((a, b) => a.index - b.index)
+                  .map
+      - this.openaiAdapter.rerank
+      - this.shouldUseOpenAIAdapter
+  - name: _streamChat
+    sig: |-
+      _streamChat(
+          messages: ChatMessage[],
+          signal: AbortSignal,
+          options: CompletionOptions,
+        ): AsyncGenerator<ChatMessage>
+    is_async: true
+    vis: protected
+    lines:
+    - 1434
+    - 1452
+    detail:
+      calls:
+      - new Error
+      - this._streamComplete
+      - this.templateMessages
+  - name: _complete
+    sig: |-
+      _complete(
+          prompt: string,
+          signal: AbortSignal,
+          options: CompletionOptions,
+        )
+    is_async: true
+    vis: protected
+    lines:
+    - 1454
+    - 1464
+    detail:
+      calls:
+      - this._streamComplete
+  - name: countTokens
+    sig: 'countTokens(text: string): number'
+    lines:
+    - 1472
+    - 1474
+    detail:
+      calls:
+      - countTokens
+  - name: renderPromptTemplate
+    sig: |-
+      renderPromptTemplate(
+          template: PromptTemplate,
+          history: ChatMessage[],
+          otherData: Record<string, string>,
+          canPutWordsInModelsMouth = false,
+        ): string | ChatMessage[]
+    lines:
+    - 1484
+    - 1525
+    detail:
+      calls:
+      - Handlebars.compile
+      - autodetectTemplateFunction
+      - autodetectTemplateType
+      - compiledTemplate
+      - history.shift
+      - template
+      - templateMessages
+      - this.supportsCompletions
+      - this.supportsPrefill
+  lines:
+  - 91
+  - 1526
+functions:
+- name: isModelInstaller
+  sig: 'isModelInstaller(provider: any)'
+  lines:
+  - 81
+  - 87
+  detail: {}
+exports:
+- name: LLMError
+  kind: type
+- name: InteractionStatus
+  kind: type
+- name: BaseLLM
+  kind: type
+- name: isModelInstaller
+  kind: func

@@ -1,0 +1,193 @@
+## Roska File Descriptor — apply/ApplyManager.ts
+file: apply/ApplyManager.ts
+lines: 330
+layer: logic
+imports:
+- sym: core/config/ConfigHandler.ConfigHandler
+- sym: core/edit/lazy/applyCodeBlock.applyCodeBlock
+- sym: core/util/uri.getUriPathBasename
+- sym: vscode.vscode
+- sym: core.ApplyToFilePayload
+- sym: core/diff/myers.myersDiff
+- sym: core/diff/util.generateLines
+- sym: core/edit/applyAbortManager.ApplyAbortManager
+- sym: core/edit/streamDiffLines.streamDiffLines
+- sym: core/llm/countTokens.pruneLinesFromBottom
+- sym: core/llm/countTokens.pruneLinesFromTop
+- sym: core/util.getMarkdownLanguageTagForFile
+- sym: ../diff/vertical/manager.VerticalDiffManager
+- sym: ../VsCodeIde.VsCodeIde
+- sym: ../webviewProtocol.VsCodeWebviewProtocol
+types:
+- name: ApplyManager
+  kind: struct
+  ctx: Creates a prompt for applying code edits
+  methods:
+  - name: constructor
+    sig: |-
+      constructor(
+          private readonly ide: VsCodeIde,
+          private readonly webviewProtocol: VsCodeWebviewProtocol,
+          private readonly verticalDiffManager: VerticalDiffManager,
+          private readonly configHandler: ConfigHandler,
+        )
+    lines:
+    - 21
+    - 26
+    detail: {}
+  - name: applyToFile
+    sig: |-
+      applyToFile({
+          streamId,
+          filepath,
+          text,
+          toolCallId,
+          isSearchAndReplace,
+        }: ApplyToFilePayload)
+    is_async: true
+    lines:
+    - 28
+    - 83
+    detail:
+      calls:
+      - activeTextEditor.document.getText
+      - activeTextEditor.document.getText().trim
+      - this.ensureFileOpen
+      - this.handleEmptyDocument
+      - this.handleExistingDocument
+      - this.verticalDiffManager.instantApplyDiff
+      - this.webviewProtocol.request
+      - vscode.window.showErrorMessage
+  - name: ensureFileOpen
+    sig: 'ensureFileOpen(filepath: string): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 85
+    - 92
+    detail:
+      calls:
+      - this.ide.fileExists
+      - this.ide.openFile
+      - this.ide.writeFile
+  - name: handleEmptyDocument
+    sig: |-
+      handleEmptyDocument(
+          editor: vscode.TextEditor,
+          text: string,
+          streamId: string,
+          toolCallId?: string,
+        )
+    is_async: true
+    vis: private
+    lines:
+    - 98
+    - 115
+    detail:
+      calls:
+      - editor.edit
+      - this.webviewProtocol.request
+  - name: handleExistingDocument
+    sig: |-
+      handleExistingDocument(
+          editor: vscode.TextEditor,
+          text: string,
+          streamId: string,
+          toolCallId?: string,
+        )
+    is_async: true
+    vis: private
+    lines:
+    - 117
+    - 168
+    detail:
+      calls:
+      - ApplyAbortManager.getInstance
+      - abortManager.get
+      - applyCodeBlock
+      - editor.document.getText
+      - editor.document.uri.toString
+      - getUriPathBasename
+      - this.configHandler.loadConfig
+      - this.handleNonInstantDiff
+      - this.modelIsTooFastForStreaming
+      - this.verticalDiffManager.streamDiffLines
+      - vscode.window.showErrorMessage
+  - name: calculatePrefixSuffix
+    sig: |-
+      calculatePrefixSuffix(
+          editor: vscode.TextEditor,
+          range: vscode.Range,
+          llm: any,
+        ): { prefix: string; suffix: string; rangeContent: string }
+    vis: private
+    lines:
+    - 180
+    - 206
+    detail:
+      calls:
+      - editor.document.getText
+      - new vscode.Position
+      - new vscode.Range
+      - pruneLinesFromBottom
+      - pruneLinesFromTop
+  - name: handleNonInstantDiff
+    sig: |-
+      handleNonInstantDiff(
+          editor: vscode.TextEditor,
+          text: string,
+          llm: any,
+          streamId: string,
+          verticalDiffManager: VerticalDiffManager,
+          toolCallId?: string,
+          streaming: boolean = true,
+        )
+    is_async: true
+    vis: private
+    lines:
+    - 208
+    - 268
+    detail:
+      calls:
+      - editor.document.getText
+      - editor.document.lineAt
+      - generateLines
+      - myersDiff
+      - new vscode.Range
+      - this.configHandler.loadConfig
+      - this.generateAppliedContent
+      - this.getApplyPrompt
+      - verticalDiffManager.streamDiffLines
+      - verticalDiffManager.streamEdit
+      - vscode.window.showErrorMessage
+  - name: generateAppliedContent
+    sig: |-
+      generateAppliedContent(
+          editor: vscode.TextEditor,
+          prompt: string,
+          llm: any,
+          range: vscode.Range,
+          newCode: string,
+        ): Promise<string | undefined>
+    is_async: true
+    vis: private
+    lines:
+    - 274
+    - 329
+    detail:
+      calls:
+      - ApplyAbortManager.getInstance
+      - abortManager.get
+      - console.error
+      - editor.document.uri.toString
+      - getMarkdownLanguageTagForFile
+      - streamDiffLines
+      - streamedLines.join
+      - streamedLines.push
+      - this.calculatePrefixSuffix
+  lines:
+  - 20
+  - 330
+exports:
+- name: ApplyManager
+  kind: type

@@ -1,0 +1,271 @@
+## Roska File Descriptor — apis/Anthropic.ts
+file: apis/Anthropic.ts
+lines: 503
+layer: logic
+imports:
+- sym: '@anthropic-ai/sdk/resources.ContentBlockParam'
+- sym: '@anthropic-ai/sdk/resources.MessageCreateParams'
+- sym: '@anthropic-ai/sdk/resources.MessageParam'
+- sym: '@anthropic-ai/sdk/resources.RawContentBlockDeltaEvent'
+- sym: '@anthropic-ai/sdk/resources.RawContentBlockStartEvent'
+- sym: '@anthropic-ai/sdk/resources.RawMessageDeltaEvent'
+- sym: '@anthropic-ai/sdk/resources.RawMessageStartEvent'
+- sym: '@anthropic-ai/sdk/resources.RawMessageStreamEvent'
+- sym: '@anthropic-ai/sdk/resources.Tool'
+- sym: '@anthropic-ai/sdk/resources.ToolUseBlock'
+- sym: '@continuedev/fetch.streamSse'
+- sym: openai/index.OpenAI
+- sym: openai/resources/index.ChatCompletion
+- sym: openai/resources/index.ChatCompletionChunk
+- sym: openai/resources/index.ChatCompletionContentPartRefusal
+- sym: openai/resources/index.ChatCompletionContentPartText
+- sym: openai/resources/index.ChatCompletionCreateParamsNonStreaming
+- sym: openai/resources/index.ChatCompletionCreateParamsStreaming
+- sym: openai/resources/index.Completion
+- sym: openai/resources/index.CompletionCreateParamsNonStreaming
+- sym: openai/resources/index.CompletionCreateParamsStreaming
+- sym: openai/resources/index.CompletionUsage
+- sym: openai/resources/index.js.ChatCompletionCreateParams
+- sym: ../types.js.AnthropicConfig
+- sym: ../util.js.chatChunk
+- sym: ../util.js.chatChunkFromDelta
+- sym: ../util.js.customFetch
+- sym: ../util.js.usageChatChunk
+- sym: ../util/emptyChatCompletion.js.EMPTY_CHAT_COMPLETION
+- sym: ../util/parseArgs.js.safeParseArgs
+- sym: ../util/url.js.extractBase64FromDataUrl
+- sym: ./AnthropicCachingStrategies.js.CACHING_STRATEGIES
+- sym: ./AnthropicCachingStrategies.js.CachingStrategyName
+- sym: ./AnthropicUtils.js.addCacheControlToLastTwoUserMessages
+- sym: ./AnthropicUtils.js.getAnthropicHeaders
+- sym: ./AnthropicUtils.js.getAnthropicMediaTypeFromDataUrl
+- sym: ./AnthropicUtils.js.openAiToolChoiceToAnthropicToolChoice
+- sym: ./AnthropicUtils.js.openaiToolToAnthropicTool
+- sym: ./base.js.BaseLlmApi
+- sym: ./base.js.CreateRerankResponse
+- sym: ./base.js.FimCreateParamsStreaming
+- sym: ./base.js.RerankCreateParams
+types:
+- name: AnthropicApi
+  kind: struct
+  ctx: 1. ignores empty content
+  bases:
+  - BaseLlmApi
+  fields:
+  - name: apiBase
+    type: string
+    default: '"https://api.anthropic.com/v1/"'
+  methods:
+  - name: constructor
+    sig: |-
+      constructor(
+          protected config: AnthropicConfig & {
+            cachingStrategy?: CachingStrategyName;
+          },
+        )
+    lines:
+    - 59
+    - 68
+    detail:
+      calls:
+      - this.apiBase.endsWith
+  - name: _convertToCleanAnthropicBody
+    sig: |-
+      _convertToCleanAnthropicBody(
+          oaiBody: ChatCompletionCreateParams,
+        ): MessageCreateParams
+    lines:
+    - 95
+    - 160
+    detail:
+      calls:
+      - Array.isArray
+      - allowedTools.map
+      - functionTools.filter
+      - functionTools.map
+      - new Set
+      - oaiBody.messages.filter
+      - oaiBody.messages.find
+      - oaiBody.stop.filter
+      - oaiBody.stop.trim
+      - oaiBody.tool_choice?.allowed_tools.tools.map
+      - oaiBody.tools?.filter
+      - openAiToolChoiceToAnthropicToolChoice
+      - this._convertMessages
+      - this.maxTokensForModel
+  - name: convertMessageContentToBlocks
+    sig: |-
+      convertMessageContentToBlocks(
+          content:
+            | string
+            | OpenAI.Chat.Completions.ChatCompletionContentPart[]
+            | (ChatCompletionContentPartText | ChatCompletionContentPartRefusal)[],
+        ): ContentBlockParam[]
+    vis: private
+    lines:
+    - 184
+    - 236
+    detail:
+      calls:
+      - blocks.push
+      - console.warn
+      - content.filter
+      - dataUrl?.startsWith
+      - extractBase64FromDataUrl
+      - getAnthropicMediaTypeFromDataUrl
+  - name: getContentBlocksFromChatMessage
+    sig: |-
+      getContentBlocksFromChatMessage(
+          message: OpenAI.Chat.Completions.ChatCompletionMessageParam,
+        ): ContentBlockParam[]
+    vis: private
+    lines:
+    - 238
+    - 274
+    detail:
+      calls:
+      - blocks.push
+      - this.convertMessageContentToBlocks
+      - this.convertToolCallsToBlocks
+  - name: _convertMessages
+    sig: |-
+      _convertMessages(
+          msgs: OpenAI.Chat.Completions.ChatCompletionMessageParam[],
+        ): MessageParam[]
+    vis: private
+    lines:
+    - 276
+    - 309
+    detail:
+      calls:
+      - currentParts.push
+      - flushCurrentMessage
+      - msgs.filter
+      - this.getContentBlocksFromChatMessage
+  - name: chatCompletionNonStream
+    sig: |-
+      chatCompletionNonStream(
+          body: ChatCompletionCreateParamsNonStreaming,
+          signal: AbortSignal,
+        ): Promise<ChatCompletion>
+    is_async: true
+    lines:
+    - 311
+    - 360
+    detail:
+      calls:
+      - Date.now
+      - JSON.stringify
+      - Math.floor
+      - customFetch
+      - customFetch(this.config.requestOptions)
+      - new URL
+      - response.json
+      - this._convertBody
+      - this.getHeaders
+  - name: handleStreamResponse
+    sig: 'handleStreamResponse(response: any, model: string)'
+    is_async: true
+    lines:
+    - 363
+    - 448
+    detail:
+      calls:
+      - chatChunk
+      - chatChunkFromDelta
+      - new Error
+      - streamSse
+      - usageChatChunk
+  - name: chatCompletionStream
+    sig: |-
+      chatCompletionStream(
+          body: ChatCompletionCreateParamsStreaming,
+          signal: AbortSignal,
+        ): AsyncGenerator<ChatCompletionChunk>
+    is_async: true
+    lines:
+    - 450
+    - 464
+    detail:
+      calls:
+      - JSON.stringify
+      - customFetch
+      - customFetch(this.config.requestOptions)
+      - new URL
+      - this._convertBody
+      - this.getHeaders
+      - this.handleStreamResponse
+  - name: completionNonStream
+    sig: |-
+      completionNonStream(
+          body: CompletionCreateParamsNonStreaming,
+          signal: AbortSignal,
+        ): Promise<Completion>
+    is_async: true
+    lines:
+    - 471
+    - 476
+    detail:
+      calls:
+      - new Error
+  - name: completionStream
+    sig: |-
+      completionStream(
+          body: CompletionCreateParamsStreaming,
+          signal: AbortSignal,
+        ): AsyncGenerator<Completion>
+    is_async: true
+    lines:
+    - 477
+    - 482
+    detail:
+      calls:
+      - new Error
+  - name: fimStream
+    sig: |-
+      fimStream(
+          body: FimCreateParamsStreaming,
+          signal: AbortSignal,
+        ): AsyncGenerator<ChatCompletionChunk>
+    is_async: true
+    lines:
+    - 483
+    - 488
+    detail:
+      calls:
+      - new Error
+  - name: embed
+    sig: |-
+      embed(
+          body: OpenAI.Embeddings.EmbeddingCreateParams,
+        ): Promise<OpenAI.Embeddings.CreateEmbeddingResponse>
+    is_async: true
+    lines:
+    - 490
+    - 494
+    detail:
+      calls:
+      - new Error
+  - name: rerank
+    sig: 'rerank(body: RerankCreateParams): Promise<CreateRerankResponse>'
+    is_async: true
+    lines:
+    - 496
+    - 498
+    detail:
+      calls:
+      - new Error
+  - name: list
+    sig: 'list(): Promise<OpenAI.Models.Model[]>'
+    lines:
+    - 500
+    - 502
+    detail:
+      calls:
+      - new Error
+  lines:
+  - 56
+  - 503
+exports:
+- name: AnthropicApi
+  kind: type

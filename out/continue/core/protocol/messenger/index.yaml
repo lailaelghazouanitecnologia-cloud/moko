@@ -1,0 +1,212 @@
+## Roska File Descriptor — messenger/index.ts
+file: messenger/index.ts
+lines: 191
+layer: logic
+imports:
+- sym: ../../util/Logger.js.Logger
+- sym: ../index.IProtocol
+  kind: typing
+types:
+- name: Message
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: messageType
+    type: string
+  - name: messageId
+    type: string
+  - name: data
+    type: T
+  lines:
+  - 6
+  - 10
+- name: FromMessage
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: messageType
+    type: T
+  - name: messageId
+    type: string
+  - name: data
+    type: FromProtocol[T][1]
+  lines:
+  - 12
+  - 19
+- name: IMessenger
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: onError
+    type: 'method: onError(handler: (message: Message, error: Error) => void): void'
+  - name: send
+    type: |-
+      method: send<T extends keyof FromProtocol>(
+          messageType: T,
+          data: FromProtocol[T][0],
+          messageId?: string,
+        ): string
+  - name: on
+    type: |-
+      method: on<T extends keyof ToProtocol>(
+          messageType: T,
+          handler: (
+            message: Message<ToProtocol[T][0]>,
+          ) => Promise<ToProtocol[T][1]> | ToProtocol[T][1],
+        ): void
+  - name: request
+    type: |-
+      method: request<T extends keyof FromProtocol>(
+          messageType: T,
+          data: FromProtocol[T][0],
+        ): Promise<FromProtocol[T][1]>
+  - name: invoke
+    type: |-
+      method: invoke<T extends keyof ToProtocol>(
+          messageType: T,
+          data: ToProtocol[T][0],
+          messageId?: string,
+        ): ToProtocol[T][1]
+  lines:
+  - 21
+  - 49
+- name: InProcessMessenger
+  kind: struct
+  ctx: Listeners for the entity that owns this messenger (right now, always Core)
+  bases:
+  - IMessenger<ToProtocol, FromProtocol>
+  fields:
+  - name: myTypeListeners
+    type: any
+    default: |-
+      new Map<
+          keyof ToProtocol,
+          (message: Message) => any
+        >()
+  - name: externalTypeListeners
+    type: any
+    default: |-
+      new Map<
+          keyof FromProtocol,
+          (message: Message) => any
+        >()
+  - name: _onErrorHandlers
+    type: '((message: Message, error: Error) => void)[]'
+    default: '[]'
+  methods:
+  - name: onError
+    sig: 'onError(handler: (message: Message, error: Error) => void)'
+    lines:
+    - 70
+    - 72
+    detail:
+      calls:
+      - this._onErrorHandlers.push
+  - name: invoke
+    sig: |-
+      invoke(
+          messageType: T,
+          data: ToProtocol[T][0],
+          messageId?: string,
+        ): ToProtocol[T][1]
+    lines:
+    - 74
+    - 102
+    detail:
+      calls:
+      - Logger.error
+      - String
+      - listener
+      - this.myTypeListeners.get
+      - uuidv4
+  - name: send
+    sig: |-
+      send(
+          messageType: T,
+          message: any,
+          _messageId?: string,
+        ): string
+    lines:
+    - 104
+    - 117
+    detail:
+      calls:
+      - this.externalTypeListeners.get
+      - this.externalTypeListeners.get(messageType)
+      - uuidv4
+  - name: on
+    sig: |-
+      on(
+          messageType: T,
+          handler: (message: Message<ToProtocol[T][0]>) => ToProtocol[T][1],
+        ): void
+    lines:
+    - 119
+    - 124
+    detail:
+      calls:
+      - this.myTypeListeners.set
+  - name: request
+    sig: |-
+      request(
+          messageType: T,
+          data: FromProtocol[T][0],
+        ): Promise<FromProtocol[T][1]>
+    is_async: true
+    lines:
+    - 126
+    - 153
+    detail:
+      calls:
+      - Logger.error
+      - String
+      - listener
+      - new Error
+      - this.externalTypeListeners.get
+      - uuidv4
+  - name: externalOn
+    sig: |-
+      externalOn(
+          messageType: T,
+          handler: (message: Message) => any,
+        )
+    lines:
+    - 155
+    - 160
+    detail:
+      calls:
+      - this.externalTypeListeners.set
+  - name: externalRequest
+    sig: |-
+      externalRequest(
+          messageType: T,
+          data: ToProtocol[T][0],
+          _messageId?: string,
+        ): Promise<ToProtocol[T][1]>
+    lines:
+    - 162
+    - 190
+    detail:
+      calls:
+      - Logger.error
+      - Promise.resolve
+      - String
+      - listener
+      - new Error
+      - this.myTypeListeners.get
+      - uuidv4
+  lines:
+  - 51
+  - 191
+exports:
+- name: Message
+  kind: type
+- name: FromMessage
+  kind: type
+- name: IMessenger
+  kind: type
+- name: InProcessMessenger
+  kind: type

@@ -1,0 +1,450 @@
+## Roska File Descriptor — vertical/handler.ts
+file: vertical/handler.ts
+lines: 661
+layer: logic
+imports:
+- sym: core/diff/myers.myersDiff
+- sym: uri-js.URI
+- sym: vscode.vscode
+- sym: ./decorations.AddedLineDecorationManager
+- sym: ./decorations.RemovedLineDecorationManager
+- sym: ./decorations.belowIndexDecorationType
+- sym: ./decorations.indexDecorationType
+- sym: core.ApplyState
+  kind: typing
+- sym: core.DiffLine
+  kind: typing
+- sym: ./manager.VerticalDiffCodeLens
+  kind: typing
+- sym: ./util.getFirstChangedLine
+types:
+- name: VerticalDiffHandlerOptions
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: input
+    type: string
+  - name: instant
+    type: boolean
+  - name: onStatusUpdate
+    type: |-
+      (
+          status?: ApplyState["status"],
+          numDiffs?: ApplyState["numDiffs"],
+          fileContent?: ApplyState["fileContent"],
+        ) => void
+  - name: streamId
+    type: string
+  lines:
+  - 16
+  - 25
+- name: VerticalDiffHandler
+  kind: struct
+  ctx: ensures the current target file is open and focused before performing edits
+  fields:
+  - name: insertedInCurrentBlock
+    type: any
+    default: '0'
+  - name: streamId
+    type: string
+  - name: disposables
+    type: vscode.Disposable[]
+    default: '[]'
+  - name: currentLineIndex
+    type: number
+  - name: cancelled
+    type: any
+    default: 'false'
+  - name: newLinesAdded
+    type: any
+    default: '0'
+  - name: deletionBuffer
+    type: string[]
+    default: '[]'
+  - name: removedLineDecorations
+    type: RemovedLineDecorationManager
+  - name: addedLineDecorations
+    type: AddedLineDecorationManager
+  - name: _diffLinesQueue
+    type: DiffLine[]
+    default: '[]'
+  - name: _queueLock
+    type: any
+    default: 'false'
+  methods:
+  - name: constructor
+    sig: |-
+      constructor(
+          private startLine: number,
+          private endLine: number,
+          private editor: vscode.TextEditor,
+          private readonly editorToVerticalDiffCodeLens: Map<
+            string,
+            VerticalDiffCodeLens[]
+          >,
+          private readonly clearForFileUri: (
+            fileUri: string | undefined,
+            accept: boolean,
+          ) => void,
+          private readonly refreshCodeLens: () => void,
+          public options: VerticalDiffHandlerOptions,
+        )
+    lines:
+    - 40
+    - 78
+    detail:
+      calls:
+      - new AddedLineDecorationManager
+      - new RemovedLineDecorationManager
+      - this.disposables.push
+      - vscode.window.onDidChangeActiveTextEditor
+  - name: ensureCurrentFileIsFocused
+    sig: ensureCurrentFileIsFocused()
+    is_async: true
+    vis: private
+    lines:
+    - 81
+    - 111
+    detail:
+      calls:
+      - URI.equal
+      - active.document.uri.toString
+      - targetUri.toString
+      - vscode.window.showTextDocument
+      - vscode.window.visibleTextEditors.find
+      - vscode.workspace.openTextDocument
+  - name: range
+    sig: 'range(): vscode.Range'
+    lines:
+    - 113
+    - 117
+    detail:
+      calls:
+      - Math.max
+      - Math.min
+      - new vscode.Range
+  - name: isCancelled
+    sig: isCancelled()
+    lines:
+    - 119
+    - 121
+    detail: {}
+  - name: clear
+    sig: 'clear(accept: boolean)'
+    is_async: true
+    lines:
+    - 127
+    - 153
+    detail:
+      calls:
+      - removedRanges.map
+      - this.clearDecorations
+      - this.deleteRangeLines
+      - this.dispose
+      - this.editor.document.getText
+      - this.editorToVerticalDiffCodeLens.get
+      - this.options.onStatusUpdate
+      - this.refreshCodeLens
+      - this.unifiedRejectAll
+      - vscode.commands.executeCommand
+  - name: dispose
+    sig: dispose()
+    lines:
+    - 155
+    - 157
+    detail:
+      calls:
+      - this.disposables.forEach
+  - name: queueDiffLine
+    sig: 'queueDiffLine(diffLine: DiffLine | undefined)'
+    is_async: true
+    lines:
+    - 159
+    - 186
+    detail:
+      calls:
+      - this._diffLinesQueue.push
+      - this._diffLinesQueue.shift
+      - this._handleDiffLine
+  - name: run
+    sig: 'run(diffLineGenerator: AsyncGenerator<DiffLine>)'
+    is_async: true
+    lines:
+    - 188
+    - 232
+    detail:
+      calls:
+      - diffLines.push
+      - getFirstChangedLine
+      - new vscode.Range
+      - this.clearForFileUri
+      - this.editor.document.getText
+      - this.editor.revealRange
+      - this.editorToVerticalDiffCodeLens.get
+      - this.insertDeletionBuffer
+      - this.options.onStatusUpdate
+      - this.queueDiffLine
+      - this.reapplyWithMyersDiff
+      - this.updateIndexLineDecorations
+  - name: acceptRejectBlock
+    sig: |-
+      acceptRejectBlock(
+          accept: boolean,
+          startLine: number,
+          numGreen: number,
+          numRed: number,
+          skipStatusUpdate?: boolean,
+        )
+    is_async: true
+    lines:
+    - 234
+    - 284
+    detail:
+      calls:
+      - deleted.map
+      - deleted.map((r) => r.line).join
+      - this.addedLineDecorations.deleteRangeStartingAt
+      - this.addedLineDecorations.shiftDownAfterLine
+      - this.deleteLinesAt
+      - this.editor.document.getText
+      - this.editorToVerticalDiffCodeLens.get
+      - this.insertTextAboveLine
+      - this.options.onStatusUpdate
+      - this.removedLineDecorations.deleteRangesStartingAt
+      - this.removedLineDecorations.shiftDownAfterLine
+      - this.shiftCodeLensObjects
+  - name: updateLineDelta
+    sig: |-
+      updateLineDelta(
+          fileUri: string,
+          startLine: number,
+          lineDelta: number,
+        )
+    lines:
+    - 286
+    - 303
+    detail:
+      calls:
+      - this.addedLineDecorations.shiftDownAfterLine
+      - this.editorToVerticalDiffCodeLens.get
+      - this.removedLineDecorations.shiftDownAfterLine
+      - this.shiftCodeLensObjects
+  - name: hasDiffForCurrentFile
+    sig: 'hasDiffForCurrentFile(): boolean'
+    lines:
+    - 305
+    - 308
+    detail:
+      calls:
+      - this.editorToVerticalDiffCodeLens.get
+  - name: clearDecorations
+    sig: clearDecorations()
+    lines:
+    - 310
+    - 316
+    detail:
+      calls:
+      - this.addedLineDecorations.clear
+      - this.clearIndexLineDecorations
+      - this.editorToVerticalDiffCodeLens.delete
+      - this.refreshCodeLens
+      - this.removedLineDecorations.clear
+  - name: reapplyWithMyersDiff
+    sig: 'reapplyWithMyersDiff(diffLines: DiffLine[])'
+    is_async: true
+    lines:
+    - 324
+    - 417
+    detail:
+      calls:
+      - blocks.reverse
+      - codeLensBlocks.push
+      - |-
+        diffLines
+                .filter
+      - |-
+        diffLines
+                .filter((line) => line.type === "same" || line.type === "new")
+                .map
+      - |-
+        diffLines
+                .filter((line) => line.type === "same" || line.type === "new")
+                .map((line)...
+      - |-
+        diffLines
+              .filter
+      - |-
+        diffLines
+              .filter((line) => line.type === "same" || line.type === "old")
+              .map
+      - |-
+        diffLines
+              .filter((line) => line.type === "same" || line.type === "old")
+              .map((line) => ...
+      - myersDiff
+      - |-
+        myersDiffs
+                .map
+      - |-
+        myersDiffs
+                .map((diff) => (diff.type === "old" ? "" : diff.line))
+                .join
+      - myersDiffs.forEach
+      - new Promise
+      - originalDocumentContent.endsWith
+      - this.acceptRejectBlock
+      - this.clearDecorations
+      - this.editor.document.getText
+      - this.editor.edit
+      - this.editorToVerticalDiffCodeLens.get
+      - this.editorToVerticalDiffCodeLens.set
+      - this.ensureCurrentFileIsFocused
+      - this.refreshCodeLens
+  - name: insertDeletionBuffer
+    sig: insertDeletionBuffer()
+    is_async: true
+    vis: private
+    lines:
+    - 419
+    - 462
+    detail:
+      calls:
+      - '"\n".repeat'
+      - blocks.push
+      - this.addedLineDecorations.shiftDownAfterLine
+      - this.editorToVerticalDiffCodeLens.get
+      - this.editorToVerticalDiffCodeLens.set
+      - this.incrementCurrentLineIndex
+      - this.insertTextAboveLine
+      - this.refreshCodeLens
+      - this.removedLineDecorations.addLines
+  - name: incrementCurrentLineIndex
+    sig: incrementCurrentLineIndex()
+    vis: private
+    lines:
+    - 464
+    - 474
+    detail:
+      calls:
+      - new vscode.Range
+      - this.editor.revealRange
+      - this.updateIndexLineDecorations
+  - name: insertTextAboveLine
+    sig: 'insertTextAboveLine(index: number, text: string)'
+    is_async: true
+    vis: private
+    lines:
+    - 476
+    - 496
+    detail:
+      calls:
+      - this.editor.edit
+      - this.ensureCurrentFileIsFocused
+  - name: insertLineAboveIndex
+    sig: 'insertLineAboveIndex(index: number, line: string)'
+    is_async: true
+    vis: private
+    lines:
+    - 498
+    - 502
+    detail:
+      calls:
+      - this.addedLineDecorations.addLine
+      - this.insertTextAboveLine
+  - name: deleteLinesAt
+    sig: 'deleteLinesAt(index: number, numLines = 1)'
+    is_async: true
+    vis: private
+    lines:
+    - 504
+    - 515
+    detail:
+      calls:
+      - new vscode.Position
+      - this.editor.edit
+      - this.ensureCurrentFileIsFocused
+  - name: deleteRangeLines
+    sig: 'deleteRangeLines(ranges: vscode.Range[])'
+    is_async: true
+    vis: private
+    lines:
+    - 517
+    - 532
+    detail:
+      calls:
+      - this.editor.edit
+      - this.ensureCurrentFileIsFocused
+  - name: updateIndexLineDecorations
+    sig: updateIndexLineDecorations()
+    vis: private
+    lines:
+    - 534
+    - 558
+    detail:
+      calls:
+      - end.translate
+      - new vscode.Position
+      - new vscode.Range
+      - start.translate
+      - this.editor.setDecorations
+  - name: _handleDiffLine
+    sig: '_handleDiffLine(diffLine: DiffLine)'
+    is_async: true
+    vis: private
+    lines:
+    - 565
+    - 582
+    detail:
+      calls:
+      - this.deleteLinesAt
+      - this.deletionBuffer.push
+      - this.incrementCurrentLineIndex
+      - this.insertDeletionBuffer
+      - this.insertLineAboveIndex
+  - name: shiftCodeLensObjects
+    sig: 'shiftCodeLensObjects(startLine: number, offset: number)'
+    vis: private
+    lines:
+    - 584
+    - 599
+    detail:
+      calls:
+      - |-
+        this.editorToVerticalDiffCodeLens
+                .get
+      - |-
+        this.editorToVerticalDiffCodeLens
+                .get(this.fileUri)
+                ?.filter
+      - |-
+        this.editorToVerticalDiffCodeLens
+                .get(this.fileUri)
+                ?.filter((x) => x.start !== sta...
+      - this.editorToVerticalDiffCodeLens.set
+      - this.refreshCodeLens
+  - name: unifiedRejectAll
+    sig: unifiedRejectAll()
+    is_async: true
+    vis: private
+    lines:
+    - 604
+    - 660
+    detail:
+      calls:
+      - document.getText
+      - document.getText().split
+      - lines.join
+      - lines.splice
+      - operations.push
+      - operations.sort
+      - this.editor.edit
+      - this.ensureCurrentFileIsFocused
+  lines:
+  - 27
+  - 661
+exports:
+- name: VerticalDiffHandlerOptions
+  kind: type
+- name: VerticalDiffHandler
+  kind: type

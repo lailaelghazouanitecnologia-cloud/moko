@@ -1,0 +1,540 @@
+## Roska File Descriptor — load/unroll.ts
+file: load/unroll.ts
+lines: 857
+layer: logic
+imports:
+- sym: yaml.YAML
+- sym: zod.ZodError
+- sym: ../browser.js.mergeConfigYamlRequestOptions
+- sym: ../browser.js.RequestOptions
+- sym: ../interfaces/index.js.PlatformClient
+- sym: ../interfaces/index.js.Registry
+- sym: ../interfaces/SecretResult.js.encodeSecretLocation
+- sym: ../interfaces/slugs.js.decodeFQSN
+- sym: ../interfaces/slugs.js.decodePackageIdentifier
+- sym: ../interfaces/slugs.js.encodeFQSN
+- sym: ../interfaces/slugs.js.encodePackageIdentifier
+- sym: ../interfaces/slugs.js.encodePackageSlug
+- sym: ../interfaces/slugs.js.FQSN
+- sym: ../interfaces/slugs.js.PackageIdentifier
+- sym: ../interfaces/slugs.js.PackageSlug
+- sym: ../interfaces/slugs.js.packageSlugsEqual
+- sym: ../markdown/index.js.markdownToRule
+- sym: ../schemas/index.js.AssistantUnrolled
+- sym: ../schemas/index.js.assistantUnrolledSchema
+- sym: ../schemas/index.js.Block
+- sym: ../schemas/index.js.blockSchema
+- sym: ../schemas/index.js.ConfigYaml
+- sym: ../schemas/index.js.configYamlSchema
+- sym: ../schemas/index.js.Rule
+- sym: ../validation.js.ConfigResult
+- sym: ../validation.js.ConfigValidationError
+- sym: ./blockDuplicationDetector.js.BlockDuplicationDetector
+- sym: ./clientRender.js.packageIdentifierToShorthandSlug
+- sym: ./clientRender.js.useProxyForUnrenderedSecrets
+- sym: ./getBlockType.js.BlockType
+- sym: ./getBlockType.js.getBlockType
+data:
+- name: TEMPLATE_VAR_REGEX
+  type: any
+  val: /\${{[\s]*([^}\s]+)[\s]*}}/g
+types:
+- name: TemplateData
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: inputs
+    type: Record<string, string> | undefined
+  - name: secrets
+    type: Record<string, string> | undefined
+  - name: continue
+    type: '{}'
+  lines:
+  - 121
+  - 125
+- name: BaseUnrollAssistantOptions
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: renderSecrets
+    type: boolean
+  - name: injectBlocks
+    type: PackageIdentifier[]
+  - name: allowlistedBlocks
+    type: PackageSlug[]
+  - name: blocklistedBlocks
+    type: PackageSlug[]
+  - name: injectRequestOptions
+    type: RequestOptions
+  lines:
+  - 211
+  - 217
+- name: DoNotRenderSecretsUnrollAssistantOptions
+  kind: trait
+  bases:
+  - BaseUnrollAssistantOptions
+  decorators:
+  - interface
+  fields:
+  - name: renderSecrets
+    type: 'false'
+  lines:
+  - 219
+  - 222
+- name: RenderSecretsUnrollAssistantOptions
+  kind: trait
+  bases:
+  - BaseUnrollAssistantOptions
+  decorators:
+  - interface
+  fields:
+  - name: renderSecrets
+    type: 'true'
+  - name: orgScopeId
+    type: string | null
+  - name: currentUserSlug
+    type: string
+  - name: platformClient
+    type: PlatformClient
+  - name: onPremProxyUrl
+    type: string | null
+  - name: alwaysUseProxy
+    type: boolean
+  lines:
+  - 224
+  - 232
+- name: UnrollAssistantOptions
+  kind: enum
+  decorators:
+  - type
+  variants:
+  - name: RenderSecretsUnrollAssistantOptions
+  lines:
+  - 234
+  - 236
+functions:
+- name: parseConfigYaml
+  sig: 'parseConfigYaml(configYaml: string): ConfigYaml'
+  lines:
+  - 35
+  - 61
+  detail:
+    calls:
+    - YAML.parse
+    - configYamlSchema.safeParse
+    - formatZodError
+    - new Error
+- name: parseAssistantUnrolled
+  sig: 'parseAssistantUnrolled(configYaml: string): AssistantUnrolled'
+  lines:
+  - 63
+  - 74
+  detail:
+    calls:
+    - YAML.parse
+    - assistantUnrolledSchema.parse
+    - console.error
+    - formatZodError
+    - new Error
+- name: parseBlock
+  sig: 'parseBlock(configYaml: string): Block'
+  lines:
+  - 76
+  - 84
+  detail:
+    calls:
+    - YAML.parse
+    - blockSchema.parse
+    - formatZodError
+    - new Error
+- name: getTemplateVariables
+  sig: 'getTemplateVariables(templatedYaml: string): string[]'
+  lines:
+  - 88
+  - 100
+  detail:
+    calls:
+    - Array.from
+    - new Set
+    - templatedYaml.matchAll
+    - variables.add
+- name: fillTemplateVariables
+  sig: |-
+    fillTemplateVariables(
+      templatedYaml: string,
+      data: { [key: string]: string },
+    ): string
+  lines:
+  - 102
+  - 119
+  detail:
+    calls:
+    - templatedYaml.replace
+- name: flattenTemplateData
+  sig: |-
+    flattenTemplateData(
+      templateData: TemplateData,
+    ): Record<string, string>
+  lines:
+  - 127
+  - 144
+  detail:
+    calls:
+    - Object.entries
+- name: secretToFQSNMap
+  sig: |-
+    secretToFQSNMap(
+      secretNames: string[],
+      parentPackages: PackageIdentifier[],
+    ): Record<string, string>
+  lines:
+  - 146
+  - 159
+  detail:
+    calls:
+    - parentPackages.map
+    - parts.join
+- name: extractFQSNMap
+  sig: |-
+    extractFQSNMap(
+      rawContent: string,
+      parentPackages: PackageIdentifier[],
+    ): Record<string, string>
+  lines:
+  - 161
+  - 171
+  detail:
+    calls:
+    - getTemplateVariables
+    - secretToFQSNMap
+    - |-
+      templateVars
+          .filter
+    - |-
+      templateVars
+          .filter((v) => v.startsWith("secrets."))
+          .map
+- name: extractRenderedSecretsMap
+  sig: |-
+    extractRenderedSecretsMap(
+      rawContent: string,
+      platformClient: PlatformClient,
+      alwaysUseProxy: boolean = false,
+    ): Promise<Record<string, string>>
+  is_async: true
+  lines:
+  - 176
+  - 209
+  detail:
+    calls:
+    - encodeFQSN
+    - encodeSecretLocation
+    - getTemplateVariables
+    - platformClient.resolveFQSNs
+    - secrets.map
+    - |-
+      templateVars
+          .filter
+    - |-
+      templateVars
+          .filter((v) => v.startsWith("secrets."))
+          .map
+- name: unrollAssistant
+  sig: |-
+    unrollAssistant(
+      id: PackageIdentifier,
+      registry: Registry,
+      options: UnrollAssistantOptions,
+    ): Promise<ConfigResult<AssistantUnrolled>>
+  is_async: true
+  lines:
+  - 238
+  - 249
+  detail:
+    calls:
+    - registry.getContent
+    - unrollAssistantFromContent
+- name: replaceInputsWithSecrets
+  sig: 'replaceInputsWithSecrets(yamlContent: string): string'
+  lines:
+  - 251
+  - 261
+  detail:
+    calls:
+    - fillTemplateVariables
+    - getTemplateVariables
+    - |-
+      getTemplateVariables(yamlContent)
+          .filter
+    - |-
+      getTemplateVariables(yamlContent)
+          .filter((v) => v.startsWith("inputs."))
+          .forEach
+- name: renderTemplateData
+  sig: |-
+    renderTemplateData(
+      rawYaml: string,
+      templateData: Partial<TemplateData>,
+    ): string
+  lines:
+  - 263
+  - 278
+  detail:
+    calls:
+    - fillTemplateVariables
+    - flattenTemplateData
+- name: unrollAssistantFromContent
+  sig: |-
+    unrollAssistantFromContent(
+      id: PackageIdentifier,
+      rawYaml: string,
+      registry: Registry,
+      options: UnrollAssistantOptions,
+    ): Promise<ConfigResult<AssistantUnrolled>>
+  is_async: true
+  lines:
+  - 280
+  - 337
+  detail:
+    calls:
+    - YAML.stringify
+    - extractFQSNMap
+    - extractRenderedSecretsMap
+    - parseAssistantUnrolled
+    - parseMarkdownRuleOrConfigYaml
+    - renderTemplateData
+    - unrollBlocks
+    - useProxyForUnrenderedSecrets
+- name: isPackageAllowed
+  sig: |-
+    isPackageAllowed(
+      pkgId: PackageIdentifier,
+      allowlistedBlocks?: PackageSlug[],
+      blocklistedBlocks?: PackageSlug[],
+    ): boolean
+  lines:
+  - 339
+  - 369
+  detail:
+    calls:
+    - allowlistedBlocks.some
+    - blocklistedBlocks.some
+- name: unrollBlocks
+  sig: |-
+    unrollBlocks(
+      assistant: ConfigYaml,
+      registry: Registry,
+      injectBlocks: PackageIdentifier[] | undefined,
+      allowlistedBlocks?: PackageSlug[],
+      blocklistedBlocks?: PackageSlug[],
+      injectRequestOptions?: RequestOptions,
+    ): Promise<ConfigResult<AssistantUnrolled>>
+  is_async: true
+  lines:
+  - 371
+  - 687
+  detail:
+    calls:
+    - |-
+      (async () => {
+              const injectedBlockPromises = injectBlocks.map(async (injectBlock) => {
+           ...
+    - |-
+      (async () => {
+              const rulePromises = assistant.rules!.map(async (rule, index) => {
+                ...
+    - Promise.all
+    - Promise.resolve
+    - errors.push
+    - injectLocalSourceFile
+    - |-
+      injectLocalSourceFile(
+            key,
+            resolvedBlock,
+            source,
+          ).filter
+    - mergeConfigYamlRequestOptions
+    - new BlockDuplicationDetector
+    - rulesResult.rules.filter
+    - sectionResult.blocks.filter
+    - sections.map
+    - unrolledAssistant[key]?.push
+- name: injectLocalSourceFile
+  sig: |-
+    injectLocalSourceFile(
+      blockType: BlockType,
+      resolvedBlock: any,
+      source?: string,
+    ): (any & { source?: string })[]
+  lines:
+  - 689
+  - 720
+  detail:
+    calls:
+    - blocks.map
+- name: resolveBlock
+  sig: |-
+    resolveBlock(
+      id: PackageIdentifier,
+      inputs: Record<string, string | undefined> | undefined,
+      registry: Registry,
+    ): Promise<AssistantUnrolled>
+  is_async: true
+  lines:
+  - 722
+  - 769
+  detail:
+    calls:
+    - extractFQSNMap
+    - getTemplateVariables
+    - getTemplateVariables(templatedYaml).filter
+    - inputsToFQSNs
+    - missingInputNames.join
+    - new Error
+    - packageIdentifierToShorthandSlug
+    - parseMarkdownRuleOrAssistantUnrolled
+    - registry.getContent
+    - renderTemplateData
+    - unresolvedInputs.map
+- name: parseMarkdownRuleOrAssistantUnrolled
+  sig: |-
+    parseMarkdownRuleOrAssistantUnrolled(
+      content: string,
+      id: PackageIdentifier,
+    ): AssistantUnrolled
+  lines:
+  - 771
+  - 776
+  detail:
+    calls:
+    - parseYamlOrMarkdownRule
+- name: parseMarkdownRuleOrConfigYaml
+  sig: |-
+    parseMarkdownRuleOrConfigYaml(
+      content: string,
+      id: PackageIdentifier,
+    ): ConfigYaml
+  lines:
+  - 778
+  - 783
+  detail:
+    calls:
+    - parseYamlOrMarkdownRule
+- name: parseYamlOrMarkdownRule
+  sig: |-
+    parseYamlOrMarkdownRule(
+      content: string,
+      id: PackageIdentifier,
+      parseYamlFn: (content: string) => T,
+    ): T
+  lines:
+  - 785
+  - 812
+  detail:
+    calls:
+    - '[".yaml", ".yml"].some'
+    - markdownToRule
+    - parseYamlFn
+- name: inputsToFQSNs
+  sig: |-
+    inputsToFQSNs(
+      inputs: Record<string, string | undefined>,
+      blockIdentifier: PackageIdentifier,
+    ): Record<string, string>
+  lines:
+  - 814
+  - 833
+  detail:
+    calls:
+    - Object.entries
+    - console.warn
+    - extractFQSNMap
+    - renderTemplateData
+- name: mergeOverrides
+  sig: |-
+    mergeOverrides(
+      block: T,
+      overrides: Partial<T>,
+    ): T
+  lines:
+  - 835
+  - 845
+  detail:
+    calls:
+    - overrides.hasOwnProperty
+- name: formatZodError
+  sig: 'formatZodError(error: any): string'
+  lines:
+  - 847
+  - 857
+  detail:
+    calls:
+    - Array.isArray
+    - |-
+      error.errors
+            .map
+    - |-
+      error.errors
+            .map((e: any) => {
+              const path = e.path.length > 0 ? `${e.path.join(".")}:...
+exports:
+- name: TemplateData
+  kind: type
+- name: BaseUnrollAssistantOptions
+  kind: type
+- name: DoNotRenderSecretsUnrollAssistantOptions
+  kind: type
+- name: RenderSecretsUnrollAssistantOptions
+  kind: type
+- name: UnrollAssistantOptions
+  kind: type
+- name: parseConfigYaml
+  kind: func
+- name: parseAssistantUnrolled
+  kind: func
+- name: parseBlock
+  kind: func
+- name: getTemplateVariables
+  kind: func
+- name: fillTemplateVariables
+  kind: func
+- name: flattenTemplateData
+  kind: func
+- name: secretToFQSNMap
+  kind: func
+- name: extractFQSNMap
+  kind: func
+- name: extractRenderedSecretsMap
+  kind: func
+- name: unrollAssistant
+  kind: func
+- name: replaceInputsWithSecrets
+  kind: func
+- name: renderTemplateData
+  kind: func
+- name: unrollAssistantFromContent
+  kind: func
+- name: isPackageAllowed
+  kind: func
+- name: unrollBlocks
+  kind: func
+- name: injectLocalSourceFile
+  kind: func
+- name: resolveBlock
+  kind: func
+- name: parseMarkdownRuleOrAssistantUnrolled
+  kind: func
+- name: parseMarkdownRuleOrConfigYaml
+  kind: func
+- name: parseYamlOrMarkdownRule
+  kind: func
+- name: inputsToFQSNs
+  kind: func
+- name: mergeOverrides
+  kind: func
+- name: formatZodError
+  kind: func
+- name: TEMPLATE_VAR_REGEX
+  kind: data

@@ -1,0 +1,410 @@
+## Roska File Descriptor — config/ConfigHandler.ts
+file: config/ConfigHandler.ts
+lines: 664
+layer: logic
+imports:
+- sym: '@continuedev/config-yaml.ConfigResult'
+- sym: '@continuedev/config-yaml.ConfigValidationError'
+- sym: ../control-plane/client.js.ControlPlaneClient
+- sym: ../index.js.BrowserSerializedContinueConfig
+- sym: ../index.js.ContinueConfig
+- sym: ../index.js.IContextProvider
+- sym: ../index.js.IDE
+- sym: ../index.js.IdeSettings
+- sym: ../index.js.ILLMLogger
+- sym: ../util/GlobalContext.js.GlobalContext
+- sym: node:events.EventEmitter
+- sym: ../control-plane/AuthTypes.js.AuthType
+- sym: ../control-plane/AuthTypes.js.ControlPlaneSessionInfo
+- sym: ../control-plane/env.js.getControlPlaneEnv
+- sym: ../control-plane/PolicySingleton.js.PolicySingleton
+- sym: ../util/Logger.js.Logger
+- sym: ../util/posthog.js.Telemetry
+- sym: ./loadLocalAssistants.js.getAllDotContinueDefinitionFiles
+- sym: ./loadLocalAssistants.js.LoadAssistantFilesOptions
+- sym: ./profile/LocalProfileLoader.js.LocalProfileLoader
+- sym: ./profile/PlatformProfileLoader.js.PlatformProfileLoader
+- sym: ./ProfileLifecycleManager.js.OrganizationDescription
+- sym: ./ProfileLifecycleManager.js.OrgWithProfiles
+- sym: ./ProfileLifecycleManager.js.ProfileDescription
+- sym: ./ProfileLifecycleManager.js.ProfileLifecycleManager
+- sym: ./ProfileLifecycleManager.js.SerializedOrgWithProfiles
+types:
+- name: ConfigUpdateFunction
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 39
+  - 39
+- name: ConfigHandler
+  kind: struct
+  ctx: ''
+  fields:
+  - name: controlPlaneClient
+    type: ControlPlaneClient
+  - name: globalContext
+    type: any
+    default: new GlobalContext()
+  - name: globalLocalProfileManager
+    type: ProfileLifecycleManager
+  - name: organizations
+    type: OrgWithProfiles[]
+    default: '[]'
+  - name: currentProfile
+    type: ProfileLifecycleManager | null
+  - name: currentOrg
+    type: OrgWithProfiles | null
+  - name: totalConfigReloads
+    type: number
+    default: '0'
+  - name: isInitialized
+    type: Promise<void>
+  - name: initter
+    type: EventEmitter
+  - name: cascadeAbortController
+    type: AbortController
+  - name: workspaceDirs
+    type: string[] | null
+    default: 'null'
+  - name: PERSONAL_ORG_DESC
+    type: OrganizationDescription
+    default: |-
+      {
+          iconUrl: "",
+          id: "personal",
+          name: "Personal",
+          slug: undefined...
+  - name: updateListeners
+    type: ConfigUpdateFunction[]
+    default: '[]'
+  - name: additionalContextProviders
+    type: IContextProvider[]
+    default: '[]'
+  methods:
+  - name: constructor
+    sig: |-
+      constructor(
+          private readonly ide: IDE,
+          private llmLogger: ILLMLogger,
+          initialSessionInfoPromise: Promise<ControlPlaneSessionInfo | undefined>,
+        )
+    lines:
+    - 60
+    - 87
+    detail:
+      calls:
+      - new AbortController
+      - new ControlPlaneClient
+      - new EventEmitter
+      - new LocalProfileLoader
+      - new ProfileLifecycleManager
+      - new Promise
+      - this.cascadeInit
+  - name: getWorkspaceId
+    sig: getWorkspaceId()
+    is_async: true
+    lines:
+    - 91
+    - 96
+    detail:
+      calls:
+      - this.ide.getWorkspaceDirs
+      - this.workspaceDirs.join
+  - name: getProfileKey
+    sig: 'getProfileKey(orgId: string)'
+    is_async: true
+    lines:
+    - 98
+    - 101
+    detail:
+      calls:
+      - this.getWorkspaceId
+  - name: cascadeInit
+    sig: 'cascadeInit(reason: string, isLogin?: boolean)'
+    is_async: true
+    vis: private
+    lines:
+    - 103
+    - 168
+    detail:
+      calls:
+      - new LocalProfileLoader
+      - new ProfileLifecycleManager
+      - orgs.find
+      - this.getOrgs
+      - this.getWorkspaceId
+      - this.globalContext.get
+      - this.globalContext.update
+      - this.initter.emit
+      - this.reloadConfig
+  - name: getOrgs
+    sig: |-
+      getOrgs(): Promise<{
+          orgs: OrgWithProfiles[];
+          errors?: ConfigValidationError[];
+        }>
+    is_async: true
+    vis: private
+    lines:
+    - 170
+    - 225
+    detail:
+      calls:
+      - PolicySingleton.getInstance
+      - Promise.all
+      - errors.push
+      - orgDescriptions.map
+      - orgsWithPolicy.map
+      - this.controlPlaneClient.getPolicy
+      - this.controlPlaneClient.isSignedIn
+      - this.controlPlaneClient.listOrganizations
+      - this.getLocalOrg
+      - this.getNonPersonalHubOrg
+      - this.getPersonalHubOrg
+  - name: getSerializedOrgs
+    sig: 'getSerializedOrgs(): SerializedOrgWithProfiles[]'
+    lines:
+    - 227
+    - 236
+    detail:
+      calls:
+      - this.organizations.map
+  - name: getHubProfiles
+    sig: 'getHubProfiles(orgScopeId: string | null)'
+    is_async: true
+    vis: private
+    lines:
+    - 238
+    - 262
+    detail:
+      calls:
+      - Promise.all
+      - assistants.map
+      - this.controlPlaneClient.listAssistants
+  - name: getNonPersonalHubOrg
+    sig: |-
+      getNonPersonalHubOrg(
+          org: OrganizationDescription,
+        ): Promise<OrgWithProfiles>
+    is_async: true
+    vis: private
+    lines:
+    - 264
+    - 273
+    detail:
+      calls:
+      - this.getHubProfiles
+      - this.getLocalProfiles
+      - this.rectifyProfilesForOrg
+  - name: getPersonalHubOrg
+    sig: getPersonalHubOrg()
+    is_async: true
+    vis: private
+    lines:
+    - 281
+    - 289
+    detail:
+      calls:
+      - this.getHubProfiles
+      - this.getLocalProfiles
+      - this.rectifyProfilesForOrg
+  - name: getLocalOrg
+    sig: getLocalOrg()
+    is_async: true
+    vis: private
+    lines:
+    - 291
+    - 297
+    detail:
+      calls:
+      - this.getLocalProfiles
+      - this.rectifyProfilesForOrg
+  - name: rectifyProfilesForOrg
+    sig: |-
+      rectifyProfilesForOrg(
+          org: OrganizationDescription,
+          profiles: ProfileLifecycleManager[],
+        ): Promise<OrgWithProfiles>
+    is_async: true
+    vis: private
+    lines:
+    - 299
+    - 341
+    detail:
+      calls:
+      - profiles.find
+      - this.getProfileKey
+      - this.globalContext.get
+      - this.globalContext.update
+  - name: getLocalProfiles
+    sig: 'getLocalProfiles(options: LoadAssistantFilesOptions)'
+    is_async: true
+    lines:
+    - 343
+    - 386
+    detail:
+      calls:
+      - '[...assistantFiles, ...agentFiles].map'
+      - getAllDotContinueDefinitionFiles
+      - getControlPlaneEnv
+      - localProfiles.push
+      - profiles.map
+      - this.ide.getIdeSettings
+  - name: refreshAll
+    sig: 'refreshAll(reason?: string)'
+    is_async: true
+    lines:
+    - 392
+    - 394
+    detail:
+      calls:
+      - this.cascadeInit
+  - name: updateIdeSettings
+    sig: 'updateIdeSettings(ideSettings: IdeSettings)'
+    is_async: true
+    lines:
+    - 397
+    - 400
+    detail:
+      calls:
+      - this.abortCascade
+      - this.cascadeInit
+  - name: updateControlPlaneSessionInfo
+    sig: |-
+      updateControlPlaneSessionInfo(
+          sessionInfo: ControlPlaneSessionInfo | undefined,
+        )
+    is_async: true
+    lines:
+    - 403
+    - 443
+    detail:
+      calls:
+      - Promise.resolve
+      - new ControlPlaneClient
+      - this.abortCascade
+      - this.cascadeInit
+  - name: setSelectedOrgId
+    sig: 'setSelectedOrgId(orgId: string, profileId?: string)'
+    is_async: true
+    lines:
+    - 446
+    - 471
+    detail:
+      calls:
+      - new Error
+      - this.getWorkspaceId
+      - this.globalContext.get
+      - this.globalContext.update
+      - this.organizations.find
+      - this.reloadConfig
+      - this.setSelectedProfileId
+  - name: setSelectedProfileId
+    sig: 'setSelectedProfileId(profileId: string)'
+    is_async: true
+    lines:
+    - 474
+    - 501
+    detail:
+      calls:
+      - new Error
+      - this.currentOrg.profiles.find
+      - this.getProfileKey
+      - this.globalContext.get
+      - this.globalContext.update
+      - this.reloadConfig
+  - name: reloadConfig
+    sig: 'reloadConfig(reason: string, injectErrors?: ConfigValidationError[])'
+    is_async: true
+    lines:
+    - 507
+    - 574
+    detail:
+      calls:
+      - Logger.error
+      - Telemetry.capture
+      - errors.unshift
+      - performance.now
+      - profile.clearConfig
+      - this.controlPlaneClient.isSignedIn
+      - this.currentProfile.reloadConfig
+      - this.initter.emit
+      - this.notifyConfigListeners
+  - name: onConfigUpdate
+    sig: 'onConfigUpdate(listener: ConfigUpdateFunction)'
+    lines:
+    - 585
+    - 587
+    detail:
+      calls:
+      - this.updateListeners.push
+  - name: getSerializedConfig
+    sig: |-
+      getSerializedConfig(): Promise<
+          ConfigResult<BrowserSerializedContinueConfig>
+        >
+    is_async: true
+    lines:
+    - 592
+    - 606
+    detail:
+      calls:
+      - this.currentProfile.getSerializedConfig
+  - name: loadConfig
+    sig: 'loadConfig(): Promise<ConfigResult<ContinueConfig>>'
+    is_async: true
+    lines:
+    - 608
+    - 621
+    detail:
+      calls:
+      - this.currentProfile.loadConfig
+  - name: openConfigProfile
+    sig: |-
+      openConfigProfile(
+          profileId?: string,
+          element?: { sourceFile?: string },
+        )
+    is_async: true
+    lines:
+    - 623
+    - 646
+    detail:
+      calls:
+      - console.error
+      - getControlPlaneEnv
+      - this.currentOrg?.profiles.find
+      - this.ide.getIdeSettings
+      - this.ide.openFile
+      - this.ide.openUrl
+  - name: registerCustomContextProvider
+    sig: 'registerCustomContextProvider(contextProvider: IContextProvider)'
+    lines:
+    - 650
+    - 653
+    detail:
+      calls:
+      - this.additionalContextProviders.push
+      - this.reloadConfig
+  - name: getAdditionalSubmenuContextProviders
+    sig: 'getAdditionalSubmenuContextProviders(): string[]'
+    lines:
+    - 659
+    - 663
+    detail:
+      calls:
+      - |-
+        this.additionalContextProviders
+              .filter
+      - |-
+        this.additionalContextProviders
+              .filter((provider) => provider.description.type === "submenu")...
+  lines:
+  - 41
+  - 664
+exports:
+- name: ConfigUpdateFunction
+  kind: type
+- name: ConfigHandler
+  kind: type

@@ -1,0 +1,638 @@
+## Roska File Descriptor — next-edit/next-edit-8-4-sol.ts
+file: next-edit/next-edit-8-4-sol.ts
+lines: 697
+layer: logic
+purpose: User management system refactored with SOLID principles
+data:
+- name: app
+  type: any
+  val: new UserManagementApp()
+types:
+- name: UserStatus
+  kind: enum
+  decorators:
+  - type
+  variants:
+  - name: '"deleted"'
+  lines:
+  - 5
+  - 5
+- name: LogLevel
+  kind: enum
+  decorators:
+  - type
+  variants:
+  - name: '"error"'
+  lines:
+  - 6
+  - 6
+- name: User
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: id
+    type: number
+  - name: email
+    type: string
+  - name: status
+    type: UserStatus
+  lines:
+  - 8
+  - 14
+- name: Logger
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: log
+    type: 'method: log(message: string, level?: LogLevel): void'
+  lines:
+  - 16
+  - 18
+- name: Database
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: query
+    type: 'method: query(sql: string, params?: any[]): Promise<any>'
+  - name: close
+    type: 'method: close(): void'
+  lines:
+  - 20
+  - 23
+- name: StorageService
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: getItem
+    type: 'method: getItem(key: string): string | null'
+  - name: setItem
+    type: 'method: setItem(key: string, value: string): void'
+  lines:
+  - 25
+  - 28
+- name: SystemConfig
+  kind: trait
+  ctx: Configuration interfaces
+  decorators:
+  - interface
+  fields:
+  - name: debugMode
+    type: boolean
+  - name: apiToken
+    type: string
+  lines:
+  - 31
+  - 34
+- name: ConsoleLogger
+  kind: struct
+  bases:
+  - Logger
+  methods:
+  - name: constructor
+    sig: 'constructor(private notificationService?: NotificationService)'
+    lines:
+    - 38
+    - 38
+    detail: {}
+  - name: log
+    sig: 'log(message: string, level: LogLevel = "info"): void'
+    lines:
+    - 40
+    - 48
+    detail:
+      calls:
+      - console.log
+      - level.toUpperCase
+      - new Date
+      - new Date().toISOString
+      - this.notificationService.sendNotification
+  lines:
+  - 37
+  - 49
+- name: LocalStorageService
+  kind: struct
+  bases:
+  - StorageService
+  methods:
+  - name: getItem
+    sig: 'getItem(key: string): string | null'
+    lines:
+    - 53
+    - 55
+    detail:
+      calls:
+      - localStorage.getItem
+  - name: setItem
+    sig: 'setItem(key: string, value: string): void'
+    lines:
+    - 57
+    - 59
+    detail:
+      calls:
+      - localStorage.setItem
+  lines:
+  - 52
+  - 60
+- name: PersistentLogger
+  kind: struct
+  bases:
+  - Logger
+  methods:
+  - name: constructor
+    sig: |-
+      constructor(
+          private baseLogger: Logger,
+          private storageService: StorageService,
+        )
+    lines:
+    - 64
+    - 67
+    detail: {}
+  - name: log
+    sig: 'log(message: string, level: LogLevel = "info"): void'
+    lines:
+    - 69
+    - 84
+    detail:
+      calls:
+      - JSON.parse
+      - JSON.stringify
+      - logs.push
+      - new Date
+      - new Date().toISOString
+      - this.baseLogger.log
+      - this.storageService.getItem
+      - this.storageService.setItem
+  lines:
+  - 63
+  - 85
+- name: NotificationService
+  kind: struct
+  methods:
+  - name: sendNotification
+    sig: 'sendNotification(message: string): void'
+    lines:
+    - 89
+    - 95
+    detail:
+      calls:
+      - console.log
+      - setTimeout
+  lines:
+  - 88
+  - 96
+- name: DatabaseService
+  kind: struct
+  bases:
+  - Database
+  fields:
+  - name: logger
+    type: Logger
+  methods:
+  - name: constructor
+    sig: 'constructor(logger: Logger)'
+    lines:
+    - 102
+    - 105
+    detail:
+      calls:
+      - this.logger.log
+  - name: query
+    sig: 'query(sql: string, params: any[] = []): Promise<any>'
+    lines:
+    - 107
+    - 111
+    detail:
+      calls:
+      - Promise.resolve
+      - this.logger.log
+  - name: close
+    sig: 'close(): void'
+    lines:
+    - 113
+    - 115
+    detail:
+      calls:
+      - this.logger.log
+  lines:
+  - 99
+  - 116
+- name: ConfigService
+  kind: struct
+  fields:
+  - name: config
+    type: SystemConfig
+  - name: storageService
+    type: StorageService
+  - name: logger
+    type: Logger
+  methods:
+  - name: constructor
+    sig: 'constructor(storageService: StorageService, logger: Logger)'
+    lines:
+    - 124
+    - 128
+    detail:
+      calls:
+      - this.loadConfig
+  - name: loadConfig
+    sig: 'loadConfig(): SystemConfig'
+    vis: private
+    lines:
+    - 130
+    - 139
+    detail:
+      calls:
+      - JSON.parse
+      - this.logger.log
+      - this.storageService.getItem
+  - name: getConfig
+    sig: 'getConfig(): SystemConfig'
+    lines:
+    - 141
+    - 143
+    detail: {}
+  lines:
+  - 119
+  - 144
+- name: AuthService
+  kind: struct
+  fields:
+  - name: db
+    type: Database
+  - name: logger
+    type: Logger
+  - name: storageService
+    type: StorageService
+  - name: currentUserId
+    type: number | null
+    default: 'null'
+  - name: loggedInUsers
+    type: User[]
+    default: '[]'
+  methods:
+  - name: constructor
+    sig: 'constructor(db: Database, logger: Logger, storageService: StorageService)'
+    lines:
+    - 154
+    - 158
+    detail: {}
+  - name: login
+    sig: 'login(email: string, password: string): Promise<boolean>'
+    is_async: true
+    lines:
+    - 160
+    - 191
+    detail:
+      calls:
+      - JSON.stringify
+      - this.db.query
+      - this.hashPassword
+      - this.loggedInUsers.push
+      - this.logger.log
+      - this.storageService.setItem
+  - name: logout
+    sig: 'logout(): void'
+    lines:
+    - 193
+    - 196
+    detail:
+      calls:
+      - this.storageService.setItem
+  - name: getCurrentUserId
+    sig: 'getCurrentUserId(): number | null'
+    lines:
+    - 198
+    - 200
+    detail: {}
+  lines:
+  - 147
+  - 206
+- name: UserRepository
+  kind: struct
+  fields:
+  - name: db
+    type: Database
+  - name: logger
+    type: Logger
+  methods:
+  - name: constructor
+    sig: 'constructor(db: Database, logger: Logger)'
+    lines:
+    - 213
+    - 216
+    detail: {}
+  - name: getAllActiveUsers
+    sig: 'getAllActiveUsers(): Promise<User[]>'
+    is_async: true
+    lines:
+    - 218
+    - 228
+    detail:
+      calls:
+      - this.db.query
+      - this.logger.log
+  - name: createUser
+    sig: 'createUser(userData: User): Promise<boolean>'
+    is_async: true
+    lines:
+    - 230
+    - 242
+    detail:
+      calls:
+      - this.db.query
+      - this.logger.log
+  - name: updateUser
+    sig: 'updateUser(userId: number, userData: User): Promise<boolean>'
+    is_async: true
+    lines:
+    - 244
+    - 256
+    detail:
+      calls:
+      - this.db.query
+      - this.logger.log
+  - name: updateUserStatus
+    sig: 'updateUserStatus(userId: number, status: UserStatus): Promise<boolean>'
+    is_async: true
+    lines:
+    - 258
+    - 270
+    detail:
+      calls:
+      - this.db.query
+      - this.logger.log
+  lines:
+  - 209
+  - 271
+- name: UserUIService
+  kind: struct
+  fields:
+  - name: userRepository
+    type: UserRepository
+  - name: logger
+    type: Logger
+  methods:
+  - name: constructor
+    sig: 'constructor(userRepository: UserRepository, logger: Logger)'
+    lines:
+    - 278
+    - 281
+    detail: {}
+  - name: renderUserList
+    sig: 'renderUserList(containerId: string): Promise<void>'
+    is_async: true
+    lines:
+    - 283
+    - 327
+    detail:
+      calls:
+      - document.getElementById
+      - this.logger.log
+      - this.userRepository.getAllActiveUsers
+      - users.forEach
+  - name: populateEditForm
+    sig: 'populateEditForm(form: HTMLFormElement, user: User): void'
+    lines:
+    - 342
+    - 356
+    detail:
+      calls:
+      - String
+      - form.elements.namedItem
+      - form.scrollIntoView
+  - name: resetForm
+    sig: 'resetForm(formId: string): void'
+    lines:
+    - 358
+    - 364
+    detail:
+      calls:
+      - document.getElementById
+      - form.elements.namedItem
+      - form.reset
+  lines:
+  - 274
+  - 365
+- name: UserController
+  kind: struct
+  fields:
+  - name: userRepository
+    type: UserRepository
+  - name: userUIService
+    type: UserUIService
+  - name: logger
+    type: Logger
+  - name: lastOperation
+    type: string
+    default: '""'
+  methods:
+  - name: constructor
+    sig: |-
+      constructor(
+          userRepository: UserRepository,
+          userUIService: UserUIService,
+          logger: Logger,
+        )
+    lines:
+    - 374
+    - 382
+    detail: {}
+  - name: createUser
+    sig: 'createUser(userData: User): Promise<void>'
+    is_async: true
+    lines:
+    - 384
+    - 394
+    detail:
+      calls:
+      - alert
+      - this.userRepository.createUser
+      - this.userUIService.renderUserList
+      - this.userUIService.resetForm
+  - name: updateUser
+    sig: 'updateUser(userId: number, userData: User): Promise<void>'
+    is_async: true
+    lines:
+    - 396
+    - 406
+    detail:
+      calls:
+      - alert
+      - this.userRepository.updateUser
+      - this.userUIService.renderUserList
+      - this.userUIService.resetForm
+  - name: editUser
+    sig: 'editUser(userId: number): Promise<void>'
+    is_async: true
+    lines:
+    - 408
+    - 424
+    detail:
+      calls:
+      - document.getElementById
+      - this.logger.log
+      - this.userRepository.getAllActiveUsers
+      - this.userUIService.populateEditForm
+      - users.find
+  - name: suspendUser
+    sig: 'suspendUser(userId: number): Promise<void>'
+    is_async: true
+    lines:
+    - 426
+    - 439
+    detail:
+      calls:
+      - alert
+      - confirm
+      - this.userRepository.updateUserStatus
+      - this.userUIService.renderUserList
+  - name: activateUser
+    sig: 'activateUser(userId: number): Promise<void>'
+    is_async: true
+    lines:
+    - 441
+    - 450
+    detail:
+      calls:
+      - alert
+      - this.userRepository.updateUserStatus
+      - this.userUIService.renderUserList
+  - name: deleteUser
+    sig: 'deleteUser(userId: number): Promise<void>'
+    is_async: true
+    lines:
+    - 452
+    - 465
+    detail:
+      calls:
+      - alert
+      - confirm
+      - this.userRepository.updateUserStatus
+      - this.userUIService.renderUserList
+  - name: getLastOperation
+    sig: 'getLastOperation(): string'
+    lines:
+    - 467
+    - 469
+    detail: {}
+  lines:
+  - 368
+  - 470
+- name: UserManagementApp
+  kind: struct
+  fields:
+  - name: logger
+    type: Logger
+  - name: db
+    type: Database
+  - name: userRepository
+    type: UserRepository
+  - name: userUIService
+    type: UserUIService
+  - name: userController
+    type: UserController
+  - name: authService
+    type: AuthService
+  - name: configService
+    type: ConfigService
+  - name: storageService
+    type: StorageService
+  methods:
+  - name: constructor
+    sig: constructor()
+    lines:
+    - 483
+    - 519
+    detail:
+      calls:
+      - new AuthService
+      - new ConfigService
+      - new ConsoleLogger
+      - new DatabaseService
+      - new LocalStorageService
+      - new NotificationService
+      - new PersistentLogger
+      - new UserController
+      - new UserRepository
+      - new UserUIService
+      - this.setupErrorHandlers
+      - this.setupEventListeners
+  - name: handleUserFormSubmit
+    sig: 'handleUserFormSubmit(event: Event): void'
+    vis: private
+    lines:
+    - 543
+    - 562
+    detail:
+      calls:
+      - event.preventDefault
+      - form.elements.namedItem
+      - parseInt
+      - this.userController.createUser
+      - this.userController.updateUser
+  - name: login
+    sig: 'login(email: string, password: string): Promise<boolean>'
+    is_async: true
+    lines:
+    - 564
+    - 573
+    detail:
+      calls:
+      - alert
+      - this.authService.login
+  - name: cleanup
+    sig: 'cleanup(): void'
+    lines:
+    - 575
+    - 578
+    detail:
+      calls:
+      - this.db.close
+      - this.logger.log
+  lines:
+  - 473
+  - 579
+exports:
+- name: UserStatus
+  kind: type
+- name: LogLevel
+  kind: type
+- name: User
+  kind: type
+- name: Logger
+  kind: type
+- name: Database
+  kind: type
+- name: StorageService
+  kind: type
+- name: SystemConfig
+  kind: type
+- name: ConsoleLogger
+  kind: type
+- name: LocalStorageService
+  kind: type
+- name: PersistentLogger
+  kind: type
+- name: NotificationService
+  kind: type
+- name: DatabaseService
+  kind: type
+- name: ConfigService
+  kind: type
+- name: AuthService
+  kind: type
+- name: UserRepository
+  kind: type
+- name: UserUIService
+  kind: type
+- name: UserController
+  kind: type
+- name: UserManagementApp
+  kind: type
+- name: app
+  kind: data

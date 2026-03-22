@@ -1,0 +1,298 @@
+## Roska File Descriptor — mcp/MCPOauth.ts
+file: mcp/MCPOauth.ts
+lines: 349
+layer: logic
+imports:
+- sym: '@modelcontextprotocol/sdk/client/auth.js.OAuthClientProvider'
+- sym: '@modelcontextprotocol/sdk/client/auth.js.auth'
+- sym: '@modelcontextprotocol/sdk/shared/auth.js.OAuthClientInformationFull'
+- sym: '@modelcontextprotocol/sdk/shared/auth.js.OAuthClientInformationSchema'
+- sym: '@modelcontextprotocol/sdk/shared/auth.js.OAuthTokens'
+- sym: '@modelcontextprotocol/sdk/shared/auth.js.OAuthTokensSchema'
+- sym: ../...IDE
+- sym: http.http
+- sym: url.url
+- sym: ../../util/GlobalContext.GlobalContext
+- sym: ../../util/GlobalContext.GlobalContextType
+data:
+- name: authenticatingContexts
+  type: any
+  val: new Map<string, MCPOauthContext>()
+- name: stateToServerUrl
+  type: any
+  val: new Map<string, string>()
+- name: PORT
+  type: number
+  val: '3000'
+- name: serverInstance
+  type: http.Server | null
+  val: 'null'
+types:
+- name: MCPOauthContext
+  kind: trait
+  ctx: Use a Map to support concurrent authentications for different servers
+  decorators:
+  - interface
+  fields:
+  - name: serverId
+    type: string
+  - name: ide
+    type: IDE
+  - name: state
+    type: string
+  lines:
+  - 19
+  - 23
+- name: MCPOauthStorage
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 67
+  - 67
+- name: MCPOauthStorageKey
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 68
+  - 68
+- name: MCPConnectionOauthProvider
+  kind: struct
+  bases:
+  - OAuthClientProvider
+  fields:
+  - name: globalContext
+    type: GlobalContext
+  - name: _redirectUrl
+    type: string
+  - name: _redirectUrlInitialized
+    type: Promise<void>
+  methods:
+  - name: constructor
+    sig: |-
+      constructor(
+          public oauthServerUrl: string,
+          private ide: IDE,
+        )
+    lines:
+    - 75
+    - 84
+    detail:
+      calls:
+      - new GlobalContext
+      - this._initializeRedirectUrl
+  - name: _initializeRedirectUrl
+    sig: '_initializeRedirectUrl(): Promise<void>'
+    is_async: true
+    vis: private
+    lines:
+    - 86
+    - 99
+    detail:
+      calls:
+      - console.error
+      - this.ide.getExternalUri
+  - name: redirectUrl
+    sig: redirectUrl()
+    lines:
+    - 101
+    - 104
+    detail: {}
+  - name: getRedirectUrlWithState
+    sig: 'getRedirectUrlWithState(state: string): string'
+    lines:
+    - 106
+    - 111
+    detail:
+      calls:
+      - new URL
+      - urlObj.searchParams.set
+      - urlObj.toString
+  - name: ensureRedirectUrl
+    sig: 'ensureRedirectUrl(): Promise<string>'
+    is_async: true
+    lines:
+    - 113
+    - 117
+    detail: {}
+  - name: clientMetadata
+    sig: clientMetadata()
+    lines:
+    - 119
+    - 134
+    detail:
+      calls:
+      - authenticatingContexts.get
+      - this.getRedirectUrlWithState
+  - name: saveClientInformation
+    sig: 'saveClientInformation(clientInformation: OAuthClientInformationFull)'
+    lines:
+    - 164
+    - 166
+    detail:
+      calls:
+      - this._updateOauthStorage
+  - name: clientInformation
+    sig: clientInformation()
+    is_async: true
+    lines:
+    - 168
+    - 177
+    detail:
+      calls:
+      - OAuthClientInformationSchema.parseAsync
+      - this._getOauthStorage
+  - name: tokens
+    sig: tokens()
+    is_async: true
+    lines:
+    - 179
+    - 185
+    detail:
+      calls:
+      - OAuthTokensSchema.parseAsync
+      - this._getOauthStorage
+  - name: saveTokens
+    sig: 'saveTokens(tokens: OAuthTokens)'
+    lines:
+    - 187
+    - 189
+    detail:
+      calls:
+      - this._updateOauthStorage
+  - name: codeVerifier
+    sig: 'codeVerifier(): string | Promise<string>'
+    lines:
+    - 191
+    - 197
+    detail:
+      calls:
+      - this._getOauthStorage
+  - name: saveCodeVerifier
+    sig: 'saveCodeVerifier(codeVerifier: string)'
+    lines:
+    - 199
+    - 201
+    detail:
+      calls:
+      - this._updateOauthStorage
+  - name: clear
+    sig: clear()
+    lines:
+    - 203
+    - 205
+    detail:
+      calls:
+      - this._clearOauthStorage
+  - name: redirectToAuthorization
+    sig: 'redirectToAuthorization(authorizationUrl: URL)'
+    is_async: true
+    lines:
+    - 207
+    - 230
+    detail:
+      calls:
+      - authorizationUrl.toString
+      - createServerForOAuth
+      - new Promise
+      - this._redirectUrl.includes
+      - this.ensureRedirectUrl
+      - this.ide.openUrl
+  lines:
+  - 70
+  - 231
+functions:
+- name: createServerForOAuth
+  sig: createServerForOAuth()
+  lines:
+  - 33
+  - 65
+  detail: {}
+- name: getOauthToken
+  sig: 'getOauthToken(mcpServerUrl: string, ide: IDE)'
+  is_async: true
+  lines:
+  - 233
+  - 237
+  detail:
+    calls:
+    - authProvider.tokens
+    - new MCPConnectionOauthProvider
+- name: performAuth
+  sig: 'performAuth(serverId: string, url: string, ide: IDE)'
+  is_async: true
+  lines:
+  - 243
+  - 271
+  detail:
+    calls:
+    - auth
+    - authProvider.ensureRedirectUrl
+    - authenticatingContexts.delete
+    - authenticatingContexts.set
+    - new MCPConnectionOauthProvider
+    - stateToServerUrl.delete
+    - stateToServerUrl.set
+    - uuidv4
+- name: handleMCPOauthCode
+  sig: 'handleMCPOauthCode(authorizationCode: string, state?: string)'
+  is_async: true
+  lines:
+  - 276
+  - 344
+  detail:
+    calls:
+    - Array.from
+    - MCPManagerSingleton.getInstance
+    - MCPManagerSingleton.getInstance().refreshConnection
+    - String
+    - auth
+    - authProvider.ensureRedirectUrl
+    - authenticatingContexts.delete
+    - authenticatingContexts.entries
+    - authenticatingContexts.get
+    - console.error
+    - context.ide.showToast
+    - import
+    - new Error
+    - new MCPConnectionOauthProvider
+    - new Promise
+    - stateToServerUrl.delete
+    - stateToServerUrl.get
+- name: removeMCPAuth
+  sig: 'removeMCPAuth(url: string, ide: IDE)'
+  lines:
+  - 346
+  - 349
+  detail:
+    calls:
+    - authProvider.clear
+    - new MCPConnectionOauthProvider
+exports:
+- name: MCPOauthContext
+  kind: type
+- name: MCPOauthStorage
+  kind: type
+- name: MCPOauthStorageKey
+  kind: type
+- name: MCPConnectionOauthProvider
+  kind: type
+- name: createServerForOAuth
+  kind: func
+- name: getOauthToken
+  kind: func
+- name: performAuth
+  kind: func
+- name: handleMCPOauthCode
+  kind: func
+- name: removeMCPAuth
+  kind: func
+- name: authenticatingContexts
+  kind: data
+- name: stateToServerUrl
+  kind: data
+- name: PORT
+  kind: data
+- name: serverInstance
+  kind: data

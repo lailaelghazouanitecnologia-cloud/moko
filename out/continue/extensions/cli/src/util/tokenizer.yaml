@@ -1,0 +1,260 @@
+## Roska File Descriptor — util/tokenizer.ts
+file: util/tokenizer.ts
+lines: 393
+layer: logic
+imports:
+- sym: '@continuedev/config-yaml.ModelConfig'
+- sym: core/index.js.ChatHistoryItem
+  kind: typing
+- sym: core/llm/getAdjustedTokenCount.js.getAdjustedTokenCountFromModel
+- sym: gpt-tokenizer.encode
+- sym: openai/resources/chat/completions.mjs.ChatCompletionTool
+  kind: typing
+- sym: ./logger.js.logger
+data:
+- name: DEFAULT_MAX_TOKENS_RATIO
+  type: number
+  val: '0.35'
+- name: MAX_MAX_TOKENS
+  type: any
+  val: 64_000
+- name: DEFAULT_CONTEXT_LENGTH
+  type: any
+  val: 200_000
+types:
+- name: TotalInputTokenParams
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: chatHistory
+    type: ChatHistoryItem[]
+  - name: model
+    type: ModelConfig
+  - name: systemMessage
+    type: string
+  - name: tools
+    type: ChatCompletionTool[]
+  lines:
+  - 300
+  - 305
+- name: ValidateContextLengthParams
+  kind: trait
+  decorators:
+  - interface
+  fields:
+  - name: chatHistory
+    type: ChatHistoryItem[]
+  - name: model
+    type: ModelConfig
+  - name: safetyBuffer
+    type: number
+  - name: systemMessage
+    type: string
+  - name: tools
+    type: ChatCompletionTool[]
+  lines:
+  - 340
+  - 346
+functions:
+- name: getModelContextLimit
+  sig: 'getModelContextLimit(model: ModelConfig): number'
+  lines:
+  - 19
+  - 23
+  detail: {}
+- name: getModelMaxTokens
+  sig: 'getModelMaxTokens(model: ModelConfig): number'
+  lines:
+  - 25
+  - 34
+  detail:
+    calls:
+    - Math.ceil
+    - Math.min
+    - getModelContextLimit
+- name: countContentTokens
+  sig: |-
+    countContentTokens(
+      content: string | any[],
+      model: ModelConfig,
+    ): number
+  lines:
+  - 39
+  - 62
+  detail:
+    calls:
+    - Array.isArray
+    - encode
+    - getAdjustedTokenCountFromModel
+- name: countToolCallFunctionTokens
+  sig: |-
+    countToolCallFunctionTokens(
+      toolCallFunction: { name?: string; arguments?: string } | undefined,
+    ): number
+  lines:
+  - 67
+  - 78
+  detail:
+    calls:
+    - encode
+- name: countToolOutputTokens
+  sig: |-
+    countToolOutputTokens(
+      output: Array<{ content?: string; name?: string }> | undefined,
+    ): number
+  lines:
+  - 83
+  - 99
+  detail:
+    calls:
+    - encode
+- name: countChatHistoryItemTokens
+  sig: |-
+    countChatHistoryItemTokens(
+      historyItem: ChatHistoryItem,
+      model: ModelConfig,
+    ): number
+  lines:
+  - 106
+  - 170
+  detail:
+    calls:
+    - JSON.stringify
+    - Math.ceil
+    - countContentTokens
+    - countToolCallFunctionTokens
+    - countToolOutputTokens
+    - encode
+    - |-
+      historyItem.contextItems
+            .map
+    - |-
+      historyItem.contextItems
+            .map((item) => item.content + item.name)
+            .join
+    - logger.error
+- name: countChatHistoryTokens
+  sig: |-
+    countChatHistoryTokens(
+      chatHistory: ChatHistoryItem[],
+      model: ModelConfig,
+    ): number
+  lines:
+  - 177
+  - 191
+  detail:
+    calls:
+    - countChatHistoryItemTokens
+- name: calculateContextUsagePercentage
+  sig: |-
+    calculateContextUsagePercentage(
+      tokenCount: number,
+      model: ModelConfig,
+    ): number
+  lines:
+  - 199
+  - 205
+  detail:
+    calls:
+    - Math.min
+    - Math.round
+    - getModelContextLimit
+- name: countParameterFieldTokens
+  sig: |-
+    countParameterFieldTokens(
+      fields: Record<string, unknown> | undefined,
+    ): number
+  lines:
+  - 212
+  - 243
+  detail:
+    calls:
+    - Array.isArray
+    - encode
+- name: countSingleToolTokens
+  sig: 'countSingleToolTokens(tool: ChatCompletionTool): number'
+  lines:
+  - 250
+  - 272
+  detail:
+    calls:
+    - countParameterFieldTokens
+    - encode
+- name: countToolDefinitionTokens
+  sig: 'countToolDefinitionTokens(tools: ChatCompletionTool[]): number'
+  lines:
+  - 281
+  - 295
+  detail:
+    calls:
+    - countSingleToolTokens
+- name: countTotalInputTokens
+  sig: 'countTotalInputTokens(params: TotalInputTokenParams): number'
+  lines:
+  - 313
+  - 335
+  detail:
+    calls:
+    - chatHistory.some
+    - countChatHistoryTokens
+    - countToolDefinitionTokens
+    - encode
+- name: validateContextLength
+  sig: |-
+    validateContextLength(params: ValidateContextLengthParams): {
+      isValid: boolean;
+      error?: string;
+      inputTokens?: number;
+      contextLimit?: number;
+      maxTokens?: number;
+    }
+  lines:
+  - 354
+  - 393
+  detail:
+    calls:
+    - Math.ceil
+    - contextLimit.toLocaleString
+    - countTotalInputTokens
+    - getModelContextLimit
+    - inputTokens.toLocaleString
+    - reservedForOutput.toLocaleString
+    - totalRequired.toLocaleString
+exports:
+- name: TotalInputTokenParams
+  kind: type
+- name: ValidateContextLengthParams
+  kind: type
+- name: getModelContextLimit
+  kind: func
+- name: getModelMaxTokens
+  kind: func
+- name: countContentTokens
+  kind: func
+- name: countToolCallFunctionTokens
+  kind: func
+- name: countToolOutputTokens
+  kind: func
+- name: countChatHistoryItemTokens
+  kind: func
+- name: countChatHistoryTokens
+  kind: func
+- name: calculateContextUsagePercentage
+  kind: func
+- name: countParameterFieldTokens
+  kind: func
+- name: countSingleToolTokens
+  kind: func
+- name: countToolDefinitionTokens
+  kind: func
+- name: countTotalInputTokens
+  kind: func
+- name: validateContextLength
+  kind: func
+- name: DEFAULT_MAX_TOKENS_RATIO
+  kind: data
+- name: MAX_MAX_TOKENS
+  kind: data
+- name: DEFAULT_CONTEXT_LENGTH
+  kind: data

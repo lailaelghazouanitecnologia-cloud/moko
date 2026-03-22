@@ -1,0 +1,390 @@
+## Roska File Descriptor — llms/OpenAI.ts
+file: llms/OpenAI.ts
+lines: 740
+layer: logic
+imports:
+- sym: openai/resources/index.ChatCompletionCreateParams
+- sym: openai/resources/index.ChatCompletionMessageParam
+- sym: '@continuedev/fetch.streamSse'
+- sym: openai/resources/responses/responses.mjs.ResponseCreateParamsBase
+- sym: openai/resources/responses/responses.mjs.ResponseInputItem
+- sym: openai/resources/responses/responses.mjs.ResponseInputMessageContentList
+- sym: openai/resources/responses/responses.mjs.Tool as ResponsesTool
+- sym: ../../index.js.ChatMessage
+- sym: ../../index.js.CompletionOptions
+- sym: ../../index.js.LLMOptions
+- sym: ../../index.js.Tool
+- sym: ../../util/messageContent.js.renderChatMessage
+- sym: ../index.js.BaseLLM
+- sym: ../openaiTypeConverters.js.fromChatCompletionChunk
+- sym: ../openaiTypeConverters.js.fromResponsesChunk
+- sym: ../openaiTypeConverters.js.LlmApiRequestType
+- sym: ../openaiTypeConverters.js.toChatBody
+- sym: ../openaiTypeConverters.js.toResponsesInput
+data:
+- name: NON_CHAT_MODELS
+  type: array
+  val: |-
+    [
+      "text-davinci-002",
+      "text-davinci-003",
+      "code-davinci-002",
+      "text-ada-001",
+      "text-babbage-001",
+      "text-curi...
+types:
+- name: OpenAI
+  kind: struct
+  ctx: 'Minimal draft: Responses API support for select models'
+  bases:
+  - BaseLLM
+  fields:
+  - name: useLegacyCompletionsEndpoint
+    type: boolean | undefined
+    default: undefined
+  - name: providerName
+    type: any
+    default: '"openai"'
+  - name: defaultOptions
+    type: Partial<LLMOptions> | undefined
+    default: |-
+      {
+          apiBase: "https://api.openai.com/v1/",
+          maxEmbeddingBatchSize: 128,
+        }
+  - name: useOpenAIAdapterFor
+    type: (LlmApiRequestType | "*")[]
+    default: |-
+      [
+          "chat",
+          "embed",
+          "list",
+          "rerank",
+          "streamChat",
+          "stre...
+  methods:
+  - name: constructor
+    sig: 'constructor(options: LLMOptions)'
+    lines:
+    - 196
+    - 200
+    detail:
+      calls:
+      - super
+  - name: isOSeriesOrGpt5Model
+    sig: 'isOSeriesOrGpt5Model(model?: string): boolean'
+    lines:
+    - 221
+    - 223
+    detail:
+      calls:
+      - model.includes
+      - model.match
+  - name: _convertArgs
+    sig: |-
+      _convertArgs(
+          options: CompletionOptions,
+          messages: ChatMessage[],
+        ): ChatCompletionCreateParams
+    vis: protected
+    lines:
+    - 274
+    - 317
+    detail:
+      calls:
+      - formatMessageForO1OrGpt5
+      - options.stop?.slice
+      - this.getMaxStopWords
+      - this.isOSeriesOrGpt5Model
+      - this.supportsPrediction
+      - toChatBody
+  - name: _convertArgsResponses
+    sig: |-
+      _convertArgsResponses(
+          options: CompletionOptions,
+          messages: ChatMessage[],
+        ): ResponseCreateParamsBase
+    vis: protected
+    lines:
+    - 319
+    - 371
+    detail:
+      calls:
+      - |-
+        options.tools
+                .filter
+      - |-
+        options.tools
+                .filter((t) => !t.type || t.type === "function")
+                .map
+      - toResponsesInput
+  - name: _complete
+    sig: |-
+      _complete(
+          prompt: string,
+          signal: AbortSignal,
+          options: CompletionOptions,
+        ): Promise<string>
+    is_async: true
+    vis: protected
+    lines:
+    - 381
+    - 396
+    detail:
+      calls:
+      - this._streamChat
+  - name: _getEndpoint
+    sig: |-
+      _getEndpoint(
+          endpoint: "chat/completions" | "completions" | "models" | "responses",
+        )
+    vis: protected
+    lines:
+    - 398
+    - 421
+    detail:
+      calls:
+      - new Error
+      - new URL
+      - this.apiType?.includes
+  - name: _streamComplete
+    sig: |-
+      _streamComplete(
+          prompt: string,
+          signal: AbortSignal,
+          options: CompletionOptions,
+        ): AsyncGenerator<string>
+    is_async: true
+    vis: protected
+    lines:
+    - 423
+    - 435
+    detail:
+      calls:
+      - renderChatMessage
+      - this._streamChat
+  - name: modifyChatBody
+    sig: |-
+      modifyChatBody(
+          body: ChatCompletionCreateParams,
+        ): ChatCompletionCreateParams
+    vis: protected
+    lines:
+    - 437
+    - 486
+    detail:
+      calls:
+      - body.model.startsWith
+      - body.stop?.slice
+      - formatMessageForO1OrGpt5
+      - this.getMaxStopWords
+      - this.isFireworksAiModel
+      - this.isOSeriesOrGpt5Model
+      - this.supportsPrediction
+  - name: _legacystreamComplete
+    sig: |-
+      _legacystreamComplete(
+          prompt: string,
+          signal: AbortSignal,
+          options: CompletionOptions,
+        ): AsyncGenerator<string>
+    is_async: true
+    vis: protected
+    lines:
+    - 488
+    - 513
+    detail:
+      calls:
+      - JSON.stringify
+      - streamSse
+      - this._convertArgs
+      - this._getEndpoint
+      - this._getHeaders
+      - this.extraBodyProperties
+      - this.fetch
+  - name: _streamChat
+    sig: |-
+      _streamChat(
+          messages: ChatMessage[],
+          signal: AbortSignal,
+          options: CompletionOptions,
+        ): AsyncGenerator<ChatMessage>
+    is_async: true
+    vis: protected
+    lines:
+    - 515
+    - 568
+    detail:
+      calls:
+      - JSON.stringify
+      - NON_CHAT_MODELS.includes
+      - fromChatCompletionChunk
+      - isChatOnlyModel
+      - renderChatMessage
+      - response.json
+      - streamSse
+      - this._convertArgs
+      - this._getEndpoint
+      - this._getHeaders
+      - this._legacystreamComplete
+      - this.extraBodyProperties
+      - this.fetch
+      - this.supportsCompletions
+  - name: _streamResponses
+    sig: |-
+      _streamResponses(
+          messages: ChatMessage[],
+          signal: AbortSignal,
+          options: CompletionOptions,
+        ): AsyncGenerator<ChatMessage>
+    is_async: true
+    vis: protected
+    lines:
+    - 571
+    - 620
+    detail:
+      calls:
+      - Array.isArray
+      - JSON.stringify
+      - fromResponsesChunk
+      - streamSse
+      - this._convertArgsResponses
+      - this._getEndpoint
+      - this._getHeaders
+      - this._responses
+      - this.extraBodyProperties
+      - this.fetch
+      - this.isOSeriesOrGpt5Model
+  - name: _responses
+    sig: |-
+      _responses(
+          messages: ChatMessage[],
+          signal: AbortSignal,
+          options: CompletionOptions,
+        ): Promise<ChatMessage | ChatMessage[]>
+    is_async: true
+    vis: protected
+    lines:
+    - 622
+    - 653
+    detail:
+      calls:
+      - JSON.stringify
+      - fromResponsesChunk
+      - response.json
+      - response.json().catch
+      - this._convertArgsResponses
+      - this._getEndpoint
+      - this._getHeaders
+      - this.extraBodyProperties
+      - this.fetch
+      - this.isOSeriesOrGpt5Model
+  - name: _streamFim
+    sig: |-
+      _streamFim(
+          prefix: string,
+          suffix: string,
+          signal: AbortSignal,
+          options: CompletionOptions,
+        ): AsyncGenerator<string>
+    is_async: true
+    vis: protected
+    lines:
+    - 655
+    - 688
+    detail:
+      calls:
+      - JSON.stringify
+      - new URL
+      - streamSse
+      - this.extraBodyProperties
+      - this.fetch
+  - name: listModels
+    sig: 'listModels(): Promise<string[]>'
+    is_async: true
+    lines:
+    - 690
+    - 698
+    detail:
+      calls:
+      - data.data.map
+      - response.json
+      - this._getEndpoint
+      - this._getHeaders
+      - this.fetch
+  - name: _embed
+    sig: '_embed(chunks: string[]): Promise<number[][]>'
+    is_async: true
+    vis: protected
+    lines:
+    - 716
+    - 737
+    detail:
+      calls:
+      - JSON.stringify
+      - data.data.map
+      - new Error
+      - resp.json
+      - resp.text
+      - this._getEmbedEndpoint
+      - this.extraBodyProperties
+      - this.fetch
+  lines:
+  - 193
+  - 738
+functions:
+- name: isChatOnlyModel
+  sig: 'isChatOnlyModel(model: string): boolean'
+  lines:
+  - 42
+  - 45
+  detail:
+    calls:
+    - model.startsWith
+- name: formatMessageForO1OrGpt5
+  sig: 'formatMessageForO1OrGpt5(messages: ChatCompletionMessageParam[])'
+  lines:
+  - 47
+  - 58
+  detail:
+    calls:
+    - messages?.map
+- name: formatMessageForO1OrGpt5ForResponses
+  sig: |-
+    formatMessageForO1OrGpt5ForResponses(
+      messages: ChatCompletionMessageParam[],
+    ): ResponseInputItem[]
+  lines:
+  - 60
+  - 191
+  detail:
+    calls:
+    - Array.isArray
+    - |-
+      content
+                      .filter
+    - |-
+      content
+                      .filter(
+                        (p): p is { type: "text"; text: string } => p.typ...
+    - |-
+      content
+                  .filter
+    - |-
+      content
+                  .filter(
+                    (p): p is { type: "text"; text: string } => p.type === "t...
+    - input.push
+    - parts.push
+    - pushMessage
+exports:
+- name: OpenAI
+  kind: type
+- name: isChatOnlyModel
+  kind: func
+- name: formatMessageForO1OrGpt5
+  kind: func
+- name: formatMessageForO1OrGpt5ForResponses
+  kind: func
+- name: NON_CHAT_MODELS
+  kind: data
