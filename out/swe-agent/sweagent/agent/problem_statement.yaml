@@ -1,0 +1,400 @@
+## Roska File Descriptor — agent/problem_statement.py
+file: agent/problem_statement.py
+lines: 312
+layer: logic
+imports:
+- sym: base64
+- sym: urllib.parse.urlparse
+- sym: requests
+- sym: pydantic.BaseModel
+- sym: pydantic.ConfigDict
+- sym: pydantic.Field
+- sym: pydantic.PrivateAttr
+- sym: sweagent.utils.github._get_problem_statement_from_github_issue
+- sym: sweagent.utils.github._parse_gh_issue_url
+- sym: sweagent.utils.log.get_logger
+data:
+- name: logger
+  type: Any
+  val: get_logger("swea-config", emoji="🔧")
+- name: VALID_IMAGE_MIME_TYPES
+  type: dict
+  val: |-
+    {
+        "image/png",
+        "image/jpeg",
+        "image/jpg",  # Some servers return jpg instead of jpeg
+        "image/webp",
+    }
+- name: ProblemStatementConfig
+  type: tuple
+  val: |-
+    (
+        TextProblemStatement
+        | SWEBenchMultimodalProblemStatement
+        | GithubIssue
+        | EmptyProblemStatement
+        | ...
+types:
+- name: ProblemStatement
+  kind: trait
+  ctx: A problem statement for a task. Any class that implements this protocol can be used as a problem statement.
+  bases:
+  - Protocol
+  fields:
+  - name: id
+    type: Any
+    default: str
+  methods:
+  - name: get_problem_statement
+    sig: get_problem_statement(self) -> str
+    lines:
+    - 33
+    - 33
+    detail: {}
+  - name: get_problem_statement_for_env
+    sig: get_problem_statement_for_env(self) -> str
+    lines:
+    - 35
+    - 40
+    detail:
+      calls:
+      - self.get_problem_statement
+  - name: get_extra_fields
+    sig: get_extra_fields(self) -> dict[str, Any]
+    lines:
+    - 42
+    - 42
+    detail: {}
+  lines:
+  - 26
+  - 42
+- name: _BuiltinProblemStatementBase
+  kind: model
+  vis: protected
+  ctx: A base class for the builtin problem statements to avoid typing much
+  bases:
+  - BaseModel
+  methods:
+  - name: get_problem_statement
+    sig: get_problem_statement(self) -> str
+    lines:
+    - 48
+    - 48
+    detail: {}
+  - name: get_problem_statement_for_env
+    sig: get_problem_statement_for_env(self) -> str
+    lines:
+    - 50
+    - 51
+    detail:
+      calls:
+      - self.get_problem_statement
+  - name: get_extra_fields
+    sig: get_extra_fields(self) -> dict[str, Any]
+    lines:
+    - 53
+    - 54
+    detail: {}
+  lines:
+  - 45
+  - 54
+- name: EmptyProblemStatement
+  kind: struct
+  ctx: Discriminator for (de)serialization/CLI. Do not change.
+  bases:
+  - _BuiltinProblemStatementBase
+  fields:
+  - name: id
+    type: Any
+    default: str
+  - name: type
+    type: Any
+    default: Literal["empty"]
+  - name: model_config
+    type: Any
+    default: ConfigDict(extra="forbid")
+  methods:
+  - name: get_problem_statement
+    sig: get_problem_statement(self) -> str
+    lines:
+    - 64
+    - 65
+    detail: {}
+  lines:
+  - 57
+  - 65
+- name: TextProblemStatement
+  kind: struct
+  ctx: Any additional data to be added to the instance. This data will be available when formatting prompt templates. (+2 dunder methods)
+  bases:
+  - _BuiltinProblemStatementBase
+  fields:
+  - name: text
+    type: Any
+    default: str
+  - name: extra_fields
+    type: Any
+    default: dict[str, Any]
+  - name: type
+    type: Any
+    default: Literal["text"]
+  - name: id
+    type: Any
+    default: str
+  - name: model_config
+    type: Any
+    default: ConfigDict(extra="forbid")
+  methods:
+  - name: model_post_init
+    sig: 'model_post_init(self, __context: Any) -> None'
+    lines:
+    - 83
+    - 86
+    detail:
+      calls:
+      - hashlib.sha256
+      - hashlib.sha256(self.text.encode()).hexdigest
+      - logger.info
+      - self.text.encode
+  - name: get_problem_statement
+    sig: get_problem_statement(self) -> str
+    lines:
+    - 88
+    - 89
+    detail: {}
+  - name: get_extra_fields
+    sig: get_extra_fields(self) -> dict[str, Any]
+    lines:
+    - 91
+    - 92
+    detail: {}
+  lines:
+  - 68
+  - 98
+- name: FileProblemStatement
+  kind: struct
+  ctx: Any additional data to be added to the instance. This data will be available when formatting prompt templates.
+  bases:
+  - _BuiltinProblemStatementBase
+  fields:
+  - name: path
+    type: Any
+    default: Path
+  - name: extra_fields
+    type: Any
+    default: dict[str, Any]
+  - name: type
+    type: Any
+    default: Literal["text_file"]
+  - name: id
+    type: Any
+    default: str
+  - name: model_config
+    type: Any
+    default: ConfigDict(extra="forbid")
+  methods:
+  - name: model_post_init
+    sig: 'model_post_init(self, __context: Any) -> None'
+    lines:
+    - 116
+    - 119
+    detail:
+      calls:
+      - hashlib.sha256
+      - hashlib.sha256(self.get_problem_statement().encode()).hexdigest
+      - logger.info
+      - self.get_problem_statement
+      - self.get_problem_statement().encode
+  - name: get_problem_statement
+    sig: get_problem_statement(self) -> str
+    lines:
+    - 121
+    - 122
+    detail:
+      calls:
+      - self.path.read_text
+  - name: get_extra_fields
+    sig: get_extra_fields(self) -> dict[str, Any]
+    lines:
+    - 124
+    - 125
+    detail: {}
+  lines:
+  - 101
+  - 125
+- name: GithubIssue
+  kind: struct
+  ctx: Any additional data to be added to the instance. This data will be available when formatting prompt templates.
+  bases:
+  - _BuiltinProblemStatementBase
+  fields:
+  - name: github_url
+    type: Any
+    default: str
+  - name: extra_fields
+    type: Any
+    default: dict[str, Any]
+  - name: type
+    type: Any
+    default: Literal["github"]
+  - name: id
+    type: Any
+    default: str
+  - name: model_config
+    type: Any
+    default: ConfigDict(extra="forbid")
+  methods:
+  - name: model_post_init
+    sig: 'model_post_init(self, __context: Any) -> None'
+    lines:
+    - 143
+    - 147
+    detail:
+      calls:
+      - _parse_gh_issue_url
+      - logger.info
+  - name: get_problem_statement
+    sig: get_problem_statement(self) -> str
+    lines:
+    - 149
+    - 151
+    detail:
+      calls:
+      - _get_problem_statement_from_github_issue
+      - _parse_gh_issue_url
+      - os.getenv
+  - name: get_extra_fields
+    sig: get_extra_fields(self) -> dict[str, Any]
+    lines:
+    - 153
+    - 154
+    detail: {}
+  lines:
+  - 128
+  - 154
+- name: SWEBenchMultimodalProblemStatement
+  kind: struct
+  ctx: List of image asset URLs. (+2 dunder methods)
+  bases:
+  - _BuiltinProblemStatementBase
+  fields:
+  - name: text
+    type: Any
+    default: str
+  - name: issue_images
+    type: Any
+    default: list[str]
+  - name: disable_image_processing
+    type: Any
+    default: bool
+  - name: extra_fields
+    type: Any
+    default: dict[str, Any]
+  - name: type
+    type: Any
+    default: Literal["swe_bench_multimodal"]
+  - name: id
+    type: Any
+    default: str
+  - name: _cached_problem_statement
+    type: Any
+    default: str | None
+  - name: model_config
+    type: Any
+    default: ConfigDict(extra="forbid")
+  methods:
+  - name: model_post_init
+    sig: 'model_post_init(self, __context: Any) -> None'
+    lines:
+    - 182
+    - 185
+    detail:
+      calls:
+      - hashlib.sha256
+      - hashlib.sha256(self.text.encode()).hexdigest
+      - logger.info
+      - self.text.encode
+  - name: get_problem_statement_for_env
+    sig: get_problem_statement_for_env(self) -> str
+    lines:
+    - 187
+    - 192
+    detail: {}
+  - name: get_problem_statement
+    sig: get_problem_statement(self) -> str
+    lines:
+    - 194
+    - 213
+    detail:
+      calls:
+      - logger.info
+      - logger.warning
+      - self._download_and_convert_image
+  - name: get_extra_fields
+    sig: get_extra_fields(self) -> dict[str, Any]
+    lines:
+    - 215
+    - 216
+    detail: {}
+  - name: _download_and_convert_image
+    sig: '_download_and_convert_image(self, url: str) -> str | None'
+    vis: protected
+    lines:
+    - 218
+    - 273
+    detail:
+      calls:
+      - base64.b64encode
+      - base64.b64encode(image_data).decode
+      - int
+      - len
+      - logger.info
+      - logger.warning
+      - requests.get
+      - response.headers.get
+      - response.headers.get("content-type", "").lower
+      - response.iter_content
+      - response.raise_for_status
+      - urlparse
+  lines:
+  - 157
+  - 281
+functions:
+- name: problem_statement_from_simplified_input
+  sig: |-
+    problem_statement_from_simplified_input(
+        *, input: str, type: Literal["text", "text_file", "github_issue", "swe_bench_multimodal"]
+    ) -> ProblemStatementConfig
+  lines:
+  - 293
+  - 312
+  detail:
+    calls:
+    - FileProblemStatement
+    - GithubIssue
+    - Path
+    - SWEBenchMultimodalProblemStatement
+    - TextProblemStatement
+    - ValueError
+exports:
+- name: ProblemStatement
+  kind: type
+- name: EmptyProblemStatement
+  kind: type
+- name: TextProblemStatement
+  kind: type
+- name: FileProblemStatement
+  kind: type
+- name: GithubIssue
+  kind: type
+- name: SWEBenchMultimodalProblemStatement
+  kind: type
+- name: problem_statement_from_simplified_input
+  kind: func
+- name: logger
+  kind: data
+- name: VALID_IMAGE_MIME_TYPES
+  kind: data
+- name: ProblemStatementConfig
+  kind: data

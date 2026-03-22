@@ -1,0 +1,338 @@
+## Roska File Descriptor — agent/history_processors.py
+file: agent/history_processors.py
+lines: 399
+layer: logic
+imports:
+- sym: pydantic.BaseModel
+- sym: pydantic.ConfigDict
+- sym: pydantic.Field
+- sym: pydantic.field_validator
+- sym: sweagent.types.History
+- sym: sweagent.types.HistoryItem
+data:
+- name: HistoryProcessor
+  type: Any
+  val: |-
+    Annotated[
+        DefaultHistoryProcessor
+        | LastNObservations
+        | ClosedWindowHistoryProcessor
+        | TagToolCallObser...
+types:
+- name: AbstractHistoryProcessor
+  kind: trait
+  bases:
+  - Protocol
+  methods:
+  - name: __call__
+    sig: '__call__(self, history: History) -> History'
+    decorators:
+    - abstractmethod
+    lines:
+    - 15
+    - 16
+    detail: {}
+  lines:
+  - 13
+  - 16
+- name: DefaultHistoryProcessor
+  kind: model
+  ctx: Do not change. Used for (de)serialization.
+  bases:
+  - BaseModel
+  fields:
+  - name: type
+    type: Any
+    default: Literal["default"]
+  - name: model_config
+    type: Any
+    default: ConfigDict(extra="forbid")
+  methods:
+  - name: __call__
+    sig: '__call__(self, history: History) -> History'
+    lines:
+    - 81
+    - 82
+    detail: {}
+  lines:
+  - 74
+  - 82
+- name: LastNObservations
+  kind: model
+  ctx: 'Elide all but the last n observations or remove tagged observations. This is our most classic history processor, used in the original paper to elide but the last 5 observations. Elided observations are replaced by "Old environment output: (n lines omitted)". Typical configuration: ```yaml agent: history_processors: - type: last_n_observations n: 5 ``` as for example in use in the SWE-agent 0.7 config at https://github.com/SWE-agent/SWE-agent/blob/main/config/sweagent_0_7/07.yaml For most use cases, you only need to set `n`. Note that using this history processor will break prompt caching (as the history of every query will change every time due to the elided observations). There are some workarounds possible with the `polling` parameter. However, most SotA models can now fit a lot of context, so generally this history processor is not always needed anymore.'
+  bases:
+  - BaseModel
+  fields:
+  - name: n
+    type: Any
+    default: int
+  - name: polling
+    type: Any
+    default: int
+  - name: always_remove_output_for_tags
+    type: Any
+    default: set[str]
+  - name: always_keep_output_for_tags
+    type: Any
+    default: set[str]
+  - name: type
+    type: Any
+    default: Literal["last_n_observations"]
+  - name: model_config
+    type: Any
+    default: ConfigDict(extra="forbid")
+  methods:
+  - name: validate_n
+    sig: 'validate_n(cls, n: int) -> int'
+    decorators:
+    - field_validator("n")
+    lines:
+    - 141
+    - 145
+    detail:
+      calls:
+      - ValueError
+  - name: __call__
+    sig: '__call__(self, history: History) -> History'
+    lines:
+    - 157
+    - 176
+    detail:
+      calls:
+      - _get_content_stats
+      - data.get
+      - entry.copy
+      - entry.get
+      - enumerate
+      - new_history.append
+      - self._get_omit_indices
+      - set
+  lines:
+  - 85
+  - 176
+- name: TagToolCallObservations
+  kind: model
+  ctx: Adds tags to history items for specific tool calls.
+  bases:
+  - BaseModel
+  fields:
+  - name: type
+    type: Any
+    default: Literal["tag_tool_call_observations"]
+  - name: tags
+    type: Any
+    default: set[str]
+  - name: function_names
+    type: Any
+    default: set[str]
+  - name: model_config
+    type: Any
+    default: ConfigDict(extra="forbid")
+  methods:
+  - name: __call__
+    sig: '__call__(self, history: History) -> History'
+    lines:
+    - 208
+    - 212
+    detail:
+      calls:
+      - self._add_tags
+      - self._should_add_tags
+  lines:
+  - 179
+  - 212
+- name: ClosedWindowHistoryProcessor
+  kind: model
+  ctx: For each value in history, keep track of which windows have been shown. We want to mark windows that should stay open (they're the last window for a particular file) Then we'll replace all other windows with a simple summary of the window (i.e. number of lines)
+  bases:
+  - BaseModel
+  fields:
+  - name: type
+    type: Any
+    default: Literal["closed_window"]
+  - name: _pattern
+    type: Any
+    default: re.compile(r"^(\d+)\:.*?(\n|$)", re.MULTILINE)
+  - name: _file_pattern
+    type: Any
+    default: re.compile(r"\[File:\s+(.*)\s+\(\d+\s+lines\ total\)\]")
+  - name: model_config
+    type: Any
+    default: ConfigDict(extra="forbid")
+  methods:
+  - name: __call__
+    sig: __call__(self, history)
+    lines:
+    - 230
+    - 258
+    detail:
+      calls:
+      - data.get
+      - entry.copy
+      - file_match.group
+      - len
+      - list
+      - matches[-1].end
+      - matches[0].start
+      - new_history.append
+      - reversed
+      - self._file_pattern.search
+      - self._pattern.finditer
+      - set
+      - windows.add
+  lines:
+  - 215
+  - 258
+- name: CacheControlHistoryProcessor
+  kind: model
+  ctx: This history processor adds manual cache control marks to the history. Use this when running with anthropic claude.
+  bases:
+  - BaseModel
+  fields:
+  - name: type
+    type: Any
+    default: Literal["cache_control"]
+  - name: last_n_messages
+    type: Any
+    default: int
+  - name: last_n_messages_offset
+    type: Any
+    default: int
+  - name: tagged_roles
+    type: Any
+    default: list[str]
+  - name: model_config
+    type: Any
+    default: ConfigDict(extra="forbid")
+  methods:
+  - name: __call__
+    sig: '__call__(self, history: History) -> History'
+    lines:
+    - 288
+    - 302
+    detail:
+      calls:
+      - _clear_cache_control
+      - _set_cache_control
+      - enumerate
+      - list
+      - new_history.append
+      - reversed
+  lines:
+  - 261
+  - 302
+- name: RemoveRegex
+  kind: model
+  ctx: This history processor can remove arbitrary content from history items
+  bases:
+  - BaseModel
+  fields:
+  - name: remove
+    type: Any
+    default: list[str]
+  - name: keep_last
+    type: Any
+    default: int
+  - name: type
+    type: Any
+    default: Literal["remove_regex"]
+  - name: model_config
+    type: Any
+    default: ConfigDict(extra="forbid")
+  methods:
+  - name: __call__
+    sig: '__call__(self, history: History) -> History'
+    lines:
+    - 320
+    - 337
+    detail:
+      calls:
+      - copy.deepcopy
+      - enumerate
+      - isinstance
+      - list
+      - new_history.append
+      - re.sub
+      - reversed
+  lines:
+  - 305
+  - 337
+- name: ImageParsingHistoryProcessor
+  kind: model
+  ctx: Parse embedded base64 images from markdown and convert to multi-modal format.
+  bases:
+  - BaseModel
+  fields:
+  - name: type
+    type: Any
+    default: Literal["image_parsing"]
+  - name: allowed_mime_types
+    type: Any
+    default: set[str]
+  - name: _pattern
+    type: Any
+    default: re.compile(r"(!\[([^\]]*)\]\(data:)([^;]+);base64,([^)]+)(\))")
+  - name: model_config
+    type: Any
+    default: ConfigDict(extra="forbid")
+  methods:
+  - name: __call__
+    sig: '__call__(self, history: History) -> History'
+    lines:
+    - 349
+    - 350
+    detail:
+      calls:
+      - self._process_entry
+  - name: _parse_images
+    sig: '_parse_images(self, content: str) -> list[dict]'
+    vis: protected
+    lines:
+    - 362
+    - 387
+    detail:
+      calls:
+      - add_text
+      - match.end
+      - match.group
+      - match.groups
+      - match.start
+      - segments.append
+      - self._pattern.finditer
+  lines:
+  - 340
+  - 387
+functions:
+- name: _get_content_stats
+  sig: '_get_content_stats(entry: HistoryItem) -> tuple[int, int]'
+  vis: protected
+  lines:
+  - 23
+  - 28
+  detail:
+    calls:
+    - entry["content"].splitlines
+    - isinstance
+    - item.get
+    - item["text"].splitlines
+    - len
+    - sum
+exports:
+- name: AbstractHistoryProcessor
+  kind: type
+- name: DefaultHistoryProcessor
+  kind: type
+- name: LastNObservations
+  kind: type
+- name: TagToolCallObservations
+  kind: type
+- name: ClosedWindowHistoryProcessor
+  kind: type
+- name: CacheControlHistoryProcessor
+  kind: type
+- name: RemoveRegex
+  kind: type
+- name: ImageParsingHistoryProcessor
+  kind: type
+- name: HistoryProcessor
+  kind: data

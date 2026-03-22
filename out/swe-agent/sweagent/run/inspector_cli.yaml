@@ -1,0 +1,587 @@
+## Roska File Descriptor — run/inspector_cli.py
+file: run/inspector_cli.py
+lines: 493
+layer: logic
+purpose: This is a command line tool to inspect trajectory JSON files.
+imports:
+- sym: argparse
+- sym: subprocess
+- sym: concurrent.futures.ThreadPoolExecutor
+- sym: rich.syntax.Syntax
+- sym: textual.app.App
+- sym: textual.app.ComposeResult
+- sym: textual.binding.Binding
+- sym: textual.containers.Container
+- sym: textual.containers.Vertical
+- sym: textual.containers.VerticalScroll
+- sym: textual.screen.ModalScreen
+- sym: textual.widgets.Footer
+- sym: textual.widgets.Header
+- sym: textual.widgets.Input
+- sym: textual.widgets.ListItem
+- sym: textual.widgets.ListView
+- sym: textual.widgets.Static
+- sym: sweagent.utils.files.load_file
+- sym: sweagent.utils.serialization._yaml_serialization_with_linebreaks
+types:
+- name: TrajectoryViewer
+  kind: struct
+  bases:
+  - Static
+  fields:
+  - name: BINDINGS
+    type: list
+    default: |-
+      [
+              Binding("right,l", "next_item", "Step++"),
+              Binding("left,h", "previous_item", "Step--"),
+              Binding("0", "first_item", "Step=0"),
+              Binding("$", "last_item", "Step=-1"),
+              Binding("v", "toggle_view", "Toggle view"),
+              Binding("j,down", "scroll_down", "Scroll down"),
+              Binding("k,up", "scroll_up", "Scroll up"),
+          ]
+  - name: i_step
+    type: int
+    default: '-1'
+  - name: trajectory
+    type: Any
+    default: json.loads(path.read_text())
+  - name: show_full
+    type: bool
+    default: 'False'
+  - name: title
+    type: Any
+    default: title
+  - name: overview_stats
+    type: Any
+    default: overview_stats
+  - name: gold_patch
+    type: Any
+    default: gold_patch
+  methods:
+  - name: __init__
+    sig: '__init__(self, path: Path, title: str, overview_stats: dict, *, gold_patch: str | None = None)'
+    lines:
+    - 50
+    - 58
+    detail:
+      calls:
+      - json.loads
+      - path.read_text
+      - super
+      - super().__init__
+  - name: load_trajectory
+    sig: 'load_trajectory(self, path: Path, title: str, overview_stats: dict, *, gold_patch: str | None = None)'
+    lines:
+    - 60
+    - 69
+    detail:
+      calls:
+      - json.loads
+      - path.read_text
+      - print
+      - self.scroll_top
+      - self.update_content
+  - name: compose
+    sig: compose(self) -> ComposeResult
+    lines:
+    - 71
+    - 73
+    detail:
+      calls:
+      - Static
+      - VerticalScroll
+  - name: on_mount
+    sig: on_mount(self) -> None
+    lines:
+    - 75
+    - 76
+    detail:
+      calls:
+      - self.update_content
+  - name: n_steps
+    sig: n_steps(self) -> int
+    decorators:
+    - property
+    lines:
+    - 79
+    - 80
+    detail:
+      calls:
+      - len
+  - name: update_content
+    sig: update_content(self) -> None
+    lines:
+    - 115
+    - 125
+    detail:
+      calls:
+      - print
+      - self._show_info
+      - self._show_step_simple
+      - self._show_step_yaml
+  - name: action_next_item
+    sig: action_next_item(self) -> None
+    lines:
+    - 127
+    - 131
+    detail:
+      calls:
+      - self.scroll_top
+      - self.update_content
+  - name: action_previous_item
+    sig: action_previous_item(self) -> None
+    lines:
+    - 133
+    - 137
+    detail:
+      calls:
+      - self.scroll_top
+      - self.update_content
+  - name: action_toggle_view
+    sig: action_toggle_view(self) -> None
+    lines:
+    - 139
+    - 141
+    detail:
+      calls:
+      - self.update_content
+  - name: action_first_item
+    sig: action_first_item(self) -> None
+    lines:
+    - 143
+    - 145
+    detail:
+      calls:
+      - self.update_content
+  - name: action_last_item
+    sig: action_last_item(self) -> None
+    lines:
+    - 147
+    - 149
+    detail:
+      calls:
+      - self.update_content
+  - name: scroll_top
+    sig: scroll_top(self) -> None
+    lines:
+    - 151
+    - 154
+    detail:
+      calls:
+      - self.query_one
+      - vs.scroll_home
+  - name: action_scroll_down
+    sig: action_scroll_down(self) -> None
+    lines:
+    - 156
+    - 158
+    detail:
+      calls:
+      - self.query_one
+      - vs.scroll_to
+  - name: action_scroll_up
+    sig: action_scroll_up(self) -> None
+    lines:
+    - 160
+    - 162
+    detail:
+      calls:
+      - self.query_one
+      - vs.scroll_to
+  lines:
+  - 39
+  - 162
+- name: TrajectorySelectorScreen
+  kind: struct
+  fields:
+  - name: BINDINGS
+    type: list
+    default: |-
+      [
+              Binding("escape", "dismiss(None)", "Cancel"),
+          ]
+  - name: paths
+    type: Any
+    default: paths
+  - name: current_index
+    type: Any
+    default: current_index
+  - name: overview_stats
+    type: Any
+    default: overview_stats
+  - name: all_items
+    type: list
+    default: '[]'
+  - name: filtered_indices
+    type: list
+    default: '[]'
+  - name: CSS
+    type: str
+    default: |-
+      """
+          #dialog {
+              background: $surface;
+              padding: 1;
+              border: thick $primary;
+              width: 100%;
+              height: 100%;
+          }
+
+          #title {
+              text-align: center;
+              padding: 1;
+          }
+
+          #filter-input {
+              dock: top;
+              margin: 1 0;
+          }
+
+          ListView {
+              height: 100%;
+              border: solid $primary;
+          }
+
+          ListItem {
+              padding: 0 1;
+          }
+
+          ListItem:hover {
+              background: $accent;
+          }
+          """
+  methods:
+  - name: __init__
+    sig: __init__(self, ...3 params)
+    lines:
+    - 170
+    - 176
+  - name: _get_list_item_texts
+    sig: '_get_list_item_texts(self, paths: list[Path]) -> list[str]'
+    vis: protected
+    lines:
+    - 178
+    - 191
+    detail:
+      calls:
+      - Path
+      - labels.append
+      - len
+      - os.path.commonpath
+      - str
+      - str(p)[len(prefix) :].lstrip
+  - name: compose
+    sig: compose(self) -> ComposeResult
+    lines:
+    - 193
+    - 208
+    detail:
+      calls:
+      - Input
+      - ListItem
+      - ListView
+      - Static
+      - Vertical
+      - len
+      - list
+      - range
+      - self._get_list_item_texts
+  - name: on_input_changed
+    sig: 'on_input_changed(self, event: Input.Changed) -> None'
+    lines:
+    - 210
+    - 228
+    detail:
+      calls:
+      - ListItem
+      - Static
+      - enumerate
+      - event.value.lower
+      - item.lower
+      - len
+      - list_view.append
+      - list_view.clear
+      - self.all_items.index
+      - self.dismiss
+      - self.query_one
+  - name: on_list_view_selected
+    sig: 'on_list_view_selected(self, event: ListView.Selected) -> None'
+    lines:
+    - 230
+    - 234
+    detail:
+      calls:
+      - print
+      - self.dismiss
+  lines:
+  - 165
+  - 267
+- name: FileViewerScreen
+  kind: struct
+  bases:
+  - ModalScreen
+  fields:
+  - name: BINDINGS
+    type: list
+    default: |-
+      [
+              Binding("q,escape", "dismiss", "Back"),
+              Binding("j,down", "scroll_down", "Scroll down"),
+              Binding("k,up", "scroll_up", "Scroll up"),
+              Binding("e", "open_editor", "Open in $EDITOR"),
+          ]
+  - name: path
+    type: Any
+    default: path
+  - name: CSS
+    type: str
+    default: |-
+      """
+          ScrollableContainer {
+              width: 100%;
+              height: 100%;
+              background: $surface;
+              padding: 1;
+              border: thick $primary;
+          }
+          """
+  methods:
+  - name: __init__
+    sig: __init__(self, ...1 params)
+    lines:
+    - 278
+    - 280
+  - name: compose
+    sig: compose(self) -> ComposeResult
+    lines:
+    - 282
+    - 303
+    detail:
+      calls:
+      - Static
+      - Syntax
+      - VerticalScroll
+      - _yaml_serialization_with_linebreaks
+      - json.loads
+      - len
+      - self.app.notify
+      - self.path.exists
+      - self.path.read_text
+  - name: action_scroll_down
+    sig: action_scroll_down(self) -> None
+    lines:
+    - 305
+    - 307
+    detail:
+      calls:
+      - self.query_one
+      - vs.scroll_to
+  - name: action_scroll_up
+    sig: action_scroll_up(self) -> None
+    lines:
+    - 309
+    - 311
+    detail:
+      calls:
+      - self.query_one
+      - vs.scroll_to
+  - name: action_open_editor
+    sig: action_open_editor(self) -> None
+    is_async: true
+    lines:
+    - 313
+    - 323
+    detail:
+      calls:
+      - os.environ.get
+      - self.app.notify
+      - self.app.suspend
+      - str
+      - subprocess.run
+  lines:
+  - 270
+  - 333
+- name: TrajectoryInspectorApp
+  kind: struct
+  bases:
+  - App
+  fields:
+  - name: BINDINGS
+    type: list
+    default: |-
+      [
+              Binding("q", "quit", "Quit"),
+              Binding("L", "next_traj", "Traj++"),
+              Binding("H", "previous_traj", "Traj--"),
+              Binding("t", "show_traj_selector", "Select Traj"),
+              Binding("o", "show_log", "View Log"),
+              Binding("r", "show_full", "Show full"),
+          ]
+  - name: CSS
+    type: str
+    default: |-
+      """
+          Screen {
+              layout: grid;
+              grid-size: 1;
+          }
+
+          #viewer {
+              width: 100%;
+              height: 100%;
+          }
+
+          ScrollView {
+              width: 100%;
+              height: 100%;
+              border: solid green;
+          }
+          """
+  - name: input_path
+    type: Any
+    default: Path(input_path)
+  - name: available_traj_paths
+    type: Any
+    default: self._get_available_trajs()
+  - name: trajectory_index
+    type: int
+    default: '0'
+  - name: overview_stats
+    type: Any
+    default: collections.defaultdict(dict)
+  - name: _data
+    type: Any
+    default: load_file(data_path)
+  methods:
+  - name: __init__
+    sig: '__init__(self, input_path: str | Path, data_path: Path | None = None)'
+    lines:
+    - 364
+    - 377
+    detail:
+      calls:
+      - FileNotFoundError
+      - Path
+      - ValueError
+      - collections.defaultdict
+      - load_file
+      - self._build_overview_stats
+      - self._get_available_trajs
+      - self.input_path.exists
+      - super
+      - super().__init__
+  - name: get_gold_patch
+    sig: 'get_gold_patch(self, instance_id: str) -> str | None'
+    lines:
+    - 379
+    - 382
+    detail:
+      calls:
+      - self._data.get
+      - self._data.get(instance_id, {}).get
+  - name: _build_overview_stats
+    sig: _build_overview_stats(self)
+    vis: protected
+    lines:
+    - 384
+    - 411
+    detail:
+      calls:
+      - ThreadPoolExecutor
+      - executor.map
+      - info.get
+      - info.get("model_stats", {}).get
+      - json.loads
+      - results_path.exists
+      - results_path.read_text
+  - name: compose
+    sig: compose(self) -> ComposeResult
+    lines:
+    - 436
+    - 444
+    detail:
+      calls:
+      - Container
+      - Footer
+      - Header
+      - TrajectoryViewer
+      - self._get_viewer_title
+  - name: action_next_traj
+    sig: action_next_traj(self)
+    lines:
+    - 446
+    - 448
+    detail:
+      calls:
+      - len
+      - self._load_traj
+  - name: action_previous_traj
+    sig: action_previous_traj(self)
+    lines:
+    - 450
+    - 452
+    detail:
+      calls:
+      - len
+      - self._load_traj
+  - name: action_show_traj_selector
+    sig: action_show_traj_selector(self) -> None
+    is_async: true
+    lines:
+    - 454
+    - 462
+    detail:
+      calls:
+      - TrajectorySelectorScreen
+      - self.push_screen
+  - name: action_show_log
+    sig: action_show_log(self) -> None
+    is_async: true
+    lines:
+    - 464
+    - 468
+    detail:
+      calls:
+      - FileViewerScreen
+      - current_traj.with_suffix
+      - self.push_screen
+  - name: action_show_full
+    sig: action_show_full(self) -> None
+    is_async: true
+    lines:
+    - 470
+    - 474
+    detail:
+      calls:
+      - FileViewerScreen
+      - self.push_screen
+  lines:
+  - 336
+  - 474
+functions:
+- name: main
+  sig: 'main(args: list[str] | None = None)'
+  lines:
+  - 477
+  - 489
+  detail:
+    calls:
+    - TrajectoryInspectorApp
+    - app.run
+    - argparse.ArgumentParser
+    - os.getcwd
+    - parser.add_argument
+    - parser.parse_args
+exports:
+- name: TrajectoryViewer
+  kind: type
+- name: TrajectorySelectorScreen
+  kind: type
+- name: FileViewerScreen
+  kind: type
+- name: TrajectoryInspectorApp
+  kind: type
+- name: main
+  kind: func

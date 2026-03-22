@@ -1,0 +1,302 @@
+## Roska File Descriptor — environment/repo.py
+file: environment/repo.py
+lines: 258
+layer: logic
+imports:
+- sym: asyncio
+- sym: shlex
+- sym: git.InvalidGitRepositoryError
+- sym: git.Repo
+- sym: pydantic.BaseModel
+- sym: pydantic.ConfigDict
+- sym: pydantic.Field
+- sym: swerex.deployment.abstract.AbstractDeployment
+- sym: swerex.runtime.abstract.Command
+- sym: swerex.runtime.abstract.UploadRequest
+- sym: typing_extensions.Self
+- sym: sweagent.utils.github._parse_gh_repo_url
+- sym: sweagent.utils.log.get_logger
+data:
+- name: logger
+  type: Any
+  val: get_logger("swea-config", emoji="🔧")
+- name: RepoConfig
+  type: Any
+  val: LocalRepoConfig | GithubRepoConfig | PreExistingRepoConfig | SWESmithRepoConfig
+types:
+- name: Repo
+  kind: trait
+  ctx: Protocol for repository configurations.
+  bases:
+  - Protocol
+  fields:
+  - name: base_commit
+    type: Any
+    default: str
+  - name: repo_name
+    type: Any
+    default: str
+  methods:
+  - name: copy
+    sig: 'copy(self, deployment: AbstractDeployment)'
+    lines:
+    - 26
+    - 26
+    detail: {}
+  - name: get_reset_commands
+    sig: get_reset_commands(self) -> list[str]
+    lines:
+    - 28
+    - 28
+    detail: {}
+  lines:
+  - 20
+  - 28
+- name: PreExistingRepoConfig
+  kind: model
+  ctx: 'Use this to specify a repository that already exists on the deployment. This is important because we need to cd to the repo before running the agent. Note: The repository must be at the root of the deployment.'
+  bases:
+  - BaseModel
+  fields:
+  - name: repo_name
+    type: Any
+    default: str
+  - name: base_commit
+    type: Any
+    default: str
+  - name: type
+    type: Any
+    default: Literal["preexisting"]
+  - name: reset
+    type: Any
+    default: bool
+  - name: model_config
+    type: Any
+    default: ConfigDict(extra="forbid")
+  methods:
+  - name: copy
+    sig: 'copy(self, deployment: AbstractDeployment)'
+    lines:
+    - 66
+    - 68
+    detail: {}
+  - name: get_reset_commands
+    sig: get_reset_commands(self) -> list[str]
+    lines:
+    - 70
+    - 74
+    detail:
+      calls:
+      - _get_git_reset_commands
+  lines:
+  - 42
+  - 74
+- name: LocalRepoConfig
+  kind: model
+  ctx: The commit to reset the repository to. The default is HEAD, i.e., the latest commit. You can also set this to a branch name (e.g., `dev`), a tag (e.g., `v0.1.0`), or a commit hash (e.g., `a4464baca1f`). SWE-agent will then start from this commit when trying to solve the problem.
+  bases:
+  - BaseModel
+  fields:
+  - name: path
+    type: Any
+    default: Path
+  - name: base_commit
+    type: Any
+    default: str
+  - name: type
+    type: Any
+    default: Literal["local"]
+  - name: model_config
+    type: Any
+    default: ConfigDict(extra="forbid")
+  methods:
+  - name: repo_name
+    sig: repo_name(self) -> str
+    decorators:
+    - property
+    lines:
+    - 92
+    - 94
+    detail:
+      calls:
+      - Path
+      - Path(self.path).resolve
+      - Path(self.path).resolve().name.replace
+      - Path(self.path).resolve().name.replace(" ", "-").replace
+  - name: check_valid_repo
+    sig: check_valid_repo(self) -> Self
+    lines:
+    - 98
+    - 107
+    detail:
+      calls:
+      - GitRepo
+      - ValueError
+      - repo.is_dirty
+  - name: copy
+    sig: 'copy(self, deployment: AbstractDeployment)'
+    lines:
+    - 109
+    - 119
+    detail:
+      calls:
+      - Command
+      - RuntimeError
+      - UploadRequest
+      - asyncio.run
+      - deployment.runtime.execute
+      - deployment.runtime.upload
+      - self.check_valid_repo
+      - str
+  - name: get_reset_commands
+    sig: get_reset_commands(self) -> list[str]
+    lines:
+    - 121
+    - 123
+    detail:
+      calls:
+      - _get_git_reset_commands
+  lines:
+  - 77
+  - 123
+- name: GithubRepoConfig
+  kind: model
+  ctx: The commit to reset the repository to. The default is HEAD, i.e., the latest commit. You can also set this to a branch name (e.g., `dev`), a tag (e.g., `v0.1.0`), or a commit hash (e.g., `a4464baca1f`). SWE-agent will then start from this commit when trying to solve the problem.
+  bases:
+  - BaseModel
+  fields:
+  - name: github_url
+    type: Any
+    default: str
+  - name: base_commit
+    type: Any
+    default: str
+  - name: clone_timeout
+    type: Any
+    default: float
+  - name: type
+    type: Any
+    default: Literal["github"]
+  - name: model_config
+    type: Any
+    default: ConfigDict(extra="forbid")
+  methods:
+  - name: model_post_init
+    sig: 'model_post_init(self, __context: Any) -> None'
+    lines:
+    - 144
+    - 146
+    detail:
+      calls:
+      - self.github_url.count
+  - name: repo_name
+    sig: repo_name(self) -> str
+    decorators:
+    - property
+    lines:
+    - 149
+    - 151
+    detail:
+      calls:
+      - _parse_gh_repo_url
+  - name: copy
+    sig: 'copy(self, deployment: AbstractDeployment)'
+    lines:
+    - 163
+    - 187
+    detail:
+      calls:
+      - '" && ".join'
+      - Command
+      - asyncio.run
+      - deployment.runtime.execute
+      - os.getenv
+      - self._get_url_with_token
+      - shlex.quote
+  - name: get_reset_commands
+    sig: get_reset_commands(self) -> list[str]
+    lines:
+    - 189
+    - 191
+    detail:
+      calls:
+      - _get_git_reset_commands
+  lines:
+  - 126
+  - 191
+- name: SWESmithRepoConfig
+  kind: model
+  ctx: Repository config for SWE-Smith instances that handles targeted fetch from a GitHub mirror, authenticating via GITHUB_TOKEN when needed.
+  bases:
+  - BaseModel
+  fields:
+  - name: repo_name
+    type: Any
+    default: str
+  - name: base_commit
+    type: Any
+    default: str
+  - name: mirror_url
+    type: Any
+    default: str
+  - name: type
+    type: Any
+    default: Literal["swesmith_preexisting"]
+  - name: model_config
+    type: Any
+    default: ConfigDict(extra="forbid")
+  methods:
+  - name: copy
+    sig: 'copy(self, deployment: AbstractDeployment)'
+    lines:
+    - 209
+    - 210
+    detail: {}
+  - name: get_reset_commands
+    sig: get_reset_commands(self) -> list[str]
+    lines:
+    - 219
+    - 230
+    detail:
+      calls:
+      - _get_git_reset_commands
+      - os.getenv
+      - self._get_url_with_token
+      - shlex.quote
+  lines:
+  - 194
+  - 230
+functions:
+- name: repo_from_simplified_input
+  sig: |-
+    repo_from_simplified_input(
+        *, input: str, base_commit: str = "HEAD", type: Literal["local", "github", "preexisting", "auto"] = "auto"
+    ) -> RepoConfig
+  lines:
+  - 236
+  - 258
+  detail:
+    calls:
+    - GithubRepoConfig
+    - LocalRepoConfig
+    - Path
+    - PreExistingRepoConfig
+    - ValueError
+    - input.startswith
+exports:
+- name: Repo
+  kind: type
+- name: PreExistingRepoConfig
+  kind: type
+- name: LocalRepoConfig
+  kind: type
+- name: GithubRepoConfig
+  kind: type
+- name: SWESmithRepoConfig
+  kind: type
+- name: repo_from_simplified_input
+  kind: func
+- name: logger
+  kind: data
+- name: RepoConfig
+  kind: data

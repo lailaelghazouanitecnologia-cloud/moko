@@ -1,0 +1,988 @@
+## Roska File Descriptor — agent/agents.py
+file: agent/agents.py
+lines: 1294
+layer: logic
+imports:
+- sym: asyncio
+- sym: yaml
+- sym: jinja2.Template
+- sym: pydantic.BaseModel
+- sym: pydantic.ConfigDict
+- sym: pydantic.Field
+- sym: pydantic.model_validator
+- sym: simple_parsing.helpers.fields.field
+- sym: swerex.exceptions.BashIncorrectSyntaxError
+- sym: swerex.exceptions.CommandTimeoutError
+- sym: swerex.exceptions.SwerexException
+- sym: tenacity.RetryError
+- sym: typing_extensions.Self
+- sym: unidiff.UnidiffParseError
+- sym: sweagent.__version__
+- sym: sweagent.get_agent_commit_hash
+- sym: sweagent.get_rex_commit_hash
+- sym: sweagent.get_rex_version
+- sym: sweagent.agent.action_sampler.AbstractActionSampler
+- sym: sweagent.agent.action_sampler.ActionSamplerConfig
+- sym: sweagent.agent.history_processors.DefaultHistoryProcessor
+- sym: sweagent.agent.history_processors.HistoryProcessor
+- sym: sweagent.agent.hooks.abstract.AbstractAgentHook
+- sym: sweagent.agent.hooks.abstract.CombinedAgentHook
+- sym: sweagent.agent.models.AbstractModel
+- sym: sweagent.agent.models.HumanModel
+- sym: sweagent.agent.models.HumanThoughtModel
+- sym: sweagent.agent.models.InstanceStats
+- sym: sweagent.agent.models.ModelConfig
+- sym: sweagent.agent.models.get_model
+- sym: sweagent.agent.problem_statement.ProblemStatement
+- sym: sweagent.agent.problem_statement.ProblemStatementConfig
+- sym: sweagent.agent.reviewer.ChooserRetryLoop
+- sym: sweagent.agent.reviewer.RetryLoopConfig
+- sym: sweagent.agent.reviewer.ReviewSubmission
+- sym: sweagent.agent.reviewer.ScoreRetryLoop
+- sym: sweagent.agent.reviewer.get_retry_loop_from_config
+- sym: sweagent.environment.swe_env.SWEEnv
+- sym: sweagent.exceptions.ContentPolicyViolationError
+- sym: sweagent.exceptions.ContextWindowExceededError
+- sym: sweagent.exceptions.CostLimitExceededError
+- sym: sweagent.exceptions.FormatError
+- sym: sweagent.exceptions.TotalCostLimitExceededError
+- sym: sweagent.tools.parsing.ActionOnlyParser
+- sym: sweagent.tools.parsing.ThoughtActionParser
+- sym: sweagent.tools.tools.ToolConfig
+- sym: sweagent.tools.tools.ToolHandler
+- sym: sweagent.types.AgentInfo
+- sym: sweagent.types.AgentRunResult
+- sym: sweagent.types.StepOutput
+- sym: sweagent.types.Trajectory
+- sym: sweagent.types.TrajectoryStep
+- sym: sweagent.utils.config._convert_paths_to_abspath
+- sym: sweagent.utils.config._strip_abspath_from_dict
+- sym: sweagent.utils.jinja_warnings._warn_probably_wrong_jinja_syntax
+- sym: sweagent.utils.log.get_logger
+- sym: sweagent.utils.patch_formatter.PatchFormatter
+data:
+- name: AgentConfig
+  type: Any
+  val: Annotated[DefaultAgentConfig | RetryAgentConfig | ShellAgentConfig, Field(union_mode="left_to_right")]
+- name: RETRY_WITH_OUTPUT_TOKEN
+  type: str
+  val: '"###SWE-AGENT-RETRY-WITH-OUTPUT###"'
+- name: RETRY_WITHOUT_OUTPUT_TOKEN
+  type: str
+  val: '"###SWE-AGENT-RETRY-WITHOUT-OUTPUT###"'
+- name: EXIT_FORFEIT_TOKEN
+  type: str
+  val: '"###SWE-AGENT-EXIT-FORFEIT###"'
+types:
+- name: TemplateConfig
+  kind: model
+  ctx: This configuration is used to define almost all message templates that are formatted by the agent and sent to the LM.
+  bases:
+  - BaseModel
+  fields:
+  - name: system_template
+    type: Any
+    default: str
+  - name: instance_template
+    type: Any
+    default: str
+  - name: next_step_template
+    type: Any
+    default: str
+  - name: next_step_truncated_observation_template
+    type: Any
+    default: str
+  - name: max_observation_length
+    type: Any
+    default: int
+  - name: next_step_no_output_template
+    type: Any
+    default: str
+  - name: strategy_template
+    type: Any
+    default: str | None
+  - name: demonstration_template
+    type: Any
+    default: str | None
+  - name: demonstrations
+    type: Any
+    default: list[Path]
+  - name: put_demos_in_history
+    type: Any
+    default: bool
+  - name: disable_image_processing
+    type: Any
+    default: bool
+  - name: shell_check_error_template
+    type: Any
+    default: str
+  - name: command_cancelled_timeout_template
+    type: Any
+    default: str
+  methods:
+  - name: model_post_init
+    sig: model_post_init(self, __context)
+    lines:
+    - 122
+    - 125
+    detail:
+      calls:
+      - _convert_paths_to_abspath
+  - name: validate_template_jinja_syntax
+    sig: validate_template_jinja_syntax(self) -> Self
+    decorators:
+    - model_validator(mode="after")
+    lines:
+    - 128
+    - 133
+    detail:
+      calls:
+      - _warn_probably_wrong_jinja_syntax
+      - field.endswith
+      - getattr
+      - self.model_fields.keys
+  - name: warnings
+    sig: warnings(self) -> Self
+    decorators:
+    - model_validator(mode="after")
+    lines:
+    - 136
+    - 146
+    detail:
+      calls:
+      - get_logger
+      - logger.warning
+  lines:
+  - 60
+  - 146
+- name: DefaultAgentConfig
+  kind: model
+  ctx: This configuration object specifies the behavior of an agent.
+  bases:
+  - BaseModel
+  fields:
+  - name: name
+    type: Any
+    default: str
+  - name: templates
+    type: Any
+    default: TemplateConfig
+  - name: tools
+    type: Any
+    default: ToolConfig
+  - name: history_processors
+    type: Any
+    default: list[HistoryProcessor]
+  - name: model
+    type: Any
+    default: ModelConfig
+  - name: max_requeries
+    type: Any
+    default: int
+  - name: action_sampler
+    type: Any
+    default: ActionSamplerConfig | None
+  - name: type
+    type: Any
+    default: Literal["default"]
+  - name: model_config
+    type: Any
+    default: ConfigDict(extra="forbid")
+  lines:
+  - 149
+  - 167
+- name: ShellAgentConfig
+  kind: model
+  ctx: Maximum number of times to requery the model after an error, such as a formatting error, a blocked action, or a bash syntax error.
+  bases:
+  - BaseModel
+  fields:
+  - name: name
+    type: Any
+    default: str
+  - name: templates
+    type: Any
+    default: TemplateConfig
+  - name: tools
+    type: Any
+    default: ToolConfig
+  - name: history_processors
+    type: Any
+    default: list[HistoryProcessor]
+  - name: model
+    type: Any
+    default: ModelConfig
+  - name: max_requeries
+    type: Any
+    default: int
+  - name: type
+    type: Any
+    default: Literal["shell"]
+  - name: model_config
+    type: Any
+    default: ConfigDict(extra="forbid")
+  lines:
+  - 170
+  - 185
+- name: RetryAgentConfig
+  kind: model
+  bases:
+  - BaseModel
+  fields:
+  - name: name
+    type: Any
+    default: str
+  - name: agent_configs
+    type: Any
+    default: list[DefaultAgentConfig]
+  - name: retry_loop
+    type: Any
+    default: RetryLoopConfig
+  - name: type
+    type: Any
+    default: Literal["retry"]
+  - name: model_config
+    type: Any
+    default: ConfigDict(extra="forbid")
+  lines:
+  - 188
+  - 193
+- name: _BlockedActionError
+  kind: struct
+  vis: protected
+  ctx: Raised when the agent's action is blocked
+  bases:
+  - Exception
+  lines:
+  - 199
+  - 200
+- name: _RetryWithOutput
+  kind: struct
+  vis: protected
+  ctx: Used for internal control flow
+  bases:
+  - Exception
+  lines:
+  - 203
+  - 204
+- name: _RetryWithoutOutput
+  kind: struct
+  vis: protected
+  ctx: Used for internal control flow
+  bases:
+  - Exception
+  lines:
+  - 207
+  - 208
+- name: _ExitForfeit
+  kind: struct
+  vis: protected
+  ctx: Used for internal control flow
+  bases:
+  - Exception
+  lines:
+  - 211
+  - 212
+- name: _TotalExecutionTimeExceeded
+  kind: struct
+  vis: protected
+  ctx: Used for internal control flow
+  bases:
+  - Exception
+  lines:
+  - 215
+  - 216
+- name: AbstractAgent
+  kind: struct
+  methods:
+  - name: __init__
+    sig: __init__(self, ...2 params)
+    lines:
+    - 225
+    - 228
+  - name: from_config
+    sig: 'from_config(cls, config: AgentConfig) -> Self'
+    decorators:
+    - classmethod
+    lines:
+    - 231
+    - 231
+    detail: {}
+  - name: add_hook
+    sig: 'add_hook(self, hook: AbstractAgentHook) -> None'
+    lines:
+    - 233
+    - 233
+    detail: {}
+  - name: get_trajectory_data
+    sig: get_trajectory_data(self) -> dict[str, Any]
+    lines:
+    - 235
+    - 235
+    detail: {}
+  - name: step
+    sig: step(self) -> StepOutput
+    lines:
+    - 237
+    - 237
+    detail: {}
+  - name: run
+    sig: run(self, *args, **kwargs) -> AgentRunResult
+    lines:
+    - 239
+    - 239
+    detail: {}
+  lines:
+  - 224
+  - 239
+- name: RetryAgent
+  kind: struct
+  bases:
+  - AbstractAgent
+  fields:
+  - name: config
+    type: Any
+    default: config.model_copy(deep=True)
+  - name: _hooks
+    type: list
+    default: '[]'
+  - name: _i_attempt
+    type: int
+    default: '0'
+  - name: logger
+    type: Any
+    default: get_logger("swea-agent", emoji="🤠")
+  - name: _agent
+    type: Any
+    default: DefaultAgent | None
+  - name: _attempt_data
+    type: Any
+    default: list[dict[str, Any]]
+  - name: _total_instance_attempt_stats
+    type: Any
+    default: InstanceStats()
+  - name: _chook
+    type: Any
+    default: CombinedAgentHook()
+  - name: _traj_path
+    type: Any
+    default: Path | None
+  - name: _problem_statement
+    type: Any
+    default: ProblemStatement | None
+  - name: _env
+    type: Any
+    default: SWEEnv | None
+  - name: _output_dir
+    type: Any
+    default: Path | None
+  - name: _rloop
+    type: Any
+    default: ScoreRetryLoop | ChooserRetryLoop | None
+  methods:
+  - name: __init__
+    sig: '__init__(self, config: RetryAgentConfig)'
+    lines:
+    - 258
+    - 275
+    detail:
+      calls:
+      - CombinedAgentHook
+      - InstanceStats
+      - config.model_copy
+      - get_logger
+  - name: from_config
+    sig: 'from_config(cls, config: RetryAgentConfig) -> Self'
+    decorators:
+    - classmethod
+    lines:
+    - 283
+    - 284
+    detail:
+      calls:
+      - cls
+  - name: add_hook
+    sig: 'add_hook(self, hook: AbstractAgentHook) -> None'
+    lines:
+    - 286
+    - 288
+    detail:
+      calls:
+      - self._chook.add_hook
+      - self._hooks.append
+  - name: setup
+    sig: |-
+      setup(
+              self, env: SWEEnv, problem_statement: ProblemStatement | ProblemStatementConfig, output_dir: Path = Path(".")
+          ) -> None
+    lines:
+    - 290
+    - 301
+    detail:
+      calls:
+      - InstanceStats
+      - get_retry_loop_from_config
+  - name: step
+    sig: step(self) -> StepOutput
+    lines:
+    - 328
+    - 349
+    detail:
+      calls:
+      - StepOutput
+      - self._agent.attempt_autosubmission_after_error
+      - self._agent.step
+      - self.logger.critical
+  - name: get_trajectory_data
+    sig: 'get_trajectory_data(self, choose: bool) -> dict[str, Any]'
+    lines:
+    - 358
+    - 383
+    detail:
+      calls:
+      - copy.deepcopy
+      - isinstance
+      - self._rloop._chooser_output.model_dump
+      - self._rloop.get_best
+      - self._rloop.review_model_stats.model_dump
+      - self._total_instance_stats.model_dump
+      - self.logger.critical
+  - name: save_trajectory
+    sig: 'save_trajectory(self, choose: bool) -> None'
+    lines:
+    - 385
+    - 388
+    detail:
+      calls:
+      - json.dumps
+      - self._traj_path.write_text
+      - self.get_trajectory_data
+  - name: run
+    sig: |-
+      run(
+              self,
+              env: SWEEnv,
+              problem_statement: ProblemStatement | ProblemStatementConfig,
+              output_dir: Path = Path("."),
+          ) -> AgentRunResult
+    lines:
+    - 390
+    - 440
+    detail:
+      calls:
+      - AgentRunResult
+      - ReviewSubmission
+      - StepOutput
+      - isinstance
+      - output_dir.mkdir
+      - self._chook.on_run_done
+      - self._chook.on_run_start
+      - self._finalize_agent_run
+      - self._next_attempt
+      - self._rloop.on_submit
+      - self._rloop.retry
+      - self._rloop.reviews[-1].model_dump
+      - self._setup_agent
+      - self.get_trajectory_data
+      - self.logger.info
+      - self.save_trajectory
+      - self.setup
+      - self.step
+  lines:
+  - 257
+  - 440
+- name: DefaultAgent
+  kind: struct
+  bases:
+  - AbstractAgent
+  fields:
+  - name: _catch_errors
+    type: Any
+    default: _catch_errors
+  - name: _always_require_zero_exit_code
+    type: Any
+    default: _always_require_zero_exit_code
+  - name: name
+    type: Any
+    default: name
+  - name: model
+    type: Any
+    default: model
+  - name: templates
+    type: Any
+    default: templates
+  - name: tools
+    type: Any
+    default: tools
+  - name: tools.config.parse_function
+    type: Any
+    default: ThoughtActionParser()
+  - name: history_processors
+    type: Any
+    default: history_processors
+  - name: max_requeries
+    type: Any
+    default: max_requeries
+  - name: logger
+    type: Any
+    default: get_logger("swea-agent", emoji="🤠")
+  - name: _env
+    type: Any
+    default: SWEEnv | None
+  - name: _problem_statement
+    type: Any
+    default: ProblemStatement | ProblemStatementConfig | None
+  - name: traj_path
+    type: Any
+    default: Path | None
+  - name: history
+    type: list
+    default: '[]'
+  - name: _trajectory
+    type: list
+    default: '[]'
+  - name: info
+    type: Any
+    default: AgentInfo()
+  - name: _chook
+    type: Any
+    default: CombinedAgentHook()
+  - name: _replay_config
+    type: Any
+    default: BaseModel | None
+  - name: _action_sampler
+    type: Any
+    default: AbstractActionSampler | None
+  - name: _n_consecutive_timeouts
+    type: int
+    default: '0'
+  - name: _total_execution_time
+    type: float
+    default: '0.0'
+  methods:
+  - name: __init__
+    sig: |-
+      __init__(
+              self,
+              *,
+              templates: TemplateConfig,
+              tools: ToolHandler,
+              history_processors: list[HistoryProcessor],
+              model: AbstractModel,
+              max_requeries: int = 3,
+              name: str = "main",
+              _catch_errors: bool = True,
+              _always_require_zero_exit_code: bool = False,
+              action_sampler_config: ActionSamplerConfig | None = None,
+          )
+    lines:
+    - 444
+    - 499
+    detail:
+      calls:
+      - ActionOnlyParser
+      - AgentInfo
+      - CombinedAgentHook
+      - ThoughtActionParser
+      - action_sampler_config.get
+      - get_logger
+      - isinstance
+  - name: from_config
+    sig: 'from_config(cls, config: DefaultAgentConfig) -> Self'
+    decorators:
+    - classmethod
+    lines:
+    - 502
+    - 514
+    detail:
+      calls:
+      - ToolHandler
+      - cls
+      - config.model_copy
+      - get_model
+  - name: add_hook
+    sig: 'add_hook(self, hook: AbstractAgentHook) -> None'
+    lines:
+    - 516
+    - 519
+    detail:
+      calls:
+      - hook.on_init
+      - self._chook.add_hook
+  - name: trajectory
+    sig: trajectory(self) -> Trajectory
+    decorators:
+    - property
+    lines:
+    - 525
+    - 526
+    detail: {}
+  - name: replay_config
+    sig: replay_config(self) -> BaseModel | None
+    decorators:
+    - property
+    lines:
+    - 529
+    - 530
+    detail: {}
+  - name: replay_config
+    sig: 'replay_config(self, value: BaseModel)'
+    decorators:
+    - replay_config.setter
+    lines:
+    - 533
+    - 537
+    detail:
+      calls:
+      - RunSingleConfig.model_validate
+      - _strip_abspath_from_dict
+      - value.model_dump
+  - name: messages
+    sig: messages(self) -> list[dict[str, Any]]
+    decorators:
+    - property
+    lines:
+    - 540
+    - 551
+    detail:
+      calls:
+      - processor
+  - name: setup
+    sig: |-
+      setup(
+              self,
+              env: SWEEnv,
+              problem_statement: ProblemStatement | ProblemStatementConfig,
+              output_dir: Path = Path("."),
+          ) -> None
+    lines:
+    - 561
+    - 606
+    detail:
+      calls:
+      - AgentInfo
+      - get_agent_commit_hash
+      - get_rex_commit_hash
+      - get_rex_version
+      - hasattr
+      - isinstance
+      - output_dir.mkdir
+      - self._chook.on_setup_attempt
+      - self._chook.on_setup_done
+      - self._chook.on_tools_installation_started
+      - self._env.set_env_variables
+      - self._problem_statement.get_problem_statement_for_env
+      - self.add_demonstrations_to_history
+      - self.add_instance_template_to_history
+      - self.add_system_message_to_history
+      - self.logger.info
+      - self.tools.get_state
+      - self.tools.install
+  - name: add_system_message_to_history
+    sig: add_system_message_to_history(self) -> None
+    lines:
+    - 608
+    - 615
+    detail:
+      calls:
+      - Template
+      - Template(self.templates.system_template).render
+      - self._append_history
+      - self._get_format_dict
+      - self.logger.info
+  - name: add_demonstrations_to_history
+    sig: add_demonstrations_to_history(self) -> None
+    lines:
+    - 617
+    - 620
+    detail:
+      calls:
+      - self._add_demonstration_to_history
+  - name: _add_demonstration_to_history
+    sig: '_add_demonstration_to_history(self, demonstration_path: Path) -> None'
+    vis: protected
+    lines:
+    - 622
+    - 656
+    detail:
+      calls:
+      - '"\n".join'
+      - Path
+      - Path(demonstration_path).read_text
+      - Template
+      - Template(self.templates.demonstration_template).render
+      - ValueError
+      - json.loads
+      - self._append_history
+      - self.logger.info
+      - yaml.safe_load
+  - name: _add_templated_messages_to_history
+    sig: |-
+      _add_templated_messages_to_history(
+              self, templates: list[str], tool_call_ids: list[str] | None = None, **kwargs: str | int | None
+          ) -> None
+    vis: protected
+    lines:
+    - 675
+    - 712
+    detail:
+      calls:
+      - '"\n".join'
+      - Template
+      - Template(template).render
+      - format_dict.keys
+      - len
+      - messages.append
+      - self._append_history
+      - self._get_format_dict
+      - self.logger.debug
+      - self.logger.info
+  - name: add_step_to_history
+    sig: 'add_step_to_history(self, step: StepOutput) -> None'
+    lines:
+    - 714
+    - 746
+    detail:
+      calls:
+      - len
+      - self._add_templated_messages_to_history
+      - self._append_history
+      - step.observation.strip
+  - name: add_instance_template_to_history
+    sig: 'add_instance_template_to_history(self, state: dict[str, str]) -> None'
+    lines:
+    - 748
+    - 760
+    detail:
+      calls:
+      - self._add_templated_messages_to_history
+      - self.history[-1].get
+      - templates.append
+  - name: get_trajectory_data
+    sig: get_trajectory_data(self) -> dict[str, Any]
+    lines:
+    - 762
+    - 777
+    detail:
+      calls:
+      - copy.deepcopy
+      - self.replay_config.model_dump_json
+  - name: save_trajectory
+    sig: |-
+      save_trajectory(
+              self,
+          ) -> None
+    lines:
+    - 779
+    - 787
+    detail:
+      calls:
+      - json.dumps
+      - self.get_trajectory_data
+      - self.traj_path.write_text
+  - name: get_model_requery_history
+    sig: |-
+      get_model_requery_history(
+              self, error_template: str, *, output: str, **kwargs: str | int | float | bool | None
+          ) -> list[dict[str, str]]
+    lines:
+    - 789
+    - 821
+    detail:
+      calls:
+      - Template
+      - Template(error_template).render
+      - self._get_format_dict
+      - self.logger.warning
+  - name: attempt_autosubmission_after_error
+    sig: 'attempt_autosubmission_after_error(self, step: StepOutput) -> StepOutput'
+    lines:
+    - 823
+    - 868
+    detail:
+      calls:
+      - asyncio.run
+      - self._env.deployment.is_alive
+      - self._env.execute_command
+      - self.handle_submission
+      - self.logger.error
+      - self.logger.info
+      - self.logger.warning
+      - step.model_copy
+  - name: handle_submission
+    sig: 'handle_submission(self, step: StepOutput, *, observation="", force_submission: bool = False) -> StepOutput'
+    lines:
+    - 870
+    - 905
+    detail:
+      calls:
+      - self._env.read_file
+      - self.logger.exception
+      - self.logger.info
+      - self.logger.warning
+      - self.tools.check_for_submission_cmd
+      - step.model_copy
+      - submission.strip
+  - name: _get_edited_files_with_context
+    sig: '_get_edited_files_with_context(self, patch: str) -> dict[str, str]'
+    vis: protected
+    lines:
+    - 907
+    - 934
+    detail:
+      calls:
+      - PatchFormatter
+      - PurePosixPath
+      - pf.get_files_str
+      - self._env.read_file
+      - self.logger.error
+  - name: handle_action
+    sig: 'handle_action(self, step: StepOutput) -> StepOutput'
+    lines:
+    - 936
+    - 1004
+    detail:
+      calls:
+      - Template
+      - Template(self.templates.command_cancelled_timeout_template).render
+      - _BlockedActionError
+      - _ExitForfeit
+      - _RetryWithOutput
+      - _RetryWithoutOutput
+      - self._chook.on_action_executed
+      - self._chook.on_action_started
+      - self._env.communicate
+      - self._env.interrupt_session
+      - self._get_format_dict
+      - self.handle_submission
+      - self.logger.critical
+      - self.logger.exception
+      - self.logger.info
+      - self.tools.get_state
+      - self.tools.guard_multiline_input
+      - self.tools.guard_multiline_input(step.action).strip
+      - self.tools.should_block_action
+      - step.action.strip
+      - step.observation.replace
+      - time.perf_counter
+  - name: forward
+    sig: 'forward(self, history: list[dict[str, str]]) -> StepOutput'
+    lines:
+    - 1006
+    - 1060
+    detail:
+      calls:
+      - StepOutput
+      - _TotalExecutionTimeExceeded
+      - copy.deepcopy
+      - output.get
+      - self._action_sampler.get_action
+      - self._chook.on_actions_generated
+      - self._chook.on_model_query
+      - self.handle_action
+      - self.logger.info
+      - self.model.query
+      - self.tools.parse_actions
+      - step.action.strip
+      - step.extra_info.update
+  - name: forward_with_handling
+    sig: 'forward_with_handling(self, history: list[dict[str, str]]) -> StepOutput'
+    lines:
+    - 1062
+    - 1218
+    detail:
+      calls:
+      - handle_error_with_autosubmission
+      - handle_error_with_retry
+      - self.forward
+      - self.logger.exception
+      - self.logger.info
+      - self.logger.warning
+  - name: add_step_to_trajectory
+    sig: 'add_step_to_trajectory(self, step: StepOutput) -> None'
+    lines:
+    - 1220
+    - 1233
+    detail:
+      calls:
+      - TrajectoryStep
+      - self.trajectory.append
+  - name: step
+    sig: step(self) -> StepOutput
+    lines:
+    - 1235
+    - 1263
+    detail:
+      calls:
+      - len
+      - self._chook.on_step_done
+      - self._chook.on_step_start
+      - self._get_edited_files_with_context
+      - self.add_step_to_history
+      - self.add_step_to_trajectory
+      - self.forward_with_handling
+      - self.info.update
+      - self.logger.info
+      - self.model.stats.model_dump
+  - name: run
+    sig: |-
+      run(
+              self,
+              env: SWEEnv,
+              problem_statement: ProblemStatement | ProblemStatementConfig,
+              output_dir: Path = Path("."),
+          ) -> AgentRunResult
+    lines:
+    - 1265
+    - 1294
+    detail:
+      calls:
+      - AgentRunResult
+      - StepOutput
+      - self._chook.on_run_done
+      - self._chook.on_run_start
+      - self.get_trajectory_data
+      - self.logger.info
+      - self.save_trajectory
+      - self.setup
+      - self.step
+  lines:
+  - 443
+  - 1294
+functions:
+- name: get_agent_from_config
+  sig: 'get_agent_from_config(config: AgentConfig) -> AbstractAgent'
+  lines:
+  - 242
+  - 254
+  detail:
+    calls:
+    - DefaultAgent.from_config
+    - RetryAgent.from_config
+    - ShellAgent.from_config
+    - ValueError
+exports:
+- name: TemplateConfig
+  kind: type
+- name: DefaultAgentConfig
+  kind: type
+- name: ShellAgentConfig
+  kind: type
+- name: RetryAgentConfig
+  kind: type
+- name: AbstractAgent
+  kind: type
+- name: RetryAgent
+  kind: type
+- name: DefaultAgent
+  kind: type
+- name: get_agent_from_config
+  kind: func
+- name: AgentConfig
+  kind: data
+- name: RETRY_WITH_OUTPUT_TOKEN
+  kind: data
+- name: RETRY_WITHOUT_OUTPUT_TOKEN
+  kind: data
+- name: EXIT_FORFEIT_TOKEN
+  kind: data

@@ -1,0 +1,792 @@
+## Roska File Descriptor — agent/models.py
+file: agent/models.py
+lines: 903
+layer: logic
+imports:
+- sym: random
+- sym: shlex
+- sym: threading
+- sym: threading.Lock
+- sym: litellm
+- sym: litellm.types.utils
+- sym: pydantic.BaseModel
+- sym: pydantic.ConfigDict
+- sym: pydantic.Field
+- sym: pydantic.SecretStr
+- sym: swerex.exceptions.SwerexException
+- sym: tenacity.RetryCallState
+- sym: tenacity.Retrying
+- sym: tenacity.retry_if_not_exception_type
+- sym: tenacity.stop_after_attempt
+- sym: tenacity.wait_random_exponential
+- sym: sweagent.REPO_ROOT
+- sym: sweagent.__version__
+- sym: sweagent.exceptions.ContentPolicyViolationError
+- sym: sweagent.exceptions.ContextWindowExceededError
+- sym: sweagent.exceptions.CostLimitExceededError
+- sym: sweagent.exceptions.FunctionCallingFormatError
+- sym: sweagent.exceptions.InstanceCallLimitExceededError
+- sym: sweagent.exceptions.InstanceCostLimitExceededError
+- sym: sweagent.exceptions.ModelConfigurationError
+- sym: sweagent.exceptions.TotalCostLimitExceededError
+- sym: sweagent.tools.tools.ToolConfig
+- sym: sweagent.types.History
+- sym: sweagent.types.HistoryItem
+- sym: sweagent.utils.log.get_logger
+data:
+- name: _THREADS_THAT_USED_API_KEYS
+  type: list
+  val: '[]'
+- name: ModelConfig
+  type: Any
+  val: |-
+    Annotated[
+        GenericAPIModelConfig
+        | ReplayModelConfig
+        | InstantEmptySubmitModelConfig
+        | HumanModelConfig
+    ...
+- name: GLOBAL_STATS
+  type: Any
+  val: GlobalStats()
+- name: GLOBAL_STATS_LOCK
+  type: Any
+  val: Lock()
+types:
+- name: RetryConfig
+  kind: model
+  ctx: This configuration object specifies how many times to retry a failed LM API call.
+  bases:
+  - PydanticBaseModel
+  fields:
+  - name: retries
+    type: Any
+    default: int
+  - name: min_wait
+    type: Any
+    default: float
+  - name: max_wait
+    type: Any
+    default: float
+  lines:
+  - 55
+  - 63
+- name: GenericAPIModelConfig
+  kind: model
+  ctx: This configuration object specifies a LM like GPT4 or similar. The model will be served with the help of the `litellm` library.
+  bases:
+  - PydanticBaseModel
+  fields:
+  - name: name
+    type: Any
+    default: str
+  - name: per_instance_cost_limit
+    type: Any
+    default: float
+  - name: total_cost_limit
+    type: Any
+    default: float
+  - name: per_instance_call_limit
+    type: Any
+    default: int
+  - name: temperature
+    type: Any
+    default: float
+  - name: top_p
+    type: Any
+    default: float | None
+  - name: api_base
+    type: Any
+    default: str | None
+  - name: api_version
+    type: Any
+    default: str | None
+  - name: api_key
+    type: Any
+    default: SecretStr | None
+  - name: stop
+    type: Any
+    default: list[str]
+  - name: completion_kwargs
+    type: Any
+    default: dict[str, Any]
+  - name: convert_system_to_user
+    type: Any
+    default: bool
+  - name: retry
+    type: Any
+    default: RetryConfig
+  - name: delay
+    type: Any
+    default: float
+  - name: fallbacks
+    type: Any
+    default: list[dict[str, Any]]
+  - name: choose_api_key_by_thread
+    type: Any
+    default: bool
+  - name: max_input_tokens
+    type: Any
+    default: int | None
+  - name: max_output_tokens
+    type: Any
+    default: int | None
+  - name: litellm_model_registry
+    type: Any
+    default: str | None
+  - name: custom_tokenizer
+    type: Any
+    default: dict[str, Any] | None
+  - name: model_config
+    type: Any
+    default: ConfigDict(extra="forbid")
+  methods:
+  - name: get_api_keys
+    sig: get_api_keys(self) -> list[str]
+    lines:
+    - 155
+    - 170
+    detail:
+      calls:
+      - api_key.split
+      - api_key.startswith
+      - get_logger
+      - get_logger("swea-config", emoji="🔧").warning
+      - os.getenv
+      - self.api_key.get_secret_value
+  - name: choose_api_key
+    sig: choose_api_key(self) -> str | None
+    lines:
+    - 172
+    - 190
+    detail:
+      calls:
+      - _THREADS_THAT_USED_API_KEYS.append
+      - _THREADS_THAT_USED_API_KEYS.index
+      - get_logger
+      - get_logger("config", emoji="🔧").debug
+      - len
+      - random.choice
+      - self.get_api_keys
+      - threading.current_thread
+  - name: id
+    sig: id(self) -> str
+    decorators:
+    - property
+    lines:
+    - 193
+    - 201
+    detail:
+      calls:
+      - self.name.replace
+  lines:
+  - 66
+  - 201
+- name: ReplayModelConfig
+  kind: struct
+  bases:
+  - GenericAPIModelConfig
+  fields:
+  - name: replay_path
+    type: Any
+    default: Path
+  - name: per_instance_cost_limit
+    type: Any
+    default: float
+  - name: total_cost_limit
+    type: Any
+    default: float
+  - name: name
+    type: Any
+    default: Literal["replay"]
+  - name: model_config
+    type: Any
+    default: ConfigDict(extra="forbid")
+  lines:
+  - 204
+  - 216
+- name: InstantEmptySubmitModelConfig
+  kind: struct
+  ctx: Model that immediately submits an empty patch
+  bases:
+  - GenericAPIModelConfig
+  fields:
+  - name: name
+    type: Any
+    default: Literal["instant_empty_submit"]
+  - name: per_instance_cost_limit
+    type: Any
+    default: float
+  - name: total_cost_limit
+    type: Any
+    default: float
+  - name: delay
+    type: Any
+    default: float
+  - name: model_config
+    type: Any
+    default: ConfigDict(extra="forbid")
+  lines:
+  - 219
+  - 233
+- name: HumanModelConfig
+  kind: struct
+  ctx: Whether to catch EOF and return 'exit' when ^D is pressed. Set to False when used in human_step_in mode.
+  bases:
+  - GenericAPIModelConfig
+  fields:
+  - name: name
+    type: Any
+    default: Literal["human"]
+  - name: per_instance_cost_limit
+    type: Any
+    default: float
+  - name: total_cost_limit
+    type: Any
+    default: float
+  - name: cost_per_call
+    type: Any
+    default: float
+  - name: catch_eof
+    type: Any
+    default: bool
+  - name: model_config
+    type: Any
+    default: ConfigDict(extra="forbid")
+  lines:
+  - 236
+  - 246
+- name: HumanThoughtModelConfig
+  kind: struct
+  bases:
+  - HumanModelConfig
+  fields:
+  - name: name
+    type: Any
+    default: Literal["human_thought"]
+  - name: per_instance_cost_limit
+    type: Any
+    default: float
+  - name: total_cost_limit
+    type: Any
+    default: float
+  - name: cost_per_call
+    type: Any
+    default: float
+  - name: model_config
+    type: Any
+    default: ConfigDict(extra="forbid")
+  lines:
+  - 249
+  - 260
+- name: GlobalStats
+  kind: model
+  ctx: This class tracks usage numbers (costs etc.) across all instances.
+  bases:
+  - PydanticBaseModel
+  fields:
+  - name: total_cost
+    type: Any
+    default: float
+  - name: last_query_timestamp
+    type: Any
+    default: float
+  lines:
+  - 273
+  - 280
+- name: InstanceStats
+  kind: model
+  ctx: This object tracks usage numbers (costs etc.) for a single instance.
+  bases:
+  - PydanticBaseModel
+  fields:
+  - name: instance_cost
+    type: Any
+    default: float
+  - name: tokens_sent
+    type: Any
+    default: int
+  - name: tokens_received
+    type: Any
+    default: int
+  - name: api_calls
+    type: Any
+    default: int
+  methods:
+  - name: __add__
+    sig: '__add__(self, other: InstanceStats) -> InstanceStats'
+    lines:
+    - 300
+    - 303
+    detail:
+      calls:
+      - InstanceStats
+      - getattr
+      - self.model_fields.keys
+  - name: __sub__
+    sig: '__sub__(self, other: InstanceStats) -> InstanceStats'
+    lines:
+    - 305
+    - 308
+    detail:
+      calls:
+      - InstanceStats
+      - getattr
+      - self.model_fields.keys
+  lines:
+  - 292
+  - 308
+- name: AbstractModel
+  kind: trait
+  bases:
+  - ABC
+  fields:
+  - name: config
+    type: Any
+    default: ModelConfig
+  - name: stats
+    type: Any
+    default: InstanceStats
+  methods:
+  - name: __init__
+    sig: __init__(self, ...2 params)
+    lines:
+    - 312
+    - 314
+  - name: reset_stats
+    sig: reset_stats(self)
+    lines:
+    - 316
+    - 317
+    detail:
+      calls:
+      - InstanceStats
+  - name: query
+    sig: 'query(self, history: History, action_prompt: str = "> ") -> dict'
+    decorators:
+    - abstractmethod
+    lines:
+    - 320
+    - 320
+    detail: {}
+  - name: instance_cost_limit
+    sig: instance_cost_limit(self) -> float
+    decorators:
+    - property
+    lines:
+    - 323
+    - 325
+    detail: {}
+  lines:
+  - 311
+  - 325
+- name: HumanModel
+  kind: struct
+  bases:
+  - AbstractModel
+  fields:
+  - name: logger
+    type: Any
+    default: get_logger("swea-lm", emoji="🤖")
+  - name: config
+    type: Any
+    default: HumanModelConfig
+  - name: stats
+    type: Any
+    default: InstanceStats()
+  - name: multi_line_command_endings
+    type: dict
+    default: |-
+      {
+                  command.name: command.end_name for command in tools.commands if command.end_name is not None
+              }
+  - name: _readline_histfile
+    type: Any
+    default: REPO_ROOT / ".swe-agent-human-history"
+  methods:
+  - name: __init__
+    sig: '__init__(self, config: HumanModelConfig, tools: ToolConfig)'
+    lines:
+    - 345
+    - 356
+    detail:
+      calls:
+      - InstanceStats
+      - get_logger
+      - self._load_readline_history
+  - name: _query
+    sig: |-
+      _query(
+              self,
+              history: History,
+              action_prompt: str = "> ",
+          ) -> dict
+    vis: protected
+    lines:
+    - 384
+    - 422
+    detail:
+      calls:
+      - '"\n".join'
+      - _handle_raise_commands
+      - action.encode
+      - action.encode("utf8").decode
+      - action.rstrip
+      - action.split
+      - action.strip
+      - action.strip().split
+      - buffer.append
+      - float
+      - input
+      - self._save_readline_history
+      - self._update_stats
+  - name: query
+    sig: 'query(self, history: History, action_prompt: str = "> ", n: int | None = None, **kwargs) -> dict | list[dict]'
+    lines:
+    - 424
+    - 443
+    detail:
+      calls:
+      - out.append
+      - print
+      - range
+      - self._query
+      - self.query
+  lines:
+  - 344
+  - 443
+- name: HumanThoughtModel
+  kind: struct
+  bases:
+  - HumanModel
+  methods:
+  - name: query
+    sig: 'query(self, history: History, **kwargs) -> dict'
+    lines:
+    - 447
+    - 461
+    detail:
+      calls:
+      - input
+      - super
+      - super()._query
+      - thought.split
+  lines:
+  - 446
+  - 461
+- name: ReplayModel
+  kind: struct
+  bases:
+  - AbstractModel
+  fields:
+  - name: config
+    type: Any
+    default: config
+  - name: stats
+    type: Any
+    default: InstanceStats()
+  - name: _replays
+    type: list
+    default: |-
+      [
+                  list(json.loads(x).values())[0] for x in Path(self.config.replay_path).read_text().splitlines(keepends=True)
+              ]
+  - name: _replay_idx
+    type: int
+    default: '0'
+  - name: _action_idx
+    type: int
+    default: '0'
+  - name: use_function_calling
+    type: Any
+    default: tools.use_function_calling
+  - name: submit_command
+    type: Any
+    default: tools.submit_command
+  - name: logger
+    type: Any
+    default: get_logger("swea-lm", emoji="🤖")
+  methods:
+  - name: __init__
+    sig: '__init__(self, config: ReplayModelConfig, tools: ToolConfig)'
+    lines:
+    - 465
+    - 483
+    detail:
+      calls:
+      - FileNotFoundError
+      - InstanceStats
+      - Path
+      - Path(self.config.replay_path).read_text
+      - Path(self.config.replay_path).read_text().splitlines
+      - get_logger
+      - json.loads
+      - json.loads(x).values
+      - list
+      - self.config.replay_path.exists
+  - name: query
+    sig: 'query(self, history: History) -> dict'
+    lines:
+    - 490
+    - 526
+    detail:
+      calls:
+      - isinstance
+      - self._next_replay
+      - self.logger.error
+  lines:
+  - 464
+  - 526
+- name: PredeterminedTestModel
+  kind: struct
+  bases:
+  - AbstractModel
+  fields:
+  - name: _outputs
+    type: Any
+    default: outputs
+  - name: _idx
+    type: int
+    default: '-1'
+  - name: stats
+    type: Any
+    default: InstanceStats()
+  methods:
+  - name: __init__
+    sig: '__init__(self, outputs: list[dict | str])'
+    lines:
+    - 530
+    - 534
+    detail:
+      calls:
+      - InstanceStats
+  - name: query
+    sig: query(self, *args, **kwargs) -> dict
+    lines:
+    - 536
+    - 548
+    detail:
+      calls:
+      - ValueError
+      - _handle_raise_commands
+      - isinstance
+      - type
+  lines:
+  - 529
+  - 548
+- name: InstantEmptySubmitTestModel
+  kind: struct
+  bases:
+  - AbstractModel
+  fields:
+  - name: config
+    type: Any
+    default: InstantEmptySubmitModelConfig
+  - name: stats
+    type: Any
+    default: InstanceStats()
+  - name: _action_idx
+    type: int
+    default: '0'
+  methods:
+  - name: __init__
+    sig: '__init__(self, args: InstantEmptySubmitModelConfig, tools: ToolConfig)'
+    lines:
+    - 552
+    - 557
+    detail:
+      calls:
+      - InstanceStats
+      - super
+      - super().__init__
+  - name: query
+    sig: 'query(self, history: list[dict[str, str]]) -> dict'
+    lines:
+    - 559
+    - 575
+    detail:
+      calls:
+      - random.uniform
+      - time.sleep
+  lines:
+  - 551
+  - 575
+- name: LiteLLMModel
+  kind: struct
+  bases:
+  - AbstractModel
+  fields:
+  - name: config
+    type: Any
+    default: GenericAPIModelConfig
+  - name: stats
+    type: Any
+    default: InstanceStats()
+  - name: tools
+    type: Any
+    default: tools
+  - name: logger
+    type: Any
+    default: get_logger("swea-lm", emoji="🤖")
+  - name: model_max_input_tokens
+    type: Any
+    default: self.config.max_input_tokens
+  - name: model_max_output_tokens
+    type: Any
+    default: self.config.max_output_tokens
+  - name: lm_provider
+    type: Any
+    default: litellm.model_cost.get(self.config.name, {}).get("litellm_provider", self.config.name)
+  - name: custom_tokenizer
+    type: None
+    default: None
+  methods:
+  - name: __init__
+    sig: '__init__(self, args: GenericAPIModelConfig, tools: ToolConfig)'
+    lines:
+    - 579
+    - 625
+    detail:
+      calls:
+      - InstanceStats
+      - args.model_copy
+      - get_logger
+      - json.load
+      - litellm.model_cost.get
+      - litellm.model_cost.get(self.config.name, {}).get
+      - litellm.register_model
+      - litellm.utils.create_pretrained_tokenizer
+      - litellm.utils.supports_function_calling
+      - open
+      - self.config.completion_kwargs.get
+      - self.config.completion_kwargs.get("extra_headers", {}).get
+      - self.logger.warning
+  - name: instance_cost_limit
+    sig: instance_cost_limit(self) -> float
+    decorators:
+    - property
+    lines:
+    - 628
+    - 630
+    detail: {}
+  - name: _single_query
+    sig: |-
+      _single_query(
+              self, messages: list[dict[str, str]], n: int | None = None, temperature: float | None = None
+          ) -> list[dict]
+    vis: protected
+    lines:
+    - 679
+    - 781
+    detail:
+      calls:
+      - ContextWindowExceededError
+      - ModelConfigurationError
+      - call.to_dict
+      - copy.deepcopy
+      - hasattr
+      - litellm.completion
+      - litellm.cost_calculator.completion_cost
+      - litellm.utils.token_counter
+      - outputs.append
+      - range
+      - self._sleep
+      - self._update_stats
+      - self.config.choose_api_key
+      - self.logger.debug
+      - self.logger.error
+      - self.logger.warning
+      - str
+  - name: query
+    sig: 'query(self, history: History, n: int = 1, temperature: float | None = None) -> list[dict] | dict'
+    lines:
+    - 794
+    - 838
+    detail:
+      calls:
+      - Retrying
+      - retry_if_not_exception_type
+      - self._history_to_messages
+      - self._query
+      - stop_after_attempt
+      - wait_random_exponential
+  - name: _history_to_messages
+    sig: |-
+      _history_to_messages(
+              self,
+              history: History,
+          ) -> list[dict[str, str]]
+    vis: protected
+    lines:
+    - 840
+    - 872
+    detail:
+      calls:
+      - copy.deepcopy
+      - get_role
+      - history_item.get
+      - messages.append
+      - self.logger.debug
+      - str
+      - str(messages).count
+  lines:
+  - 578
+  - 872
+functions:
+- name: get_model
+  sig: 'get_model(args: ModelConfig, tools: ToolConfig) -> AbstractModel'
+  lines:
+  - 875
+  - 903
+  detail:
+    calls:
+    - HumanModel
+    - HumanModelConfig
+    - HumanThoughtModel
+    - HumanThoughtModelConfig
+    - InstantEmptySubmitModelConfig
+    - InstantEmptySubmitTestModel
+    - LiteLLMModel
+    - ReplayModel
+    - ReplayModelConfig
+    - args.model_dump
+    - isinstance
+exports:
+- name: RetryConfig
+  kind: type
+- name: GenericAPIModelConfig
+  kind: type
+- name: ReplayModelConfig
+  kind: type
+- name: InstantEmptySubmitModelConfig
+  kind: type
+- name: HumanModelConfig
+  kind: type
+- name: HumanThoughtModelConfig
+  kind: type
+- name: GlobalStats
+  kind: type
+- name: InstanceStats
+  kind: type
+- name: AbstractModel
+  kind: type
+- name: HumanModel
+  kind: type
+- name: HumanThoughtModel
+  kind: type
+- name: ReplayModel
+  kind: type
+- name: PredeterminedTestModel
+  kind: type
+- name: InstantEmptySubmitTestModel
+  kind: type
+- name: LiteLLMModel
+  kind: type
+- name: get_model
+  kind: func
+- name: ModelConfig
+  kind: data
+- name: GLOBAL_STATS
+  kind: data
+- name: GLOBAL_STATS_LOCK
+  kind: data

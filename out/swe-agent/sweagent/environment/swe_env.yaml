@@ -1,0 +1,259 @@
+## Roska File Descriptor — environment/swe_env.py
+file: environment/swe_env.py
+lines: 276
+layer: logic
+imports:
+- sym: asyncio
+- sym: shlex
+- sym: pydantic.BaseModel
+- sym: pydantic.ConfigDict
+- sym: pydantic.Field
+- sym: swerex.deployment.abstract.AbstractDeployment
+- sym: swerex.deployment.config.DeploymentConfig
+- sym: swerex.deployment.config.DockerDeploymentConfig
+- sym: swerex.deployment.config.get_deployment
+- sym: swerex.runtime.abstract.BashAction
+- sym: swerex.runtime.abstract.BashInterruptAction
+- sym: swerex.runtime.abstract.CreateBashSessionRequest
+- sym: swerex.runtime.abstract.ReadFileRequest
+- sym: swerex.runtime.abstract.WriteFileRequest
+- sym: swerex.runtime.abstract.Command
+- sym: sweagent.environment.hooks.abstract.CombinedEnvHooks
+- sym: sweagent.environment.hooks.abstract.EnvHook
+- sym: sweagent.environment.repo.Repo
+- sym: sweagent.environment.repo.RepoConfig
+- sym: sweagent.utils.log.get_logger
+types:
+- name: EnvironmentConfig
+  kind: model
+  ctx: Configure data sources and setup instructions for the environment in which we solve the tasks.
+  bases:
+  - BaseModel
+  fields:
+  - name: deployment
+    type: Any
+    default: DeploymentConfig
+  - name: repo
+    type: Any
+    default: RepoConfig | None
+  - name: post_startup_commands
+    type: Any
+    default: list[str]
+  - name: post_startup_command_timeout
+    type: Any
+    default: int
+  - name: model_config
+    type: Any
+    default: ConfigDict(extra="forbid")
+  - name: name
+    type: Any
+    default: str
+  lines:
+  - 24
+  - 48
+- name: SWEEnv
+  kind: struct
+  fields:
+  - name: deployment
+    type: Any
+    default: deployment
+  - name: repo
+    type: Any
+    default: repo
+  - name: _post_startup_commands
+    type: Any
+    default: post_startup_commands
+  - name: post_startup_command_timeout
+    type: Any
+    default: post_startup_command_timeout
+  - name: logger
+    type: Any
+    default: get_logger("swea-env", emoji="🪴")
+  - name: name
+    type: Any
+    default: name
+  - name: clean_multi_line_functions
+    type: Any
+    default: 'lambda x: x'
+  - name: _chook
+    type: Any
+    default: CombinedEnvHooks()
+  methods:
+  - name: __init__
+    sig: |-
+      __init__(
+              self,
+              *,
+              deployment: AbstractDeployment,
+              repo: Repo | RepoConfig | None,
+              post_startup_commands: list[str],
+              post_startup_command_timeout: int = 500,
+              hooks: list[EnvHook] | None = None,
+              name: str = "main",
+          )
+    lines:
+    - 52
+    - 82
+    detail:
+      calls:
+      - CombinedEnvHooks
+      - get_logger
+      - self.add_hook
+      - super
+      - super().__init__
+  - name: from_config
+    sig: 'from_config(cls, config: EnvironmentConfig) -> Self'
+    decorators:
+    - classmethod
+    lines:
+    - 85
+    - 98
+    detail:
+      calls:
+      - cls
+      - config.model_copy
+      - get_deployment
+  - name: add_hook
+    sig: 'add_hook(self, hook: EnvHook) -> None'
+    lines:
+    - 100
+    - 107
+    detail:
+      calls:
+      - hook.on_init
+      - self._chook.add_hook
+  - name: start
+    sig: start(self) -> None
+    lines:
+    - 109
+    - 114
+    detail:
+      calls:
+      - self._init_deployment
+      - self.communicate
+      - self.reset
+  - name: hard_reset
+    sig: hard_reset(self)
+    lines:
+    - 128
+    - 133
+    detail:
+      calls:
+      - self.close
+      - self.start
+  - name: reset
+    sig: reset(self)
+    lines:
+    - 135
+    - 147
+    detail:
+      calls:
+      - self._chook.on_environment_startup
+      - self._copy_repo
+      - self._reset_repository
+      - self.communicate
+  - name: close
+    sig: close(self) -> None
+    lines:
+    - 168
+    - 172
+    detail:
+      calls:
+      - asyncio.run
+      - self._chook.on_close
+      - self.deployment.stop
+      - self.logger.info
+  - name: interrupt_session
+    sig: interrupt_session(self)
+    lines:
+    - 192
+    - 194
+    detail:
+      calls:
+      - BashInterruptAction
+      - asyncio.run
+      - self.deployment.runtime.run_in_session
+      - self.logger.info
+  - name: communicate
+    sig: |-
+      communicate(
+              self,
+              input: str,
+              timeout: int | float = 25,
+              *,
+              check: Literal["warn", "ignore", "raise"] = "ignore",
+              error_msg: str = "Command failed",
+          ) -> str
+    lines:
+    - 197
+    - 232
+    detail:
+      calls:
+      - BashAction
+      - RuntimeError
+      - asyncio.run
+      - self.close
+      - self.deployment.runtime.run_in_session
+      - self.logger.error
+      - self.logger.log
+  - name: read_file
+    sig: 'read_file(self, path: str | PurePath, encoding: str | None = None, errors: str | None = None) -> str'
+    lines:
+    - 234
+    - 250
+    detail:
+      calls:
+      - ReadFileRequest
+      - asyncio.run
+      - self.deployment.runtime.read_file
+      - str
+  - name: write_file
+    sig: 'write_file(self, path: str | PurePath, content: str) -> None'
+    lines:
+    - 252
+    - 254
+    detail:
+      calls:
+      - WriteFileRequest
+      - asyncio.run
+      - self.deployment.runtime.write_file
+      - str
+  - name: set_env_variables
+    sig: 'set_env_variables(self, env_variables: dict[str, str]) -> None'
+    lines:
+    - 256
+    - 263
+    detail:
+      calls:
+      - '" && ".join'
+      - env_variables.items
+      - self.communicate
+      - self.logger.debug
+      - shlex.quote
+      - str
+  - name: execute_command
+    sig: |-
+      execute_command(
+              self,
+              command: str,
+              shell: bool = True,
+              check: bool = False,
+              env: dict[str, str] | None = None,
+              cwd: str | None = None,
+          ) -> None
+    lines:
+    - 265
+    - 276
+    detail:
+      calls:
+      - RexCommand
+      - asyncio.run
+      - self.deployment.runtime.execute
+  lines:
+  - 51
+  - 276
+exports:
+- name: EnvironmentConfig
+  kind: type
+- name: SWEEnv
+  kind: type

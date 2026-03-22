@@ -1,0 +1,181 @@
+## Roska File Descriptor — run/_progress.py
+file: run/_progress.py
+lines: 158
+layer: logic
+purpose: This module contains an auxiliary class for rendering progress of the batch run.
+imports:
+- sym: threading.Lock
+- sym: yaml
+- sym: rich.console.Group
+- sym: rich.progress.BarColumn
+- sym: rich.progress.MofNCompleteColumn
+- sym: rich.progress.Progress
+- sym: rich.progress.SpinnerColumn
+- sym: rich.progress.TaskID
+- sym: rich.progress.TaskProgressColumn
+- sym: rich.progress.TextColumn
+- sym: rich.progress.TimeElapsedColumn
+- sym: rich.progress.TimeRemainingColumn
+- sym: rich.table.Table
+- sym: sweagent.agent.models.GLOBAL_STATS
+types:
+- name: RunBatchProgressManager
+  kind: struct
+  fields:
+  - name: _spinner_tasks
+    type: Any
+    default: dict[str, TaskID]
+  - name: _lock
+    type: Any
+    default: Lock()
+  - name: _instances_by_exit_status
+    type: Any
+    default: collections.defaultdict(list)
+  - name: _main_progress_bar
+    type: Any
+    default: |-
+      Progress(
+                  SpinnerColumn(spinner_name="dots2"),
+                  TextColumn("[progress.description]{task.description} (${task.fields[total_cost]})"),
+                  BarColumn(),
+                  MofNCompleteColumn(),
+                  TaskProgressColumn(),
+                  TimeElapsedColumn(),
+                  TextColumn("[cyan]eta:[/cyan]"),
+                  TimeRemainingColumn(),
+                  # Wait 5 min before estimating speed
+                  speed_estimate_period=60 * 5,
+              )
+  - name: _task_progress_bar
+    type: Any
+    default: |-
+      Progress(
+                  SpinnerColumn(spinner_name="dots2"),
+                  TextColumn("{task.fields[instance_id]}"),
+                  TextColumn("{task.fields[status]}"),
+                  TimeElapsedColumn(),
+              )
+  - name: _main_task_id
+    type: Any
+    default: |-
+      self._main_progress_bar.add_task(
+                  "[cyan]Overall Progress", total=num_instances, total_cost=0
+              )
+  - name: render_group
+    type: Any
+    default: Group(Table(), self._task_progress_bar, self._main_progress_bar)
+  - name: _yaml_report_path
+    type: Any
+    default: yaml_report_path
+  methods:
+  - name: __init__
+    sig: |-
+      __init__(
+              self,
+              num_instances: int,
+              yaml_report_path: Path | None = None,
+          )
+    lines:
+    - 34
+    - 79
+    detail:
+      calls:
+      - BarColumn
+      - Group
+      - Lock
+      - MofNCompleteColumn
+      - Progress
+      - SpinnerColumn
+      - Table
+      - TaskProgressColumn
+      - TextColumn
+      - TimeElapsedColumn
+      - TimeRemainingColumn
+      - collections.defaultdict
+      - self._main_progress_bar.add_task
+  - name: n_completed
+    sig: n_completed(self) -> int
+    decorators:
+    - property
+    lines:
+    - 82
+    - 83
+    detail:
+      calls:
+      - len
+      - self._instances_by_exit_status.values
+      - sum
+  - name: update_exit_status_table
+    sig: update_exit_status_table(self)
+    lines:
+    - 85
+    - 101
+    detail:
+      calls:
+      - '", ".join'
+      - Table
+      - _shorten_str
+      - len
+      - reversed
+      - self._instances_by_exit_status.items
+      - sorted
+      - str
+      - t.add_column
+      - t.add_row
+  - name: update_instance_status
+    sig: 'update_instance_status(self, instance_id: str, message: str)'
+    lines:
+    - 107
+    - 116
+    detail:
+      calls:
+      - _shorten_str
+      - self._task_progress_bar.update
+      - self._update_total_costs
+  - name: on_instance_start
+    sig: 'on_instance_start(self, instance_id: str)'
+    lines:
+    - 118
+    - 125
+    detail:
+      calls:
+      - self._task_progress_bar.add_task
+  - name: on_instance_end
+    sig: 'on_instance_end(self, instance_id: str, exit_status: str | None) -> None'
+    lines:
+    - 127
+    - 135
+    detail:
+      calls:
+      - TaskID
+      - self._instances_by_exit_status[exit_status].append
+      - self._main_progress_bar.update
+      - self._save_overview_data_yaml
+      - self._task_progress_bar.remove_task
+      - self._update_total_costs
+      - self.update_exit_status_table
+  - name: on_uncaught_exception
+    sig: 'on_uncaught_exception(self, instance_id: str, exception: Exception) -> None'
+    lines:
+    - 137
+    - 138
+    detail:
+      calls:
+      - self.on_instance_end
+      - type
+  - name: print_report
+    sig: print_report(self) -> None
+    lines:
+    - 140
+    - 145
+    detail:
+      calls:
+      - len
+      - print
+      - self._instances_by_exit_status.items
+  lines:
+  - 33
+  - 158
+exports:
+- name: RunBatchProgressManager
+  kind: type

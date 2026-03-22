@@ -1,0 +1,223 @@
+## Roska File Descriptor — run/run_replay.py
+file: run/run_replay.py
+lines: 219
+layer: logic
+purpose: '[cyan][bold]Replay a trajectory file.[/bold][/cyan] [cyan][bold]=== DESCRIPTION ===[/bold][/cyan] We will take all actions in the trajectory and execute them in an environment. This has two main use cases: 1. Create a demo from a yaml file containing actions (can also be created from a trajectory file with [green]sweagent run traj-to-demo[/green]). [green]run-replay[/green] will execute the actions to get the environment output and produce a full trajectory to be used as a demo. 2. Debugging and testing of tools and environment behavior. [cyan][bold]=== EXAMPLES ===[/bold][/cyan] Replay a trajectory file: [green]sweagent run replay --traj_path mytraj.traj[/green] Replay a demo file: [green]sweagent run replay --traj_path mydemo.demo.yaml[/green]'
+imports:
+- sym: tempfile
+- sym: getpass.getuser
+- sym: yaml
+- sym: pydantic_settings.BaseSettings
+- sym: pydantic_settings.SettingsConfigDict
+- sym: swerex.deployment.abstract.AbstractDeployment
+- sym: swerex.deployment.config.DeploymentConfig
+- sym: swerex.deployment.config.get_deployment
+- sym: typing_extensions.Self
+- sym: sweagent.agent.agents.DefaultAgent
+- sym: sweagent.agent.models.ReplayModelConfig
+- sym: sweagent.environment.swe_env.SWEEnv
+- sym: sweagent.run.common.BasicCLI
+- sym: sweagent.run.common.ConfigHelper
+- sym: sweagent.run.run_single.RunSingle
+- sym: sweagent.run.run_single.RunSingleConfig
+- sym: sweagent.utils.config.load_environment_variables
+- sym: sweagent.utils.log.get_logger
+types:
+- name: RunReplayConfig
+  kind: struct
+  ctx: Override the deployment in the trajectory.
+  bases:
+  - BaseSettings
+  - cli_implicit_flags=False
+  fields:
+  - name: traj_path
+    type: Any
+    default: Path
+  - name: deployment
+    type: Any
+    default: DeploymentConfig | None
+  - name: output_dir
+    type: Any
+    default: Path
+  - name: env_var_path
+    type: Any
+    default: Path | None
+  - name: update_config
+    type: Any
+    default: list[Path]
+  - name: model_config
+    type: Any
+    default: SettingsConfigDict(extra="forbid", env_prefix="SWE_AGENT_")
+  methods:
+  - name: model_post_init
+    sig: 'model_post_init(self, __context: Any) -> None'
+    lines:
+    - 59
+    - 63
+    detail:
+      calls:
+      - Path
+      - Path.cwd
+      - getuser
+      - self.output_dir.mkdir
+  lines:
+  - 46
+  - 63
+- name: RunReplay
+  kind: struct
+  fields:
+  - name: traj_path
+    type: Any
+    default: traj_path
+  - name: output_dir
+    type: Any
+    default: output_dir
+  - name: _replay_action_trajs_path
+    type: Any
+    default: Path(tempfile.NamedTemporaryFile(suffix=".json").name)
+  - name: logger
+    type: Any
+    default: get_logger("swea-run", emoji="🏃")
+  - name: _catch_errors
+    type: Any
+    default: _catch_errors
+  - name: _require_zero_exit_code
+    type: Any
+    default: _require_zero_exit_code
+  - name: _update_config
+    type: Any
+    default: update_config if update_config is not None else []
+  - name: _traj_data
+    type: Any
+    default: yaml.safe_load(traj_path.read_text())
+  - name: config
+    type: Any
+    default: self._get_config_from_agent(self._traj_data)
+  - name: deployment
+    type: Any
+    default: get_deployment(self.config.env.deployment)
+  methods:
+  - name: __init__
+    sig: |-
+      __init__(
+              self,
+              *,
+              traj_path: Path,
+              deployment: AbstractDeployment | None,
+              output_dir: Path,
+              update_config: list[Path] | None = None,
+              _catch_errors: bool = False,
+              _require_zero_exit_code: bool = False,
+          )
+    lines:
+    - 67
+    - 94
+    detail:
+      calls:
+      - Path
+      - get_deployment
+      - get_logger
+      - json.loads
+      - self._get_config_from_agent
+      - tempfile.NamedTemporaryFile
+      - traj_path.read_text
+      - yaml.safe_load
+  - name: _get_config_from_agent
+    sig: _get_config_from_agent(self, traj_data)
+    vis: protected
+    lines:
+    - 96
+    - 121
+    detail:
+      calls:
+      - ReplayModelConfig
+      - RunSingleConfig.model_validate
+      - ValueError
+      - config.model_dump
+      - config_path.read_text
+      - current_model.model_dump
+      - isinstance
+      - json.loads
+      - yaml.safe_load
+  - name: instance_id
+    sig: instance_id(self) -> str
+    decorators:
+    - property
+    lines:
+    - 124
+    - 125
+    detail:
+      calls:
+      - Path
+  - name: from_config
+    sig: 'from_config(cls, config: RunReplayConfig, **kwargs) -> Self'
+    decorators:
+    - classmethod
+    lines:
+    - 128
+    - 136
+    detail:
+      calls:
+      - cls
+      - get_deployment
+      - load_environment_variables
+  - name: _create_actions_file
+    sig: _create_actions_file(self) -> None
+    vis: protected
+    lines:
+    - 138
+    - 171
+    detail:
+      calls:
+      - ValueError
+      - actions.append
+      - any
+      - enumerate
+      - json.dumps
+      - len
+      - self._replay_action_trajs_path.write_text
+  - name: main
+    sig: main(self)
+    lines:
+    - 194
+    - 202
+    detail:
+      calls:
+      - RunSingleConfig
+      - run_single.run
+      - self._create_actions_file
+      - self._get_run_single
+  lines:
+  - 66
+  - 202
+functions:
+- name: run_from_config
+  sig: 'run_from_config(config: RunReplayConfig)'
+  lines:
+  - 205
+  - 206
+  detail:
+    calls:
+    - RunReplay.from_config
+    - RunReplay.from_config(config).main
+- name: run_from_cli
+  sig: 'run_from_cli(args: list[str] | None = None)'
+  lines:
+  - 209
+  - 215
+  detail:
+    calls:
+    - BasicCLI
+    - BasicCLI(RunReplayConfig, help_text=help_text, default_settings=False).get_config
+    - ConfigHelper
+    - ConfigHelper().get_help
+    - run_from_config
+exports:
+- name: RunReplayConfig
+  kind: type
+- name: RunReplay
+  kind: type
+- name: run_from_config
+  kind: func
+- name: run_from_cli
+  kind: func
