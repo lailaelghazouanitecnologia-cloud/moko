@@ -1,0 +1,268 @@
+## Roska File Descriptor — memory/encoding_flow.py
+file: memory/encoding_flow.py
+lines: 505
+purpose: 'Batch-native encoding flow: full save pipeline for one or more memories. Orchestrates the encoding side of memory in a single Flow with 5 steps: 1. Batch embed (ONE embedder call for all items) 2. Intra-batch dedup (cosine matrix, drop near-exact duplicates) 3. Parallel find similar (concurrent storage searches) 4. Parallel analyze (N concurrent LLM calls -- field resolution + consolidation) 5. Execute plans (batch re-embed updates + bulk insert)'
+imports:
+- sym: concurrent.futures.Future
+- sym: concurrent.futures.ThreadPoolExecutor
+- sym: contextvars
+- sym: pydantic.BaseModel
+- sym: pydantic.Field
+- sym: crewai.flow.flow.Flow
+- sym: crewai.flow.flow.listen
+- sym: crewai.flow.flow.start
+- sym: crewai.memory.analyze.ConsolidationPlan
+- sym: crewai.memory.analyze.MemoryAnalysis
+- sym: crewai.memory.analyze.analyze_for_consolidation
+- sym: crewai.memory.analyze.analyze_for_save
+- sym: crewai.memory.types.MemoryConfig
+- sym: crewai.memory.types.MemoryRecord
+- sym: crewai.memory.types.embed_texts
+data:
+- name: logger
+  type: Any
+  val: logging.getLogger(__name__)
+types:
+- name: ItemState
+  kind: model
+  ctx: Per-item tracking within a batch.
+  bases:
+  - BaseModel
+  fields:
+  - name: content
+    type: Any
+    default: str
+  - name: scope
+    type: Any
+    default: str | None
+  - name: categories
+    type: Any
+    default: list[str] | None
+  - name: metadata
+    type: Any
+    default: dict[str, Any] | None
+  - name: importance
+    type: Any
+    default: float | None
+  - name: source
+    type: Any
+    default: str | None
+  - name: private
+    type: Any
+    default: bool
+  - name: resolved_scope
+    type: Any
+    default: str
+  - name: resolved_categories
+    type: Any
+    default: list[str]
+  - name: resolved_metadata
+    type: Any
+    default: dict[str, Any]
+  - name: resolved_importance
+    type: Any
+    default: float
+  - name: resolved_source
+    type: Any
+    default: str | None
+  - name: resolved_private
+    type: Any
+    default: bool
+  - name: embedding
+    type: Any
+    default: list[float]
+  - name: dropped
+    type: Any
+    default: bool
+  - name: similar_records
+    type: Any
+    default: list[MemoryRecord]
+  - name: top_similarity
+    type: Any
+    default: float
+  - name: plan
+    type: Any
+    default: ConsolidationPlan | None
+  - name: result_record
+    type: Any
+    default: MemoryRecord | None
+  lines:
+  - 40
+  - 66
+- name: EncodingState
+  kind: model
+  ctx: Batch-level state for the encoding flow.
+  bases:
+  - BaseModel
+  fields:
+  - name: id
+    type: Any
+    default: str
+  - name: items
+    type: Any
+    default: list[ItemState]
+  - name: records_inserted
+    type: Any
+    default: int
+  - name: records_updated
+    type: Any
+    default: int
+  - name: records_deleted
+    type: Any
+    default: int
+  - name: items_dropped_dedup
+    type: Any
+    default: int
+  lines:
+  - 69
+  - 78
+- name: EncodingFlow
+  kind: struct
+  ctx: 'Batch-native encoding pipeline for memory.remember() / remember_many(). Processes N items through 5 sequential steps, maximising parallelism: - ONE embedder call for all items - N concurrent storage searches - N concurrent individual LLM calls (field resolution + consolidation) - ONE batch re-embed for updates + ONE bulk storage write'
+  fields:
+  - name: _skip_auto_memory
+    type: Any
+    default: bool
+  - name: initial_state
+    type: Any
+    default: EncodingState
+  - name: _storage
+    type: Any
+    default: storage
+  - name: _llm
+    type: Any
+    default: llm
+  - name: _embedder
+    type: Any
+    default: embedder
+  - name: _config
+    type: Any
+    default: config or MemoryConfig()
+  methods:
+  - name: __init__
+    sig: |-
+      __init__(
+              self,
+              storage: Any,
+              llm: Any,
+              embedder: Any,
+              config: MemoryConfig | None = None,
+          ) -> None
+    lines:
+    - 100
+    - 111
+    detail:
+      calls:
+      - MemoryConfig
+      - super
+      - super().__init__
+  - name: batch_embed
+    sig: batch_embed(self) -> None
+    decorators:
+    - start()
+    lines:
+    - 118
+    - 124
+    detail:
+      calls:
+      - embed_texts
+      - list
+      - zip
+  - name: intra_batch_dedup
+    sig: intra_batch_dedup(self) -> None
+    decorators:
+    - listen(batch_embed)
+    lines:
+    - 131
+    - 149
+    detail:
+      calls:
+      - len
+      - list
+      - range
+      - self._cosine_similarity
+  - name: parallel_find_similar
+    sig: parallel_find_similar(self) -> None
+    decorators:
+    - listen(intra_batch_dedup)
+    lines:
+    - 168
+    - 226
+    detail:
+      calls:
+      - ThreadPoolExecutor
+      - _search_one
+      - contextvars.copy_context
+      - enumerate
+      - float
+      - future.result
+      - len
+      - list
+      - logger.warning
+      - min
+      - pool.submit
+  - name: parallel_analyze
+    sig: parallel_analyze(self) -> None
+    decorators:
+    - listen(parallel_find_similar)
+    lines:
+    - 233
+    - 353
+    detail:
+      calls:
+      - ConsolidationPlan
+      - ThreadPoolExecutor
+      - analysis.extracted_metadata.model_dump
+      - any
+      - consol_future.result
+      - consol_futures.items
+      - contextvars.copy_context
+      - dict
+      - enumerate
+      - future.result
+      - list
+      - pool.shutdown
+      - pool.submit
+      - save_futures.items
+      - self._apply_defaults
+      - self._storage.list_categories
+      - self._storage.list_categories(scope_prefix=None).keys
+      - self._storage.list_scopes
+  - name: execute_plans
+    sig: execute_plans(self) -> None
+    decorators:
+    - listen(parallel_analyze)
+    lines:
+    - 373
+    - 505
+    detail:
+      calls:
+      - MemoryRecord
+      - all_similar.get
+      - datetime.utcnow
+      - dedup_deletes.add
+      - dedup_updates.items
+      - embed_texts
+      - enumerate
+      - len
+      - list
+      - next
+      - self._storage.delete
+      - self._storage.save
+      - self._storage.update
+      - set
+      - to_insert.append
+      - update_emb_map.get
+      - zip
+  lines:
+  - 86
+  - 505
+exports:
+- name: ItemState
+  kind: type
+- name: EncodingState
+  kind: type
+- name: EncodingFlow
+  kind: type
+- name: logger
+  kind: data

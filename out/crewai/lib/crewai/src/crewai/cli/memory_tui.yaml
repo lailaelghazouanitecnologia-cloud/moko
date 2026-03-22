@@ -1,0 +1,267 @@
+## Roska File Descriptor — cli/memory_tui.py
+file: cli/memory_tui.py
+lines: 403
+purpose: Textual TUI for browsing and recalling unified memory.
+imports:
+- sym: asyncio
+- sym: textual.app.App
+- sym: textual.app.ComposeResult
+- sym: textual.containers.Horizontal
+- sym: textual.containers.Vertical
+- sym: textual.widgets.Footer
+- sym: textual.widgets.Header
+- sym: textual.widgets.Input
+- sym: textual.widgets.OptionList
+- sym: textual.widgets.Static
+- sym: textual.widgets.Tree
+data:
+- name: _PRIMARY
+  type: str
+  val: '"#eb6658"'
+- name: _SECONDARY
+  type: str
+  val: '"#1F7982"'
+- name: _TERTIARY
+  type: str
+  val: '"#ffffff"'
+types:
+- name: MemoryTUI
+  kind: struct
+  ctx: TUI to browse memory scopes and run recall queries.
+  fields:
+  - name: CSS
+    type: str
+    default: |-
+      f"""
+          Header {{
+              background: {_PRIMARY};
+              color: {_TERTIARY};
+          }}
+          Footer {{
+              background: {_SECONDARY};
+              color: {_TERTIARY};
+          }}
+          Footer > .footer-key--key {{
+              background: {_PRIMARY};
+              color: {_TERTIARY};
+          }}
+          Horizontal {{
+              height: 1fr;
+          }}
+          #scope-tree {{
+              width: 30%;
+              padding: 1 2;
+              background: {_SECONDARY} 8%;
+              border-right: solid {_SECONDARY};
+          }}
+          #scope-tree:focus > .tree--cursor {{
+              background: {_SECONDARY};
+              color: {_TERTIARY};
+          }}
+          #scope-tree > .tree--guides {{
+              color: {_SECONDARY} 50%;
+          }}
+          #scope-tree > .tree--guides-hover {{
+              color: {_PRIMARY};
+          }}
+          #scope-tree > .tree--guides-selected {{
+              color: {_SECONDARY};
+          }}
+          #right-panel {{
+              width: 70%;
+              padding: 0 1;
+          }}
+          #info-panel {{
+              height: 2fr;
+              padding: 1 2;
+              overflow-y: auto;
+              border: round {_SECONDARY};
+          }}
+          #info-panel:focus {{
+              border: round {_PRIMARY};
+          }}
+          #info-panel LoadingIndicator {{
+              color: {_PRIMARY};
+          }}
+          #entry-list {{
+              height: 1fr;
+              border: round {_SECONDARY};
+              padding: 0 1;
+              scrollbar-color: {_PRIMARY};
+          }}
+          #entry-list:focus {{
+              border: round {_PRIMARY};
+          }}
+          #entry-list > .option-list--option-highlighted {{
+              background: {_SECONDARY};
+              color: {_TERTIARY};
+          }}
+          #recall-input {{
+              margin: 0 1 1 1;
+              border: tall {_SECONDARY};
+          }}
+          #recall-input:focus {{
+              border: tall {_PRIMARY};
+          }}
+          """
+  - name: _memory
+    type: Any
+    default: Any
+  - name: _init_error
+    type: Any
+    default: str | None
+  - name: _selected_scope
+    type: Any
+    default: str
+  - name: _entries
+    type: Any
+    default: list[Any]
+  - name: _view_mode
+    type: Any
+    default: str
+  - name: _recall_matches
+    type: Any
+    default: list[Any]
+  - name: _last_scope_info
+    type: Any
+    default: Any
+  - name: _custom_embedder
+    type: Any
+    default: embedder_config is not None
+  methods:
+  - name: __init__
+    sig: |-
+      __init__(
+              self,
+              storage_path: str | None = None,
+              embedder_config: dict[str, Any] | None = None,
+          ) -> None
+    lines:
+    - 110
+    - 142
+    detail:
+      calls:
+      - LanceDBStorage
+      - Memory
+      - build_embedder
+      - str
+      - super
+      - super().__init__
+  - name: compose
+    sig: compose(self) -> ComposeResult
+    lines:
+    - 144
+    - 160
+    detail:
+      calls:
+      - Footer
+      - Header
+      - Horizontal
+      - Input
+      - OptionList
+      - Static
+      - Vertical
+      - self._build_scope_tree
+  - name: on_mount
+    sig: on_mount(self) -> None
+    lines:
+    - 162
+    - 165
+    detail:
+      calls:
+      - self.query_one
+  - name: _populate_entry_list
+    sig: _populate_entry_list(self) -> None
+    vis: protected
+    lines:
+    - 198
+    - 210
+    detail:
+      calls:
+      - len
+      - option_list.add_option
+      - option_list.clear_options
+      - record.created_at.strftime
+      - self.query_one
+  - name: _format_record_detail
+    sig: '_format_record_detail(self, record: Any, context_line: str = "") -> str'
+    vis: protected
+    lines:
+    - 231
+    - 279
+    detail:
+      calls:
+      - '"\n".join'
+      - ''', ''.join'
+      - lines.append
+      - record.created_at.strftime
+      - record.last_accessed.strftime
+      - record.metadata.items
+  - name: on_tree_node_selected
+    sig: 'on_tree_node_selected(self, event: Tree.NodeSelected[str]) -> None'
+    lines:
+    - 283
+    - 306
+    detail:
+      calls:
+      - _format_scope_info
+      - len
+      - panel.update
+      - self._memory.info
+      - self._memory.list_records
+      - self._populate_entry_list
+      - self.query_one
+  - name: on_option_list_option_highlighted
+    sig: |-
+      on_option_list_option_highlighted(
+              self, event: OptionList.OptionHighlighted
+          ) -> None
+    lines:
+    - 308
+    - 347
+    detail:
+      calls:
+      - '"\n".join'
+      - ''', ''.join'
+      - header_lines.append
+      - len
+      - panel.update
+      - self._format_record_detail
+      - self.query_one
+  - name: on_input_submitted
+    sig: 'on_input_submitted(self, event: Input.Submitted) -> None'
+    lines:
+    - 349
+    - 357
+    detail:
+      calls:
+      - event.value.strip
+      - panel.update
+      - self._do_recall
+      - self.query_one
+      - self.run_worker
+  - name: _do_recall
+    sig: '_do_recall(self, query: str) -> None'
+    is_async: true
+    vis: protected
+    lines:
+    - 359
+    - 403
+    detail:
+      calls:
+      - '"\n".join'
+      - asyncio.get_event_loop
+      - info_lines.append
+      - len
+      - loop.run_in_executor
+      - panel.update
+      - self._memory.recall
+      - self._populate_recall_list
+      - self.query_one
+      - self.query_one("#entry-list", OptionList).clear_options
+  lines:
+  - 31
+  - 403
+exports:
+- name: MemoryTUI
+  kind: type

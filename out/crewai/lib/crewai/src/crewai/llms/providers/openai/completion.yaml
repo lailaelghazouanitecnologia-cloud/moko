@@ -1,0 +1,1012 @@
+## Roska File Descriptor — openai/completion.py
+file: openai/completion.py
+lines: 2331
+imports:
+- sym: httpx
+- sym: openai.APIConnectionError
+- sym: openai.AsyncOpenAI
+- sym: openai.NotFoundError
+- sym: openai.OpenAI
+- sym: openai.Stream
+- sym: openai.lib.streaming.chat.ChatCompletionStream
+- sym: openai.types.chat.ChatCompletion
+- sym: openai.types.chat.ChatCompletionChunk
+- sym: openai.types.chat.chat_completion.Choice
+- sym: openai.types.chat.chat_completion_chunk.ChoiceDelta
+- sym: openai.types.responses.Response
+- sym: pydantic.BaseModel
+- sym: crewai.events.types.llm_events.LLMCallType
+- sym: crewai.llms.base_llm.BaseLLM
+- sym: crewai.llms.base_llm.llm_call_context
+- sym: crewai.llms.hooks.transport.AsyncHTTPTransport
+- sym: crewai.llms.hooks.transport.HTTPTransport
+- sym: crewai.utilities.agent_utils.is_context_length_exceeded
+- sym: crewai.utilities.exceptions.context_window_exceeding_exception.LLMContextLengthExceededError
+- sym: crewai.utilities.pydantic_schema_utils.generate_model_description
+- sym: crewai.utilities.types.LLMMessage
+types:
+- name: WebSearchResult
+  kind: struct
+  ctx: Result from web search built-in tool.
+  bases:
+  - TypedDict
+  - total=False
+  fields:
+  - name: id
+    type: Any
+    default: str | None
+  - name: status
+    type: Any
+    default: str | None
+  - name: type
+    type: Any
+    default: str
+  lines:
+  - 37
+  - 42
+- name: FileSearchResultItem
+  kind: struct
+  ctx: Individual file search result.
+  bases:
+  - TypedDict
+  - total=False
+  fields:
+  - name: file_id
+    type: Any
+    default: str | None
+  - name: filename
+    type: Any
+    default: str | None
+  - name: text
+    type: Any
+    default: str | None
+  - name: score
+    type: Any
+    default: float | None
+  - name: attributes
+    type: Any
+    default: dict[str, str | float | bool] | None
+  lines:
+  - 45
+  - 52
+- name: FileSearchResult
+  kind: struct
+  ctx: Result from file search built-in tool.
+  bases:
+  - TypedDict
+  - total=False
+  fields:
+  - name: id
+    type: Any
+    default: str | None
+  - name: status
+    type: Any
+    default: str | None
+  - name: type
+    type: Any
+    default: str
+  - name: queries
+    type: Any
+    default: list[str]
+  - name: results
+    type: Any
+    default: list[FileSearchResultItem]
+  lines:
+  - 55
+  - 62
+- name: CodeInterpreterLogResult
+  kind: struct
+  ctx: Log output from code interpreter.
+  bases:
+  - TypedDict
+  fields:
+  - name: type
+    type: Any
+    default: str
+  - name: logs
+    type: Any
+    default: str
+  lines:
+  - 65
+  - 69
+- name: CodeInterpreterFileResult
+  kind: struct
+  ctx: File output from code interpreter.
+  bases:
+  - TypedDict
+  fields:
+  - name: type
+    type: Any
+    default: str
+  - name: files
+    type: Any
+    default: list[dict[str, Any]]
+  lines:
+  - 72
+  - 76
+- name: CodeInterpreterResult
+  kind: struct
+  ctx: Result from code interpreter built-in tool.
+  bases:
+  - TypedDict
+  - total=False
+  fields:
+  - name: id
+    type: Any
+    default: str | None
+  - name: status
+    type: Any
+    default: str | None
+  - name: type
+    type: Any
+    default: str
+  - name: code
+    type: Any
+    default: str | None
+  - name: container_id
+    type: Any
+    default: str | None
+  - name: results
+    type: Any
+    default: list[CodeInterpreterLogResult | CodeInterpreterFileResult]
+  lines:
+  - 79
+  - 87
+- name: ComputerUseResult
+  kind: struct
+  ctx: Result from computer use built-in tool.
+  bases:
+  - TypedDict
+  - total=False
+  fields:
+  - name: id
+    type: Any
+    default: str | None
+  - name: status
+    type: Any
+    default: str | None
+  - name: type
+    type: Any
+    default: str
+  - name: call_id
+    type: Any
+    default: str | None
+  - name: action
+    type: Any
+    default: dict[str, Any]
+  - name: pending_safety_checks
+    type: Any
+    default: list[dict[str, Any]]
+  lines:
+  - 90
+  - 98
+- name: ReasoningSummary
+  kind: struct
+  ctx: Summary from model reasoning.
+  bases:
+  - TypedDict
+  - total=False
+  fields:
+  - name: id
+    type: Any
+    default: str | None
+  - name: status
+    type: Any
+    default: str | None
+  - name: type
+    type: Any
+    default: str
+  - name: summary
+    type: Any
+    default: list[dict[str, Any]]
+  - name: encrypted_content
+    type: Any
+    default: str | None
+  lines:
+  - 101
+  - 108
+- name: OpenAICompletion
+  kind: struct
+  ctx: 'OpenAI native completion implementation. This class provides direct integration with the OpenAI Python SDK, supporting both Chat Completions API and Responses API. The Responses API is OpenAI''s newer API primitive with built-in tools (web search, file search, code interpreter), stateful conversations, and improved reasoning model support. Args: api: Which OpenAI API to use - "completions" (default) or "responses". instructions: System-level instructions (Responses API only). store: Whether to store responses for multi-turn (Responses API only). previous_response_id: ID of previous response for multi-turn (Responses API only). include: Additional data to include in response (Responses API only). builtin_tools: List of OpenAI built-in tools to enable (Responses API only). Supported: "web_search", "file_search", "code_interpreter", "computer_use". parse_tool_outputs: Whether to return structured ResponsesAPIResult with parsed built-in tool outputs instead of just text (Responses API only). auto_chain: Automatically track and use response IDs for multi-turn conversations (Responses API only). When True, each response ID is saved and used as previous_response_id in subsequent calls. auto_chain_reasoning: Automatically track and pass encrypted reasoning items for ZDR (Zero Data Retention) compliance (Responses API only). When True, adds "reasoning.encrypted_content" to include, captures reasoning items from responses, and passes them back in subsequent calls to preserve chain-of-thought without storing data on OpenAI servers.'
+  bases:
+  - BaseLLM
+  fields:
+  - name: BUILTIN_TOOL_TYPES
+    type: Any
+    default: ClassVar[dict[str, str]]
+  - name: interceptor
+    type: Any
+    default: interceptor
+  - name: organization
+    type: Any
+    default: organization
+  - name: project
+    type: Any
+    default: project
+  - name: max_retries
+    type: Any
+    default: max_retries
+  - name: default_headers
+    type: Any
+    default: default_headers
+  - name: default_query
+    type: Any
+    default: default_query
+  - name: client_params
+    type: Any
+    default: client_params
+  - name: timeout
+    type: Any
+    default: timeout
+  - name: base_url
+    type: Any
+    default: base_url
+  - name: api_base
+    type: Any
+    default: kwargs.pop("api_base", None)
+  - name: client
+    type: Any
+    default: OpenAI(**client_config)
+  - name: async_client
+    type: Any
+    default: AsyncOpenAI(**async_client_config)
+  - name: top_p
+    type: Any
+    default: top_p
+  - name: frequency_penalty
+    type: Any
+    default: frequency_penalty
+  - name: presence_penalty
+    type: Any
+    default: presence_penalty
+  - name: max_tokens
+    type: Any
+    default: max_tokens
+  - name: max_completion_tokens
+    type: Any
+    default: max_completion_tokens
+  - name: seed
+    type: Any
+    default: seed
+  - name: stream
+    type: Any
+    default: stream
+  - name: response_format
+    type: Any
+    default: response_format
+  - name: logprobs
+    type: Any
+    default: logprobs
+  - name: top_logprobs
+    type: Any
+    default: top_logprobs
+  - name: reasoning_effort
+    type: Any
+    default: reasoning_effort
+  - name: is_o1_model
+    type: str
+    default: '"o1" in model.lower()'
+  - name: is_gpt4_model
+    type: str
+    default: '"gpt-4" in model.lower()'
+  - name: api
+    type: Any
+    default: api
+  - name: instructions
+    type: Any
+    default: instructions
+  - name: store
+    type: Any
+    default: store
+  - name: previous_response_id
+    type: Any
+    default: previous_response_id
+  - name: include
+    type: Any
+    default: include
+  - name: builtin_tools
+    type: Any
+    default: builtin_tools
+  - name: parse_tool_outputs
+    type: Any
+    default: parse_tool_outputs
+  - name: auto_chain
+    type: Any
+    default: auto_chain
+  - name: auto_chain_reasoning
+    type: Any
+    default: auto_chain_reasoning
+  - name: _last_response_id
+    type: Any
+    default: str | None
+  - name: _last_reasoning_items
+    type: Any
+    default: list[Any] | None
+  methods:
+  - name: __init__
+    sig: |-
+      __init__(
+              self,
+              model: str = "gpt-4o",
+              api_key: str | None = None,
+              base_url: str | None = None,
+              organization: str | None = None,
+              project: str | None = None,
+              timeout: float | None = None,
+              max_retries: int = 2,
+              default_headers: dict[str, str] | None = None,
+              default_query: dict[str, Any] | None = None,
+              client_params: dict[str, Any] | None = None,
+              temperature: float | None = None,
+              top_p: float | None = None,
+              frequency_penalty: float | None = None,
+              presence_penalty: float | None = None,
+              max_tokens: int | None = None,
+              max_completion_tokens: int | None = None,
+              seed: int | None = None,
+              stream: bool = False,
+              response_format: dict[str, Any] | type[BaseModel] | None = None,
+              logprobs: bool | None = None,
+              top_logprobs: int | None = None,
+              reasoning_effort: str | None = None,
+              provider: str | None = None,
+              interceptor: BaseInterceptor[httpx.Request, httpx.Response] | None = None,
+              api: Literal["completions", "responses"] = "completions",
+              instructions: str | None = None,
+              store: bool | None = None,
+              previous_response_id: str | None = None,
+              include: list[str] | None = None,
+              builtin_tools: list[str] | None = None,
+              parse_tool_outputs: bool = False,
+              auto_chain: bool = False,
+              auto_chain_reasoning: bool = False,
+              **kwargs: Any,
+          ) -> None
+    lines:
+    - 186
+    - 292
+    detail:
+      calls:
+      - AsyncHTTPTransport
+      - AsyncOpenAI
+      - HTTPTransport
+      - OpenAI
+      - httpx.AsyncClient
+      - httpx.Client
+      - kwargs.pop
+      - model.lower
+      - os.getenv
+      - self._get_client_params
+      - super
+      - super().__init__
+  - name: last_response_id
+    sig: last_response_id(self) -> str | None
+    decorators:
+    - property
+    lines:
+    - 295
+    - 302
+    detail: {}
+  - name: reset_chain
+    sig: reset_chain(self) -> None
+    lines:
+    - 304
+    - 310
+    detail: {}
+  - name: last_reasoning_items
+    sig: last_reasoning_items(self) -> list[Any] | None
+    decorators:
+    - property
+    lines:
+    - 313
+    - 321
+    detail: {}
+  - name: reset_reasoning_chain
+    sig: reset_reasoning_chain(self) -> None
+    lines:
+    - 323
+    - 330
+    detail: {}
+  - name: _get_client_params
+    sig: _get_client_params(self) -> dict[str, Any]
+    vis: protected
+    lines:
+    - 332
+    - 359
+    detail:
+      calls:
+      - ValueError
+      - base_params.items
+      - client_params.update
+      - os.getenv
+  - name: call
+    sig: |-
+      call(
+              self,
+              messages: str | list[LLMMessage],
+              tools: list[dict[str, BaseTool]] | None = None,
+              callbacks: list[Any] | None = None,
+              available_functions: dict[str, Any] | None = None,
+              from_task: Task | None = None,
+              from_agent: Agent | None = None,
+              response_model: type[BaseModel] | None = None,
+          ) -> str | Any
+    lines:
+    - 361
+    - 428
+    detail:
+      calls:
+      - ValueError
+      - llm_call_context
+      - logging.error
+      - self._call_completions
+      - self._call_responses
+      - self._emit_call_failed_event
+      - self._emit_call_started_event
+      - self._format_messages
+      - self._invoke_before_llm_call_hooks
+  - name: acall
+    sig: |-
+      acall(
+              self,
+              messages: str | list[LLMMessage],
+              tools: list[dict[str, BaseTool]] | None = None,
+              callbacks: list[Any] | None = None,
+              available_functions: dict[str, Any] | None = None,
+              from_task: Task | None = None,
+              from_agent: Agent | None = None,
+              response_model: type[BaseModel] | None = None,
+          ) -> str | Any
+    is_async: true
+    lines:
+    - 461
+    - 523
+    detail:
+      calls:
+      - llm_call_context
+      - logging.error
+      - self._acall_completions
+      - self._acall_responses
+      - self._emit_call_failed_event
+      - self._emit_call_started_event
+      - self._format_messages
+  - name: _acall_completions
+    sig: |-
+      _acall_completions(
+              self,
+              messages: list[LLMMessage],
+              tools: list[dict[str, BaseTool]] | None = None,
+              available_functions: dict[str, Any] | None = None,
+              from_task: Task | None = None,
+              from_agent: Agent | None = None,
+              response_model: type[BaseModel] | None = None,
+          ) -> str | Any
+    is_async: true
+    vis: protected
+    lines:
+    - 525
+    - 554
+    detail:
+      calls:
+      - self._ahandle_completion
+      - self._ahandle_streaming_completion
+      - self._prepare_completion_params
+  - name: _acall_responses
+    sig: |-
+      _acall_responses(
+              self,
+              messages: list[LLMMessage],
+              tools: list[dict[str, BaseTool]] | None = None,
+              available_functions: dict[str, Any] | None = None,
+              from_task: Task | None = None,
+              from_agent: Agent | None = None,
+              response_model: type[BaseModel] | None = None,
+          ) -> str | Any
+    is_async: true
+    vis: protected
+    lines:
+    - 587
+    - 616
+    detail:
+      calls:
+      - self._ahandle_responses
+      - self._ahandle_streaming_responses
+      - self._prepare_responses_params
+  - name: _prepare_responses_params
+    sig: |-
+      _prepare_responses_params(
+              self,
+              messages: list[LLMMessage],
+              tools: list[dict[str, BaseTool]] | None = None,
+              response_model: type[BaseModel] | None = None,
+          ) -> dict[str, Any]
+    vis: protected
+    lines:
+    - 618
+    - 738
+    detail:
+      calls:
+      - all_tools.append
+      - all_tools.extend
+      - final_input.extend
+      - generate_model_description
+      - include_items.append
+      - input_messages.append
+      - isinstance
+      - issubclass
+      - json_schema.get
+      - list
+      - message.get
+      - params.items
+      - params.update
+      - schema_output.get
+      - self.BUILTIN_TOOL_TYPES.get
+      - self._convert_tools_for_responses
+      - str
+  - name: _convert_tools_for_responses
+    sig: |-
+      _convert_tools_for_responses(
+              self, tools: list[dict[str, BaseTool]]
+          ) -> list[dict[str, Any]]
+    vis: protected
+    lines:
+    - 740
+    - 780
+    detail:
+      calls:
+      - dict
+      - isinstance
+      - responses_tools.append
+      - safe_tool_conversion
+  - name: _handle_responses
+    sig: |-
+      _handle_responses(
+              self,
+              params: dict[str, Any],
+              available_functions: dict[str, Any] | None = None,
+              from_task: Any | None = None,
+              from_agent: Any | None = None,
+              response_model: type[BaseModel] | None = None,
+          ) -> str | ResponsesAPIResult | Any
+    vis: protected
+    lines:
+    - 782
+    - 912
+    detail:
+      calls:
+      - ConnectionError
+      - LLMContextLengthExceededError
+      - ValueError
+      - call.get
+      - is_context_length_exceeded
+      - isinstance
+      - json.loads
+      - logging.error
+      - logging.warning
+      - params.get
+      - self._apply_stop_words
+      - self._emit_call_completed_event
+      - self._emit_call_failed_event
+      - self._extract_builtin_tool_outputs
+      - self._extract_function_calls_from_response
+      - self._extract_reasoning_items
+      - self._extract_responses_token_usage
+      - self._handle_tool_execution
+      - self._invoke_after_llm_call_hooks
+      - self._track_token_usage_internal
+      - self._validate_structured_output
+      - self.client.responses.create
+      - str
+  - name: _ahandle_responses
+    sig: |-
+      _ahandle_responses(
+              self,
+              params: dict[str, Any],
+              available_functions: dict[str, Any] | None = None,
+              from_task: Any | None = None,
+              from_agent: Any | None = None,
+              response_model: type[BaseModel] | None = None,
+          ) -> str | ResponsesAPIResult | Any
+    is_async: true
+    vis: protected
+    lines:
+    - 914
+    - 1040
+    detail:
+      calls:
+      - ConnectionError
+      - LLMContextLengthExceededError
+      - ValueError
+      - call.get
+      - is_context_length_exceeded
+      - isinstance
+      - json.loads
+      - logging.error
+      - logging.warning
+      - params.get
+      - self._apply_stop_words
+      - self._emit_call_completed_event
+      - self._emit_call_failed_event
+      - self._extract_builtin_tool_outputs
+      - self._extract_function_calls_from_response
+      - self._extract_reasoning_items
+      - self._extract_responses_token_usage
+      - self._handle_tool_execution
+      - self._track_token_usage_internal
+      - self._validate_structured_output
+      - self.async_client.responses.create
+      - str
+  - name: _handle_streaming_responses
+    sig: |-
+      _handle_streaming_responses(
+              self,
+              params: dict[str, Any],
+              available_functions: dict[str, Any] | None = None,
+              from_task: Any | None = None,
+              from_agent: Any | None = None,
+              response_model: type[BaseModel] | None = None,
+          ) -> str | ResponsesAPIResult | Any
+    vis: protected
+    lines:
+    - 1042
+    - 1164
+    detail:
+      calls:
+      - call.get
+      - function_calls.append
+      - isinstance
+      - json.loads
+      - logging.warning
+      - params.get
+      - self._apply_stop_words
+      - self._emit_call_completed_event
+      - self._emit_stream_chunk_event
+      - self._extract_builtin_tool_outputs
+      - self._extract_reasoning_items
+      - self._extract_responses_token_usage
+      - self._handle_tool_execution
+      - self._invoke_after_llm_call_hooks
+      - self._track_token_usage_internal
+      - self._validate_structured_output
+      - self.client.responses.create
+  - name: _ahandle_streaming_responses
+    sig: |-
+      _ahandle_streaming_responses(
+              self,
+              params: dict[str, Any],
+              available_functions: dict[str, Any] | None = None,
+              from_task: Any | None = None,
+              from_agent: Any | None = None,
+              response_model: type[BaseModel] | None = None,
+          ) -> str | ResponsesAPIResult | Any
+    is_async: true
+    vis: protected
+    lines:
+    - 1166
+    - 1286
+    detail:
+      calls:
+      - call.get
+      - function_calls.append
+      - isinstance
+      - json.loads
+      - logging.warning
+      - params.get
+      - self._apply_stop_words
+      - self._emit_call_completed_event
+      - self._emit_stream_chunk_event
+      - self._extract_builtin_tool_outputs
+      - self._extract_reasoning_items
+      - self._extract_responses_token_usage
+      - self._handle_tool_execution
+      - self._track_token_usage_internal
+      - self._validate_structured_output
+      - self.async_client.responses.create
+  - name: _extract_builtin_tool_outputs
+    sig: '_extract_builtin_tool_outputs(self, response: Response) -> ResponsesAPIResult'
+    vis: protected
+    lines:
+    - 1319
+    - 1439
+    detail:
+      calls:
+      - CodeInterpreterFileResult
+      - CodeInterpreterLogResult
+      - CodeInterpreterResult
+      - ComputerUseResult
+      - FileSearchResult
+      - FileSearchResultItem
+      - ReasoningSummary
+      - ResponsesAPIResult
+      - WebSearchResult
+      - code_results.append
+      - item.action.model_dump
+      - list
+      - result.code_interpreter_results.append
+      - result.computer_use_results.append
+      - result.file_search_results.append
+      - result.function_calls.append
+      - result.reasoning_summaries.append
+      - result.web_search_results.append
+  - name: _prepare_completion_params
+    sig: |-
+      _prepare_completion_params(
+              self, messages: list[LLMMessage], tools: list[dict[str, BaseTool]] | None = None
+          ) -> dict[str, Any]
+    vis: protected
+    lines:
+    - 1456
+    - 1520
+    detail:
+      calls:
+      - generate_model_description
+      - isinstance
+      - issubclass
+      - params.items
+      - params.update
+      - self._convert_tools_for_interference
+  - name: _convert_tools_for_interference
+    sig: |-
+      _convert_tools_for_interference(
+              self, tools: list[dict[str, BaseTool]]
+          ) -> list[dict[str, Any]]
+    vis: protected
+    lines:
+    - 1522
+    - 1553
+    detail:
+      calls:
+      - dict
+      - force_additional_properties_false
+      - isinstance
+      - openai_tools.append
+      - safe_tool_conversion
+  - name: _handle_completion
+    sig: |-
+      _handle_completion(
+              self,
+              params: dict[str, Any],
+              available_functions: dict[str, Any] | None = None,
+              from_task: Any | None = None,
+              from_agent: Any | None = None,
+              response_model: type[BaseModel] | None = None,
+          ) -> str | Any
+    vis: protected
+    lines:
+    - 1555
+    - 1696
+    detail:
+      calls:
+      - ConnectionError
+      - LLMContextLengthExceededError
+      - ValueError
+      - is_context_length_exceeded
+      - isinstance
+      - json.loads
+      - list
+      - logging.error
+      - logging.info
+      - logging.warning
+      - params.items
+      - parsed_object.model_dump_json
+      - self._apply_stop_words
+      - self._emit_call_completed_event
+      - self._emit_call_failed_event
+      - self._extract_openai_token_usage
+      - self._handle_tool_execution
+      - self._invoke_after_llm_call_hooks
+      - self._track_token_usage_internal
+      - self._validate_structured_output
+      - self.client.beta.chat.completions.parse
+      - self.client.chat.completions.create
+      - str
+      - usage.get
+  - name: _finalize_streaming_response
+    sig: |-
+      _finalize_streaming_response(
+              self,
+              full_response: str,
+              tool_calls: dict[int, dict[str, Any]],
+              usage_data: dict[str, int],
+              params: dict[str, Any],
+              available_functions: dict[str, Any] | None = None,
+              from_task: Any | None = None,
+              from_agent: Any | None = None,
+          ) -> str | list[dict[str, Any]]
+    vis: protected
+    lines:
+    - 1698
+    - 1789
+    detail:
+      calls:
+      - json.loads
+      - logging.error
+      - logging.warning
+      - self._apply_stop_words
+      - self._emit_call_completed_event
+      - self._handle_tool_execution
+      - self._track_token_usage_internal
+      - tool_calls.values
+  - name: _handle_streaming_completion
+    sig: |-
+      _handle_streaming_completion(
+              self,
+              params: dict[str, Any],
+              available_functions: dict[str, Any] | None = None,
+              from_task: Any | None = None,
+              from_agent: Any | None = None,
+              response_model: type[BaseModel] | None = None,
+          ) -> str | list[dict[str, Any]] | BaseModel
+    vis: protected
+    lines:
+    - 1791
+    - 1928
+    detail:
+      calls:
+      - hasattr
+      - isinstance
+      - logging.error
+      - params.items
+      - parsed_result.model_dump_json
+      - self._emit_call_completed_event
+      - self._emit_stream_chunk_event
+      - self._extract_openai_token_usage
+      - self._finalize_streaming_response
+      - self._invoke_after_llm_call_hooks
+      - self._track_token_usage_internal
+      - self.client.beta.chat.completions.stream
+      - self.client.chat.completions.create
+      - stream.get_final_completion
+  - name: _ahandle_completion
+    sig: |-
+      _ahandle_completion(
+              self,
+              params: dict[str, Any],
+              available_functions: dict[str, Any] | None = None,
+              from_task: Any | None = None,
+              from_agent: Any | None = None,
+              response_model: type[BaseModel] | None = None,
+          ) -> str | Any
+    is_async: true
+    vis: protected
+    lines:
+    - 1930
+    - 2068
+    detail:
+      calls:
+      - ConnectionError
+      - LLMContextLengthExceededError
+      - ValueError
+      - is_context_length_exceeded
+      - isinstance
+      - json.loads
+      - list
+      - logging.error
+      - logging.info
+      - logging.warning
+      - params.items
+      - parsed_object.model_dump_json
+      - self._apply_stop_words
+      - self._emit_call_completed_event
+      - self._emit_call_failed_event
+      - self._extract_openai_token_usage
+      - self._handle_tool_execution
+      - self._track_token_usage_internal
+      - self._validate_structured_output
+      - self.async_client.beta.chat.completions.parse
+      - self.async_client.chat.completions.create
+      - str
+      - usage.get
+  - name: _ahandle_streaming_completion
+    sig: |-
+      _ahandle_streaming_completion(
+              self,
+              params: dict[str, Any],
+              available_functions: dict[str, Any] | None = None,
+              from_task: Any | None = None,
+              from_agent: Any | None = None,
+              response_model: type[BaseModel] | None = None,
+          ) -> str | list[dict[str, Any]] | BaseModel
+    is_async: true
+    vis: protected
+    lines:
+    - 2070
+    - 2211
+    detail:
+      calls:
+      - hasattr
+      - logging.error
+      - parsed_object.model_dump_json
+      - response_model.model_validate_json
+      - self._emit_call_completed_event
+      - self._emit_stream_chunk_event
+      - self._extract_openai_token_usage
+      - self._finalize_streaming_response
+      - self._track_token_usage_internal
+      - self.async_client.chat.completions.create
+  - name: supports_function_calling
+    sig: supports_function_calling(self) -> bool
+    lines:
+    - 2213
+    - 2215
+    detail: {}
+  - name: supports_stop_words
+    sig: supports_stop_words(self) -> bool
+    lines:
+    - 2217
+    - 2219
+    detail: {}
+  - name: get_context_window_size
+    sig: get_context_window_size(self) -> int
+    lines:
+    - 2221
+    - 2258
+    detail:
+      calls:
+      - LLM_CONTEXT_WINDOW_SIZES.items
+      - ValueError
+      - context_windows.items
+      - int
+      - self.model.startswith
+  - name: _format_messages
+    sig: '_format_messages(self, messages: str | list[LLMMessage]) -> list[LLMMessage]'
+    vis: protected
+    lines:
+    - 2280
+    - 2295
+    detail:
+      calls:
+      - formatted_messages.append
+      - message.get
+      - super
+      - super()._format_messages
+  - name: supports_multimodal
+    sig: supports_multimodal(self) -> bool
+    lines:
+    - 2297
+    - 2315
+    detail:
+      calls:
+      - any
+      - self.model.lower
+      - self.model.lower().startswith
+  - name: get_file_uploader
+    sig: get_file_uploader(self) -> Any
+    lines:
+    - 2317
+    - 2331
+    detail:
+      calls:
+      - OpenAIFileUploader
+  lines:
+  - 149
+  - 2331
+functions:
+- name: ResponsesAPIResult
+  sig: ''
+  decorators:
+  - dataclass
+  lines:
+  - 111
+  - 146
+exports:
+- name: WebSearchResult
+  kind: type
+- name: FileSearchResultItem
+  kind: type
+- name: FileSearchResult
+  kind: type
+- name: CodeInterpreterLogResult
+  kind: type
+- name: CodeInterpreterFileResult
+  kind: type
+- name: CodeInterpreterResult
+  kind: type
+- name: ComputerUseResult
+  kind: type
+- name: ReasoningSummary
+  kind: type
+- name: OpenAICompletion
+  kind: type
+- name: ResponsesAPIResult
+  kind: func

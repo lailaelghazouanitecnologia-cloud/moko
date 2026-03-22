@@ -1,0 +1,775 @@
+## Roska File Descriptor — agent/core.py
+file: agent/core.py
+lines: 1752
+imports:
+- sym: asyncio
+- sym: contextvars
+- sym: shutil
+- sym: subprocess
+- sym: pydantic.BaseModel
+- sym: pydantic.ConfigDict
+- sym: pydantic.Field
+- sym: pydantic.InstanceOf
+- sym: pydantic.PrivateAttr
+- sym: pydantic.model_validator
+- sym: typing_extensions.Self
+- sym: crewai.agent.planning_config.PlanningConfig
+- sym: crewai.agent.utils.ahandle_knowledge_retrieval
+- sym: crewai.agent.utils.apply_training_data
+- sym: crewai.agent.utils.build_task_prompt_with_schema
+- sym: crewai.agent.utils.format_task_with_context
+- sym: crewai.agent.utils.get_knowledge_config
+- sym: crewai.agent.utils.handle_knowledge_retrieval
+- sym: crewai.agent.utils.handle_reasoning
+- sym: crewai.agent.utils.prepare_tools
+- sym: crewai.agent.utils.process_tool_results
+- sym: crewai.agent.utils.save_last_messages
+- sym: crewai.agent.utils.validate_max_execution_time
+- sym: crewai.agents.agent_builder.base_agent.BaseAgent
+- sym: crewai.agents.cache.cache_handler.CacheHandler
+- sym: crewai.agents.crew_agent_executor.CrewAgentExecutor
+- sym: crewai.events.event_bus.crewai_event_bus
+- sym: crewai.events.types.agent_events.LiteAgentExecutionCompletedEvent
+- sym: crewai.events.types.agent_events.LiteAgentExecutionErrorEvent
+- sym: crewai.events.types.agent_events.LiteAgentExecutionStartedEvent
+- sym: crewai.events.types.knowledge_events.KnowledgeQueryCompletedEvent
+- sym: crewai.events.types.knowledge_events.KnowledgeQueryFailedEvent
+- sym: crewai.events.types.knowledge_events.KnowledgeQueryStartedEvent
+- sym: crewai.events.types.memory_events.MemoryRetrievalCompletedEvent
+- sym: crewai.events.types.memory_events.MemoryRetrievalFailedEvent
+- sym: crewai.events.types.memory_events.MemoryRetrievalStartedEvent
+- sym: crewai.experimental.agent_executor.AgentExecutor
+- sym: crewai.knowledge.knowledge.Knowledge
+- sym: crewai.knowledge.source.base_knowledge_source.BaseKnowledgeSource
+- sym: crewai.lite_agent_output.LiteAgentOutput
+- sym: crewai.llms.base_llm.BaseLLM
+- sym: crewai.mcp.MCPServerConfig
+- sym: crewai.mcp.tool_resolver.MCPToolResolver
+- sym: crewai.rag.embeddings.types.EmbedderConfig
+- sym: crewai.security.fingerprint.Fingerprint
+- sym: crewai.tools.agent_tools.agent_tools.AgentTools
+- sym: crewai.utilities.agent_utils.get_tool_names
+- sym: crewai.utilities.agent_utils.is_inside_event_loop
+- sym: crewai.utilities.agent_utils.load_agent_from_repository
+- sym: crewai.utilities.agent_utils.parse_tools
+- sym: crewai.utilities.agent_utils.render_text_description_and_args
+- sym: crewai.utilities.constants.TRAINED_AGENTS_DATA_FILE
+- sym: crewai.utilities.constants.TRAINING_DATA_FILE
+- sym: crewai.utilities.converter.Converter
+- sym: crewai.utilities.converter.ConverterError
+- sym: crewai.utilities.env.get_env_context
+- sym: crewai.utilities.guardrail.process_guardrail
+- sym: crewai.utilities.guardrail_types.GuardrailType
+- sym: crewai.utilities.llm_utils.create_llm
+- sym: crewai.utilities.prompts.Prompts
+- sym: crewai.utilities.prompts.StandardPromptResult
+- sym: crewai.utilities.prompts.SystemPromptResult
+- sym: crewai.utilities.pydantic_schema_utils.generate_model_description
+- sym: crewai.utilities.string_utils.sanitize_tool_name
+- sym: crewai.utilities.token_counter_callback.TokenCalcHandler
+- sym: crewai.utilities.training_handler.CrewTrainingHandler
+data:
+- name: _passthrough_exceptions
+  type: Any
+  val: tuple[type[Exception], ...]
+types:
+- name: Agent
+  kind: struct
+  ctx: 'Represents an agent in a system. Each agent has a role, a goal, a backstory, and an optional language model (llm). The agent can also have memory, can operate in verbose mode, and can delegate tasks to other agents. Attributes: agent_executor: An instance of the CrewAgentExecutor or AgentExecutor class. role: The role of the agent. goal: The objective of the agent. backstory: The backstory of the agent. knowledge: The knowledge base of the agent. config: Dict representation of agent configuration. llm: The language model that will run the agent. function_calling_llm: The language model that will handle the tool calling for this agent, it overrides the crew function_calling_llm. max_iter: Maximum number of iterations for an agent to execute a task. max_rpm: Maximum number of requests per minute for the agent execution to be respected. verbose: Whether the agent execution should be in verbose mode. allow_delegation: Whether the agent is allowed to delegate tasks to other agents. tools: Tools at agents disposal step_callback: Callback to be executed after each step of the agent execution. knowledge_sources: Knowledge sources for the agent. embedder: Embedder configuration for the agent. apps: List of applications that the agent can access through CrewAI Platform. mcps: List of MCP server references for tool integration. (+1 dunder methods)'
+  bases:
+  - BaseAgent
+  fields:
+  - name: model_config
+    type: Any
+    default: ConfigDict()
+  - name: _times_executed
+    type: Any
+    default: int
+  - name: _mcp_resolver
+    type: Any
+    default: MCPToolResolver | None
+  - name: _last_messages
+    type: Any
+    default: list[LLMMessage]
+  - name: max_execution_time
+    type: Any
+    default: int | None
+  - name: step_callback
+    type: Any
+    default: Any | None
+  - name: use_system_prompt
+    type: Any
+    default: bool | None
+  - name: llm
+    type: Any
+    default: str | InstanceOf[BaseLLM] | Any
+  - name: function_calling_llm
+    type: Any
+    default: str | InstanceOf[BaseLLM] | Any | None
+  - name: system_template
+    type: Any
+    default: str | None
+  - name: prompt_template
+    type: Any
+    default: str | None
+  - name: response_template
+    type: Any
+    default: str | None
+  - name: allow_code_execution
+    type: Any
+    default: bool | None
+  - name: respect_context_window
+    type: Any
+    default: bool
+  - name: max_retry_limit
+    type: Any
+    default: int
+  - name: multimodal
+    type: Any
+    default: bool
+  - name: inject_date
+    type: Any
+    default: bool
+  - name: date_format
+    type: Any
+    default: str
+  - name: code_execution_mode
+    type: Any
+    default: Literal["safe", "unsafe"]
+  - name: planning_config
+    type: Any
+    default: PlanningConfig | None
+  - name: planning
+    type: Any
+    default: bool
+  - name: reasoning
+    type: Any
+    default: bool
+  - name: max_reasoning_attempts
+    type: Any
+    default: int | None
+  - name: embedder
+    type: Any
+    default: EmbedderConfig | None
+  - name: agent_knowledge_context
+    type: Any
+    default: str | None
+  - name: crew_knowledge_context
+    type: Any
+    default: str | None
+  - name: knowledge_search_query
+    type: Any
+    default: str | None
+  - name: from_repository
+    type: Any
+    default: str | None
+  - name: guardrail
+    type: Any
+    default: GuardrailType | None
+  - name: guardrail_max_retries
+    type: Any
+    default: int
+  - name: a2a
+    type: tuple
+    default: |-
+      (
+              list[A2AConfig | A2AServerConfig | A2AClientConfig]
+              | A2AConfig
+              | A2AServerConfig
+              | A2AClientConfig
+              | None
+          )
+  - name: executor_class
+    type: Any
+    default: type[CrewAgentExecutor] | type[AgentExecutor]
+  methods:
+  - name: validate_from_repository
+    sig: 'validate_from_repository(cls, v: Any) -> dict[str, Any] | None | Any'
+    decorators:
+    - model_validator(mode="before")
+    lines:
+    - 261
+    - 264
+    detail:
+      calls:
+      - load_agent_from_repository
+      - v.get
+  - name: post_init_setup
+    sig: post_init_setup(self) -> Self
+    decorators:
+    - model_validator(mode="after")
+    lines:
+    - 267
+    - 293
+    detail:
+      calls:
+      - PlanningConfig
+      - create_llm
+      - isinstance
+      - self._setup_agent_executor
+      - self._validate_docker_installation
+      - warnings.warn
+  - name: planning_enabled
+    sig: planning_enabled(self) -> bool
+    decorators:
+    - property
+    lines:
+    - 296
+    - 298
+    detail: {}
+  - name: set_knowledge
+    sig: 'set_knowledge(self, crew_embedder: EmbedderConfig | None = None) -> None'
+    lines:
+    - 305
+    - 321
+    detail:
+      calls:
+      - Knowledge
+      - ValueError
+      - all
+      - isinstance
+      - self.knowledge.add_sources
+  - name: execute_task
+    sig: |-
+      execute_task(
+              self,
+              task: Task,
+              context: str | None = None,
+              tools: list[BaseTool] | None = None,
+          ) -> Any
+    lines:
+    - 347
+    - 533
+    detail:
+      calls:
+      - '"\n".join'
+      - AgentExecutionCompletedEvent
+      - AgentExecutionErrorEvent
+      - AgentExecutionStartedEvent
+      - MemoryRetrievalCompletedEvent
+      - MemoryRetrievalFailedEvent
+      - MemoryRetrievalStartedEvent
+      - apply_training_data
+      - build_task_prompt_with_schema
+      - crewai_event_bus.emit
+      - e.__class__.__module__.startswith
+      - format_task_with_context
+      - get_env_context
+      - get_knowledge_config
+      - getattr
+      - handle_knowledge_retrieval
+      - handle_reasoning
+      - isinstance
+      - m.format
+      - memory.strip
+      - prepare_tools
+      - process_tool_results
+      - save_last_messages
+      - self._cleanup_mcp_clients
+      - self._execute_with_timeout
+      - self._execute_without_timeout
+      - self._inject_date_to_task
+      - self._is_any_available_memory
+      - self._rpm_controller.stop_rpm_counter
+      - self.execute_task
+      - self.i18n.slice
+      - self.i18n.slice("memory").format
+      - str
+      - task.prompt
+      - time.time
+      - unified_memory.recall
+      - validate_max_execution_time
+  - name: _execute_with_timeout
+    sig: '_execute_with_timeout(self, task_prompt: str, task: Task, timeout: int) -> Any'
+    vis: protected
+    lines:
+    - 535
+    - 570
+    detail:
+      calls:
+      - RuntimeError
+      - TimeoutError
+      - concurrent.futures.ThreadPoolExecutor
+      - contextvars.copy_context
+      - executor.submit
+      - future.cancel
+      - future.result
+  - name: aexecute_task
+    sig: |-
+      aexecute_task(
+              self,
+              task: Task,
+              context: str | None = None,
+              tools: list[BaseTool] | None = None,
+          ) -> Any
+    is_async: true
+    lines:
+    - 594
+    - 773
+    detail:
+      calls:
+      - '"\n".join'
+      - AgentExecutionCompletedEvent
+      - AgentExecutionErrorEvent
+      - AgentExecutionStartedEvent
+      - MemoryRetrievalCompletedEvent
+      - MemoryRetrievalFailedEvent
+      - MemoryRetrievalStartedEvent
+      - ahandle_knowledge_retrieval
+      - apply_training_data
+      - build_task_prompt_with_schema
+      - crewai_event_bus.emit
+      - e.__class__.__module__.startswith
+      - format_task_with_context
+      - get_knowledge_config
+      - getattr
+      - handle_reasoning
+      - isinstance
+      - m.format
+      - memory.strip
+      - prepare_tools
+      - process_tool_results
+      - save_last_messages
+      - self._aexecute_with_timeout
+      - self._aexecute_without_timeout
+      - self._cleanup_mcp_clients
+      - self._inject_date_to_task
+      - self._is_any_available_memory
+      - self._rpm_controller.stop_rpm_counter
+      - self.aexecute_task
+      - self.i18n.slice
+      - self.i18n.slice("memory").format
+      - str
+      - task.prompt
+      - time.time
+      - unified_memory.recall
+      - validate_max_execution_time
+  - name: _aexecute_with_timeout
+    sig: |-
+      _aexecute_with_timeout(
+              self, task_prompt: str, task: Task, timeout: int
+          ) -> Any
+    is_async: true
+    vis: protected
+    lines:
+    - 775
+    - 801
+    detail:
+      calls:
+      - TimeoutError
+      - asyncio.wait_for
+      - self._aexecute_without_timeout
+  - name: _aexecute_without_timeout
+    sig: '_aexecute_without_timeout(self, task_prompt: str, task: Task) -> Any'
+    is_async: true
+    vis: protected
+    lines:
+    - 803
+    - 824
+    detail:
+      calls:
+      - RuntimeError
+      - self.agent_executor.ainvoke
+  - name: create_agent_executor
+    sig: |-
+      create_agent_executor(
+              self, tools: list[BaseTool] | None = None, task: Task | None = None
+          ) -> None
+    lines:
+    - 826
+    - 895
+    detail:
+      calls:
+      - Prompts
+      - |-
+        Prompts(
+                    agent=self,
+                    has_tools=len(raw_tools) > 0,
+                    use_native_tool_calling=use_native_tool_calling,
+                    i18n=self.i18n,
+                    use_system_prompt=self.use_system_prompt,
+                    system_template=self.system_template,
+                    prompt_template=self.prompt_template,
+                    response_template=self.response_template,
+                ).task_execution
+      - TokenCalcHandler
+      - cast
+      - get_tool_names
+      - len
+      - parse_tools
+      - render_text_description_and_args
+      - self._supports_native_tool_calling
+      - self._update_executor_parameters
+      - self.executor_class
+      - self.i18n.slice
+      - self.response_template.split
+      - self.response_template.split("{{ .Response }}")[1].strip
+      - stop_words.append
+  - name: get_delegation_tools
+    sig: 'get_delegation_tools(self, agents: list[BaseAgent]) -> list[BaseTool]'
+    lines:
+    - 942
+    - 944
+    detail:
+      calls:
+      - AgentTools
+      - agent_tools.tools
+  - name: get_platform_tools
+    sig: 'get_platform_tools(self, apps: list[PlatformAppOrAction]) -> list[BaseTool]'
+    lines:
+    - 946
+    - 955
+    detail:
+      calls:
+      - CrewaiPlatformTools
+      - self._logger.log
+  - name: get_mcp_tools
+    sig: 'get_mcp_tools(self, mcps: list[str | MCPServerConfig]) -> list[BaseTool]'
+    lines:
+    - 957
+    - 964
+    detail:
+      calls:
+      - MCPToolResolver
+      - self._cleanup_mcp_clients
+      - self._mcp_resolver.resolve
+  - name: get_multimodal_tools
+    sig: get_multimodal_tools() -> Sequence[BaseTool]
+    decorators:
+    - staticmethod
+    lines:
+    - 973
+    - 976
+    detail:
+      calls:
+      - AddImageTool
+  - name: get_code_execution_tools
+    sig: get_code_execution_tools(self) -> list[CodeInterpreterTool]
+    lines:
+    - 978
+    - 991
+    detail:
+      calls:
+      - CodeInterpreterTool
+      - self._logger.log
+  - name: get_output_converter
+    sig: |-
+      get_output_converter(
+              llm: BaseLLM, text: str, model: type[BaseModel], instructions: str
+          ) -> Converter
+    decorators:
+    - staticmethod
+    lines:
+    - 994
+    - 997
+    detail:
+      calls:
+      - Converter
+  - name: _training_handler
+    sig: '_training_handler(self, task_prompt: str) -> str'
+    vis: protected
+    lines:
+    - 999
+    - 1013
+    detail:
+      calls:
+      - '"\n - ".join'
+      - CrewTrainingHandler
+      - CrewTrainingHandler(TRAINING_DATA_FILE).load
+      - data.get
+      - data.get(agent_id, {}).values
+      - str
+  - name: _use_trained_data
+    sig: '_use_trained_data(self, task_prompt: str) -> str'
+    vis: protected
+    lines:
+    - 1015
+    - 1023
+    detail:
+      calls:
+      - '"\n - ".join'
+      - CrewTrainingHandler
+      - CrewTrainingHandler(TRAINED_AGENTS_DATA_FILE).load
+      - data.get
+  - name: _inject_date_to_task
+    sig: '_inject_date_to_task(self, task: Task) -> None'
+    vis: protected
+    lines:
+    - 1043
+    - 1069
+    detail:
+      calls:
+      - ValueError
+      - any
+      - datetime.now
+      - datetime.now().strftime
+      - self._logger.log
+  - name: _validate_docker_installation
+    sig: _validate_docker_installation(self) -> None
+    vis: protected
+    lines:
+    - 1071
+    - 1093
+    detail:
+      calls:
+      - RuntimeError
+      - shutil.which
+      - subprocess.run
+  - name: fingerprint
+    sig: fingerprint(self) -> Fingerprint
+    decorators:
+    - property
+    lines:
+    - 1099
+    - 1106
+    detail: {}
+  - name: set_fingerprint
+    sig: 'set_fingerprint(self, fingerprint: Fingerprint) -> None'
+    lines:
+    - 1108
+    - 1109
+    detail: {}
+  - name: last_messages
+    sig: last_messages(self) -> list[LLMMessage]
+    decorators:
+    - property
+    lines:
+    - 1112
+    - 1118
+    detail: {}
+  - name: _get_knowledge_search_query
+    sig: '_get_knowledge_search_query(self, task_prompt: str, task: Task) -> str | None'
+    vis: protected
+    lines:
+    - 1120
+    - 1177
+    detail:
+      calls:
+      - KnowledgeQueryCompletedEvent
+      - KnowledgeQueryFailedEvent
+      - KnowledgeQueryStartedEvent
+      - crewai_event_bus.emit
+      - isinstance
+      - self._logger.log
+      - self.i18n.slice
+      - self.i18n.slice("knowledge_search_query").format
+      - self.llm.call
+      - str
+  - name: _prepare_kickoff
+    sig: |-
+      _prepare_kickoff(
+              self,
+              messages: str | list[LLMMessage],
+              response_format: type[Any] | None = None,
+              input_files: dict[str, FileInput] | None = None,
+          ) -> tuple[AgentExecutor, dict[str, Any], dict[str, Any], list[CrewStructuredTool]]
+    vis: protected
+    lines:
+    - 1179
+    - 1354
+    detail:
+      calls:
+      - '"\n".join'
+      - AgentExecutor
+      - MemoryRetrievalCompletedEvent
+      - MemoryRetrievalFailedEvent
+      - MemoryRetrievalStartedEvent
+      - Prompts
+      - |-
+        Prompts(
+                    agent=self,
+                    has_tools=len(raw_tools) > 0,
+                    use_native_tool_calling=use_native_tool_calling,
+                    i18n=self.i18n,
+                    use_system_prompt=self.use_system_prompt,
+                    system_template=self.system_template,
+                    prompt_template=self.prompt_template,
+                    response_template=self.response_template,
+                ).task_execution
+      - TokenCalcHandler
+      - agent_memory.recall
+      - all_files.update
+      - cast
+      - create_memory_tools
+      - crewai_event_bus.emit
+      - get_tool_names
+      - getattr
+      - isinstance
+      - len
+      - m.format
+      - msg.get
+      - parse_tools
+      - raw_tools.extend
+      - render_text_description_and_args
+      - sanitize_tool_name
+      - self._supports_native_tool_calling
+      - self.get_mcp_tools
+      - self.get_platform_tools
+      - self.i18n.slice
+      - self.i18n.slice("memory").format
+      - self.response_template.split
+      - self.response_template.split("{{ .Response }}")[1].strip
+      - self.tools.extend
+      - stop_words.append
+      - str
+      - time.time
+  - name: kickoff
+    sig: |-
+      kickoff(
+              self,
+              messages: str | list[LLMMessage],
+              response_format: type[Any] | None = None,
+              input_files: dict[str, FileInput] | None = None,
+          ) -> LiteAgentOutput | Coroutine[Any, Any, LiteAgentOutput]
+    lines:
+    - 1356
+    - 1436
+    detail:
+      calls:
+      - LiteAgentExecutionCompletedEvent
+      - LiteAgentExecutionErrorEvent
+      - LiteAgentExecutionStartedEvent
+      - crewai_event_bus.emit
+      - is_inside_event_loop
+      - self._execute_and_build_output
+      - self._prepare_kickoff
+      - self._process_kickoff_guardrail
+      - self._save_kickoff_to_memory
+      - self.kickoff_async
+      - str
+  - name: _save_kickoff_to_memory
+    sig: |-
+      _save_kickoff_to_memory(
+              self, messages: str | list[LLMMessage], output_text: str
+          ) -> None
+    vis: protected
+    lines:
+    - 1438
+    - 1462
+    detail:
+      calls:
+      - '"\n".join'
+      - agent_memory.extract_memories
+      - agent_memory.remember_many
+      - getattr
+      - isinstance
+      - msg.get
+      - self._logger.log
+      - str
+  - name: _build_output_from_result
+    sig: |-
+      _build_output_from_result(
+              self,
+              result: dict[str, Any],
+              executor: AgentExecutor,
+              response_format: type[Any] | None = None,
+          ) -> LiteAgentOutput
+    vis: protected
+    lines:
+    - 1464
+    - 1543
+    detail:
+      calls:
+      - Converter
+      - LiteAgentOutput
+      - LiteAgentOutput.from_todo_items
+      - converter.to_pydantic
+      - generate_model_description
+      - isinstance
+      - json.dumps
+      - list
+      - output.model_dump_json
+      - raw_output.model_dump_json
+      - result.get
+      - self._token_process.get_summary
+      - self.i18n.slice
+      - self.i18n.slice("formatted_task_instructions").format
+      - self.llm.get_token_usage_summary
+      - str
+      - usage_metrics.model_dump
+  - name: _execute_and_build_output_async
+    sig: |-
+      _execute_and_build_output_async(
+              self,
+              executor: AgentExecutor,
+              inputs: dict[str, str],
+              response_format: type[Any] | None = None,
+          ) -> LiteAgentOutput
+    is_async: true
+    vis: protected
+    lines:
+    - 1555
+    - 1563
+    detail:
+      calls:
+      - executor.invoke_async
+      - self._build_output_from_result
+  - name: _process_kickoff_guardrail
+    sig: |-
+      _process_kickoff_guardrail(
+              self,
+              output: LiteAgentOutput,
+              executor: AgentExecutor,
+              inputs: dict[str, str],
+              response_format: type[Any] | None = None,
+              retry_count: int = 0,
+          ) -> LiteAgentOutput
+    vis: protected
+    lines:
+    - 1565
+    - 1642
+    detail:
+      calls:
+      - LLMGuardrail
+      - ValueError
+      - callable
+      - cast
+      - executor._append_message_to_state
+      - isinstance
+      - process_guardrail
+      - self._execute_and_build_output
+      - self._process_kickoff_guardrail
+  - name: kickoff_async
+    sig: |-
+      kickoff_async(
+              self,
+              messages: str | list[LLMMessage],
+              response_format: type[Any] | None = None,
+              input_files: dict[str, FileInput] | None = None,
+          ) -> LiteAgentOutput
+    is_async: true
+    lines:
+    - 1644
+    - 1715
+    detail:
+      calls:
+      - LiteAgentExecutionCompletedEvent
+      - LiteAgentExecutionErrorEvent
+      - LiteAgentExecutionStartedEvent
+      - crewai_event_bus.emit
+      - self._execute_and_build_output_async
+      - self._prepare_kickoff
+      - self._process_kickoff_guardrail
+      - self._save_kickoff_to_memory
+      - str
+  - name: akickoff
+    sig: |-
+      akickoff(
+              self,
+              messages: str | list[LLMMessage],
+              response_format: type[Any] | None = None,
+              input_files: dict[str, FileInput] | None = None,
+          ) -> LiteAgentOutput
+    is_async: true
+    lines:
+    - 1717
+    - 1733
+    detail:
+      calls:
+      - self.kickoff_async
+  lines:
+  - 110
+  - 1733
+exports:
+- name: Agent
+  kind: type

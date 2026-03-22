@@ -1,0 +1,679 @@
+## Roska File Descriptor — crewai/task.py
+file: crewai/task.py
+lines: 1315
+imports:
+- sym: asyncio
+- sym: concurrent.futures.Future
+- sym: contextvars
+- sym: inspect
+- sym: threading
+- sym: pydantic.UUID4
+- sym: pydantic.BaseModel
+- sym: pydantic.Field
+- sym: pydantic.PrivateAttr
+- sym: pydantic.field_validator
+- sym: pydantic.model_validator
+- sym: pydantic_core.PydanticCustomError
+- sym: typing_extensions.Self
+- sym: crewai.agents.agent_builder.base_agent.BaseAgent
+- sym: crewai.context.reset_current_task_id
+- sym: crewai.context.set_current_task_id
+- sym: crewai.core.providers.content_processor.process_content
+- sym: crewai.events.event_bus.crewai_event_bus
+- sym: crewai.events.types.task_events.TaskCompletedEvent
+- sym: crewai.events.types.task_events.TaskFailedEvent
+- sym: crewai.events.types.task_events.TaskStartedEvent
+- sym: crewai.security.Fingerprint
+- sym: crewai.security.SecurityConfig
+- sym: crewai.tasks.output_format.OutputFormat
+- sym: crewai.tasks.task_output.TaskOutput
+- sym: crewai.tools.base_tool.BaseTool
+- sym: crewai.utilities.config.process_config
+- sym: crewai.utilities.constants.NOT_SPECIFIED
+- sym: crewai.utilities.constants._NotSpecified
+- sym: crewai.utilities.converter.Converter
+- sym: crewai.utilities.converter.convert_to_model
+- sym: crewai.utilities.file_store.clear_task_files
+- sym: crewai.utilities.file_store.get_all_files
+- sym: crewai.utilities.file_store.store_task_files
+- sym: crewai.utilities.guardrail.process_guardrail
+- sym: crewai.utilities.guardrail_types.GuardrailCallable
+- sym: crewai.utilities.guardrail_types.GuardrailType
+- sym: crewai.utilities.guardrail_types.GuardrailsType
+- sym: crewai.utilities.i18n.I18N
+- sym: crewai.utilities.i18n.get_i18n
+- sym: crewai.utilities.printer.Printer
+- sym: crewai.utilities.string_utils.interpolate_only
+data:
+- name: _printer
+  type: Any
+  val: Printer()
+types:
+- name: Task
+  kind: model
+  ctx: 'Class that represents a task to be executed. Each task must have a description, an expected output and an agent responsible for execution. Attributes: agent: Agent responsible for task execution. Represents entity performing task. async_execution: Boolean flag indicating asynchronous task execution. callback: Function/object executed post task completion for additional actions. config: Dictionary containing task-specific configuration parameters. context: List of Task instances providing task context or input data. description: Descriptive text detailing task''s purpose and execution. expected_output: Clear definition of expected task outcome. output_file: File path for storing task output. create_directory: Whether to create the directory for output_file if it doesn''t exist. output_json: Pydantic model for structuring JSON output. output_pydantic: Pydantic model for task output. security_config: Security configuration including fingerprinting. tools: List of tools/resources limited for task execution. allow_crewai_trigger_context: Optional flag to control crewai_trigger_payload injection. None (default): Auto-inject for first task only. True: Always inject trigger payload for this task. False: Never inject trigger payload, even for first task. (+1 dunder methods)'
+  bases:
+  - BaseModel
+  fields:
+  - name: logger
+    type: Any
+    default: ClassVar[logging.Logger]
+  - name: used_tools
+    type: Any
+    default: int
+  - name: tools_errors
+    type: Any
+    default: int
+  - name: delegations
+    type: Any
+    default: int
+  - name: i18n
+    type: Any
+    default: I18N
+  - name: name
+    type: Any
+    default: str | None
+  - name: prompt_context
+    type: Any
+    default: str | None
+  - name: description
+    type: Any
+    default: str
+  - name: expected_output
+    type: Any
+    default: str
+  - name: config
+    type: Any
+    default: dict[str, Any] | None
+  - name: callback
+    type: Any
+    default: Any | None
+  - name: agent
+    type: Any
+    default: BaseAgent | None
+  - name: context
+    type: Any
+    default: list[Task] | None | _NotSpecified
+  - name: async_execution
+    type: Any
+    default: bool | None
+  - name: output_json
+    type: Any
+    default: type[BaseModel] | None
+  - name: output_pydantic
+    type: Any
+    default: type[BaseModel] | None
+  - name: response_model
+    type: Any
+    default: type[BaseModel] | None
+  - name: output_file
+    type: Any
+    default: str | None
+  - name: create_directory
+    type: Any
+    default: bool | None
+  - name: output
+    type: Any
+    default: TaskOutput | None
+  - name: tools
+    type: Any
+    default: list[BaseTool] | None
+  - name: input_files
+    type: Any
+    default: dict[str, FileInput]
+  - name: security_config
+    type: Any
+    default: SecurityConfig
+  - name: id
+    type: Any
+    default: uuid.UUID
+  - name: human_input
+    type: Any
+    default: bool | None
+  - name: markdown
+    type: Any
+    default: bool | None
+  - name: converter_cls
+    type: Any
+    default: type[Converter] | None
+  - name: processed_by_agents
+    type: Any
+    default: set[str]
+  - name: guardrail
+    type: Any
+    default: GuardrailType | None
+  - name: guardrails
+    type: Any
+    default: GuardrailsType | None
+  - name: max_retries
+    type: Any
+    default: int | None
+  - name: guardrail_max_retries
+    type: Any
+    default: int
+  - name: retry_count
+    type: Any
+    default: int
+  - name: start_time
+    type: Any
+    default: datetime.datetime | None
+  - name: end_time
+    type: Any
+    default: datetime.datetime | None
+  - name: allow_crewai_trigger_context
+    type: Any
+    default: bool | None
+  - name: _guardrail
+    type: Any
+    default: GuardrailCallable | None
+  - name: _guardrails
+    type: Any
+    default: list[GuardrailCallable]
+  - name: _guardrail_retry_counts
+    type: Any
+    default: dict[int, int]
+  - name: _original_description
+    type: Any
+    default: str | None
+  - name: _original_expected_output
+    type: Any
+    default: str | None
+  - name: _original_output_file
+    type: Any
+    default: str | None
+  - name: _thread
+    type: Any
+    default: threading.Thread | None
+  - name: model_config
+    type: dict
+    default: '{"arbitrary_types_allowed": True}'
+  methods:
+  - name: validate_guardrail_function
+    sig: |-
+      validate_guardrail_function(
+              cls, v: str | GuardrailCallable | None
+          ) -> str | GuardrailCallable | None
+    decorators:
+    - field_validator("guardrail")
+    - classmethod
+    lines:
+    - 236
+    - 291
+    detail:
+      calls:
+      - ValueError
+      - callable
+      - get_args
+      - get_origin
+      - inspect.signature
+      - len
+      - sig.parameters.values
+  - name: process_model_config
+    sig: 'process_model_config(cls, values: dict[str, Any]) -> dict[str, Any]'
+    decorators:
+    - model_validator(mode="before")
+    - classmethod
+    lines:
+    - 295
+    - 296
+    detail:
+      calls:
+      - process_config
+  - name: validate_required_fields
+    sig: validate_required_fields(self) -> Self
+    decorators:
+    - model_validator(mode="after")
+    lines:
+    - 299
+    - 306
+    detail:
+      calls:
+      - ValueError
+      - getattr
+  - name: ensure_guardrail_is_callable
+    sig: ensure_guardrail_is_callable(self) -> Task
+    decorators:
+    - model_validator(mode="after")
+    lines:
+    - 309
+    - 323
+    detail:
+      calls:
+      - LLMGuardrail
+      - ValueError
+      - callable
+      - cast
+      - isinstance
+  - name: ensure_guardrails_is_list_of_callables
+    sig: ensure_guardrails_is_list_of_callables(self) -> Task
+    decorators:
+    - model_validator(mode="after")
+    lines:
+    - 326
+    - 377
+    detail:
+      calls:
+      - LLMGuardrail
+      - ValueError
+      - callable
+      - cast
+      - guardrails.append
+      - isinstance
+      - len
+  - name: output_file_validation
+    sig: 'output_file_validation(cls, value: str | None) -> str | None'
+    decorators:
+    - field_validator("output_file")
+    - classmethod
+    lines:
+    - 407
+    - 455
+    detail:
+      calls:
+      - ValueError
+      - any
+      - part.split
+      - value.split
+      - value.startswith
+      - var.isidentifier
+  - name: set_attributes_based_on_config
+    sig: set_attributes_based_on_config(self) -> Task
+    decorators:
+    - model_validator(mode="after")
+    lines:
+    - 458
+    - 463
+    detail:
+      calls:
+      - self.config.items
+      - setattr
+  - name: check_tools
+    sig: check_tools(self) -> Self
+    decorators:
+    - model_validator(mode="after")
+    lines:
+    - 466
+    - 470
+    detail: {}
+  - name: check_output
+    sig: check_output(self) -> Self
+    decorators:
+    - model_validator(mode="after")
+    lines:
+    - 473
+    - 482
+    detail:
+      calls:
+      - PydanticCustomError
+      - len
+  - name: handle_max_retries_deprecation
+    sig: handle_max_retries_deprecation(self) -> Self
+    decorators:
+    - model_validator(mode="after")
+    lines:
+    - 485
+    - 494
+    detail:
+      calls:
+      - warnings.warn
+  - name: execute_sync
+    sig: |-
+      execute_sync(
+              self,
+              agent: BaseAgent | None = None,
+              context: str | None = None,
+              tools: list[BaseTool] | None = None,
+          ) -> TaskOutput
+    lines:
+    - 496
+    - 504
+    detail:
+      calls:
+      - datetime.datetime.now
+      - self._execute_core
+  - name: key
+    sig: key(self) -> str
+    decorators:
+    - property
+    lines:
+    - 507
+    - 512
+    detail:
+      calls:
+      - '"|".join'
+      - '"|".join(source).encode'
+      - md5
+      - md5("|".join(source).encode(), usedforsecurity=False).hexdigest
+  - name: execution_duration
+    sig: execution_duration(self) -> float | None
+    decorators:
+    - property
+    lines:
+    - 515
+    - 518
+    detail:
+      calls:
+      - (self.end_time - self.start_time).total_seconds
+  - name: execute_async
+    sig: |-
+      execute_async(
+              self,
+              agent: BaseAgent | None = None,
+              context: str | None = None,
+              tools: list[BaseTool] | None = None,
+          ) -> Future[TaskOutput]
+    lines:
+    - 520
+    - 534
+    detail:
+      calls:
+      - Future
+      - contextvars.copy_context
+      - threading.Thread
+      - |-
+        threading.Thread(
+                    daemon=True,
+                    target=ctx.run,
+                    args=(self._execute_task_async, agent, context, tools, future),
+                ).start
+  - name: _execute_task_async
+    sig: |-
+      _execute_task_async(
+              self,
+              agent: BaseAgent | None,
+              context: str | None,
+              tools: list[Any] | None,
+              future: Future[TaskOutput],
+          ) -> None
+    vis: protected
+    lines:
+    - 536
+    - 549
+    detail:
+      calls:
+      - datetime.datetime.now
+      - future.set_exception
+      - future.set_result
+      - self._execute_core
+  - name: aexecute_sync
+    sig: |-
+      aexecute_sync(
+              self,
+              agent: BaseAgent | None = None,
+              context: str | None = None,
+              tools: list[BaseTool] | None = None,
+          ) -> TaskOutput
+    is_async: true
+    lines:
+    - 551
+    - 559
+    detail:
+      calls:
+      - datetime.datetime.now
+      - self._aexecute_core
+  - name: _aexecute_core
+    sig: |-
+      _aexecute_core(
+              self,
+              agent: BaseAgent | None,
+              context: str | None,
+              tools: list[Any] | None,
+          ) -> TaskOutput
+    is_async: true
+    vis: protected
+    lines:
+    - 561
+    - 673
+    detail:
+      calls:
+      - Exception
+      - TaskCompletedEvent
+      - TaskFailedEvent
+      - TaskOutput
+      - TaskStartedEvent
+      - agent.aexecute_task
+      - clear_task_files
+      - crew.task_callback
+      - crewai_event_bus.emit
+      - datetime.datetime.now
+      - enumerate
+      - inspect.isawaitable
+      - isinstance
+      - pydantic_output.model_dump_json
+      - reset_current_task_id
+      - result.model_dump
+      - result.model_dump_json
+      - self._ainvoke_guardrail_function
+      - self._export_output
+      - self._get_output_format
+      - self._post_agent_execution
+      - self._save_file
+      - self._store_input_files
+      - self.callback
+      - self.processed_by_agents.add
+      - set_current_task_id
+      - str
+  - name: _execute_core
+    sig: |-
+      _execute_core(
+              self,
+              agent: BaseAgent | None,
+              context: str | None,
+              tools: list[Any] | None,
+          ) -> TaskOutput
+    vis: protected
+    lines:
+    - 675
+    - 788
+    detail:
+      calls:
+      - Exception
+      - TaskCompletedEvent
+      - TaskFailedEvent
+      - TaskOutput
+      - TaskStartedEvent
+      - agent.execute_task
+      - asyncio.run
+      - clear_task_files
+      - crew.task_callback
+      - crewai_event_bus.emit
+      - datetime.datetime.now
+      - enumerate
+      - inspect.iscoroutine
+      - isinstance
+      - pydantic_output.model_dump_json
+      - reset_current_task_id
+      - result.model_dump
+      - result.model_dump_json
+      - self._export_output
+      - self._get_output_format
+      - self._invoke_guardrail_function
+      - self._post_agent_execution
+      - self._save_file
+      - self._store_input_files
+      - self.callback
+      - self.processed_by_agents.add
+      - set_current_task_id
+      - str
+  - name: prompt
+    sig: prompt(self) -> str
+    lines:
+    - 793
+    - 879
+    detail:
+      calls:
+      - '"\n".join'
+      - auto_injected_files.items
+      - crew._inputs.get
+      - file_lines.append
+      - files.items
+      - get_all_files
+      - get_supported_content_types
+      - getattr
+      - hasattr
+      - is_auto_injected
+      - self.agent.llm.supports_multimodal
+      - self.i18n.slice
+      - self.i18n.slice("expected_output").format
+      - str
+      - tasks_slices.append
+      - tool_files.items
+  - name: interpolate_inputs_and_add_conversation_history
+    sig: |-
+      interpolate_inputs_and_add_conversation_history(
+              self, inputs: dict[str, str | int | float | dict[str, Any] | list[Any]]
+          ) -> None
+    lines:
+    - 881
+    - 960
+    detail:
+      calls:
+      - '"\n".join'
+      - ValueError
+      - _printer.print
+      - inputs.get
+      - interpolate_only
+      - isinstance
+      - json.loads
+      - msg['role'].capitalize
+      - process_content
+      - self.i18n.slice
+      - str
+  - name: increment_tools_errors
+    sig: increment_tools_errors(self) -> None
+    lines:
+    - 962
+    - 964
+    detail: {}
+  - name: increment_delegations
+    sig: 'increment_delegations(self, agent_name: str | None) -> None'
+    lines:
+    - 966
+    - 970
+    detail:
+      calls:
+      - self.processed_by_agents.add
+  - name: copy
+    sig: |-
+      copy(  # type: ignore
+              self, agents: list[BaseAgent], task_mapping: dict[str, Task]
+          ) -> Task
+    lines:
+    - 972
+    - 1013
+    detail:
+      calls:
+      - copied_data.items
+      - get_agent_by_role
+      - isinstance
+      - self.__class__
+      - self.model_dump
+      - shallow_copy
+  - name: _export_output
+    sig: |-
+      _export_output(
+              self, result: str
+          ) -> tuple[BaseModel | None, dict[str, Any] | None]
+    vis: protected
+    lines:
+    - 1015
+    - 1040
+    detail:
+      calls:
+      - convert_to_model
+      - isinstance
+      - json.loads
+  - name: _save_file
+    sig: '_save_file(self, result: dict[str, Any] | str | Any) -> None'
+    vis: protected
+    lines:
+    - 1049
+    - 1099
+    detail:
+      calls:
+      - '"\n".join'
+      - Path
+      - Path(self.output_file).expanduser
+      - Path(self.output_file).expanduser().resolve
+      - RuntimeError
+      - ValueError
+      - directory.exists
+      - directory.mkdir
+      - file.write
+      - isinstance
+      - json.dump
+      - resolved_path.open
+      - str
+  - name: fingerprint
+    sig: fingerprint(self) -> Fingerprint
+    decorators:
+    - property
+    lines:
+    - 1112
+    - 1118
+    detail: {}
+  - name: _invoke_guardrail_function
+    sig: |-
+      _invoke_guardrail_function(
+              self,
+              task_output: TaskOutput,
+              agent: BaseAgent,
+              tools: list[BaseTool],
+              guardrail: GuardrailCallable | None,
+              guardrail_index: int | None = None,
+          ) -> TaskOutput
+    vis: protected
+    lines:
+    - 1120
+    - 1218
+    detail:
+      calls:
+      - Exception
+      - Printer
+      - TaskOutput
+      - agent.execute_task
+      - isinstance
+      - printer.print
+      - process_guardrail
+      - range
+      - self._export_output
+      - self._get_output_format
+      - self._guardrail_retry_counts.get
+      - self.i18n.errors
+      - self.i18n.errors("validation_error").format
+  - name: _ainvoke_guardrail_function
+    sig: |-
+      _ainvoke_guardrail_function(
+              self,
+              task_output: TaskOutput,
+              agent: BaseAgent,
+              tools: list[BaseTool],
+              guardrail: GuardrailCallable | None,
+              guardrail_index: int | None = None,
+          ) -> TaskOutput
+    is_async: true
+    vis: protected
+    lines:
+    - 1220
+    - 1315
+    detail:
+      calls:
+      - Exception
+      - Printer
+      - TaskOutput
+      - agent.aexecute_task
+      - isinstance
+      - printer.print
+      - process_guardrail
+      - range
+      - self._export_output
+      - self._get_output_format
+      - self._guardrail_retry_counts.get
+      - self.i18n.errors
+      - self.i18n.errors("validation_error").format
+  lines:
+  - 86
+  - 1315
+exports:
+- name: Task
+  kind: type

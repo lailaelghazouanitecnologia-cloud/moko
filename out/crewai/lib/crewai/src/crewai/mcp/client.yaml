@@ -1,0 +1,388 @@
+## Roska File Descriptor — mcp/client.py
+file: mcp/client.py
+lines: 772
+purpose: MCP client with session management for CrewAI agents.
+imports:
+- sym: asyncio
+- sym: typing_extensions.Self
+- sym: crewai.events.event_bus.crewai_event_bus
+- sym: crewai.events.types.mcp_events.MCPConnectionCompletedEvent
+- sym: crewai.events.types.mcp_events.MCPConnectionFailedEvent
+- sym: crewai.events.types.mcp_events.MCPConnectionStartedEvent
+- sym: crewai.events.types.mcp_events.MCPToolExecutionCompletedEvent
+- sym: crewai.events.types.mcp_events.MCPToolExecutionFailedEvent
+- sym: crewai.events.types.mcp_events.MCPToolExecutionStartedEvent
+- sym: crewai.mcp.transports.base.BaseTransport
+- sym: crewai.mcp.transports.http.HTTPTransport
+- sym: crewai.mcp.transports.sse.SSETransport
+- sym: crewai.mcp.transports.stdio.StdioTransport
+- sym: crewai.utilities.string_utils.sanitize_tool_name
+data:
+- name: MCP_CONNECTION_TIMEOUT
+  type: int
+  val: '30'
+- name: MCP_TOOL_EXECUTION_TIMEOUT
+  type: int
+  val: '30'
+- name: MCP_DISCOVERY_TIMEOUT
+  type: int
+  val: '30'
+- name: MCP_MAX_RETRIES
+  type: int
+  val: '3'
+- name: _mcp_schema_cache
+  type: Any
+  val: dict[str, tuple[dict[str, Any], float]]
+- name: _cache_ttl
+  type: int
+  val: '300'
+types:
+- name: _MCPToolResult
+  kind: struct
+  vis: protected
+  ctx: Internal result from an MCP tool call, carrying the ``isError`` flag.
+  bases:
+  - NamedTuple
+  fields:
+  - name: content
+    type: Any
+    default: str
+  - name: is_error
+    type: Any
+    default: bool
+  lines:
+  - 37
+  - 41
+- name: MCPClient
+  kind: struct
+  ctx: 'MCP client with session management. This client manages connections to MCP servers and provides a high-level interface for interacting with MCP tools, prompts, and resources. Example: ```python transport = StdioTransport(command="python", args=["server.py"]) client = MCPClient(transport) async with client: tools = await client.list_tools() result = await client.call_tool("tool_name", {"arg": "value"}) ```'
+  fields:
+  - name: transport
+    type: Any
+    default: transport
+  - name: connect_timeout
+    type: Any
+    default: connect_timeout
+  - name: execution_timeout
+    type: Any
+    default: execution_timeout
+  - name: discovery_timeout
+    type: Any
+    default: discovery_timeout
+  - name: max_retries
+    type: Any
+    default: max_retries
+  - name: cache_tools_list
+    type: Any
+    default: cache_tools_list
+  - name: _session
+    type: Any
+    default: Any
+  - name: _initialized
+    type: bool
+    default: 'False'
+  - name: _exit_stack
+    type: Any
+    default: AsyncExitStack()
+  - name: _was_connected
+    type: bool
+    default: 'False'
+  methods:
+  - name: __init__
+    sig: |-
+      __init__(
+              self,
+              transport: BaseTransport,
+              connect_timeout: int = MCP_CONNECTION_TIMEOUT,
+              execution_timeout: int = MCP_TOOL_EXECUTION_TIMEOUT,
+              discovery_timeout: int = MCP_DISCOVERY_TIMEOUT,
+              max_retries: int = MCP_MAX_RETRIES,
+              cache_tools_list: bool = False,
+              logger: logging.Logger | None = None,
+          ) -> None
+    lines:
+    - 71
+    - 102
+    detail:
+      calls:
+      - AsyncExitStack
+  - name: connected
+    sig: connected(self) -> bool
+    decorators:
+    - property
+    lines:
+    - 105
+    - 107
+    detail: {}
+  - name: session
+    sig: session(self) -> Any
+    decorators:
+    - property
+    lines:
+    - 110
+    - 114
+    detail:
+      calls:
+      - RuntimeError
+  - name: _get_server_info
+    sig: _get_server_info(self) -> tuple[str, str | None, str | None]
+    vis: protected
+    lines:
+    - 116
+    - 143
+    detail:
+      calls:
+      - ''' ''.join'
+      - hasattr
+      - isinstance
+  - name: connect
+    sig: connect(self) -> Self
+    is_async: true
+    lines:
+    - 145
+    - 331
+    detail:
+      calls:
+      - (completed_at - started_at).total_seconds
+      - ClientSession
+      - ConnectionError
+      - ImportError
+      - MCPConnectionCompletedEvent
+      - MCPConnectionStartedEvent
+      - asyncio.wait_for
+      - crewai_event_bus.emit
+      - datetime.now
+      - isinstance
+      - self._cleanup_on_error
+      - self._emit_connection_failed
+      - self._exit_stack.enter_async_context
+      - self._get_server_info
+      - self._session.initialize
+      - str
+      - str(actual_error).lower
+      - str(e).lower
+      - str(exc).lower
+  - name: _emit_connection_failed
+    sig: |-
+      _emit_connection_failed(
+              self,
+              server_name: str,
+              server_url: str | None,
+              transport_type: str | None,
+              error: str,
+              error_type: str,
+              started_at: datetime,
+          ) -> None
+    vis: protected
+    lines:
+    - 333
+    - 355
+    detail:
+      calls:
+      - MCPConnectionFailedEvent
+      - crewai_event_bus.emit
+      - datetime.now
+  - name: disconnect
+    sig: disconnect(self) -> None
+    is_async: true
+    lines:
+    - 370
+    - 382
+    detail:
+      calls:
+      - AsyncExitStack
+      - RuntimeError
+      - self._exit_stack.aclose
+  - name: list_tools
+    sig: 'list_tools(self, use_cache: bool | None = None) -> list[dict[str, Any]]'
+    is_async: true
+    lines:
+    - 384
+    - 418
+    detail:
+      calls:
+      - self._get_cache_key
+      - self._retry_operation
+      - self.connect
+      - time.time
+  - name: _list_tools_impl
+    sig: _list_tools_impl(self) -> list[dict[str, Any]]
+    is_async: true
+    vis: protected
+    lines:
+    - 420
+    - 435
+    detail:
+      calls:
+      - asyncio.wait_for
+      - getattr
+      - sanitize_tool_name
+      - self.session.list_tools
+  - name: call_tool
+    sig: |-
+      call_tool(
+              self, tool_name: str, arguments: dict[str, Any] | None = None
+          ) -> Any
+    is_async: true
+    lines:
+    - 437
+    - 534
+    detail:
+      calls:
+      - (finished_at - started_at).total_seconds
+      - MCPToolExecutionCompletedEvent
+      - MCPToolExecutionFailedEvent
+      - MCPToolExecutionStartedEvent
+      - crewai_event_bus.emit
+      - datetime.now
+      - isinstance
+      - self._call_tool_impl
+      - self._clean_tool_arguments
+      - self._get_server_info
+      - self._retry_operation
+      - self.connect
+      - str
+      - str(e).lower
+  - name: _clean_tool_arguments
+    sig: '_clean_tool_arguments(self, arguments: dict[str, Any]) -> dict[str, Any]'
+    vis: protected
+    lines:
+    - 536
+    - 590
+    detail:
+      calls:
+      - arguments.items
+      - cleaned_list.append
+      - fixed_sources.append
+      - isinstance
+      - self._clean_tool_arguments
+  - name: _call_tool_impl
+    sig: |-
+      _call_tool_impl(
+              self, tool_name: str, arguments: dict[str, Any]
+          ) -> _MCPToolResult
+    is_async: true
+    vis: protected
+    lines:
+    - 592
+    - 612
+    detail:
+      calls:
+      - _MCPToolResult
+      - asyncio.wait_for
+      - getattr
+      - hasattr
+      - isinstance
+      - len
+      - self.session.call_tool
+      - str
+  - name: list_prompts
+    sig: list_prompts(self) -> list[dict[str, Any]]
+    is_async: true
+    lines:
+    - 614
+    - 626
+    detail:
+      calls:
+      - self._retry_operation
+      - self.connect
+  - name: _list_prompts_impl
+    sig: _list_prompts_impl(self) -> list[dict[str, Any]]
+    is_async: true
+    vis: protected
+    lines:
+    - 628
+    - 642
+    detail:
+      calls:
+      - asyncio.wait_for
+      - getattr
+      - self.session.list_prompts
+  - name: get_prompt
+    sig: |-
+      get_prompt(
+              self, prompt_name: str, arguments: dict[str, Any] | None = None
+          ) -> dict[str, Any]
+    is_async: true
+    lines:
+    - 644
+    - 664
+    detail:
+      calls:
+      - self._get_prompt_impl
+      - self._retry_operation
+      - self.connect
+  - name: _get_prompt_impl
+    sig: |-
+      _get_prompt_impl(
+              self, prompt_name: str, arguments: dict[str, Any]
+          ) -> dict[str, Any]
+    is_async: true
+    vis: protected
+    lines:
+    - 666
+    - 685
+    detail:
+      calls:
+      - asyncio.wait_for
+      - self.session.get_prompt
+  - name: _retry_operation
+    sig: |-
+      _retry_operation(
+              self,
+              operation: Callable[[], Any],
+              timeout: int | None = None,
+          ) -> Any
+    is_async: true
+    vis: protected
+    lines:
+    - 687
+    - 738
+    detail:
+      calls:
+      - ConnectionError
+      - ValueError
+      - asyncio.sleep
+      - asyncio.wait_for
+      - operation
+      - range
+      - str
+      - str(e).lower
+  - name: __aenter__
+    sig: __aenter__(self) -> Self
+    is_async: true
+    lines:
+    - 761
+    - 763
+    detail:
+      calls:
+      - self.connect
+  - name: __aexit__
+    sig: |-
+      __aexit__(
+              self,
+              exc_type: type[BaseException] | None,
+              exc_val: BaseException | None,
+              exc_tb: Any,
+          ) -> None
+    is_async: true
+    lines:
+    - 765
+    - 772
+    detail:
+      calls:
+      - self.disconnect
+  lines:
+  - 55
+  - 772
+exports:
+- name: MCPClient
+  kind: type
+- name: MCP_CONNECTION_TIMEOUT
+  kind: data
+- name: MCP_TOOL_EXECUTION_TIMEOUT
+  kind: data
+- name: MCP_DISCOVERY_TIMEOUT
+  kind: data
+- name: MCP_MAX_RETRIES
+  kind: data

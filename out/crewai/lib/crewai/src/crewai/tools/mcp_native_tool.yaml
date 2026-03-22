@@ -1,0 +1,98 @@
+## Roska File Descriptor — tools/mcp_native_tool.py
+file: tools/mcp_native_tool.py
+lines: 132
+purpose: Native MCP tool wrapper for CrewAI agents. This module provides a tool wrapper that creates a fresh MCP client for every invocation, ensuring safe parallel execution even when the same tool is called concurrently by the executor.
+imports:
+- sym: asyncio
+- sym: contextvars
+- sym: crewai.tools.BaseTool
+types:
+- name: MCPNativeTool
+  kind: struct
+  ctx: Native MCP tool that creates a fresh client per invocation. A ``client_factory`` callable produces an independent ``MCPClient`` + transport for every ``_run_async`` call.  This guarantees that parallel invocations -- whether of the *same* tool or *different* tools from the same server -- never share mutable connection state (which would cause anyio cancel-scope errors).
+  bases:
+  - BaseTool
+  fields:
+  - name: _client_factory
+    type: Any
+    default: client_factory
+  - name: _original_tool_name
+    type: Any
+    default: original_tool_name or tool_name
+  - name: _server_name
+    type: Any
+    default: server_name
+  methods:
+  - name: __init__
+    sig: |-
+      __init__(
+              self,
+              client_factory: Callable[[], Any],
+              tool_name: str,
+              tool_schema: dict[str, Any],
+              server_name: str,
+              original_tool_name: str | None = None,
+          ) -> None
+    lines:
+    - 26
+    - 61
+    detail:
+      calls:
+      - super
+      - super().__init__
+      - tool_schema.get
+  - name: original_tool_name
+    sig: original_tool_name(self) -> str
+    decorators:
+    - property
+    lines:
+    - 64
+    - 66
+    detail: {}
+  - name: server_name
+    sig: server_name(self) -> str
+    decorators:
+    - property
+    lines:
+    - 69
+    - 71
+    detail: {}
+  - name: _run
+    sig: _run(self, **kwargs) -> str
+    vis: protected
+    lines:
+    - 73
+    - 99
+    detail:
+      calls:
+      - RuntimeError
+      - asyncio.get_running_loop
+      - asyncio.run
+      - concurrent.futures.ThreadPoolExecutor
+      - contextvars.copy_context
+      - executor.submit
+      - future.result
+      - self._run_async
+  - name: _run_async
+    sig: _run_async(self, **kwargs) -> str
+    is_async: true
+    vis: protected
+    lines:
+    - 101
+    - 132
+    detail:
+      calls:
+      - client.call_tool
+      - client.connect
+      - client.disconnect
+      - hasattr
+      - isinstance
+      - len
+      - self._client_factory
+      - str
+  lines:
+  - 16
+  - 132
+exports:
+- name: MCPNativeTool
+  kind: type

@@ -1,0 +1,555 @@
+## Roska File Descriptor — a2a/wrapper.py
+file: a2a/wrapper.py
+lines: 1756
+purpose: A2A agent wrapping logic for metaclass integration. Wraps agent classes with A2A delegation capabilities.
+imports:
+- sym: asyncio
+- sym: concurrent.futures.ThreadPoolExecutor
+- sym: concurrent.futures.as_completed
+- sym: contextvars
+- sym: types.MethodType
+- sym: a2a.types.Role
+- sym: a2a.types.TaskState
+- sym: pydantic.BaseModel
+- sym: pydantic.ValidationError
+- sym: crewai.a2a.config.A2AClientConfig
+- sym: crewai.a2a.config.A2AConfig
+- sym: crewai.a2a.extensions.base.A2AExtension
+- sym: crewai.a2a.extensions.base.ConversationState
+- sym: crewai.a2a.extensions.base.ExtensionRegistry
+- sym: crewai.a2a.task_helpers.TaskStateResult
+- sym: crewai.a2a.templates.AVAILABLE_AGENTS_TEMPLATE
+- sym: crewai.a2a.templates.CONVERSATION_TURN_INFO_TEMPLATE
+- sym: crewai.a2a.templates.PREVIOUS_A2A_CONVERSATION_TEMPLATE
+- sym: crewai.a2a.templates.REMOTE_AGENT_RESPONSE_NOTICE
+- sym: crewai.a2a.templates.UNAVAILABLE_AGENTS_NOTICE_TEMPLATE
+- sym: crewai.a2a.types.AgentResponseProtocol
+- sym: crewai.a2a.utils.agent_card.afetch_agent_card
+- sym: crewai.a2a.utils.agent_card.fetch_agent_card
+- sym: crewai.a2a.utils.agent_card.inject_a2a_server_methods
+- sym: crewai.a2a.utils.delegation.aexecute_a2a_delegation
+- sym: crewai.a2a.utils.delegation.execute_a2a_delegation
+- sym: crewai.a2a.utils.response_model.get_a2a_agents_and_response_model
+- sym: crewai.events.event_bus.crewai_event_bus
+- sym: crewai.events.types.a2a_events.A2AConversationCompletedEvent
+- sym: crewai.events.types.a2a_events.A2AMessageSentEvent
+- sym: crewai.lite_agent_output.LiteAgentOutput
+- sym: crewai.task.Task
+types:
+- name: DelegationContext
+  kind: struct
+  ctx: Context prepared for A2A delegation. Groups all the values needed to execute a delegation to a remote A2A agent.
+  bases:
+  - NamedTuple
+  fields:
+  - name: a2a_agents
+    type: Any
+    default: list[A2AConfig | A2AClientConfig]
+  - name: agent_response_model
+    type: Any
+    default: type[BaseModel] | None
+  - name: current_request
+    type: Any
+    default: str
+  - name: agent_id
+    type: Any
+    default: str
+  - name: agent_config
+    type: Any
+    default: A2AConfig | A2AClientConfig
+  - name: context_id
+    type: Any
+    default: str | None
+  - name: task_id
+    type: Any
+    default: str | None
+  - name: metadata
+    type: Any
+    default: dict[str, Any] | None
+  - name: extensions
+    type: Any
+    default: dict[str, Any] | None
+  - name: reference_task_ids
+    type: Any
+    default: list[str]
+  - name: original_task_description
+    type: Any
+    default: str
+  - name: max_turns
+    type: Any
+    default: int
+  lines:
+  - 61
+  - 78
+- name: DelegationState
+  kind: struct
+  ctx: Mutable state for A2A delegation loop. Groups values that may change during delegation turns.
+  bases:
+  - NamedTuple
+  fields:
+  - name: current_request
+    type: Any
+    default: str
+  - name: context_id
+    type: Any
+    default: str | None
+  - name: task_id
+    type: Any
+    default: str | None
+  - name: reference_task_ids
+    type: Any
+    default: list[str]
+  - name: conversation_history
+    type: Any
+    default: list[Message]
+  - name: agent_card
+    type: Any
+    default: AgentCard | None
+  - name: agent_card_dict
+    type: Any
+    default: dict[str, Any] | None
+  - name: agent_name
+    type: Any
+    default: str | None
+  lines:
+  - 81
+  - 94
+functions:
+- name: wrap_agent_with_a2a_instance
+  sig: |-
+    wrap_agent_with_a2a_instance(
+        agent: Agent, extension_registry: ExtensionRegistry | None = None
+    ) -> None
+  lines:
+  - 97
+  - 237
+  detail:
+    calls:
+    - ExtensionRegistry
+    - MethodType
+    - extension_registry.inject_all_tools
+    - inject_a2a_server_methods
+    - object.__setattr__
+    - wraps
+- name: _fetch_agent_cards_concurrently
+  sig: |-
+    _fetch_agent_cards_concurrently(
+        a2a_agents: list[A2AConfig | A2AClientConfig],
+    ) -> tuple[dict[str, AgentCard], dict[str, str]]
+  vis: protected
+  lines:
+  - 262
+  - 299
+  detail:
+    calls:
+    - RuntimeError
+    - ThreadPoolExecutor
+    - as_completed
+    - contextvars.copy_context
+    - executor.submit
+    - future.result
+    - isinstance
+    - len
+    - min
+    - str
+- name: _execute_task_with_a2a
+  sig: |-
+    _execute_task_with_a2a(
+        self: Agent,
+        a2a_agents: list[A2AConfig | A2AClientConfig],
+        original_fn: Callable[..., str],
+        task: Task,
+        agent_response_model: type[BaseModel] | None,
+        context: str | None,
+        tools: list[BaseTool] | None,
+        extension_registry: ExtensionRegistry,
+    ) -> str
+  vis: protected
+  lines:
+  - 302
+  - 391
+  detail:
+    calls:
+    - UNAVAILABLE_AGENTS_NOTICE_TEMPLATE.substitute
+    - _augment_prompt_with_a2a
+    - _delegate_to_a2a
+    - _fetch_agent_cards_concurrently
+    - _parse_agent_response
+    - extension_registry.process_response_with_all
+    - failed_agents.items
+    - isinstance
+    - original_fn
+- name: _kickoff_with_a2a
+  sig: |-
+    _kickoff_with_a2a(
+        self: Agent,
+        a2a_agents: list[A2AConfig | A2AClientConfig],
+        original_kickoff: Callable[..., LiteAgentOutput],
+        messages: str | list[Any],
+        response_format: type[Any] | None,
+        input_files: dict[str, Any] | None,
+        agent_response_model: type[BaseModel] | None,
+        extension_registry: ExtensionRegistry,
+    ) -> LiteAgentOutput
+  vis: protected
+  lines:
+  - 394
+  - 512
+  detail:
+    calls:
+    - LiteAgentOutput
+    - Task
+    - _augment_prompt_with_a2a
+    - _delegate_to_a2a
+    - _fetch_agent_cards_concurrently
+    - _parse_agent_response
+    - extension_registry.process_response_with_all
+    - isinstance
+    - next
+    - original_kickoff
+    - reversed
+- name: _akickoff_with_a2a
+  sig: |-
+    _akickoff_with_a2a(
+        self: Agent,
+        a2a_agents: list[A2AConfig | A2AClientConfig],
+        original_kickoff_async: Callable[..., Coroutine[Any, Any, LiteAgentOutput]],
+        messages: str | list[Any],
+        response_format: type[Any] | None,
+        input_files: dict[str, Any] | None,
+        agent_response_model: type[BaseModel] | None,
+        extension_registry: ExtensionRegistry,
+    ) -> LiteAgentOutput
+  is_async: true
+  vis: protected
+  lines:
+  - 515
+  - 637
+  detail:
+    calls:
+    - LiteAgentOutput
+    - Task
+    - _adelegate_to_a2a
+    - _afetch_agent_cards_concurrently
+    - _augment_prompt_with_a2a
+    - _parse_agent_response
+    - extension_registry.process_response_with_all
+    - isinstance
+    - next
+    - original_kickoff_async
+    - reversed
+- name: _augment_prompt_with_a2a
+  sig: |-
+    _augment_prompt_with_a2a(
+        a2a_agents: list[A2AConfig | A2AClientConfig],
+        task_description: str,
+        agent_cards: Mapping[str, AgentCard | dict[str, Any]],
+        conversation_history: list[Message] | None = None,
+        turn_num: int = 0,
+        max_turns: int | None = None,
+        failed_agents: dict[str, str] | None = None,
+        extension_registry: ExtensionRegistry | None = None,
+        remote_status_notice: str = "",
+    ) -> tuple[str, bool, dict[type[A2AExtension], ConversationState]]
+  vis: protected
+  lines:
+  - 640
+  - 744
+  detail:
+    calls:
+    - AVAILABLE_AGENTS_TEMPLATE.substitute
+    - CONVERSATION_TURN_INFO_TEMPLATE.substitute
+    - PREVIOUS_A2A_CONVERSATION_TEMPLATE.substitute
+    - card.items
+    - card.model_dump_json
+    - extension_registry.augment_prompt_with_all
+    - extension_registry.extract_all_states
+    - extension_states.values
+    - failed_agents.items
+    - isinstance
+    - json.dumps
+    - msg.model_dump_json
+    - state.is_ready
+- name: _handle_max_turns_exceeded
+  sig: |-
+    _handle_max_turns_exceeded(
+        conversation_history: list[Message],
+        max_turns: int,
+        from_task: Any | None = None,
+        from_agent: Any | None = None,
+        endpoint: str | None = None,
+        a2a_agent_name: str | None = None,
+        agent_card: dict[str, Any] | None = None,
+    ) -> str
+  vis: protected
+  lines:
+  - 762
+  - 820
+  detail:
+    calls:
+    - '" ".join'
+    - A2AConversationCompletedEvent
+    - Exception
+    - crewai_event_bus.emit
+    - reversed
+- name: _emit_delegation_failed
+  sig: |-
+    _emit_delegation_failed(
+        error_msg: str,
+        turn_num: int,
+        from_task: Any | None,
+        from_agent: Any | None,
+        endpoint: str | None,
+        a2a_agent_name: str | None,
+        agent_card: dict[str, Any] | None,
+    ) -> str
+  vis: protected
+  lines:
+  - 823
+  - 847
+  detail:
+    calls:
+    - A2AConversationCompletedEvent
+    - crewai_event_bus.emit
+- name: _process_response_result
+  sig: |-
+    _process_response_result(
+        raw_result: str,
+        disable_structured_output: bool,
+        turn_num: int,
+        agent_role: str,
+        agent_response_model: type[BaseModel] | None,
+        extension_registry: ExtensionRegistry | None = None,
+        extension_states: dict[type[A2AExtension], ConversationState] | None = None,
+        from_task: Any | None = None,
+        from_agent: Any | None = None,
+        endpoint: str | None = None,
+        a2a_agent_name: str | None = None,
+        agent_card: dict[str, Any] | None = None,
+    ) -> tuple[str | None, str | None]
+  vis: protected
+  lines:
+  - 850
+  - 947
+  detail:
+    calls:
+    - A2AConversationCompletedEvent
+    - A2AMessageSentEvent
+    - _parse_agent_response
+    - crewai_event_bus.emit
+    - extension_registry.process_response_with_all
+    - isinstance
+    - str
+- name: _init_delegation_state
+  sig: |-
+    _init_delegation_state(
+        ctx: DelegationContext,
+        agent_cards: dict[str, AgentCard] | None,
+    ) -> DelegationState
+  vis: protected
+  lines:
+  - 967
+  - 990
+  detail:
+    calls:
+    - DelegationState
+    - agent_cards.get
+    - current_agent_card.model_dump
+    - list
+- name: _prepare_delegation_context
+  sig: |-
+    _prepare_delegation_context(
+        self: Agent,
+        agent_response: AgentResponseProtocol,
+        task: Task,
+        original_task_description: str | None,
+    ) -> DelegationContext
+  vis: protected
+  lines:
+  - 1015
+  - 1064
+  detail:
+    calls:
+    - DelegationContext
+    - ValueError
+    - filter
+    - get_a2a_agents_and_response_model
+    - isinstance
+    - next
+    - str
+    - task_config.get
+    - tuple
+- name: _handle_task_completion
+  sig: |-
+    _handle_task_completion(
+        a2a_result: TaskStateResult,
+        task: Task,
+        task_id_config: str | None,
+        reference_task_ids: list[str],
+        agent_config: A2AConfig | A2AClientConfig,
+        turn_num: int,
+        from_task: Any | None = None,
+        from_agent: Any | None = None,
+        endpoint: str | None = None,
+        a2a_agent_name: str | None = None,
+        agent_card: dict[str, Any] | None = None,
+    ) -> tuple[str | None, str | None, list[str], str]
+  vis: protected
+  lines:
+  - 1067
+  - 1144
+  detail:
+    calls:
+    - A2AConversationCompletedEvent
+    - a2a_result.get
+    - crewai_event_bus.emit
+    - list
+    - reference_task_ids.append
+    - str
+- name: _delegate_to_a2a
+  sig: |-
+    _delegate_to_a2a(
+        self: Agent,
+        agent_response: AgentResponseProtocol,
+        task: Task,
+        original_fn: Callable[..., str],
+        context: str | None,
+        tools: list[BaseTool] | None,
+        agent_cards: dict[str, AgentCard] | None = None,
+        original_task_description: str | None = None,
+        _extension_registry: ExtensionRegistry | None = None,
+    ) -> str
+  vis: protected
+  lines:
+  - 1232
+  - 1410
+  detail:
+    calls:
+    - _emit_delegation_failed
+    - _get_turn_context
+    - _handle_agent_response_and_continue
+    - _handle_max_turns_exceeded
+    - _handle_task_completion
+    - _init_delegation_state
+    - _prepare_delegation_context
+    - a2a_result.get
+    - execute_a2a_delegation
+    - getattr
+    - range
+- name: _afetch_agent_cards_concurrently
+  sig: |-
+    _afetch_agent_cards_concurrently(
+        a2a_agents: list[A2AConfig | A2AClientConfig],
+    ) -> tuple[dict[str, AgentCard], dict[str, str]]
+  is_async: true
+  vis: protected
+  lines:
+  - 1428
+  - 1452
+  detail:
+    calls:
+    - RuntimeError
+    - _afetch_card_from_config
+    - asyncio.gather
+    - isinstance
+    - str
+- name: _aexecute_task_with_a2a
+  sig: |-
+    _aexecute_task_with_a2a(
+        self: Agent,
+        a2a_agents: list[A2AConfig | A2AClientConfig],
+        original_fn: Callable[..., Coroutine[Any, Any, str]],
+        task: Task,
+        agent_response_model: type[BaseModel] | None,
+        context: str | None,
+        tools: list[BaseTool] | None,
+        extension_registry: ExtensionRegistry,
+    ) -> str
+  is_async: true
+  vis: protected
+  lines:
+  - 1455
+  - 1530
+  detail:
+    calls:
+    - UNAVAILABLE_AGENTS_NOTICE_TEMPLATE.substitute
+    - _adelegate_to_a2a
+    - _afetch_agent_cards_concurrently
+    - _augment_prompt_with_a2a
+    - _parse_agent_response
+    - extension_registry.process_response_with_all
+    - failed_agents.items
+    - isinstance
+    - original_fn
+- name: _ahandle_agent_response_and_continue
+  sig: |-
+    _ahandle_agent_response_and_continue(
+        self: Agent,
+        a2a_result: TaskStateResult,
+        agent_id: str,
+        agent_cards: dict[str, AgentCard] | None,
+        a2a_agents: list[A2AConfig | A2AClientConfig],
+        original_task_description: str,
+        conversation_history: list[Message],
+        turn_num: int,
+        max_turns: int,
+        task: Task,
+        original_fn: Callable[..., Coroutine[Any, Any, str]],
+        context: str | None,
+        tools: list[BaseTool] | None,
+        agent_response_model: type[BaseModel] | None,
+        extension_registry: ExtensionRegistry | None = None,
+        remote_status_notice: str = "",
+        endpoint: str | None = None,
+        a2a_agent_name: str | None = None,
+        agent_card: dict[str, Any] | None = None,
+    ) -> tuple[str | None, str | None]
+  is_async: true
+  vis: protected
+  lines:
+  - 1533
+  - 1593
+  detail:
+    calls:
+    - _augment_prompt_with_a2a
+    - _prepare_agent_cards_dict
+    - _process_response_result
+    - original_fn
+- name: _adelegate_to_a2a
+  sig: |-
+    _adelegate_to_a2a(
+        self: Agent,
+        agent_response: AgentResponseProtocol,
+        task: Task,
+        original_fn: Callable[..., Coroutine[Any, Any, str]],
+        context: str | None,
+        tools: list[BaseTool] | None,
+        agent_cards: dict[str, AgentCard] | None = None,
+        original_task_description: str | None = None,
+        _extension_registry: ExtensionRegistry | None = None,
+    ) -> str
+  is_async: true
+  vis: protected
+  lines:
+  - 1596
+  - 1756
+  detail:
+    calls:
+    - _ahandle_agent_response_and_continue
+    - _emit_delegation_failed
+    - _get_turn_context
+    - _handle_max_turns_exceeded
+    - _handle_task_completion
+    - _init_delegation_state
+    - _prepare_delegation_context
+    - a2a_result.get
+    - aexecute_a2a_delegation
+    - getattr
+    - range
+exports:
+- name: DelegationContext
+  kind: type
+- name: DelegationState
+  kind: type
+- name: wrap_agent_with_a2a_instance
+  kind: func

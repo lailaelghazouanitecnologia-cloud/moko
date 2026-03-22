@@ -1,0 +1,226 @@
+## Roska File Descriptor — tracing/trace_listener.py
+file: tracing/trace_listener.py
+lines: 898
+purpose: Trace collection listener for orchestrating trace collection.
+imports:
+- sym: typing_extensions.Self
+- sym: crewai.cli.authentication.token.AuthError
+- sym: crewai.cli.authentication.token.get_auth_token
+- sym: crewai.cli.version.get_crewai_version
+- sym: crewai.events.base_event_listener.BaseEventListener
+- sym: crewai.events.base_events.BaseEvent
+- sym: crewai.events.event_bus.CrewAIEventsBus
+- sym: crewai.events.listeners.tracing.first_time_trace_handler.FirstTimeTraceHandler
+- sym: crewai.events.listeners.tracing.trace_batch_manager.TraceBatchManager
+- sym: crewai.events.listeners.tracing.types.TraceEvent
+- sym: crewai.events.listeners.tracing.utils.safe_serialize_to_dict
+- sym: crewai.events.types.a2a_events.A2AAgentCardFetchedEvent
+- sym: crewai.events.types.a2a_events.A2AArtifactReceivedEvent
+- sym: crewai.events.types.a2a_events.A2AAuthenticationFailedEvent
+- sym: crewai.events.types.a2a_events.A2AConnectionErrorEvent
+- sym: crewai.events.types.a2a_events.A2AConversationCompletedEvent
+- sym: crewai.events.types.a2a_events.A2AConversationStartedEvent
+- sym: crewai.events.types.a2a_events.A2ADelegationCompletedEvent
+- sym: crewai.events.types.a2a_events.A2ADelegationStartedEvent
+- sym: crewai.events.types.a2a_events.A2AMessageSentEvent
+- sym: crewai.events.types.a2a_events.A2AParallelDelegationCompletedEvent
+- sym: crewai.events.types.a2a_events.A2AParallelDelegationStartedEvent
+- sym: crewai.events.types.a2a_events.A2APollingStartedEvent
+- sym: crewai.events.types.a2a_events.A2APollingStatusEvent
+- sym: crewai.events.types.a2a_events.A2APushNotificationReceivedEvent
+- sym: crewai.events.types.a2a_events.A2APushNotificationRegisteredEvent
+- sym: crewai.events.types.a2a_events.A2APushNotificationSentEvent
+- sym: crewai.events.types.a2a_events.A2APushNotificationTimeoutEvent
+- sym: crewai.events.types.a2a_events.A2AResponseReceivedEvent
+- sym: crewai.events.types.a2a_events.A2AServerTaskCanceledEvent
+- sym: crewai.events.types.a2a_events.A2AServerTaskCompletedEvent
+- sym: crewai.events.types.a2a_events.A2AServerTaskFailedEvent
+- sym: crewai.events.types.a2a_events.A2AServerTaskStartedEvent
+- sym: crewai.events.types.a2a_events.A2AStreamingChunkEvent
+- sym: crewai.events.types.a2a_events.A2AStreamingStartedEvent
+- sym: crewai.events.types.agent_events.AgentExecutionCompletedEvent
+- sym: crewai.events.types.agent_events.AgentExecutionErrorEvent
+- sym: crewai.events.types.agent_events.AgentExecutionStartedEvent
+- sym: crewai.events.types.agent_events.LiteAgentExecutionCompletedEvent
+- sym: crewai.events.types.agent_events.LiteAgentExecutionErrorEvent
+- sym: crewai.events.types.agent_events.LiteAgentExecutionStartedEvent
+- sym: crewai.events.types.crew_events.CrewKickoffCompletedEvent
+- sym: crewai.events.types.crew_events.CrewKickoffFailedEvent
+- sym: crewai.events.types.crew_events.CrewKickoffStartedEvent
+- sym: crewai.events.types.env_events.CCEnvEvent
+- sym: crewai.events.types.env_events.CodexEnvEvent
+- sym: crewai.events.types.env_events.CursorEnvEvent
+- sym: crewai.events.types.env_events.DefaultEnvEvent
+- sym: crewai.events.types.flow_events.FlowCreatedEvent
+- sym: crewai.events.types.flow_events.FlowFinishedEvent
+- sym: crewai.events.types.flow_events.FlowPlotEvent
+- sym: crewai.events.types.flow_events.FlowStartedEvent
+- sym: crewai.events.types.flow_events.MethodExecutionFailedEvent
+- sym: crewai.events.types.flow_events.MethodExecutionFinishedEvent
+- sym: crewai.events.types.flow_events.MethodExecutionStartedEvent
+- sym: crewai.events.types.knowledge_events.KnowledgeQueryCompletedEvent
+- sym: crewai.events.types.knowledge_events.KnowledgeQueryFailedEvent
+- sym: crewai.events.types.knowledge_events.KnowledgeQueryStartedEvent
+- sym: crewai.events.types.knowledge_events.KnowledgeRetrievalCompletedEvent
+- sym: crewai.events.types.knowledge_events.KnowledgeRetrievalStartedEvent
+- sym: crewai.events.types.llm_events.LLMCallCompletedEvent
+- sym: crewai.events.types.llm_events.LLMCallFailedEvent
+- sym: crewai.events.types.llm_events.LLMCallStartedEvent
+- sym: crewai.events.types.llm_guardrail_events.LLMGuardrailCompletedEvent
+- sym: crewai.events.types.llm_guardrail_events.LLMGuardrailStartedEvent
+- sym: crewai.events.types.memory_events.MemoryQueryCompletedEvent
+- sym: crewai.events.types.memory_events.MemoryQueryFailedEvent
+- sym: crewai.events.types.memory_events.MemoryQueryStartedEvent
+- sym: crewai.events.types.memory_events.MemoryRetrievalCompletedEvent
+- sym: crewai.events.types.memory_events.MemoryRetrievalStartedEvent
+- sym: crewai.events.types.memory_events.MemorySaveCompletedEvent
+- sym: crewai.events.types.memory_events.MemorySaveFailedEvent
+- sym: crewai.events.types.memory_events.MemorySaveStartedEvent
+- sym: crewai.events.types.observation_events.GoalAchievedEarlyEvent
+- sym: crewai.events.types.observation_events.PlanRefinementEvent
+- sym: crewai.events.types.observation_events.PlanReplanTriggeredEvent
+- sym: crewai.events.types.observation_events.StepObservationCompletedEvent
+- sym: crewai.events.types.observation_events.StepObservationFailedEvent
+- sym: crewai.events.types.observation_events.StepObservationStartedEvent
+- sym: crewai.events.types.reasoning_events.AgentReasoningCompletedEvent
+- sym: crewai.events.types.reasoning_events.AgentReasoningFailedEvent
+- sym: crewai.events.types.reasoning_events.AgentReasoningStartedEvent
+- sym: crewai.events.types.system_events.SignalEvent
+- sym: crewai.events.types.system_events.on_signal
+- sym: crewai.events.types.task_events.TaskCompletedEvent
+- sym: crewai.events.types.task_events.TaskFailedEvent
+- sym: crewai.events.types.task_events.TaskStartedEvent
+- sym: crewai.events.types.tool_usage_events.ToolUsageErrorEvent
+- sym: crewai.events.types.tool_usage_events.ToolUsageFinishedEvent
+- sym: crewai.events.types.tool_usage_events.ToolUsageStartedEvent
+- sym: crewai.events.utils.console_formatter.ConsoleFormatter
+types:
+- name: TraceCollectionListener
+  kind: struct
+  ctx: Trace collection listener that orchestrates trace collection.
+  bases:
+  - BaseEventListener
+  fields:
+  - name: complex_events
+    type: Any
+    default: ClassVar[list[str]]
+  - name: _instance
+    type: Any
+    default: Self | None
+  - name: _initialized
+    type: Any
+    default: bool
+  - name: _listeners_setup
+    type: Any
+    default: bool
+  - name: batch_manager
+    type: Any
+    default: batch_manager or TraceBatchManager()
+  - name: first_time_handler
+    type: Any
+    default: FirstTimeTraceHandler()
+  - name: formatter
+    type: Any
+    default: formatter
+  - name: memory_retrieval_in_progress
+    type: bool
+    default: 'False'
+  - name: memory_save_in_progress
+    type: bool
+    default: 'False'
+  methods:
+  - name: __new__
+    sig: '__new__(cls, batch_manager: TraceBatchManager | None = None) -> Self'
+    lines:
+    - 145
+    - 149
+    detail:
+      calls:
+      - super
+      - super().__new__
+  - name: __init__
+    sig: |-
+      __init__(
+              self,
+              batch_manager: TraceBatchManager | None = None,
+              formatter: ConsoleFormatter | None = None,
+          ) -> None
+    lines:
+    - 151
+    - 174
+    detail:
+      calls:
+      - FirstTimeTraceHandler
+      - TraceBatchManager
+      - self.first_time_handler.initialize_for_first_time_user
+      - self.first_time_handler.set_batch_manager
+      - super
+      - super().__init__
+  - name: setup_listeners
+    sig: 'setup_listeners(self, crewai_event_bus: CrewAIEventsBus) -> None'
+    lines:
+    - 192
+    - 208
+    detail:
+      calls:
+      - self._register_a2a_event_handlers
+      - self._register_action_event_handlers
+      - self._register_context_event_handlers
+      - self._register_env_event_handlers
+      - self._register_flow_event_handlers
+      - self._register_system_event_handlers
+  - name: _register_flow_event_handlers
+    sig: '_register_flow_event_handlers(self, event_bus: CrewAIEventsBus) -> None'
+    vis: protected
+    lines:
+    - 229
+    - 262
+    detail:
+      calls:
+      - event_bus.on
+  - name: _register_context_event_handlers
+    sig: '_register_context_event_handlers(self, event_bus: CrewAIEventsBus) -> None'
+    vis: protected
+    lines:
+    - 264
+    - 344
+    detail:
+      calls:
+      - event_bus.on
+  - name: _register_action_event_handlers
+    sig: '_register_action_event_handlers(self, event_bus: CrewAIEventsBus) -> None'
+    vis: protected
+    lines:
+    - 346
+    - 535
+    detail:
+      calls:
+      - event_bus.on
+  - name: _register_a2a_event_handlers
+    sig: '_register_a2a_event_handlers(self, event_bus: CrewAIEventsBus) -> None'
+    vis: protected
+    lines:
+    - 537
+    - 676
+    detail:
+      calls:
+      - event_bus.on
+  - name: _show_tracing_disabled_message
+    sig: _show_tracing_disabled_message(self) -> None
+    vis: protected
+    lines:
+    - 862
+    - 898
+    detail:
+      calls:
+      - Console
+      - Panel
+      - console.print
+      - has_user_declined_tracing
+      - should_suppress_tracing_messages
+  lines:
+  - 129
+  - 898
+exports:
+- name: TraceCollectionListener
+  kind: type

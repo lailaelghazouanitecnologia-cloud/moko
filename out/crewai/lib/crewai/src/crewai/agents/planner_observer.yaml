@@ -1,0 +1,142 @@
+## Roska File Descriptor — agents/planner_observer.py
+file: agents/planner_observer.py
+lines: 345
+purpose: 'PlannerObserver: Observation phase after each step execution. Implements the "Observe" phase. After every step execution, the Planner analyzes what happened, what new information was learned, and whether the remaining plan is still valid. This is NOT an error detector — it runs on every step, including successes, to incorporate runtime observations into the remaining plan. Refinements are structured (StepRefinement objects) and applied directly from the observation result — no second LLM call required.'
+imports:
+- sym: crewai.events.event_bus.crewai_event_bus
+- sym: crewai.events.types.observation_events.StepObservationCompletedEvent
+- sym: crewai.events.types.observation_events.StepObservationFailedEvent
+- sym: crewai.events.types.observation_events.StepObservationStartedEvent
+- sym: crewai.utilities.agent_utils.extract_task_section
+- sym: crewai.utilities.i18n.I18N
+- sym: crewai.utilities.i18n.get_i18n
+- sym: crewai.utilities.llm_utils.create_llm
+- sym: crewai.utilities.planning_types.StepObservation
+- sym: crewai.utilities.planning_types.TodoItem
+- sym: crewai.utilities.types.LLMMessage
+data:
+- name: logger
+  type: Any
+  val: logging.getLogger(__name__)
+types:
+- name: PlannerObserver
+  kind: struct
+  ctx: 'Observes step execution results and decides on plan continuation. After EVERY step execution, this class: 1. Analyzes what the step accomplished 2. Identifies new information learned 3. Decides if the remaining plan is still valid 4. Suggests lightweight refinements or triggers full replanning LLM resolution (magical fallback): - If ``agent.planning_config.llm`` is explicitly set → use that - Otherwise → fall back to ``agent.llm`` (same LLM for everything) Args: agent: The agent instance (for LLM resolution and config). task: Optional task context (for description and expected output).'
+  fields:
+  - name: agent
+    type: Any
+    default: agent
+  - name: task
+    type: Any
+    default: task
+  - name: kickoff_input
+    type: Any
+    default: kickoff_input
+  - name: llm
+    type: Any
+    default: self._resolve_llm()
+  - name: _i18n
+    type: Any
+    default: I18N
+  methods:
+  - name: __init__
+    sig: |-
+      __init__(
+              self,
+              agent: Agent,
+              task: Task | None = None,
+              kickoff_input: str = "",
+          ) -> None
+    lines:
+    - 57
+    - 67
+    detail:
+      calls:
+      - get_i18n
+      - self._resolve_llm
+  - name: observe
+    sig: |-
+      observe(
+              self,
+              completed_step: TodoItem,
+              result: str,
+              all_completed: list[TodoItem],
+              remaining_todos: list[TodoItem],
+          ) -> StepObservation
+    lines:
+    - 91
+    - 194
+    detail:
+      calls:
+      - StepObservation
+      - StepObservationCompletedEvent
+      - StepObservationFailedEvent
+      - StepObservationStartedEvent
+      - crewai_event_bus.emit
+      - logger.warning
+      - self._build_observation_messages
+      - self._parse_observation_response
+      - self.llm.call
+      - str
+  - name: apply_refinements
+    sig: |-
+      apply_refinements(
+              self,
+              observation: StepObservation,
+              remaining_todos: list[TodoItem],
+          ) -> list[TodoItem]
+    lines:
+    - 196
+    - 223
+    detail: {}
+  - name: _build_observation_messages
+    sig: |-
+      _build_observation_messages(
+              self,
+              completed_step: TodoItem,
+              result: str,
+              all_completed: list[TodoItem],
+              remaining_todos: list[TodoItem],
+          ) -> list[LLMMessage]
+    vis: protected
+    lines:
+    - 229
+    - 289
+    detail:
+      calls:
+      - '"\n".join'
+      - completed_lines.append
+      - extract_task_section
+      - self._i18n.retrieve
+      - self._i18n.retrieve("planning", "observation_user_prompt").format
+  - name: _parse_observation_response
+    sig: '_parse_observation_response(response: Any) -> StepObservation'
+    vis: protected
+    decorators:
+    - staticmethod
+    lines:
+    - 292
+    - 345
+    detail:
+      calls:
+      - '"\n".join'
+      - StepObservation
+      - StepObservation.model_validate
+      - StepObservation.model_validate_json
+      - inner.strip
+      - isinstance
+      - lines[-1].strip
+      - logger.warning
+      - response.strip
+      - str
+      - text.split
+      - text.startswith
+      - type
+  lines:
+  - 39
+  - 345
+exports:
+- name: PlannerObserver
+  kind: type
+- name: logger
+  kind: data

@@ -1,0 +1,243 @@
+## Roska File Descriptor — uploaders/bedrock.py
+file: uploaders/bedrock.py
+lines: 477
+purpose: AWS Bedrock S3 file uploader implementation.
+imports:
+- sym: crewai_files.core.constants.MAX_CONCURRENCY
+- sym: crewai_files.core.constants.MULTIPART_CHUNKSIZE
+- sym: crewai_files.core.constants.MULTIPART_THRESHOLD
+- sym: crewai_files.core.sources.FileBytes
+- sym: crewai_files.core.sources.FilePath
+- sym: crewai_files.core.types.FileInput
+- sym: crewai_files.processing.exceptions.PermanentUploadError
+- sym: crewai_files.processing.exceptions.TransientUploadError
+- sym: crewai_files.uploaders.base.FileUploader
+- sym: crewai_files.uploaders.base.UploadResult
+data:
+- name: logger
+  type: Any
+  val: logging.getLogger(__name__)
+types:
+- name: BedrockFileUploader
+  kind: struct
+  ctx: Uploader for AWS Bedrock via S3. Uploads files to S3 and returns S3 URIs that can be used with Bedrock's Converse API s3Location source format.
+  bases:
+  - FileUploader
+  fields:
+  - name: _bucket_name
+    type: Any
+    default: bucket_name or os.environ.get("CREWAI_BEDROCK_S3_BUCKET")
+  - name: _bucket_owner
+    type: Any
+    default: |-
+      bucket_owner or os.environ.get(
+                  "CREWAI_BEDROCK_S3_BUCKET_OWNER"
+              )
+  - name: _prefix
+    type: Any
+    default: prefix
+  - name: _region
+    type: Any
+    default: |-
+      region or os.environ.get(
+                  "AWS_REGION", os.environ.get("AWS_DEFAULT_REGION")
+              )
+  - name: _client
+    type: Any
+    default: Any
+  - name: _async_client
+    type: Any
+    default: Any
+  methods:
+  - name: __init__
+    sig: |-
+      __init__(
+              self,
+              bucket_name: str | None = None,
+              bucket_owner: str | None = None,
+              prefix: str = "crewai-files",
+              region: str | None = None,
+              client: Any = None,
+              async_client: Any = None,
+          ) -> None
+    lines:
+    - 107
+    - 137
+    detail:
+      calls:
+      - os.environ.get
+  - name: provider_name
+    sig: provider_name(self) -> str
+    decorators:
+    - property
+    lines:
+    - 140
+    - 142
+    detail: {}
+  - name: bucket_name
+    sig: bucket_name(self) -> str
+    decorators:
+    - property
+    lines:
+    - 145
+    - 152
+    detail:
+      calls:
+      - ValueError
+  - name: bucket_owner
+    sig: bucket_owner(self) -> str | None
+    decorators:
+    - property
+    lines:
+    - 155
+    - 157
+    detail: {}
+  - name: _generate_s3_key
+    sig: '_generate_s3_key(self, file: FileInput, content: bytes | None = None) -> str'
+    vis: protected
+    lines:
+    - 187
+    - 212
+    detail:
+      calls:
+      - '"".join'
+      - _compute_hash_streaming
+      - _get_file_path
+      - c.isalnum
+      - file.read
+      - hashlib.sha256
+      - hashlib.sha256(content).hexdigest
+      - hashlib.sha256(file.read()).hexdigest
+  - name: upload
+    sig: 'upload(self, file: FileInput, purpose: str | None = None) -> UploadResult'
+    lines:
+    - 236
+    - 307
+    detail:
+      calls:
+      - UploadResult
+      - _classify_s3_error
+      - _get_file_path
+      - client.upload_fileobj
+      - file.read
+      - file_path.stat
+      - io.BytesIO
+      - len
+      - logger.info
+      - open
+      - self._build_s3_uri
+      - self._generate_s3_key
+      - self._get_client
+      - self._get_transfer_config
+  - name: delete
+    sig: 'delete(self, file_id: str) -> bool'
+    lines:
+    - 309
+    - 327
+    detail:
+      calls:
+      - client.delete_object
+      - logger.info
+      - logger.warning
+      - self._get_client
+  - name: get_file_info
+    sig: 'get_file_info(self, file_id: str) -> dict[str, Any] | None'
+    lines:
+    - 329
+    - 351
+    detail:
+      calls:
+      - client.head_object
+      - logger.debug
+      - response.get
+      - self._build_s3_uri
+      - self._get_client
+  - name: list_files
+    sig: list_files(self) -> list[dict[str, Any]]
+    lines:
+    - 353
+    - 377
+    detail:
+      calls:
+      - client.list_objects_v2
+      - logger.warning
+      - obj.get
+      - response.get
+      - self._build_s3_uri
+      - self._get_client
+  - name: aupload
+    sig: |-
+      aupload(
+              self, file: FileInput, purpose: str | None = None
+          ) -> UploadResult
+    is_async: true
+    lines:
+    - 379
+    - 456
+    detail:
+      calls:
+      - UploadResult
+      - _classify_s3_error
+      - _get_file_path
+      - aiofiles.open
+      - client.upload_fileobj
+      - file.aread
+      - file_path.stat
+      - io.BytesIO
+      - len
+      - logger.info
+      - self._build_s3_uri
+      - self._generate_s3_key
+      - self._get_async_client
+      - self._get_transfer_config
+      - session.client
+  - name: adelete
+    sig: 'adelete(self, file_id: str) -> bool'
+    is_async: true
+    lines:
+    - 458
+    - 477
+    detail:
+      calls:
+      - client.delete_object
+      - logger.info
+      - logger.warning
+      - self._get_async_client
+      - session.client
+  lines:
+  - 100
+  - 477
+functions:
+- name: _classify_s3_error
+  sig: '_classify_s3_error(e: Exception, filename: str | None) -> Exception'
+  vis: protected
+  lines:
+  - 28
+  - 49
+  detail:
+    calls:
+    - PermanentUploadError
+    - TransientUploadError
+    - getattr
+    - getattr(e, "response", {}).get
+    - getattr(e, "response", {}).get("Error", {}).get
+    - str
+    - type
+- name: _compute_hash_streaming
+  sig: '_compute_hash_streaming(file_path: Path) -> str'
+  vis: protected
+  lines:
+  - 84
+  - 97
+  detail:
+    calls:
+    - f.read
+    - hasher.hexdigest
+    - hasher.update
+    - hashlib.sha256
+    - open
+exports:
+- name: BedrockFileUploader
+  kind: type
+- name: logger
+  kind: data

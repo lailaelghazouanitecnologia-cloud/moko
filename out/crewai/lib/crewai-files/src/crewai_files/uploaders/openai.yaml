@@ -1,0 +1,327 @@
+## Roska File Descriptor — uploaders/openai.py
+file: uploaders/openai.py
+lines: 695
+purpose: OpenAI Files API uploader implementation.
+imports:
+- sym: crewai_files.core.constants.DEFAULT_UPLOAD_CHUNK_SIZE
+- sym: crewai_files.core.constants.FILES_API_MAX_SIZE
+- sym: crewai_files.core.sources.FileBytes
+- sym: crewai_files.core.sources.FilePath
+- sym: crewai_files.core.sources.FileStream
+- sym: crewai_files.core.sources.generate_filename
+- sym: crewai_files.core.types.FileInput
+- sym: crewai_files.processing.exceptions.PermanentUploadError
+- sym: crewai_files.processing.exceptions.TransientUploadError
+- sym: crewai_files.processing.exceptions.classify_upload_error
+- sym: crewai_files.uploaders.base.FileUploader
+- sym: crewai_files.uploaders.base.UploadResult
+data:
+- name: logger
+  type: Any
+  val: logging.getLogger(__name__)
+types:
+- name: OpenAIFileUploader
+  kind: struct
+  ctx: Uploader for OpenAI Files and Uploads APIs. Uses the Files API for files up to 512MB (single request). Uses the Uploads API for files larger than 512MB (multipart chunked).
+  bases:
+  - FileUploader
+  fields:
+  - name: _api_key
+    type: Any
+    default: api_key or os.environ.get("OPENAI_API_KEY")
+  - name: _chunk_size
+    type: Any
+    default: chunk_size
+  - name: _client
+    type: Any
+    default: Any
+  - name: _async_client
+    type: Any
+    default: Any
+  methods:
+  - name: __init__
+    sig: |-
+      __init__(
+              self,
+              api_key: str | None = None,
+              chunk_size: int = DEFAULT_UPLOAD_CHUNK_SIZE,
+              client: Any = None,
+              async_client: Any = None,
+          ) -> None
+    lines:
+    - 120
+    - 139
+    detail:
+      calls:
+      - os.environ.get
+  - name: provider_name
+    sig: provider_name(self) -> str
+    decorators:
+    - property
+    lines:
+    - 142
+    - 144
+    detail: {}
+  - name: upload
+    sig: 'upload(self, file: FileInput, purpose: str | None = None) -> UploadResult'
+    lines:
+    - 192
+    - 224
+    detail:
+      calls:
+      - _get_file_size
+      - classify_upload_error
+      - file.read
+      - len
+      - self._upload_multipart
+      - self._upload_multipart_streaming
+      - self._upload_simple
+  - name: _upload_simple
+    sig: |-
+      _upload_simple(
+              self,
+              file: FileInput,
+              content: bytes,
+              purpose: str | None,
+          ) -> UploadResult
+    vis: protected
+    lines:
+    - 226
+    - 260
+    detail:
+      calls:
+      - _get_purpose_for_content_type
+      - client.files.create
+      - generate_filename
+      - io.BytesIO
+      - len
+      - logger.info
+      - self._build_upload_result
+      - self._get_client
+  - name: _upload_multipart
+    sig: |-
+      _upload_multipart(
+              self,
+              file: FileInput,
+              content: bytes,
+              purpose: str | None,
+          ) -> UploadResult
+    vis: protected
+    lines:
+    - 262
+    - 332
+    detail:
+      calls:
+      - _get_purpose_for_content_type
+      - client.uploads.cancel
+      - client.uploads.complete
+      - client.uploads.create
+      - client.uploads.parts.create
+      - generate_filename
+      - io.BytesIO
+      - len
+      - logger.debug
+      - logger.info
+      - logger.warning
+      - part_ids.append
+      - self._build_upload_result
+      - self._get_client
+  - name: _upload_multipart_streaming
+    sig: |-
+      _upload_multipart_streaming(
+              self,
+              file: FileInput,
+              file_size: int,
+              purpose: str | None,
+          ) -> UploadResult
+    vis: protected
+    lines:
+    - 334
+    - 400
+    detail:
+      calls:
+      - _get_purpose_for_content_type
+      - _iter_file_chunks
+      - client.uploads.cancel
+      - client.uploads.complete
+      - client.uploads.create
+      - client.uploads.parts.create
+      - generate_filename
+      - io.BytesIO
+      - len
+      - logger.debug
+      - logger.info
+      - logger.warning
+      - part_ids.append
+      - self._build_upload_result
+      - self._get_client
+  - name: delete
+    sig: 'delete(self, file_id: str) -> bool'
+    lines:
+    - 402
+    - 418
+    detail:
+      calls:
+      - client.files.delete
+      - logger.info
+      - logger.warning
+      - self._get_client
+  - name: get_file_info
+    sig: 'get_file_info(self, file_id: str) -> dict[str, Any] | None'
+    lines:
+    - 420
+    - 442
+    detail:
+      calls:
+      - client.files.retrieve
+      - logger.debug
+      - self._get_client
+  - name: list_files
+    sig: list_files(self) -> list[dict[str, Any]]
+    lines:
+    - 444
+    - 466
+    detail:
+      calls:
+      - client.files.list
+      - logger.warning
+      - self._get_client
+  - name: aupload
+    sig: |-
+      aupload(
+              self, file: FileInput, purpose: str | None = None
+          ) -> UploadResult
+    is_async: true
+    lines:
+    - 468
+    - 502
+    detail:
+      calls:
+      - _get_file_size
+      - classify_upload_error
+      - file.aread
+      - len
+      - self._aupload_multipart
+      - self._aupload_multipart_streaming
+      - self._aupload_simple
+  - name: _aupload_simple
+    sig: |-
+      _aupload_simple(
+              self,
+              file: FileInput,
+              content: bytes,
+              purpose: str | None,
+          ) -> UploadResult
+    is_async: true
+    vis: protected
+    lines:
+    - 504
+    - 537
+    detail:
+      calls:
+      - _get_purpose_for_content_type
+      - client.files.create
+      - generate_filename
+      - io.BytesIO
+      - len
+      - logger.info
+      - self._build_upload_result
+      - self._get_async_client
+  - name: _aupload_multipart
+    sig: |-
+      _aupload_multipart(
+              self,
+              file: FileInput,
+              content: bytes,
+              purpose: str | None,
+          ) -> UploadResult
+    is_async: true
+    vis: protected
+    lines:
+    - 539
+    - 609
+    detail:
+      calls:
+      - _get_purpose_for_content_type
+      - client.uploads.cancel
+      - client.uploads.complete
+      - client.uploads.create
+      - client.uploads.parts.create
+      - generate_filename
+      - io.BytesIO
+      - len
+      - logger.debug
+      - logger.info
+      - logger.warning
+      - part_ids.append
+      - self._build_upload_result
+      - self._get_async_client
+  - name: _aupload_multipart_streaming
+    sig: |-
+      _aupload_multipart_streaming(
+              self,
+              file: FileInput,
+              file_size: int,
+              purpose: str | None,
+          ) -> UploadResult
+    is_async: true
+    vis: protected
+    lines:
+    - 611
+    - 677
+    detail:
+      calls:
+      - _aiter_file_chunks
+      - _get_purpose_for_content_type
+      - client.uploads.cancel
+      - client.uploads.complete
+      - client.uploads.create
+      - client.uploads.parts.create
+      - generate_filename
+      - io.BytesIO
+      - len
+      - logger.debug
+      - logger.info
+      - logger.warning
+      - part_ids.append
+      - self._build_upload_result
+      - self._get_async_client
+  - name: adelete
+    sig: 'adelete(self, file_id: str) -> bool'
+    is_async: true
+    lines:
+    - 679
+    - 695
+    detail:
+      calls:
+      - client.files.delete
+      - logger.info
+      - logger.warning
+      - self._get_async_client
+  lines:
+  - 113
+  - 695
+functions:
+- name: _aiter_file_chunks
+  sig: |-
+    _aiter_file_chunks(
+        file: FileInput, chunk_size: int, content: bytes | None = None
+    ) -> AsyncIterator[bytes]
+  is_async: true
+  vis: protected
+  lines:
+  - 82
+  - 110
+  detail:
+    calls:
+    - file.aread
+    - isinstance
+    - len
+    - range
+    - source.aread_chunks
+    - source.read_chunks
+exports:
+- name: OpenAIFileUploader
+  kind: type
+- name: logger
+  kind: data

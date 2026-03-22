@@ -1,0 +1,752 @@
+## Roska File Descriptor — bedrock/completion.py
+file: bedrock/completion.py
+lines: 2205
+imports:
+- sym: pydantic.BaseModel
+- sym: typing_extensions.Required
+- sym: crewai.events.types.llm_events.LLMCallType
+- sym: crewai.llms.base_llm.BaseLLM
+- sym: crewai.llms.base_llm.llm_call_context
+- sym: crewai.utilities.agent_utils.is_context_length_exceeded
+- sym: crewai.utilities.exceptions.context_window_exceeding_exception.LLMContextLengthExceededError
+- sym: crewai.utilities.pydantic_schema_utils.generate_model_description
+- sym: crewai.utilities.types.LLMMessage
+data:
+- name: STRUCTURED_OUTPUT_TOOL_NAME
+  type: str
+  val: '"structured_output"'
+types:
+- name: ToolInputSchema
+  kind: struct
+  ctx: Type definition for tool input schema in Converse API.
+  bases:
+  - TypedDict
+  fields:
+  - name: json
+    type: Any
+    default: dict[str, Any]
+  lines:
+  - 160
+  - 163
+- name: ToolSpec
+  kind: struct
+  ctx: Type definition for tool specification in Converse API.
+  bases:
+  - TypedDict
+  - total=False
+  fields:
+  - name: name
+    type: Any
+    default: Required[str]
+  - name: description
+    type: Any
+    default: Required[str]
+  - name: inputSchema
+    type: Any
+    default: ToolInputSchema
+  lines:
+  - 166
+  - 171
+- name: ConverseToolTypeDef
+  kind: struct
+  ctx: Type definition for a Converse API tool.
+  bases:
+  - TypedDict
+  fields:
+  - name: toolSpec
+    type: Any
+    default: ToolSpec
+  lines:
+  - 174
+  - 177
+- name: BedrockConverseRequestBody
+  kind: struct
+  ctx: Type definition for AWS Bedrock Converse API request body. Based on AWS Bedrock Converse API specification.
+  bases:
+  - TypedDict
+  - total=False
+  fields:
+  - name: inferenceConfig
+    type: Any
+    default: Required[EnhancedInferenceConfigurationTypeDef]
+  - name: system
+    type: Any
+    default: list[SystemContentBlockTypeDef]
+  - name: toolConfig
+    type: Any
+    default: ToolConfigurationTypeDef
+  - name: guardrailConfig
+    type: Any
+    default: GuardrailConfigurationTypeDef
+  - name: additionalModelRequestFields
+    type: Any
+    default: dict[str, Any]
+  - name: additionalModelResponseFieldPaths
+    type: Any
+    default: list[str]
+  lines:
+  - 180
+  - 191
+- name: BedrockConverseStreamRequestBody
+  kind: struct
+  ctx: Type definition for AWS Bedrock Converse Stream API request body. Based on AWS Bedrock Converse Stream API specification.
+  bases:
+  - TypedDict
+  - total=False
+  fields:
+  - name: inferenceConfig
+    type: Any
+    default: Required[EnhancedInferenceConfigurationTypeDef]
+  - name: system
+    type: Any
+    default: list[SystemContentBlockTypeDef]
+  - name: toolConfig
+    type: Any
+    default: ToolConfigurationTypeDef
+  - name: guardrailConfig
+    type: Any
+    default: GuardrailStreamConfigurationTypeDef
+  - name: additionalModelRequestFields
+    type: Any
+    default: dict[str, Any]
+  - name: additionalModelResponseFieldPaths
+    type: Any
+    default: list[str]
+  lines:
+  - 194
+  - 205
+- name: BedrockCompletion
+  kind: struct
+  ctx: 'AWS Bedrock native completion implementation using the Converse API. This class provides direct integration with AWS Bedrock using the modern Converse API, which provides a unified interface across all Bedrock models. Features: - Full tool calling support with proper conversation continuation - Streaming and non-streaming responses with comprehensive event handling - Guardrail configuration for content filtering - Model-specific parameters via additionalModelRequestFields - Custom response field extraction - Proper error handling for all AWS exception types - Token usage tracking and stop reason logging - Support for both text and tool use content blocks The implementation follows AWS Bedrock Converse API best practices including: - Proper tool use ID tracking for multi-turn tool conversations - Complete streaming event handling (messageStart, contentBlockStart, etc.) - Response metadata and trace information capture - Model-specific conversation format handling (e.g., Cohere requirements)'
+  bases:
+  - BaseLLM
+  fields:
+  - name: region_name
+    type: tuple
+    default: |-
+      (
+                  region_name
+                  or os.getenv("AWS_DEFAULT_REGION")
+                  or os.getenv("AWS_REGION_NAME")
+                  or "us-east-1"
+              )
+  - name: aws_access_key_id
+    type: Any
+    default: aws_access_key_id or os.getenv("AWS_ACCESS_KEY_ID")
+  - name: aws_secret_access_key
+    type: Any
+    default: |-
+      aws_secret_access_key or os.getenv(
+                  "AWS_SECRET_ACCESS_KEY"
+              )
+  - name: aws_session_token
+    type: Any
+    default: aws_session_token or os.getenv("AWS_SESSION_TOKEN")
+  - name: client
+    type: Any
+    default: session.client("bedrock-runtime", config=config)
+  - name: _async_exit_stack
+    type: Any
+    default: AsyncExitStack() if AIOBOTOCORE_AVAILABLE else None
+  - name: _async_client_initialized
+    type: bool
+    default: 'False'
+  - name: max_tokens
+    type: Any
+    default: max_tokens
+  - name: top_p
+    type: Any
+    default: top_p
+  - name: top_k
+    type: Any
+    default: top_k
+  - name: stream
+    type: Any
+    default: stream
+  - name: stop_sequences
+    type: Any
+    default: stop_sequences
+  - name: response_format
+    type: Any
+    default: response_format
+  - name: guardrail_config
+    type: Any
+    default: guardrail_config
+  - name: additional_model_request_fields
+    type: Any
+    default: additional_model_request_fields
+  - name: additional_model_response_field_paths
+    type: tuple
+    default: |-
+      (
+                  additional_model_response_field_paths
+              )
+  - name: is_claude_model
+    type: str
+    default: '"claude" in model.lower()'
+  - name: supports_tools
+    type: bool
+    default: 'True'
+  - name: supports_streaming
+    type: bool
+    default: 'True'
+  - name: model_id
+    type: Any
+    default: model
+  methods:
+  - name: __init__
+    sig: |-
+      __init__(
+              self,
+              model: str = "anthropic.claude-3-5-sonnet-20241022-v2:0",
+              aws_access_key_id: str | None = None,
+              aws_secret_access_key: str | None = None,
+              aws_session_token: str | None = None,
+              region_name: str | None = None,
+              temperature: float | None = None,
+              max_tokens: int | None = None,
+              top_p: float | None = None,
+              top_k: int | None = None,
+              stop_sequences: Sequence[str] | None = None,
+              stream: bool = False,
+              guardrail_config: dict[str, Any] | None = None,
+              additional_model_request_fields: dict[str, Any] | None = None,
+              additional_model_response_field_paths: list[str] | None = None,
+              interceptor: BaseInterceptor[Any, Any] | None = None,
+              response_format: type[BaseModel] | None = None,
+              **kwargs: Any,
+          ) -> None
+    lines:
+    - 231
+    - 347
+    detail:
+      calls:
+      - AsyncExitStack
+      - Config
+      - NotImplementedError
+      - Session
+      - kwargs.pop
+      - model.lower
+      - os.getenv
+      - session.client
+      - super
+      - super().__init__
+  - name: stop
+    sig: stop(self) -> list[str]
+    decorators:
+    - property
+    lines:
+    - 350
+    - 352
+    detail:
+      calls:
+      - list
+  - name: stop
+    sig: 'stop(self, value: Sequence[str] | str | None) -> None'
+    decorators:
+    - stop.setter
+    lines:
+    - 355
+    - 371
+    detail:
+      calls:
+      - isinstance
+      - list
+  - name: call
+    sig: |-
+      call(
+              self,
+              messages: str | list[LLMMessage],
+              tools: list[dict[Any, Any]] | None = None,
+              callbacks: list[Any] | None = None,
+              available_functions: dict[str, Any] | None = None,
+              from_task: Any | None = None,
+              from_agent: Any | None = None,
+              response_model: type[BaseModel] | None = None,
+          ) -> str | Any
+    lines:
+    - 373
+    - 488
+    detail:
+      calls:
+      - LLMContextLengthExceededError
+      - ValueError
+      - cast
+      - is_context_length_exceeded
+      - llm_call_context
+      - logging.error
+      - self._emit_call_failed_event
+      - self._emit_call_started_event
+      - self._extract_tools_from_message_history
+      - self._format_messages_for_converse
+      - self._format_tools_for_converse
+      - self._get_inference_config
+      - self._handle_converse
+      - self._handle_streaming_converse
+      - self._invoke_before_llm_call_hooks
+      - self._messages_contain_tool_content
+      - str
+  - name: acall
+    sig: |-
+      acall(
+              self,
+              messages: str | list[LLMMessage],
+              tools: list[dict[Any, Any]] | None = None,
+              callbacks: list[Any] | None = None,
+              available_functions: dict[str, Any] | None = None,
+              from_task: Any | None = None,
+              from_agent: Any | None = None,
+              response_model: type[BaseModel] | None = None,
+          ) -> str | Any
+    is_async: true
+    lines:
+    - 490
+    - 618
+    detail:
+      calls:
+      - LLMContextLengthExceededError
+      - NotImplementedError
+      - cast
+      - is_context_length_exceeded
+      - llm_call_context
+      - logging.error
+      - self._ahandle_converse
+      - self._ahandle_streaming_converse
+      - self._emit_call_failed_event
+      - self._emit_call_started_event
+      - self._extract_tools_from_message_history
+      - self._format_messages_for_converse
+      - self._format_tools_for_converse
+      - self._get_inference_config
+      - self._messages_contain_tool_content
+      - str
+  - name: _handle_converse
+    sig: |-
+      _handle_converse(
+              self,
+              messages: list[LLMMessage],
+              body: BedrockConverseRequestBody,
+              available_functions: Mapping[str, Any] | None = None,
+              from_task: Any | None = None,
+              from_agent: Any | None = None,
+              response_model: type[BaseModel] | None = None,
+          ) -> str | Any
+    vis: protected
+    lines:
+    - 620
+    - 907
+    detail:
+      calls:
+      - ConnectionError
+      - PermissionError
+      - RuntimeError
+      - TimeoutError
+      - ValueError
+      - _preprocess_structured_data
+      - body.get
+      - cast
+      - dict
+      - e.response.get
+      - e.response.get("Error", {}).get
+      - enumerate
+      - existing_tool_config.get
+      - existing_tools.append
+      - generate_model_description
+      - |-
+        generate_model_description(response_model)
+                                    .get
+      - |-
+        generate_model_description(response_model)
+                                    .get("json_schema", {})
+                                    .get
+      - isinstance
+      - list
+      - logging.debug
+      - logging.error
+      - logging.warning
+      - message.get
+      - messages.append
+      - output.get
+      - response.get
+      - response_model.model_validate
+      - result.model_dump_json
+      - self._apply_stop_words
+      - self._emit_call_completed_event
+      - self._handle_converse
+      - self._handle_tool_execution
+      - self._invoke_after_llm_call_hooks
+      - self._track_token_usage_internal
+      - self.client.converse
+      - str
+      - text_content.strip
+      - tool.get
+      - tool_spec.get
+      - tool_use.get
+      - tool_use_block.get
+      - tu.get
+  - name: _handle_streaming_converse
+    sig: |-
+      _handle_streaming_converse(
+              self,
+              messages: list[LLMMessage],
+              body: BedrockConverseRequestBody,
+              available_functions: dict[str, Any] | None = None,
+              from_task: Any | None = None,
+              from_agent: Any | None = None,
+              response_model: type[BaseModel] | None = None,
+          ) -> str
+    vis: protected
+    lines:
+    - 909
+    - 1185
+    detail:
+      calls:
+      - ConnectionError
+      - RuntimeError
+      - ValueError
+      - _preprocess_structured_data
+      - body.get
+      - cast
+      - current_tool_use.get
+      - delta["toolUse"].get
+      - event["contentBlockStart"].get
+      - event["messageStart"].get
+      - event["messageStop"].get
+      - existing_tool_config.get
+      - existing_tools.append
+      - full_response.strip
+      - generate_model_description
+      - |-
+        generate_model_description(response_model)
+                                    .get
+      - |-
+        generate_model_description(response_model)
+                                    .get("json_schema", {})
+                                    .get
+      - json.dumps
+      - list
+      - logging.debug
+      - logging.error
+      - logging.warning
+      - messages.append
+      - response.get
+      - response_model.model_validate
+      - result.model_dump_json
+      - self._apply_stop_words
+      - self._emit_call_completed_event
+      - self._emit_stream_chunk_event
+      - self._handle_client_error
+      - self._handle_converse
+      - self._handle_tool_execution
+      - self._track_token_usage_internal
+      - self.client.converse_stream
+      - str
+      - tool.get
+      - tool_spec.get
+  - name: _ensure_async_client
+    sig: _ensure_async_client(self) -> Any
+    is_async: true
+    vis: protected
+    lines:
+    - 1187
+    - 1206
+    detail:
+      calls:
+      - RuntimeError
+      - get_aiobotocore_session
+      - self._async_exit_stack.enter_async_context
+      - session.create_client
+  - name: _ahandle_converse
+    sig: |-
+      _ahandle_converse(
+              self,
+              messages: list[LLMMessage],
+              body: BedrockConverseRequestBody,
+              available_functions: Mapping[str, Any] | None = None,
+              from_task: Any | None = None,
+              from_agent: Any | None = None,
+              response_model: type[BaseModel] | None = None,
+          ) -> str | Any
+    is_async: true
+    vis: protected
+    lines:
+    - 1208
+    - 1479
+    detail:
+      calls:
+      - ConnectionError
+      - PermissionError
+      - RuntimeError
+      - TimeoutError
+      - ValueError
+      - _preprocess_structured_data
+      - async_client.converse
+      - body.get
+      - cast
+      - dict
+      - e.response.get
+      - e.response.get("Error", {}).get
+      - enumerate
+      - existing_tool_config.get
+      - existing_tools.append
+      - generate_model_description
+      - |-
+        generate_model_description(response_model)
+                                    .get
+      - |-
+        generate_model_description(response_model)
+                                    .get("json_schema", {})
+                                    .get
+      - isinstance
+      - list
+      - logging.debug
+      - logging.error
+      - logging.warning
+      - message.get
+      - messages.append
+      - output.get
+      - response.get
+      - response_model.model_validate
+      - result.model_dump_json
+      - self._ahandle_converse
+      - self._apply_stop_words
+      - self._emit_call_completed_event
+      - self._ensure_async_client
+      - self._handle_tool_execution
+      - self._track_token_usage_internal
+      - str
+      - text_content.strip
+      - tool.get
+      - tool_spec.get
+      - tool_use.get
+      - tool_use_block.get
+      - tu.get
+  - name: _ahandle_streaming_converse
+    sig: |-
+      _ahandle_streaming_converse(
+              self,
+              messages: list[LLMMessage],
+              body: BedrockConverseRequestBody,
+              available_functions: dict[str, Any] | None = None,
+              from_task: Any | None = None,
+              from_agent: Any | None = None,
+              response_model: type[BaseModel] | None = None,
+          ) -> str
+    is_async: true
+    vis: protected
+    lines:
+    - 1481
+    - 1768
+    detail:
+      calls:
+      - ConnectionError
+      - RuntimeError
+      - ValueError
+      - _preprocess_structured_data
+      - async_client.converse_stream
+      - body.get
+      - cast
+      - current_tool_use.get
+      - delta["toolUse"].get
+      - event["contentBlockStart"].get
+      - event["messageStart"].get
+      - event["messageStop"].get
+      - existing_tool_config.get
+      - existing_tools.append
+      - full_response.strip
+      - generate_model_description
+      - |-
+        generate_model_description(response_model)
+                                    .get
+      - |-
+        generate_model_description(response_model)
+                                    .get("json_schema", {})
+                                    .get
+      - list
+      - logging.debug
+      - logging.error
+      - logging.warning
+      - messages.append
+      - response.get
+      - response_model.model_validate
+      - result.model_dump_json
+      - self._ahandle_converse
+      - self._apply_stop_words
+      - self._emit_call_completed_event
+      - self._emit_stream_chunk_event
+      - self._ensure_async_client
+      - self._handle_client_error
+      - self._handle_tool_execution
+      - self._invoke_after_llm_call_hooks
+      - self._track_token_usage_internal
+      - str
+      - tool.get
+      - tool_spec.get
+  - name: _format_messages_for_converse
+    sig: |-
+      _format_messages_for_converse(
+              self, messages: str | list[LLMMessage]
+          ) -> tuple[list[LLMMessage], str | None]
+    vis: protected
+    lines:
+    - 1770
+    - 1912
+    detail:
+      calls:
+      - ValueError
+      - any
+      - bedrock_content.append
+      - cast
+      - converse_messages.append
+      - converse_messages.insert
+      - func.get
+      - id
+      - isinstance
+      - json.loads
+      - message.get
+      - pending_tool_results.append
+      - self._format_messages
+      - self.model.lower
+      - str
+      - tc.get
+  - name: _extract_tools_from_message_history
+    sig: |-
+      _extract_tools_from_message_history(
+              messages: list[LLMMessage],
+          ) -> list[dict[str, Any]]
+    vis: protected
+    decorators:
+    - staticmethod
+    lines:
+    - 1930
+    - 1964
+    detail:
+      calls:
+      - isinstance
+      - message.get
+      - seen_tool_names.add
+      - set
+      - tool_use.get
+      - tools.append
+  - name: _format_tools_for_converse
+    sig: |-
+      _format_tools_for_converse(
+              tools: list[dict[str, Any]],
+          ) -> list[ConverseToolTypeDef]
+    vis: protected
+    decorators:
+    - staticmethod
+    lines:
+    - 1967
+    - 1998
+    detail:
+      calls:
+      - converse_tools.append
+      - isinstance
+      - logging.warning
+      - safe_tool_conversion
+      - tool.get
+  - name: _handle_client_error
+    sig: '_handle_client_error(self, e: ClientError) -> str'
+    vis: protected
+    lines:
+    - 2020
+    - 2041
+    detail:
+      calls:
+      - e.response.get
+      - e.response.get("Error", {}).get
+      - error_mapping.get
+      - logging.error
+      - str
+  - name: supports_function_calling
+    sig: supports_function_calling(self) -> bool
+    lines:
+    - 2054
+    - 2056
+    detail: {}
+  - name: supports_stop_words
+    sig: supports_stop_words(self) -> bool
+    lines:
+    - 2058
+    - 2060
+    detail: {}
+  - name: get_context_window_size
+    sig: get_context_window_size(self) -> int
+    lines:
+    - 2062
+    - 2090
+    detail:
+      calls:
+      - context_windows.items
+      - int
+      - self.model.startswith
+  - name: supports_multimodal
+    sig: supports_multimodal(self) -> bool
+    lines:
+    - 2092
+    - 2110
+    detail:
+      calls:
+      - any
+      - model_lower.startswith
+      - self.model.lower
+  - name: get_file_uploader
+    sig: get_file_uploader(self) -> Any
+    lines:
+    - 2123
+    - 2149
+    detail:
+      calls:
+      - BedrockFileUploader
+      - boto3.client
+  - name: format_text_content
+    sig: 'format_text_content(self, text: str) -> dict[str, Any]'
+    lines:
+    - 2194
+    - 2205
+    detail: {}
+  lines:
+  - 208
+  - 2205
+functions:
+- name: _preprocess_structured_data
+  sig: |-
+    _preprocess_structured_data(
+        data: dict[str, Any], response_model: type[BaseModel]
+    ) -> dict[str, Any]
+  vis: protected
+  lines:
+  - 52
+  - 117
+  detail:
+    calls:
+    - cleaned.strip
+    - dict
+    - get_origin
+    - isinstance
+    - len
+    - line.strip
+    - logging.debug
+    - model_fields.items
+    - parsed_items.append
+    - re.sub
+    - str
+    - str(origin).startswith
+    - value.strip
+    - value.strip().split
+exports:
+- name: ToolInputSchema
+  kind: type
+- name: ToolSpec
+  kind: type
+- name: ConverseToolTypeDef
+  kind: type
+- name: BedrockConverseRequestBody
+  kind: type
+- name: BedrockConverseStreamRequestBody
+  kind: type
+- name: BedrockCompletion
+  kind: type
+- name: STRUCTURED_OUTPUT_TOOL_NAME
+  kind: data

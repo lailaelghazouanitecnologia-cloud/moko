@@ -1,0 +1,202 @@
+## Roska File Descriptor — uploaders/gemini.py
+file: uploaders/gemini.py
+lines: 448
+purpose: Gemini File API uploader implementation.
+imports:
+- sym: asyncio
+- sym: random
+- sym: crewai_files.core.constants.BACKOFF_BASE_DELAY
+- sym: crewai_files.core.constants.BACKOFF_JITTER_FACTOR
+- sym: crewai_files.core.constants.BACKOFF_MAX_DELAY
+- sym: crewai_files.core.constants.GEMINI_FILE_TTL
+- sym: crewai_files.core.sources.FilePath
+- sym: crewai_files.core.types.FileInput
+- sym: crewai_files.processing.exceptions.PermanentUploadError
+- sym: crewai_files.processing.exceptions.TransientUploadError
+- sym: crewai_files.processing.exceptions.classify_upload_error
+- sym: crewai_files.uploaders.base.FileUploader
+- sym: crewai_files.uploaders.base.UploadResult
+data:
+- name: logger
+  type: Any
+  val: logging.getLogger(__name__)
+types:
+- name: GeminiFileUploader
+  kind: struct
+  ctx: Uploader for Google Gemini File API. Uses the google-genai SDK to upload files. Files are stored for 48 hours.
+  bases:
+  - FileUploader
+  fields:
+  - name: _api_key
+    type: Any
+    default: api_key or os.environ.get("GOOGLE_API_KEY")
+  - name: _client
+    type: Any
+    default: Any
+  methods:
+  - name: __init__
+    sig: |-
+      __init__(
+              self,
+              api_key: str | None = None,
+              client: Any = None,
+          ) -> None
+    lines:
+    - 96
+    - 109
+    detail:
+      calls:
+      - os.environ.get
+  - name: provider_name
+    sig: provider_name(self) -> str
+    decorators:
+    - property
+    lines:
+    - 112
+    - 114
+    detail: {}
+  - name: upload
+    sig: 'upload(self, file: FileInput, purpose: str | None = None) -> UploadResult'
+    lines:
+    - 130
+    - 207
+    detail:
+      calls:
+      - PermanentUploadError
+      - UploadResult
+      - _classify_gemini_error
+      - _get_file_path
+      - client.files.upload
+      - datetime.now
+      - file.content_type.startswith
+      - file.read
+      - file_path.stat
+      - io.BytesIO
+      - len
+      - logger.info
+      - self._get_client
+      - self.wait_for_processing
+  - name: aupload
+    sig: |-
+      aupload(
+              self, file: FileInput, purpose: str | None = None
+          ) -> UploadResult
+    is_async: true
+    lines:
+    - 209
+    - 288
+    detail:
+      calls:
+      - PermanentUploadError
+      - UploadResult
+      - _classify_gemini_error
+      - _get_file_path
+      - client.aio.files.upload
+      - datetime.now
+      - file.aread
+      - file.content_type.startswith
+      - file_path.stat
+      - io.BytesIO
+      - len
+      - logger.info
+      - self._get_client
+      - self.await_for_processing
+  - name: delete
+    sig: 'delete(self, file_id: str) -> bool'
+    lines:
+    - 290
+    - 306
+    detail:
+      calls:
+      - client.files.delete
+      - logger.info
+      - logger.warning
+      - self._get_client
+  - name: adelete
+    sig: 'adelete(self, file_id: str) -> bool'
+    is_async: true
+    lines:
+    - 308
+    - 324
+    detail:
+      calls:
+      - client.aio.files.delete
+      - logger.info
+      - logger.warning
+      - self._get_client
+  - name: get_file_info
+    sig: 'get_file_info(self, file_id: str) -> dict[str, Any] | None'
+    lines:
+    - 326
+    - 350
+    detail:
+      calls:
+      - client.files.get
+      - logger.debug
+      - self._get_client
+      - str
+  - name: list_files
+    sig: list_files(self) -> list[dict[str, Any]]
+    lines:
+    - 352
+    - 374
+    detail:
+      calls:
+      - client.files.list
+      - logger.warning
+      - self._get_client
+      - str
+  - name: wait_for_processing
+    sig: 'wait_for_processing(self, file_id: str, timeout_seconds: int = 300) -> bool'
+    lines:
+    - 376
+    - 410
+    detail:
+      calls:
+      - _compute_backoff_delay
+      - client.files.get
+      - logger.error
+      - logger.warning
+      - self._get_client
+      - time.sleep
+      - time.time
+  - name: await_for_processing
+    sig: |-
+      await_for_processing(
+              self, file_id: str, timeout_seconds: int = 300
+          ) -> bool
+    is_async: true
+    lines:
+    - 412
+    - 448
+    detail:
+      calls:
+      - _compute_backoff_delay
+      - asyncio.sleep
+      - client.aio.files.get
+      - logger.error
+      - logger.warning
+      - self._get_client
+      - time.time
+  lines:
+  - 90
+  - 448
+functions:
+- name: _classify_gemini_error
+  sig: '_classify_gemini_error(e: Exception, filename: str | None) -> Exception'
+  vis: protected
+  lines:
+  - 48
+  - 72
+  detail:
+    calls:
+    - PermanentUploadError
+    - TransientUploadError
+    - classify_upload_error
+    - str
+    - str(e).lower
+exports:
+- name: GeminiFileUploader
+  kind: type
+- name: logger
+  kind: data

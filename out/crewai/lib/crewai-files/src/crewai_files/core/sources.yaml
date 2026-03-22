@@ -1,0 +1,506 @@
+## Roska File Descriptor — core/sources.py
+file: core/sources.py
+lines: 529
+purpose: Base file class for handling file inputs in tasks.
+imports:
+- sym: inspect
+- sym: mimetypes
+- sym: aiofiles
+- sym: pydantic.BaseModel
+- sym: pydantic.BeforeValidator
+- sym: pydantic.Field
+- sym: pydantic.GetCoreSchemaHandler
+- sym: pydantic.PrivateAttr
+- sym: pydantic.model_validator
+- sym: pydantic_core.CoreSchema
+- sym: pydantic_core.core_schema
+- sym: typing_extensions.TypeIs
+- sym: crewai_files.core.constants.DEFAULT_MAX_FILE_SIZE_BYTES
+- sym: crewai_files.core.constants.MAGIC_BUFFER_SIZE
+data:
+- name: ValidatedAsyncReadable
+  type: Any
+  val: Annotated[AsyncReadable, _AsyncReadableValidator()]
+- name: ValidatedBinaryIO
+  type: Any
+  val: Annotated[BinaryIO, _BinaryIOValidator()]
+- name: FileSource
+  type: Any
+  val: FilePath | FileBytes | FileStream | AsyncFileStream | FileUrl
+- name: RawFileInput
+  type: Any
+  val: str | Path | bytes
+- name: FileSourceInput
+  type: Any
+  val: |-
+    Annotated[
+        RawFileInput | FileSource, BeforeValidator(_normalize_source)
+    ]
+types:
+- name: _AsyncReadableValidator
+  kind: struct
+  vis: protected
+  ctx: Pydantic validator for AsyncReadable types.
+  methods:
+  - name: __get_pydantic_core_schema__
+    sig: |-
+      __get_pydantic_core_schema__(
+              cls, _source_type: Any, _handler: GetCoreSchemaHandler
+          ) -> CoreSchema
+    decorators:
+    - classmethod
+    lines:
+    - 39
+    - 47
+    detail:
+      calls:
+      - core_schema.no_info_plain_validator_function
+      - core_schema.plain_serializer_function_ser_schema
+  lines:
+  - 35
+  - 53
+- name: _BinaryIOValidator
+  kind: struct
+  vis: protected
+  ctx: Pydantic validator for BinaryIO types.
+  methods:
+  - name: __get_pydantic_core_schema__
+    sig: |-
+      __get_pydantic_core_schema__(
+              cls, _source_type: Any, _handler: GetCoreSchemaHandler
+          ) -> CoreSchema
+    decorators:
+    - classmethod
+    lines:
+    - 131
+    - 139
+    detail:
+      calls:
+      - core_schema.no_info_plain_validator_function
+      - core_schema.plain_serializer_function_ser_schema
+  lines:
+  - 127
+  - 145
+- name: FilePath
+  kind: model
+  ctx: File loaded from a filesystem path.
+  bases:
+  - BaseModel
+  fields:
+  - name: path
+    type: Any
+    default: Path
+  - name: max_size_bytes
+    type: Any
+    default: int
+  - name: _content
+    type: Any
+    default: bytes | None
+  - name: _content_type
+    type: Any
+    default: str
+  methods:
+  - name: _validate_file_exists
+    sig: _validate_file_exists(self) -> FilePath
+    vis: protected
+    decorators:
+    - model_validator(mode="after")
+    lines:
+    - 164
+    - 193
+    detail:
+      calls:
+      - FileTooLargeError
+      - Path.cwd
+      - Path.cwd().resolve
+      - ValueError
+      - detect_content_type_from_path
+      - self.path.exists
+      - self.path.is_file
+      - self.path.is_symlink
+      - self.path.resolve
+      - self.path.stat
+      - str
+      - str(resolved).startswith
+  - name: filename
+    sig: filename(self) -> str
+    decorators:
+    - property
+    lines:
+    - 196
+    - 198
+    detail: {}
+  - name: content_type
+    sig: content_type(self) -> str
+    decorators:
+    - property
+    lines:
+    - 201
+    - 203
+    detail: {}
+  - name: read
+    sig: read(self) -> bytes
+    lines:
+    - 205
+    - 209
+    detail:
+      calls:
+      - self.path.read_bytes
+  - name: aread
+    sig: aread(self) -> bytes
+    is_async: true
+    lines:
+    - 211
+    - 216
+    detail:
+      calls:
+      - aiofiles.open
+      - f.read
+  - name: read_chunks
+    sig: 'read_chunks(self, chunk_size: int = 65536) -> Iterator[bytes]'
+    lines:
+    - 218
+    - 229
+    detail:
+      calls:
+      - f.read
+      - open
+  - name: aread_chunks
+    sig: 'aread_chunks(self, chunk_size: int = 65536) -> AsyncIterator[bytes]'
+    is_async: true
+    lines:
+    - 231
+    - 242
+    detail:
+      calls:
+      - aiofiles.open
+      - f.read
+  lines:
+  - 151
+  - 242
+- name: FileBytes
+  kind: model
+  ctx: File created from raw bytes content.
+  bases:
+  - BaseModel
+  fields:
+  - name: data
+    type: Any
+    default: bytes
+  - name: filename
+    type: Any
+    default: str | None
+  - name: _content_type
+    type: Any
+    default: str
+  methods:
+  - name: content_type
+    sig: content_type(self) -> str
+    decorators:
+    - property
+    lines:
+    - 259
+    - 261
+    detail: {}
+  - name: read
+    sig: read(self) -> bytes
+    lines:
+    - 263
+    - 265
+    detail: {}
+  - name: aread
+    sig: aread(self) -> bytes
+    is_async: true
+    lines:
+    - 267
+    - 269
+    detail: {}
+  - name: read_chunks
+    sig: 'read_chunks(self, chunk_size: int = 65536) -> Iterator[bytes]'
+    lines:
+    - 271
+    - 281
+    detail:
+      calls:
+      - len
+      - range
+  - name: aread_chunks
+    sig: 'aread_chunks(self, chunk_size: int = 65536) -> AsyncIterator[bytes]'
+    is_async: true
+    lines:
+    - 283
+    - 293
+    detail:
+      calls:
+      - self.read_chunks
+  lines:
+  - 245
+  - 293
+- name: FileStream
+  kind: model
+  ctx: File loaded from a file-like stream. (+2 dunder methods)
+  bases:
+  - BaseModel
+  fields:
+  - name: stream
+    type: Any
+    default: ValidatedBinaryIO
+  - name: filename
+    type: Any
+    default: str | None
+  - name: _content
+    type: Any
+    default: bytes | None
+  - name: _content_type
+    type: Any
+    default: str
+  methods:
+  - name: content_type
+    sig: content_type(self) -> str
+    decorators:
+    - property
+    lines:
+    - 320
+    - 322
+    detail: {}
+  - name: read
+    sig: read(self) -> bytes
+    lines:
+    - 324
+    - 331
+    detail:
+      calls:
+      - self.stream.read
+      - self.stream.seek
+      - self.stream.tell
+  - name: close
+    sig: close(self) -> None
+    lines:
+    - 333
+    - 335
+    detail:
+      calls:
+      - self.stream.close
+  - name: read_chunks
+    sig: 'read_chunks(self, chunk_size: int = 65536) -> Iterator[bytes]'
+    lines:
+    - 350
+    - 365
+    detail:
+      calls:
+      - self.stream.read
+      - self.stream.seek
+      - self.stream.tell
+  lines:
+  - 296
+  - 365
+- name: AsyncFileStream
+  kind: model
+  ctx: 'File loaded from an async stream. Use for async file handles like aiofiles objects or aiohttp response bodies. This is an async-only type - use aread() instead of read(). Attributes: stream: Async file-like object with async read() method. filename: Optional filename for the stream.'
+  bases:
+  - BaseModel
+  fields:
+  - name: stream
+    type: Any
+    default: ValidatedAsyncReadable
+  - name: filename
+    type: Any
+    default: str | None
+  - name: _content
+    type: Any
+    default: bytes | None
+  - name: _content_type
+    type: Any
+    default: str | None
+  methods:
+  - name: content_type
+    sig: content_type(self) -> str
+    decorators:
+    - property
+    lines:
+    - 387
+    - 393
+    detail:
+      calls:
+      - RuntimeError
+      - detect_content_type
+  - name: aread
+    sig: aread(self) -> bytes
+    is_async: true
+    lines:
+    - 395
+    - 399
+    detail:
+      calls:
+      - self.stream.read
+  - name: aclose
+    sig: aclose(self) -> None
+    is_async: true
+    lines:
+    - 401
+    - 406
+    detail:
+      calls:
+      - hasattr
+      - inspect.isawaitable
+      - self.stream.close
+  - name: __aenter__
+    sig: __aenter__(self) -> AsyncFileStream
+    is_async: true
+    lines:
+    - 408
+    - 410
+    detail: {}
+  - name: __aexit__
+    sig: |-
+      __aexit__(
+              self,
+              exc_type: type[BaseException] | None,
+              exc_val: BaseException | None,
+              exc_tb: Any,
+          ) -> None
+    is_async: true
+    lines:
+    - 412
+    - 419
+    detail:
+      calls:
+      - self.aclose
+  - name: aread_chunks
+    sig: 'aread_chunks(self, chunk_size: int = 65536) -> AsyncIterator[bytes]'
+    is_async: true
+    lines:
+    - 421
+    - 431
+    detail:
+      calls:
+      - self.stream.read
+  lines:
+  - 368
+  - 431
+- name: FileUrl
+  kind: model
+  ctx: 'File referenced by URL. For providers that support URL references, the URL is passed directly. For providers that don''t, content is fetched on demand. Attributes: url: URL where the file can be accessed. filename: Optional filename (extracted from URL if not provided).'
+  bases:
+  - BaseModel
+  fields:
+  - name: url
+    type: Any
+    default: str
+  - name: filename
+    type: Any
+    default: str | None
+  - name: _content_type
+    type: Any
+    default: str | None
+  - name: _content
+    type: Any
+    default: bytes | None
+  methods:
+  - name: content_type
+    sig: content_type(self) -> str
+    decorators:
+    - property
+    lines:
+    - 458
+    - 462
+    detail:
+      calls:
+      - self._guess_content_type
+  - name: read
+    sig: read(self) -> bytes
+    lines:
+    - 473
+    - 483
+    detail:
+      calls:
+      - httpx.get
+      - response.headers["content-type"].split
+      - response.raise_for_status
+  - name: aread
+    sig: aread(self) -> bytes
+    is_async: true
+    lines:
+    - 485
+    - 496
+    detail:
+      calls:
+      - client.get
+      - httpx.AsyncClient
+      - response.headers["content-type"].split
+      - response.raise_for_status
+  lines:
+  - 434
+  - 496
+functions:
+- name: AsyncReadable
+  sig: ''
+  decorators:
+  - runtime_checkable
+  lines:
+  - 26
+  - 32
+- name: generate_filename
+  sig: 'generate_filename(content_type: str) -> str'
+  lines:
+  - 68
+  - 80
+  detail:
+    calls:
+    - mimetypes.guess_extension
+    - uuid.uuid4
+- name: detect_content_type
+  sig: 'detect_content_type(data: bytes, filename: str | None = None) -> str'
+  lines:
+  - 83
+  - 102
+  detail:
+    calls:
+    - _fallback_content_type
+    - magic.from_buffer
+- name: detect_content_type_from_path
+  sig: 'detect_content_type_from_path(path: Path, filename: str | None = None) -> str'
+  lines:
+  - 105
+  - 124
+  detail:
+    calls:
+    - _fallback_content_type
+    - magic.from_file
+    - str
+- name: is_file_source
+  sig: 'is_file_source(v: object) -> TypeIs[FileSource]'
+  lines:
+  - 502
+  - 504
+exports:
+- name: FilePath
+  kind: type
+- name: FileBytes
+  kind: type
+- name: FileStream
+  kind: type
+- name: AsyncFileStream
+  kind: type
+- name: FileUrl
+  kind: type
+- name: AsyncReadable
+  kind: func
+- name: generate_filename
+  kind: func
+- name: detect_content_type
+  kind: func
+- name: detect_content_type_from_path
+  kind: func
+- name: is_file_source
+  kind: func
+- name: ValidatedAsyncReadable
+  kind: data
+- name: ValidatedBinaryIO
+  kind: data
+- name: FileSource
+  kind: data
+- name: RawFileInput
+  kind: data
+- name: FileSourceInput
+  kind: data

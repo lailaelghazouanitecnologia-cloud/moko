@@ -1,0 +1,430 @@
+## Roska File Descriptor — llms/base_llm.py
+file: llms/base_llm.py
+lines: 880
+purpose: Base LLM abstract class for CrewAI. This module provides the abstract base class for all LLM implementations in CrewAI, including common functionality for native SDK implementations.
+imports:
+- sym: contextvars
+- sym: pydantic.BaseModel
+- sym: crewai.events.event_bus.crewai_event_bus
+- sym: crewai.events.types.llm_events.LLMCallCompletedEvent
+- sym: crewai.events.types.llm_events.LLMCallFailedEvent
+- sym: crewai.events.types.llm_events.LLMCallStartedEvent
+- sym: crewai.events.types.llm_events.LLMCallType
+- sym: crewai.events.types.llm_events.LLMStreamChunkEvent
+- sym: crewai.events.types.llm_events.LLMThinkingChunkEvent
+- sym: crewai.events.types.tool_usage_events.ToolUsageErrorEvent
+- sym: crewai.events.types.tool_usage_events.ToolUsageFinishedEvent
+- sym: crewai.events.types.tool_usage_events.ToolUsageStartedEvent
+- sym: crewai.types.usage_metrics.UsageMetrics
+data:
+- name: DEFAULT_CONTEXT_WINDOW_SIZE
+  type: Any
+  val: Final[int]
+- name: DEFAULT_SUPPORTS_STOP_WORDS
+  type: Any
+  val: Final[bool]
+- name: _JSON_EXTRACTION_PATTERN
+  type: Any
+  val: Final[re.Pattern[str]]
+- name: _current_call_id
+  type: Any
+  val: contextvars.ContextVar[str | None]
+types:
+- name: BaseLLM
+  kind: trait
+  ctx: 'Abstract base class for LLM implementations. This class defines the interface that all LLM implementations must follow. Users can extend this class to create custom LLM implementations that don''t rely on litellm''s authentication mechanism. Custom LLM implementations should handle error cases gracefully, including timeouts, authentication failures, and malformed responses. They should also implement proper validation for input parameters and provide clear error messages when things go wrong. Attributes: model: The model identifier/name. temperature: Optional temperature setting for response generation. stop: A list of stop sequences that the LLM should use to stop generation. additional_params: Additional provider-specific parameters.'
+  bases:
+  - ABC
+  fields:
+  - name: is_litellm
+    type: Any
+    default: bool
+  - name: model
+    type: Any
+    default: model
+  - name: temperature
+    type: Any
+    default: temperature
+  - name: api_key
+    type: Any
+    default: api_key
+  - name: base_url
+    type: Any
+    default: base_url
+  - name: prefer_upload
+    type: Any
+    default: prefer_upload
+  - name: additional_params
+    type: Any
+    default: kwargs
+  - name: _provider
+    type: Any
+    default: provider or "openai"
+  - name: stop
+    type: Any
+    default: list[str]
+  - name: _token_usage
+    type: dict
+    default: |-
+      {
+                  "total_tokens": 0,
+                  "prompt_tokens": 0,
+                  "completion_tokens": 0,
+                  "successful_requests": 0,
+                  "cached_prompt_tokens": 0,
+              }
+  methods:
+  - name: __init__
+    sig: |-
+      __init__(
+              self,
+              model: str,
+              temperature: float | None = None,
+              api_key: str | None = None,
+              base_url: str | None = None,
+              provider: str | None = None,
+              prefer_upload: bool = False,
+              **kwargs: Any,
+          ) -> None
+    lines:
+    - 106
+    - 153
+    detail:
+      calls:
+      - ValueError
+      - isinstance
+      - kwargs.pop
+  - name: provider
+    sig: provider(self) -> str
+    decorators:
+    - property
+    lines:
+    - 156
+    - 158
+    detail: {}
+  - name: provider
+    sig: 'provider(self, value: str) -> None'
+    decorators:
+    - provider.setter
+    lines:
+    - 161
+    - 163
+    detail: {}
+  - name: call
+    sig: |-
+      call(
+              self,
+              messages: str | list[LLMMessage],
+              tools: list[dict[str, BaseTool]] | None = None,
+              callbacks: list[Any] | None = None,
+              available_functions: dict[str, Any] | None = None,
+              from_task: Task | None = None,
+              from_agent: Agent | None = None,
+              response_model: type[BaseModel] | None = None,
+          ) -> str | Any
+    decorators:
+    - abstractmethod
+    lines:
+    - 166
+    - 201
+    detail: {}
+  - name: acall
+    sig: |-
+      acall(
+              self,
+              messages: str | list[LLMMessage],
+              tools: list[dict[str, BaseTool]] | None = None,
+              callbacks: list[Any] | None = None,
+              available_functions: dict[str, Any] | None = None,
+              from_task: Task | None = None,
+              from_agent: Agent | None = None,
+              response_model: type[BaseModel] | None = None,
+          ) -> str | Any
+    is_async: true
+    lines:
+    - 203
+    - 239
+    detail: {}
+  - name: supports_stop_words
+    sig: supports_stop_words(self) -> bool
+    lines:
+    - 254
+    - 260
+    detail: {}
+  - name: _apply_stop_words
+    sig: '_apply_stop_words(self, content: str) -> str'
+    vis: protected
+    lines:
+    - 273
+    - 314
+    detail:
+      calls:
+      - content.find
+      - content[:earliest_stop_pos].strip
+      - len
+      - logging.debug
+  - name: get_context_window_size
+    sig: get_context_window_size(self) -> int
+    lines:
+    - 316
+    - 323
+    detail: {}
+  - name: supports_multimodal
+    sig: supports_multimodal(self) -> bool
+    lines:
+    - 325
+    - 331
+    detail: {}
+  - name: format_text_content
+    sig: 'format_text_content(self, text: str) -> dict[str, Any]'
+    lines:
+    - 333
+    - 345
+    detail: {}
+  - name: get_file_uploader
+    sig: get_file_uploader(self) -> Any
+    lines:
+    - 347
+    - 356
+    detail: {}
+  - name: _emit_call_started_event
+    sig: |-
+      _emit_call_started_event(
+              self,
+              messages: str | list[LLMMessage],
+              tools: list[dict[str, BaseTool]] | None = None,
+              callbacks: list[Any] | None = None,
+              available_functions: dict[str, Any] | None = None,
+              from_task: Task | None = None,
+              from_agent: Agent | None = None,
+          ) -> None
+    vis: protected
+    lines:
+    - 360
+    - 384
+    detail:
+      calls:
+      - LLMCallStartedEvent
+      - crewai_event_bus.emit
+      - get_current_call_id
+      - to_serializable
+  - name: _emit_call_completed_event
+    sig: |-
+      _emit_call_completed_event(
+              self,
+              response: Any,
+              call_type: LLMCallType,
+              from_task: Task | None = None,
+              from_agent: Agent | None = None,
+              messages: str | list[LLMMessage] | None = None,
+          ) -> None
+    vis: protected
+    lines:
+    - 386
+    - 408
+    detail:
+      calls:
+      - LLMCallCompletedEvent
+      - crewai_event_bus.emit
+      - get_current_call_id
+      - to_serializable
+  - name: _emit_stream_chunk_event
+    sig: |-
+      _emit_stream_chunk_event(
+              self,
+              chunk: str,
+              from_task: Task | None = None,
+              from_agent: Agent | None = None,
+              tool_call: dict[str, Any] | None = None,
+              call_type: LLMCallType | None = None,
+              response_id: str | None = None,
+          ) -> None
+    vis: protected
+    lines:
+    - 428
+    - 458
+    detail:
+      calls:
+      - LLMStreamChunkEvent
+      - crewai_event_bus.emit
+      - get_current_call_id
+  - name: _emit_thinking_chunk_event
+    sig: |-
+      _emit_thinking_chunk_event(
+              self,
+              chunk: str,
+              from_task: Task | None = None,
+              from_agent: Agent | None = None,
+              response_id: str | None = None,
+          ) -> None
+    vis: protected
+    lines:
+    - 460
+    - 484
+    detail:
+      calls:
+      - LLMThinkingChunkEvent
+      - crewai_event_bus.emit
+      - get_current_call_id
+  - name: _handle_tool_execution
+    sig: |-
+      _handle_tool_execution(
+              self,
+              function_name: str,
+              function_args: dict[str, Any],
+              available_functions: dict[str, Any],
+              from_task: Task | None = None,
+              from_agent: Agent | None = None,
+          ) -> str | None
+    vis: protected
+    lines:
+    - 486
+    - 582
+    detail:
+      calls:
+      - ToolUsageErrorEvent
+      - ToolUsageFinishedEvent
+      - ToolUsageStartedEvent
+      - ValueError
+      - crewai_event_bus.emit
+      - datetime.now
+      - fn
+      - hasattr
+      - isinstance
+      - logging.error
+      - logging.warning
+      - self._emit_call_completed_event
+      - self._emit_call_failed_event
+      - str
+  - name: _process_message_files
+    sig: '_process_message_files(self, messages: list[LLMMessage]) -> list[LLMMessage]'
+    vis: protected
+    lines:
+    - 610
+    - 650
+    detail:
+      calls:
+      - format_multimodal_content
+      - getattr
+      - isinstance
+      - msg.get
+      - msg.pop
+      - self.supports_multimodal
+  - name: _validate_structured_output
+    sig: |-
+      _validate_structured_output(
+              response: str,
+              response_format: type[BaseModel] | None,
+          ) -> str | BaseModel
+    vis: protected
+    decorators:
+    - staticmethod
+    lines:
+    - 653
+    - 689
+    detail:
+      calls:
+      - ValueError
+      - _JSON_EXTRACTION_PATTERN.search
+      - json.loads
+      - json_match.group
+      - logging.warning
+      - response.strip
+      - response.strip().startswith
+      - response_format.model_validate
+  - name: _track_token_usage_internal
+    sig: '_track_token_usage_internal(self, usage_data: dict[str, Any]) -> None'
+    vis: protected
+    lines:
+    - 705
+    - 736
+    detail:
+      calls:
+      - usage_data.get
+  - name: get_token_usage_summary
+    sig: get_token_usage_summary(self) -> UsageMetrics
+    lines:
+    - 738
+    - 744
+    detail:
+      calls:
+      - UsageMetrics
+  - name: _invoke_before_llm_call_hooks
+    sig: |-
+      _invoke_before_llm_call_hooks(
+              self,
+              messages: list[LLMMessage],
+              from_agent: Agent | None = None,
+          ) -> bool
+    vis: protected
+    lines:
+    - 746
+    - 812
+    detail:
+      calls:
+      - LLMCallHookContext
+      - Printer
+      - get_before_llm_call_hooks
+      - getattr
+      - hook
+      - printer.print
+  - name: _invoke_after_llm_call_hooks
+    sig: |-
+      _invoke_after_llm_call_hooks(
+              self,
+              messages: list[LLMMessage],
+              response: str,
+              from_agent: Agent | None = None,
+          ) -> str
+    vis: protected
+    lines:
+    - 814
+    - 880
+    detail:
+      calls:
+      - LLMCallHookContext
+      - Printer
+      - get_after_llm_call_hooks
+      - getattr
+      - hook
+      - isinstance
+      - printer.print
+  lines:
+  - 85
+  - 880
+functions:
+- name: llm_call_context
+  sig: llm_call_context() -> Generator[str, None, None]
+  decorators:
+  - contextmanager
+  lines:
+  - 64
+  - 71
+  detail:
+    calls:
+    - _current_call_id.reset
+    - _current_call_id.set
+    - str
+    - uuid.uuid4
+- name: get_current_call_id
+  sig: get_current_call_id() -> str
+  lines:
+  - 74
+  - 82
+  detail:
+    calls:
+    - _current_call_id.get
+    - logging.warning
+    - str
+    - uuid.uuid4
+exports:
+- name: BaseLLM
+  kind: type
+- name: llm_call_context
+  kind: func
+- name: get_current_call_id
+  kind: func
+- name: DEFAULT_CONTEXT_WINDOW_SIZE
+  kind: data
+- name: DEFAULT_SUPPORTS_STOP_WORDS
+  kind: data

@@ -1,0 +1,924 @@
+## Roska File Descriptor — crewai/crew.py
+file: crewai/crew.py
+lines: 2040
+imports:
+- sym: asyncio
+- sym: concurrent.futures.Future
+- sym: opentelemetry.baggage
+- sym: opentelemetry.context.attach
+- sym: opentelemetry.context.detach
+- sym: pydantic.UUID4
+- sym: pydantic.BaseModel
+- sym: pydantic.Field
+- sym: pydantic.InstanceOf
+- sym: pydantic.Json
+- sym: pydantic.PrivateAttr
+- sym: pydantic.field_validator
+- sym: pydantic.model_validator
+- sym: pydantic_core.PydanticCustomError
+- sym: rich.console.Console
+- sym: rich.panel.Panel
+- sym: typing_extensions.Self
+- sym: crewai.agent.Agent
+- sym: crewai.agents.agent_builder.base_agent.BaseAgent
+- sym: crewai.agents.cache.cache_handler.CacheHandler
+- sym: crewai.crews.crew_output.CrewOutput
+- sym: crewai.crews.utils.StreamingContext
+- sym: crewai.crews.utils.check_conditional_skip
+- sym: crewai.crews.utils.enable_agent_streaming
+- sym: crewai.crews.utils.prepare_kickoff
+- sym: crewai.crews.utils.prepare_task_execution
+- sym: crewai.crews.utils.run_for_each_async
+- sym: crewai.events.event_bus.crewai_event_bus
+- sym: crewai.events.event_listener.EventListener
+- sym: crewai.events.listeners.tracing.trace_listener.TraceCollectionListener
+- sym: crewai.events.listeners.tracing.utils.set_tracing_enabled
+- sym: crewai.events.listeners.tracing.utils.should_enable_tracing
+- sym: crewai.events.types.crew_events.CrewKickoffCompletedEvent
+- sym: crewai.events.types.crew_events.CrewKickoffFailedEvent
+- sym: crewai.events.types.crew_events.CrewTestCompletedEvent
+- sym: crewai.events.types.crew_events.CrewTestFailedEvent
+- sym: crewai.events.types.crew_events.CrewTestStartedEvent
+- sym: crewai.events.types.crew_events.CrewTrainCompletedEvent
+- sym: crewai.events.types.crew_events.CrewTrainFailedEvent
+- sym: crewai.events.types.crew_events.CrewTrainStartedEvent
+- sym: crewai.flow.flow_trackable.FlowTrackable
+- sym: crewai.knowledge.knowledge.Knowledge
+- sym: crewai.knowledge.source.base_knowledge_source.BaseKnowledgeSource
+- sym: crewai.llm.LLM
+- sym: crewai.llms.base_llm.BaseLLM
+- sym: crewai.process.Process
+- sym: crewai.rag.embeddings.types.EmbedderConfig
+- sym: crewai.rag.types.SearchResult
+- sym: crewai.security.fingerprint.Fingerprint
+- sym: crewai.security.security_config.SecurityConfig
+- sym: crewai.task.Task
+- sym: crewai.tasks.conditional_task.ConditionalTask
+- sym: crewai.tasks.task_output.TaskOutput
+- sym: crewai.tools.agent_tools.agent_tools.AgentTools
+- sym: crewai.tools.agent_tools.read_file_tool.ReadFileTool
+- sym: crewai.tools.base_tool.BaseTool
+- sym: crewai.types.streaming.CrewStreamingOutput
+- sym: crewai.types.usage_metrics.UsageMetrics
+- sym: crewai.utilities.constants.NOT_SPECIFIED
+- sym: crewai.utilities.constants.TRAINING_DATA_FILE
+- sym: crewai.utilities.crew.models.CrewContext
+- sym: crewai.utilities.env.get_env_context
+- sym: crewai.utilities.evaluators.crew_evaluator_handler.CrewEvaluator
+- sym: crewai.utilities.evaluators.task_evaluator.TaskEvaluator
+- sym: crewai.utilities.file_handler.FileHandler
+- sym: crewai.utilities.file_store.clear_files
+- sym: crewai.utilities.file_store.get_all_files
+- sym: crewai.utilities.formatter.aggregate_raw_outputs_from_task_outputs
+- sym: crewai.utilities.formatter.aggregate_raw_outputs_from_tasks
+- sym: crewai.utilities.i18n.get_i18n
+- sym: crewai.utilities.llm_utils.create_llm
+- sym: crewai.utilities.logger.Logger
+- sym: crewai.utilities.planning_handler.CrewPlanner
+- sym: crewai.utilities.printer.PrinterColor
+- sym: crewai.utilities.rpm_controller.RPMController
+- sym: crewai.utilities.streaming.create_async_chunk_generator
+- sym: crewai.utilities.streaming.create_chunk_generator
+- sym: crewai.utilities.streaming.signal_end
+- sym: crewai.utilities.streaming.signal_error
+- sym: crewai.utilities.string_utils.sanitize_tool_name
+- sym: crewai.utilities.task_output_storage_handler.TaskOutputStorageHandler
+- sym: crewai.utilities.training_handler.CrewTrainingHandler
+types:
+- name: Crew
+  kind: model
+  ctx: 'Represents a group of agents, defining how they should collaborate and the tasks they should perform. Attributes: tasks: list of tasks assigned to the crew. agents: list of agents part of this crew. manager_llm: The language model that will run manager agent. manager_agent: Custom agent that will be used as manager. memory: Whether the crew should use memory to store memories of it''s execution. cache: Whether the crew should use a cache to store the results of the tools execution. function_calling_llm: The language model that will run the tool calling for all the agents. process: The process flow that the crew will follow (e.g., sequential, hierarchical). verbose: Indicates the verbosity level for logging during execution. config: Configuration settings for the crew. max_rpm: Maximum number of requests per minute for the crew execution to be respected. prompt_file: Path to the prompt json file to be used for the crew. id: A unique identifier for the crew instance. task_callback: Callback to be executed after each task for every agents execution. step_callback: Callback to be executed after each step for every agents execution. share_crew: Whether you want to share the complete crew information and execution with crewAI to make the library better, and allow us to train models. planning: Plan the crew execution and add the plan to the crew. chat_llm: The language model used for orchestrating chat interactions with the crew. security_config: Security configuration for the crew, including fingerprinting. (+1 dunder methods)'
+  bases:
+  - FlowTrackable
+  - BaseModel
+  fields:
+  - name: _execution_span
+    type: Any
+    default: Any
+  - name: _rpm_controller
+    type: Any
+    default: RPMController
+  - name: _logger
+    type: Any
+    default: Logger
+  - name: _file_handler
+    type: Any
+    default: FileHandler
+  - name: _cache_handler
+    type: Any
+    default: InstanceOf[CacheHandler]
+  - name: _memory
+    type: Any
+    default: Any
+  - name: _train
+    type: Any
+    default: bool | None
+  - name: _train_iteration
+    type: Any
+    default: int | None
+  - name: _inputs
+    type: Any
+    default: dict[str, Any] | None
+  - name: _logging_color
+    type: Any
+    default: PrinterColor
+  - name: _task_output_handler
+    type: Any
+    default: TaskOutputStorageHandler
+  - name: _kickoff_event_id
+    type: Any
+    default: str | None
+  - name: name
+    type: Any
+    default: str | None
+  - name: cache
+    type: Any
+    default: bool
+  - name: tasks
+    type: Any
+    default: list[Task]
+  - name: agents
+    type: Any
+    default: list[BaseAgent]
+  - name: process
+    type: Any
+    default: Process
+  - name: verbose
+    type: Any
+    default: bool
+  - name: memory
+    type: Any
+    default: bool | Any
+  - name: embedder
+    type: Any
+    default: EmbedderConfig | None
+  - name: usage_metrics
+    type: Any
+    default: UsageMetrics | None
+  - name: manager_llm
+    type: Any
+    default: str | InstanceOf[BaseLLM] | Any | None
+  - name: manager_agent
+    type: Any
+    default: BaseAgent | None
+  - name: function_calling_llm
+    type: Any
+    default: str | InstanceOf[LLM] | Any | None
+  - name: config
+    type: Any
+    default: Json[dict[str, Any]] | dict[str, Any] | None
+  - name: id
+    type: Any
+    default: UUID4
+  - name: share_crew
+    type: Any
+    default: bool | None
+  - name: step_callback
+    type: Any
+    default: Any | None
+  - name: task_callback
+    type: Any
+    default: Any | None
+  - name: before_kickoff_callbacks
+    type: Any
+    default: |-
+      list[
+              Callable[[dict[str, Any] | None], dict[str, Any] | None]
+          ]
+  - name: after_kickoff_callbacks
+    type: Any
+    default: list[Callable[[CrewOutput], CrewOutput]]
+  - name: stream
+    type: Any
+    default: bool
+  - name: max_rpm
+    type: Any
+    default: int | None
+  - name: prompt_file
+    type: Any
+    default: str | None
+  - name: output_log_file
+    type: Any
+    default: bool | str | None
+  - name: planning
+    type: Any
+    default: bool | None
+  - name: planning_llm
+    type: Any
+    default: str | InstanceOf[BaseLLM] | Any | None
+  - name: task_execution_output_json_files
+    type: Any
+    default: list[str] | None
+  - name: execution_logs
+    type: Any
+    default: list[dict[str, Any]]
+  - name: knowledge_sources
+    type: Any
+    default: list[BaseKnowledgeSource] | None
+  - name: chat_llm
+    type: Any
+    default: str | InstanceOf[BaseLLM] | Any | None
+  - name: knowledge
+    type: Any
+    default: Knowledge | None
+  - name: security_config
+    type: Any
+    default: SecurityConfig
+  - name: token_usage
+    type: Any
+    default: UsageMetrics | None
+  - name: tracing
+    type: Any
+    default: bool | None
+  methods:
+  - name: check_config_type
+    sig: |-
+      check_config_type(
+              cls, v: Json[dict[str, Any]] | dict[str, Any]
+          ) -> dict[str, Any]
+    decorators:
+    - field_validator("config", mode="before")
+    - classmethod
+    lines:
+    - 319
+    - 330
+    detail:
+      calls:
+      - isinstance
+      - json.loads
+  - name: set_private_attrs
+    sig: set_private_attrs(self) -> Crew
+    decorators:
+    - model_validator(mode="after")
+    lines:
+    - 333
+    - 354
+    detail:
+      calls:
+      - CacheHandler
+      - EventListener
+      - FileHandler
+      - Logger
+      - RPMController
+      - TraceCollectionListener
+      - create_llm
+      - isinstance
+      - set_tracing_enabled
+      - should_enable_tracing
+      - trace_listener.setup_listeners
+  - name: create_crew_memory
+    sig: create_crew_memory(self) -> Crew
+    decorators:
+    - model_validator(mode="after")
+    lines:
+    - 357
+    - 374
+    detail:
+      calls:
+      - Memory
+      - build_embedder
+  - name: create_crew_knowledge
+    sig: create_crew_knowledge(self) -> Crew
+    decorators:
+    - model_validator(mode="after")
+    lines:
+    - 377
+    - 395
+    detail:
+      calls:
+      - Knowledge
+      - all
+      - isinstance
+      - self._logger.log
+      - self.knowledge.add_sources
+  - name: check_manager_llm
+    sig: check_manager_llm(self) -> Self
+    decorators:
+    - model_validator(mode="after")
+    lines:
+    - 398
+    - 419
+    detail:
+      calls:
+      - PydanticCustomError
+      - self.agents.count
+  - name: check_config
+    sig: check_config(self) -> Self
+    decorators:
+    - model_validator(mode="after")
+    lines:
+    - 422
+    - 440
+    detail:
+      calls:
+      - PydanticCustomError
+      - agent.set_cache_handler
+      - agent.set_rpm_controller
+      - self._setup_from_config
+  - name: validate_tasks
+    sig: validate_tasks(self) -> Self
+    decorators:
+    - model_validator(mode="after")
+    lines:
+    - 443
+    - 453
+    detail:
+      calls:
+      - PydanticCustomError
+  - name: validate_end_with_at_most_one_async_task
+    sig: validate_end_with_at_most_one_async_task(self) -> Self
+    decorators:
+    - model_validator(mode="after")
+    lines:
+    - 456
+    - 474
+    detail:
+      calls:
+      - PydanticCustomError
+      - reversed
+  - name: validate_must_have_non_conditional_task
+    sig: validate_must_have_non_conditional_task(self) -> Crew
+    decorators:
+    - model_validator(mode="after")
+    lines:
+    - 477
+    - 490
+    detail:
+      calls:
+      - PydanticCustomError
+      - isinstance
+      - sum
+  - name: validate_first_task
+    sig: validate_first_task(self) -> Crew
+    decorators:
+    - model_validator(mode="after")
+    lines:
+    - 493
+    - 501
+    detail:
+      calls:
+      - PydanticCustomError
+      - isinstance
+  - name: validate_async_tasks_not_async
+    sig: validate_async_tasks_not_async(self) -> Crew
+    decorators:
+    - model_validator(mode="after")
+    lines:
+    - 504
+    - 515
+    detail:
+      calls:
+      - PydanticCustomError
+      - isinstance
+  - name: validate_async_task_cannot_include_sequential_async_tasks_in_context
+    sig: |-
+      validate_async_task_cannot_include_sequential_async_tasks_in_context(
+              self,
+          ) -> Self
+    decorators:
+    - model_validator(mode="after")
+    lines:
+    - 518
+    - 539
+    detail:
+      calls:
+      - ValueError
+      - enumerate
+      - isinstance
+      - range
+  - name: validate_context_no_future_tasks
+    sig: validate_context_no_future_tasks(self) -> Self
+    decorators:
+    - model_validator(mode="after")
+    lines:
+    - 542
+    - 557
+    detail:
+      calls:
+      - ValueError
+      - enumerate
+      - id
+      - isinstance
+  - name: key
+    sig: key(self) -> str
+    decorators:
+    - property
+    lines:
+    - 560
+    - 564
+    detail:
+      calls:
+      - '"|".join'
+      - '"|".join(source).encode'
+      - md5
+      - md5("|".join(source).encode(), usedforsecurity=False).hexdigest
+  - name: fingerprint
+    sig: fingerprint(self) -> Fingerprint
+    decorators:
+    - property
+    lines:
+    - 567
+    - 574
+    detail: {}
+  - name: train
+    sig: |-
+      train(
+              self, n_iterations: int, filename: str, inputs: dict[str, Any] | None = None
+          ) -> None
+    lines:
+    - 617
+    - 667
+    detail:
+      calls:
+      - CrewTrainCompletedEvent
+      - CrewTrainFailedEvent
+      - CrewTrainStartedEvent
+      - CrewTrainingHandler
+      - CrewTrainingHandler(TRAINING_DATA_FILE).clear
+      - CrewTrainingHandler(TRAINING_DATA_FILE).load
+      - CrewTrainingHandler(filename).clear
+      - CrewTrainingHandler(filename).save_trained_data
+      - TaskEvaluator
+      - TaskEvaluator(agent).evaluate_training_data
+      - crewai_event_bus.emit
+      - range
+      - result.model_dump
+      - self._logger.log
+      - self.copy
+      - str
+      - train_crew._setup_for_training
+      - train_crew.kickoff
+      - training_data.get
+  - name: kickoff
+    sig: |-
+      kickoff(
+              self,
+              inputs: dict[str, Any] | None = None,
+              input_files: dict[str, FileInput] | None = None,
+          ) -> CrewOutput | CrewStreamingOutput
+    lines:
+    - 669
+    - 749
+    detail:
+      calls:
+      - CrewContext
+      - CrewKickoffFailedEvent
+      - CrewStreamingOutput
+      - NotImplementedError
+      - StreamingContext
+      - after_callback
+      - attach
+      - baggage.set_baggage
+      - clear_files
+      - create_chunk_generator
+      - crewai_event_bus.emit
+      - ctx.output_holder.append
+      - detach
+      - enable_agent_streaming
+      - get_env_context
+      - hasattr
+      - prepare_kickoff
+      - self._memory.drain_writes
+      - self._post_kickoff
+      - self._run_hierarchical_process
+      - self._run_sequential_process
+      - self.calculate_usage_metrics
+      - str
+  - name: kickoff_for_each
+    sig: |-
+      kickoff_for_each(
+              self,
+              inputs: list[dict[str, Any]],
+              input_files: dict[str, FileInput] | None = None,
+          ) -> list[CrewOutput | CrewStreamingOutput]
+    lines:
+    - 754
+    - 788
+    detail:
+      calls:
+      - UsageMetrics
+      - crew.kickoff
+      - results.append
+      - self._task_output_handler.reset
+      - self.copy
+      - total_usage_metrics.add_usage_metrics
+  - name: kickoff_async
+    sig: |-
+      kickoff_async(
+              self,
+              inputs: dict[str, Any] | None = None,
+              input_files: dict[str, FileInput] | None = None,
+          ) -> CrewOutput | CrewStreamingOutput
+    is_async: true
+    lines:
+    - 790
+    - 835
+    detail:
+      calls:
+      - CrewStreamingOutput
+      - StreamingContext
+      - asyncio.to_thread
+      - create_async_chunk_generator
+      - ctx.output_holder.append
+      - enable_agent_streaming
+  - name: kickoff_for_each_async
+    sig: |-
+      kickoff_for_each_async(
+              self,
+              inputs: list[dict[str, Any]],
+              input_files: dict[str, FileInput] | None = None,
+          ) -> list[CrewOutput | CrewStreamingOutput] | CrewStreamingOutput
+    is_async: true
+    lines:
+    - 837
+    - 861
+    detail:
+      calls:
+      - run_for_each_async
+  - name: akickoff
+    sig: |-
+      akickoff(
+              self,
+              inputs: dict[str, Any] | None = None,
+              input_files: dict[str, FileInput] | None = None,
+          ) -> CrewOutput | CrewStreamingOutput
+    is_async: true
+    lines:
+    - 863
+    - 943
+    detail:
+      calls:
+      - CrewContext
+      - CrewKickoffFailedEvent
+      - CrewStreamingOutput
+      - NotImplementedError
+      - StreamingContext
+      - after_callback
+      - attach
+      - baggage.set_baggage
+      - clear_files
+      - create_async_chunk_generator
+      - crewai_event_bus.emit
+      - ctx.output_holder.append
+      - detach
+      - enable_agent_streaming
+      - prepare_kickoff
+      - self._arun_hierarchical_process
+      - self._arun_sequential_process
+      - self._post_kickoff
+      - self.calculate_usage_metrics
+      - str
+  - name: akickoff_for_each
+    sig: |-
+      akickoff_for_each(
+              self,
+              inputs: list[dict[str, Any]],
+              input_files: dict[str, FileInput] | None = None,
+          ) -> list[CrewOutput | CrewStreamingOutput] | CrewStreamingOutput
+    is_async: true
+    lines:
+    - 945
+    - 970
+    detail:
+      calls:
+      - run_for_each_async
+  - name: _aexecute_tasks
+    sig: |-
+      _aexecute_tasks(
+              self,
+              tasks: list[Task],
+              start_index: int | None = 0,
+              was_replayed: bool = False,
+          ) -> CrewOutput
+    is_async: true
+    vis: protected
+    lines:
+    - 981
+    - 1048
+    detail:
+      calls:
+      - asyncio.create_task
+      - enumerate
+      - isinstance
+      - pending_tasks.append
+      - pending_tasks.clear
+      - prepare_task_execution
+      - self._ahandle_conditional_task
+      - self._aprocess_async_tasks
+      - self._create_crew_output
+      - self._get_context
+      - self._process_task_result
+      - self._store_execution_log
+      - task.aexecute_sync
+      - task_outputs.append
+  - name: _ahandle_conditional_task
+    sig: |-
+      _ahandle_conditional_task(
+              self,
+              task: ConditionalTask,
+              task_outputs: list[TaskOutput],
+              pending_tasks: list[tuple[Task, asyncio.Task[TaskOutput], int]],
+              task_index: int,
+              was_replayed: bool,
+          ) -> TaskOutput | None
+    is_async: true
+    vis: protected
+    lines:
+    - 1050
+    - 1065
+    detail:
+      calls:
+      - check_conditional_skip
+      - pending_tasks.clear
+      - self._aprocess_async_tasks
+  - name: _aprocess_async_tasks
+    sig: |-
+      _aprocess_async_tasks(
+              self,
+              pending_tasks: list[tuple[Task, asyncio.Task[TaskOutput], int]],
+              was_replayed: bool = False,
+          ) -> list[TaskOutput]
+    is_async: true
+    vis: protected
+    lines:
+    - 1067
+    - 1081
+    detail:
+      calls:
+      - self._process_task_result
+      - self._store_execution_log
+      - task_outputs.append
+  - name: _handle_crew_planning
+    sig: _handle_crew_planning(self) -> None
+    vis: protected
+    lines:
+    - 1083
+    - 1109
+    detail:
+      calls:
+      - CrewPlanner
+      - |-
+        CrewPlanner(
+                    tasks=self.tasks, planning_agent_llm=self.planning_llm
+                )._handle_crew_planning
+      - enumerate
+      - self._logger.log
+  - name: _create_manager_agent
+    sig: _create_manager_agent(self) -> None
+    vis: protected
+    lines:
+    - 1150
+    - 1175
+    detail:
+      calls:
+      - Agent
+      - AgentTools
+      - AgentTools(agents=self.agents).tools
+      - Exception
+      - create_llm
+      - get_i18n
+      - i18n.retrieve
+      - len
+      - self._logger.log
+  - name: _execute_tasks
+    sig: |-
+      _execute_tasks(
+              self,
+              tasks: list[Task],
+              start_index: int | None = 0,
+              was_replayed: bool = False,
+          ) -> CrewOutput
+    vis: protected
+    lines:
+    - 1180
+    - 1247
+    detail:
+      calls:
+      - enumerate
+      - futures.append
+      - futures.clear
+      - isinstance
+      - prepare_task_execution
+      - self._create_crew_output
+      - self._get_context
+      - self._get_execution_start_index
+      - self._handle_conditional_task
+      - self._process_async_tasks
+      - self._process_task_result
+      - self._store_execution_log
+      - task.execute_async
+      - task.execute_sync
+      - task_outputs.append
+  - name: _prepare_tools
+    sig: |-
+      _prepare_tools(
+              self, agent: BaseAgent, task: Task, tools: list[BaseTool]
+          ) -> list[BaseTool]
+    vis: protected
+    lines:
+    - 1265
+    - 1332
+    detail:
+      calls:
+      - ValueError
+      - agent.llm.supports_multimodal
+      - files.items
+      - get_all_files
+      - get_supported_content_types
+      - getattr
+      - hasattr
+      - is_auto_injected
+      - self._add_code_execution_tools
+      - self._add_delegation_tools
+      - self._add_file_tools
+      - self._add_mcp_tools
+      - self._add_memory_tools
+      - self._add_multimodal_tools
+      - self._add_platform_tools
+      - self._update_manager_tools
+  - name: _merge_tools
+    sig: |-
+      _merge_tools(
+              existing_tools: list[BaseTool],
+              new_tools: list[BaseTool],
+          ) -> list[BaseTool]
+    vis: protected
+    decorators:
+    - staticmethod
+    lines:
+    - 1340
+    - 1361
+    detail:
+      calls:
+      - sanitize_tool_name
+      - tools.extend
+  - name: _create_crew_output
+    sig: '_create_crew_output(self, task_outputs: list[TaskOutput]) -> CrewOutput'
+    vis: protected
+    lines:
+    - 1512
+    - 1545
+    detail:
+      calls:
+      - CrewKickoffCompletedEvent
+      - CrewOutput
+      - ValueError
+      - crewai_event_bus.emit
+      - crewai_event_bus.flush
+      - self._finish_execution
+      - self.calculate_usage_metrics
+  - name: replay
+    sig: 'replay(self, task_id: str, inputs: dict[str, Any] | None = None) -> CrewOutput'
+    lines:
+    - 1573
+    - 1611
+    detail:
+      calls:
+      - TaskOutput
+      - ValueError
+      - range
+      - self._create_manager_agent
+      - self._execute_tasks
+      - self._find_task_index
+      - self._interpolate_inputs
+      - self._task_output_handler.load
+      - stored_output.get
+  - name: query_knowledge
+    sig: |-
+      query_knowledge(
+              self, query: list[str], results_limit: int = 3, score_threshold: float = 0.35
+          ) -> list[SearchResult] | None
+    lines:
+    - 1613
+    - 1621
+    detail:
+      calls:
+      - self.knowledge.query
+  - name: aquery_knowledge
+    sig: |-
+      aquery_knowledge(
+              self, query: list[str], results_limit: int = 3, score_threshold: float = 0.35
+          ) -> list[SearchResult] | None
+    is_async: true
+    lines:
+    - 1623
+    - 1631
+    detail:
+      calls:
+      - self.knowledge.aquery
+  - name: fetch_inputs
+    sig: fetch_inputs(self) -> set[str]
+    lines:
+    - 1633
+    - 1656
+    detail:
+      calls:
+      - placeholder_pattern.findall
+      - re.compile
+      - required_inputs.update
+      - set
+  - name: copy
+    sig: copy(self) -> Crew
+    lines:
+    - 1658
+    - 1721
+    detail:
+      calls:
+      - Crew
+      - agent.copy
+      - cloned_tasks.append
+      - copied_data.items
+      - copied_data.pop
+      - getattr
+      - isinstance
+      - self.manager_agent.copy
+      - self.model_dump
+      - shallow_copy
+      - task.copy
+      - zip
+  - name: calculate_usage_metrics
+    sig: calculate_usage_metrics(self) -> UsageMetrics
+    lines:
+    - 1745
+    - 1777
+    detail:
+      calls:
+      - UsageMetrics
+      - agent._token_process.get_summary
+      - agent.llm.get_token_usage_summary
+      - hasattr
+      - isinstance
+      - self.manager_agent._token_process.get_summary
+      - self.manager_agent.llm._token_process.get_summary
+      - self.manager_agent.llm.get_token_usage_summary
+      - total_usage_metrics.add_usage_metrics
+  - name: test
+    sig: |-
+      test(
+              self,
+              n_iterations: int,
+              eval_llm: str | InstanceOf[BaseLLM],
+              inputs: dict[str, Any] | None = None,
+          ) -> None
+    lines:
+    - 1779
+    - 1825
+    detail:
+      calls:
+      - CrewEvaluator
+      - CrewTestCompletedEvent
+      - CrewTestFailedEvent
+      - CrewTestStartedEvent
+      - ValueError
+      - create_llm
+      - crewai_event_bus.emit
+      - evaluator.print_crew_evaluation_result
+      - evaluator.set_iteration
+      - range
+      - self.copy
+      - str
+      - test_crew.kickoff
+  - name: reset_memories
+    sig: 'reset_memories(self, command_type: str) -> None'
+    lines:
+    - 1834
+    - 1875
+    detail:
+      calls:
+      - ''', ''.join'
+      - RuntimeError
+      - ValueError
+      - frozenset
+      - self._logger.log
+      - self._reset_all_memories
+      - self._reset_specific_memory
+      - sorted
+  - name: reset_knowledge
+    sig: 'reset_knowledge(self, knowledges: list[Knowledge]) -> None'
+    lines:
+    - 1986
+    - 1989
+    detail:
+      calls:
+      - ks.reset
+  - name: _show_tracing_disabled_message
+    sig: _show_tracing_disabled_message() -> None
+    vis: protected
+    decorators:
+    - staticmethod
+    lines:
+    - 2007
+    - 2040
+    detail:
+      calls:
+      - Console
+      - Panel
+      - console.print
+      - has_user_declined_tracing
+      - should_suppress_tracing_messages
+  lines:
+  - 130
+  - 2040
+exports:
+- name: Crew
+  kind: type

@@ -1,0 +1,420 @@
+## Roska File Descriptor — cache/upload_cache.py
+file: cache/upload_cache.py
+lines: 553
+purpose: Cache for tracking uploaded files using aiocache.
+imports:
+- sym: asyncio
+- sym: atexit
+- sym: builtins
+- sym: aiocache.Cache
+- sym: aiocache.serializers.PickleSerializer
+- sym: crewai_files.core.constants.DEFAULT_MAX_CACHE_ENTRIES
+- sym: crewai_files.core.constants.DEFAULT_TTL_SECONDS
+- sym: crewai_files.uploaders.factory.ProviderType
+data:
+- name: logger
+  type: Any
+  val: logging.getLogger(__name__)
+- name: _default_cache
+  type: Any
+  val: UploadCache | None
+types:
+- name: UploadCache
+  kind: struct
+  ctx: 'Async cache for tracking uploaded files using aiocache. Supports in-memory caching by default, with optional Redis backend for distributed setups. Attributes: ttl: Default time-to-live in seconds for cached entries. namespace: Cache namespace for isolation. (+1 dunder methods)'
+  fields:
+  - name: ttl
+    type: Any
+    default: ttl
+  - name: namespace
+    type: Any
+    default: namespace
+  - name: max_entries
+    type: Any
+    default: max_entries
+  - name: _provider_keys
+    type: Any
+    default: dict[ProviderType, set[str]]
+  - name: _key_access_order
+    type: Any
+    default: list[str]
+  - name: _cache
+    type: Any
+    default: |-
+      Cache(
+                      Cache.REDIS,
+                      serializer=PickleSerializer(),
+                      namespace=namespace,
+                      **cache_kwargs,
+                  )
+  methods:
+  - name: __init__
+    sig: |-
+      __init__(
+              self,
+              ttl: int = DEFAULT_TTL_SECONDS,
+              namespace: str = "crewai_uploads",
+              cache_type: str = "memory",
+              max_entries: int | None = DEFAULT_MAX_CACHE_ENTRIES,
+              **cache_kwargs: Any,
+          ) -> None
+    lines:
+    - 100
+    - 134
+    detail:
+      calls:
+      - Cache
+      - PickleSerializer
+  - name: _evict_oldest
+    sig: '_evict_oldest(self, count: int) -> int'
+    is_async: true
+    vis: protected
+    lines:
+    - 168
+    - 190
+    detail:
+      calls:
+      - logger.debug
+      - provider_keys.discard
+      - self._cache.delete
+      - self._key_access_order.remove
+      - self._provider_keys.values
+  - name: aget
+    sig: |-
+      aget(
+              self, file: FileInput, provider: ProviderType
+          ) -> CachedUpload | None
+    is_async: true
+    lines:
+    - 192
+    - 205
+    detail:
+      calls:
+      - _compute_file_hash
+      - self.aget_by_hash
+  - name: aget_by_hash
+    sig: |-
+      aget_by_hash(
+              self, file_hash: str, provider: ProviderType
+          ) -> CachedUpload | None
+    is_async: true
+    lines:
+    - 207
+    - 230
+    detail:
+      calls:
+      - _make_key
+      - isinstance
+      - result.is_expired
+      - self._cache.delete
+      - self._cache.get
+      - self._untrack_key
+  - name: aset
+    sig: |-
+      aset(
+              self,
+              file: FileInput,
+              provider: ProviderType,
+              file_id: str,
+              file_uri: str | None = None,
+              expires_at: datetime | None = None,
+          ) -> CachedUpload
+    is_async: true
+    lines:
+    - 232
+    - 260
+    detail:
+      calls:
+      - _compute_file_hash
+      - self.aset_by_hash
+  - name: aset_by_hash
+    sig: |-
+      aset_by_hash(
+              self,
+              file_hash: str,
+              content_type: str,
+              provider: ProviderType,
+              file_id: str,
+              file_uri: str | None = None,
+              expires_at: datetime | None = None,
+          ) -> CachedUpload
+    is_async: true
+    lines:
+    - 262
+    - 305
+    detail:
+      calls:
+      - (expires_at - now).total_seconds
+      - CachedUpload
+      - _make_key
+      - datetime.now
+      - int
+      - logger.debug
+      - max
+      - self._cache.set
+      - self._evict_if_needed
+      - self._track_key
+  - name: aremove
+    sig: 'aremove(self, file: FileInput, provider: ProviderType) -> bool'
+    is_async: true
+    lines:
+    - 307
+    - 324
+    detail:
+      calls:
+      - _compute_file_hash
+      - _make_key
+      - bool
+      - isinstance
+      - self._cache.delete
+      - self._untrack_key
+  - name: aremove_by_file_id
+    sig: 'aremove_by_file_id(self, file_id: str, provider: ProviderType) -> bool'
+    is_async: true
+    lines:
+    - 326
+    - 345
+    detail:
+      calls:
+      - isinstance
+      - list
+      - self._cache.delete
+      - self._cache.get
+      - self._untrack_key
+  - name: aclear_expired
+    sig: aclear_expired(self) -> int
+    is_async: true
+    lines:
+    - 347
+    - 367
+    detail:
+      calls:
+      - cached.is_expired
+      - isinstance
+      - list
+      - logger.debug
+      - self._cache.delete
+      - self._cache.get
+      - self._provider_keys.items
+      - self._untrack_key
+  - name: aclear
+    sig: aclear(self) -> int
+    is_async: true
+    lines:
+    - 369
+    - 381
+    detail:
+      calls:
+      - len
+      - logger.debug
+      - self._cache.clear
+      - self._provider_keys.clear
+      - self._provider_keys.values
+      - sum
+  - name: aget_all_for_provider
+    sig: 'aget_all_for_provider(self, provider: ProviderType) -> list[CachedUpload]'
+    is_async: true
+    lines:
+    - 383
+    - 400
+    detail:
+      calls:
+      - cached.is_expired
+      - isinstance
+      - list
+      - results.append
+      - self._cache.get
+  - name: _run_sync
+    sig: '_run_sync(coro: Any) -> Any'
+    vis: protected
+    decorators:
+    - staticmethod
+    lines:
+    - 403
+    - 413
+    detail:
+      calls:
+      - asyncio.get_running_loop
+      - asyncio.run
+      - asyncio.run_coroutine_threadsafe
+      - future.result
+      - loop.is_running
+  - name: get
+    sig: 'get(self, file: FileInput, provider: ProviderType) -> CachedUpload | None'
+    lines:
+    - 415
+    - 418
+    detail:
+      calls:
+      - self._run_sync
+      - self.aget
+  - name: get_by_hash
+    sig: |-
+      get_by_hash(
+              self, file_hash: str, provider: ProviderType
+          ) -> CachedUpload | None
+    lines:
+    - 420
+    - 427
+    detail:
+      calls:
+      - self._run_sync
+      - self.aget_by_hash
+  - name: set
+    sig: |-
+      set(
+              self,
+              file: FileInput,
+              provider: ProviderType,
+              file_id: str,
+              file_uri: str | None = None,
+              expires_at: datetime | None = None,
+          ) -> CachedUpload
+    lines:
+    - 429
+    - 441
+    detail:
+      calls:
+      - self._run_sync
+      - self.aset
+  - name: set_by_hash
+    sig: |-
+      set_by_hash(
+              self,
+              file_hash: str,
+              content_type: str,
+              provider: ProviderType,
+              file_id: str,
+              file_uri: str | None = None,
+              expires_at: datetime | None = None,
+          ) -> CachedUpload
+    lines:
+    - 443
+    - 458
+    detail:
+      calls:
+      - self._run_sync
+      - self.aset_by_hash
+  - name: remove
+    sig: 'remove(self, file: FileInput, provider: ProviderType) -> bool'
+    lines:
+    - 460
+    - 463
+    detail:
+      calls:
+      - self._run_sync
+      - self.aremove
+  - name: remove_by_file_id
+    sig: 'remove_by_file_id(self, file_id: str, provider: ProviderType) -> bool'
+    lines:
+    - 465
+    - 468
+    detail:
+      calls:
+      - self._run_sync
+      - self.aremove_by_file_id
+  - name: clear_expired
+    sig: clear_expired(self) -> int
+    lines:
+    - 470
+    - 473
+    detail:
+      calls:
+      - self._run_sync
+      - self.aclear_expired
+  - name: clear
+    sig: clear(self) -> int
+    lines:
+    - 475
+    - 478
+    detail:
+      calls:
+      - self._run_sync
+      - self.aclear
+  - name: get_all_for_provider
+    sig: 'get_all_for_provider(self, provider: ProviderType) -> list[CachedUpload]'
+    lines:
+    - 480
+    - 485
+    detail:
+      calls:
+      - self._run_sync
+      - self.aget_all_for_provider
+  - name: get_providers
+    sig: get_providers(self) -> builtins.set[ProviderType]
+    lines:
+    - 491
+    - 497
+    detail:
+      calls:
+      - builtins.set
+      - self._provider_keys.keys
+  lines:
+  - 89
+  - 497
+functions:
+- name: CachedUpload
+  sig: ''
+  decorators:
+  - dataclass
+  lines:
+  - 28
+  - 52
+- name: _compute_file_hash_streaming
+  sig: '_compute_file_hash_streaming(chunks: Iterator[bytes]) -> str'
+  vis: protected
+  lines:
+  - 60
+  - 72
+  detail:
+    calls:
+    - hasher.hexdigest
+    - hasher.update
+    - hashlib.sha256
+- name: _compute_file_hash
+  sig: '_compute_file_hash(file: FileInput) -> str'
+  vis: protected
+  lines:
+  - 75
+  - 86
+  detail:
+    calls:
+    - _compute_file_hash_streaming
+    - file.read
+    - hashlib.sha256
+    - hashlib.sha256(content).hexdigest
+    - isinstance
+    - source.read_chunks
+- name: get_upload_cache
+  sig: |-
+    get_upload_cache(
+        ttl: int = DEFAULT_TTL_SECONDS,
+        namespace: str = "crewai_uploads",
+        cache_type: str = "memory",
+        **cache_kwargs: Any,
+    ) -> UploadCache
+  lines:
+  - 503
+  - 528
+  detail:
+    calls:
+    - UploadCache
+- name: reset_upload_cache
+  sig: reset_upload_cache() -> None
+  lines:
+  - 531
+  - 536
+  detail:
+    calls:
+    - _default_cache.clear
+exports:
+- name: UploadCache
+  kind: type
+- name: CachedUpload
+  kind: func
+- name: get_upload_cache
+  kind: func
+- name: reset_upload_cache
+  kind: func
+- name: logger
+  kind: data

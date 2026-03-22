@@ -1,0 +1,655 @@
+## Roska File Descriptor — anthropic/completion.py
+file: anthropic/completion.py
+lines: 1772
+imports:
+- sym: pydantic.BaseModel
+- sym: crewai.events.types.llm_events.LLMCallType
+- sym: crewai.llms.base_llm.BaseLLM
+- sym: crewai.llms.base_llm.llm_call_context
+- sym: crewai.llms.hooks.transport.AsyncHTTPTransport
+- sym: crewai.llms.hooks.transport.HTTPTransport
+- sym: crewai.utilities.agent_utils.is_context_length_exceeded
+- sym: crewai.utilities.exceptions.context_window_exceeding_exception.LLMContextLengthExceededError
+- sym: crewai.utilities.types.LLMMessage
+data:
+- name: TOOL_SEARCH_TOOL_TYPES
+  type: Any
+  val: Final[tuple[str, ...]]
+- name: ANTHROPIC_FILES_API_BETA
+  type: Any
+  val: Final
+- name: ANTHROPIC_STRUCTURED_OUTPUTS_BETA
+  type: Any
+  val: Final
+- name: NATIVE_STRUCTURED_OUTPUT_MODELS
+  type: Any
+  val: |-
+    Final[
+        tuple[
+            Literal["claude-sonnet-4-5"],
+            Literal["claude-sonnet-4.5"],
+            Literal["claude-op...
+types:
+- name: AnthropicThinkingConfig
+  kind: model
+  bases:
+  - BaseModel
+  fields:
+  - name: type
+    type: Any
+    default: Literal["enabled", "disabled"]
+  - name: budget_tokens
+    type: Any
+    default: int | None
+  lines:
+  - 125
+  - 127
+- name: AnthropicToolSearchConfig
+  kind: model
+  ctx: 'Configuration for Anthropic''s server-side tool search. When enabled, tools marked with defer_loading=True are not loaded into context immediately. Instead, Claude uses the tool search tool to dynamically discover and load relevant tools on-demand. Attributes: type: The tool search variant to use. - "regex": Claude constructs regex patterns to search tool names/descriptions. - "bm25": Claude uses natural language queries to search tools.'
+  bases:
+  - BaseModel
+  fields:
+  - name: type
+    type: Any
+    default: Literal["regex", "bm25"]
+  lines:
+  - 130
+  - 143
+- name: AnthropicCompletion
+  kind: struct
+  ctx: Anthropic native completion implementation. This class provides direct integration with the Anthropic Python SDK, offering native tool use, streaming support, and proper message formatting.
+  bases:
+  - BaseLLM
+  fields:
+  - name: interceptor
+    type: Any
+    default: interceptor
+  - name: client_params
+    type: Any
+    default: client_params
+  - name: base_url
+    type: Any
+    default: base_url
+  - name: timeout
+    type: Any
+    default: timeout
+  - name: max_retries
+    type: Any
+    default: max_retries
+  - name: client
+    type: Any
+    default: Anthropic(**self._get_client_params())
+  - name: async_client
+    type: Any
+    default: AsyncAnthropic(**async_client_params)
+  - name: max_tokens
+    type: Any
+    default: max_tokens
+  - name: top_p
+    type: Any
+    default: top_p
+  - name: stream
+    type: Any
+    default: stream
+  - name: stop_sequences
+    type: Any
+    default: stop_sequences or []
+  - name: thinking
+    type: Any
+    default: thinking
+  - name: previous_thinking_blocks
+    type: Any
+    default: list[ThinkingBlock]
+  - name: response_format
+    type: Any
+    default: response_format
+  - name: tool_search
+    type: Any
+    default: AnthropicToolSearchConfig()
+  - name: is_claude_3
+    type: str
+    default: '"claude-3" in model.lower()'
+  - name: supports_tools
+    type: bool
+    default: 'True'
+  methods:
+  - name: __init__
+    sig: |-
+      __init__(
+              self,
+              model: str = "claude-3-5-sonnet-20241022",
+              api_key: str | None = None,
+              base_url: str | None = None,
+              timeout: float | None = None,
+              max_retries: int = 2,
+              temperature: float | None = None,
+              max_tokens: int = 4096,  # Required for Anthropic
+              top_p: float | None = None,
+              stop_sequences: list[str] | None = None,
+              stream: bool = False,
+              client_params: dict[str, Any] | None = None,
+              interceptor: BaseInterceptor[httpx.Request, httpx.Response] | None = None,
+              thinking: AnthropicThinkingConfig | None = None,
+              response_format: type[BaseModel] | None = None,
+              tool_search: AnthropicToolSearchConfig | bool | None = None,
+              **kwargs: Any,
+          )
+    lines:
+    - 153
+    - 233
+    detail:
+      calls:
+      - Anthropic
+      - AnthropicToolSearchConfig
+      - AsyncAnthropic
+      - AsyncHTTPTransport
+      - httpx.AsyncClient
+      - isinstance
+      - model.lower
+      - self._get_client_params
+      - super
+      - super().__init__
+  - name: stop
+    sig: stop(self) -> list[str]
+    decorators:
+    - property
+    lines:
+    - 236
+    - 238
+    detail: {}
+  - name: stop
+    sig: 'stop(self, value: list[str] | str | None) -> None'
+    decorators:
+    - stop.setter
+    lines:
+    - 241
+    - 257
+    detail:
+      calls:
+      - isinstance
+  - name: _get_client_params
+    sig: _get_client_params(self) -> dict[str, Any]
+    vis: protected
+    lines:
+    - 259
+    - 282
+    detail:
+      calls:
+      - HTTPTransport
+      - ValueError
+      - client_params.update
+      - httpx.Client
+      - os.getenv
+  - name: call
+    sig: |-
+      call(
+              self,
+              messages: str | list[LLMMessage],
+              tools: list[dict[str, Any]] | None = None,
+              callbacks: list[Any] | None = None,
+              available_functions: dict[str, Any] | None = None,
+              from_task: Any | None = None,
+              from_agent: Any | None = None,
+              response_model: type[BaseModel] | None = None,
+          ) -> str | Any
+    lines:
+    - 284
+    - 360
+    detail:
+      calls:
+      - ValueError
+      - llm_call_context
+      - logging.error
+      - self._emit_call_failed_event
+      - self._emit_call_started_event
+      - self._format_messages_for_anthropic
+      - self._handle_completion
+      - self._handle_streaming_completion
+      - self._invoke_before_llm_call_hooks
+      - self._prepare_completion_params
+  - name: acall
+    sig: |-
+      acall(
+              self,
+              messages: str | list[LLMMessage],
+              tools: list[dict[str, Any]] | None = None,
+              callbacks: list[Any] | None = None,
+              available_functions: dict[str, Any] | None = None,
+              from_task: Any | None = None,
+              from_agent: Any | None = None,
+              response_model: type[BaseModel] | None = None,
+          ) -> str | Any
+    is_async: true
+    lines:
+    - 362
+    - 430
+    detail:
+      calls:
+      - llm_call_context
+      - logging.error
+      - self._ahandle_completion
+      - self._ahandle_streaming_completion
+      - self._emit_call_failed_event
+      - self._emit_call_started_event
+      - self._format_messages_for_anthropic
+      - self._prepare_completion_params
+  - name: _prepare_completion_params
+    sig: |-
+      _prepare_completion_params(
+              self,
+              messages: list[LLMMessage],
+              system_message: str | None = None,
+              tools: list[dict[str, Any]] | None = None,
+              available_functions: dict[str, Any] | None = None,
+          ) -> dict[str, Any]
+    vis: protected
+    lines:
+    - 432
+    - 499
+    detail:
+      calls:
+      - isinstance
+      - len
+      - regular_tools[0].get
+      - self._apply_tool_search
+      - self._convert_tools_for_interference
+      - self.thinking.model_dump
+      - t.get
+  - name: _convert_tools_for_interference
+    sig: |-
+      _convert_tools_for_interference(
+              self, tools: list[dict[str, Any]]
+          ) -> list[dict[str, Any]]
+    vis: protected
+    lines:
+    - 501
+    - 542
+    detail:
+      calls:
+      - anthropic_tools.append
+      - isinstance
+      - logging.error
+      - safe_tool_conversion
+      - tool.get
+  - name: _apply_tool_search
+    sig: '_apply_tool_search(self, tools: list[dict[str, Any]]) -> list[dict[str, Any]]'
+    vis: protected
+    lines:
+    - 544
+    - 591
+    detail:
+      calls:
+      - any
+      - result.append
+      - t.get
+      - tool.get
+  - name: _convert_image_blocks
+    sig: '_convert_image_blocks(content: Any) -> Any'
+    vis: protected
+    decorators:
+    - staticmethod
+    lines:
+    - 622
+    - 663
+    detail:
+      calls:
+      - block.get
+      - converted.append
+      - header.split
+      - image_info.get
+      - isinstance
+      - url.split
+      - url.startswith
+  - name: _format_messages_for_anthropic
+    sig: |-
+      _format_messages_for_anthropic(
+              self, messages: str | list[LLMMessage]
+          ) -> tuple[list[LLMMessage], str | None]
+    vis: protected
+    lines:
+    - 665
+    - 790
+    detail:
+      calls:
+      - LLMMessage
+      - ValueError
+      - assistant_content.append
+      - cast
+      - formatted_messages.append
+      - formatted_messages.insert
+      - func.get
+      - isinstance
+      - json.loads
+      - message.get
+      - pending_tool_results.append
+      - self._convert_image_blocks
+      - super
+      - super()._format_messages
+      - tc.get
+  - name: _handle_completion
+    sig: |-
+      _handle_completion(
+              self,
+              params: dict[str, Any],
+              available_functions: dict[str, Any] | None = None,
+              from_task: Any | None = None,
+              from_agent: Any | None = None,
+              response_model: type[BaseModel] | None = None,
+          ) -> str | Any
+    vis: protected
+    lines:
+    - 792
+    - 933
+    detail:
+      calls:
+      - LLMContextLengthExceededError
+      - _contains_file_id_reference
+      - _is_pydantic_model_class
+      - _supports_native_structured_outputs
+      - betas.append
+      - cast
+      - hasattr
+      - is_context_length_exceeded
+      - isinstance
+      - list
+      - logging.error
+      - logging.info
+      - params.get
+      - response_model.model_json_schema
+      - response_model.model_validate
+      - response_model.model_validate_json
+      - self._apply_stop_words
+      - self._emit_call_completed_event
+      - self._execute_first_tool
+      - self._extract_anthropic_token_usage
+      - self._extract_thinking_block
+      - self._invoke_after_llm_call_hooks
+      - self._track_token_usage_internal
+      - self.client.beta.messages.create
+      - self.client.messages.create
+      - str
+      - structured_data.model_dump_json
+      - thinking_blocks.append
+      - transform_schema
+      - usage.get
+  - name: _handle_streaming_completion
+    sig: |-
+      _handle_streaming_completion(
+              self,
+              params: dict[str, Any],
+              available_functions: dict[str, Any] | None = None,
+              from_task: Any | None = None,
+              from_agent: Any | None = None,
+              response_model: type[BaseModel] | None = None,
+          ) -> str | Any
+    vis: protected
+    lines:
+    - 935
+    - 1122
+    detail:
+      calls:
+      - _is_pydantic_model_class
+      - _supports_native_structured_outputs
+      - betas.append
+      - cast
+      - hasattr
+      - isinstance
+      - list
+      - params.items
+      - response_model.model_json_schema
+      - response_model.model_validate
+      - response_model.model_validate_json
+      - self._apply_stop_words
+      - self._emit_call_completed_event
+      - self._emit_stream_chunk_event
+      - self._execute_first_tool
+      - self._extract_anthropic_token_usage
+      - self._extract_thinking_block
+      - self._invoke_after_llm_call_hooks
+      - self._track_token_usage_internal
+      - self.client.beta.messages.stream
+      - self.client.messages.stream
+      - stream.get_final_message
+      - structured_data.model_dump_json
+      - thinking_blocks.append
+      - transform_schema
+  - name: _execute_tools_and_collect_results
+    sig: |-
+      _execute_tools_and_collect_results(
+              self,
+              tool_uses: list[ToolUseBlock | BetaToolUseBlock],
+              available_functions: dict[str, Any],
+              from_task: Any | None = None,
+              from_agent: Any | None = None,
+          ) -> list[dict[str, Any]]
+    vis: protected
+    lines:
+    - 1124
+    - 1165
+    detail:
+      calls:
+      - cast
+      - self._handle_tool_execution
+      - str
+      - tool_results.append
+  - name: _handle_tool_use_conversation
+    sig: |-
+      _handle_tool_use_conversation(
+              self,
+              initial_response: Message | BetaMessage,
+              tool_uses: list[ToolUseBlock | BetaToolUseBlock],
+              params: dict[str, Any],
+              available_functions: dict[str, Any],
+              from_task: Any | None = None,
+              from_agent: Any | None = None,
+          ) -> str
+    vis: protected
+    lines:
+    - 1202
+    - 1311
+    detail:
+      calls:
+      - LLMContextLengthExceededError
+      - assistant_content.append
+      - cast
+      - follow_up_usage.get
+      - hasattr
+      - is_context_length_exceeded
+      - logging.error
+      - logging.info
+      - params.copy
+      - self._apply_stop_words
+      - self._emit_call_completed_event
+      - self._execute_tools_and_collect_results
+      - self._extract_anthropic_token_usage
+      - self._extract_thinking_block
+      - self._track_token_usage_internal
+      - self.client.messages.create
+      - str
+      - thinking_blocks.append
+      - total_usage.get
+  - name: _ahandle_completion
+    sig: |-
+      _ahandle_completion(
+              self,
+              params: dict[str, Any],
+              available_functions: dict[str, Any] | None = None,
+              from_task: Any | None = None,
+              from_agent: Any | None = None,
+              response_model: type[BaseModel] | None = None,
+          ) -> str | Any
+    is_async: true
+    vis: protected
+    lines:
+    - 1313
+    - 1442
+    detail:
+      calls:
+      - LLMContextLengthExceededError
+      - _contains_file_id_reference
+      - _is_pydantic_model_class
+      - _supports_native_structured_outputs
+      - betas.append
+      - hasattr
+      - is_context_length_exceeded
+      - isinstance
+      - list
+      - logging.error
+      - logging.info
+      - params.get
+      - response_model.model_json_schema
+      - response_model.model_validate
+      - response_model.model_validate_json
+      - self._apply_stop_words
+      - self._emit_call_completed_event
+      - self._execute_first_tool
+      - self._extract_anthropic_token_usage
+      - self._track_token_usage_internal
+      - self.async_client.beta.messages.create
+      - self.async_client.messages.create
+      - str
+      - structured_data.model_dump_json
+      - transform_schema
+      - usage.get
+  - name: _ahandle_streaming_completion
+    sig: |-
+      _ahandle_streaming_completion(
+              self,
+              params: dict[str, Any],
+              available_functions: dict[str, Any] | None = None,
+              from_task: Any | None = None,
+              from_agent: Any | None = None,
+              response_model: type[BaseModel] | None = None,
+          ) -> str | Any
+    is_async: true
+    vis: protected
+    lines:
+    - 1444
+    - 1618
+    detail:
+      calls:
+      - _is_pydantic_model_class
+      - _supports_native_structured_outputs
+      - betas.append
+      - hasattr
+      - isinstance
+      - list
+      - params.items
+      - response_model.model_json_schema
+      - response_model.model_validate
+      - response_model.model_validate_json
+      - self._apply_stop_words
+      - self._emit_call_completed_event
+      - self._emit_stream_chunk_event
+      - self._execute_first_tool
+      - self._extract_anthropic_token_usage
+      - self._track_token_usage_internal
+      - self.async_client.beta.messages.stream
+      - self.async_client.messages.stream
+      - stream.get_final_message
+      - structured_data.model_dump_json
+      - transform_schema
+  - name: _ahandle_tool_use_conversation
+    sig: |-
+      _ahandle_tool_use_conversation(
+              self,
+              initial_response: Message | BetaMessage,
+              tool_uses: list[ToolUseBlock | BetaToolUseBlock],
+              params: dict[str, Any],
+              available_functions: dict[str, Any],
+              from_task: Any | None = None,
+              from_agent: Any | None = None,
+          ) -> str
+    is_async: true
+    vis: protected
+    lines:
+    - 1620
+    - 1695
+    detail:
+      calls:
+      - LLMContextLengthExceededError
+      - cast
+      - follow_up_usage.get
+      - hasattr
+      - is_context_length_exceeded
+      - logging.error
+      - logging.info
+      - params.copy
+      - self._apply_stop_words
+      - self._emit_call_completed_event
+      - self._execute_tools_and_collect_results
+      - self._extract_anthropic_token_usage
+      - self._track_token_usage_internal
+      - self.async_client.messages.create
+      - str
+      - total_usage.get
+  - name: supports_function_calling
+    sig: supports_function_calling(self) -> bool
+    lines:
+    - 1697
+    - 1699
+    detail: {}
+  - name: supports_stop_words
+    sig: supports_stop_words(self) -> bool
+    lines:
+    - 1701
+    - 1703
+    detail: {}
+  - name: get_context_window_size
+    sig: get_context_window_size(self) -> int
+    lines:
+    - 1705
+    - 1728
+    detail:
+      calls:
+      - context_windows.items
+      - int
+      - self.model.startswith
+  - name: supports_multimodal
+    sig: supports_multimodal(self) -> bool
+    lines:
+    - 1748
+    - 1756
+    detail:
+      calls:
+      - self.model.lower
+  - name: get_file_uploader
+    sig: get_file_uploader(self) -> Any
+    lines:
+    - 1758
+    - 1772
+    detail:
+      calls:
+      - AnthropicFileUploader
+  lines:
+  - 146
+  - 1772
+functions:
+- name: _contains_file_id_reference
+  sig: '_contains_file_id_reference(messages: list[dict[str, Any]]) -> bool'
+  vis: protected
+  lines:
+  - 102
+  - 122
+  detail:
+    calls:
+    - block.get
+    - isinstance
+    - message.get
+    - source.get
+exports:
+- name: AnthropicThinkingConfig
+  kind: type
+- name: AnthropicToolSearchConfig
+  kind: type
+- name: AnthropicCompletion
+  kind: type
+- name: TOOL_SEARCH_TOOL_TYPES
+  kind: data
+- name: ANTHROPIC_FILES_API_BETA
+  kind: data
+- name: ANTHROPIC_STRUCTURED_OUTPUTS_BETA
+  kind: data
+- name: NATIVE_STRUCTURED_OUTPUT_MODELS
+  kind: data

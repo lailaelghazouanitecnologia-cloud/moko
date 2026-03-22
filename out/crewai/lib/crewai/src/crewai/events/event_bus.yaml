@@ -1,0 +1,329 @@
+## Roska File Descriptor — events/event_bus.py
+file: events/event_bus.py
+lines: 675
+purpose: Event bus for managing and dispatching events in CrewAI. This module provides a singleton event bus that allows registration and handling of events throughout the CrewAI system, supporting both synchronous and asynchronous event handlers with optional dependency management.
+imports:
+- sym: asyncio
+- sym: atexit
+- sym: concurrent.futures.Future
+- sym: concurrent.futures.ThreadPoolExecutor
+- sym: contextvars
+- sym: threading
+- sym: typing_extensions.Self
+- sym: crewai.events.base_events.BaseEvent
+- sym: crewai.events.base_events.get_next_emission_sequence
+- sym: crewai.events.depends.Depends
+- sym: crewai.events.event_context.SCOPE_ENDING_EVENTS
+- sym: crewai.events.event_context.SCOPE_STARTING_EVENTS
+- sym: crewai.events.event_context.VALID_EVENT_PAIRS
+- sym: crewai.events.event_context.get_current_parent_id
+- sym: crewai.events.event_context.get_enclosing_parent_id
+- sym: crewai.events.event_context.get_last_event_id
+- sym: crewai.events.event_context.get_triggering_event_id
+- sym: crewai.events.event_context.handle_empty_pop
+- sym: crewai.events.event_context.handle_mismatch
+- sym: crewai.events.event_context.pop_event_scope
+- sym: crewai.events.event_context.push_event_scope
+- sym: crewai.events.event_context.set_last_event_id
+- sym: crewai.events.handler_graph.build_execution_plan
+- sym: crewai.events.types.event_bus_types.AsyncHandler
+- sym: crewai.events.types.event_bus_types.AsyncHandlerSet
+- sym: crewai.events.types.event_bus_types.ExecutionPlan
+- sym: crewai.events.types.event_bus_types.Handler
+- sym: crewai.events.types.event_bus_types.SyncHandler
+- sym: crewai.events.types.event_bus_types.SyncHandlerSet
+- sym: crewai.events.types.llm_events.LLMStreamChunkEvent
+- sym: crewai.events.utils.console_formatter.ConsoleFormatter
+- sym: crewai.events.utils.handlers.is_async_handler
+- sym: crewai.events.utils.handlers.is_call_handler_safe
+- sym: crewai.utilities.rw_lock.RWLock
+data:
+- name: P
+  type: Any
+  val: ParamSpec("P")
+- name: R
+  type: Any
+  val: TypeVar("R")
+- name: crewai_event_bus
+  type: Any
+  val: Final[CrewAIEventsBus]
+types:
+- name: CrewAIEventsBus
+  kind: struct
+  ctx: 'Singleton event bus for handling events in CrewAI. This class manages event registration and emission for both synchronous and asynchronous event handlers, automatically scheduling async handlers in a dedicated background event loop. Synchronous handlers execute in a thread pool executor to ensure completion before program exit. Asynchronous handlers execute in a dedicated event loop running in a daemon thread, with graceful shutdown waiting for completion. Attributes: _instance: Singleton instance of the event bus _instance_lock: Reentrant lock for singleton initialization (class-level) _rwlock: Read-write lock for handler registration and access (instance-level) _sync_handlers: Mapping of event types to registered synchronous handlers _async_handlers: Mapping of event types to registered asynchronous handlers _sync_executor: Thread pool executor for running synchronous handlers _loop: Dedicated asyncio event loop for async handler execution _loop_thread: Background daemon thread running the event loop _console: Console formatter for error output'
+  fields:
+  - name: _instance
+    type: Any
+    default: Self | None
+  - name: _instance_lock
+    type: Any
+    default: threading.RLock
+  - name: _rwlock
+    type: Any
+    default: RWLock
+  - name: _sync_handlers
+    type: Any
+    default: dict[type[BaseEvent], SyncHandlerSet]
+  - name: _async_handlers
+    type: Any
+    default: dict[type[BaseEvent], AsyncHandlerSet]
+  - name: _handler_dependencies
+    type: Any
+    default: dict[type[BaseEvent], dict[Handler, list[Depends[Any]]]]
+  - name: _execution_plan_cache
+    type: Any
+    default: dict[type[BaseEvent], ExecutionPlan]
+  - name: _console
+    type: Any
+    default: ConsoleFormatter
+  - name: _shutting_down
+    type: Any
+    default: bool
+  - name: _pending_futures
+    type: Any
+    default: set[Future[Any]]
+  - name: _futures_lock
+    type: Any
+    default: threading.Lock
+  methods:
+  - name: __new__
+    sig: __new__(cls) -> Self
+    lines:
+    - 89
+    - 100
+    detail:
+      calls:
+      - cls._instance._initialize
+      - super
+      - super().__new__
+  - name: _initialize
+    sig: _initialize(self) -> None
+    vis: protected
+    lines:
+    - 102
+    - 130
+    detail:
+      calls:
+      - ConsoleFormatter
+      - RWLock
+      - ThreadPoolExecutor
+      - asyncio.new_event_loop
+      - self._loop_thread.start
+      - set
+      - threading.Lock
+      - threading.Thread
+  - name: on
+    sig: |-
+      on(
+              self,
+              event_type: type[BaseEvent],
+              depends_on: Depends[Any] | list[Depends[Any]] | None = None,
+          ) -> Callable[[Callable[P, R]], Callable[P, R]]
+    lines:
+    - 184
+    - 228
+    detail: {}
+  - name: off
+    sig: |-
+      off(
+              self,
+              event_type: type[BaseEvent],
+              handler: Callable[..., Any],
+          ) -> None
+    lines:
+    - 230
+    - 261
+    detail:
+      calls:
+      - self._execution_plan_cache.pop
+      - self._handler_dependencies[event_type].pop
+      - self._rwlock.w_locked
+  - name: _acall_handlers
+    sig: |-
+      _acall_handlers(
+              self,
+              source: Any,
+              event: BaseEvent,
+              handlers: AsyncHandlerSet,
+          ) -> None
+    is_async: true
+    vis: protected
+    lines:
+    - 288
+    - 307
+    detail:
+      calls:
+      - asyncio.gather
+      - getattr
+      - handler
+      - isinstance
+      - self._console.print
+      - zip
+  - name: _emit_with_dependencies
+    sig: '_emit_with_dependencies(self, source: Any, event: BaseEvent) -> None'
+    is_async: true
+    vis: protected
+    lines:
+    - 309
+    - 371
+    detail:
+      calls:
+      - asyncio.get_running_loop
+      - asyncio.get_running_loop().run_in_executor
+      - build_execution_plan
+      - contextvars.copy_context
+      - dict
+      - frozenset
+      - list
+      - self._acall_handlers
+      - self._async_handlers.get
+      - self._call_handlers
+      - self._execution_plan_cache.get
+      - self._handler_dependencies.get
+      - self._rwlock.r_locked
+      - self._rwlock.w_locked
+      - self._sync_executor.submit
+      - self._sync_handlers.get
+      - type
+  - name: emit
+    sig: 'emit(self, source: Any, event: BaseEvent) -> Future[None] | None'
+    lines:
+    - 373
+    - 461
+    detail:
+      calls:
+      - VALID_EVENT_PAIRS.get
+      - asyncio.run_coroutine_threadsafe
+      - contextvars.copy_context
+      - frozenset
+      - get_current_parent_id
+      - get_enclosing_parent_id
+      - get_last_event_id
+      - get_next_emission_sequence
+      - get_triggering_event_id
+      - handle_empty_pop
+      - handle_mismatch
+      - pop_event_scope
+      - push_event_scope
+      - self._acall_handlers
+      - self._async_handlers.get
+      - self._call_handlers
+      - self._console.print
+      - self._emit_with_dependencies
+      - self._rwlock.r_locked
+      - self._sync_executor.submit
+      - self._sync_handlers.get
+      - self._track_future
+      - set_last_event_id
+      - type
+  - name: flush
+    sig: 'flush(self, timeout: float | None = 30.0) -> bool'
+    lines:
+    - 463
+    - 496
+    detail:
+      calls:
+      - future.exception
+      - len
+      - list
+      - self._console.print
+      - wait_futures
+  - name: aemit
+    sig: 'aemit(self, source: Any, event: BaseEvent) -> None'
+    is_async: true
+    lines:
+    - 498
+    - 518
+    detail:
+      calls:
+      - frozenset
+      - self._acall_handlers
+      - self._async_handlers.get
+      - self._console.print
+      - self._rwlock.r_locked
+      - type
+  - name: register_handler
+    sig: |-
+      register_handler(
+              self,
+              event_type: type[BaseEvent],
+              handler: SyncHandler | AsyncHandler,
+          ) -> None
+    lines:
+    - 520
+    - 531
+    detail:
+      calls:
+      - self._register_handler
+  - name: validate_dependencies
+    sig: validate_dependencies(self) -> None
+    lines:
+    - 533
+    - 552
+    detail:
+      calls:
+      - build_execution_plan
+      - dict
+      - frozenset
+      - list
+      - self._async_handlers.get
+      - self._handler_dependencies.get
+      - self._rwlock.r_locked
+      - self._sync_handlers.get
+  - name: scoped_handlers
+    sig: scoped_handlers(self) -> Generator[None, Any, None]
+    decorators:
+    - contextmanager
+    lines:
+    - 555
+    - 618
+    detail:
+      calls:
+      - current_async.items
+      - current_sync.items
+      - dict
+      - frozenset
+      - saved_async.get
+      - saved_async.items
+      - saved_deps.get
+      - saved_deps.get(event_type, {}).get
+      - saved_sync.get
+      - saved_sync.items
+      - self._handler_dependencies.items
+      - self._register_handler
+      - self._rwlock.r_locked
+      - self.off
+  - name: shutdown
+    sig: 'shutdown(self, wait: bool = True) -> None'
+    lines:
+    - 620
+    - 670
+    detail:
+      calls:
+      - _wait_for_all_tasks
+      - asyncio.run_coroutine_threadsafe
+      - future.result
+      - getattr
+      - loop.call_soon_threadsafe
+      - loop.close
+      - loop.is_closed
+      - self._async_handlers.clear
+      - self._console.print
+      - self._execution_plan_cache.clear
+      - self._loop_thread.join
+      - self._rwlock.w_locked
+      - self._sync_executor.shutdown
+      - self._sync_handlers.clear
+      - self.flush
+  lines:
+  - 54
+  - 670
+exports:
+- name: CrewAIEventsBus
+  kind: type
+- name: P
+  kind: data
+- name: R
+  kind: data
+- name: crewai_event_bus
+  kind: data

@@ -1,0 +1,252 @@
+## Roska File Descriptor — code_interpreter_tool/code_interpreter_tool.py
+file: code_interpreter_tool/code_interpreter_tool.py
+lines: 423
+purpose: Code Interpreter Tool for executing Python code in isolated environments. This module provides a tool for executing Python code either in a Docker container for safe isolation or directly in a restricted sandbox. It includes mechanisms for blocking potentially unsafe operations and importing restricted modules.
+imports:
+- sym: importlib.util
+- sym: subprocess
+- sym: types.ModuleType
+- sym: crewai.tools.BaseTool
+- sym: docker.DockerClient
+- sym: docker.from_env
+- sym: docker.errors.ImageNotFound
+- sym: docker.errors.NotFound
+- sym: docker.models.containers.Container
+- sym: pydantic.BaseModel
+- sym: pydantic.Field
+- sym: typing_extensions.Unpack
+- sym: crewai_tools.printer.Printer
+types:
+- name: RunKwargs
+  kind: struct
+  ctx: Keyword arguments for the _run method.
+  bases:
+  - TypedDict
+  - total=False
+  fields:
+  - name: code
+    type: Any
+    default: str
+  - name: libraries_used
+    type: Any
+    default: list[str]
+  lines:
+  - 28
+  - 32
+- name: CodeInterpreterSchema
+  kind: model
+  ctx: Schema for defining inputs to the CodeInterpreterTool. This schema defines the required parameters for code execution, including the code to run and any libraries that need to be installed.
+  bases:
+  - BaseModel
+  fields:
+  - name: code
+    type: Any
+    default: str
+  - name: libraries_used
+    type: Any
+    default: list[str]
+  lines:
+  - 35
+  - 50
+- name: SandboxPython
+  kind: struct
+  ctx: 'INSECURE: A restricted Python execution environment with known vulnerabilities. WARNING: This class does NOT provide real security isolation and is vulnerable to sandbox escape attacks via Python object introspection. Attackers can recover the original __import__ function and bypass all restrictions. DO NOT USE for untrusted code execution. Use Docker containers instead. This class attempts to restrict access to dangerous modules and built-in functions but provides no real security boundary against a motivated attacker.'
+  fields:
+  - name: BLOCKED_MODULES
+    type: Any
+    default: ClassVar[set[str]]
+  - name: UNSAFE_BUILTINS
+    type: Any
+    default: ClassVar[set[str]]
+  methods:
+  - name: restricted_import
+    sig: |-
+      restricted_import(
+              name: str,
+              custom_globals: dict[str, Any] | None = None,
+              custom_locals: dict[str, Any] | None = None,
+              fromlist: list[str] | None = None,
+              level: int = 0,
+          ) -> ModuleType
+    decorators:
+    - staticmethod
+    lines:
+    - 92
+    - 116
+    detail:
+      calls:
+      - ImportError
+      - __import__
+  - name: safe_builtins
+    sig: safe_builtins() -> dict[str, Any]
+    decorators:
+    - staticmethod
+    lines:
+    - 119
+    - 133
+    detail:
+      calls:
+      - builtins.__dict__.items
+  - name: exec
+    sig: 'exec(code: str, locals_: dict[str, Any]) -> None'
+    decorators:
+    - staticmethod
+    lines:
+    - 136
+    - 143
+    detail:
+      calls:
+      - SandboxPython.safe_builtins
+      - exec
+  lines:
+  - 53
+  - 143
+- name: CodeInterpreterTool
+  kind: struct
+  ctx: A tool for executing Python code in isolated environments. This tool provides functionality to run Python code either in a Docker container for safe isolation or directly in a restricted sandbox. It can handle installing Python packages and executing arbitrary Python code.
+  bases:
+  - BaseTool
+  fields:
+  - name: name
+    type: Any
+    default: str
+  - name: description
+    type: Any
+    default: str
+  - name: args_schema
+    type: Any
+    default: type[BaseModel]
+  - name: default_image_tag
+    type: Any
+    default: str
+  - name: code
+    type: Any
+    default: str | None
+  - name: user_dockerfile_path
+    type: Any
+    default: str | None
+  - name: user_docker_base_url
+    type: Any
+    default: str | None
+  - name: unsafe_mode
+    type: Any
+    default: bool
+  methods:
+  - name: _get_installed_package_path
+    sig: _get_installed_package_path() -> str
+    vis: protected
+    decorators:
+    - staticmethod
+    lines:
+    - 164
+    - 176
+    detail:
+      calls:
+      - RuntimeError
+      - importlib.util.find_spec
+      - os.path.dirname
+  - name: _verify_docker_image
+    sig: _verify_docker_image(self) -> None
+    vis: protected
+    lines:
+    - 178
+    - 213
+    detail:
+      calls:
+      - DockerClient
+      - FileNotFoundError
+      - client.images.build
+      - client.images.get
+      - docker_from_env
+      - os.path.exists
+      - os.path.join
+      - self._get_installed_package_path
+  - name: _init_docker_container
+    sig: _init_docker_container(self) -> Container
+    vis: protected
+    lines:
+    - 245
+    - 273
+    detail:
+      calls:
+      - client.containers.get
+      - client.containers.run
+      - docker_from_env
+      - existing_container.remove
+      - existing_container.stop
+      - os.getcwd
+  - name: _check_docker_available
+    sig: _check_docker_available() -> bool
+    vis: protected
+    decorators:
+    - staticmethod
+    lines:
+    - 276
+    - 303
+    detail:
+      calls:
+      - Printer.print
+      - subprocess.run
+  - name: run_code_safety
+    sig: 'run_code_safety(self, code: str, libraries_used: list[str]) -> str'
+    lines:
+    - 305
+    - 334
+    detail:
+      calls:
+      - Printer.print
+      - RuntimeError
+      - self._check_docker_available
+      - self.run_code_in_docker
+  - name: run_code_in_docker
+    sig: 'run_code_in_docker(self, code: str, libraries_used: list[str]) -> str'
+    lines:
+    - 336
+    - 361
+    detail:
+      calls:
+      - Printer.print
+      - container.exec_run
+      - container.remove
+      - container.stop
+      - exec_result.output.decode
+      - self._init_docker_container
+      - self._install_libraries
+      - self._verify_docker_image
+  - name: run_code_in_restricted_sandbox
+    sig: 'run_code_in_restricted_sandbox(code: str) -> str'
+    decorators:
+    - staticmethod
+    lines:
+    - 364
+    - 395
+    detail:
+      calls:
+      - Printer.print
+      - SandboxPython.exec
+      - exec_locals.get
+  - name: run_code_unsafe
+    sig: 'run_code_unsafe(code: str, libraries_used: list[str]) -> str'
+    decorators:
+    - staticmethod
+    lines:
+    - 398
+    - 423
+    detail:
+      calls:
+      - Printer.print
+      - exec
+      - exec_locals.get
+      - subprocess.run
+  lines:
+  - 146
+  - 423
+exports:
+- name: RunKwargs
+  kind: type
+- name: CodeInterpreterSchema
+  kind: type
+- name: SandboxPython
+  kind: type
+- name: CodeInterpreterTool
+  kind: type

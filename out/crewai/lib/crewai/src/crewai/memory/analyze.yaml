@@ -1,0 +1,260 @@
+## Roska File Descriptor — memory/analyze.py
+file: memory/analyze.py
+lines: 375
+purpose: LLM-powered analysis for memory save and recall.
+imports:
+- sym: pydantic.BaseModel
+- sym: pydantic.ConfigDict
+- sym: pydantic.Field
+- sym: crewai.memory.types.MemoryRecord
+- sym: crewai.memory.types.ScopeInfo
+- sym: crewai.utilities.i18n.get_i18n
+data:
+- name: _logger
+  type: Any
+  val: logging.getLogger(__name__)
+- name: _SAVE_DEFAULTS
+  type: Any
+  val: |-
+    MemoryAnalysis(
+        suggested_scope="/",
+        categories=[],
+        importance=0.5,
+        extracted_metadata=ExtractedMetadata...
+- name: _CONSOLIDATION_DEFAULT
+  type: Any
+  val: ConsolidationPlan(actions=[], insert_new=True)
+types:
+- name: ExtractedMetadata
+  kind: model
+  ctx: 'Fixed schema for LLM-extracted metadata (OpenAI requires additionalProperties: false).'
+  bases:
+  - BaseModel
+  fields:
+  - name: model_config
+    type: Any
+    default: ConfigDict(extra="forbid")
+  - name: entities
+    type: Any
+    default: list[str]
+  - name: dates
+    type: Any
+    default: list[str]
+  - name: topics
+    type: Any
+    default: list[str]
+  lines:
+  - 18
+  - 34
+- name: MemoryAnalysis
+  kind: model
+  ctx: LLM output for analyzing content before saving to memory.
+  bases:
+  - BaseModel
+  fields:
+  - name: suggested_scope
+    type: Any
+    default: str
+  - name: categories
+    type: Any
+    default: list[str]
+  - name: importance
+    type: Any
+    default: float
+  - name: extracted_metadata
+    type: Any
+    default: ExtractedMetadata
+  lines:
+  - 37
+  - 56
+- name: QueryAnalysis
+  kind: model
+  ctx: LLM output for analyzing a recall query.
+  bases:
+  - BaseModel
+  fields:
+  - name: keywords
+    type: Any
+    default: list[str]
+  - name: suggested_scopes
+    type: Any
+    default: list[str]
+  - name: complexity
+    type: Any
+    default: str
+  - name: recall_queries
+    type: Any
+    default: list[str]
+  - name: time_filter
+    type: Any
+    default: str | None
+  lines:
+  - 59
+  - 91
+- name: ExtractedMemories
+  kind: model
+  ctx: LLM output for extracting discrete memories from raw content.
+  bases:
+  - BaseModel
+  fields:
+  - name: memories
+    type: Any
+    default: list[str]
+  lines:
+  - 94
+  - 100
+- name: ConsolidationAction
+  kind: model
+  ctx: A single action in a consolidation plan.
+  bases:
+  - BaseModel
+  fields:
+  - name: model_config
+    type: Any
+    default: ConfigDict(extra="forbid")
+  - name: action
+    type: Any
+    default: str
+  - name: record_id
+    type: Any
+    default: str
+  - name: new_content
+    type: Any
+    default: str | None
+  - name: reason
+    type: Any
+    default: str
+  lines:
+  - 103
+  - 121
+- name: ConsolidationPlan
+  kind: model
+  ctx: LLM output for consolidating new content with existing memories.
+  bases:
+  - BaseModel
+  fields:
+  - name: model_config
+    type: Any
+    default: ConfigDict(extra="forbid")
+  - name: actions
+    type: Any
+    default: list[ConsolidationAction]
+  - name: insert_new
+    type: Any
+    default: bool
+  - name: insert_reason
+    type: Any
+    default: str
+  lines:
+  - 124
+  - 140
+functions:
+- name: extract_memories_from_content
+  sig: 'extract_memories_from_content(content: str, llm: Any) -> list[str]'
+  lines:
+  - 155
+  - 197
+  detail:
+    calls:
+    - (content or "").strip
+    - ExtractedMemories.model_validate
+    - _get_prompt
+    - _get_prompt("extract_memories_user").format
+    - _logger.warning
+    - getattr
+    - 'getattr(llm, "supports_function_calling", lambda: False)'
+    - isinstance
+    - json.loads
+    - llm.call
+- name: analyze_query
+  sig: |-
+    analyze_query(
+        query: str,
+        available_scopes: list[str],
+        scope_info: ScopeInfo | None,
+        llm: Any,
+    ) -> QueryAnalysis
+  lines:
+  - 200
+  - 256
+  detail:
+    calls:
+    - QueryAnalysis
+    - QueryAnalysis.model_validate
+    - _get_prompt
+    - _get_prompt("query_user").format
+    - _logger.warning
+    - getattr
+    - 'getattr(llm, "supports_function_calling", lambda: False)'
+    - isinstance
+    - json.loads
+    - llm.call
+- name: analyze_for_save
+  sig: |-
+    analyze_for_save(
+        content: str,
+        existing_scopes: list[str],
+        existing_categories: list[str],
+        llm: Any,
+    ) -> MemoryAnalysis
+  lines:
+  - 267
+  - 315
+  detail:
+    calls:
+    - MemoryAnalysis.model_validate
+    - _get_prompt
+    - _get_prompt("save_user").format
+    - _logger.warning
+    - getattr
+    - 'getattr(llm, "supports_function_calling", lambda: False)'
+    - isinstance
+    - json.loads
+    - llm.call
+- name: analyze_for_consolidation
+  sig: |-
+    analyze_for_consolidation(
+        new_content: str,
+        existing_records: list[MemoryRecord],
+        llm: Any,
+    ) -> ConsolidationPlan
+  lines:
+  - 321
+  - 375
+  detail:
+    calls:
+    - '"\n\n".join'
+    - ConsolidationPlan
+    - ConsolidationPlan.model_validate
+    - _get_prompt
+    - _get_prompt("consolidation_user").format
+    - _logger.warning
+    - getattr
+    - 'getattr(llm, "supports_function_calling", lambda: False)'
+    - isinstance
+    - json.loads
+    - len
+    - llm.call
+    - r.created_at.isoformat
+    - records_lines.append
+exports:
+- name: ExtractedMetadata
+  kind: type
+- name: MemoryAnalysis
+  kind: type
+- name: QueryAnalysis
+  kind: type
+- name: ExtractedMemories
+  kind: type
+- name: ConsolidationAction
+  kind: type
+- name: ConsolidationPlan
+  kind: type
+- name: extract_memories_from_content
+  kind: func
+- name: analyze_query
+  kind: func
+- name: analyze_for_save
+  kind: func
+- name: analyze_for_consolidation
+  kind: func

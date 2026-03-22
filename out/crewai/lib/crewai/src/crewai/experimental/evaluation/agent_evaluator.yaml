@@ -1,0 +1,240 @@
+## Roska File Descriptor — evaluation/agent_evaluator.py
+file: evaluation/agent_evaluator.py
+lines: 363
+imports:
+- sym: threading
+- sym: crewai.agents.agent_builder.base_agent.BaseAgent
+- sym: crewai.events.event_bus.crewai_event_bus
+- sym: crewai.events.types.agent_events.AgentEvaluationCompletedEvent
+- sym: crewai.events.types.agent_events.AgentEvaluationFailedEvent
+- sym: crewai.events.types.agent_events.AgentEvaluationStartedEvent
+- sym: crewai.events.types.agent_events.LiteAgentExecutionCompletedEvent
+- sym: crewai.events.types.task_events.TaskCompletedEvent
+- sym: crewai.events.utils.console_formatter.ConsoleFormatter
+- sym: crewai.experimental.evaluation.base_evaluator.AgentAggregatedEvaluationResult
+- sym: crewai.experimental.evaluation.base_evaluator.AgentEvaluationResult
+- sym: crewai.experimental.evaluation.base_evaluator.AggregationStrategy
+- sym: crewai.experimental.evaluation.base_evaluator.BaseEvaluator
+- sym: crewai.experimental.evaluation.base_evaluator.EvaluationScore
+- sym: crewai.experimental.evaluation.base_evaluator.MetricCategory
+- sym: crewai.experimental.evaluation.evaluation_display.EvaluationDisplayFormatter
+- sym: crewai.experimental.evaluation.evaluation_listener.create_evaluation_callbacks
+- sym: crewai.task.Task
+types:
+- name: ExecutionState
+  kind: struct
+  fields:
+  - name: current_agent_id
+    type: Any
+    default: str | None
+  - name: current_task_id
+    type: Any
+    default: str | None
+  - name: traces
+    type: dict
+    default: '{}'
+  - name: iteration
+    type: int
+    default: '1'
+  - name: iterations_results
+    type: dict
+    default: '{}'
+  - name: agent_evaluators
+    type: dict
+    default: '{}'
+  methods:
+  - name: __init__
+    sig: __init__(self, ...0 params)
+    lines:
+    - 40
+    - 44
+  lines:
+  - 36
+  - 44
+- name: AgentEvaluator
+  kind: struct
+  fields:
+  - name: agents
+    type: Any
+    default: list[Agent] | list[BaseAgent]
+  - name: evaluators
+    type: Any
+    default: Sequence[BaseEvaluator] | None
+  - name: callback
+    type: Any
+    default: create_evaluation_callbacks()
+  - name: console_formatter
+    type: Any
+    default: ConsoleFormatter()
+  - name: display_formatter
+    type: Any
+    default: EvaluationDisplayFormatter()
+  - name: _execution_state
+    type: Any
+    default: ExecutionState()
+  - name: _state_lock
+    type: Any
+    default: threading.Lock()
+  methods:
+  - name: __init__
+    sig: |-
+      __init__(
+              self,
+              agents: list[Agent] | list[BaseAgent],
+              evaluators: Sequence[BaseEvaluator] | None = None,
+          )
+    lines:
+    - 48
+    - 66
+    detail:
+      calls:
+      - ConsoleFormatter
+      - EvaluationDisplayFormatter
+      - ExecutionState
+      - create_evaluation_callbacks
+      - self._subscribe_to_events
+      - str
+      - threading.Lock
+  - name: set_iteration
+    sig: 'set_iteration(self, iteration: int) -> None'
+    lines:
+    - 186
+    - 187
+    detail: {}
+  - name: reset_iterations_results
+    sig: reset_iterations_results(self) -> None
+    lines:
+    - 189
+    - 190
+    detail: {}
+  - name: get_evaluation_results
+    sig: get_evaluation_results(self) -> dict[str, list[AgentEvaluationResult]]
+    lines:
+    - 192
+    - 201
+    detail: {}
+  - name: display_results_with_iterations
+    sig: display_results_with_iterations(self) -> None
+    lines:
+    - 203
+    - 206
+    detail:
+      calls:
+      - self.display_formatter.display_summary_results
+  - name: get_agent_evaluation
+    sig: |-
+      get_agent_evaluation(
+              self,
+              strategy: AggregationStrategy = AggregationStrategy.SIMPLE_AVERAGE,
+              include_evaluation_feedback: bool = True,
+          ) -> dict[str, AgentAggregatedEvaluationResult]
+    lines:
+    - 208
+    - 241
+    detail:
+      calls:
+      - crewai_event_bus.scoped_handlers
+      - max
+      - self._execution_state.iterations_results.keys
+      - self.display_evaluation_with_feedback
+      - self.display_formatter._aggregate_agent_results
+      - self.display_results_with_iterations
+      - self.get_evaluation_results
+      - task_results.items
+  - name: display_evaluation_with_feedback
+    sig: display_evaluation_with_feedback(self) -> None
+    lines:
+    - 243
+    - 246
+    detail:
+      calls:
+      - self.display_formatter.display_evaluation_with_feedback
+  - name: evaluate
+    sig: |-
+      evaluate(
+              self,
+              agent: Agent | BaseAgent,
+              execution_trace: dict[str, Any],
+              final_output: Any,
+              state: ExecutionState,
+              task: Task | None = None,
+          ) -> AgentEvaluationResult
+    lines:
+    - 248
+    - 294
+    detail:
+      calls:
+      - AgentEvaluationResult
+      - ValueError
+      - evaluator.evaluate
+      - self.console_formatter.print
+      - self.emit_evaluation_completed_event
+      - self.emit_evaluation_failed_event
+      - self.emit_evaluation_started_event
+      - str
+  - name: emit_evaluation_started_event
+    sig: |-
+      emit_evaluation_started_event(
+              self, agent_role: str, agent_id: str, task_id: str | None = None
+          )
+    lines:
+    - 296
+    - 307
+    detail:
+      calls:
+      - AgentEvaluationStartedEvent
+      - crewai_event_bus.emit
+  - name: emit_evaluation_completed_event
+    sig: |-
+      emit_evaluation_completed_event(
+              self,
+              agent_role: str,
+              agent_id: str,
+              task_id: str | None = None,
+              metric_category: MetricCategory | None = None,
+              score: EvaluationScore | None = None,
+          )
+    lines:
+    - 309
+    - 327
+    detail:
+      calls:
+      - AgentEvaluationCompletedEvent
+      - crewai_event_bus.emit
+  - name: emit_evaluation_failed_event
+    sig: |-
+      emit_evaluation_failed_event(
+              self, agent_role: str, agent_id: str, error: str, task_id: str | None = None
+          )
+    lines:
+    - 329
+    - 341
+    detail:
+      calls:
+      - AgentEvaluationFailedEvent
+      - crewai_event_bus.emit
+  lines:
+  - 47
+  - 341
+functions:
+- name: create_default_evaluator
+  sig: 'create_default_evaluator(agents: list[Agent] | list[BaseAgent], llm: None = None)'
+  lines:
+  - 344
+  - 363
+  detail:
+    calls:
+    - AgentEvaluator
+    - GoalAlignmentEvaluator
+    - ParameterExtractionEvaluator
+    - ReasoningEfficiencyEvaluator
+    - SemanticQualityEvaluator
+    - ToolInvocationEvaluator
+    - ToolSelectionEvaluator
+exports:
+- name: ExecutionState
+  kind: type
+- name: AgentEvaluator
+  kind: type
+- name: create_default_evaluator
+  kind: func

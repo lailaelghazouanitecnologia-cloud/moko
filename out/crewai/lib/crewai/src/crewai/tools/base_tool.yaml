@@ -1,0 +1,374 @@
+## Roska File Descriptor — tools/base_tool.py
+file: tools/base_tool.py
+lines: 620
+imports:
+- sym: asyncio
+- sym: inspect.Parameter
+- sym: inspect.signature
+- sym: threading
+- sym: pydantic.BaseModel
+- sym: pydantic.BaseModel
+- sym: pydantic.ConfigDict
+- sym: pydantic.Field
+- sym: pydantic.PrivateAttr
+- sym: pydantic.create_model
+- sym: pydantic.field_validator
+- sym: typing_extensions.TypeIs
+- sym: crewai.tools.structured_tool.CrewStructuredTool
+- sym: crewai.tools.structured_tool.build_schema_hint
+- sym: crewai.utilities.printer.Printer
+- sym: crewai.utilities.pydantic_schema_utils.generate_model_description
+- sym: crewai.utilities.string_utils.sanitize_tool_name
+data:
+- name: _printer
+  type: Any
+  val: Printer()
+- name: P
+  type: Any
+  val: ParamSpec("P")
+- name: R
+  type: Any
+  val: TypeVar("R", covariant=True)
+- name: P2
+  type: Any
+  val: ParamSpec("P2")
+- name: R2
+  type: Any
+  val: TypeVar("R2")
+types:
+- name: EnvVar
+  kind: model
+  bases:
+  - BaseModel
+  fields:
+  - name: name
+    type: Any
+    default: str
+  - name: description
+    type: Any
+    default: str
+  - name: required
+    type: Any
+    default: bool
+  - name: default
+    type: Any
+    default: str | None
+  lines:
+  - 50
+  - 54
+- name: BaseTool
+  kind: trait
+  bases:
+  - BaseModel
+  - ABC
+  fields:
+  - name: model_config
+    type: Any
+    default: ConfigDict(arbitrary_types_allowed=True)
+  - name: name
+    type: Any
+    default: str
+  - name: description
+    type: Any
+    default: str
+  - name: env_vars
+    type: Any
+    default: list[EnvVar]
+  - name: args_schema
+    type: Any
+    default: type[PydanticBaseModel]
+  - name: description_updated
+    type: Any
+    default: bool
+  - name: cache_function
+    type: Any
+    default: Callable[..., bool]
+  - name: result_as_answer
+    type: Any
+    default: bool
+  - name: max_usage_count
+    type: Any
+    default: int | None
+  - name: current_usage_count
+    type: Any
+    default: int
+  - name: _usage_lock
+    type: Any
+    default: threading.Lock
+  methods:
+  - name: _default_args_schema
+    sig: |-
+      _default_args_schema(
+              cls, v: type[PydanticBaseModel]
+          ) -> type[PydanticBaseModel]
+    vis: protected
+    decorators:
+    - field_validator("args_schema", mode="before")
+    - classmethod
+    lines:
+    - 103
+    - 142
+    detail:
+      calls:
+      - arun_sig.parameters.items
+      - create_model
+      - run_sig.parameters.items
+      - signature
+  - name: validate_max_usage_count
+    sig: 'validate_max_usage_count(cls, v: int | None) -> int | None'
+    decorators:
+    - field_validator("max_usage_count", mode="before")
+    - classmethod
+    lines:
+    - 146
+    - 149
+    detail:
+      calls:
+      - ValueError
+  - name: model_post_init
+    sig: 'model_post_init(self, __context: Any) -> None'
+    lines:
+    - 151
+    - 154
+    detail:
+      calls:
+      - self._generate_description
+      - super
+      - super().model_post_init
+  - name: _validate_kwargs
+    sig: '_validate_kwargs(self, kwargs: dict[str, Any]) -> dict[str, Any]'
+    vis: protected
+    lines:
+    - 156
+    - 177
+    detail:
+      calls:
+      - ValueError
+      - build_schema_hint
+      - self.args_schema.model_validate
+      - validated.model_dump
+  - name: run
+    sig: |-
+      run(
+              self,
+              *args: Any,
+              **kwargs: Any,
+          ) -> Any
+    lines:
+    - 198
+    - 215
+    detail:
+      calls:
+      - asyncio.iscoroutine
+      - asyncio.run
+      - self._claim_usage
+      - self._run
+      - self._validate_kwargs
+  - name: arun
+    sig: |-
+      arun(
+              self,
+              *args: Any,
+              **kwargs: Any,
+          ) -> Any
+    is_async: true
+    lines:
+    - 217
+    - 238
+    detail:
+      calls:
+      - self._arun
+      - self._claim_usage
+      - self._validate_kwargs
+  - name: reset_usage_count
+    sig: reset_usage_count(self) -> None
+    lines:
+    - 251
+    - 253
+    detail: {}
+  - name: to_structured_tool
+    sig: to_structured_tool(self) -> CrewStructuredTool
+    lines:
+    - 273
+    - 286
+    detail:
+      calls:
+      - CrewStructuredTool
+      - self._set_args_schema
+  - name: from_langchain
+    sig: 'from_langchain(cls, tool: Any) -> BaseTool'
+    decorators:
+    - classmethod
+    lines:
+    - 289
+    - 330
+    detail:
+      calls:
+      - ValueError
+      - callable
+      - cls
+      - create_model
+      - func_signature.parameters.items
+      - getattr
+      - hasattr
+      - sanitize_tool_name
+      - signature
+  - name: _set_args_schema
+    sig: _set_args_schema(self) -> None
+    vis: protected
+    lines:
+    - 332
+    - 354
+    detail:
+      calls:
+      - create_model
+      - run_sig.parameters.items
+      - signature
+  lines:
+  - 57
+  - 364
+- name: Tool
+  kind: struct
+  ctx: 'Tool that wraps a callable function. Type Parameters: P: ParamSpec capturing the function''s parameters. R: The return type of the function.'
+  bases:
+  - BaseTool
+  fields:
+  - name: func
+    type: Any
+    default: Callable[P, R | Awaitable[R]]
+  methods:
+  - name: run
+    sig: 'run(self, *args: P.args, **kwargs: P.kwargs) -> R'
+    lines:
+    - 378
+    - 400
+    detail:
+      calls:
+      - asyncio.iscoroutine
+      - asyncio.run
+      - self._claim_usage
+      - self._validate_kwargs
+      - self.func
+  - name: arun
+    sig: 'arun(self, *args: P.args, **kwargs: P.kwargs) -> R'
+    is_async: true
+    lines:
+    - 414
+    - 431
+    detail:
+      calls:
+      - self._arun
+      - self._claim_usage
+      - self._validate_kwargs
+  - name: from_langchain
+    sig: 'from_langchain(cls, tool: Any) -> Tool[..., Any]'
+    decorators:
+    - classmethod
+    lines:
+    - 455
+    - 505
+    detail:
+      calls:
+      - ValueError
+      - callable
+      - cls
+      - create_model
+      - func_signature.parameters.items
+      - getattr
+      - hasattr
+      - sanitize_tool_name
+      - signature
+  lines:
+  - 367
+  - 505
+functions:
+- name: to_langchain
+  sig: |-
+    to_langchain(
+        tools: list[BaseTool | CrewStructuredTool],
+    ) -> list[CrewStructuredTool]
+  lines:
+  - 508
+  - 512
+  detail:
+    calls:
+    - isinstance
+    - t.to_structured_tool
+- name: tool
+  sig: 'tool(func: Callable[P2, R2], /) -> Tool[P2, R2]'
+  decorators:
+  - overload
+  lines:
+  - 520
+  - 520
+- name: tool
+  sig: |-
+    tool(
+        name: str,
+        /,
+        *,
+        result_as_answer: bool = ...,
+        max_usage_count: int | None = ...,
+    ) -> Callable[[Callable[P2, R2]], Tool[P2, R2]]
+  decorators:
+  - overload
+  lines:
+  - 524
+  - 530
+  detail: {}
+- name: tool
+  sig: |-
+    tool(
+        *,
+        result_as_answer: bool = ...,
+        max_usage_count: int | None = ...,
+    ) -> Callable[[Callable[P2, R2]], Tool[P2, R2]]
+  decorators:
+  - overload
+  lines:
+  - 534
+  - 538
+  detail: {}
+- name: tool
+  sig: |-
+    tool(
+        *args: Callable[P2, R2] | str,
+        result_as_answer: bool = False,
+        max_usage_count: int | None = None,
+    ) -> Tool[P2, R2] | Callable[[Callable[P2, R2]], Tool[P2, R2]]
+  lines:
+  - 541
+  - 620
+  detail:
+    calls:
+    - ValueError
+    - _make_with_name
+    - _make_with_name(args[0].__name__)
+    - callable
+    - isinstance
+    - len
+exports:
+- name: EnvVar
+  kind: type
+- name: BaseTool
+  kind: type
+- name: Tool
+  kind: type
+- name: to_langchain
+  kind: func
+- name: tool
+  kind: func
+- name: tool
+  kind: func
+- name: tool
+  kind: func
+- name: tool
+  kind: func
+- name: P
+  kind: data
+- name: R
+  kind: data
+- name: P2
+  kind: data
+- name: R2
+  kind: data

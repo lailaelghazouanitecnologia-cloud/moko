@@ -1,0 +1,154 @@
+## Roska File Descriptor — browser/browser_session_manager.py
+file: browser/browser_session_manager.py
+lines: 279
+imports:
+- sym: asyncio
+- sym: contextvars
+- sym: threading
+data:
+- name: logger
+  type: Any
+  val: logging.getLogger(__name__)
+types:
+- name: BrowserSessionManager
+  kind: struct
+  ctx: Manages browser sessions for different threads. This class maintains separate browser sessions for different threads, enabling concurrent usage of browsers in multi-threaded environments. Browsers are created lazily only when needed by tools. Uses per-key events to serialize creation for the same thread_id without blocking unrelated callers or wasting resources on duplicate sessions.
+  fields:
+  - name: region
+    type: Any
+    default: region
+  - name: _lock
+    type: Any
+    default: threading.Lock()
+  - name: _async_sessions
+    type: Any
+    default: dict[str, tuple[BrowserClient, AsyncBrowser]]
+  - name: _sync_sessions
+    type: Any
+    default: dict[str, tuple[BrowserClient, SyncBrowser]]
+  - name: _creating
+    type: Any
+    default: dict[str, threading.Event]
+  methods:
+  - name: __init__
+    sig: '__init__(self, region: str = "us-west-2")'
+    lines:
+    - 29
+    - 39
+    detail:
+      calls:
+      - threading.Lock
+  - name: get_async_browser
+    sig: 'get_async_browser(self, thread_id: str) -> AsyncBrowser'
+    is_async: true
+    lines:
+    - 41
+    - 72
+    detail:
+      calls:
+      - asyncio.get_event_loop
+      - contextvars.copy_context
+      - evt.set
+      - loop.run_in_executor
+      - self._create_async_browser_session
+      - self._creating.pop
+      - threading.Event
+  - name: get_sync_browser
+    sig: 'get_sync_browser(self, thread_id: str) -> SyncBrowser'
+    lines:
+    - 74
+    - 98
+    detail:
+      calls:
+      - event.wait
+      - evt.set
+      - self._create_sync_browser_session
+      - self._creating.pop
+      - threading.Event
+  - name: _create_async_browser_session
+    sig: |-
+      _create_async_browser_session(
+              self, thread_id: str
+          ) -> tuple[BrowserClient, AsyncBrowser]
+    is_async: true
+    vis: protected
+    lines:
+    - 100
+    - 150
+    detail:
+      calls:
+      - BrowserClient
+      - async_playwright
+      - async_playwright().start
+      - browser_client.generate_ws_headers
+      - browser_client.start
+      - browser_client.stop
+      - logger.error
+      - logger.info
+      - logger.warning
+      - playwright.chromium.connect_over_cdp
+  - name: _create_sync_browser_session
+    sig: '_create_sync_browser_session(self, thread_id: str) -> SyncBrowser'
+    vis: protected
+    lines:
+    - 152
+    - 203
+    detail:
+      calls:
+      - BrowserClient
+      - browser_client.generate_ws_headers
+      - browser_client.start
+      - browser_client.stop
+      - logger.error
+      - logger.info
+      - logger.warning
+      - playwright.chromium.connect_over_cdp
+      - sync_playwright
+      - sync_playwright().start
+  - name: close_async_browser
+    sig: 'close_async_browser(self, thread_id: str) -> None'
+    is_async: true
+    lines:
+    - 205
+    - 234
+    detail:
+      calls:
+      - browser.close
+      - browser_client.stop
+      - logger.info
+      - logger.warning
+      - self._async_sessions.pop
+  - name: close_sync_browser
+    sig: 'close_sync_browser(self, thread_id: str) -> None'
+    lines:
+    - 236
+    - 265
+    detail:
+      calls:
+      - browser.close
+      - browser_client.stop
+      - logger.info
+      - logger.warning
+      - self._sync_sessions.pop
+  - name: close_all_browsers
+    sig: close_all_browsers(self) -> None
+    is_async: true
+    lines:
+    - 267
+    - 279
+    detail:
+      calls:
+      - list
+      - logger.info
+      - self._async_sessions.keys
+      - self._sync_sessions.keys
+      - self.close_async_browser
+      - self.close_sync_browser
+  lines:
+  - 18
+  - 279
+exports:
+- name: BrowserSessionManager
+  kind: type
+- name: logger
+  kind: data

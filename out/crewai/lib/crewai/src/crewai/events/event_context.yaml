@@ -1,0 +1,253 @@
+## Roska File Descriptor — events/event_context.py
+file: events/event_context.py
+lines: 334
+purpose: Event context management for parent-child relationship tracking.
+imports:
+- sym: contextvars
+- sym: crewai.events.utils.console_formatter.ConsoleFormatter
+data:
+- name: _event_id_stack
+  type: Any
+  val: contextvars.ContextVar[tuple[tuple[str, str], ...]]
+- name: _event_context_config
+  type: Any
+  val: contextvars.ContextVar[EventContextConfig | None]
+- name: _last_event_id
+  type: Any
+  val: contextvars.ContextVar[str | None]
+- name: _triggering_event_id
+  type: Any
+  val: contextvars.ContextVar[str | None]
+- name: _default_config
+  type: Any
+  val: EventContextConfig()
+- name: _console
+  type: Any
+  val: ConsoleFormatter()
+- name: SCOPE_STARTING_EVENTS
+  type: Any
+  val: frozenset[str]
+- name: SCOPE_ENDING_EVENTS
+  type: Any
+  val: frozenset[str]
+- name: VALID_EVENT_PAIRS
+  type: Any
+  val: dict[str, str]
+types:
+- name: MismatchBehavior
+  kind: enum
+  ctx: Behavior when event pairs don't match.
+  bases:
+  - Enum
+  variants:
+  - name: WARN
+    val: '"warn"'
+  - name: RAISE
+    val: '"raise"'
+  - name: SILENT
+    val: '"silent"'
+  lines:
+  - 12
+  - 17
+- name: StackDepthExceededError
+  kind: struct
+  ctx: Raised when stack depth limit is exceeded.
+  bases:
+  - Exception
+  lines:
+  - 29
+  - 30
+- name: EventPairingError
+  kind: struct
+  ctx: Raised when event pairs don't match.
+  bases:
+  - Exception
+  lines:
+  - 33
+  - 34
+- name: EmptyStackError
+  kind: struct
+  ctx: Raised when popping from empty stack.
+  bases:
+  - Exception
+  lines:
+  - 37
+  - 38
+functions:
+- name: EventContextConfig
+  sig: ''
+  decorators:
+  - dataclass
+  lines:
+  - 20
+  - 26
+- name: get_current_parent_id
+  sig: get_current_parent_id() -> str | None
+  lines:
+  - 62
+  - 65
+  detail:
+    calls:
+    - _event_id_stack.get
+- name: get_enclosing_parent_id
+  sig: get_enclosing_parent_id() -> str | None
+  lines:
+  - 68
+  - 71
+  detail:
+    calls:
+    - _event_id_stack.get
+    - len
+- name: get_last_event_id
+  sig: get_last_event_id() -> str | None
+  lines:
+  - 74
+  - 80
+  detail:
+    calls:
+    - _last_event_id.get
+- name: reset_last_event_id
+  sig: reset_last_event_id() -> None
+  lines:
+  - 83
+  - 88
+  detail:
+    calls:
+    - _last_event_id.set
+- name: set_last_event_id
+  sig: 'set_last_event_id(event_id: str) -> None'
+  lines:
+  - 91
+  - 97
+  detail:
+    calls:
+    - _last_event_id.set
+- name: get_triggering_event_id
+  sig: get_triggering_event_id() -> str | None
+  lines:
+  - 100
+  - 106
+  detail:
+    calls:
+    - _triggering_event_id.get
+- name: set_triggering_event_id
+  sig: 'set_triggering_event_id(event_id: str | None) -> None'
+  lines:
+  - 109
+  - 115
+  detail:
+    calls:
+    - _triggering_event_id.set
+- name: triggered_by_scope
+  sig: 'triggered_by_scope(event_id: str) -> Generator[None, None, None]'
+  decorators:
+  - contextmanager
+  lines:
+  - 119
+  - 133
+  detail:
+    calls:
+    - _triggering_event_id.get
+    - _triggering_event_id.set
+- name: push_event_scope
+  sig: 'push_event_scope(event_id: str, event_type: str = "") -> None'
+  lines:
+  - 136
+  - 147
+  detail:
+    calls:
+    - StackDepthExceededError
+    - _event_context_config.get
+    - _event_id_stack.get
+    - _event_id_stack.set
+    - len
+- name: pop_event_scope
+  sig: pop_event_scope() -> tuple[str, str] | None
+  lines:
+  - 150
+  - 156
+  detail:
+    calls:
+    - _event_id_stack.get
+    - _event_id_stack.set
+- name: handle_empty_pop
+  sig: 'handle_empty_pop(event_type_name: str) -> None'
+  lines:
+  - 159
+  - 170
+  detail:
+    calls:
+    - EmptyStackError
+    - _console.print
+    - _event_context_config.get
+- name: handle_mismatch
+  sig: |-
+    handle_mismatch(
+        event_type_name: str,
+        popped_type: str,
+        expected_start: str,
+    ) -> None
+  lines:
+  - 173
+  - 188
+  detail:
+    calls:
+    - EventPairingError
+    - _console.print
+    - _event_context_config.get
+- name: event_scope
+  sig: 'event_scope(event_id: str, event_type: str = "") -> Generator[None, None, None]'
+  decorators:
+  - contextmanager
+  lines:
+  - 192
+  - 202
+  detail:
+    calls:
+    - _event_id_stack.get
+    - any
+    - pop_event_scope
+    - push_event_scope
+exports:
+- name: MismatchBehavior
+  kind: type
+- name: StackDepthExceededError
+  kind: type
+- name: EventPairingError
+  kind: type
+- name: EmptyStackError
+  kind: type
+- name: EventContextConfig
+  kind: func
+- name: get_current_parent_id
+  kind: func
+- name: get_enclosing_parent_id
+  kind: func
+- name: get_last_event_id
+  kind: func
+- name: reset_last_event_id
+  kind: func
+- name: set_last_event_id
+  kind: func
+- name: get_triggering_event_id
+  kind: func
+- name: set_triggering_event_id
+  kind: func
+- name: triggered_by_scope
+  kind: func
+- name: push_event_scope
+  kind: func
+- name: pop_event_scope
+  kind: func
+- name: handle_empty_pop
+  kind: func
+- name: handle_mismatch
+  kind: func
+- name: event_scope
+  kind: func
+- name: SCOPE_STARTING_EVENTS
+  kind: data
+- name: SCOPE_ENDING_EVENTS
+  kind: data
+- name: VALID_EVENT_PAIRS
+  kind: data

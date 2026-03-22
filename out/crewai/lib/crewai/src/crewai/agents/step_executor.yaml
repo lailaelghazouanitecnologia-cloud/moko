@@ -1,0 +1,304 @@
+## Roska File Descriptor — agents/step_executor.py
+file: agents/step_executor.py
+lines: 629
+purpose: 'StepExecutor: Isolated executor for a single plan step. Implements the direct-action execution pattern from Plan-and-Act (arxiv 2503.09572): the Executor receives one step description, makes a single LLM call, executes any tool call returned, and returns the result immediately. There is no inner loop. Recovery from failure (retry, replan) is the responsibility of PlannerObserver and AgentExecutor — keeping this class single-purpose and fast.'
+imports:
+- sym: pydantic.BaseModel
+- sym: crewai.agents.parser.AgentAction
+- sym: crewai.agents.parser.AgentFinish
+- sym: crewai.events.event_bus.crewai_event_bus
+- sym: crewai.events.types.tool_usage_events.ToolUsageErrorEvent
+- sym: crewai.events.types.tool_usage_events.ToolUsageFinishedEvent
+- sym: crewai.events.types.tool_usage_events.ToolUsageStartedEvent
+- sym: crewai.utilities.agent_utils.build_tool_calls_assistant_message
+- sym: crewai.utilities.agent_utils.check_native_tool_support
+- sym: crewai.utilities.agent_utils.enforce_rpm_limit
+- sym: crewai.utilities.agent_utils.execute_single_native_tool_call
+- sym: crewai.utilities.agent_utils.extract_task_section
+- sym: crewai.utilities.agent_utils.format_message_for_llm
+- sym: crewai.utilities.agent_utils.is_tool_call_list
+- sym: crewai.utilities.agent_utils.process_llm_response
+- sym: crewai.utilities.agent_utils.setup_native_tools
+- sym: crewai.utilities.i18n.I18N
+- sym: crewai.utilities.i18n.get_i18n
+- sym: crewai.utilities.planning_types.TodoItem
+- sym: crewai.utilities.printer.Printer
+- sym: crewai.utilities.step_execution_context.StepExecutionContext
+- sym: crewai.utilities.step_execution_context.StepResult
+- sym: crewai.utilities.string_utils.sanitize_tool_name
+- sym: crewai.utilities.tool_utils.execute_tool_and_check_finality
+- sym: crewai.utilities.types.LLMMessage
+types:
+- name: StepExecutor
+  kind: struct
+  ctx: 'Executes a SINGLE todo item using direct-action execution. The StepExecutor owns its own message list per invocation. It never reads or writes the AgentExecutor''s state. Results flow back via StepResult. Execution pattern (per Plan-and-Act, arxiv 2503.09572): 1. Build messages from todo + context 2. Call LLM once (with or without native tools) 3. If tool call → execute it → return tool result 4. If text answer → return it directly No inner loop — recovery is PlannerObserver''s responsibility. Args: llm: The language model to use for execution. tools: Structured tools available to the executor. agent: The agent instance (for role/goal/verbose/config). original_tools: Original BaseTool instances (needed for native tool schema). tools_handler: Optional tools handler for caching and delegation tracking. task: Optional task context. crew: Optional crew context. function_calling_llm: Optional separate LLM for function calling. request_within_rpm_limit: Optional RPM limit function. callbacks: Optional list of callbacks. i18n: Optional i18n instance.'
+  fields:
+  - name: llm
+    type: Any
+    default: llm
+  - name: tools
+    type: Any
+    default: tools
+  - name: agent
+    type: Any
+    default: agent
+  - name: original_tools
+    type: Any
+    default: original_tools or []
+  - name: tools_handler
+    type: Any
+    default: tools_handler
+  - name: task
+    type: Any
+    default: task
+  - name: crew
+    type: Any
+    default: crew
+  - name: function_calling_llm
+    type: Any
+    default: function_calling_llm
+  - name: request_within_rpm_limit
+    type: Any
+    default: request_within_rpm_limit
+  - name: callbacks
+    type: Any
+    default: callbacks or []
+  - name: _i18n
+    type: Any
+    default: I18N
+  - name: _printer
+    type: Any
+    default: Printer
+  - name: _use_native_tools
+    type: Any
+    default: |-
+      check_native_tool_support(
+                  self.llm, self.original_tools
+              )
+  - name: _openai_tools
+    type: Any
+    default: list[dict[str, Any]]
+  - name: _available_functions
+    type: Any
+    default: dict[str, Callable[..., Any]]
+  methods:
+  - name: __init__
+    sig: |-
+      __init__(
+              self,
+              llm: BaseLLM,
+              tools: list[CrewStructuredTool],
+              agent: Agent,
+              original_tools: list[BaseTool] | None = None,
+              tools_handler: ToolsHandler | None = None,
+              task: Task | None = None,
+              crew: Crew | None = None,
+              function_calling_llm: BaseLLM | None = None,
+              request_within_rpm_limit: Callable[[], bool] | None = None,
+              callbacks: list[Any] | None = None,
+              i18n: I18N | None = None,
+          ) -> None
+    lines:
+    - 87
+    - 125
+    detail:
+      calls:
+      - Printer
+      - check_native_tool_support
+      - get_i18n
+      - setup_native_tools
+  - name: execute
+    sig: |-
+      execute(
+              self,
+              todo: TodoItem,
+              context: StepExecutionContext,
+              max_step_iterations: int = 15,
+              step_timeout: int | None = None,
+          ) -> StepResult
+    lines:
+    - 131
+    - 194
+    detail:
+      calls:
+      - StepResult
+      - enforce_rpm_limit
+      - self._build_isolated_messages
+      - self._execute_native
+      - self._execute_text_parsed
+      - self._validate_expected_tool_usage
+      - str
+      - time.monotonic
+  - name: _build_system_prompt
+    sig: _build_system_prompt(self) -> str
+    vis: protected
+    lines:
+    - 216
+    - 237
+    detail:
+      calls:
+      - '", ".join'
+      - getattr
+      - sanitize_tool_name
+      - self._i18n.retrieve
+      - |-
+        self._i18n.retrieve(
+                        "planning", "step_executor_tools_section"
+                    ).format
+      - self._i18n.retrieve("planning", "step_executor_system_prompt").format
+  - name: _build_user_prompt
+    sig: '_build_user_prompt(self, todo: TodoItem, context: StepExecutionContext) -> str'
+    vis: protected
+    lines:
+    - 239
+    - 285
+    detail:
+      calls:
+      - '"\n".join'
+      - context.dependency_results.items
+      - extract_task_section
+      - parts.append
+      - self._i18n.retrieve
+      - |-
+        self._i18n.retrieve(
+                                "planning", "step_executor_context_entry"
+                            ).format
+      - |-
+        self._i18n.retrieve(
+                                "planning", "step_executor_task_context"
+                            ).format
+      - self._i18n.retrieve("planning", "step_executor_suggested_tool").format
+      - self._i18n.retrieve("planning", "step_executor_user_prompt").format
+      - sorted
+  - name: _execute_text_parsed
+    sig: |-
+      _execute_text_parsed(
+              self,
+              messages: list[LLMMessage],
+              tool_calls_made: list[str],
+              max_step_iterations: int = 15,
+              step_timeout: int | None = None,
+              start_time: float | None = None,
+          ) -> str
+    vis: protected
+    lines:
+    - 291
+    - 346
+    detail:
+      calls:
+      - ValueError
+      - isinstance
+      - messages.append
+      - process_llm_response
+      - range
+      - self._build_observation_message
+      - self._execute_text_tool_with_events
+      - self.llm.call
+      - self.llm.supports_stop_words
+      - str
+      - time.monotonic
+      - tool_calls_made.append
+  - name: _execute_text_tool_with_events
+    sig: '_execute_text_tool_with_events(self, formatted: AgentAction) -> str'
+    vis: protected
+    lines:
+    - 348
+    - 415
+    detail:
+      calls:
+      - ToolUsageErrorEvent
+      - ToolUsageFinishedEvent
+      - ToolUsageStartedEvent
+      - crewai_event_bus.emit
+      - datetime.now
+      - execute_tool_and_check_finality
+      - getattr
+      - hasattr
+      - self._parse_tool_args
+      - str
+  - name: _parse_vision_sentinel
+    sig: '_parse_vision_sentinel(raw: str) -> tuple[str, str] | None'
+    vis: protected
+    decorators:
+    - staticmethod
+    lines:
+    - 439
+    - 448
+    detail:
+      calls:
+      - len
+      - raw.startswith
+      - rest.find
+  - name: _build_observation_message
+    sig: '_build_observation_message(tool_result: str) -> LLMMessage'
+    vis: protected
+    decorators:
+    - staticmethod
+    lines:
+    - 451
+    - 478
+    detail:
+      calls:
+      - StepExecutor._parse_vision_sentinel
+  - name: _execute_native
+    sig: |-
+      _execute_native(
+              self,
+              messages: list[LLMMessage],
+              tool_calls_made: list[str],
+              max_step_iterations: int = 15,
+              step_timeout: int | None = None,
+              start_time: float | None = None,
+          ) -> str
+    vis: protected
+    lines:
+    - 504
+    - 559
+    detail:
+      calls:
+      - '"\n".join'
+      - '"\n\n".join'
+      - ValueError
+      - accumulated_results.append
+      - answer.model_dump_json
+      - filter
+      - is_tool_call_list
+      - isinstance
+      - range
+      - self._execute_native_tool_calls
+      - self.llm.call
+      - str
+      - time.monotonic
+  - name: _execute_native_tool_calls
+    sig: |-
+      _execute_native_tool_calls(
+              self,
+              tool_calls: list[Any],
+              messages: list[LLMMessage],
+              tool_calls_made: list[str],
+          ) -> str
+    vis: protected
+    lines:
+    - 561
+    - 629
+    detail:
+      calls:
+      - '"\n".join'
+      - bool
+      - build_tool_calls_assistant_message
+      - call_result.tool_message.get
+      - cast
+      - dict
+      - execute_single_native_tool_call
+      - isinstance
+      - messages.append
+      - self._parse_vision_sentinel
+      - str
+      - tool_calls_made.append
+      - tool_results.append
+  lines:
+  - 60
+  - 629
+exports:
+- name: StepExecutor
+  kind: type

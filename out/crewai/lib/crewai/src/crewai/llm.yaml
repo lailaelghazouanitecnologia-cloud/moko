@@ -1,0 +1,890 @@
+## Roska File Descriptor — crewai/llm.py
+file: crewai/llm.py
+lines: 2406
+imports:
+- sym: threading
+- sym: dotenv.load_dotenv
+- sym: httpx
+- sym: pydantic.BaseModel
+- sym: pydantic.Field
+- sym: typing_extensions.Self
+- sym: crewai.events.event_bus.crewai_event_bus
+- sym: crewai.events.types.llm_events.LLMCallCompletedEvent
+- sym: crewai.events.types.llm_events.LLMCallFailedEvent
+- sym: crewai.events.types.llm_events.LLMCallStartedEvent
+- sym: crewai.events.types.llm_events.LLMCallType
+- sym: crewai.events.types.llm_events.LLMStreamChunkEvent
+- sym: crewai.events.types.tool_usage_events.ToolUsageErrorEvent
+- sym: crewai.events.types.tool_usage_events.ToolUsageFinishedEvent
+- sym: crewai.events.types.tool_usage_events.ToolUsageStartedEvent
+- sym: crewai.llms.base_llm.BaseLLM
+- sym: crewai.llms.base_llm.get_current_call_id
+- sym: crewai.llms.base_llm.llm_call_context
+- sym: crewai.llms.constants.ANTHROPIC_MODELS
+- sym: crewai.llms.constants.AZURE_MODELS
+- sym: crewai.llms.constants.BEDROCK_MODELS
+- sym: crewai.llms.constants.GEMINI_MODELS
+- sym: crewai.llms.constants.OPENAI_MODELS
+- sym: crewai.utilities.InternalInstructor
+- sym: crewai.utilities.exceptions.context_window_exceeding_exception.LLMContextLengthExceededError
+- sym: crewai.utilities.logger_utils.suppress_warnings
+- sym: crewai.utilities.string_utils.sanitize_tool_name
+data:
+- name: logger
+  type: Any
+  val: logging.getLogger(__name__)
+- name: MIN_CONTEXT
+  type: Any
+  val: Final[int]
+- name: MAX_CONTEXT
+  type: Any
+  val: Final[int]
+- name: ANTHROPIC_PREFIXES
+  type: Any
+  val: Final[tuple[str, str, str]]
+- name: LLM_CONTEXT_WINDOW_SIZES
+  type: Any
+  val: Final[dict[str, int]]
+- name: DEFAULT_CONTEXT_WINDOW_SIZE
+  type: Any
+  val: Final[int]
+- name: CONTEXT_WINDOW_USAGE_RATIO
+  type: Any
+  val: Final[float]
+- name: SUPPORTED_NATIVE_PROVIDERS
+  type: Any
+  val: Final[list[str]]
+types:
+- name: FilteredStream
+  kind: struct
+  bases:
+  - io.TextIOBase
+  fields:
+  - name: _lock
+    type: None
+    default: None
+  - name: _original_stream
+    type: Any
+    default: original_stream
+  methods:
+  - name: __init__
+    sig: '__init__(self, original_stream: TextIO)'
+    lines:
+    - 122
+    - 124
+    detail:
+      calls:
+      - threading.Lock
+  - name: write
+    sig: 'write(self, s: str) -> int'
+    lines:
+    - 126
+    - 141
+    detail:
+      calls:
+      - s.lower
+      - self._original_stream.write
+      - threading.Lock
+  - name: flush
+    sig: flush(self) -> None
+    lines:
+    - 143
+    - 147
+    detail:
+      calls:
+      - self._original_stream.flush
+  - name: __getattr__
+    sig: '__getattr__(self, name: str) -> Any'
+    lines:
+    - 149
+    - 156
+    detail:
+      calls:
+      - getattr
+  - name: encoding
+    sig: encoding(self) -> str | Any
+    decorators:
+    - property
+    lines:
+    - 163
+    - 164
+    detail:
+      calls:
+      - getattr
+  - name: isatty
+    sig: isatty(self) -> bool
+    lines:
+    - 166
+    - 167
+    detail:
+      calls:
+      - self._original_stream.isatty
+  - name: fileno
+    sig: fileno(self) -> int
+    lines:
+    - 169
+    - 170
+    detail:
+      calls:
+      - self._original_stream.fileno
+  - name: writable
+    sig: writable(self) -> bool
+    lines:
+    - 172
+    - 173
+    detail: {}
+  lines:
+  - 119
+  - 173
+- name: Delta
+  kind: struct
+  bases:
+  - TypedDict
+  fields:
+  - name: content
+    type: Any
+    default: str | None
+  - name: role
+    type: Any
+    default: str | None
+  lines:
+  - 331
+  - 333
+- name: StreamingChoices
+  kind: struct
+  bases:
+  - TypedDict
+  fields:
+  - name: delta
+    type: Any
+    default: Delta
+  - name: index
+    type: Any
+    default: int
+  - name: finish_reason
+    type: Any
+    default: str | None
+  lines:
+  - 336
+  - 339
+- name: FunctionArgs
+  kind: model
+  bases:
+  - BaseModel
+  fields:
+  - name: name
+    type: Any
+    default: str
+  - name: arguments
+    type: Any
+    default: str
+  lines:
+  - 342
+  - 344
+- name: AccumulatedToolArgs
+  kind: model
+  bases:
+  - BaseModel
+  fields:
+  - name: function
+    type: Any
+    default: FunctionArgs
+  lines:
+  - 347
+  - 348
+- name: LLM
+  kind: struct
+  ctx: +2 dunder methods
+  bases:
+  - BaseLLM
+  fields:
+  - name: completion_cost
+    type: Any
+    default: float | None
+  - name: model
+    type: Any
+    default: model
+  - name: timeout
+    type: Any
+    default: timeout
+  - name: temperature
+    type: Any
+    default: temperature
+  - name: top_p
+    type: Any
+    default: top_p
+  - name: n
+    type: Any
+    default: n
+  - name: max_completion_tokens
+    type: Any
+    default: max_completion_tokens
+  - name: max_tokens
+    type: Any
+    default: max_tokens
+  - name: presence_penalty
+    type: Any
+    default: presence_penalty
+  - name: frequency_penalty
+    type: Any
+    default: frequency_penalty
+  - name: logit_bias
+    type: Any
+    default: logit_bias
+  - name: response_format
+    type: Any
+    default: response_format
+  - name: seed
+    type: Any
+    default: seed
+  - name: logprobs
+    type: Any
+    default: logprobs
+  - name: top_logprobs
+    type: Any
+    default: top_logprobs
+  - name: base_url
+    type: Any
+    default: base_url
+  - name: api_base
+    type: Any
+    default: api_base
+  - name: api_version
+    type: Any
+    default: api_version
+  - name: api_key
+    type: Any
+    default: api_key
+  - name: callbacks
+    type: Any
+    default: callbacks
+  - name: context_window_size
+    type: int
+    default: '0'
+  - name: reasoning_effort
+    type: Any
+    default: reasoning_effort
+  - name: prefer_upload
+    type: Any
+    default: prefer_upload
+  - name: additional_params
+    type: dict
+    default: |-
+      {
+                  k: v for k, v in kwargs.items() if k not in ("is_litellm", "provider")
+              }
+  - name: is_anthropic
+    type: Any
+    default: self._is_anthropic_model(model)
+  - name: stream
+    type: Any
+    default: stream
+  - name: interceptor
+    type: Any
+    default: interceptor
+  - name: stop
+    type: Any
+    default: list[str]
+  methods:
+  - name: __new__
+    sig: '__new__(cls, model: str, is_litellm: bool = False, **kwargs: Any) -> LLM'
+    lines:
+    - 354
+    - 442
+    detail:
+      calls:
+      - '", ".join'
+      - ImportError
+      - ValueError
+      - cast
+      - cls._get_native_provider
+      - cls._infer_provider_from_model
+      - cls._validate_model_in_constants
+      - isinstance
+      - kwargs.get
+      - kwargs.items
+      - logger.error
+      - model.partition
+      - native_class
+      - object.__new__
+      - prefix.lower
+      - provider_mapping.get
+      - super
+      - super(LLM, instance).__init__
+  - name: _matches_provider_pattern
+    sig: '_matches_provider_pattern(cls, model: str, provider: str) -> bool'
+    vis: protected
+    decorators:
+    - classmethod
+    lines:
+    - 445
+    - 486
+    detail:
+      calls:
+      - any
+      - model.lower
+      - model_lower.startswith
+  - name: _validate_model_in_constants
+    sig: '_validate_model_in_constants(cls, model: str, provider: str) -> bool'
+    vis: protected
+    decorators:
+    - classmethod
+    lines:
+    - 489
+    - 522
+    detail:
+      calls:
+      - cls._matches_provider_pattern
+  - name: _infer_provider_from_model
+    sig: '_infer_provider_from_model(cls, model: str) -> str'
+    vis: protected
+    decorators:
+    - classmethod
+    lines:
+    - 525
+    - 553
+    detail: {}
+  - name: _get_native_provider
+    sig: '_get_native_provider(cls, provider: str) -> type | None'
+    vis: protected
+    decorators:
+    - classmethod
+    lines:
+    - 556
+    - 585
+    detail: {}
+  - name: __init__
+    sig: |-
+      __init__(
+              self,
+              model: str,
+              timeout: float | int | None = None,
+              temperature: float | None = None,
+              top_p: float | None = None,
+              n: int | None = None,
+              stop: str | list[str] | None = None,
+              max_completion_tokens: int | None = None,
+              max_tokens: int | float | None = None,
+              presence_penalty: float | None = None,
+              frequency_penalty: float | None = None,
+              logit_bias: dict[int, float] | None = None,
+              response_format: type[BaseModel] | None = None,
+              seed: int | None = None,
+              logprobs: int | None = None,
+              top_logprobs: int | None = None,
+              base_url: str | None = None,
+              api_base: str | None = None,
+              api_version: str | None = None,
+              api_key: str | None = None,
+              callbacks: list[Any] | None = None,
+              reasoning_effort: Literal["none", "low", "medium", "high"] | None = None,
+              stream: bool = False,
+              interceptor: BaseInterceptor[httpx.Request, httpx.Response] | None = None,
+              thinking: AnthropicThinkingConfig | dict[str, Any] | None = None,
+              prefer_upload: bool = False,
+              **kwargs: Any,
+          ) -> None
+    lines:
+    - 587
+    - 669
+    detail:
+      calls:
+      - isinstance
+      - kwargs.items
+      - self._is_anthropic_model
+      - self.set_callbacks
+      - self.set_env_callbacks
+      - super
+      - super().__init__
+  - name: _prepare_completion_params
+    sig: |-
+      _prepare_completion_params(
+              self,
+              messages: str | list[LLMMessage],
+              tools: list[dict[str, BaseTool]] | None = None,
+              skip_file_processing: bool = False,
+          ) -> dict[str, Any]
+    vis: protected
+    lines:
+    - 684
+    - 736
+    detail:
+      calls:
+      - isinstance
+      - params.items
+      - self._format_messages_for_provider
+      - self._process_message_files
+  - name: _handle_streaming_response
+    sig: |-
+      _handle_streaming_response(
+              self,
+              params: dict[str, Any],
+              callbacks: list[Any] | None = None,
+              available_functions: dict[str, Any] | None = None,
+              from_task: Task | None = None,
+              from_agent: Agent | None = None,
+              response_model: type[BaseModel] | None = None,
+          ) -> Any
+    vis: protected
+    lines:
+    - 738
+    - 1039
+    detail:
+      calls:
+      - Exception
+      - InternalInstructor
+      - LLMCallFailedEvent
+      - LLMContextLengthExceededError
+      - LLMStreamChunkEvent
+      - crewai_event_bus.emit
+      - defaultdict
+      - full_response.strip
+      - get_current_call_id
+      - hasattr
+      - instructor_instance.to_pydantic
+      - isinstance
+      - len
+      - litellm.completion
+      - logging.debug
+      - logging.error
+      - logging.info
+      - logging.warning
+      - non_streaming_params.pop
+      - params.copy
+      - result.model_dump_json
+      - self._handle_emit_call_events
+      - self._handle_non_streaming_response
+      - self._handle_streaming_callbacks
+      - self._handle_streaming_tool_calls
+      - self._handle_tool_call
+      - self._track_token_usage_internal
+      - str
+      - type
+  - name: _handle_streaming_tool_calls
+    sig: |-
+      _handle_streaming_tool_calls(
+              self,
+              tool_calls: list[ChatCompletionDeltaToolCall],
+              accumulated_tool_args: defaultdict[int, AccumulatedToolArgs],
+              available_functions: dict[str, Any] | None = None,
+              from_task: Task | None = None,
+              from_agent: Agent | None = None,
+              response_id: str | None = None,
+          ) -> Any
+    vis: protected
+    lines:
+    - 1041
+    - 1088
+    detail:
+      calls:
+      - LLMStreamChunkEvent
+      - crewai_event_bus.emit
+      - get_current_call_id
+      - json.loads
+      - self._handle_tool_call
+      - tool_call.to_dict
+  - name: _handle_streaming_callbacks
+    sig: |-
+      _handle_streaming_callbacks(
+              callbacks: list[Any] | None,
+              usage_info: dict[str, Any] | None,
+              last_chunk: Any | None,
+          ) -> None
+    vis: protected
+    decorators:
+    - staticmethod
+    lines:
+    - 1091
+    - 1128
+    detail:
+      calls:
+      - callback.log_success_event
+      - hasattr
+      - isinstance
+      - len
+      - logging.debug
+  - name: _handle_non_streaming_response
+    sig: |-
+      _handle_non_streaming_response(
+              self,
+              params: dict[str, Any],
+              callbacks: list[Any] | None = None,
+              available_functions: dict[str, Any] | None = None,
+              from_task: Task | None = None,
+              from_agent: Agent | None = None,
+              response_model: type[BaseModel] | None = None,
+          ) -> str | Any
+    vis: protected
+    lines:
+    - 1130
+    - 1269
+    detail:
+      calls:
+      - '"\n\n".join'
+      - InternalInstructor
+      - LLMContextLengthExceededError
+      - ValueError
+      - callback.log_success_event
+      - cast
+      - getattr
+      - hasattr
+      - instructor_instance.to_pydantic
+      - isinstance
+      - len
+      - litellm.completion
+      - msg['role'].upper
+      - params.get
+      - response.model_dump_json
+      - result.model_dump_json
+      - self._handle_emit_call_events
+      - self._handle_tool_call
+      - self._track_token_usage_internal
+      - str
+  - name: _ahandle_non_streaming_response
+    sig: |-
+      _ahandle_non_streaming_response(
+              self,
+              params: dict[str, Any],
+              callbacks: list[Any] | None = None,
+              available_functions: dict[str, Any] | None = None,
+              from_task: Task | None = None,
+              from_agent: Agent | None = None,
+              response_model: type[BaseModel] | None = None,
+          ) -> str | Any
+    is_async: true
+    vis: protected
+    lines:
+    - 1271
+    - 1397
+    detail:
+      calls:
+      - '"\n\n".join'
+      - InternalInstructor
+      - LLMContextLengthExceededError
+      - ValueError
+      - callback.log_success_event
+      - cast
+      - getattr
+      - hasattr
+      - instructor_instance.to_pydantic
+      - isinstance
+      - len
+      - litellm.acompletion
+      - msg['role'].upper
+      - params.get
+      - response.model_dump_json
+      - result.model_dump_json
+      - self._handle_emit_call_events
+      - self._handle_tool_call
+      - self._track_token_usage_internal
+      - str
+  - name: _ahandle_streaming_response
+    sig: |-
+      _ahandle_streaming_response(
+              self,
+              params: dict[str, Any],
+              callbacks: list[Any] | None = None,
+              available_functions: dict[str, Any] | None = None,
+              from_task: Task | None = None,
+              from_agent: Agent | None = None,
+              response_model: type[BaseModel] | None = None,
+          ) -> Any
+    is_async: true
+    vis: protected
+    lines:
+    - 1399
+    - 1565
+    detail:
+      calls:
+      - ChatCompletionDeltaToolCall
+      - Function
+      - LLMContextLengthExceededError
+      - LLMStreamChunkEvent
+      - accumulated_tool_args.items
+      - callback.log_success_event
+      - crewai_event_bus.emit
+      - defaultdict
+      - delta.get
+      - first_choice.get
+      - get_current_call_id
+      - hasattr
+      - isinstance
+      - len
+      - litellm.acompletion
+      - params.get
+      - self._handle_emit_call_events
+      - self._handle_streaming_tool_calls
+      - self._track_token_usage_internal
+      - str
+  - name: _handle_tool_call
+    sig: |-
+      _handle_tool_call(
+              self,
+              tool_calls: list[Any],
+              available_functions: dict[str, Any] | None = None,
+              from_task: Task | None = None,
+              from_agent: Agent | None = None,
+          ) -> Any
+    vis: protected
+    lines:
+    - 1567
+    - 1659
+    detail:
+      calls:
+      - LLMCallFailedEvent
+      - ToolUsageErrorEvent
+      - ToolUsageFinishedEvent
+      - ToolUsageStartedEvent
+      - available_functions.get
+      - crewai_event_bus.emit
+      - datetime.now
+      - fn
+      - get_current_call_id
+      - json.loads
+      - logging.error
+      - sanitize_tool_name
+      - self._handle_emit_call_events
+  - name: call
+    sig: |-
+      call(
+              self,
+              messages: str | list[LLMMessage],
+              tools: list[dict[str, BaseTool]] | None = None,
+              callbacks: list[Any] | None = None,
+              available_functions: dict[str, Any] | None = None,
+              from_task: Task | None = None,
+              from_agent: Agent | None = None,
+              response_model: type[BaseModel] | None = None,
+          ) -> str | Any
+    lines:
+    - 1661
+    - 1807
+    detail:
+      calls:
+      - LLMCallFailedEvent
+      - LLMCallStartedEvent
+      - ValueError
+      - crewai_event_bus.emit
+      - get_current_call_id
+      - isinstance
+      - len
+      - llm_call_context
+      - logging.info
+      - message.get
+      - self._handle_non_streaming_response
+      - self._handle_streaming_response
+      - self._invoke_after_llm_call_hooks
+      - self._invoke_before_llm_call_hooks
+      - self._prepare_completion_params
+      - self._validate_call_params
+      - self.additional_params["additional_drop_params"].append
+      - self.call
+      - self.model.lower
+      - self.set_callbacks
+      - str
+      - suppress_warnings
+  - name: acall
+    sig: |-
+      acall(
+              self,
+              messages: str | list[LLMMessage],
+              tools: list[dict[str, BaseTool]] | None = None,
+              callbacks: list[Any] | None = None,
+              available_functions: dict[str, Any] | None = None,
+              from_task: Task | None = None,
+              from_agent: Agent | None = None,
+              response_model: type[BaseModel] | None = None,
+          ) -> str | Any
+    is_async: true
+    lines:
+    - 1809
+    - 1943
+    detail:
+      calls:
+      - LLMCallFailedEvent
+      - LLMCallStartedEvent
+      - crewai_event_bus.emit
+      - get_current_call_id
+      - isinstance
+      - len
+      - llm_call_context
+      - logging.info
+      - message.get
+      - self._ahandle_non_streaming_response
+      - self._ahandle_streaming_response
+      - self._aprocess_message_files
+      - self._prepare_completion_params
+      - self._validate_call_params
+      - self.acall
+      - self.additional_params["additional_drop_params"].append
+      - self.model.lower
+      - self.set_callbacks
+      - str
+      - suppress_warnings
+  - name: _handle_emit_call_events
+    sig: |-
+      _handle_emit_call_events(
+              self,
+              response: Any,
+              call_type: LLMCallType,
+              from_task: Task | None = None,
+              from_agent: Agent | None = None,
+              messages: str | list[LLMMessage] | None = None,
+          ) -> None
+    vis: protected
+    lines:
+    - 1945
+    - 1973
+    detail:
+      calls:
+      - LLMCallCompletedEvent
+      - crewai_event_bus.emit
+      - get_current_call_id
+  - name: _process_message_files
+    sig: '_process_message_files(self, messages: list[LLMMessage]) -> list[LLMMessage]'
+    vis: protected
+    lines:
+    - 1975
+    - 2013
+    detail:
+      calls:
+      - format_multimodal_content
+      - getattr
+      - isinstance
+      - msg.get
+      - msg.pop
+      - self.format_text_content
+      - self.supports_multimodal
+  - name: _aprocess_message_files
+    sig: |-
+      _aprocess_message_files(
+              self, messages: list[LLMMessage]
+          ) -> list[LLMMessage]
+    is_async: true
+    vis: protected
+    lines:
+    - 2015
+    - 2055
+    detail:
+      calls:
+      - aformat_multimodal_content
+      - getattr
+      - isinstance
+      - msg.get
+      - msg.pop
+      - self.format_text_content
+      - self.supports_multimodal
+  - name: _format_messages_for_provider
+    sig: |-
+      _format_messages_for_provider(
+              self, messages: list[LLMMessage]
+          ) -> list[dict[str, str]]
+    vis: protected
+    lines:
+    - 2057
+    - 2121
+    detail:
+      calls:
+      - TypeError
+      - formatted_messages.append
+      - isinstance
+      - self.model.lower
+  - name: supports_function_calling
+    sig: supports_function_calling(self) -> bool
+    lines:
+    - 2153
+    - 2161
+    detail:
+      calls:
+      - litellm.utils.supports_function_calling
+      - logging.error
+      - self._get_custom_llm_provider
+  - name: supports_stop_words
+    sig: supports_stop_words(self) -> bool
+    lines:
+    - 2163
+    - 2169
+    detail:
+      calls:
+      - get_supported_openai_params
+      - logging.error
+  - name: get_context_window_size
+    sig: get_context_window_size(self) -> int
+    lines:
+    - 2171
+    - 2198
+    detail:
+      calls:
+      - LLM_CONTEXT_WINDOW_SIZES.items
+      - ValueError
+      - int
+      - self.model.startswith
+  - name: set_callbacks
+    sig: 'set_callbacks(callbacks: list[Any]) -> None'
+    decorators:
+    - staticmethod
+    lines:
+    - 2201
+    - 2216
+    detail:
+      calls:
+      - litellm._async_success_callback.remove
+      - litellm.success_callback.remove
+      - suppress_warnings
+      - type
+  - name: set_env_callbacks
+    sig: set_env_callbacks() -> None
+    decorators:
+    - staticmethod
+    lines:
+    - 2219
+    - 2252
+    detail:
+      calls:
+      - cb.strip
+      - failure_callbacks_str.split
+      - os.environ.get
+      - success_callbacks_str.split
+      - suppress_warnings
+  - name: supports_multimodal
+    sig: supports_multimodal(self) -> bool
+    lines:
+    - 2386
+    - 2406
+    detail:
+      calls:
+      - any
+      - model_lower.startswith
+      - self.model.lower
+  lines:
+  - 351
+  - 2406
+exports:
+- name: FilteredStream
+  kind: type
+- name: Delta
+  kind: type
+- name: StreamingChoices
+  kind: type
+- name: FunctionArgs
+  kind: type
+- name: AccumulatedToolArgs
+  kind: type
+- name: LLM
+  kind: type
+- name: logger
+  kind: data
+- name: MIN_CONTEXT
+  kind: data
+- name: MAX_CONTEXT
+  kind: data
+- name: ANTHROPIC_PREFIXES
+  kind: data
+- name: LLM_CONTEXT_WINDOW_SIZES
+  kind: data
+- name: DEFAULT_CONTEXT_WINDOW_SIZE
+  kind: data
+- name: CONTEXT_WINDOW_USAGE_RATIO
+  kind: data
+- name: SUPPORTED_NATIVE_PROVIDERS
+  kind: data

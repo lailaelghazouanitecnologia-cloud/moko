@@ -1,0 +1,221 @@
+## Roska File Descriptor — utilities/reasoning_handler.py
+file: utilities/reasoning_handler.py
+lines: 659
+purpose: Handles planning/reasoning for agents before task execution.
+imports:
+- sym: pydantic.BaseModel
+- sym: pydantic.Field
+- sym: crewai.events.event_bus.crewai_event_bus
+- sym: crewai.events.types.reasoning_events.AgentReasoningCompletedEvent
+- sym: crewai.events.types.reasoning_events.AgentReasoningFailedEvent
+- sym: crewai.events.types.reasoning_events.AgentReasoningStartedEvent
+- sym: crewai.llm.LLM
+- sym: crewai.utilities.llm_utils.create_llm
+- sym: crewai.utilities.planning_types.PlanStep
+- sym: crewai.utilities.string_utils.sanitize_tool_name
+data:
+- name: PlanningPlan
+  type: Any
+  val: ReasoningPlan
+- name: AgentPlanningOutput
+  type: Any
+  val: AgentReasoningOutput
+- name: FUNCTION_SCHEMA
+  type: Any
+  val: Final[dict[str, Any]]
+- name: AgentPlanning
+  type: Any
+  val: AgentReasoning
+types:
+- name: ReasoningPlan
+  kind: model
+  ctx: Model representing a reasoning plan for a task.
+  bases:
+  - BaseModel
+  fields:
+  - name: plan
+    type: Any
+    default: str
+  - name: steps
+    type: Any
+    default: list[PlanStep]
+  - name: ready
+    type: Any
+    default: bool
+  lines:
+  - 29
+  - 36
+- name: AgentReasoningOutput
+  kind: model
+  ctx: Model representing the output of the agent reasoning process.
+  bases:
+  - BaseModel
+  fields:
+  - name: plan
+    type: Any
+    default: ReasoningPlan
+  lines:
+  - 39
+  - 42
+- name: AgentReasoning
+  kind: struct
+  ctx: 'Handles the agent planning/reasoning process, enabling an agent to reflect and create a plan before executing a task. Attributes: task: The task for which the agent is planning (optional). agent: The agent performing the planning. config: The planning configuration. llm: The language model used for planning. logger: Logger for logging events and errors. description: Task description or input text for planning. expected_output: Expected output description.'
+  fields:
+  - name: agent
+    type: Any
+    default: agent
+  - name: task
+    type: Any
+    default: task
+  - name: _description
+    type: Any
+    default: |-
+      description or (
+                  task.description if task else "Complete the requested task"
+              )
+  - name: _expected_output
+    type: Any
+    default: |-
+      expected_output or (
+                  task.expected_output if task else "Complete the task successfully"
+              )
+  - name: config
+    type: Any
+    default: self._get_planning_config()
+  - name: llm
+    type: Any
+    default: self._resolve_llm()
+  - name: logger
+    type: Any
+    default: logging.getLogger(__name__)
+  methods:
+  - name: __init__
+    sig: |-
+      __init__(
+              self,
+              agent: Agent,
+              task: Task | None = None,
+              *,
+              description: str | None = None,
+              expected_output: str | None = None,
+          ) -> None
+    lines:
+    - 122
+    - 149
+    detail:
+      calls:
+      - logging.getLogger
+      - self._get_planning_config
+      - self._resolve_llm
+  - name: description
+    sig: description(self) -> str
+    decorators:
+    - property
+    lines:
+    - 152
+    - 154
+    detail: {}
+  - name: expected_output
+    sig: expected_output(self) -> str
+    decorators:
+    - property
+    lines:
+    - 157
+    - 159
+    detail: {}
+  - name: handle_agent_reasoning
+    sig: handle_agent_reasoning(self) -> AgentReasoningOutput
+    lines:
+    - 188
+    - 246
+    detail:
+      calls:
+      - AgentReasoningCompletedEvent
+      - AgentReasoningFailedEvent
+      - AgentReasoningStartedEvent
+      - crewai_event_bus.emit
+      - logging.error
+      - self._execute_planning
+      - str
+  - name: _refine_plan_if_needed
+    sig: |-
+      _refine_plan_if_needed(
+              self, plan: str, steps: list[PlanStep], ready: bool
+          ) -> tuple[str, list[PlanStep], bool]
+    vis: protected
+    lines:
+    - 282
+    - 355
+    detail:
+      calls:
+      - AgentReasoningCompletedEvent
+      - AgentReasoningStartedEvent
+      - crewai_event_bus.emit
+      - self._call_llm_with_prompt
+      - self._call_with_function
+      - self._create_refine_prompt
+      - self._parse_planning_response
+      - self.llm.supports_function_calling
+      - self.logger.warning
+      - str
+  - name: _call_with_function
+    sig: |-
+      _call_with_function(
+              self, prompt: str, plan_type: Literal["create_plan", "refine_plan"]
+          ) -> tuple[str, list[PlanStep], bool]
+    vis: protected
+    lines:
+    - 357
+    - 452
+    detail:
+      calls:
+      - PlanStep
+      - json.loads
+      - result.get
+      - self._get_system_prompt
+      - self.llm.call
+      - self.logger.debug
+      - self.logger.error
+      - self.logger.warning
+      - step_data.get
+      - steps.append
+      - str
+  lines:
+  - 107
+  - 615
+functions:
+- name: _call_llm_with_reasoning_prompt
+  sig: |-
+    _call_llm_with_reasoning_prompt(
+        llm: LLM,
+        prompt: str,
+        task: Task,
+        reasoning_agent: Agent,
+        backstory: str,
+        plan_type: Literal["initial_plan", "refine_plan"],
+    ) -> str
+  vis: protected
+  lines:
+  - 622
+  - 659
+  detail:
+    calls:
+    - llm.call
+    - reasoning_agent.i18n.retrieve
+    - reasoning_agent.i18n.retrieve("reasoning", plan_type).format
+    - str
+exports:
+- name: ReasoningPlan
+  kind: type
+- name: AgentReasoningOutput
+  kind: type
+- name: AgentReasoning
+  kind: type
+- name: PlanningPlan
+  kind: data
+- name: AgentPlanningOutput
+  kind: data
+- name: FUNCTION_SCHEMA
+  kind: data
+- name: AgentPlanning
+  kind: data

@@ -1,0 +1,267 @@
+## Roska File Descriptor — utils/task.py
+file: utils/task.py
+lines: 584
+purpose: A2A task utilities for server-side task management.
+imports:
+- sym: asyncio
+- sym: base64
+- sym: urllib.parse.urlparse
+- sym: a2a.server.agent_execution.RequestContext
+- sym: a2a.server.events.EventQueue
+- sym: a2a.types.Artifact
+- sym: a2a.types.FileWithBytes
+- sym: a2a.types.FileWithUri
+- sym: a2a.types.InternalError
+- sym: a2a.types.InvalidParamsError
+- sym: a2a.types.Message
+- sym: a2a.types.Part
+- sym: a2a.types.Task
+- sym: a2a.types.TaskState
+- sym: a2a.types.TaskStatus
+- sym: a2a.types.TaskStatusUpdateEvent
+- sym: a2a.utils.get_data_parts
+- sym: a2a.utils.get_file_parts
+- sym: a2a.utils.new_agent_text_message
+- sym: a2a.utils.new_data_artifact
+- sym: a2a.utils.new_text_artifact
+- sym: a2a.utils.errors.ServerError
+- sym: aiocache.SimpleMemoryCache
+- sym: aiocache.caches
+- sym: pydantic.BaseModel
+- sym: crewai.a2a.utils.agent_card._get_server_config
+- sym: crewai.a2a.utils.content_type.validate_message_parts
+- sym: crewai.events.event_bus.crewai_event_bus
+- sym: crewai.events.types.a2a_events.A2AServerTaskCanceledEvent
+- sym: crewai.events.types.a2a_events.A2AServerTaskCompletedEvent
+- sym: crewai.events.types.a2a_events.A2AServerTaskFailedEvent
+- sym: crewai.events.types.a2a_events.A2AServerTaskStartedEvent
+- sym: crewai.task.Task
+- sym: crewai.utilities.pydantic_schema_utils.create_model_from_schema
+data:
+- name: logger
+  type: Any
+  val: logging.getLogger(__name__)
+- name: P
+  type: Any
+  val: ParamSpec("P")
+- name: T
+  type: Any
+  val: TypeVar("T")
+- name: _redis_url
+  type: Any
+  val: os.environ.get("REDIS_URL")
+types:
+- name: RedisCacheConfig
+  kind: struct
+  ctx: Configuration for aiocache Redis backend.
+  bases:
+  - TypedDict
+  - total=False
+  fields:
+  - name: cache
+    type: Any
+    default: str
+  - name: endpoint
+    type: Any
+    default: str
+  - name: port
+    type: Any
+    default: int
+  - name: db
+    type: Any
+    default: int
+  - name: password
+    type: Any
+    default: str
+  lines:
+  - 66
+  - 73
+functions:
+- name: _parse_redis_url
+  sig: '_parse_redis_url(url: str) -> RedisCacheConfig'
+  vis: protected
+  lines:
+  - 76
+  - 98
+  detail:
+    calls:
+    - int
+    - parsed.path.lstrip
+    - urlparse
+- name: cancellable
+  sig: |-
+    cancellable(
+        fn: Callable[P, Coroutine[Any, Any, T]],
+    ) -> Callable[P, Coroutine[Any, Any, T]]
+  lines:
+  - 114
+  - 194
+  detail:
+    calls:
+    - wraps
+- name: _convert_a2a_files_to_file_inputs
+  sig: |-
+    _convert_a2a_files_to_file_inputs(
+        a2a_files: list[FileWithBytes | FileWithUri],
+    ) -> dict[str, Any]
+  vis: protected
+  lines:
+  - 197
+  - 225
+  detail:
+    calls:
+    - File
+    - FileBytes
+    - base64.b64decode
+    - enumerate
+    - isinstance
+    - logger.debug
+- name: execute
+  sig: |-
+    execute(
+        agent: Agent,
+        context: RequestContext,
+        event_queue: EventQueue,
+    ) -> None
+  is_async: true
+  lines:
+  - 289
+  - 301
+  detail:
+    calls:
+    - _execute_impl
+- name: _execute_impl
+  sig: |-
+    _execute_impl(
+        agent: Agent,
+        context: RequestContext,
+        event_queue: EventQueue,
+        extension_registry: ServerExtensionRegistry | None,
+        extension_context: ExtensionContext | None,
+    ) -> None
+  is_async: true
+  vis: protected
+  decorators:
+  - cancellable
+  lines:
+  - 305
+  - 433
+  detail:
+    calls:
+    - ''', ''.join'
+    - A2AServerTaskCanceledEvent
+    - A2AServerTaskCompletedEvent
+    - A2AServerTaskFailedEvent
+    - A2AServerTaskStartedEvent
+    - A2ATask
+    - InternalError
+    - InvalidParamsError
+    - ServerError
+    - Task
+    - TaskStatus
+    - _build_task_description
+    - _convert_a2a_files_to_file_inputs
+    - _create_result_artifact
+    - _extract_response_schema
+    - _get_server_config
+    - agent.aexecute_task
+    - context.get_user_input
+    - create_model_from_schema
+    - crewai_event_bus.emit
+    - event_queue.enqueue_event
+    - extension_registry.invoke_on_request
+    - extension_registry.invoke_on_response
+    - get_data_parts
+    - get_file_parts
+    - history.append
+    - logger.debug
+    - new_agent_text_message
+    - schema.get
+    - str
+    - validate_message_parts
+- name: execute_with_extensions
+  sig: |-
+    execute_with_extensions(
+        agent: Agent,
+        context: RequestContext,
+        event_queue: EventQueue,
+        extension_registry: ServerExtensionRegistry,
+        extension_context: ExtensionContext,
+    ) -> None
+  is_async: true
+  lines:
+  - 436
+  - 454
+  detail:
+    calls:
+    - _execute_impl
+- name: cancel
+  sig: |-
+    cancel(
+        context: RequestContext,
+        event_queue: EventQueue,
+    ) -> A2ATask | None
+  is_async: true
+  lines:
+  - 457
+  - 502
+  detail:
+    calls:
+    - InvalidParamsError
+    - ServerError
+    - TaskStatus
+    - TaskStatusUpdateEvent
+    - cache.client.publish
+    - cache.set
+    - caches.get
+    - event_queue.enqueue_event
+    - isinstance
+- name: list_tasks
+  sig: |-
+    list_tasks(
+        tasks: list[A2ATask],
+        context_id: str | None = None,
+        status: TaskState | None = None,
+        status_timestamp_after: datetime | None = None,
+        page_size: int = 50,
+        page_token: str | None = None,
+        history_length: int | None = None,
+        include_artifacts: bool = False,
+    ) -> tuple[list[A2ATask], str | None, int]
+  lines:
+  - 505
+  - 584
+  detail:
+    calls:
+    - base64.b64decode
+    - base64.b64decode(page_token).decode
+    - base64.b64encode
+    - base64.b64encode(result[-1].id.encode()).decode
+    - datetime.fromisoformat
+    - enumerate
+    - filtered.append
+    - filtered.sort
+    - len
+    - result.append
+    - result[-1].id.encode
+    - task.model_copy
+    - task.status.timestamp.replace
+exports:
+- name: RedisCacheConfig
+  kind: type
+- name: cancellable
+  kind: func
+- name: execute
+  kind: func
+- name: execute_with_extensions
+  kind: func
+- name: cancel
+  kind: func
+- name: list_tasks
+  kind: func
+- name: logger
+  kind: data
+- name: P
+  kind: data
+- name: T
+  kind: data

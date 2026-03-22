@@ -1,0 +1,338 @@
+## Roska File Descriptor — mcp/tool_resolver.py
+file: mcp/tool_resolver.py
+lines: 622
+purpose: 'MCP tool resolution for CrewAI agents. This module extracts all MCP-related tool resolution logic from the Agent class into a standalone MCPToolResolver. It handles three flavours of MCP reference: 1. Native configs:   MCPServerStdio / MCPServerHTTP / MCPServerSSE objects. 2. HTTPS URLs:       e.g. "https://mcp.example.com/api" 3. AMP references:   e.g. "notion" or "notion#search" (legacy "crewai-amp:" prefix also works)'
+imports:
+- sym: asyncio
+- sym: contextvars
+- sym: urllib.parse.urlparse
+- sym: crewai.mcp.client.MCPClient
+- sym: crewai.mcp.config.MCPServerConfig
+- sym: crewai.mcp.config.MCPServerHTTP
+- sym: crewai.mcp.config.MCPServerSSE
+- sym: crewai.mcp.config.MCPServerStdio
+- sym: crewai.mcp.transports.http.HTTPTransport
+- sym: crewai.mcp.transports.sse.SSETransport
+- sym: crewai.mcp.transports.stdio.StdioTransport
+- sym: crewai.utilities.string_utils.sanitize_tool_name
+data:
+- name: MCP_CONNECTION_TIMEOUT
+  type: Any
+  val: Final[int]
+- name: MCP_TOOL_EXECUTION_TIMEOUT
+  type: Any
+  val: Final[int]
+- name: MCP_DISCOVERY_TIMEOUT
+  type: Any
+  val: Final[int]
+- name: MCP_MAX_RETRIES
+  type: Any
+  val: Final[int]
+- name: _mcp_schema_cache
+  type: Any
+  val: dict[str, Any]
+- name: _cache_ttl
+  type: Any
+  val: Final[int]
+types:
+- name: MCPToolResolver
+  kind: struct
+  ctx: 'Resolves MCP server references / configs into CrewAI ``BaseTool`` instances. Typical lifecycle:: resolver = MCPToolResolver(agent=my_agent, logger=my_agent._logger) tools = resolver.resolve(my_agent.mcps) # … agent executes tasks using *tools* … resolver.cleanup() The resolver owns the MCP client connections it creates and is responsible for tearing them down via :meth:`cleanup`.'
+  fields:
+  - name: _agent
+    type: Any
+    default: agent
+  - name: _logger
+    type: Any
+    default: logger
+  - name: _clients
+    type: Any
+    default: list[Any]
+  methods:
+  - name: __init__
+    sig: __init__(self, ...2 params)
+    lines:
+    - 59
+    - 62
+  - name: clients
+    sig: clients(self) -> list[Any]
+    decorators:
+    - property
+    lines:
+    - 65
+    - 66
+    detail:
+      calls:
+      - list
+  - name: resolve
+    sig: 'resolve(self, mcps: list[str | MCPServerConfig]) -> list[BaseTool]'
+    lines:
+    - 68
+    - 88
+    detail:
+      calls:
+      - all_tools.extend
+      - amp_refs.append
+      - isinstance
+      - mcp_config.startswith
+      - self._clients.extend
+      - self._parse_amp_ref
+      - self._resolve_amp
+      - self._resolve_external
+      - self._resolve_native
+  - name: cleanup
+    sig: cleanup(self) -> None
+    lines:
+    - 90
+    - 105
+    detail:
+      calls:
+      - _disconnect_all
+      - asyncio.run
+      - self._clients.clear
+      - self._logger.log
+  - name: _parse_amp_ref
+    sig: '_parse_amp_ref(mcp_config: str) -> tuple[str, str | None]'
+    vis: protected
+    decorators:
+    - staticmethod
+    lines:
+    - 108
+    - 116
+    detail:
+      calls:
+      - bare.partition
+      - mcp_config.removeprefix
+  - name: _resolve_amp
+    sig: |-
+      _resolve_amp(
+              self, amp_refs: list[tuple[str, str | None]]
+          ) -> tuple[list[BaseTool], list[Any]]
+    vis: protected
+    lines:
+    - 118
+    - 180
+    detail:
+      calls:
+      - MCPConfigFetchFailedEvent
+      - all_clients.extend
+      - all_tools.extend
+      - amp_configs_map.get
+      - crewai_event_bus.emit
+      - dict.fromkeys
+      - list
+      - resolved_cache.get
+      - sanitize_tool_name
+      - self._build_mcp_config_from_dict
+      - self._fetch_amp_mcp_configs
+      - self._resolve_native
+      - str
+      - t.name.endswith
+  - name: _fetch_amp_mcp_configs
+    sig: '_fetch_amp_mcp_configs(self, slugs: list[str]) -> dict[str, dict[str, Any]]'
+    vis: protected
+    lines:
+    - 182
+    - 217
+    detail:
+      calls:
+      - PlusAPI
+      - get_platform_integration_token
+      - plus_api.get_mcp_configs
+      - response.json
+      - response.json().get
+      - self._logger.log
+  - name: _resolve_external
+    sig: '_resolve_external(self, mcp_ref: str) -> list[BaseTool]'
+    vis: protected
+    lines:
+    - 219
+    - 276
+    detail:
+      calls:
+      - MCPToolWrapper
+      - cast
+      - mcp_ref.split
+      - sanitize_tool_name
+      - self._extract_server_name
+      - self._get_mcp_tool_schemas
+      - self._logger.log
+      - tool_schemas.items
+      - tools.append
+  - name: _create_transport
+    sig: |-
+      _create_transport(
+              mcp_config: MCPServerConfig,
+          ) -> tuple[StdioTransport | HTTPTransport | SSETransport, str]
+    vis: protected
+    decorators:
+    - staticmethod
+    lines:
+    - 279
+    - 310
+    detail:
+      calls:
+      - '''_''.join'
+      - HTTPTransport
+      - MCPToolResolver._extract_server_name
+      - SSETransport
+      - StdioTransport
+      - ValueError
+      - isinstance
+      - type
+  - name: _resolve_native
+    sig: |-
+      _resolve_native(
+              self, mcp_config: MCPServerConfig
+          ) -> tuple[list[BaseTool], list[Any]]
+    vis: protected
+    lines:
+    - 312
+    - 445
+    detail:
+      calls:
+      - ConnectionError
+      - MCPClient
+      - MCPNativeTool
+      - RuntimeError
+      - ToolFilterContext
+      - _setup_client_and_list_tools
+      - asyncio.get_running_loop
+      - asyncio.run
+      - callable
+      - cast
+      - concurrent.futures.ThreadPoolExecutor
+      - contextvars.copy_context
+      - discovery_client.disconnect
+      - executor.submit
+      - filtered_tools.append
+      - future.result
+      - mcp_config.tool_filter
+      - self._create_transport
+      - self._json_schema_to_pydantic
+      - self._logger.log
+      - str
+      - str(e).lower
+      - tool_def.get
+      - tools.append
+  - name: _extract_server_name
+    sig: '_extract_server_name(server_url: str) -> str'
+    vis: protected
+    decorators:
+    - staticmethod
+    lines:
+    - 469
+    - 474
+    detail:
+      calls:
+      - parsed.netloc.replace
+      - parsed.path.replace
+      - parsed.path.replace("/", "_").strip
+      - urlparse
+  - name: _get_mcp_tool_schemas
+    sig: |-
+      _get_mcp_tool_schemas(
+              self, server_params: dict[str, Any]
+          ) -> dict[str, dict[str, Any]]
+    vis: protected
+    lines:
+    - 476
+    - 501
+    detail:
+      calls:
+      - asyncio.run
+      - self._get_mcp_tool_schemas_async
+      - self._logger.log
+      - time.time
+  - name: _retry_mcp_discovery
+    sig: |-
+      _retry_mcp_discovery(
+              self, operation_func: Any, server_url: str
+          ) -> dict[str, dict[str, Any]]
+    is_async: true
+    vis: protected
+    lines:
+    - 512
+    - 536
+    detail:
+      calls:
+      - RuntimeError
+      - asyncio.sleep
+      - range
+      - self._attempt_mcp_discovery
+  - name: _attempt_mcp_discovery
+    sig: |-
+      _attempt_mcp_discovery(
+              operation_func: Any, server_url: str
+          ) -> tuple[dict[str, dict[str, Any]] | None, str, bool]
+    is_async: true
+    vis: protected
+    decorators:
+    - staticmethod
+    lines:
+    - 539
+    - 570
+    detail:
+      calls:
+      - operation_func
+      - str
+      - str(e).lower
+  - name: _discover_mcp_tools_with_timeout
+    sig: |-
+      _discover_mcp_tools_with_timeout(
+              self, server_url: str
+          ) -> dict[str, dict[str, Any]]
+    is_async: true
+    vis: protected
+    lines:
+    - 572
+    - 578
+    detail:
+      calls:
+      - asyncio.wait_for
+      - self._discover_mcp_tools
+  - name: _discover_mcp_tools
+    sig: '_discover_mcp_tools(self, server_url: str) -> dict[str, dict[str, Any]]'
+    is_async: true
+    vis: protected
+    lines:
+    - 580
+    - 610
+    detail:
+      calls:
+      - ClientSession
+      - asyncio.wait_for
+      - getattr
+      - hasattr
+      - sanitize_tool_name
+      - self._json_schema_to_pydantic
+      - session.initialize
+      - session.list_tools
+      - streamablehttp_client
+  - name: _json_schema_to_pydantic
+    sig: '_json_schema_to_pydantic(tool_name: str, json_schema: dict[str, Any]) -> type'
+    vis: protected
+    decorators:
+    - staticmethod
+    lines:
+    - 613
+    - 622
+    detail:
+      calls:
+      - create_model_from_schema
+      - tool_name.replace
+      - tool_name.replace('-', '_').replace
+  lines:
+  - 45
+  - 622
+exports:
+- name: MCPToolResolver
+  kind: type
+- name: MCP_CONNECTION_TIMEOUT
+  kind: data
+- name: MCP_TOOL_EXECUTION_TIMEOUT
+  kind: data
+- name: MCP_DISCOVERY_TIMEOUT
+  kind: data
+- name: MCP_MAX_RETRIES
+  kind: data

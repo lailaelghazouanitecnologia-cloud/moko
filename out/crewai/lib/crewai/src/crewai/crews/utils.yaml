@@ -1,0 +1,247 @@
+## Roska File Descriptor — crews/utils.py
+file: crews/utils.py
+lines: 447
+purpose: Utility functions for crew operations.
+imports:
+- sym: asyncio
+- sym: opentelemetry.baggage
+- sym: crewai.agents.agent_builder.base_agent.BaseAgent
+- sym: crewai.crews.crew_output.CrewOutput
+- sym: crewai.rag.embeddings.types.EmbedderConfig
+- sym: crewai.types.streaming.CrewStreamingOutput
+- sym: crewai.types.streaming.FlowStreamingOutput
+- sym: crewai.utilities.file_store.store_files
+- sym: crewai.utilities.streaming.StreamingState
+- sym: crewai.utilities.streaming.TaskInfo
+- sym: crewai.utilities.streaming.create_streaming_state
+types:
+- name: TaskExecutionData
+  kind: struct
+  ctx: Data container for prepared task execution information.
+  fields:
+  - name: agent
+    type: Any
+    default: agent
+  - name: tools
+    type: Any
+    default: tools
+  - name: should_skip
+    type: Any
+    default: should_skip
+  methods:
+  - name: __init__
+    sig: __init__(self, ...4 params)
+    lines:
+    - 83
+    - 98
+  lines:
+  - 80
+  - 98
+- name: StreamingContext
+  kind: struct
+  ctx: Container for streaming state and holders used during crew execution.
+  fields:
+  - name: result_holder
+    type: Any
+    default: list[CrewOutput]
+  - name: current_task_info
+    type: Any
+    default: TaskInfo
+  - name: state
+    type: Any
+    default: StreamingState
+  - name: output_holder
+    type: Any
+    default: list[CrewStreamingOutput | FlowStreamingOutput]
+  methods:
+  - name: __init__
+    sig: '__init__(self, use_async: bool = False) -> None'
+    lines:
+    - 320
+    - 337
+    detail:
+      calls:
+      - create_streaming_state
+  lines:
+  - 317
+  - 337
+- name: ForEachStreamingContext
+  kind: struct
+  ctx: Container for streaming state used in for_each crew execution methods.
+  fields:
+  - name: result_holder
+    type: Any
+    default: list[list[CrewOutput]]
+  - name: current_task_info
+    type: Any
+    default: TaskInfo
+  - name: state
+    type: Any
+    default: StreamingState
+  - name: output_holder
+    type: Any
+    default: list[CrewStreamingOutput | FlowStreamingOutput]
+  methods:
+  - name: __init__
+    sig: __init__(self) -> None
+    lines:
+    - 343
+    - 356
+    detail:
+      calls:
+      - create_streaming_state
+  lines:
+  - 340
+  - 356
+functions:
+- name: enable_agent_streaming
+  sig: 'enable_agent_streaming(agents: Iterable[BaseAgent]) -> None'
+  lines:
+  - 43
+  - 51
+  detail: {}
+- name: setup_agents
+  sig: |-
+    setup_agents(
+        crew: Crew,
+        agents: Iterable[BaseAgent],
+        embedder: EmbedderConfig | None,
+        function_calling_llm: Any,
+        step_callback: Callable[..., Any] | None,
+    ) -> None
+  lines:
+  - 54
+  - 77
+  detail:
+    calls:
+    - agent.create_agent_executor
+    - agent.set_knowledge
+- name: prepare_task_execution
+  sig: |-
+    prepare_task_execution(
+        crew: Crew,
+        task: Any,
+        task_index: int,
+        start_index: int | None,
+        task_outputs: list[Any],
+        last_sync_output: Any | None,
+    ) -> tuple[TaskExecutionData, list[Any], Any | None]
+  lines:
+  - 101
+  - 161
+  detail:
+    calls:
+    - TaskExecutionData
+    - ValueError
+    - crew._get_agent_to_use
+    - crew._log_task_start
+    - crew._prepare_tools
+    - task_outputs.append
+- name: check_conditional_skip
+  sig: |-
+    check_conditional_skip(
+        crew: Crew,
+        task: Any,
+        task_outputs: list[Any],
+        task_index: int,
+        was_replayed: bool,
+    ) -> Any | None
+  lines:
+  - 164
+  - 195
+  detail:
+    calls:
+    - crew._logger.log
+    - crew._store_execution_log
+    - task.get_skipped_task_output
+    - task.should_execute
+- name: _extract_files_from_inputs
+  sig: '_extract_files_from_inputs(inputs: dict[str, Any]) -> dict[str, Any]'
+  vis: protected
+  lines:
+  - 198
+  - 224
+  detail:
+    calls:
+    - inputs.items
+    - isinstance
+    - keys_to_remove.append
+- name: prepare_kickoff
+  sig: |-
+    prepare_kickoff(
+        crew: Crew,
+        inputs: dict[str, Any] | None,
+        input_files: dict[str, FileInput] | None = None,
+    ) -> dict[str, Any] | None
+  lines:
+  - 227
+  - 314
+  detail:
+    calls:
+    - CrewKickoffStartedEvent
+    - TypeError
+    - _extract_files_from_inputs
+    - baggage.get_baggage
+    - before_callback
+    - crew._handle_crew_planning
+    - crew._interpolate_inputs
+    - crew._set_allow_crewai_trigger_context_for_first_task
+    - crew._set_tasks_callbacks
+    - crew._task_output_handler.reset
+    - crewai_event_bus.emit
+    - dict
+    - future.result
+    - get_current_parent_id
+    - isinstance
+    - reset_emission_counter
+    - reset_last_event_id
+    - setup_agents
+    - store_files
+    - type
+- name: run_for_each_async
+  sig: |-
+    run_for_each_async(
+        crew: Crew,
+        inputs: list[dict[str, Any]],
+        kickoff_fn: Callable[
+            [Crew, dict[str, Any]], Coroutine[Any, Any, CrewOutput | CrewStreamingOutput]
+        ],
+    ) -> list[CrewOutput | CrewStreamingOutput] | CrewStreamingOutput
+  is_async: true
+  lines:
+  - 359
+  - 447
+  detail:
+    calls:
+    - CrewStreamingOutput
+    - ForEachStreamingContext
+    - UsageMetrics
+    - asyncio.create_task
+    - asyncio.gather
+    - create_async_chunk_generator
+    - crew._task_output_handler.reset
+    - crew.copy
+    - ctx.output_holder.append
+    - kickoff_fn
+    - list
+    - total_usage_metrics.add_usage_metrics
+    - zip
+exports:
+- name: TaskExecutionData
+  kind: type
+- name: StreamingContext
+  kind: type
+- name: ForEachStreamingContext
+  kind: type
+- name: enable_agent_streaming
+  kind: func
+- name: setup_agents
+  kind: func
+- name: prepare_task_execution
+  kind: func
+- name: check_conditional_skip
+  kind: func
+- name: prepare_kickoff
+  kind: func
+- name: run_for_each_async
+  kind: func
