@@ -1,0 +1,446 @@
+## Roska File Descriptor — components/source-code-browser.tsx
+file: components/source-code-browser.tsx
+lines: 880
+layer: ui
+imports:
+- sym: react.PropsWithChildren
+- sym: react.useState
+- sym: next/navigation.usePathname
+- sym: '@codemirror/view.EditorView'
+  kind: typing
+- sym: '@urql/core.createRequest'
+- sym: lodash-es.compact
+- sym: lodash-es.isEmpty
+- sym: lodash-es.isNil
+- sym: lodash-es.toNumber
+- sym: react-resizable-panels.ImperativePanelHandle
+- sym: swr.useSWR
+- sym: '@/lib/gql/generates.graphql'
+- sym: '@/lib/gql/generates/graphql.GitReference'
+- sym: '@/lib/gql/generates/graphql.RepositoryListQuery'
+- sym: '@/lib/hooks/use-router-stuff.useRouterStuff'
+- sym: '@/lib/hooks/use-server-info.useIsChatEnabled'
+- sym: '@/lib/language-utils.filename2prism'
+- sym: '@/lib/tabby/fetcher.fetcher'
+- sym: '@/lib/tabby/gql.client'
+- sym: '@/lib/tabby/query.repositoryListQuery'
+- sym: '@/lib/types.ResolveEntriesResponse'
+  kind: typing
+- sym: '@/lib/types.TFile'
+  kind: typing
+- sym: '@/lib/utils.cn'
+- sym: '@/lib/utils.formatLineHashForCodeBrowser'
+- sym: '@/components/ui/resizable.ResizableHandle'
+- sym: '@/components/ui/resizable.ResizablePanel'
+- sym: '@/components/ui/resizable.ResizablePanelGroup'
+- sym: '@/components/ui/scroll-area.ScrollArea'
+- sym: '@/components/demo-banner.BANNER_HEIGHT'
+- sym: '@/components/demo-banner.useShowDemoBanner'
+- sym: '@/components/skeleton.ListSkeleton'
+- sym: '@/components/topbar-progress-indicator.useTopbarProgress'
+- sym: ./blob-mode-view.BlobModeView
+- sym: ./chat-side-bar.ChatSideBar
+- sym: ./code-search-bar.CodeSearchBar
+- sym: ./code-search-result-view.CodeSearchResultView
+- sym: ./error-view.ErrorView
+- sym: ./file-directory-breadcrumb.FileDirectoryBreadcrumb
+- sym: ./file-tree.mapToFileTree
+- sym: ./file-tree.sortFileTree
+- sym: ./file-tree.type TFileTreeNode
+- sym: ./file-tree-panel.FileTreePanel
+- sym: ./tree-mode-view.TreeModeView
+- sym: ./types.FileDisplayType
+  kind: typing
+- sym: ./types.RepositoryRefKind
+  kind: typing
+- sym: ./utils.CodeBrowserError
+- sym: ./utils.generateEntryPath
+- sym: ./utils.getDefaultRepoRef
+- sym: ./utils.getDirectoriesFromBasename
+- sym: ./utils.parseLineNumberFromHash
+- sym: ./utils.repositoryList2Map
+- sym: ./utils.resolveFileNameFromPath
+- sym: ./utils.resolveRepoRef
+- sym: ./utils.resolveRepositoryInfoFromPath
+- sym: ./utils.toEntryRequestUrl
+data:
+- name: repositoryGrepQuery
+  type: any
+  val: |-
+    graphql(/* GraphQL */ `
+      query RepositoryGrep(
+        $id: ID!
+        $kind: RepositoryKind!
+        $rev: String
+        $query: Str...
+- name: SourceCodeBrowserContext
+  type: any
+  val: |-
+    React.createContext<SourceCodeBrowserContextValue>(
+        {} as SourceCodeBrowserContextValue
+      )
+- name: ENTRY_CONTENT_TYPE
+  type: string
+  val: '''application/vnd.directory+json'''
+- name: |-
+    {
+        activePath,
+        updateActivePath,
+        initialized,
+        setInitialized,
+        chatSideBarVisible,
+        setChatSideBarVisible,
+        repoMap,
+        setRepoMap,
+        activeRepo,
+        isPathInitialized,
+        activeEntryInfo,
+        prevActivePath,
+        updateFileMap,
+        setExpandedKeys,
+        error,
+        setError
+      }
+  type: any
+  val: React.useContext(SourceCodeBrowserContext)
+- name: '{ searchParams }'
+  type: any
+  val: useRouterStuff()
+- name: initializing
+  type: any
+  val: React.useRef(false)
+- name: '{ progress, setProgress }'
+  type: any
+  val: useTopbarProgress()
+- name: chatSideBarPanelRef
+  type: any
+  val: React.useRef<ImperativePanelHandle>(null)
+- name: '[chatSideBarPanelSize, setChatSideBarPanelSize]'
+  type: any
+  val: React.useState(35)
+- name: searchQuery
+  type: any
+  val: searchParams.get('q')?.toString()
+- name: parsedEntryInfo
+  type: any
+  val: |-
+    React.useMemo(() => {
+        return resolveRepositoryInfoFromPath(activePath)
+      }, [activePath])
+- name: activeBasename
+  type: any
+  val: parsedEntryInfo?.basename
+- name: isBlobMode
+  type: any
+  val: activeEntryInfo?.viewMode === 'blob'
+- name: isSearchMode
+  type: any
+  val: activeEntryInfo?.viewMode === 'search'
+- name: shouldFetchTree
+  type: any
+  val: '!!initialized && !isEmpty(repoMap) && !!activePath && !isSearchMode'
+- name: shouldFetchRepositoryGrep
+  type: any
+  val: '!!initialized && !isEmpty(repoMap) && !!activePath && isSearchMode'
+- name: shouldFetchRawFile
+  type: any
+  val: '!!initialized && isBlobMode && activeRepo'
+- name: |-
+    {
+        data: entriesResponse,
+        isLoading: fetchingTreeEntries,
+        error: entriesError
+      }
+  type: any
+  val: |-
+    useSWR<{
+        entries: TFile[]
+        requestPathname: string
+      }>(
+        shouldFetchTree ? activePath : null,
+        (path: stri...
+- name: |-
+    {
+        data: rawFileResponse,
+        isLoading: fetchingRawFile,
+        error: rawFileError
+      }
+  type: any
+  val: |-
+    useSWR<{
+        blob?: Blob
+        contentLength?: number
+        fileDisplayType: FileDisplayType
+      }>(
+        shouldFetchRawFile
+      ...
+- name: |-
+    {
+        data: repositoryGreps,
+        isLoading: fetchingRepositoryGrep,
+        error: repositoryGrepError
+      }
+  type: any
+  val: |-
+    useSWR(
+        shouldFetchRepositoryGrep && searchQuery ? [activePath, searchQuery] : null,
+        ([activePath, searchQuery])...
+- name: fileBlob
+  type: any
+  val: rawFileResponse?.blob
+- name: contentLength
+  type: any
+  val: rawFileResponse?.contentLength
+- name: fileDisplayType
+  type: any
+  val: rawFileResponse?.fileDisplayType
+- name: viewAffectingError
+  type: any
+  val: error || rawFileError || entriesError
+- name: showErrorView
+  type: any
+  val: '!!viewAffectingError'
+- name: isTreeMode
+  type: any
+  val: activeEntryInfo?.viewMode === 'tree' || !activeEntryInfo?.viewMode
+types:
+- name: TFileMapItem
+  kind: typealias
+  decorators:
+  - type
+  fields:
+  - name: file
+    type: TFile
+  - name: fullPath
+    type: string
+  - name: treeExpanded
+    type: boolean
+  - name: isRepository
+    type: boolean
+  - name: repository
+    type: RepositoryItem | undefined
+  lines:
+  - 69
+  - 76
+- name: TFileMap
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 77
+  - 77
+- name: RepositoryItem
+  kind: typealias
+  decorators:
+  - type
+  lines:
+  - 78
+  - 78
+- name: SourceCodeBrowserContextValue
+  kind: typealias
+  decorators:
+  - type
+  fields:
+  - name: activePath
+    type: string | undefined
+  - name: updateActivePath
+    type: |-
+      (
+          path: string | undefined,
+          options?: {
+            hash?: string
+            replace?: boolean
+            plain?: boolean
+          }
+        ) => Promise<void>
+  - name: repoMap
+    type: Record<string, RepositoryItem>
+  - name: setRepoMap
+    type: '(map: Record<string, RepositoryItem>) => void'
+  - name: fileMap
+    type: TFileMap
+  - name: updateFileMap
+    type: '(map: TFileMap, replace?: boolean) => void'
+  - name: expandedKeys
+    type: Set<string>
+  - name: setExpandedKeys
+    type: React.Dispatch<React.SetStateAction<Set<string>>>
+  - name: toggleExpandedKey
+    type: '(key: string) => void'
+  - name: currentFileRoutes
+    type: TFileMapItem[]
+  - name: initialized
+    type: boolean
+  - name: setInitialized
+    type: React.Dispatch<React.SetStateAction<boolean>>
+  - name: fileTreeData
+    type: TFileTreeNode[]
+  - name: chatSideBarVisible
+    type: boolean
+  - name: setChatSideBarVisible
+    type: React.Dispatch<React.SetStateAction<boolean>>
+  - name: isChatEnabled
+    type: boolean | undefined
+  - name: activeRepo
+    type: RepositoryItem | undefined
+  - name: activeRepoRef
+    type: |-
+      | {
+              kind?: 'branch' | 'tag' | 'commit'
+              name?: string
+              ref: GitReference | undefined
+            }
+          | undefined
+  - name: isPathInitialized
+    type: boolean
+  - name: activeEntryInfo
+    type: ReturnType<typeof resolveRepositoryInfoFromPath>
+  - name: prevActivePath
+    type: React.MutableRefObject<string | undefined>
+  - name: error
+    type: Error | undefined
+  - name: setError
+    type: '(e: Error | undefined) => void'
+  - name: textEditorViewRef
+    type: React.MutableRefObject<EditorView | null>
+  lines:
+  - 108
+  - 146
+- name: SourceCodeBrowserProps
+  kind: trait
+  decorators:
+  - interface
+  lines:
+  - 343
+  - 345
+functions:
+- name: SourceCodeBrowserContextProvider
+  sig: |-
+    SourceCodeBrowserContextProvider({
+      children
+    }): React.FC<PropsWithChildren>
+  lines:
+  - 153
+  - 341
+  detail:
+    calls:
+    - React.useCallback
+    - React.useEffect
+    - React.useMemo
+    - React.useRef
+    - React.useState
+    - new Set
+    - searchParams.get
+    - searchParams.get('redirect_git_url')?.toString
+    - useIsChatEnabled
+    - usePathname
+    - useRouterStuff
+    - useState
+- name: onPanelLayout
+  sig: 'onPanelLayout(sizes: number[])'
+  lines:
+  - 490
+  - 494
+  detail:
+    calls:
+    - setChatSideBarPanelSize
+exports:
+- name: TFileMapItem
+  kind: type
+- name: TFileMap
+  kind: type
+- name: RepositoryItem
+  kind: type
+- name: SourceCodeBrowserContextValue
+  kind: type
+- name: SourceCodeBrowserProps
+  kind: type
+- name: SourceCodeBrowserContextProvider
+  kind: func
+- name: onPanelLayout
+  kind: func
+- name: repositoryGrepQuery
+  kind: data
+- name: SourceCodeBrowserContext
+  kind: data
+- name: ENTRY_CONTENT_TYPE
+  kind: data
+- name: |-
+    {
+        activePath,
+        updateActivePath,
+        initialized,
+        setInitialized,
+        chatSideBarVisible,
+        setChatSideBarVisible,
+        repoMap,
+        setRepoMap,
+        activeRepo,
+        isPathInitialized,
+        activeEntryInfo,
+        prevActivePath,
+        updateFileMap,
+        setExpandedKeys,
+        error,
+        setError
+      }
+  kind: data
+- name: '{ searchParams }'
+  kind: data
+- name: initializing
+  kind: data
+- name: '{ progress, setProgress }'
+  kind: data
+- name: chatSideBarPanelRef
+  kind: data
+- name: '[chatSideBarPanelSize, setChatSideBarPanelSize]'
+  kind: data
+- name: searchQuery
+  kind: data
+- name: parsedEntryInfo
+  kind: data
+- name: activeBasename
+  kind: data
+- name: isBlobMode
+  kind: data
+- name: isSearchMode
+  kind: data
+- name: shouldFetchTree
+  kind: data
+- name: shouldFetchRepositoryGrep
+  kind: data
+- name: shouldFetchRawFile
+  kind: data
+- name: |-
+    {
+        data: entriesResponse,
+        isLoading: fetchingTreeEntries,
+        error: entriesError
+      }
+  kind: data
+- name: |-
+    {
+        data: rawFileResponse,
+        isLoading: fetchingRawFile,
+        error: rawFileError
+      }
+  kind: data
+- name: |-
+    {
+        data: repositoryGreps,
+        isLoading: fetchingRepositoryGrep,
+        error: repositoryGrepError
+      }
+  kind: data
+- name: fileBlob
+  kind: data
+- name: contentLength
+  kind: data
+- name: fileDisplayType
+  kind: data
+- name: viewAffectingError
+  kind: data
+- name: showErrorView
+  kind: data
+- name: isTreeMode
+  kind: data
