@@ -1,50 +1,101 @@
 import { EventEmitter } from './event-emitter';
 
-export class Timer extends EventEmitter {
-  private _startTime: number | null = null;
-  private _elapsed: number = 0;
-  private _running: boolean = false;
+export class Timer {
+  private startTime: number = 0;
+  private elapsedTime: number = 0;
+  private running: boolean = false;
+  private intervalId: number | null = null;
+  private tickInterval: number = 1000; // Default 1 second
+  private eventEmitter: EventEmitter;
 
-  constructor() {
-    super();
+  constructor(tickInterval: number = 1000) {
+    this.tickInterval = tickInterval;
+    this.eventEmitter = new EventEmitter();
   }
 
   start(): void {
-    if (this._running) {
-      return;
-    }
-    this._startTime = performance.now();
-    this._running = true;
-    this.emit('start');
+    if (this.running) return;
+    
+    this.startTime = performance.now() - this.elapsedTime;
+    this.running = true;
+    
+    this.intervalId = window.setInterval(() => {
+      this.elapsedTime = performance.now() - this.startTime;
+      this.eventEmitter.emit('tick', this.elapsedTime);
+    }, this.tickInterval);
+    
+    this.eventEmitter.emit('start');
   }
 
   stop(): void {
-    if (!this._running) {
-      return;
+    if (!this.running) return;
+    
+    this.running = false;
+    
+    if (this.intervalId !== null) {
+      clearInterval(this.intervalId);
+      this.intervalId = null;
     }
-    const now = performance.now();
-    this._elapsed += now - (this._startTime as number);
-    this._running = false;
-    this._startTime = null;
-    this.emit('stop');
-  }
-
-  get elapsed(): number {
-    if (this._running) {
-      const now = performance.now();
-      return this._elapsed + (now - (this._startTime as number));
-    }
-    return this._elapsed;
+    
+    this.eventEmitter.emit('stop', this.elapsedTime);
   }
 
   reset(): void {
-    this._elapsed = 0;
-    this._startTime = null;
-    this._running = false;
-    this.emit('reset');
+    const wasRunning = this.running;
+    
+    if (wasRunning) {
+      this.stop();
+    }
+    
+    this.elapsedTime = 0;
+    this.startTime = 0;
+    
+    this.eventEmitter.emit('reset');
+    
+    if (wasRunning) {
+      this.start();
+    }
   }
 
-  get running(): boolean {
-    return this._running;
+  getElapsedTime(): number {
+    return this.elapsedTime;
+  }
+
+  isRunning(): boolean {
+    return this.running;
+  }
+
+  setTickInterval(interval: number): void {
+    this.tickInterval = interval;
+    
+    if (this.running) {
+      this.stop();
+      this.start();
+    }
+  }
+
+  getTickInterval(): number {
+    return this.tickInterval;
+  }
+
+  onTick(callback: (elapsedTime: number) => void): void {
+    this.eventEmitter.on('tick', callback);
+  }
+
+  onStart(callback: () => void): void {
+    this.eventEmitter.on('start', callback);
+  }
+
+  onStop(callback: (elapsedTime: number) => void): void {
+    this.eventEmitter.on('stop', callback);
+  }
+
+  onReset(callback: () => void): void {
+    this.eventEmitter.on('reset', callback);
+  }
+
+  destroy(): void {
+    this.stop();
+    this.eventEmitter.removeAllListeners();
   }
 }

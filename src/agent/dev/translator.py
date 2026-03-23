@@ -15,6 +15,52 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+
+def to_kebab_case(name: str) -> str:
+    """Convert PascalCase/camelCase to kebab-case.
+
+    EventEmitter → event-emitter, Mat4 → mat4, Channel3d → channel3d,
+    GraphicsDevice → graphics-device, WebGLDevice → web-gl-device
+    """
+    # Insert hyphen between lowercase/digit and uppercase: eventEmitter → event-Emitter
+    s = re.sub(r'([a-z0-9])([A-Z])', r'\1-\2', name)
+    # Insert hyphen between uppercase acronym and capitalized word: GLDevice → GL-Device
+    # But keep acronyms together: WebGL stays as webgl
+    s = re.sub(r'([A-Z]{2,})([A-Z][a-z])', r'\1-\2', s)
+    return s.lower()
+
+
+def build_import_map(module_bp, prior_modules: list = None) -> str:
+    """Build an import map for the LLM: exact paths for every available type.
+
+    Example output:
+    ## Import map (use EXACTLY these paths)
+    Same module (math): import { Vec3 } from './vec3';
+    Same module (math): import { Mat4 } from './mat4';
+    From core: import { EventEmitter } from '../core';
+    From math: import { Vec3, Mat4, Quat } from '../math';
+    """
+    lines = []
+
+    # Same-module imports
+    for t in module_bp.types:
+        kebab = to_kebab_case(t.name)
+        lines.append(f"Same module ({module_bp.name}): import {{ {t.name} }} from './{kebab}';")
+
+    # Cross-module imports (from prior layers via barrel)
+    if prior_modules:
+        for pm in prior_modules:
+            type_names = [t.name for t in pm.types if t.status == "translated"]
+            if type_names:
+                names_str = ", ".join(type_names[:8])
+                if len(type_names) > 8:
+                    names_str += ", ..."
+                lines.append(f"From {pm.name}: import {{ {names_str} }} from '../{pm.name}';")
+
+    if not lines:
+        return ""
+    return "## Import map (use EXACTLY these paths)\n" + "\n".join(lines)
+
 from ..llm.providers import LLMProvider, LLMMessage
 from .. import OUT_DIR
 
@@ -36,7 +82,15 @@ Rules:
 6. Output ONLY the source code. No markdown fences, no explanations.
 7. Include proper imports at the top.
 8. Use idiomatic style for the target language.
-9. Make the code complete and runnable — someone should be able to import it directly."""
+9. Make the code complete and runnable — someone should be able to import it directly.
+
+CODE ORGANIZATION (STRICT):
+10. File naming: kebab-case ONLY (e.g., graphics-device.ts, vertex-buffer.ts, event-emitter.ts).
+11. Cross-module imports: ALWAYS use barrel imports via index. Example: import { Vec3, Mat4 } from '../math';
+12. Same-module imports: use relative path to the file. Example: import { VertexBuffer } from './vertex-buffer';
+13. NEVER add .js extension to imports.
+14. NEVER use PascalCase or camelCase for file names in import paths.
+15. If an IMPORT MAP is provided, use EXACTLY those paths. Do not invent import paths."""
 
 BLUEPRINT_SYSTEM = """You are a software architect. You generate detailed YAML blueprints from reference Roska descriptors.
 
@@ -92,6 +146,7 @@ class BlueprintTranslator:
         self.total_tokens = 0
         self.emission_index = emission_index
         self.prior_layers_context = prior_layers_context
+        self.prior_modules: list = []  # ModuleBlueprints from prior layers
 
     def _log(self, msg: str):
         if self.verbose:
@@ -172,10 +227,16 @@ class BlueprintTranslator:
         user += f"## Module context\n"
         user += f"Language: {module_bp.language}\n"
         user += f"Module: {module_bp.name}\n"
+        user += f"Target file: {type_bp.target_file}\n"
         if module_bp.constraints:
             user += f"Constraints:\n"
             for c in module_bp.constraints:
                 user += f"  - {c}\n"
+
+        # Import map — exact paths the LLM must use
+        import_map = build_import_map(module_bp, self.prior_modules)
+        if import_map:
+            user += f"\n{import_map}\n"
 
         # Sibling awareness — compacted or simple list
         if sibling_context:
@@ -199,7 +260,7 @@ class BlueprintTranslator:
         clean = self._strip_fences(code)
 
         # 6. Write to disk
-        target = type_bp.target_file or f"{module_bp.target_dir}/{type_bp.name.lower()}.ts"
+        target = type_bp.target_file or f"{module_bp.target_dir}/{to_kebab_case(type_bp.name)}.ts"
         full_path = project_dir / target
         full_path.parent.mkdir(parents=True, exist_ok=True)
         full_path.write_text(clean + "\n")
@@ -226,6 +287,21 @@ class BlueprintTranslator:
         full_path.write_text("\n".join(lines) + "\n")
 
         self._log(f"  wrote {target} (index, {len(lines)} exports)")
+        return target
+
+    def generate_root_index(self, module_names: list[str],
+                            project_dir: Path) -> str:
+        """Generate src/index.ts that re-exports all modules."""
+        lines = [f"// z86 engine — public API"]
+        for mod in module_names:
+            lines.append(f"export * from './{mod}';")
+        lines.append("")
+
+        target = "src/index.ts"
+        full_path = project_dir / target
+        full_path.parent.mkdir(parents=True, exist_ok=True)
+        full_path.write_text("\n".join(lines))
+        self._log(f"  wrote {target} (root index, {len(module_names)} modules)")
         return target
 
     # ── Blueprint Generation ────────────────────────────────

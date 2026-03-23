@@ -1,5 +1,5 @@
-import { EventEmitter } from '../core/EventEmitter';
-import { Vec2 } from '../math/Vec2';
+import { EventEmitter } from '../core';
+import { Vec2 } from '../math';
 
 export interface GamepadButton {
     pressed: boolean;
@@ -7,78 +7,152 @@ export interface GamepadButton {
     value: number;
 }
 
-export interface GamepadAxis {
-    x: number;
-    y: number;
+export interface GamepadAxes {
+    leftStick: Vec2;
+    rightStick: Vec2;
+    leftTrigger: number;
+    rightTrigger: number;
 }
 
 export class Gamepad extends EventEmitter {
+    private gamepad: Gamepad | null = null;
     private index: number;
-    private gamepad: globalThis.Gamepad | null = null;
     private buttons: GamepadButton[] = [];
     private axes: number[] = [];
+    private prevButtons: GamepadButton[] = [];
+    private prevAxes: number[] = [];
     private connected: boolean = false;
-    private timestamp: number = 0;
+    private mapping: string = 'standard';
 
     constructor(index: number = 0) {
         super();
         this.index = index;
-        this.update();
+        this.setupEventListeners();
+        this.checkConnection();
+    }
+
+    private setupEventListeners(): void {
+        window.addEventListener('gamepadconnected', (e: GamepadEvent) => {
+            if (e.gamepad.index === this.index) {
+                this.gamepad = e.gamepad;
+                this.connected = true;
+                this.initializeState();
+                this.emit('connected', this);
+            }
+        });
+
+        window.addEventListener('gamepaddisconnected', (e: GamepadEvent) => {
+            if (e.gamepad.index === this.index) {
+                this.connected = false;
+                this.emit('disconnected', this);
+            }
+        });
+    }
+
+    private checkConnection(): void {
+        const gamepads = navigator.getGamepads();
+        if (gamepads[this.index]) {
+            this.gamepad = gamepads[this.index];
+            this.connected = true;
+            this.initializeState();
+        }
+    }
+
+    private initializeState(): void {
+        if (!this.gamepad) return;
+        
+        this.buttons = new Array(this.gamepad.buttons.length);
+        this.prevButtons = new Array(this.gamepad.buttons.length);
+        this.axes = new Array(this.gamepad.axes.length);
+        this.prevAxes = new Array(this.gamepad.axes.length);
+
+        for (let i = 0; i < this.gamepad.buttons.length; i++) {
+            this.buttons[i] = {
+                pressed: this.gamepad.buttons[i].pressed,
+                touched: this.gamepad.buttons[i].touched,
+                value: this.gamepad.buttons[i].value
+            };
+            this.prevButtons[i] = { ...this.buttons[i] };
+        }
+
+        for (let i = 0; i < this.gamepad.axes.length; i++) {
+            this.axes[i] = this.gamepad.axes[i];
+            this.prevAxes[i] = this.axes[i];
+        }
     }
 
     update(): void {
+        if (!this.connected) {
+            this.checkConnection();
+            return;
+        }
+
         const gamepads = navigator.getGamepads();
-        const gamepad = gamepads[this.index];
+        this.gamepad = gamepads[this.index];
 
-        if (gamepad) {
-            if (!this.connected) {
-                this.connected = true;
-                this.emit('connected', { gamepad: this });
-            }
+        if (!this.gamepad) {
+            this.connected = false;
+            this.emit('disconnected', this);
+            return;
+        }
 
-            this.gamepad = gamepad;
-            this.timestamp = gamepad.timestamp;
+        // Store previous state
+        for (let i = 0; i < this.buttons.length; i++) {
+            this.prevButtons[i] = { ...this.buttons[i] };
+        }
+        for (let i = 0; i < this.axes.length; i++) {
+            this.prevAxes[i] = this.axes[i];
+        }
 
-            // Update buttons
-            this.buttons = gamepad.buttons.map(button => ({
+        // Update current state
+        for (let i = 0; i < this.gamepad.buttons.length; i++) {
+            const button = this.gamepad.buttons[i];
+            this.buttons[i] = {
                 pressed: button.pressed,
                 touched: button.touched,
                 value: button.value
-            }));
+            };
 
-            // Update axes
-            this.axes = [...gamepad.axes];
-        } else {
-            if (this.connected) {
-                this.connected = false;
-                this.emit('disconnected', { gamepad: this });
+            // Emit button events
+            if (button.pressed && !this.prevButtons[i].pressed) {
+                this.emit('buttonDown', i, this.buttons[i]);
+            } else if (!button.pressed && this.prevButtons[i].pressed) {
+                this.emit('buttonUp', i, this.buttons[i]);
             }
-            this.gamepad = null;
-            this.buttons = [];
-            this.axes = [];
+        }
+
+        for (let i = 0; i < this.gamepad.axes.length; i++) {
+            this.axes[i] = this.gamepad.axes[i];
+            
+            // Emit axis events for significant changes
+            const delta = Math.abs(this.axes[i] - this.prevAxes[i]);
+            if (delta > 0.01) {
+                this.emit('axisMove', i, this.axes[i], this.prevAxes[i]);
+            }
         }
     }
 
-    getButton(buttonIndex: number): GamepadButton {
-        if (buttonIndex < 0 || buttonIndex >= this.buttons.length) {
+    getButton(index: number): GamepadButton {
+        if (index < 0 || index >= this.buttons.length) {
             return { pressed: false, touched: false, value: 0 };
         }
-        return this.buttons[buttonIndex];
+        return this.buttons[index];
     }
 
-    getAxis(axisIndex: number): number {
-        if (axisIndex < 0 || axisIndex >= this.axes.length) {
+    getAxis(index: number): number {
+        if (index < 0 || index >= this.axes.length) {
             return 0;
         }
-        return this.axes[axisIndex];
+        return this.axes[index];
     }
 
-    getAxes(): number[] {
-        return [...this.axes];
-    }
-
-    getButtons(): GamepadButton[] {
-        return this.buttons.map(b => ({ ...b }));
+    getAxes(): GamepadAxes {
+        return {
+            leftStick: new Vec2(this.getAxis(0), this.getAxis(1)),
+            rightStick: new Vec2(this.getAxis(2), this.getAxis(3)),
+            leftTrigger: this.getAxis(4),
+            rightTrigger: this.getAxis(5)
+        };
     }
 
     isConnected(): boolean {
@@ -94,20 +168,20 @@ export class Gamepad extends EventEmitter {
     }
 
     getMapping(): string {
-        return this.gamepad?.mapping || '';
+        return this.mapping;
     }
 
     getTimestamp(): number {
-        return this.timestamp;
+        return this.gamepad?.timestamp || 0;
     }
 
-    vibrate(duration: number, weakMagnitude: number = 0.5, strongMagnitude: number = 0.5): Promise<boolean> {
+    vibracte(duration: number = 200, weakMagnitude: number = 0.5, strongMagnitude: number = 0.5): Promise<boolean> {
         if (!this.gamepad || !('vibrationActuator' in this.gamepad)) {
             return Promise.resolve(false);
         }
 
         const actuator = (this.gamepad as any).vibrationActuator;
-        if (!actuator) {
+        if (!actuator || actuator.type !== 'dual-rumble') {
             return Promise.resolve(false);
         }
 

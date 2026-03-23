@@ -1,162 +1,32 @@
-import { EventEmitter } from '../core/event-emitter';
-import { Vec2 } from '../math/vec2';
-import { Vec3 } from '../math/vec3';
-import { BoundingBox } from '../math/bounding-box';
-import { BoundingSphere } from '../math/bounding-sphere';
+import { EventEmitter } from '../core';
+import { Vec3, Quat, BoundingBox, BoundingSphere } from '../math';
 import { RigidBody } from './rigid-body';
 import { ContactResult } from './contact-result';
 
 export class Collider extends EventEmitter {
+    shape: 'box' | 'sphere' | 'capsule' | 'mesh' = 'box';
+    position: Vec3 = new Vec3();
+    rotation: Quat = new Quat();
+    private _bounds: BoundingBox | BoundingSphere | null = null;
     private _body: RigidBody | null = null;
-    private _shape: BoundingBox | BoundingSphere | null = null;
     private _enabled: boolean = true;
+    private _layer: number = 1;
 
-    constructor() {
+    constructor(shape: 'box' | 'sphere' | 'capsule' | 'mesh' = 'box') {
         super();
-    }
-
-    attachToBody(body: RigidBody): void {
-        if (this._body === body) {
-            return;
-        }
-
-        if (this._body) {
-            const oldBody = this._body;
-            this._body = null;
-            oldBody.removeCollider(this);
-        }
-
-        this._body = body;
-        if (body) {
-            body.addCollider(this);
-        }
-    }
-
-    setShape(shape: BoundingBox | BoundingSphere): void {
-        this._shape = shape;
-        this.emit('shapeChanged', shape);
-    }
-
-    detectCollision(other: Collider): ContactResult | null {
-        if (!this._shape || !other._shape) {
-            return null;
-        }
-
-        if (this._shape instanceof BoundingBox && other._shape instanceof BoundingBox) {
-            return this.boxToBoxCollision(this._shape, other._shape);
-        }
-
-        if (this._shape instanceof BoundingSphere && other._shape instanceof BoundingSphere) {
-            return this.sphereToSphereCollision(this._shape, other._shape);
-        }
-
-        if (this._shape instanceof BoundingBox && other._shape instanceof BoundingSphere) {
-            return this.boxToSphereCollision(this._shape, other._shape);
-        }
-
-        if (this._shape instanceof BoundingSphere && other._shape instanceof BoundingBox) {
-            const result = this.boxToSphereCollision(other._shape, this._shape);
-            if (result) {
-                result.normal = result.normal.clone().mulScalar(-1);
-            }
-            return result;
-        }
-
-        return null;
-    }
-
-    private boxToBoxCollision(boxA: BoundingBox, boxB: BoundingBox): ContactResult | null {
-        const centerA = boxA.center;
-        const centerB = boxB.center;
-        const halfExtentsA = boxA.halfExtents;
-        const halfExtentsB = boxB.halfExtents;
-
-        const dx = centerB.x - centerA.x;
-        const dy = centerB.y - centerA.y;
-        const dz = centerB.z - centerA.z;
-
-        const overlapX = halfExtentsA.x + halfExtentsB.x - Math.abs(dx);
-        const overlapY = halfExtentsA.y + halfExtentsB.y - Math.abs(dy);
-        const overlapZ = halfExtentsA.z + halfExtentsB.z - Math.abs(dz);
-
-        if (overlapX <= 0 || overlapY <= 0 || overlapZ <= 0) {
-            return null;
-        }
-
-        let normal: Vec3;
-        let penetration: number;
-
-        if (overlapX < overlapY && overlapX < overlapZ) {
-            normal = new Vec3(dx > 0 ? 1 : -1, 0, 0);
-            penetration = overlapX;
-        } else if (overlapY < overlapZ) {
-            normal = new Vec3(0, dy > 0 ? 1 : -1, 0);
-            penetration = overlapY;
-        } else {
-            normal = new Vec3(0, 0, dz > 0 ? 1 : -1);
-            penetration = overlapZ;
-        }
-
-        const contactPoint = new Vec3(
-            centerA.x + (dx > 0 ? halfExtentsA.x : -halfExtentsA.x),
-            centerA.y + (dy > 0 ? halfExtentsA.y : -halfExtentsA.y),
-            centerA.z + (dz > 0 ? halfExtentsA.z : -halfExtentsA.z)
-        );
-
-        return new ContactResult(normal, penetration, contactPoint);
-    }
-
-    private sphereToSphereCollision(sphereA: BoundingSphere, sphereB: BoundingSphere): ContactResult | null {
-        const distance = sphereA.center.distance(sphereB.center);
-        const radiusSum = sphereA.radius + sphereB.radius;
-
-        if (distance >= radiusSum) {
-            return null;
-        }
-
-        const normal = sphereB.center.clone().sub(sphereA.center).normalize();
-        const penetration = radiusSum - distance;
-        const contactPoint = sphereA.center.clone().add(normal.clone().mulScalar(sphereA.radius));
-
-        return new ContactResult(normal, penetration, contactPoint);
-    }
-
-    private boxToSphereCollision(box: BoundingBox, sphere: BoundingSphere): ContactResult | null {
-        const closestPoint = this.closestPointOnBox(box, sphere.center);
-        const distance = closestPoint.distance(sphere.center);
-
-        if (distance >= sphere.radius) {
-            return null;
-        }
-
-        const normal = sphere.center.clone().sub(closestPoint).normalize();
-        const penetration = sphere.radius - distance;
-        const contactPoint = closestPoint;
-
-        return new ContactResult(normal, penetration, contactPoint);
-    }
-
-    private closestPointOnBox(box: BoundingBox, point: Vec3): Vec3 {
-        const center = box.center;
-        const halfExtents = box.halfExtents;
-
-        const dx = point.x - center.x;
-        const dy = point.y - center.y;
-        const dz = point.z - center.z;
-
-        const closestX = center.x + Math.max(-halfExtents.x, Math.min(halfExtents.x, dx));
-        const closestY = center.y + Math.max(-halfExtents.y, Math.min(halfExtents.y, dy));
-        const closestZ = center.z + Math.max(-halfExtents.z, Math.min(halfExtents.z, dz));
-
-        return new Vec3(closestX, closestY, closestZ);
+        this.shape = shape;
+        this._updateBounds();
     }
 
     get body(): RigidBody | null {
         return this._body;
     }
 
-    get shape(): BoundingBox | BoundingSphere | null {
-        return this._shape;
+    set body(value: RigidBody | null) {
+        this._body = value;
+        if (this._body) {
+            this._body.collider = this;
+        }
     }
 
     get enabled(): boolean {
@@ -166,7 +36,123 @@ export class Collider extends EventEmitter {
     set enabled(value: boolean) {
         if (this._enabled !== value) {
             this._enabled = value;
-            this.emit('enabledChanged', value);
+            this.emit('enabled', this._enabled);
         }
     }
+
+    get layer(): number {
+        return this._layer;
+    }
+
+    set layer(value: number) {
+        this._layer = value;
+    }
+
+    get bounds(): BoundingBox | BoundingSphere | null {
+        return this._bounds;
+    }
+
+    setPosition(x: number | Vec3, y?: number, z?: number): this {
+        if (typeof x === 'number') {
+            this.position.set(x, y!, z!);
+        } else {
+            this.position.copy(x);
+        }
+        this._updateBounds();
+        return this;
+    }
+
+    setRotation(x: number | Quat, y?: number, z?: number, w?: number): this {
+        if (typeof x === 'number') {
+            this.rotation.set(x, y!, z!, w!);
+        } else {
+            this.rotation.copy(x);
+        }
+        this._updateBounds();
+        return this;
+    }
+
+    intersects(other: Collider): boolean {
+        if (!this._bounds || !other._bounds) return false;
+        
+        if (this._bounds instanceof BoundingBox && other._bounds instanceof BoundingBox) {
+            return this._bounds.intersectsBoundingBox(other._bounds);
+        }
+        if (this._bounds instanceof BoundingSphere && other._bounds instanceof BoundingSphere) {
+            return this._bounds.intersectsBoundingSphere(other._bounds);
+        }
+        if (this._bounds instanceof BoundingBox && other._bounds instanceof BoundingSphere) {
+            return other._bounds.intersectsBoundingBox(this._bounds);
+        }
+        if (this._bounds instanceof BoundingSphere && other._bounds instanceof BoundingBox) {
+            return this._bounds.intersectsBoundingBox(other._bounds);
+        }
+        return false;
+    }
+
+    raycast(ray: import('../math').Ray, result: import('./raycast-result').RaycastResult): boolean {
+        if (!this._bounds) return false;
+        
+        if (this._bounds instanceof BoundingBox) {
+            return this._bounds.intersectsRay(ray, result.point) !== null;
+        }
+        if (this._bounds instanceof BoundingSphere) {
+            return this._bounds.intersectsRay(ray, result.point) !== null;
+        }
+        return false;
+    }
+
+    getContacts(other: Collider): ContactResult[] {
+        const contacts: ContactResult[] = [];
+        if (!this.intersects(other)) return contacts;
+        
+        const result = new ContactResult();
+        result.a = this;
+        result.b = other;
+        result.pointA = this.position.clone();
+        result.pointB = other.position.clone();
+        result.normal = other.position.clone().sub(this.position).normalize();
+        result.distance = Vec3.distance(this.position, other.position);
+        contacts.push(result);
+        
+        return contacts;
+    }
+
+    private _updateBounds(): void {
+        switch (this.shape) {
+            case 'box':
+                this._bounds = new BoundingBox(this.position, new Vec3(1, 1, 1));
+                break;
+            case 'sphere':
+                this._bounds = new BoundingSphere(this.position, 0.5);
+                break;
+            case 'capsule':
+                this._bounds = new BoundingCapsule(this.position, 0.5, 1);
+                break;
+            case 'mesh':
+                this._bounds = new BoundingBox(this.position, new Vec3(1, 1, 1));
+                break;
+        }
+    }
+
+    clone(): Collider {
+        const clone = new Collider(this.shape);
+        clone.position.copy(this.position);
+        clone.rotation.copy(this.rotation);
+        clone._enabled = this._enabled;
+        clone._layer = this._layer;
+        clone._updateBounds();
+        return clone;
+    }
+
+    destroy(): void {
+        this.emit('destroy');
+        this.removeAllListeners();
+        this._body = null;
+        this._bounds = null;
+    }
+}
+
+class BoundingCapsule {
+    constructor(public center: Vec3, public radius: number, public height: number) {}
 }

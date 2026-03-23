@@ -1,4 +1,5 @@
-import { EventHandler } from '../core/event-handler';
+import { EventHandler } from '../core';
+import { Entity } from './entity';
 
 export interface ComponentData {
     [key: string]: any;
@@ -9,7 +10,7 @@ export class Component extends EventHandler {
     entity: Entity;
     enabled: boolean;
     data: ComponentData;
-    gameObject: GameObject;
+    gameObject: any;
     destroyed: boolean;
 
     constructor(system: ComponentSystem, entity: Entity) {
@@ -31,14 +32,14 @@ export class Component extends EventHandler {
     }
 
     onPostStateChange(): void {
-        // After enabled state flips
+        // After state change callback
     }
 
-    getGameObject(): GameObject {
+    getGameObject(): any {
         return this.gameObject;
     }
 
-    setGameObject(gameObject: GameObject): void {
+    setGameObject(gameObject: any): void {
         this.gameObject = gameObject;
     }
 
@@ -63,13 +64,11 @@ export class Component extends EventHandler {
     }
 
     destroy(): void {
-        if (!this.destroyed) {
-            this.destroyed = true;
-            if (this.gameObject) {
-                this.gameObject.removeComponent(this);
-            }
-            this.fire('destroy');
-            this.off();
-        }
+        this.destroyed = true;
+        this.enabled = false;
+        this.system = null;
+        this.entity = null;
+        this.gameObject = null;
+        this.data = null;
     }
 }

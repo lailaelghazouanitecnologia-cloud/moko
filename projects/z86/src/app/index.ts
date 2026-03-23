@@ -1,4 +1,4 @@
 export { Application } from './application';
-export { SceneRegistry } from './sceneregistry';
-export { AssetRegistry } from './assetregistry';
-export { ScriptRegistry } from './scriptregistry';
+export { SceneRegistry } from './scene-registry';
+export { AssetRegistry } from './asset-registry';
+export { ScriptRegistry } from './script-registry';

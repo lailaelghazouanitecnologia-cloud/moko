@@ -15,13 +15,11 @@ export class Vec2 {
         return new Vec2(this.x - v.x, this.y - v.y);
     }
 
-    mul(s: number): Vec2;
-    mul(v: Vec2): Vec2;
-    mul(arg: number | Vec2): Vec2 {
-        if (typeof arg === 'number') {
-            return new Vec2(this.x * arg, this.y * arg);
+    mul(s: number | Vec2): Vec2 {
+        if (typeof s === 'number') {
+            return new Vec2(this.x * s, this.y * s);
         } else {
-            return new Vec2(this.x * arg.x, this.y * arg.y);
+            return new Vec2(this.x * s.x, this.y * s.y);
         }
     }
 
@@ -31,9 +29,7 @@ export class Vec2 {
 
     normalize(): Vec2 {
         const len = this.length();
-        if (len === 0) {
-            return new Vec2(0, 0);
-        }
+        if (len === 0) return new Vec2(0, 0);
         return new Vec2(this.x / len, this.y / len);
     }
 
@@ -65,6 +61,12 @@ export class Vec2 {
     copy(v: Vec2): Vec2 {
         this.x = v.x;
         this.y = v.y;
+        return this;
+    }
+
+    set(x: number, y: number): Vec2 {
+        this.x = x;
+        this.y = y;
         return this;
     }
 }

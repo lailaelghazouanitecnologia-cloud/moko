@@ -1,142 +1,197 @@
-import { EventEmitter } from '../core/event-emitter';
-import { Vec3 } from '../math/vec3';
-import { Quat } from '../math/quat';
-import { Mat4 } from '../math/mat4';
+import { EventEmitter } from '../core';
+import { Vec3, Quat, Mat4 } from '../math';
 import { Bone } from './bone';
 
 export class Skeleton extends EventEmitter {
-    private _bones: Bone[] = [];
-    private _parentIndex: Int32Array;
-    private _localTransforms: Mat4[];
-    private _worldTransforms: Mat4[];
-    private _dirty: boolean = true;
+    private bones: Bone[] = [];
+    private boneMap: Map<string, number> = new Map();
+    private bindPose: Mat4[] = [];
+    private currentPose: Mat4[] = [];
+    private worldMatrices: Mat4[] = [];
+    private dirty: boolean = true;
 
-    constructor(boneCount: number) {
+    constructor() {
         super();
-        this._parentIndex = new Int32Array(boneCount);
-        this._localTransforms = new Array(boneCount);
-        this._worldTransforms = new Array(boneCount);
-        for (let i = 0; i < boneCount; i++) {
-            this._parentIndex[i] = -1;
-            this._localTransforms[i] = new Mat4();
-            this._worldTransforms[i] = new Mat4();
-        }
     }
 
-    addBone(bone: Bone, parentIndex: number = -1): number {
-        const index = this._bones.length;
-        this._bones.push(bone);
-        if (index >= this._parentIndex.length) {
-            const newParentIndex = new Int32Array(index + 1);
-            newParentIndex.set(this._parentIndex);
-            this._parentIndex = newParentIndex;
-            this._localTransforms.push(new Mat4());
-            this._worldTransforms.push(new Mat4());
-        }
-        this._parentIndex[index] = parentIndex;
-        this._dirty = true;
+    addBone(name: string, parentIndex: number = -1): number {
+        const bone = new Bone(name, parentIndex);
+        const index = this.bones.length;
+        this.bones.push(bone);
+        this.bindPose.push(new Mat4());
+        this.currentPose.push(new Mat4());
+        this.worldMatrices.push(new Mat4());
+        this.boneMap.set(name, index);
+        this.dirty = true;
         return index;
     }
 
     removeBone(index: number): void {
-        if (index < 0 || index >= this._bones.length) return;
-        this._bones.splice(index, 1);
-        const newParentIndex = new Int32Array(this._parentIndex.length - 1);
-        let write = 0;
-        for (let read = 0; read < this._parentIndex.length; read++) {
-            if (read === index) continue;
-            let p = this._parentIndex[read];
-            if (p > index) p--;
-            else if (p === index) p = -1;
-            newParentIndex[write++] = p;
+        if (index < 0 || index >= this.bones.length) return;
+        
+        const name = this.bones[index].name;
+        this.bones.splice(index, 1);
+        this.bindPose.splice(index, 1);
+        this.currentPose.splice(index, 1);
+        this.worldMatrices.splice(index, 1);
+        this.boneMap.delete(name);
+        
+        // Update parent indices for remaining bones
+        for (let i = 0; i < this.bones.length; i++) {
+            if (this.bones[i].parentIndex >= index) {
+                this.bones[i].parentIndex--;
+            }
         }
-        this._parentIndex = newParentIndex;
-        this._localTransforms.splice(index, 1);
-        this._worldTransforms.splice(index, 1);
-        this._dirty = true;
+        
+        this.dirty = true;
     }
 
     getBone(index: number): Bone | null {
-        return this._bones[index] || null;
+        return this.bones[index] || null;
     }
 
-    getBoneCount(): number {
-        return this._bones.length;
+    getBoneByName(name: string): Bone | null {
+        const index = this.boneMap.get(name);
+        return index !== undefined ? this.bones[index] : null;
     }
 
-    getParentIndex(index: number): number {
-        return this._parentIndex[index];
+    getBoneIndex(name: string): number {
+        return this.boneMap.get(name) ?? -1;
     }
 
-    setParent(index: number, parentIndex: number): void {
-        if (index < 0 || index >= this._parentIndex.length) return;
-        this._parentIndex[index] = parentIndex;
-        this._dirty = true;
+    getNumBones(): number {
+        return this.bones.length;
     }
 
-    getLocalTransform(index: number): Mat4 {
-        return this._localTransforms[index];
+    setBindPose(index: number, matrix: Mat4): void {
+        if (index < 0 || index >= this.bindPose.length) return;
+        this.bindPose[index].copy(matrix);
+        this.dirty = true;
     }
 
-    setLocalTransform(index: number, transform: Mat4): void {
-        if (index < 0 || index >= this._localTransforms.length) return;
-        this._localTransforms[index].copy(transform);
-        this._dirty = true;
+    getBindPose(index: number): Mat4 | null {
+        return this.bindPose[index] || null;
     }
 
-    getWorldTransform(index: number): Mat4 {
-        this.updateTransforms();
-        return this._worldTransforms[index];
+    setCurrentPose(index: number, matrix: Mat4): void {
+        if (index < 0 || index >= this.currentPose.length) return;
+        this.currentPose[index].copy(matrix);
+        this.dirty = true;
     }
 
-    updateTransforms(): void {
-        if (!this._dirty) return;
-        for (let i = 0; i < this._bones.length; i++) {
-            const parent = this._parentIndex[i];
-            if (parent >= 0) {
-                this._worldTransforms[parent].mul(this._localTransforms[i], this._worldTransforms[i]);
+    getCurrentPose(index: number): Mat4 | null {
+        return this.currentPose[index] || null;
+    }
+
+    update(): void {
+        if (!this.dirty) return;
+        
+        for (let i = 0; i < this.bones.length; i++) {
+            const bone = this.bones[i];
+            const localMatrix = this.currentPose[i];
+            
+            if (bone.parentIndex >= 0) {
+                // Multiply by parent world matrix
+                const parentWorld = this.worldMatrices[bone.parentIndex];
+                this.worldMatrices[i].mul2(parentWorld, localMatrix);
             } else {
-                this._worldTransforms[i].copy(this._localTransforms[i]);
+                // Root bone
+                this.worldMatrices[i].copy(localMatrix);
             }
         }
-        this._dirty = false;
+        
+        this.dirty = false;
     }
 
-    applyPose(localRotations: Quat[], localPositions: Vec3[]): void {
-        const count = Math.min(localRotations.length, localPositions.length, this._bones.length);
-        for (let i = 0; i < count; i++) {
-            const rot = localRotations[i];
-            const pos = localPositions[i];
-            const mat = this._localTransforms[i];
-            mat.setTRS(pos, rot, Vec3.ONE);
+    draw(): void {
+        // Drawing logic would be implemented here based on graphics device
+        // This is a placeholder for rendering skeleton visualization
+    }
+
+    bindPose(): void {
+        for (let i = 0; i < this.currentPose.length; i++) {
+            this.currentPose[i].copy(this.bindPose[i]);
         }
-        this._dirty = true;
+        this.dirty = true;
     }
 
-    getBoneNames(): string[] {
-        return this._bones.map(b => b.name);
+    getJointWorldMatrix(index: number): Mat4 | null {
+        if (index < 0 || index >= this.worldMatrices.length) return null;
+        return this.worldMatrices[index];
     }
 
-    findBoneIndex(name: string): number {
-        return this._bones.findIndex(b => b.name === name);
+    getJointLocalMatrix(index: number): Mat4 | null {
+        if (index < 0 || index >= this.currentPose.length) return null;
+        return this.currentPose[index];
+    }
+
+    getJointPosition(index: number): Vec3 | null {
+        const matrix = this.getJointWorldMatrix(index);
+        if (!matrix) return null;
+        return matrix.getTranslation();
+    }
+
+    getJointRotation(index: number): Quat | null {
+        const matrix = this.getJointWorldMatrix(index);
+        if (!matrix) return null;
+        const quat = new Quat();
+        quat.setFromMat4(matrix);
+        return quat;
+    }
+
+    getJointScale(index: number): Vec3 | null {
+        const matrix = this.getJointWorldMatrix(index);
+        if (!matrix) return null;
+        return matrix.getScale();
+    }
+
+    setJointPosition(index: number, position: Vec3): void {
+        if (index < 0 || index >= this.currentPose.length) return;
+        const matrix = this.currentPose[index];
+        matrix.setTranslation(position);
+        this.dirty = true;
+    }
+
+    setJointRotation(index: number, rotation: Quat): void {
+        if (index < 0 || index >= this.currentPose.length) return;
+        const matrix = this.currentPose[index];
+        const scale = matrix.getScale();
+        const pos = matrix.getTranslation();
+        matrix.setTRS(pos, rotation, scale);
+        this.dirty = true;
+    }
+
+    setJointScale(index: number, scale: Vec3): void {
+        if (index < 0 || index >= this.currentPose.length) return;
+        const matrix = this.currentPose[index];
+        const pos = matrix.getTranslation();
+        const rot = new Quat();
+        rot.setFromMat4(matrix);
+        matrix.setTRS(pos, rot, scale);
+        this.dirty = true;
+    }
+
+    clear(): void {
+        this.bones.length = 0;
+        this.bindPose.length = 0;
+        this.currentPose.length = 0;
+        this.worldMatrices.length = 0;
+        this.boneMap.clear();
+        this.dirty = true;
     }
 
     clone(): Skeleton {
-        const clone = new Skeleton(this._bones.length);
-        for (let i = 0; i < this._bones.length; i++) {
-            clone.addBone(this._bones[i].clone(), this._parentIndex[i]);
-            clone._localTransforms[i].copy(this._localTransforms[i]);
+        const skeleton = new Skeleton();
+        
+        for (const bone of this.bones) {
+            skeleton.addBone(bone.name, bone.parentIndex);
         }
-        clone._dirty = true;
-        return clone;
-    }
-
-    destroy(): void {
-        this._bones.length = 0;
-        this._parentIndex = new Int32Array(0);
-        this._localTransforms.length = 0;
-        this._worldTransforms.length = 0;
-        this.emit('destroy');
-        this.off();
+        
+        for (let i = 0; i < this.bindPose.length; i++) {
+            skeleton.setBindPose(i, this.bindPose[i]);
+            skeleton.setCurrentPose(i, this.currentPose[i]);
+        }
+        
+        return skeleton;
     }
 }

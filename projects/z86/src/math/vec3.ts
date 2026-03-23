@@ -3,7 +3,7 @@ export class Vec3 {
     y: number;
     z: number;
 
-    constructor(x: number = 0, y: number = 0, z: number = 0) {
+    constructor(x = 0, y = 0, z = 0) {
         this.x = x;
         this.y = y;
         this.z = z;
@@ -106,11 +106,11 @@ export class Vec3 {
         return new Vec3(this.x, this.y, this.z);
     }
 
-    copy(target: Vec3): Vec3 {
-        target.x = this.x;
-        target.y = this.y;
-        target.z = this.z;
-        return target;
+    copy(v: Vec3): Vec3 {
+        this.x = v.x;
+        this.y = v.y;
+        this.z = v.z;
+        return this;
     }
 
     set(x: number, y: number, z: number): Vec3 {
@@ -121,15 +121,38 @@ export class Vec3 {
     }
 
     toString(): string {
-        return `(${this.x},${this.y},${this.z})`;
+        return `(${this.x}, ${this.y}, ${this.z})`;
     }
 
-    static ZERO = new Vec3(0, 0, 0);
-    static ONE = new Vec3(1, 1, 1);
-    static UP = new Vec3(0, 1, 0);
-    static DOWN = new Vec3(0, -1, 0);
-    static LEFT = new Vec3(-1, 0, 0);
-    static RIGHT = new Vec3(1, 0, 0);
-    static FORWARD = new Vec3(0, 0, -1);
-    static BACK = new Vec3(0, 0, 1);
+    static get ZERO(): Vec3 {
+        return new Vec3(0, 0, 0);
+    }
+
+    static get ONE(): Vec3 {
+        return new Vec3(1, 1, 1);
+    }
+
+    static get UP(): Vec3 {
+        return new Vec3(0, 1, 0);
+    }
+
+    static get DOWN(): Vec3 {
+        return new Vec3(0, -1, 0);
+    }
+
+    static get LEFT(): Vec3 {
+        return new Vec3(-1, 0, 0);
+    }
+
+    static get RIGHT(): Vec3 {
+        return new Vec3(1, 0, 0);
+    }
+
+    static get FORWARD(): Vec3 {
+        return new Vec3(0, 0, -1);
+    }
+
+    static get BACK(): Vec3 {
+        return new Vec3(0, 0, 1);
+    }
 }

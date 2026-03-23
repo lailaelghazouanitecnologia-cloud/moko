@@ -1,107 +1,81 @@
-import { EventEmitter } from '../core/event-emitter';
-import { Vec2 } from '../math/vec2';
-import { GraphicsDevice } from '../graphics/graphics-device';
-import { Element } from './element';
+import { EventEmitter } from '../core';
+import { Vec2 } from '../math';
+import { GraphicsDevice } from '../graphics';
 
 export class Screen extends EventEmitter {
-    private _elements: Element[] = [];
+    private _width: number;
+    private _height: number;
     private _device: GraphicsDevice;
-    private _size: Vec2 = new Vec2();
-    private _resolution: Vec2 = new Vec2();
-    private _scale: number = 1;
-    private _canvas: HTMLCanvasElement;
+    private _elements: Element[] = [];
+    private _isDisposed: boolean = false;
 
-    constructor(canvas: HTMLCanvasElement, device: GraphicsDevice) {
+    constructor(device: GraphicsDevice, width: number, height: number) {
         super();
-        this._canvas = canvas;
         this._device = device;
-        this._updateSize();
-        
-        window.addEventListener('resize', this._onWindowResize.bind(this));
-    }
-
-    get elements(): Element[] {
-        return this._elements.slice();
+        this._width = width;
+        this._height = height;
     }
 
     get width(): number {
-        return this._size.x;
+        return this._width;
     }
 
     get height(): number {
-        return this._size.y;
+        return this._height;
     }
 
-    get resolution(): Vec2 {
-        return this._resolution.clone();
-    }
-
-    get scale(): number {
-        return this._scale;
+    get device(): GraphicsDevice {
+        return this._device;
     }
 
     addElement(element: Element): void {
-        if (this._elements.indexOf(element) === -1) {
-            this._elements.push(element);
-            element.screen = this;
-        }
+        this._elements.push(element);
     }
 
     removeElement(element: Element): void {
         const index = this._elements.indexOf(element);
         if (index !== -1) {
             this._elements.splice(index, 1);
-            element.screen = null;
         }
     }
 
-    render(): void {
-        this._device.clear({
-            color: [0, 0, 0, 1],
-            depth: 1,
-            stencil: 0
-        });
+    getElements(): Element[] {
+        return [...this._elements];
+    }
 
+    render(): void {
+        if (this._isDisposed) return;
+
+        this._device.clear(0, 0, 0, 1);
+        
         for (const element of this._elements) {
             if (element.enabled) {
-                element.render();
+                element.render(this._device);
             }
         }
     }
 
     resize(width: number, height: number): void {
-        this._canvas.width = width;
-        this._canvas.height = height;
-        this._canvas.style.width = width + 'px';
-        this._canvas.style.height = height + 'px';
-        
+        this._width = width;
+        this._height = height;
         this._device.setViewport(0, 0, width, height);
-        this._updateSize();
         
-        this.emit('resize', this._size.x, this._size.y);
+        for (const element of this._elements) {
+            if (element.resize) {
+                element.resize(width, height);
+            }
+        }
     }
 
     dispose(): void {
-        window.removeEventListener('resize', this._onWindowResize.bind(this));
-        
+        if (this._isDisposed) return;
+
         for (const element of this._elements) {
-            element.dispose();
+            if (element.dispose) {
+                element.dispose();
+            }
         }
         this._elements.length = 0;
-        
-        this.emit('destroy');
-        this.off();
-    }
-
-    private _updateSize(): void {
-        const rect = this._canvas.getBoundingClientRect();
-        this._size.set(rect.width, rect.height);
-        this._resolution.set(this._canvas.width, this._canvas.height);
-        this._scale = this._canvas.width / rect.width;
-    }
-
-    private _onWindowResize(): void {
-        const rect = this._canvas.getBoundingClientRect();
-        this.resize(rect.width, rect.height);
+        this._isDisposed = true;
     }
 }

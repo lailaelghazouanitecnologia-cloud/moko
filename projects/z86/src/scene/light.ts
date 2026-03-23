@@ -1,11 +1,11 @@
-import { Vec3 } from '../math/Vec3';
-import { Color } from '../math/Color';
-import { Component } from './Component';
+import { Component } from './component';
+import { Vec3 } from '../math';
+import { Color } from '../math';
 
 export enum LightType {
-    DIRECTIONAL = 'directional',
-    POINT = 'point',
-    SPOT = 'spot'
+    DIRECTIONAL = 0,
+    POINT = 1,
+    SPOT = 2
 }
 
 export class Light extends Component {
@@ -14,12 +14,12 @@ export class Light extends Component {
     private _intensity: number;
     private _type: LightType;
 
-    constructor(position: Vec3 = new Vec3(0, 0, 0), color: Color = new Color(1, 1, 1), intensity: number = 1, type: LightType = LightType.POINT) {
-        super();
-        this._position = position.clone();
-        this._color = color.clone();
-        this._intensity = intensity;
-        this._type = type;
+    constructor(entity: import('./entity').Entity) {
+        super(entity);
+        this._position = new Vec3(0, 0, 0);
+        this._color = new Color(1, 1, 1, 1);
+        this._intensity = 1;
+        this._type = LightType.POINT;
     }
 
     get position(): Vec3 {
@@ -27,7 +27,7 @@ export class Light extends Component {
     }
 
     set position(value: Vec3) {
-        this._position = value.clone();
+        this._position.set(value.x, value.y, value.z);
     }
 
     get color(): Color {
@@ -35,7 +35,7 @@ export class Light extends Component {
     }
 
     set color(value: Color) {
-        this._color = value.clone();
+        this._color.set(value.r, value.g, value.b, value.a);
     }
 
     get intensity(): number {
@@ -43,7 +43,7 @@ export class Light extends Component {
     }
 
     set intensity(value: number) {
-        this._intensity = value;
+        this._intensity = Math.max(0, value);
     }
 
     get type(): LightType {

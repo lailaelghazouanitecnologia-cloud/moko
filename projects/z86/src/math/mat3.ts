@@ -1,258 +1,242 @@
 import { Vec2 } from './vec2';
 import { Vec3 } from './vec3';
 
-export class Mat3 extends Float32Array {
-  constructor(values?: number[]) {
-    super(9);
-    if (values) {
-      this.set(values);
-    } else {
-      this.identity();
-    }
-  }
+export class Mat3 {
+  elements: Float32Array;
 
-  static fromValues(
-    m00: number, m01: number, m02: number,
-    m10: number, m11: number, m12: number,
-    m20: number, m21: number, m22: number
-  ): Mat3 {
-    return new Mat3([
+  constructor(
+    m00 = 1, m01 = 0, m02 = 0,
+    m10 = 0, m11 = 1, m12 = 0,
+    m20 = 0, m21 = 0, m22 = 1
+  ) {
+    this.elements = new Float32Array([
       m00, m01, m02,
       m10, m11, m12,
       m20, m21, m22
     ]);
   }
 
-  identity(): Mat3 {
-    this[0] = 1; this[1] = 0; this[2] = 0;
-    this[3] = 0; this[4] = 1; this[5] = 0;
-    this[6] = 0; this[7] = 0; this[8] = 1;
+  static identity(): Mat3 {
+    return new Mat3();
+  }
+
+  static fromArray(array: number[]): Mat3 {
+    const m = new Mat3();
+    m.elements.set(array);
+    return m;
+  }
+
+  static fromRotation(angle: number): Mat3 {
+    const c = Math.cos(angle);
+    const s = Math.sin(angle);
+    return new Mat3(
+      c, -s, 0,
+      s,  c, 0,
+      0,  0, 1
+    );
+  }
+
+  static fromScale(x: number, y: number): Mat3 {
+    return new Mat3(
+      x, 0, 0,
+      0, y, 0,
+      0, 0, 1
+    );
+  }
+
+  static fromTranslation(x: number, y: number): Mat3 {
+    return new Mat3(
+      1, 0, x,
+      0, 1, y,
+      0, 0, 1
+    );
+  }
+
+  clone(): Mat3 {
+    const m = new Mat3();
+    m.elements.set(this.elements);
+    return m;
+  }
+
+  copy(m: Mat3): this {
+    this.elements.set(m.elements);
     return this;
   }
 
-  multiply(b: Mat3): Mat3 {
-    const a00 = this[0], a01 = this[1], a02 = this[2];
-    const a10 = this[3], a11 = this[4], a12 = this[5];
-    const a20 = this[6], a21 = this[7], a22 = this[8];
-
-    const b00 = b[0], b01 = b[1], b02 = b[2];
-    const b10 = b[3], b11 = b[4], b12 = b[5];
-    const b20 = b[6], b21 = b[7], b22 = b[8];
-
-    this[0] = a00 * b00 + a01 * b10 + a02 * b20;
-    this[1] = a00 * b01 + a01 * b11 + a02 * b21;
-    this[2] = a00 * b02 + a01 * b12 + a02 * b22;
-
-    this[3] = a10 * b00 + a11 * b10 + a12 * b20;
-    this[4] = a10 * b01 + a11 * b11 + a12 * b21;
-    this[5] = a10 * b02 + a11 * b12 + a12 * b22;
-
-    this[6] = a20 * b00 + a21 * b10 + a22 * b20;
-    this[7] = a20 * b01 + a21 * b11 + a22 * b21;
-    this[8] = a20 * b02 + a21 * b12 + a22 * b22;
-
+  set(
+    m00: number, m01: number, m02: number,
+    m10: number, m11: number, m12: number,
+    m20: number, m21: number, m22: number
+  ): this {
+    const e = this.elements;
+    e[0] = m00; e[1] = m01; e[2] = m02;
+    e[3] = m10; e[4] = m11; e[5] = m12;
+    e[6] = m20; e[7] = m21; e[8] = m22;
     return this;
   }
 
-  translate(v: Vec2): Mat3 {
-    const x = v[0], y = v[1];
-    this[6] += x * this[0] + y * this[3];
-    this[7] += x * this[1] + y * this[4];
-    this[8] += x * this[2] + y * this[5];
+  identity(): this {
+    const e = this.elements;
+    e[0] = 1; e[1] = 0; e[2] = 0;
+    e[3] = 0; e[4] = 1; e[5] = 0;
+    e[6] = 0; e[7] = 0; e[8] = 1;
     return this;
   }
 
-  rotate(rad: number): Mat3 {
-    const s = Math.sin(rad);
-    const c = Math.cos(rad);
-    const a00 = this[0], a01 = this[1], a02 = this[2];
-    const a10 = this[3], a11 = this[4], a12 = this[5];
-
-    this[0] = a00 * c + a01 * s;
-    this[1] = a00 * -s + a01 * c;
-    this[2] = a02;
-
-    this[3] = a10 * c + a11 * s;
-    this[4] = a10 * -s + a11 * c;
-    this[5] = a12;
-
-    this[6] = this[6] * c + this[7] * s;
-    this[7] = this[6] * -s + this[7] * c;
-    this[8] = this[8];
-
-    return this;
+  determinant(): number {
+    const e = this.elements;
+    const a00 = e[0], a01 = e[1], a02 = e[2];
+    const a10 = e[3], a11 = e[4], a12 = e[5];
+    const a20 = e[6], a21 = e[7], a22 = e[8];
+    return a00 * (a11 * a22 - a12 * a21) -
+           a01 * (a10 * a22 - a12 * a20) +
+           a02 * (a10 * a21 - a11 * a20);
   }
 
-  scale(v: Vec2): Mat3 {
-    const x = v[0], y = v[1];
-    this[0] *= x; this[1] *= x; this[2] *= x;
-    this[3] *= y; this[4] *= y; this[5] *= y;
-    return this;
-  }
-
-  invert(): Mat3 | null {
-    const a00 = this[0], a01 = this[1], a02 = this[2];
-    const a10 = this[3], a11 = this[4], a12 = this[5];
-    const a20 = this[6], a21 = this[7], a22 = this[8];
+  invert(): this {
+    const e = this.elements;
+    const a00 = e[0], a01 = e[1], a02 = e[2];
+    const a10 = e[3], a11 = e[4], a12 = e[5];
+    const a20 = e[6], a21 = e[7], a22 = e[8];
 
     const b01 = a22 * a11 - a12 * a21;
     const b11 = -a22 * a10 + a12 * a20;
     const b21 = a21 * a10 - a11 * a20;
 
     let det = a00 * b01 + a01 * b11 + a02 * b21;
-
-    if (!det) return null;
+    if (!det) return this;
     det = 1.0 / det;
 
-    this[0] = b01 * det;
-    this[1] = (-a22 * a01 + a02 * a21) * det;
-    this[2] = (a12 * a01 - a02 * a11) * det;
-    this[3] = b11 * det;
-    this[4] = (a22 * a00 - a02 * a20) * det;
-    this[5] = (-a12 * a00 + a02 * a10) * det;
-    this[6] = b21 * det;
-    this[7] = (-a21 * a00 + a01 * a20) * det;
-    this[8] = (a11 * a00 - a01 * a10) * det;
+    e[0] = b01 * det;
+    e[1] = (-a22 * a01 + a02 * a21) * det;
+    e[2] = (a12 * a01 - a02 * a11) * det;
+    e[3] = b11 * det;
+    e[4] = (a22 * a00 - a02 * a20) * det;
+    e[5] = (-a12 * a00 + a02 * a10) * det;
+    e[6] = b21 * det;
+    e[7] = (-a21 * a00 + a01 * a20) * det;
+    e[8] = (a11 * a00 - a01 * a10) * det;
 
     return this;
   }
 
-  transpose(): Mat3 {
-    const a01 = this[1], a02 = this[2], a12 = this[5];
-    this[1] = this[3];
-    this[2] = this[6];
-    this[3] = a01;
-    this[5] = this[7];
-    this[6] = a02;
-    this[7] = a12;
+  multiply(m: Mat3): this {
+    const ae = this.elements;
+    const be = m.elements;
+    const te = new Float32Array(9);
+
+    const a00 = ae[0], a01 = ae[1], a02 = ae[2];
+    const a10 = ae[3], a11 = ae[4], a12 = ae[5];
+    const a20 = ae[6], a21 = ae[7], a22 = ae[8];
+
+    const b00 = be[0], b01 = be[1], b02 = be[2];
+    const b10 = be[3], b11 = be[4], b12 = be[5];
+    const b20 = be[6], b21 = be[7], b22 = be[8];
+
+    te[0] = a00 * b00 + a01 * b10 + a02 * b20;
+    te[1] = a00 * b01 + a01 * b11 + a02 * b21;
+    te[2] = a00 * b02 + a01 * b12 + a02 * b22;
+
+    te[3] = a10 * b00 + a11 * b10 + a12 * b20;
+    te[4] = a10 * b01 + a11 * b11 + a12 * b21;
+    te[5] = a10 * b02 + a11 * b12 + a12 * b22;
+
+    te[6] = a20 * b00 + a21 * b10 + a22 * b20;
+    te[7] = a20 * b01 + a21 * b11 + a22 * b21;
+    te[8] = a20 * b02 + a21 * b12 + a22 * b22;
+
+    this.elements.set(te);
     return this;
   }
 
-  determinant(): number {
-    const a00 = this[0], a01 = this[1], a02 = this[2];
-    const a10 = this[3], a11 = this[4], a12 = this[5];
-    const a20 = this[6], a21 = this[7], a22 = this[8];
-
-    return a00 * (a22 * a11 - a12 * a21) +
-           a01 * (-a22 * a10 + a12 * a20) +
-           a02 * (a21 * a10 - a11 * a20);
-  }
-
-  clone(): Mat3 {
-    return new Mat3(Array.from(this));
-  }
-
-  copy(m: Mat3): Mat3 {
-    this.set(m);
-    return this;
-  }
-
-  equals(m: Mat3, epsilon: number = 1e-6): boolean {
+  multiplyScalar(s: number): this {
+    const e = this.elements;
     for (let i = 0; i < 9; i++) {
-      if (Math.abs(this[i] - m[i]) > epsilon) return false;
+      e[i] *= s;
+    }
+    return this;
+  }
+
+  transpose(): this {
+    const e = this.elements;
+    let tmp;
+    tmp = e[1]; e[1] = e[3]; e[3] = tmp;
+    tmp = e[2]; e[2] = e[6]; e[6] = tmp;
+    tmp = e[5]; e[5] = e[7]; e[7] = tmp;
+    return this;
+  }
+
+  translate(x: number, y: number): this {
+    const e = this.elements;
+    e[2] += x;
+    e[5] += y;
+    return this;
+  }
+
+  rotate(angle: number): this {
+    const c = Math.cos(angle);
+    const s = Math.sin(angle);
+    const e = this.elements;
+
+    const m00 = e[0], m01 = e[1], m02 = e[2];
+    const m10 = e[3], m11 = e[4], m12 = e[5];
+
+    e[0] = c * m00 + s * m01;
+    e[1] = c * m01 - s * m00;
+    e[2] = c * m02 + s * m12;
+
+    e[3] = c * m10 + s * m11;
+    e[4] = c * m11 - s * m10;
+    e[5] = c * m12 + s * m02;
+
+    return this;
+  }
+
+  scale(x: number, y: number): this {
+    const e = this.elements;
+    e[0] *= x; e[1] *= x; e[2] *= x;
+    e[3] *= y; e[4] *= y; e[5] *= y;
+    return this;
+  }
+
+  transformVector2(v: Vec2): Vec2 {
+    const e = this.elements;
+    const x = v.x, y = v.y;
+    return new Vec2(
+      e[0] * x + e[1] * y + e[2],
+      e[3] * x + e[4] * y + e[5]
+    );
+  }
+
+  transformVector3(v: Vec3): Vec3 {
+    const e = this.elements;
+    const x = v.x, y = v.y, z = v.z;
+    return new Vec3(
+      e[0] * x + e[1] * y + e[2] * z,
+      e[3] * x + e[4] * y + e[5] * z,
+      e[6] * x + e[7] * y + e[8] * z
+    );
+  }
+
+  equals(m: Mat3): boolean {
+    const ae = this.elements;
+    const be = m.elements;
+    for (let i = 0; i < 9; i++) {
+      if (Math.abs(ae[i] - be[i]) > Number.EPSILON) return false;
     }
     return true;
   }
 
-  exactEquals(m: Mat3): boolean {
-    for (let i = 0; i < 9; i++) {
-      if (this[i] !== m[i]) return false;
-    }
-    return true;
-  }
-
-  set(values: number[]): Mat3 {
-    for (let i = 0; i < 9 && i < values.length; i++) {
-      this[i] = values[i];
-    }
-    return this;
-  }
-
-  getTranslation(out: Vec2 = new Vec2()): Vec2 {
-    out[0] = this[6];
-    out[1] = this[7];
-    return out;
-  }
-
-  getScaling(out: Vec2 = new Vec2()): Vec2 {
-    const m11 = this[0];
-    const m12 = this[1];
-    const m21 = this[3];
-    const m22 = this[4];
-    out[0] = Math.sqrt(m11 * m11 + m12 * m12);
-    out[1] = Math.sqrt(m21 * m21 + m22 * m22);
-    return out;
-  }
-
-  getRotation(): number {
-    return Math.atan2(this[1], this[0]);
-  }
-
-  frob(): number {
-    let sum = 0;
-    for (let i = 0; i < 9; i++) {
-      sum += this[i] * this[i];
-    }
-    return Math.sqrt(sum);
-  }
-
-  normalFromMat4(m: Float32Array): Mat3 | null {
-    const a00 = m[0], a01 = m[1], a02 = m[2], a03 = m[3];
-    const a10 = m[4], a11 = m[5], a12 = m[6], a13 = m[7];
-    const a20 = m[8], a21 = m[9], a22 = m[10], a23 = m[11];
-    const a30 = m[12], a31 = m[13], a32 = m[14], a33 = m[15];
-
-    const b00 = a00 * a11 - a01 * a10;
-    const b01 = a00 * a12 - a02 * a10;
-    const b02 = a00 * a13 - a03 * a10;
-    const b03 = a01 * a12 - a02 * a11;
-    const b04 = a01 * a13 - a03 * a11;
-    const b05 = a02 * a13 - a03 * a12;
-    const b06 = a20 * a31 - a21 * a30;
-    const b07 = a20 * a32 - a22 * a30;
-    const b08 = a20 * a33 - a23 * a30;
-    const b09 = a21 * a32 - a22 * a31;
-    const b10 = a21 * a33 - a23 * a31;
-    const b11 = a22 * a33 - a23 * a32;
-
-    let det = b00 * b11 - b01 * b10 + b02 * b09 + b03 * b08 - b04 * b07 + b05 * b06;
-
-    if (!det) return null;
-    det = 1.0 / det;
-
-    this[0] = (a11 * b11 - a12 * b10 + a13 * b09) * det;
-    this[1] = (a12 * b08 - a10 * b11 - a13 * b07) * det;
-    this[2] = (a10 * b10 - a11 * b08 + a13 * b06) * det;
-    this[3] = (a02 * b10 - a01 * b11 - a03 * b09) * det;
-    this[4] = (a00 * b11 - a02 * b08 + a03 * b07) * det;
-    this[5] = (a01 * b08 - a00 * b10 - a03 * b06) * det;
-    this[6] = (a31 * b05 - a32 * b04 + a33 * b03) * det;
-    this[7] = (a32 * b02 - a30 * b05 - a33 * b01) * det;
-    this[8] = (a30 * b04 - a31 * b02 + a33 * b00) * det;
-
-    return this;
+  toArray(): number[] {
+    return Array.from(this.elements);
   }
 
   toString(): string {
+    const e = this.elements;
     return `Mat3(
-${this[0]}, ${this[1]}, ${this[2]},
-${this[3]}, ${this[4]}, ${this[5]},
-${this[6]}, ${this[7]}, ${this[8]}
-)`;
-  }
-
-  toArray(array: number[] = [], offset: number = 0): number[] {
-    for (let i = 0; i < 9; i++) {
-      array[offset + i] = this[i];
-    }
-    return array;
-  }
-
-  static fromArray(array: number[], offset: number = 0): Mat3 {
-    const out = new Mat3();
-    for (let i = 0; i < 9; i++) {
-      out[i] = array[offset + i];
-    }
-    return out;
+      ${e[0]}, ${e[1]}, ${e[2]},
+      ${e[3]}, ${e[4]}, ${e[5]},
+      ${e[6]}, ${e[7]}, ${e[8]}
+    )`;
   }
 }

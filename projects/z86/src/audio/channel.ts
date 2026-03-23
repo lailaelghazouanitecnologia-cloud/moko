@@ -1,130 +1,278 @@
-import { EventEmitter } from '../core/eventemitter';
-import { AudioManager } from './audiomanager';
+import { EventEmitter } from '../core';
+import { Vec3 } from '../math';
 
 export class Channel extends EventEmitter {
-    private _manager: AudioManager;
-    private _gainNode: GainNode;
-    private _pannerNode: PannerNode;
-    private _volume: number;
-    private _pan: number;
-    private _muted: boolean;
-    private _paused: boolean;
-    private _loop: boolean;
-    private _playbackRate: number;
-    private _audioNodes: AudioNode[];
+  private _audioContext: AudioContext;
+  private _gainNode: GainNode;
+  private _pannerNode: PannerNode | null = null;
+  private _source: AudioBufferSourceNode | null = null;
+  private _sound: Sound | null = null;
+  private _loop: boolean = false;
+  private _volume: number = 1.0;
+  private _pitch: number = 1.0;
+  private _isPlaying: boolean = false;
+  private _isPaused: boolean = false;
+  private _startTime: number = 0;
+  private _pauseTime: number = 0;
+  private _duration: number = 0;
+  private _currentTime: number = 0;
 
-    constructor(manager: AudioManager) {
-        super();
-        this._manager = manager;
-        const ctx = manager.context;
-        this._gainNode = ctx.createGain();
-        this._pannerNode = ctx.createPanner();
-        this._gainNode.connect(this._pannerNode);
-        this._pannerNode.connect(ctx.destination);
-        this._volume = 1.0;
-        this._pan = 0.0;
-        this._muted = false;
-        this._paused = false;
-        this._loop = false;
-        this._playbackRate = 1.0;
-        this._audioNodes = [];
+  constructor(audioContext: AudioContext) {
+    super();
+    this._audioContext = audioContext;
+    this._gainNode = audioContext.createGain();
+    this._gainNode.connect(audioContext.destination);
+  }
+
+  get volume(): number {
+    return this._volume;
+  }
+
+  set volume(value: number) {
+    this._volume = Math.max(0, Math.min(1, value));
+    this._gainNode.gain.setValueAtTime(this._volume, this._audioContext.currentTime);
+  }
+
+  get pitch(): number {
+    return this._pitch;
+  }
+
+  set pitch(value: number) {
+    this._pitch = Math.max(0.01, value);
+    if (this._source) {
+      this._source.playbackRate.setValueAtTime(this._pitch, this._audioContext.currentTime);
+    }
+  }
+
+  get loop(): boolean {
+    return this._loop;
+  }
+
+  set loop(value: boolean) {
+    this._loop = value;
+    if (this._source) {
+      this._source.loop = value;
+    }
+  }
+
+  get currentTime(): number {
+    if (this._isPlaying && !this._isPaused) {
+      return this._audioContext.currentTime - this._startTime;
+    }
+    return this._currentTime;
+  }
+
+  get duration(): number {
+    return this._duration;
+  }
+
+  get isPlaying(): boolean {
+    return this._isPlaying && !this._isPaused;
+  }
+
+  get isPaused(): boolean {
+    return this._isPaused;
+  }
+
+  connect(node: AudioNode): void {
+    this._gainNode.connect(node);
+  }
+
+  disconnect(node?: AudioNode): void {
+    if (node) {
+      this._gainNode.disconnect(node);
+    } else {
+      this._gainNode.disconnect();
+    }
+  }
+
+  play(sound?: Sound): void {
+    if (sound) {
+      this._sound = sound;
     }
 
-    connect(node: AudioNode): void {
-        this._pannerNode.disconnect();
-        this._pannerNode.connect(node);
+    if (!this._sound) {
+      return;
     }
 
-    disconnect(node?: AudioNode): void {
-        if (node) {
-            this._pannerNode.disconnect(node);
-        } else {
-            this._pannerNode.disconnect();
-        }
+    if (this._isPaused) {
+      this.resume();
+      return;
     }
 
-    setVolume(volume: number): void {
-        this._volume = Math.max(0, Math.min(1, volume));
-        this._updateGain();
+    this.stop();
+
+    const buffer = this._sound.getBuffer();
+    if (!buffer) {
+      return;
     }
 
-    getVolume(): number {
-        return this._volume;
+    this._source = this._audioContext.createBufferSource();
+    this._source.buffer = buffer;
+    this._source.loop = this._loop;
+    this._source.playbackRate.value = this._pitch;
+    this._source.connect(this._gainNode);
+
+    this._duration = buffer.duration;
+    this._startTime = this._audioContext.currentTime;
+    this._isPlaying = true;
+    this._isPaused = false;
+
+    this._source.start(0);
+    this._source.onended = () => {
+      if (!this._loop) {
+        this.stop();
+      }
+    };
+
+    this.emit('play');
+  }
+
+  pause(): void {
+    if (!this._isPlaying || this._isPaused) {
+      return;
     }
 
-    setPan(pan: number): void {
-        this._pan = Math.max(-1, Math.min(1, pan));
-        this._pannerNode.setPosition(this._pan, 0, 0);
+    this._pauseTime = this._audioContext.currentTime;
+    this._currentTime = this._pauseTime - this._startTime;
+    this._isPaused = true;
+
+    if (this._source) {
+      this._source.stop();
+      this._source = null;
     }
 
-    getPan(): number {
-        return this._pan;
+    this.emit('pause');
+  }
+
+  resume(): void {
+    if (!this._isPlaying || !this._isPaused) {
+      return;
     }
 
-    setMuted(muted: boolean): void {
-        this._muted = muted;
-        this._updateGain();
+    if (!this._sound) {
+      return;
     }
 
-    isMuted(): boolean {
-        return this._muted;
+    const buffer = this._sound.getBuffer();
+    if (!buffer) {
+      return;
     }
 
-    setPaused(paused: boolean): void {
-        this._paused = paused;
+    this._source = this._audioContext.createBufferSource();
+    this._source.buffer = buffer;
+    this._source.loop = this._loop;
+    this._source.playbackRate.value = this._pitch;
+    this._source.connect(this._gainNode);
+
+    this._startTime = this._audioContext.currentTime - this._currentTime;
+    this._isPaused = false;
+
+    this._source.start(0, this._currentTime);
+    this._source.onended = () => {
+      if (!this._loop) {
+        this.stop();
+      }
+    };
+
+    this.emit('resume');
+  }
+
+  stop(): void {
+    if (this._source) {
+      this._source.stop();
+      this._source = null;
     }
 
-    isPaused(): boolean {
-        return this._paused;
+    this._isPlaying = false;
+    this._isPaused = false;
+    this._currentTime = 0;
+    this._startTime = 0;
+    this._pauseTime = 0;
+
+    this.emit('stop');
+  }
+
+  setPosition(x: number, y: number, z: number): void {
+    if (!this._pannerNode) {
+      this._pannerNode = this._audioContext.createPanner();
+      this._gainNode.disconnect();
+      this._gainNode.connect(this._pannerNode);
+      this._pannerNode.connect(this._audioContext.destination);
     }
 
-    setLoop(loop: boolean): void {
-        this._loop = loop;
-    }
+    this._pannerNode.setPosition(x, y, z);
+  }
 
-    getLoop(): boolean {
-        return this._loop;
+  setVelocity(x: number, y: number, z: number): void {
+    if (this._pannerNode) {
+      this._pannerNode.setVelocity(x, y, z);
     }
+  }
 
-    setPlaybackRate(rate: number): void {
-        this._playbackRate = Math.max(0.1, rate);
+  setMaxDistance(distance: number): void {
+    if (this._pannerNode) {
+      this._pannerNode.maxDistance = distance;
     }
+  }
 
-    getPlaybackRate(): number {
-        return this._playbackRate;
+  setMinDistance(distance: number): void {
+    if (this._pannerNode) {
+      this._pannerNode.refDistance = distance;
     }
+  }
 
-    private _updateGain(): void {
-        const gain = this._muted ? 0 : this._volume;
-        this._gainNode.gain.setValueAtTime(gain, this._manager.context.currentTime);
+  setRollOffFactor(factor: number): void {
+    if (this._pannerNode) {
+      this._pannerNode.rolloffFactor = factor;
     }
+  }
 
-    addAudioNode(node: AudioNode): void {
-        this._audioNodes.push(node);
-        node.connect(this._gainNode);
+  setModel(model: string): void {
+    if (this._pannerNode) {
+      switch (model) {
+        case 'linear':
+          this._pannerNode.distanceModel = 'linear';
+          break;
+        case 'inverse':
+          this._pannerNode.distanceModel = 'inverse';
+          break;
+        case 'exponential':
+          this._pannerNode.distanceModel = 'exponential';
+          break;
+      }
     }
+  }
 
-    removeAudioNode(node: AudioNode): void {
-        const idx = this._audioNodes.indexOf(node);
-        if (idx !== -1) {
-            this._audioNodes.splice(idx, 1);
-            node.disconnect(this._gainNode);
-        }
+  setPan(pan: number): void {
+    if (this._pannerNode) {
+      this._pannerNode.panningModel = 'equalpower';
+      const x = Math.sin(pan * Math.PI / 2);
+      const z = Math.cos(pan * Math.PI / 2);
+      this._pannerNode.setPosition(x, 0, z);
     }
+  }
 
-    clearAudioNodes(): void {
-        for (const node of this._audioNodes) {
-            node.disconnect(this._gainNode);
-        }
-        this._audioNodes.length = 0;
+  setCone(insideAngle: number, outsideAngle: number, outsideVolume: number): void {
+    if (this._pannerNode) {
+      this._pannerNode.coneInnerAngle = insideAngle;
+      this._pannerNode.coneOuterAngle = outsideAngle;
+      this._pannerNode.coneOuterGain = outsideVolume;
     }
+  }
 
-    destroy(): void {
-        this.clearAudioNodes();
-        this._gainNode.disconnect();
-        this._pannerNode.disconnect();
-        this._gainNode = null as any;
-        this._pannerNode = null as any;
-        this._manager = null as any;
+  setOrientation(x: number, y: number, z: number): void {
+    if (this._pannerNode) {
+      this._pannerNode.setOrientation(x, y, z);
     }
+  }
+
+  destroy(): void {
+    this.stop();
+    this._gainNode.disconnect();
+    if (this._pannerNode) {
+      this._pannerNode.disconnect();
+    }
+    this.removeAllListeners();
+  }
 }

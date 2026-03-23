@@ -18,64 +18,82 @@ export class Quat {
         return new Quat(0, 0, 0, 1);
     }
 
-    conjugate(): Quat {
-        return new Quat(-this.x, -this.y, -this.z, this.w);
+    clone(): Quat {
+        return new Quat(this.x, this.y, this.z, this.w);
     }
 
-    inverse(): Quat {
-        const lenSq = this.x * this.x + this.y * this.y + this.z * this.z + this.w * this.w;
-        if (lenSq === 0) return new Quat();
-        const inv = 1 / lenSq;
-        return new Quat(-this.x * inv, -this.y * inv, -this.z * inv, this.w * inv);
+    copy(q: Quat): Quat {
+        this.x = q.x;
+        this.y = q.y;
+        this.z = q.z;
+        this.w = q.w;
+        return this;
+    }
+
+    conjugate(): Quat {
+        this.x = -this.x;
+        this.y = -this.y;
+        this.z = -this.z;
+        return this;
+    }
+
+    invert(): Quat {
+        const dot = this.x * this.x + this.y * this.y + this.z * this.z + this.w * this.w;
+        if (dot > 0) {
+            const invDot = 1 / dot;
+            this.x *= -invDot;
+            this.y *= -invDot;
+            this.z *= -invDot;
+            this.w *= invDot;
+        }
+        return this;
     }
 
     slerp(q: Quat, t: number): Quat {
-        let qx = q.x;
-        let qy = q.y;
-        let qz = q.z;
-        let qw = q.w;
+        let ax = this.x, ay = this.y, az = this.z, aw = this.w;
+        let bx = q.x, by = q.y, bz = q.z, bw = q.w;
 
-        let dot = this.x * qx + this.y * qy + this.z * qz + this.w * qw;
+        let omega, cosom, sinom, scale0, scale1;
 
-        if (dot < 0) {
-            dot = -dot;
-            qx = -qx;
-            qy = -qy;
-            qz = -qz;
-            qw = -qw;
+        cosom = ax * bx + ay * by + az * bz + aw * bw;
+
+        if (cosom < 0) {
+            cosom = -cosom;
+            bx = -bx;
+            by = -by;
+            bz = -bz;
+            bw = -bw;
         }
 
-        if (dot > 0.9995) {
-            const rx = this.x + t * (qx - this.x);
-            const ry = this.y + t * (qy - this.y);
-            const rz = this.z + t * (qz - this.z);
-            const rw = this.w + t * (qw - this.w);
-            const len = 1 / Math.sqrt(rx * rx + ry * ry + rz * rz + rw * rw);
-            return new Quat(rx * len, ry * len, rz * len, rw * len);
+        if (1 - cosom > 0.000001) {
+            omega = Math.acos(cosom);
+            sinom = Math.sin(omega);
+            scale0 = Math.sin((1 - t) * omega) / sinom;
+            scale1 = Math.sin(t * omega) / sinom;
+        } else {
+            scale0 = 1 - t;
+            scale1 = t;
         }
 
-        const theta = Math.acos(dot);
-        const sinTheta = Math.sin(theta);
-        const invSinTheta = 1 / sinTheta;
+        this.x = scale0 * ax + scale1 * bx;
+        this.y = scale0 * ay + scale1 * by;
+        this.z = scale0 * az + scale1 * bz;
+        this.w = scale0 * aw + scale1 * bw;
 
-        const w1 = Math.sin((1 - t) * theta) * invSinTheta;
-        const w2 = Math.sin(t * theta) * invSinTheta;
-
-        return new Quat(
-            this.x * w1 + qx * w2,
-            this.y * w1 + qy * w2,
-            this.z * w1 + qz * w2,
-            this.w * w1 + qw * w2
-        );
+        return this;
     }
 
-    setFromEulerAngles(x: number, y: number, z: number): Quat {
-        const sx = Math.sin(x * 0.5);
-        const cx = Math.cos(x * 0.5);
-        const sy = Math.sin(y * 0.5);
-        const cy = Math.cos(y * 0.5);
-        const sz = Math.sin(z * 0.5);
-        const cz = Math.cos(z * 0.5);
+    setFromEulerAngles(yaw: number, pitch: number, roll: number): Quat {
+        const x = pitch * 0.5;
+        const y = yaw * 0.5;
+        const z = roll * 0.5;
+
+        const cx = Math.cos(x);
+        const cy = Math.cos(y);
+        const cz = Math.cos(z);
+        const sx = Math.sin(x);
+        const sy = Math.sin(y);
+        const sz = Math.sin(z);
 
         this.x = sx * cy * cz - cx * sy * sz;
         this.y = cx * sy * cz + sx * cy * sz;
@@ -86,40 +104,31 @@ export class Quat {
     }
 
     setFromMat4(m: Mat4): Quat {
-        const data = m.data;
-        const m00 = data[0];
-        const m01 = data[1];
-        const m02 = data[2];
-        const m10 = data[4];
-        const m11 = data[5];
-        const m12 = data[6];
-        const m20 = data[8];
-        const m21 = data[9];
-        const m22 = data[10];
-
+        const m00 = m.data[0], m01 = m.data[1], m02 = m.data[2];
+        const m10 = m.data[4], m11 = m.data[5], m12 = m.data[6];
+        const m20 = m.data[8], m21 = m.data[9], m22 = m.data[10];
         const trace = m00 + m11 + m22;
-        let s: number;
 
         if (trace > 0) {
-            s = 0.5 / Math.sqrt(trace + 1);
+            const s = 0.5 / Math.sqrt(trace + 1);
             this.w = 0.25 / s;
             this.x = (m21 - m12) * s;
             this.y = (m02 - m20) * s;
             this.z = (m10 - m01) * s;
         } else if (m00 > m11 && m00 > m22) {
-            s = 2 * Math.sqrt(1 + m00 - m11 - m22);
+            const s = 2 * Math.sqrt(1 + m00 - m11 - m22);
             this.w = (m21 - m12) / s;
             this.x = 0.25 * s;
             this.y = (m01 + m10) / s;
             this.z = (m02 + m20) / s;
         } else if (m11 > m22) {
-            s = 2 * Math.sqrt(1 + m11 - m00 - m22);
+            const s = 2 * Math.sqrt(1 + m11 - m00 - m22);
             this.w = (m02 - m20) / s;
             this.x = (m01 + m10) / s;
             this.y = 0.25 * s;
             this.z = (m12 + m21) / s;
         } else {
-            s = 2 * Math.sqrt(1 + m22 - m00 - m11);
+            const s = 2 * Math.sqrt(1 + m22 - m00 - m11);
             this.w = (m10 - m01) / s;
             this.x = (m02 + m20) / s;
             this.y = (m12 + m21) / s;
@@ -130,14 +139,8 @@ export class Quat {
     }
 
     transformVector(v: Vec3): Vec3 {
-        const qx = this.x;
-        const qy = this.y;
-        const qz = this.z;
-        const qw = this.w;
-
-        const vx = v.x;
-        const vy = v.y;
-        const vz = v.z;
+        const qx = this.x, qy = this.y, qz = this.z, qw = this.w;
+        const vx = v.x, vy = v.y, vz = v.z;
 
         const uvx = qy * vz - qz * vy;
         const uvy = qz * vx - qx * vz;
@@ -156,62 +159,50 @@ export class Quat {
         uuvy *= 2;
         uuvz *= 2;
 
-        return new Vec3(
-            vx + uvx + uuvx,
-            vy + uvy + uuvy,
-            vz + uvz + uuvz
-        );
+        return new Vec3(vx + uvx + uuvx, vy + uvy + uuvy, vz + uvz + uuvz);
     }
 
     mul(q: Quat): Quat {
-        const q1x = this.x;
-        const q1y = this.y;
-        const q1z = this.z;
-        const q1w = this.w;
+        const q1x = this.x, q1y = this.y, q1z = this.z, q1w = this.w;
+        const q2x = q.x, q2y = q.y, q2z = q.z, q2w = q.w;
 
-        const q2x = q.x;
-        const q2y = q.y;
-        const q2z = q.z;
-        const q2w = q.w;
+        this.x = q1w * q2x + q1x * q2w + q1y * q2z - q1z * q2y;
+        this.y = q1w * q2y - q1x * q2z + q1y * q2w + q1z * q2x;
+        this.z = q1w * q2z + q1x * q2y - q1y * q2x + q1z * q2w;
+        this.w = q1w * q2w - q1x * q2x - q1y * q2y - q1z * q2z;
 
-        return new Quat(
-            q1w * q2x + q1x * q2w + q1y * q2z - q1z * q2y,
-            q1w * q2y - q1x * q2z + q1y * q2w + q1z * q2x,
-            q1w * q2z + q1x * q2y - q1y * q2x + q1z * q2w,
-            q1w * q2w - q1x * q2x - q1y * q2y - q1z * q2z
-        );
-    }
-
-    normalize(): Quat {
-        const len = 1 / Math.sqrt(this.x * this.x + this.y * this.y + this.z * this.z + this.w * this.w);
-        this.x *= len;
-        this.y *= len;
-        this.z *= len;
-        this.w *= len;
         return this;
     }
 
-    getEulerAngles(): Vec3 {
-        const x = this.x;
-        const y = this.y;
-        const z = this.z;
-        const w = this.w;
+    normalize(): Quat {
+        const len = this.x * this.x + this.y * this.y + this.z * this.z + this.w * this.w;
+        if (len > 0) {
+            const invLen = 1 / Math.sqrt(len);
+            this.x *= invLen;
+            this.y *= invLen;
+            this.z *= invLen;
+            this.w *= invLen;
+        }
+        return this;
+    }
 
+    getEulerAngles(): { yaw: number, pitch: number, roll: number } {
+        const x = this.x, y = this.y, z = this.z, w = this.w;
         const ysqr = y * y;
 
         const t0 = 2 * (w * x + y * z);
         const t1 = 1 - 2 * (x * x + ysqr);
-        const roll = Math.atan2(t0, t1);
+        const pitch = Math.atan2(t0, t1);
 
         let t2 = 2 * (w * y - z * x);
         t2 = t2 > 1 ? 1 : t2;
         t2 = t2 < -1 ? -1 : t2;
-        const pitch = Math.asin(t2);
+        const yaw = Math.asin(t2);
 
         const t3 = 2 * (w * z + x * y);
         const t4 = 1 - 2 * (ysqr + z * z);
-        const yaw = Math.atan2(t3, t4);
+        const roll = Math.atan2(t3, t4);
 
-        return new Vec3(roll, pitch, yaw);
+        return { yaw, pitch, roll };
     }
 }

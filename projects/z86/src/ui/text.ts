@@ -1,82 +1,28 @@
-import { EventEmitter } from '../core/event-emitter';
-import { Vec2 } from '../math/vec2';
-import { Vec3 } from '../math/vec3';
-import { Vec4 } from '../math/vec4';
-import { Mat4 } from '../math/mat4';
-import { Quat } from '../math/quat';
-import { Color } from '../math/color';
-import { GraphicsDevice } from '../graphics/graphics-device';
-import { Shader } from '../graphics/shader';
-import { Material } from '../graphics/material';
-import { Mesh } from '../graphics/mesh';
-import { MeshInstance } from '../graphics/mesh-instance';
-import { VertexFormat } from '../graphics/vertex-format';
-import { VertexBuffer } from '../graphics/vertex-buffer';
-import { IndexBuffer } from '../graphics/index-buffer';
-import { Texture } from '../graphics/texture';
-import { RenderTarget } from '../graphics/render-target';
 import { Element } from './element';
+import { Screen } from './screen';
+import { EventEmitter } from '../core';
+import { Vec2, Vec3, Vec4, Mat4, Color } from '../math';
+import { GraphicsDevice, VertexBuffer, IndexBuffer, Shader, Texture, Material } from '../graphics';
 
 export class Text extends Element {
-    private _text: string;
-    private _fontSize: number;
-    private _color: Color;
-    private _font: string;
-    private _alignment: 'left' | 'center' | 'right';
-    private _baseline: 'top' | 'middle' | 'bottom';
-    private _width: number;
-    private _height: number;
-    private _meshInstance: MeshInstance | null;
-    private _material: Material;
-    private _vertexBuffer: VertexBuffer | null;
-    private _indexBuffer: IndexBuffer | null;
-    private _dirty: boolean;
+    private _text: string = '';
+    private _fontSize: number = 16;
+    private _color: Color = new Color(1, 1, 1, 1);
+    private _fontFamily: string = 'Arial';
+    private _textAlign: 'left' | 'center' | 'right' = 'left';
+    private _verticalAlign: 'top' | 'middle' | 'bottom' = 'top';
+    private _lineHeight: number = 1.2;
+    private _wordWrap: boolean = false;
+    private _maxLines: number = 0;
+    private _material: Material | null = null;
+    private _vertexBuffer: VertexBuffer | null = null;
+    private _indexBuffer: IndexBuffer | null = null;
+    private _texture: Texture | null = null;
+    private _dirty: boolean = true;
+    private _textMetrics: { width: number; height: number } = { width: 0, height: 0 };
 
-    constructor(text: string = '', fontSize: number = 16, color: Color = new Color(1, 1, 1, 1)) {
-        super();
-        this._text = text;
-        this._fontSize = fontSize;
-        this._color = color;
-        this._font = 'Arial';
-        this._alignment = 'left';
-        this._baseline = 'middle';
-        this._width = 0;
-        this._height = 0;
-        this._meshInstance = null;
-        this._material = new Material();
-        this._vertexBuffer = null;
-        this._indexBuffer = null;
-        this._dirty = true;
-    }
-
-    render(device: GraphicsDevice, screen: any): void {
-        if (this._dirty) {
-            this._updateMesh(device);
-            this._dirty = false;
-        }
-
-        if (!this._meshInstance) return;
-
-        const shader = this._getTextShader(device);
-        this._material.setShader(shader);
-        this._material.setColor(this._color);
-
-        device.setBlendState(true, GraphicsDevice.BLENDMODE_SRC_ALPHA, GraphicsDevice.BLENDMODE_ONE_MINUS_SRC_ALPHA);
-        device.setDepthState(false);
-        device.setCullMode(GraphicsDevice.CULLFACE_NONE);
-
-        this._meshInstance.render(device);
-    }
-
-    update(dt: number): void {
-        // Text update logic if needed for animations or dynamic changes
-    }
-
-    measure(): Vec2 {
-        if (this._dirty) {
-            this._calculateDimensions();
-        }
-        return new Vec2(this._width, this._height);
+    constructor(screen: Screen) {
+        super(screen);
     }
 
     get text(): string {
@@ -107,152 +53,324 @@ export class Text extends Element {
 
     set color(value: Color) {
         if (!this._color.equals(value)) {
-            this._color = value;
+            this._color.copy(value);
             this._dirty = true;
         }
     }
 
-    get font(): string {
-        return this._font;
+    get fontFamily(): string {
+        return this._fontFamily;
     }
 
-    set font(value: string) {
-        if (this._font !== value) {
-            this._font = value;
+    set fontFamily(value: string) {
+        if (this._fontFamily !== value) {
+            this._fontFamily = value;
             this._dirty = true;
         }
     }
 
-    get alignment(): 'left' | 'center' | 'right' {
-        return this._alignment;
+    get textAlign(): 'left' | 'center' | 'right' {
+        return this._textAlign;
     }
 
-    set alignment(value: 'left' | 'center' | 'right') {
-        if (this._alignment !== value) {
-            this._alignment = value;
+    set textAlign(value: 'left' | 'center' | 'right') {
+        if (this._textAlign !== value) {
+            this._textAlign = value;
             this._dirty = true;
         }
     }
 
-    get baseline(): 'top' | 'middle' | 'bottom' {
-        return this._baseline;
+    get verticalAlign(): 'top' | 'middle' | 'bottom' {
+        return this._verticalAlign;
     }
 
-    set baseline(value: 'top' | 'middle' | 'bottom') {
-        if (this._baseline !== value) {
-            this._baseline = value;
+    set verticalAlign(value: 'top' | 'middle' | 'bottom') {
+        if (this._verticalAlign !== value) {
+            this._verticalAlign = value;
             this._dirty = true;
         }
     }
 
-    private _updateMesh(device: GraphicsDevice): void {
-        if (this._vertexBuffer) {
-            this._vertexBuffer.destroy();
-            this._vertexBuffer = null;
+    get lineHeight(): number {
+        return this._lineHeight;
+    }
+
+    set lineHeight(value: number) {
+        if (this._lineHeight !== value) {
+            this._lineHeight = value;
+            this._dirty = true;
         }
-        if (this._indexBuffer) {
-            this._indexBuffer.destroy();
-            this._indexBuffer = null;
+    }
+
+    get wordWrap(): boolean {
+        return this._wordWrap;
+    }
+
+    set wordWrap(value: boolean) {
+        if (this._wordWrap !== value) {
+            this._wordWrap = value;
+            this._dirty = true;
+        }
+    }
+
+    get maxLines(): number {
+        return this._maxLines;
+    }
+
+    set maxLines(value: number) {
+        if (this._maxLines !== value) {
+            this._maxLines = value;
+            this._dirty = true;
+        }
+    }
+
+    get style(): any {
+        return {
+            fontSize: this._fontSize,
+            color: this._color.clone(),
+            fontFamily: this._fontFamily,
+            textAlign: this._textAlign,
+            verticalAlign: this._verticalAlign,
+            lineHeight: this._lineHeight,
+            wordWrap: this._wordWrap,
+            maxLines: this._maxLines
+        };
+    }
+
+    set style(value: any) {
+        let changed = false;
+        if (value.fontSize !== undefined && this._fontSize !== value.fontSize) {
+            this._fontSize = value.fontSize;
+            changed = true;
+        }
+        if (value.color !== undefined && !this._color.equals(value.color)) {
+            this._color.copy(value.color);
+            changed = true;
+        }
+        if (value.fontFamily !== undefined && this._fontFamily !== value.fontFamily) {
+            this._fontFamily = value.fontFamily;
+            changed = true;
+        }
+        if (value.textAlign !== undefined && this._textAlign !== value.textAlign) {
+            this._textAlign = value.textAlign;
+            changed = true;
+        }
+        if (value.verticalAlign !== undefined && this._verticalAlign !== value.verticalAlign) {
+            this._verticalAlign = value.verticalAlign;
+            changed = true;
+        }
+        if (value.lineHeight !== undefined && this._lineHeight !== value.lineHeight) {
+            this._lineHeight = value.lineHeight;
+            changed = true;
+        }
+        if (value.wordWrap !== undefined && this._wordWrap !== value.wordWrap) {
+            this._wordWrap = value.wordWrap;
+            changed = true;
+        }
+        if (value.maxLines !== undefined && this._maxLines !== value.maxLines) {
+            this._maxLines = value.maxLines;
+            changed = true;
+        }
+        if (changed) {
+            this._dirty = true;
+        }
+    }
+
+    render(device: GraphicsDevice, screen: Screen): void {
+        if (!this._text || this._text.length === 0) return;
+
+        if (this._dirty) {
+            this._updateTextGeometry(device);
+            this._dirty = false;
         }
 
-        if (!this._text) return;
+        if (!this._material || !this._vertexBuffer || !this._indexBuffer) return;
 
+        const screenWidth = screen.resolution.x;
+        const screenHeight = screen.resolution.y;
+
+        const elementWidth = this.entity.element.width;
+        const elementHeight = this.entity.element.height;
+
+        let x = this.entity.getPosition().x;
+        let y = this.entity.getPosition().y;
+
+        switch (this._textAlign) {
+            case 'center':
+                x -= elementWidth * 0.5;
+                break;
+            case 'right':
+                x -= elementWidth;
+                break;
+        }
+
+        switch (this._verticalAlign) {
+            case 'middle':
+                y -= elementHeight * 0.5;
+                break;
+            case 'bottom':
+                y -= elementHeight;
+                break;
+        }
+
+        const projMat = new Mat4();
+        projMat.setOrtho(0, screenWidth, screenHeight, 0, -1, 1);
+
+        const viewMat = new Mat4();
+        viewMat.setIdentity();
+
+        const modelMat = new Mat4();
+        modelMat.setTranslate(new Vec3(x, y, 0));
+
+        const mvp = new Mat4();
+        mvp.mul2(projMat, viewMat);
+        mvp.mul(modelMat);
+
+        this._material.setShaderParameter('uMvpMatrix', mvp.data);
+        this._material.setShaderParameter('uColor', [this._color.r, this._color.g, this._color.b, this._color.a]);
+
+        this._material.enable();
+        device.setVertexBuffer(this._vertexBuffer);
+        device.setIndexBuffer(this._indexBuffer);
+        device.draw();
+        this._material.disable();
+    }
+
+    measure(): { width: number; height: number } {
+        if (this._dirty) {
+            this._calculateTextMetrics();
+            this._dirty = false;
+        }
+        return { width: this._textMetrics.width, height: this._textMetrics.height };
+    }
+
+    private _updateTextGeometry(device: GraphicsDevice): void {
+        if (!this._text || this._text.length === 0) return;
+
+        const lines = this._processText();
         const vertices: number[] = [];
         const indices: number[] = [];
-        const positions: number[] = [];
-        const uvs: number[] = [];
-        const colors: number[] = [];
+        let vertexIndex = 0;
 
-        this._calculateDimensions();
-
-        let x = 0;
+        const lineHeight = this._fontSize * this._lineHeight;
         let y = 0;
 
-        for (let i = 0; i < this._text.length; i++) {
-            const char = this._text[i];
-            const charWidth = this._fontSize * 0.6;
-            const charHeight = this._fontSize;
+        for (const line of lines) {
+            let x = 0;
+            const chars = Array.from(line);
 
-            const x0 = x;
-            const y0 = y;
-            const x1 = x + charWidth;
-            const y1 = y + charHeight;
+            for (const char of chars) {
+                const charWidth = this._getCharWidth(char);
+                const charHeight = this._fontSize;
 
-            const baseIndex = i * 4;
+                vertices.push(
+                    x, y, 0, 0, 0,
+                    x + charWidth, y, 0, 1, 0,
+                    x + charWidth, y + charHeight, 0, 1, 1,
+                    x, y + charHeight, 0, 0, 1
+                );
 
-            positions.push(x0, y0, 0);
-            positions.push(x1, y0, 0);
-            positions.push(x1, y1, 0);
-            positions.push(x0, y1, 0);
+                indices.push(
+                    vertexIndex, vertexIndex + 1, vertexIndex + 2,
+                    vertexIndex, vertexIndex + 2, vertexIndex + 3
+                );
 
-            uvs.push(0, 0);
-            uvs.push(1, 0);
-            uvs.push(1, 1);
-            uvs.push(0, 1);
+                vertexIndex += 4;
+                x += charWidth;
+            }
 
-            colors.push(this._color.r, this._color.g, this._color.b, this._color.a);
-            colors.push(this._color.r, this._color.g, this._color.b, this._color.a);
-            colors.push(this._color.r, this._color.g, this._color.b, this._color.a);
-            colors.push(this._color.r, this._color.g, this._color.b, this._color.a);
-
-            indices.push(baseIndex, baseIndex + 1, baseIndex + 2);
-            indices.push(baseIndex, baseIndex + 2, baseIndex + 3);
-
-            x += charWidth;
+            y += lineHeight;
         }
 
-        const format = new VertexFormat(device, [
-            { semantic: 'POSITION', type: 'float32', numComponents: 3 },
-            { semantic: 'TEXCOORD0', type: 'float32', numComponents: 2 },
-            { semantic: 'COLOR', type: 'float32', numComponents: 4 }
-        ]);
+        if (!this._vertexBuffer) {
+            this._vertexBuffer = new VertexBuffer(device, new VertexFormat([
+                { semantic: 'POSITION', type: 'float32', numComponents: 3 },
+                { semantic: 'TEXCOORD0', type: 'float32', numComponents: 2 }
+            ]), vertices.length / 5, true);
+        }
 
-        this._vertexBuffer = new VertexBuffer(device, format, positions.length / 3);
-        this._vertexBuffer.setData(new Float32Array([...positions, ...uvs, ...colors]));
+        if (!this._indexBuffer) {
+            this._indexBuffer = new IndexBuffer(device, 'uint16', indices.length, true);
+        }
 
-        this._indexBuffer = new IndexBuffer(device, 'uint16', indices.length);
+        this._vertexBuffer.setData(new Float32Array(vertices));
         this._indexBuffer.setData(new Uint16Array(indices));
-
-        const mesh = new Mesh();
-        mesh.vertexBuffer = this._vertexBuffer;
-        mesh.indexBuffer = this._indexBuffer;
-
-        this._meshInstance = new MeshInstance(mesh, this._material);
     }
 
-    private _calculateDimensions(): void {
-        this._width = this._text.length * this._fontSize * 0.6;
-        this._height = this._fontSize;
+    private _processText(): string[] {
+        const lines = this._text.split('\n');
+        const processedLines: string[] = [];
+
+        for (const line of lines) {
+            if (this._wordWrap && this.entity.element.width > 0) {
+                const wrappedLines = this._wrapLine(line);
+                processedLines.push(...wrappedLines);
+            } else {
+                processedLines.push(line);
+            }
+        }
+
+        if (this._maxLines > 0 && processedLines.length > this._maxLines) {
+            return processedLines.slice(0, this._maxLines);
+        }
+
+        return processedLines;
     }
 
-    private _getTextShader(device: GraphicsDevice): Shader {
-        const vs = `
-            attribute vec3 aPosition;
-            attribute vec2 aTexCoord0;
-            attribute vec4 aColor;
-            
-            uniform mat4 matrix_model;
-            uniform mat4 matrix_viewProjection;
-            
-            varying vec2 vUv0;
-            varying vec4 vColor;
-            
-            void main(void) {
-                vUv0 = aTexCoord0;
-                vColor = aColor;
-                gl_Position = matrix_viewProjection * matrix_model * vec4(aPosition, 1.0);
-            }
-        `;
+    private _wrapLine(line: string): string[] {
+        const words = line.split(' ');
+        const wrappedLines: string[] = [];
+        let currentLine = '';
 
-        const fs = `
-            varying vec2 vUv0;
-            varying vec4 vColor;
-            
-            void main(void) {
-                gl_FragColor = vColor;
-            }
-        `;
+        for (const word of words) {
+            const testLine = currentLine + (currentLine ? ' ' : '') + word;
+            const testWidth = this._measureText(testLine);
 
-        return new Shader(device, vs, fs);
+            if (testWidth <= this.entity.element.width) {
+                currentLine = testLine;
+            } else {
+                if (currentLine) {
+                    wrappedLines.push(currentLine);
+                    currentLine = word;
+                } else {
+                    wrappedLines.push(word);
+                }
+            }
+        }
+
+        if (currentLine) {
+            wrappedLines.push(currentLine);
+        }
+
+        return wrappedLines;
+    }
+
+    private _measureText(text: string): number {
+        let width = 0;
+        const chars = Array.from(text);
+
+        for (const char of chars) {
+            width += this._getCharWidth(char);
+        }
+
+        return width;
+    }
+
+    private _getCharWidth(char: string): number {
+        return this._fontSize * 0.6;
+    }
+
+    private _calculateTextMetrics(): void {
+        const lines = this._processText();
+        const lineHeight = this._fontSize * this._lineHeight;
+
+        let maxWidth = 0;
+        for (const line of lines) {
+            const width = this._measureText(line);
+            maxWidth = Math.max(maxWidth, width);
+        }
+
+        this._textMetrics.width = maxWidth;
+        this._textMetrics.height = lines.length * lineHeight;
     }
 }

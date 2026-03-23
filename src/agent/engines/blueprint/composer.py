@@ -287,10 +287,11 @@ class BlueprintComposer:
             else:
                 methods.append(spec)
 
+        from ...dev.translator import to_kebab_case
         type_name = plan.type_name
         target_file = ""
         if target_dir:
-            target_file = f"{target_dir}/{type_name.lower()}.ts"
+            target_file = f"{target_dir}/{to_kebab_case(type_name)}.ts"
 
         type_bp = TypeBlueprint(
             name=type_name,

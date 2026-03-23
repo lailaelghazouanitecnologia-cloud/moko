@@ -1,172 +1,165 @@
-import { EventEmitter } from '../core/eventemitter';
-import { Vec3 } from '../math/vec3';
+import { EventEmitter } from '../core';
+import { Vec3 } from '../math';
+import { Channel } from './channel';
+import { AudioManager } from './audio-manager';
 
-export class Channel3d extends EventEmitter {
-  private _context: AudioContext;
-  private _panner: PannerNode;
-  private _gain: GainNode;
-  private _input: AudioNode;
-  private _output: AudioNode;
-  private _connected: boolean = false;
+export class Channel3d extends Channel {
+    private pannerNode: PannerNode;
+    private gainNode: GainNode;
+    private position: Vec3;
+    private velocity: Vec3;
+    private orientation: Vec3;
+    private distanceModel: DistanceModelType;
+    private panningModel: PanningModelType;
+    private refDistance: number;
+    private maxDistance: number;
+    private rolloffFactor: number;
+    private coneInnerAngle: number;
+    private coneOuterAngle: number;
+    private coneOuterGain: number;
 
-  constructor(context: AudioContext) {
-    super();
-    this._context = context;
-    this._panner = context.createPanner();
-    this._gain = context.createGain();
-    this._input = this._panner;
-    this._output = this._gain;
-    this._panner.connect(this._gain);
-  }
+    constructor(audioManager: AudioManager) {
+        super(audioManager);
+        this.pannerNode = audioManager.context.createPanner();
+        this.gainNode = audioManager.context.createGain();
+        this.position = new Vec3();
+        this.velocity = new Vec3();
+        this.orientation = new Vec3(0, 0, 1);
+        this.distanceModel = 'inverse';
+        this.panningModel = 'HRTF';
+        this.refDistance = 1;
+        this.maxDistance = 10000;
+        this.rolloffFactor = 1;
+        this.coneInnerAngle = 360;
+        this.coneOuterAngle = 360;
+        this.coneOuterGain = 0;
 
-  get input(): AudioNode {
-    return this._input;
-  }
-
-  get output(): AudioNode {
-    return this._output;
-  }
-
-  connect(destination: AudioNode | Channel3d): AudioNode {
-    if (destination instanceof Channel3d) {
-      this._output.connect(destination.input);
-    } else {
-      this._output.connect(destination);
+        this.pannerNode.connect(this.gainNode);
+        this.gainNode.connect(audioManager.context.destination);
     }
-    this._connected = true;
-    return destination instanceof Channel3d ? destination.output : destination;
-  }
 
-  disconnect(destination?: AudioNode | Channel3d): void {
-    if (destination) {
-      if (destination instanceof Channel3d) {
-        this._output.disconnect(destination.input);
-      } else {
-        this._output.disconnect(destination);
-      }
-    } else {
-      this._output.disconnect();
+    connect(node: AudioNode): void {
+        this.gainNode.connect(node);
     }
-    this._connected = false;
-  }
 
-  setPosition(x: number | Vec3, y?: number, z?: number): void {
-    if (x instanceof Vec3) {
-      this._panner.setPosition(x.x, x.y, x.z);
-    } else if (y !== undefined && z !== undefined) {
-      this._panner.setPosition(x as number, y, z);
+    disconnect(node?: AudioNode): void {
+        if (node) {
+            this.gainNode.disconnect(node);
+        } else {
+            this.gainNode.disconnect();
+        }
     }
-  }
 
-  setVelocity(x: number | Vec3, y?: number, z?: number): void {
-    if (x instanceof Vec3) {
-      this._panner.setVelocity(x.x, x.y, x.z);
-    } else if (y !== undefined && z !== undefined) {
-      this._panner.setVelocity(x as number, y, z);
+    setPosition(x: number, y: number, z: number): void {
+        this.position.set(x, y, z);
+        this.pannerNode.setPosition(x, y, z);
     }
-  }
 
-  setOrientation(x: number | Vec3, y?: number, z?: number): void {
-    if (x instanceof Vec3) {
-      this._panner.setOrientation(x.x, x.y, x.z);
-    } else if (y !== undefined && z !== undefined) {
-      this._panner.setOrientation(x as number, y, z);
+    getPosition(): Vec3 {
+        return this.position.clone();
     }
-  }
 
-  setDistanceModel(model: DistanceModelType): void {
-    this._panner.distanceModel = model;
-  }
+    setVelocity(x: number, y: number, z: number): void {
+        this.velocity.set(x, y, z);
+        this.pannerNode.setVelocity(x, y, z);
+    }
 
-  setPanningModel(model: PanningModelType): void {
-    this._panner.panningModel = model;
-  }
+    getVelocity(): Vec3 {
+        return this.velocity.clone();
+    }
 
-  setRefDistance(distance: number): void {
-    this._panner.refDistance = distance;
-  }
+    setOrientation(x: number, y: number, z: number): void {
+        this.orientation.set(x, y, z);
+        this.pannerNode.setOrientation(x, y, z);
+    }
 
-  setMaxDistance(distance: number): void {
-    this._panner.maxDistance = distance;
-  }
+    getOrientation(): Vec3 {
+        return this.orientation.clone();
+    }
 
-  setRolloffFactor(factor: number): void {
-    this._panner.rolloffFactor = factor;
-  }
+    setDistanceModel(model: DistanceModelType): void {
+        this.distanceModel = model;
+        this.pannerNode.distanceModel = model;
+    }
 
-  setConeAngles(innerAngle: number, outerAngle: number, outerGain: number): void {
-    this._panner.coneInnerAngle = innerAngle;
-    this._panner.coneOuterAngle = outerAngle;
-    this._panner.coneOuterGain = outerGain;
-  }
+    getDistanceModel(): DistanceModelType {
+        return this.distanceModel;
+    }
 
-  setVolume(volume: number): void {
-    this._gain.gain.setValueAtTime(volume, this._context.currentTime);
-  }
+    setPanningModel(model: PanningModelType): void {
+        this.panningModel = model;
+        this.pannerNode.panningModel = model;
+    }
 
-  getVolume(): number {
-    return this._gain.gain.value;
-  }
+    getPanningModel(): PanningModelType {
+        return this.panningModel;
+    }
 
-  getPosition(): Vec3 {
-    const position = this._panner.position;
-    return new Vec3(position.x, position.y, position.z);
-  }
+    setRefDistance(distance: number): void {
+        this.refDistance = distance;
+        this.pannerNode.refDistance = distance;
+    }
 
-  getVelocity(): Vec3 {
-    const velocity = this._panner.velocity;
-    return new Vec3(velocity.x, velocity.y, velocity.z);
-  }
+    getRefDistance(): number {
+        return this.refDistance;
+    }
 
-  getOrientation(): Vec3 {
-    const orientation = this._panner.orientation;
-    return new Vec3(orientation.x, orientation.y, orientation.z);
-  }
+    setMaxDistance(distance: number): void {
+        this.maxDistance = distance;
+        this.pannerNode.maxDistance = distance;
+    }
 
-  getDistanceModel(): DistanceModelType {
-    return this._panner.distanceModel;
-  }
+    getMaxDistance(): number {
+        return this.maxDistance;
+    }
 
-  getPanningModel(): PanningModelType {
-    return this._panner.panningModel;
-  }
+    setRolloffFactor(factor: number): void {
+        this.rolloffFactor = factor;
+        this.pannerNode.rolloffFactor = factor;
+    }
 
-  getRefDistance(): number {
-    return this._panner.refDistance;
-  }
+    getRolloffFactor(): number {
+        return this.rolloffFactor;
+    }
 
-  getMaxDistance(): number {
-    return this._panner.maxDistance;
-  }
+    setConeInnerAngle(angle: number): void {
+        this.coneInnerAngle = angle;
+        this.pannerNode.coneInnerAngle = angle;
+    }
 
-  getRolloffFactor(): number {
-    return this._panner.rolloffFactor;
-  }
+    getConeInnerAngle(): number {
+        return this.coneInnerAngle;
+    }
 
-  getConeInnerAngle(): number {
-    return this._panner.coneInnerAngle;
-  }
+    setConeOuterAngle(angle: number): void {
+        this.coneOuterAngle = angle;
+        this.pannerNode.coneOuterAngle = angle;
+    }
 
-  getConeOuterAngle(): number {
-    return this._panner.coneOuterAngle;
-  }
+    getConeOuterAngle(): number {
+        return this.coneOuterAngle;
+    }
 
-  getConeOuterGain(): number {
-    return this._panner.coneOuterGain;
-  }
+    setConeOuterGain(gain: number): void {
+        this.coneOuterGain = gain;
+        this.pannerNode.coneOuterGain = gain;
+    }
 
-  isConnected(): boolean {
-    return this._connected;
-  }
+    getConeOuterGain(): number {
+        return this.coneOuterGain;
+    }
 
-  destroy(): void {
-    this.disconnect();
-    this._panner.disconnect();
-    this._gain.disconnect();
-    this._context = null as any;
-    this._panner = null as any;
-    this._gain = null as any;
-    this._input = null as any;
-    this._output = null as any;
-  }
+    getInputNode(): AudioNode {
+        return this.pannerNode;
+    }
+
+    getOutputNode(): AudioNode {
+        return this.gainNode;
+    }
+
+    destroy(): void {
+        this.pannerNode.disconnect();
+        this.gainNode.disconnect();
+        super.destroy();
+    }
 }

@@ -706,18 +706,18 @@ class DevSupervisor:
             )
 
         # Ensure types from plan are in the blueprint
+        from .translator import to_kebab_case
         for type_name in types:
             if not bp.get_type(type_name):
                 bp.types.append(TypeBlueprint(
                     name=type_name,
-                    target_file=f"src/{mod_name}/{type_name.lower()}.ts",
+                    target_file=f"src/{mod_name}/{to_kebab_case(type_name)}.ts",
                     references=refs,
                 ))
 
-        # Set target_file for types that don't have one
+        # Normalize all target_file to kebab-case
         for t in bp.types:
-            if not t.target_file:
-                t.target_file = f"src/{mod_name}/{t.name.lower()}.ts"
+            t.target_file = f"src/{mod_name}/{to_kebab_case(t.name)}.ts"
 
         # Save blueprint to disk
         full_bp_path = project_dir / bp_path
@@ -748,6 +748,20 @@ class DevSupervisor:
         # Inject prior layers context into translator for this block
         prior_ctx = self._build_prior_layers_context(meta)
         self.translator.prior_layers_context = prior_ctx
+
+        # Load prior modules for import map
+        requires = meta.get("requires", [])
+        prior_modules = []
+        if requires:
+            bp_dir = project_dir / "blueprints"
+            for req_name in requires:
+                bp_file = bp_dir / f"{req_name}.bp.yaml"
+                if bp_file.exists():
+                    try:
+                        prior_modules.append(ModuleBlueprint.load(bp_file))
+                    except Exception:
+                        pass
+        self.translator.prior_modules = prior_modules
 
         # Load blueprint from disk (fresh each time)
         try:
@@ -841,6 +855,18 @@ class DevSupervisor:
                 except Exception as e:
                     report_parts.append(f"  ERROR: {bp_file.name}: {e}")
 
+        # Generate root index.ts
+        files_changed = []
+        if self.translator and bp_dir.exists():
+            module_names = sorted(
+                bp_file.stem.replace(".bp", "")
+                for bp_file in bp_dir.glob("*.bp.yaml")
+            )
+            if module_names:
+                root_idx = self.translator.generate_root_index(module_names, project_dir)
+                files_changed.append(root_idx)
+                report_parts.append(f"\n  Generated root index: {root_idx}")
+
         # Density analysis
         density_parts = []
         try:
@@ -860,6 +886,7 @@ class DevSupervisor:
             "content": content,
             "tokens_used": 0,
             "test_results": {"total": total_types, "translated": translated},
+            "files_changed": files_changed,
         }
 
     def _exec_refactor(self, block, history, ref_context, registry, discussions) -> dict:

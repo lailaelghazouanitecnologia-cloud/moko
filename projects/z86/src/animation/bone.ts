@@ -1,155 +1,194 @@
-import { EventEmitter } from '../core/event-emitter';
-import { Vec3 } from '../math/vec3';
-import { Quat } from '../math/quat';
-import { Mat4 } from '../math/mat4';
+import { EventEmitter } from '../core';
+import { Vec3, Quat, Mat4 } from '../math';
 
 export class Bone {
-    name: string;
-    parent: Bone | null;
-    children: Bone[];
-    transform: Mat4;
-    position: Vec3;
-    rotation: Quat;
-    scale: Vec3;
-    worldTransform: Mat4;
-    worldPosition: Vec3;
-    worldRotation: Quat;
-    worldScale: Vec3;
-    dirty: boolean;
+  private _name: string;
+  private _skeleton: Skeleton | null = null;
+  private _parent: Bone | null = null;
+  private _children: Bone[] = [];
+  private _localPosition: Vec3 = new Vec3();
+  private _localRotation: Quat = new Quat();
+  private _localScale: Vec3 = new Vec3(1, 1, 1);
+  private _worldPosition: Vec3 = new Vec3();
+  private _worldRotation: Quat = new Quat();
+  private _worldScale: Vec3 = new Vec3(1, 1, 1);
+  private _localTransform: Mat4 = new Mat4();
+  private _worldTransform: Mat4 = new Mat4();
+  private _worldTransformDirty: boolean = true;
 
-    constructor(name: string = '') {
-        this.name = name;
-        this.parent = null;
-        this.children = [];
-        this.transform = new Mat4();
-        this.position = new Vec3();
-        this.rotation = new Quat();
-        this.scale = new Vec3(1, 1, 1);
-        this.worldTransform = new Mat4();
-        this.worldPosition = new Vec3();
-        this.worldRotation = new Quat();
-        this.worldScale = new Vec3(1, 1, 1);
-        this.dirty = true;
+  constructor(name: string) {
+    this._name = name;
+  }
+
+  get name(): string {
+    return this._name;
+  }
+
+  get skeleton(): Skeleton | null {
+    return this._skeleton;
+  }
+
+  set skeleton(value: Skeleton | null) {
+    this._skeleton = value;
+  }
+
+  get parent(): Bone | null {
+    return this._parent;
+  }
+
+  get children(): ReadonlyArray<Bone> {
+    return this._children;
+  }
+
+  addChild(child: Bone): void {
+    if (child._parent === this) return;
+    if (child._parent) {
+      child._parent.removeChild(child);
+    }
+    this._children.push(child);
+    child._parent = this;
+    child._skeleton = this._skeleton;
+    child._markWorldTransformDirty();
+  }
+
+  removeChild(child: Bone): void {
+    const index = this._children.indexOf(child);
+    if (index !== -1) {
+      this._children.splice(index, 1);
+      child._parent = null;
+      child._skeleton = null;
+      child._markWorldTransformDirty();
+    }
+  }
+
+  getLocalPosition(): Vec3 {
+    return this._localPosition.clone();
+  }
+
+  setLocalPosition(x: number | Vec3, y?: number, z?: number): void {
+    if (x instanceof Vec3) {
+      this._localPosition.copy(x);
+    } else if (y !== undefined && z !== undefined) {
+      this._localPosition.set(x, y, z);
+    }
+    this._updateLocalTransform();
+    this._markWorldTransformDirty();
+  }
+
+  getLocalRotation(): Quat {
+    return this._localRotation.clone();
+  }
+
+  setLocalRotation(quat: Quat): void {
+    this._localRotation.copy(quat);
+    this._updateLocalTransform();
+    this._markWorldTransformDirty();
+  }
+
+  getLocalScale(): Vec3 {
+    return this._localScale.clone();
+  }
+
+  setLocalScale(x: number | Vec3, y?: number, z?: number): void {
+    if (x instanceof Vec3) {
+      this._localScale.copy(x);
+    } else if (y !== undefined && z !== undefined) {
+      this._localScale.set(x, y, z);
+    }
+    this._updateLocalTransform();
+    this._markWorldTransformDirty();
+  }
+
+  getWorldPosition(): Vec3 {
+    this._updateWorldTransform();
+    return this._worldPosition.clone();
+  }
+
+  getWorldRotation(): Quat {
+    this._updateWorldTransform();
+    return this._worldRotation.clone();
+  }
+
+  getWorldScale(): Vec3 {
+    this._updateWorldTransform();
+    return this._worldScale.clone();
+  }
+
+  getLocalTransform(): Mat4 {
+    return this._localTransform.clone();
+  }
+
+  getWorldTransform(): Mat4 {
+    this._updateWorldTransform();
+    return this._worldTransform.clone();
+  }
+
+  private _updateLocalTransform(): void {
+    this._localTransform.setTRS(this._localPosition, this._localRotation, this._localScale);
+  }
+
+  private _updateWorldTransform(): void {
+    if (!this._worldTransformDirty) return;
+
+    this._updateLocalTransform();
+
+    if (this._parent) {
+      this._parent._updateWorldTransform();
+      this._worldTransform.mul2(this._parent._worldTransform, this._localTransform);
+      this._worldTransform.getTranslation(this._worldPosition);
+      this._worldTransform.getScale(this._worldScale);
+      const rotMat = new Mat4();
+      this._worldTransform.getRotation(rotMat);
+      this._worldRotation.setFromMat4(rotMat);
+    } else {
+      this._worldTransform.copy(this._localTransform);
+      this._worldPosition.copy(this._localPosition);
+      this._worldRotation.copy(this._localRotation);
+      this._worldScale.copy(this._localScale);
     }
 
-    setPosition(x: number | Vec3, y?: number, z?: number): void {
-        if (typeof x === 'number') {
-            this.position.set(x, y!, z!);
-        } else {
-            this.position.copy(x);
-        }
-        this.dirty = true;
+    this._worldTransformDirty = false;
+
+    for (const child of this._children) {
+      child._markWorldTransformDirty();
     }
+  }
 
-    setRotation(x: number | Quat, y?: number, z?: number, w?: number): void {
-        if (typeof x === 'number') {
-            this.rotation.set(x, y!, z!, w!);
-        } else {
-            this.rotation.copy(x);
-        }
-        this.dirty = true;
+  private _markWorldTransformDirty(): void {
+    this._worldTransformDirty = true;
+    for (const child of this._children) {
+      child._markWorldTransformDirty();
     }
+  }
 
-    setScale(x: number | Vec3, y?: number, z?: number): void {
-        if (typeof x === 'number') {
-            this.scale.set(x, y!, z!);
-        } else {
-            this.scale.copy(x);
-        }
-        this.dirty = true;
+  lookAt(target: Vec3, up: Vec3 = Vec3.UP): void {
+    const m = new Mat4();
+    m.setLookAt(this._worldPosition, target, up);
+    const q = new Quat();
+    q.setFromMat4(m);
+    if (this._parent) {
+      const invParentRot = this._parent.getWorldRotation().clone().invert();
+      this.setLocalRotation(invParentRot.mul(q));
+    } else {
+      this.setLocalRotation(q);
     }
+  }
 
-    setTRS(position: Vec3, rotation: Quat, scale: Vec3): void {
-        this.position.copy(position);
-        this.rotation.copy(rotation);
-        this.scale.copy(scale);
-        this.dirty = true;
+  translate(x: number | Vec3, y?: number, z?: number): void {
+    if (x instanceof Vec3) {
+      this.setLocalPosition(this._localPosition.add(x));
+    } else if (y !== undefined && z !== undefined) {
+      this.setLocalPosition(this._localPosition.add(new Vec3(x, y, z)));
     }
+  }
 
-    updateFromTransform(): void {
-        this.transform.setTRS(this.position, this.rotation, this.scale);
+  rotate(x: number | Vec3, y?: number, z?: number): void {
+    const rotation = new Quat();
+    if (x instanceof Vec3) {
+      rotation.setFromEulerAngles(x.x, x.y, x.z);
+    } else if (y !== undefined && z !== undefined) {
+      rotation.setFromEulerAngles(x, y, z);
     }
-
-    updateWorldTransform(): void {
-        if (!this.dirty && this.parent && !this.parent.dirty) {
-            return;
-        }
-
-        this.updateFromTransform();
-
-        if (this.parent) {
-            this.worldTransform.mul2(this.parent.worldTransform, this.transform);
-        } else {
-            this.worldTransform.copy(this.transform);
-        }
-
-        this.worldTransform.getTranslation(this.worldPosition);
-        this.worldTransform.getScale(this.worldScale);
-        this.worldRotation.setFromMat4(this.worldTransform);
-
-        this.dirty = false;
-
-        for (let i = 0; i < this.children.length; i++) {
-            this.children[i].dirty = true;
-            this.children[i].updateWorldTransform();
-        }
-    }
-
-    addChild(child: Bone): void {
-        if (child.parent) {
-            child.parent.removeChild(child);
-        }
-        child.parent = this;
-        this.children.push(child);
-        child.dirty = true;
-    }
-
-    removeChild(child: Bone): void {
-        const index = this.children.indexOf(child);
-        if (index !== -1) {
-            this.children.splice(index, 1);
-            child.parent = null;
-            child.dirty = true;
-        }
-    }
-
-    findByName(name: string): Bone | null {
-        if (this.name === name) {
-            return this;
-        }
-        for (let i = 0; i < this.children.length; i++) {
-            const result = this.children[i].findByName(name);
-            if (result) {
-                return result;
-            }
-        }
-        return null;
-    }
-
-    getPath(): string {
-        const path: string[] = [];
-        let current: Bone | null = this;
-        while (current) {
-            path.unshift(current.name);
-            current = current.parent;
-        }
-        return path.join('/');
-    }
-
-    clone(): Bone {
-        const clone = new Bone(this.name);
-        clone.position.copy(this.position);
-        clone.rotation.copy(this.rotation);
-        clone.scale.copy(this.scale);
-        return clone;
-    }
-
-    destroy(): void {
-        while (this.children.length > 0) {
-            this.removeChild(this.children[0]);
-        }
-        if (this.parent) {
-            this.parent.removeChild(this);
-        }
-    }
+    this.setLocalRotation(this._localRotation.mul(rotation));
+  }
 }

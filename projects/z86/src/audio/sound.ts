@@ -1,48 +1,39 @@
-import { EventEmitter } from '../core/event-emitter';
-import { ResourceLoader } from '../core/resource-loader';
+import { EventEmitter } from '../core';
+import { Vec3 } from '../math';
 
 export class Sound extends EventEmitter {
-  private _src: string;
-  private _audio: HTMLAudioElement;
-  private _volume: number = 1;
+  private _buffer: AudioBuffer | null = null;
+  private _gainNode: GainNode;
+  private _source: AudioBufferSourceNode | null = null;
+  private _context: AudioContext;
   private _loop: boolean = false;
-  private _currentTime: number = 0;
-  private _onEnded?: () => void;
+  private _volume: number = 1;
+  private _pitch: number = 1;
+  private _isPlaying: boolean = false;
+  private _startTime: number = 0;
+  private _pauseTime: number = 0;
+  private _duration: number = 0;
 
-  constructor(src: string) {
+  constructor(context: AudioContext, buffer?: AudioBuffer) {
     super();
-    this._src = src;
-    this._audio = new Audio();
-    this._audio.src = src;
-    this._audio.preload = 'auto';
-    this._audio.volume = this._volume;
-    this._audio.loop = this._loop;
-    this._audio.currentTime = this._currentTime;
-
-    this._audio.addEventListener('ended', () => {
-      if (this._onEnded) {
-        this._onEnded();
-      }
-      this.emit('ended');
-    });
-
-    this._audio.addEventListener('timeupdate', () => {
-      this._currentTime = this._audio.currentTime;
-    });
+    this._context = context;
+    this._buffer = buffer || null;
+    this._gainNode = context.createGain();
+    this._gainNode.connect(context.destination);
+    if (buffer) {
+      this._duration = buffer.duration;
+    }
   }
 
-  play(): void {
-    this._audio.play();
+  get buffer(): AudioBuffer | null {
+    return this._buffer;
   }
 
-  pause(): void {
-    this._audio.pause();
-  }
-
-  stop(): void {
-    this._audio.pause();
-    this._audio.currentTime = 0;
-    this._currentTime = 0;
+  set buffer(buffer: AudioBuffer | null) {
+    this._buffer = buffer;
+    if (buffer) {
+      this._duration = buffer.duration;
+    }
   }
 
   get volume(): number {
@@ -50,8 +41,19 @@ export class Sound extends EventEmitter {
   }
 
   set volume(value: number) {
-    this._volume = Math.max(0, Math.min(1, value));
-    this._audio.volume = this._volume;
+    this._volume = Math.max(0, value);
+    this._gainNode.gain.setValueAtTime(this._volume, this._context.currentTime);
+  }
+
+  get pitch(): number {
+    return this._pitch;
+  }
+
+  set pitch(value: number) {
+    this._pitch = Math.max(0.01, value);
+    if (this._source) {
+      this._source.playbackRate.setValueAtTime(this._pitch, this._context.currentTime);
+    }
   }
 
   get loop(): boolean {
@@ -60,39 +62,95 @@ export class Sound extends EventEmitter {
 
   set loop(value: boolean) {
     this._loop = value;
-    this._audio.loop = this._loop;
+    if (this._source) {
+      this._source.loop = value;
+    }
   }
 
   get currentTime(): number {
-    return this._currentTime;
-  }
-
-  set currentTime(value: number) {
-    this._currentTime = Math.max(0, value);
-    this._audio.currentTime = this._currentTime;
-  }
-
-  get onEnded(): (() => void) | undefined {
-    return this._onEnded;
-  }
-
-  set onEnded(callback: (() => void) | undefined) {
-    this._onEnded = callback;
-  }
-
-  get src(): string {
-    return this._src;
+    if (!this._isPlaying) return this._pauseTime;
+    return this._context.currentTime - this._startTime + this._pauseTime;
   }
 
   get duration(): number {
-    return this._audio.duration || 0;
+    return this._duration;
   }
 
-  get paused(): boolean {
-    return this._audio.paused;
+  get isPlaying(): boolean {
+    return this._isPlaying;
   }
 
-  get ended(): boolean {
-    return this._audio.ended;
+  play(): void {
+    if (this._isPlaying || !this._buffer) return;
+    this._startSource(0);
+    this._isPlaying = true;
+    this._startTime = this._context.currentTime;
+    this._pauseTime = 0;
+    this.emit('play');
+  }
+
+  pause(): void {
+    if (!this._isPlaying || !this._source) return;
+    this._pauseTime = this.currentTime;
+    this._stopSource();
+    this._isPlaying = false;
+    this.emit('pause');
+  }
+
+  stop(): void {
+    if (!this._source) return;
+    this._stopSource();
+    this._isPlaying = false;
+    this._pauseTime = 0;
+    this.emit('stop');
+  }
+
+  seek(time: number): void {
+    if (!this._buffer) return;
+    const clampedTime = Math.max(0, Math.min(time, this._duration));
+    const wasPlaying = this._isPlaying;
+    if (wasPlaying) {
+      this._stopSource();
+    }
+    this._pauseTime = clampedTime;
+    if (wasPlaying) {
+      this._startSource(clampedTime);
+    }
+  }
+
+  destroy(): void {
+    this.stop();
+    this._gainNode.disconnect();
+    this._buffer = null;
+    this.emit('destroy');
+    this.removeAllListeners();
+  }
+
+  private _startSource(offset: number): void {
+    this._source = this._context.createBufferSource();
+    this._source.buffer = this._buffer;
+    this._source.loop = this._loop;
+    this._source.playbackRate.setValueAtTime(this._pitch, this._context.currentTime);
+    this._source.connect(this._gainNode);
+    this._source.start(0, offset);
+    this._source.onended = () => {
+      if (!this._loop) {
+        this._isPlaying = false;
+        this._pauseTime = 0;
+        this.emit('ended');
+      }
+    };
+  }
+
+  private _stopSource(): void {
+    if (this._source) {
+      try {
+        this._source.stop();
+      } catch (e) {
+        // Ignore errors if source is already stopped
+      }
+      this._source.disconnect();
+      this._source = null;
+    }
   }
 }

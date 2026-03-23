@@ -1,183 +1,146 @@
-import { EventEmitter } from '../core/event-emitter';
-import { Vec2 } from '../math/vec2';
-
-export interface MouseEvent {
-    position: Vec2;
-    delta: Vec2;
-    button: number;
-    buttons: number;
-    wheel: number;
-    shiftKey: boolean;
-    ctrlKey: boolean;
-    altKey: boolean;
-    metaKey: boolean;
-}
+import { EventEmitter } from '../core';
+import { Vec2 } from '../math';
 
 export class Mouse extends EventEmitter {
-    private _position: Vec2 = new Vec2(0, 0);
-    private _lastPosition: Vec2 = new Vec2(0, 0);
-    private _delta: Vec2 = new Vec2(0, 0);
-    private _wheel: number = 0;
-    private _buttons: Set<number> = new Set();
-    private _element: HTMLElement | null = null;
-    private _enabled: boolean = true;
-    private _attached: boolean = false;
+  private _position: Vec2 = new Vec2(0, 0);
+  private _delta: Vec2 = new Vec2(0, 0);
+  private _lastPosition: Vec2 = new Vec2(0, 0);
+  private _buttons: Map<number, boolean> = new Map();
+  private _wheel: number = 0;
+  private _wheelDelta: number = 0;
+  private _element: HTMLElement | null = null;
+  private _enabled: boolean = true;
 
-    constructor(element?: HTMLElement) {
-        super();
-        if (element) {
-            this.attach(element);
-        }
+  constructor(element?: HTMLElement) {
+    super();
+    if (element) {
+      this.attach(element);
     }
+  }
 
-    attach(element: HTMLElement): void {
-        if (this._attached) {
-            this.detach();
-        }
-        this._element = element;
-        this._attached = true;
-        this._bindEvents();
+  attach(element: HTMLElement): void {
+    this.detach();
+    this._element = element;
+    this._element.addEventListener('mousemove', this._onMouseMove);
+    this._element.addEventListener('mousedown', this._onMouseDown);
+    this._element.addEventListener('mouseup', this._onMouseUp);
+    this._element.addEventListener('wheel', this._onWheel);
+    this._element.addEventListener('mouseleave', this._onMouseLeave);
+    this._element.addEventListener('contextmenu', this._onContextMenu);
+  }
+
+  detach(): void {
+    if (this._element) {
+      this._element.removeEventListener('mousemove', this._onMouseMove);
+      this._element.removeEventListener('mousedown', this._onMouseDown);
+      this._element.removeEventListener('mouseup', this._onMouseUp);
+      this._element.removeEventListener('wheel', this._onWheel);
+      this._element.removeEventListener('mouseleave', this._onMouseLeave);
+      this._element.removeEventListener('contextmenu', this._onContextMenu);
+      this._element = null;
     }
+  }
 
-    detach(): void {
-        if (!this._attached || !this._element) return;
-        this._unbindEvents();
-        this._attached = false;
-        this._element = null;
-    }
+  private _onMouseMove = (event: MouseEvent) => {
+    if (!this._enabled) return;
+    const rect = this._element!.getBoundingClientRect();
+    this._position.x = event.clientX - rect.left;
+    this._position.y = event.clientY - rect.top;
+    this._delta.x = this._position.x - this._lastPosition.x;
+    this._delta.y = this._position.y - this._lastPosition.y;
+    this._lastPosition.copy(this._position);
+    this.emit('move', this._position.x, this._position.y);
+  };
 
-    private _bindEvents(): void {
-        if (!this._element) return;
-        this._element.addEventListener('mousedown', this._onMouseDown);
-        this._element.addEventListener('mousemove', this._onMouseMove);
-        this._element.addEventListener('mouseup', this._onMouseUp);
-        this._element.addEventListener('wheel', this._onWheel);
-        this._element.addEventListener('contextmenu', this._onContextMenu);
-    }
+  private _onMouseDown = (event: MouseEvent) => {
+    if (!this._enabled) return;
+    this._buttons.set(event.button, true);
+    this.emit('down', event.button, this._position.x, this._position.y);
+  };
 
-    private _unbindEvents(): void {
-        if (!this._element) return;
-        this._element.removeEventListener('mousedown', this._onMouseDown);
-        this._element.removeEventListener('mousemove', this._onMouseMove);
-        this._element.removeEventListener('mouseup', this._onMouseUp);
-        this._element.removeEventListener('wheel', this._onWheel);
-        this._element.removeEventListener('contextmenu', this._onContextMenu);
-    }
+  private _onMouseUp = (event: MouseEvent) => {
+    if (!this._enabled) return;
+    this._buttons.set(event.button, false);
+    this.emit('up', event.button, this._position.x, this._position.y);
+  };
 
-    private _onMouseDown = (event: globalThis.MouseEvent) => {
-        if (!this._enabled) return;
-        this._buttons.add(event.button);
-        this._updatePosition(event);
-        this.emit('mousedown', this._createEvent(event));
-    };
+  private _onWheel = (event: WheelEvent) => {
+    if (!this._enabled) return;
+    event.preventDefault();
+    this._wheelDelta = -event.deltaY;
+    this._wheel += this._wheelDelta;
+    this.emit('wheel', this._wheelDelta);
+  };
 
-    private _onMouseMove = (event: globalThis.MouseEvent) => {
-        if (!this._enabled) return;
-        this._updatePosition(event);
-        this.emit('mousemove', this._createEvent(event));
-    };
+  private _onMouseLeave = () => {
+    if (!this._enabled) return;
+    this._buttons.clear();
+    this.emit('leave');
+  };
 
-    private _onMouseUp = (event: globalThis.MouseEvent) => {
-        if (!this._enabled) return;
-        this._buttons.delete(event.button);
-        this._updatePosition(event);
-        this.emit('mouseup', this._createEvent(event));
-    };
+  private _onContextMenu = (event: Event) => {
+    event.preventDefault();
+  };
 
-    private _onWheel = (event: WheelEvent) => {
-        if (!this._enabled) return;
-        event.preventDefault();
-        this._wheel = event.deltaY;
-        this.emit('wheel', this._createWheelEvent(event));
-    };
+  update(): void {
+    this._delta.set(0, 0);
+    this._wheelDelta = 0;
+  }
 
-    private _onContextMenu = (event: globalThis.MouseEvent) => {
-        event.preventDefault();
-    };
+  get position(): Vec2 {
+    return this._position.clone();
+  }
 
-    private _updatePosition(event: globalThis.MouseEvent): void {
-        const rect = this._element!.getBoundingClientRect();
-        this._lastPosition.copy(this._position);
-        this._position.set(
-            event.clientX - rect.left,
-            event.clientY - rect.top
-        );
-        this._delta.copy(this._position).sub(this._lastPosition);
-    }
+  get delta(): Vec2 {
+    return this._delta.clone();
+  }
 
-    private _createEvent(event: globalThis.MouseEvent): MouseEvent {
-        return {
-            position: this._position.clone(),
-            delta: this._delta.clone(),
-            button: event.button,
-            buttons: this.buttons,
-            wheel: this._wheel,
-            shiftKey: event.shiftKey,
-            ctrlKey: event.ctrlKey,
-            altKey: event.altKey,
-            metaKey: event.metaKey
-        };
-    }
+  get x(): number {
+    return this._position.x;
+  }
 
-    private _createWheelEvent(event: WheelEvent): MouseEvent {
-        return {
-            position: this._position.clone(),
-            delta: this._delta.clone(),
-            button: -1,
-            buttons: this.buttons,
-            wheel: this._wheel,
-            shiftKey: event.shiftKey,
-            ctrlKey: event.ctrlKey,
-            altKey: event.altKey,
-            metaKey: event.metaKey
-        };
-    }
+  get y(): number {
+    return this._position.y;
+  }
 
-    get position(): Vec2 {
-        return this._position.clone();
-    }
+  get dx(): number {
+    return this._delta.x;
+  }
 
-    get delta(): Vec2 {
-        return this._delta.clone();
-    }
+  get dy(): number {
+    return this._delta.y;
+  }
 
-    get wheel(): number {
-        return this._wheel;
-    }
+  isPressed(button: number): boolean {
+    return this._buttons.get(button) || false;
+  }
 
-    get buttons(): number {
-        let mask = 0;
-        this._buttons.forEach(b => mask |= 1 << b);
-        return mask;
-    }
+  wasPressed(button: number): boolean {
+    return this._buttons.has(button) && this._buttons.get(button) === true;
+  }
 
-    isPressed(button: number): boolean {
-        return this._buttons.has(button);
-    }
+  wasReleased(button: number): boolean {
+    return this._buttons.has(button) && this._buttons.get(button) === false;
+  }
 
-    isAnyPressed(): boolean {
-        return this._buttons.size > 0;
-    }
+  get wheel(): number {
+    return this._wheel;
+  }
 
-    get enabled(): boolean {
-        return this._enabled;
-    }
+  get wheelDelta(): number {
+    return this._wheelDelta;
+  }
 
-    set enabled(value: boolean) {
-        this._enabled = value;
-    }
+  set enabled(value: boolean) {
+    this._enabled = value;
+  }
 
-    get attached(): boolean {
-        return this._attached;
-    }
+  get enabled(): boolean {
+    return this._enabled;
+  }
 
-    update(): void {
-        this._wheel = 0;
-        this._delta.set(0, 0);
-    }
-
-    dispose(): void {
-        this.detach();
-        this.removeAllListeners();
-    }
+  dispose(): void {
+    this.detach();
+    this.removeAllListeners();
+  }
 }

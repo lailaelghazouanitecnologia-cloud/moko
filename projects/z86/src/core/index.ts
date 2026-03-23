@@ -1,5 +1,5 @@
-export { EventEmitter } from './eventemitter';
+export { EventEmitter } from './event-emitter';
 export { Timer } from './timer';
-export { ResourceLoader } from './resourceloader';
+export { ResourceLoader } from './resource-loader';
 export { Tags } from './tags';
 export { Platform } from './platform';

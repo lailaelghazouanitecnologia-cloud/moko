@@ -1,204 +1,162 @@
-import { EventEmitter } from '../core/event-emitter';
-import { Platform } from '../core/platform';
-
-export interface KeyboardEvent {
-    key: string;
-    code: string;
-    altKey: boolean;
-    ctrlKey: boolean;
-    metaKey: boolean;
-    shiftKey: boolean;
-    repeat: boolean;
-    timestamp: number;
-}
+import { EventEmitter } from '../core';
+import { Vec2 } from '../math';
 
 export class Keyboard extends EventEmitter {
-    private _keysPressed: Set<string> = new Set();
-    private _keyCodes: Map<string, string> = new Map();
-    private _element: HTMLElement | Window;
-    private _enabled: boolean = true;
+  private _keys: Map<string, boolean> = new Map();
+  private _keyCodes: Map<number, string> = new Map([
+    [8, 'Backspace'],
+    [9, 'Tab'],
+    [13, 'Enter'],
+    [16, 'Shift'],
+    [17, 'Control'],
+    [18, 'Alt'],
+    [19, 'Pause'],
+    [20, 'CapsLock'],
+    [27, 'Escape'],
+    [32, ' '],
+    [33, 'PageUp'],
+    [34, 'PageDown'],
+    [35, 'End'],
+    [36, 'Home'],
+    [37, 'ArrowLeft'],
+    [38, 'ArrowUp'],
+    [39, 'ArrowRight'],
+    [40, 'ArrowDown'],
+    [45, 'Insert'],
+    [46, 'Delete'],
+    [48, '0'],
+    [49, '1'],
+    [50, '2'],
+    [51, '3'],
+    [52, '4'],
+    [53, '5'],
+    [54, '6'],
+    [55, '7'],
+    [56, '8'],
+    [57, '9'],
+    [65, 'a'],
+    [66, 'b'],
+    [67, 'c'],
+    [68, 'd'],
+    [69, 'e'],
+    [70, 'f'],
+    [71, 'g'],
+    [72, 'h'],
+    [73, 'i'],
+    [74, 'j'],
+    [75, 'k'],
+    [76, 'l'],
+    [77, 'm'],
+    [78, 'n'],
+    [79, 'o'],
+    [80, 'p'],
+    [81, 'q'],
+    [82, 'r'],
+    [83, 's'],
+    [84, 't'],
+    [85, 'u'],
+    [86, 'v'],
+    [87, 'w'],
+    [88, 'x'],
+    [89, 'y'],
+    [90, 'z'],
+    [91, 'Meta'],
+    [92, 'Meta'],
+    [93, 'Meta'],
+    [96, '0'],
+    [97, '1'],
+    [98, '2'],
+    [99, '3'],
+    [100, '4'],
+    [101, '5'],
+    [102, '6'],
+    [103, '7'],
+    [104, '8'],
+    [105, '9'],
+    [106, '*'],
+    [107, '+'],
+    [109, '-'],
+    [110, '.'],
+    [111, '/'],
+    [112, 'F1'],
+    [113, 'F2'],
+    [114, 'F3'],
+    [115, 'F4'],
+    [116, 'F5'],
+    [117, 'F6'],
+    [118, 'F7'],
+    [119, 'F8'],
+    [120, 'F9'],
+    [121, 'F10'],
+    [122, 'F11'],
+    [123, 'F12'],
+    [144, 'NumLock'],
+    [145, 'ScrollLock'],
+    [186, ';'],
+    [187, '='],
+    [188, ','],
+    [189, '-'],
+    [190, '.'],
+    [191, '/'],
+    [192, '`'],
+    [219, '['],
+    [220, '\\'],
+    [221, ']'],
+    [222, "'"]
+  ]);
 
-    constructor(element?: HTMLElement | Window) {
-        super();
-        this._element = element || (typeof window !== 'undefined' ? window : (globalThis as any));
-        this._initializeKeyCodes();
-        this._attachEventListeners();
+  constructor() {
+    super();
+    this._setupEventListeners();
+  }
+
+  private _setupEventListeners(): void {
+    if (typeof window === 'undefined') return;
+
+    window.addEventListener('keydown', this._onKeyDown.bind(this));
+    window.addEventListener('keyup', this._onKeyUp.bind(this));
+  }
+
+  private _onKeyDown(event: KeyboardEvent): void {
+    const key = this._getKeyFromEvent(event);
+    if (!key) return;
+
+    this._keys.set(key, true);
+    this.emit('keydown', key, event);
+  }
+
+  private _onKeyUp(event: KeyboardEvent): void {
+    const key = this._getKeyFromEvent(event);
+    if (!key) return;
+
+    this._keys.set(key, false);
+    this.emit('keyup', key, event);
+  }
+
+  private _getKeyFromEvent(event: KeyboardEvent): string | null {
+    if (this._keyCodes.has(event.keyCode)) {
+      return this._keyCodes.get(event.keyCode)!;
     }
+    return event.key;
+  }
 
-    private _initializeKeyCodes(): void {
-        const codeMap: { [key: string]: string } = {
-            'Space': ' ',
-            'Enter': 'Enter',
-            'Tab': 'Tab',
-            'Escape': 'Escape',
-            'Backspace': 'Backspace',
-            'Delete': 'Delete',
-            'ArrowUp': 'ArrowUp',
-            'ArrowDown': 'ArrowDown',
-            'ArrowLeft': 'ArrowLeft',
-            'ArrowRight': 'ArrowRight',
-            'ShiftLeft': 'Shift',
-            'ShiftRight': 'Shift',
-            'ControlLeft': 'Control',
-            'ControlRight': 'Control',
-            'AltLeft': 'Alt',
-            'AltRight': 'Alt',
-            'MetaLeft': 'Meta',
-            'MetaRight': 'Meta',
-            'Digit0': '0',
-            'Digit1': '1',
-            'Digit2': '2',
-            'Digit3': '3',
-            'Digit4': '4',
-            'Digit5': '5',
-            'Digit6': '6',
-            'Digit7': '7',
-            'Digit8': '8',
-            'Digit9': '9',
-            'KeyA': 'a',
-            'KeyB': 'b',
-            'KeyC': 'c',
-            'KeyD': 'd',
-            'KeyE': 'e',
-            'KeyF': 'f',
-            'KeyG': 'g',
-            'KeyH': 'h',
-            'KeyI': 'i',
-            'KeyJ': 'j',
-            'KeyK': 'k',
-            'KeyL': 'l',
-            'KeyM': 'm',
-            'KeyN': 'n',
-            'KeyO': 'o',
-            'KeyP': 'p',
-            'KeyQ': 'q',
-            'KeyR': 'r',
-            'KeyS': 's',
-            'KeyT': 't',
-            'KeyU': 'u',
-            'KeyV': 'v',
-            'KeyW': 'w',
-            'KeyX': 'x',
-            'KeyY': 'y',
-            'KeyZ': 'z'
-        };
+  keyDown(key: string): boolean {
+    return this._keys.get(key) === true;
+  }
 
-        for (const [code, key] of Object.entries(codeMap)) {
-            this._keyCodes.set(code, key);
-        }
-    }
+  keyUp(key: string): boolean {
+    return this._keys.get(key) === false;
+  }
 
-    private _attachEventListeners(): void {
-        if (!this._enabled || !this._element) return;
+  isPressed(key: string): boolean {
+    return this._keys.get(key) === true;
+  }
 
-        const target = this._element as any;
-        
-        target.addEventListener('keydown', this._onKeyDown.bind(this));
-        target.addEventListener('keyup', this._onKeyUp.bind(this));
-        
-        if (typeof window !== 'undefined') {
-            window.addEventListener('blur', this._onBlur.bind(this));
-        }
-    }
+  destroy(): void {
+    if (typeof window === 'undefined') return;
 
-    private _detachEventListeners(): void {
-        const target = this._element as any;
-        
-        if (target.removeEventListener) {
-            target.removeEventListener('keydown', this._onKeyDown.bind(this));
-            target.removeEventListener('keyup', this._onKeyUp.bind(this));
-        }
-        
-        if (typeof window !== 'undefined') {
-            window.removeEventListener('blur', this._onBlur.bind(this));
-        }
-    }
-
-    private _onKeyDown(event: any): void {
-        if (!this._enabled) return;
-
-        const key = this._getKeyFromCode(event.code) || event.key;
-        
-        if (!this._keysPressed.has(key)) {
-            this._keysPressed.add(key);
-            
-            const keyboardEvent: KeyboardEvent = {
-                key: key,
-                code: event.code,
-                altKey: event.altKey,
-                ctrlKey: event.ctrlKey,
-                metaKey: event.metaKey,
-                shiftKey: event.shiftKey,
-                repeat: event.repeat,
-                timestamp: Date.now()
-            };
-            
-            this.emit('keydown', keyboardEvent);
-        }
-    }
-
-    private _onKeyUp(event: any): void {
-        if (!this._enabled) return;
-
-        const key = this._getKeyFromCode(event.code) || event.key;
-        
-        this._keysPressed.delete(key);
-        
-        const keyboardEvent: KeyboardEvent = {
-            key: key,
-            code: event.code,
-            altKey: event.altKey,
-            ctrlKey: event.ctrlKey,
-            metaKey: event.metaKey,
-            shiftKey: event.shiftKey,
-            repeat: event.repeat,
-            timestamp: Date.now()
-        };
-        
-        this.emit('keyup', keyboardEvent);
-    }
-
-    private _onBlur(): void {
-        this._keysPressed.clear();
-    }
-
-    private _getKeyFromCode(code: string): string | undefined {
-        return this._keyCodes.get(code);
-    }
-
-    public isKeyPressed(key: string): boolean {
-        return this._keysPressed.has(key);
-    }
-
-    public isAnyKeyPressed(keys: string[]): boolean {
-        return keys.some(key => this._keysPressed.has(key));
-    }
-
-    public getKeysPressed(): string[] {
-        return Array.from(this._keysPressed);
-    }
-
-    public enable(): void {
-        if (!this._enabled) {
-            this._enabled = true;
-            this._attachEventListeners();
-        }
-    }
-
-    public disable(): void {
-        if (this._enabled) {
-            this._enabled = false;
-            this._detachEventListeners();
-            this._keysPressed.clear();
-        }
-    }
-
-    public destroy(): void {
-        this.disable();
-        this.removeAllListeners();
-    }
-
-    get enabled(): boolean {
-        return this._enabled;
-    }
+    window.removeEventListener('keydown', this._onKeyDown.bind(this));
+    window.removeEventListener('keyup', this._onKeyUp.bind(this));
+    this._keys.clear();
+  }
 }

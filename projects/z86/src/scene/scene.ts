@@ -1,44 +1,44 @@
-import { GameObject } from '../gameobject/GameObject';
-import { Camera } from './Camera';
-import { RenderContext } from './RenderContext';
+import { EventEmitter } from '../core';
+import { GraphNode } from './graph-node';
+import { Entity } from './entity';
+import { Camera } from './camera';
+import { ForwardRenderer } from './forward-renderer';
 
-export class Scene {
+export class Scene extends EventEmitter {
     name: string;
-    root: GameObject;
-    newsRoot: GameObject;
+    root: GraphNode;
+    newsRoot: GraphNode;
     camera: Camera | null;
-    renderContext: RenderContext;
+    renderContext: any;
     loaded: boolean;
-    trash: Set<GameObject>;
+    trash: Set<Entity>;
 
-    constructor(name: string) {
+    constructor(name: string = '') {
+        super();
         this.name = name;
-        this.root = new GameObject('root');
-        this.newsRoot = new GameObject('newsRoot');
+        this.root = new GraphNode('root');
+        this.newsRoot = new GraphNode('newsRoot');
         this.camera = null;
-        this.renderContext = new RenderContext();
+        this.renderContext = {};
         this.loaded = false;
-        this.trash = new Set<GameObject>();
+        this.trash = new Set<Entity>();
     }
 
-    addObject(gameObject: GameObject): void {
-        this.newsRoot.addChild(gameObject);
-        gameObject.scene = this;
+    addObject(entity: Entity): void {
+        entity.scene = this;
+        this.newsRoot.addChild(entity);
     }
 
     flush(): void {
-        const children = [...this.newsRoot.children];
-        for (const child of children) {
-            this.newsRoot.removeChild(child);
+        while (this.newsRoot.children.length > 0) {
+            const child = this.newsRoot.children.shift()!;
             this.root.addChild(child);
         }
     }
 
     reset(): void {
-        this.root.destroy();
-        this.newsRoot.destroy();
-        this.root = new GameObject('root');
-        this.newsRoot = new GameObject('newsRoot');
+        this.root.children.length = 0;
+        this.newsRoot.children.length = 0;
         this.trash.clear();
         this.loaded = false;
     }
@@ -47,16 +47,13 @@ export class Scene {
         return this.newsRoot.children.length > 0;
     }
 
-    deleteObject(gameObject: GameObject): void {
-        if (gameObject.parent) {
-            gameObject.parent.removeChild(gameObject);
-        }
-        this.trash.add(gameObject);
+    deleteObject(entity: Entity): void {
+        this.trash.add(entity);
     }
 
     cleanTrash(): void {
-        for (const obj of this.trash) {
-            obj.destroy();
+        for (const entity of this.trash) {
+            entity.destroy();
         }
         this.trash.clear();
     }
