@@ -42,8 +42,10 @@ from .emission import EmissionIndex
 from .density import DensityAnalyzer
 from ..engines.blueprint.composer import BlueprintComposer
 from ..engines.blueprint.extractor import SourceExtractor
+from ..engines.blueprint.project import ProjectBlueprint, game_engine_project
 from ..engines.embedding.store import SemanticStore
 from ..engines.memory.block_store import CodeBlockStore
+from .compaction import build_prior_layers_context
 
 
 def _available_projects() -> list[str]:
@@ -93,6 +95,7 @@ class DevSupervisor:
         self.composer: Optional[BlueprintComposer] = None
         self.semantic_store: Optional[SemanticStore] = None
         self.block_store: Optional[CodeBlockStore] = None
+        self.project_bp: Optional[ProjectBlueprint] = None
         self.total_tokens = 0
 
     def _log(self, msg: str):
@@ -179,11 +182,12 @@ class DevSupervisor:
     # ── Plan Generation ─────────────────────────────────────────
 
     def create_plan(self, goal: str, target: str,
-                    references: list[str] = None) -> Plan:
-        """Generate a granular plan: 1 analyze block per module + 1 implement block per type.
+                    references: list[str] = None,
+                    project_bp: ProjectBlueprint = None) -> Plan:
+        """Generate a layered plan from ProjectBlueprint or LLM.
 
-        Uses LLM to identify modules, then creates fine-grained blocks.
-        Each block is self-contained — reads from disk, writes to disk.
+        With ProjectBlueprint: deterministic layers with dependency ordering.
+        Without: falls back to LLM-based module identification.
         """
         references = references or []
 
@@ -200,7 +204,10 @@ class DevSupervisor:
 
         if not self.emission_index and references:
             self.emission_index = EmissionIndex(OUT_DIR)
-            self.emission_index.build(references)
+            all_projects = references + _available_projects()
+            seen = set()
+            unique = [p for p in all_projects if p not in seen and not seen.add(p)]
+            self.emission_index.build(unique)
             self.emission_index.save(index_path)
             self._log(f"emission index built: {self.emission_index.format_stats()}")
 
@@ -213,7 +220,93 @@ class DevSupervisor:
             emission_index=self.emission_index
         )
 
-        # Load workspace summaries for planning
+        # Use ProjectBlueprint if provided, else fallback to LLM planning
+        if project_bp:
+            return self._create_layered_plan(goal, target, references, project_bp)
+        else:
+            return self._create_llm_plan(goal, target, references)
+
+    def _create_layered_plan(self, goal: str, target: str,
+                             references: list[str],
+                             project_bp: ProjectBlueprint) -> Plan:
+        """Create plan from ProjectBlueprint with layer ordering."""
+        plan = Plan(goal=goal, target_project=target, reference_projects=references)
+
+        self._log(f"layered plan: {project_bp.format_summary()}")
+
+        # Collect all ref descriptor paths
+        ref_paths = []
+        for proj in references:
+            proj_dir = OUT_DIR / proj
+            if proj_dir.is_dir():
+                for f in proj_dir.rglob("*.yaml"):
+                    if f.name not in ("workspace.yaml", "deps.yaml", "meta.yaml"):
+                        ref_paths.append(str(f.relative_to(OUT_DIR)))
+
+        # Generate blocks layer by layer
+        for layer in project_bp.sorted_layers:
+            bp_path = f"blueprints/{layer.name}.bp.yaml"
+
+            # Analyze block: generate blueprint for this layer
+            plan.add_block(
+                BlockType.ANALYZE,
+                f"[L{layer.order}] Generate blueprint for {layer.name}",
+                meta={
+                    "output_blueprint": bp_path,
+                    "refs": ref_paths,
+                    "module": layer.name,
+                    "types": layer.type_names,
+                    "layer_order": layer.order,
+                    "requires": layer.requires,
+                    "layer_description": layer.description,
+                },
+            )
+
+            # Implement blocks: one per type
+            for lt in layer.types:
+                plan.add_block(
+                    BlockType.IMPLEMENT,
+                    f"[L{layer.order}] Translate {lt.name} from {layer.name}",
+                    meta={
+                        "blueprint": bp_path,
+                        "type": lt.name,
+                        "module": layer.name,
+                        "layer_order": layer.order,
+                        "requires": layer.requires,
+                    },
+                )
+
+            # Index block
+            plan.add_block(
+                BlockType.IMPLEMENT,
+                f"[L{layer.order}] Generate {layer.name} index exports",
+                meta={"blueprint": bp_path, "type": "__index__",
+                      "module": layer.name},
+            )
+
+        # Final test block
+        plan.add_block(
+            BlockType.TEST,
+            "Verify all layers against blueprints",
+            meta={"action": "verify_all"},
+        )
+
+        # Save project blueprint
+        project_dir = self.projects_dir / target
+        project_dir.mkdir(parents=True, exist_ok=True)
+        project_bp.save(project_dir / "project.bp.yaml")
+
+        self.current_plan = plan
+        self.project_bp = project_bp
+        self.vm = BlockVM(plan, budget_chars=self.budget_chars)
+        self._log(f"layered plan: {len(plan.blocks)} blocks, "
+                  f"{len(project_bp.layers)} layers, "
+                  f"{project_bp.total_types} types")
+        return plan
+
+    def _create_llm_plan(self, goal: str, target: str,
+                         references: list[str]) -> Plan:
+        """Fallback: LLM identifies modules (old behavior)."""
         ref_summaries = []
         for proj in references:
             ws_path = OUT_DIR / proj / "workspace.yaml"
@@ -221,7 +314,6 @@ class DevSupervisor:
                 content = ws_path.read_text()[:2000]
                 ref_summaries.append(f"# {proj}/workspace.yaml\n{content}")
 
-        # Collect reference descriptor paths per module
         ref_descriptors = {}
         for proj in references:
             proj_dir = OUT_DIR / proj
@@ -231,7 +323,6 @@ class DevSupervisor:
                     module = f.parent.name if f.parent != proj_dir else "__root__"
                     ref_descriptors.setdefault(module, []).append(rel)
 
-        # Ask LLM to identify modules and their types
         system = (
             "You are a development planner. Given a goal and reference projects, "
             "identify the MODULES needed and the TYPES (classes) in each module.\n\n"
@@ -248,13 +339,12 @@ class DevSupervisor:
             user += f"Reference projects: {', '.join(references)}\n"
         if ref_summaries:
             user += f"\nReference summaries:\n{''.join(ref_summaries[:3])}\n"
-        # List available descriptors
         if ref_descriptors:
             user += f"\nAvailable descriptors:\n"
             for mod, paths in list(ref_descriptors.items())[:20]:
                 user += f"  {mod}: {', '.join(paths[:5])}\n"
 
-        self._log("generating plan...")
+        self._log("generating plan via LLM...")
         content, tokens = self._llm_call(system, user, temperature=0.4, max_tokens=2048)
 
         plan = Plan(goal=goal, target_project=target, reference_projects=references)
@@ -262,27 +352,20 @@ class DevSupervisor:
         try:
             modules_data = _parse_json_response(content)
         except (json.JSONDecodeError, IndexError):
-            # Fallback: single module with generic types
-            modules_data = [
-                {"module": "core", "types": ["Main"], "ref_descriptors": []},
-            ]
+            modules_data = [{"module": "core", "types": ["Main"], "ref_descriptors": []}]
 
-        # Generate granular blocks: analyze → implement per type → test
         for mod in modules_data:
             mod_name = mod.get("module", "core")
             types = mod.get("types", [])
             refs = mod.get("ref_descriptors", [])
             bp_path = f"blueprints/{mod_name}.bp.yaml"
 
-            # 1. Analyze block: generate blueprint for this module
             plan.add_block(
                 BlockType.ANALYZE,
                 f"Generate blueprint for {mod_name} module",
                 meta={"output_blueprint": bp_path, "refs": refs,
                       "module": mod_name, "types": types},
             )
-
-            # 2. Implement blocks: one per type
             for type_name in types:
                 plan.add_block(
                     BlockType.IMPLEMENT,
@@ -290,8 +373,6 @@ class DevSupervisor:
                     meta={"blueprint": bp_path, "type": type_name,
                           "module": mod_name},
                 )
-
-            # 3. Index block
             plan.add_block(
                 BlockType.IMPLEMENT,
                 f"Generate {mod_name} index exports",
@@ -299,14 +380,14 @@ class DevSupervisor:
                       "module": mod_name},
             )
 
-        # Final test block
         plan.add_block(
             BlockType.TEST,
-            f"Verify all modules against blueprints",
+            "Verify all modules against blueprints",
             meta={"action": "verify_all"},
         )
 
         self.current_plan = plan
+        self.project_bp = None
         self.vm = BlockVM(plan, budget_chars=self.budget_chars)
         self._log(f"plan created: {len(plan.blocks)} blocks "
                   f"({len(modules_data)} modules)")
@@ -547,6 +628,37 @@ class DevSupervisor:
 
     # ── Execution Handlers (Blueprint Pipeline) ──────────────────
 
+    def _build_prior_layers_context(self, block_meta: dict) -> str:
+        """Build compact context from already-translated prior layers."""
+        requires = block_meta.get("requires", [])
+        if not requires or not self.current_plan:
+            return ""
+
+        target = self.current_plan.target_project
+        project_dir = self.projects_dir / target
+        bp_dir = project_dir / "blueprints"
+
+        if not bp_dir.exists():
+            return ""
+
+        prior_bps = []
+        for req_name in requires:
+            bp_file = bp_dir / f"{req_name}.bp.yaml"
+            if bp_file.exists():
+                try:
+                    bp = ModuleBlueprint.load(bp_file)
+                    if bp.translated_types:
+                        prior_bps.append(bp)
+                except Exception:
+                    continue
+
+        if not prior_bps:
+            return ""
+
+        ctx = build_prior_layers_context(prior_bps, max_chars=3000)
+        self._log(f"prior layers context: {len(prior_bps)} modules, {len(ctx)} chars")
+        return ctx
+
     def _exec_analyze(self, block, history, ref_context, registry, discussions) -> dict:
         """Analyze block → generate a ModuleBlueprint YAML and write to disk."""
         meta = block.meta
@@ -554,6 +666,7 @@ class DevSupervisor:
         refs = meta.get("refs", [])
         mod_name = meta.get("module", "core")
         types = meta.get("types", [])
+        layer_desc = meta.get("layer_description", "")
 
         if not self.translator or not self.current_plan:
             return {"content": "ERROR: no translator", "tokens_used": 0}
@@ -561,8 +674,15 @@ class DevSupervisor:
         target = self.current_plan.target_project
         project_dir = self.projects_dir / target
 
-        goal = (f"Module '{mod_name}' with types: {', '.join(types)}. "
-                f"Part of: {self.current_plan.goal}")
+        # Build prior layers context for this layer
+        prior_ctx = self._build_prior_layers_context(meta)
+
+        goal = f"Module '{mod_name}' with types: {', '.join(types)}."
+        if layer_desc:
+            goal += f" {layer_desc}."
+        goal += f" Part of: {self.current_plan.goal}"
+        if prior_ctx:
+            goal += f"\n\n{prior_ctx}"
 
         # Use composer (extraction-first) when available, else fallback to translator
         tokens = 0
@@ -624,6 +744,10 @@ class DevSupervisor:
         target = self.current_plan.target_project
         project_dir = self.projects_dir / target
         full_bp_path = project_dir / bp_path
+
+        # Inject prior layers context into translator for this block
+        prior_ctx = self._build_prior_layers_context(meta)
+        self.translator.prior_layers_context = prior_ctx
 
         # Load blueprint from disk (fresh each time)
         try:
@@ -874,7 +998,8 @@ class DevSupervisor:
     # ── Full Iteration Loop ─────────────────────────────────────
 
     def run(self, goal: str, target: str, references: list[str] = None,
-            max_iterations: int = 100) -> Plan:
+            max_iterations: int = 100,
+            project_bp: ProjectBlueprint = None) -> Plan:
         """Full iterative development loop with blueprint pipeline.
 
         Each block is self-contained: reads from disk, does one LLM call,
@@ -887,8 +1012,8 @@ class DevSupervisor:
         project_dir.mkdir(parents=True, exist_ok=True)
         (project_dir / "blueprints").mkdir(exist_ok=True)
 
-        # 1. Create plan (granular: 1 block per type)
-        plan = self.create_plan(goal, target, references)
+        # 1. Create plan (layered if project_bp provided)
+        plan = self.create_plan(goal, target, references, project_bp=project_bp)
         print(plan.format_status())
 
         # 2. Execute blocks (each self-contained)

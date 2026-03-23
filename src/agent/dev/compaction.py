@@ -161,3 +161,82 @@ def prepare_translation_context(
         prioritized_types=priority_names,
         estimated_tokens=total_chars // 4,
     )
+
+
+# ── Layer-level compaction ──────────────────────────────────
+
+def compact_type_oneliner(type_bp: TypeBlueprint) -> str:
+    """Ultra-compact type summary: Name(fields, methods). ~30-50 chars.
+
+    Example: "Mat4(data:Float32Array,mul,setTRS,perspective,lookAt,invert)"
+    """
+    parts = []
+    # Key fields (max 3)
+    for f in type_bp.fields[:3]:
+        if f.type:
+            parts.append(f"{f.name}:{f.type}")
+        else:
+            parts.append(f.name)
+    # Method names only (no sigs, no hints)
+    for m in type_bp.methods:
+        parts.append(m.name)
+    for m in type_bp.static_members[:5]:
+        parts.append(m.name)
+    # Truncate to keep it short
+    inner = ",".join(parts)
+    if len(inner) > 120:
+        inner = inner[:117] + "..."
+    extends = f" extends {type_bp.extends}" if type_bp.extends else ""
+    return f"{type_bp.name}({inner}){extends}"
+
+
+def compact_layer_summary(module_bp: ModuleBlueprint, max_chars: int = 500) -> str:
+    """Compact an entire translated module to a one-line-per-type summary.
+
+    Used when injecting prior layer context. Minimal footprint.
+    Example output:
+      math: Vec3(x,y,z,add,sub,cross,normalize,length,lerp),
+            Mat4(data:Float32Array,mul,setTRS,perspective,lookAt,invert),
+            Quat(x,y,z,w,slerp,setFromEulerAngles,transformVector)
+    """
+    type_summaries = []
+    used = 0
+    for t in module_bp.types:
+        if t.status != "translated":
+            continue
+        line = compact_type_oneliner(t)
+        if used + len(line) + 2 > max_chars:
+            break
+        type_summaries.append(line)
+        used += len(line) + 2  # +2 for ", "
+    return f"{module_bp.name}: {', '.join(type_summaries)}"
+
+
+def build_prior_layers_context(
+    translated_blueprints: list[ModuleBlueprint],
+    max_chars: int = 3000,
+) -> str:
+    """Build AVAILABLE FROM PRIOR LAYERS context from already-translated blueprints.
+
+    Returns compact multi-line string, one line per module.
+    Budget: ~300-500 chars per module, total max_chars.
+    """
+    if not translated_blueprints:
+        return ""
+
+    lines = []
+    budget_per = max_chars // max(len(translated_blueprints), 1)
+    used = 0
+
+    for bp in translated_blueprints:
+        remaining = max_chars - used
+        per_module = min(budget_per, remaining)
+        if per_module < 50:
+            break
+        line = compact_layer_summary(bp, max_chars=per_module)
+        lines.append(f"  {line}")
+        used += len(line) + 3
+
+    if not lines:
+        return ""
+    return "AVAILABLE FROM PRIOR LAYERS:\n" + "\n".join(lines)

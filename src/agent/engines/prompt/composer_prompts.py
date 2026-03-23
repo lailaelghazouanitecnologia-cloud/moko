@@ -38,9 +38,10 @@ Sibling types: {sibling_types}
 
 ## Extraction sources
 {extraction_sources}
-
+{prior_layers}
 ## Task
 Enrich each method with a short 'hint' field.
+Use types from prior layers in signatures where appropriate.
 Flag missing critical methods in 'constraints'.
 Output the enriched YAML only."""
 

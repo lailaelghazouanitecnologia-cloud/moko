@@ -84,12 +84,14 @@ class BlueprintTranslator:
     """Translates YAML blueprints to source code, one type at a time."""
 
     def __init__(self, llm: LLMProvider, out_dir: Path = None,
-                 verbose: bool = False, emission_index: EmissionIndex = None):
+                 verbose: bool = False, emission_index: EmissionIndex = None,
+                 prior_layers_context: str = ""):
         self.llm = llm
         self.out_dir = out_dir or OUT_DIR
         self.verbose = verbose
         self.total_tokens = 0
         self.emission_index = emission_index
+        self.prior_layers_context = prior_layers_context
 
     def _log(self, msg: str):
         if self.verbose:
@@ -185,6 +187,10 @@ class BlueprintTranslator:
 
         if ref_context:
             user += f"\n{ref_context}\n"
+
+        # Prior layers context (types from already-translated modules)
+        if self.prior_layers_context:
+            user += f"\n## {self.prior_layers_context}\n"
 
         # 4. LLM call — all token budget for this one type
         code, tokens = self._llm_call(TRANSLATE_SYSTEM, user, max_tokens=6000)

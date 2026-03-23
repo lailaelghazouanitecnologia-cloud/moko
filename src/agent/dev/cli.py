@@ -98,9 +98,19 @@ def cmd_dev(args: argparse.Namespace):
         print("Error: --target (-t) is required")
         sys.exit(1)
 
+    # Use layered project blueprint for game engines
+    project_bp = None
+    goal_lower = args.goal.lower()
+    if any(kw in goal_lower for kw in ("game engine", "engine", "renderer", "3d")):
+        from ..engines.blueprint.project import game_engine_project
+        project_bp = game_engine_project(args.target, args.goal)
+        print(f"Using layered project blueprint: {project_bp.total_types} types, "
+              f"{len(project_bp.layers)} layers")
+
     supervisor.run(
         goal=args.goal,
         target=args.target,
         references=args.ref,
         max_iterations=args.max_iterations,
+        project_bp=project_bp,
     )
