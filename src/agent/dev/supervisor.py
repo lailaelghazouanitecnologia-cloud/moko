@@ -9,6 +9,7 @@ but adds:
   - BlockVM for navigation, register/discard of insights
   - On-demand context loading to maintain token equilibrium
   - Post-iteration abstraction to decide what's worth keeping
+  - Code materialization: extracts code from LLM output and writes to disk
 
 Flow:
   1. Analyze goal → generate Plan with blocks
@@ -20,11 +21,14 @@ Flow:
      e. Register valuable insights, discard noise
      f. Run abstraction process
      g. Dynamic plan adjustment
+     h. If implement block → materialize code to disk
   3. Final summary with full chain + registry
 """
 from __future__ import annotations
 
 import json
+import os
+import re
 import time
 from pathlib import Path
 from typing import Optional
@@ -345,6 +349,12 @@ class DevSupervisor:
             prev_block=prev_block,
         )
         self.total_tokens += result.get("tokens_used", 0)
+
+        # Materialize code to disk for implement/refactor blocks
+        if block.block_type in (BlockType.IMPLEMENT, BlockType.REFACTOR) and self.current_plan:
+            written = self._materialize_code(block, self.current_plan.target_project)
+            if written:
+                self._log(f"materialized {len(written)} files")
 
         self._log(f"block {block.index} done in {block.elapsed_s:.1f}s [{block.hash[:8]}]")
         return block
@@ -698,6 +708,63 @@ class DevSupervisor:
                 f"[Block {b.index} / {b.block_type.value}] {b.objective}\n{summary}"
             )
         return "\n---\n".join(parts)
+
+    # ── Code Materialization ────────────────────────────────────
+
+    def _materialize_code(self, block: Block, target_project: str) -> list[str]:
+        """Extract code blocks from LLM output and write them to disk.
+
+        Parses fenced code blocks with file path comments like:
+            ```typescript
+            // project/src/math/vec2.ts
+            export class Vec2 { ... }
+            ```
+
+        Returns list of files written.
+        """
+        if not block.output:
+            return []
+
+        project_dir = Path("projects") / target_project
+        if not project_dir.exists():
+            project_dir.mkdir(parents=True, exist_ok=True)
+
+        # Match fenced code blocks: ```lang\n// path\ncode\n```
+        pattern = re.compile(
+            r'```(?:\w+)?\s*\n'          # opening fence with optional language
+            r'(?://|#|<!--)\s*'           # comment prefix (// or # or <!--)
+            r'(?:[\w-]+/)?([\w./\-]+)\s*' # file path (strip leading project name)
+            r'(?:-->)?\s*\n'              # optional closing -->
+            r'(.*?)'                       # code content
+            r'\n```',                      # closing fence
+            re.DOTALL,
+        )
+
+        files_written = []
+        for match in pattern.finditer(block.output):
+            file_path_raw = match.group(1).strip()
+            code = match.group(2).strip()
+
+            if not file_path_raw or not code:
+                continue
+
+            # Normalize path — strip target project prefix if present
+            if file_path_raw.startswith(f"{target_project}/"):
+                file_path_raw = file_path_raw[len(target_project) + 1:]
+
+            # Skip test files, demo files that shouldn't go in src
+            full_path = project_dir / file_path_raw
+            full_path.parent.mkdir(parents=True, exist_ok=True)
+
+            full_path.write_text(code + "\n")
+            files_written.append(file_path_raw)
+            self._log(f"wrote {file_path_raw} ({len(code)} chars)")
+
+        if files_written:
+            block.files_changed = files_written
+            self._log(f"materialized {len(files_written)} files to {project_dir}")
+
+        return files_written
 
     def resume(self, plan_path: Path) -> Plan:
         """Resume a saved plan."""
