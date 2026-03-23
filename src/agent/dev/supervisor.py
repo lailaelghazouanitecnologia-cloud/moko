@@ -542,10 +542,23 @@ class DevSupervisor:
         if self.vm:
             registry_context = self.vm.get_registry_context(max_chars=3000)
 
-        # 3. Run discussions only for analyze blocks (saves API calls)
+        # 3. Run discussions only for analyze blocks WITH relevant emission data
         discussion_insights = ""
         if block.block_type == BlockType.ANALYZE and self.current_plan:
-            discussion_insights = self._run_block_discussions(block)
+            # Skip discussions for layered plans when no emission sources exist
+            mod_name = block.meta.get("module", "")
+            has_relevant_refs = True
+            if self.project_bp and self.emission_index and mod_name:
+                from .blueprint import TypeBlueprint as _TB
+                type_names = block.meta.get("types", [])
+                has_relevant_refs = any(
+                    self.emission_index.query(_TB(name=tn), max_results=1)
+                    for tn in type_names[:3]  # check first 3 types
+                )
+            if has_relevant_refs:
+                discussion_insights = self._run_block_discussions(block)
+            else:
+                self._log(f"skipping discussion for {mod_name}: no emission refs")
 
         # 4. Dispatch by type
         handlers = {
@@ -674,6 +687,21 @@ class DevSupervisor:
         target = self.current_plan.target_project
         project_dir = self.projects_dir / target
 
+        # Incremental: skip if blueprint already exists with all types
+        full_bp_path_check = project_dir / bp_path
+        if full_bp_path_check.exists():
+            try:
+                existing_bp = ModuleBlueprint.load(full_bp_path_check)
+                if all(existing_bp.get_type(tn) for tn in types):
+                    self._log(f"incremental: skipping analyze for {mod_name} (blueprint exists)")
+                    return {
+                        "content": existing_bp.format_summary(),
+                        "tokens_used": 0,
+                        "files_changed": [bp_path],
+                    }
+            except Exception:
+                pass
+
         # Build prior layers context for this layer
         prior_ctx = self._build_prior_layers_context(meta)
 
@@ -684,9 +712,22 @@ class DevSupervisor:
         if prior_ctx:
             goal += f"\n\n{prior_ctx}"
 
-        # Use composer (extraction-first) when available, else fallback to translator
+        # Use composer only if emission has relevant sources for this module
+        # Otherwise go straight to translator (cheaper, better for types without refs)
         tokens = 0
-        if self.composer and types:
+        use_composer = False
+        if self.composer and types and self.emission_index:
+            # Check if emission has sources for ANY type in this module
+            from .blueprint import TypeBlueprint as _TB
+            for type_name in types:
+                matches = self.emission_index.query(_TB(name=type_name), max_results=1)
+                if matches and matches[0].score >= 2.0:
+                    use_composer = True
+                    break
+            if not use_composer:
+                self._log(f"skipping composer for {mod_name}: no relevant extraction sources")
+
+        if use_composer:
             self._log(f"composing {mod_name} via BlueprintComposer")
             bp = self.composer.compose_module(
                 module_name=mod_name,
@@ -785,6 +826,21 @@ class DevSupervisor:
                 "content": f"ERROR: type '{type_name}' not found in {bp_path}",
                 "tokens_used": 0,
             }
+
+        # Incremental: skip if code already exists and has reasonable size
+        from .translator import to_kebab_case
+        existing_path = project_dir / type_bp.target_file
+        if existing_path.exists():
+            existing_loc = len(existing_path.read_text().splitlines())
+            if existing_loc >= 15:  # not a stub
+                type_bp.status = "translated"
+                bp.save(full_bp_path)
+                self._log(f"incremental: skipping {type_name} ({existing_loc} LOC exists)")
+                return {
+                    "content": f"Skipped {type_name} (already exists: {existing_loc} LOC)",
+                    "tokens_used": 0,
+                    "files_changed": [type_bp.target_file],
+                }
 
         # Translate this ONE type (self-contained LLM call)
         file_path, tokens, refs_used = self.translator.translate_type(
@@ -1074,8 +1130,9 @@ class DevSupervisor:
                 else:
                     print(block.output[:2000])
 
-                # Run abstraction only for analyze blocks (saves API calls)
-                if block.block_type == BlockType.ANALYZE:
+                # Run abstraction only for analyze blocks in non-layered plans
+                # Layered plans have fixed structure — abstraction can't change them
+                if block.block_type == BlockType.ANALYZE and not self.project_bp:
                     abstraction = self.run_abstraction(block)
                     print(f"  confidence: {abstraction.confidence:.0%}")
                     self._adjust_plan(block, abstraction)

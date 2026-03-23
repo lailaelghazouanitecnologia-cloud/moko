@@ -229,12 +229,18 @@ class DensityAnalyzer:
             else:
                 score.ref_coverage = 0.0
 
-        # Composite density
+        # Composite density — adjust weights based on available data
         bp_compliance = (len(bp_methods & code_methods) / len(bp_methods)
                          if bp_methods else 1.0)
-        score.density = (bp_compliance * 0.5 +
-                         score.import_score * 0.3 +
-                         score.ref_coverage * 0.2)
+        if score.available_ref_methods > 0:
+            # With refs: 50% blueprint + 30% imports + 20% ref coverage
+            score.density = (bp_compliance * 0.5 +
+                             score.import_score * 0.3 +
+                             score.ref_coverage * 0.2)
+        else:
+            # Without refs: 60% blueprint + 40% imports (no penalty for missing refs)
+            score.density = (bp_compliance * 0.6 +
+                             score.import_score * 0.4)
 
         return score
 
