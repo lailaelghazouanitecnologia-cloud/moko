@@ -203,3 +203,156 @@ evaluations:
   _source: features/critic
   _feature: Scene Rendering
   _confidence: 0.75
+- target_type: Vec3
+  target_module: math
+  variation: Port the PlayCanvas math folder verbatim, but wrap each class in a thin
+    ES-module façade so you can swap Float32Array for WASM heap later. Add a single
+    header-style index.js that re-exports {Vec2, Vec3, Mat4, Quat} to keep imports
+    clean. Write a 30-line test suite that sanity-checks setTRS + getTranslation against
+    a known camera matrix to prove the port works.
+  constraints:
+  - Must compile under strict mode with no external deps
+  - Must pass existing unit tests (Vec3.cross handedness, Mat4.perspective near/far)
+  - Must keep Float32Array internal layout identical to avoid breaking serialized
+    data
+  - Must expose same static constants (Vec3.ZERO etc.) for drop-in compatibility
+  benchmark_metrics:
+  - loc
+  - density
+  - method_count
+  - tsc_errors
+  _source: features/advocate
+  _feature: 3D Math Library
+  _confidence: 0.95
+- target_type: Vec3
+  target_module: math
+  variation: Thin WASM wrapper around gl-matrix or GLM
+  constraints:
+  - no hand-written JS math routines
+  - no engine code depends on concrete Vec3/Mat4 classes
+  - 'swapability test: must be replaceable in <1 day without changing public API'
+  benchmark_metrics:
+  - loc
+  - density
+  - method_count
+  - tsc_errors
+  _source: features/critic
+  _feature: 3D Math Library
+  _confidence: 0.85
+- target_type: Vec3
+  target_module: math
+  variation: Minimal SIMD-friendly math core
+  constraints:
+  - 'One storage type per domain: Vec3=Float32Array(3), Vec2=Float32Array(2), Mat4=Float32Array(16),
+    Quat=Float32Array(4)'
+  - 'No method chaining; all ops are static mutating functions: Vec3.add(out,a,b)'
+  - 'Only ops needed to get a cube spinning: add/sub/mulScalar/dot/cross/normalize/length,
+    Mat4.mul/setTRS/lookAt/perspective, Quat.mul/slerp'
+  - Constants live in a separate frozen object to avoid per-instance allocations
+  - Unit test coverage ≥ 90 %; no docs beyond JSDoc one-liners
+  - 'Size cap: entire module ≤ 1 kLOC'
+  - Future ops added only after two real engine systems request them
+  benchmark_metrics:
+  - loc
+  - density
+  - method_count
+  - tsc_errors
+  _source: features/pragmatist
+  _feature: 3D Math Library
+  _confidence: 0.8
+- target_type: GraphicsDevice
+  target_module: graphics
+  variation: Port the three files as-is, but replace WebGPU backend with a second
+    WebGL2 context for now; keep the Null backend for headless CI tests.  Add a minimal
+    ‘RenderGraph’ stub that simply calls ForwardRenderer::render once per camera;
+    this keeps the door open for future multi-pass pipelines without changing the
+    public API.
+  constraints:
+  - Must compile under C++17 with no external deps except GL/EGL/WebGL.
+  - Shadow-map atlas size capped to 2048×2048 for WebGL2 compatibility.
+  - All GPU resources must be reference-counted so the Null backend can safely delete
+    them.
+  - Sort-mode constants must stay bit-compatible with the original JS values for content
+    pipeline parity.
+  benchmark_metrics:
+  - loc
+  - density
+  - method_count
+  - tsc_errors
+  _source: features/advocate
+  _feature: Rendering Pipeline
+  _confidence: 0.92
+- target_type: GraphicsDevice
+  target_module: graphics
+  variation: Minimal single-backend renderer
+  constraints:
+  - Target WebGL2 only (drop WebGPU/Null for now)
+  - Hard-code one sort mode (front-to-back opaque, then back-to-front transparent)
+  - No shadow maps—use cheap baked lightmaps or one dynamic sun
+  - Collapse GraphicsDevice into a 200-line GL helper that owns VAO/FBO/state cache
+  - 'ForwardRenderer ≤ 400 lines: cull, fill per-object constant buffer, draw'
+  - Defer clustered lighting and multi-backend abstractions until framerate proves
+    they are needed
+  benchmark_metrics:
+  - loc
+  - density
+  - method_count
+  - tsc_errors
+  _source: features/critic
+  _feature: Rendering Pipeline
+  _confidence: 0.75
+- target_type: GraphicsDevice
+  target_module: graphics
+  variation: Minimal Forward Renderer
+  constraints:
+  - 'GraphicsDevice ≤ 300 LOC: only setViewport, clear, draw, backend creation, no
+    markers/copyRenderTarget.'
+  - 'ForwardRenderer ≤ 400 LOC: single camera, no shadows, no light clustering, one
+    sort mode (back-to-front), cull + draw only.'
+  - No shadow-map cache, no worldClustersAllocator, no light dispatch abstraction.
+  - Keep the Renderer base class but drop all constants except SORTMODE_BACK2FRONT.
+  - Defer WebGPU support; ship WebGL2 only for MVP.
+  benchmark_metrics:
+  - loc
+  - density
+  - method_count
+  - tsc_errors
+  _source: features/pragmatist
+  _feature: Rendering Pipeline
+  _confidence: 0.85
+- target_type: Entity
+  target_module: framework
+  variation: Port the three core types (Entity, Component, ComponentSystem) into a
+    new module `src/ecs/` and keep the PlayCanvas public API verbatim for the first
+    milestone.  Replace the internal event bus with a lighter pub/sub if you need
+    to remove the EventHandler dependency.  Add a compile-time flag to strip the editor-only
+    schema reflection to keep the runtime lean.
+  constraints:
+  - Must compile on C++17 / emscripten without RTTI or exceptions
+  - Component data must be memcpy-able for JS-to-WASM serialization
+  - Keep the 1:1 mapping between PlayCanvas component names (model, light, camera,
+    etc.) so that existing scene files load unmodified
+  benchmark_metrics:
+  - loc
+  - density
+  - method_count
+  - tsc_errors
+  _source: features/advocate
+  _feature: Entity-Component System
+  _confidence: 0.92
+- target_type: Entity
+  target_module: framework
+  variation: Plain-JS object pool with behaviour mixins
+  constraints:
+  - No reflection or schema until >3 component types exist
+  - Keep each behaviour in its own module/file
+  - Measure performance before introducing any ECS
+  - Refactor only when profiler shows >5% frame time in property lookup
+  benchmark_metrics:
+  - loc
+  - density
+  - method_count
+  - tsc_errors
+  _source: features/critic
+  _feature: Entity-Component System
+  _confidence: 0.85
