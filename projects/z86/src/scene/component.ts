@@ -1,42 +1,49 @@
-import { EventHandler } from '../framework/event-handler';
-import { Entity } from './entity';
+import { EventHandler } from '../core/event-handler';
+
+export interface ComponentData {
+    [key: string]: any;
+}
 
 export class Component extends EventHandler {
-    system: any;
+    system: ComponentSystem;
     entity: Entity;
     enabled: boolean;
-    data: any;
-    gameObject: any;
+    data: ComponentData;
+    gameObject: GameObject;
     destroyed: boolean;
 
-    constructor(system: any, entity: Entity) {
+    constructor(system: ComponentSystem, entity: Entity) {
         super();
         this.system = system;
         this.entity = entity;
-        this.enabled = false;
+        this.enabled = true;
         this.data = {};
         this.gameObject = null;
         this.destroyed = false;
     }
 
     onEnable(): void {
-        // lifecycle callback when enabled
+        // Lifecycle hook when enabled
     }
 
     onDisable(): void {
-        // lifecycle callback when disabled
+        // Lifecycle hook when disabled
     }
 
     onPostStateChange(): void {
-        // after enabled state changes
+        // After enabled state flips
     }
 
-    getGameObject(): any {
+    getGameObject(): GameObject {
         return this.gameObject;
     }
 
-    setGameObject(gameObject: any): void {
+    setGameObject(gameObject: GameObject): void {
         this.gameObject = gameObject;
+    }
+
+    isDestroyed(): boolean {
+        return this.destroyed;
     }
 
     enable(): void {
@@ -56,10 +63,13 @@ export class Component extends EventHandler {
     }
 
     destroy(): void {
-        this.destroyed = true;
-    }
-
-    isDestroyed(): boolean {
-        return this.destroyed;
+        if (!this.destroyed) {
+            this.destroyed = true;
+            if (this.gameObject) {
+                this.gameObject.removeComponent(this);
+            }
+            this.fire('destroy');
+            this.off();
+        }
     }
 }

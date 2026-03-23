@@ -3,7 +3,7 @@ export class Vec3 {
     y: number;
     z: number;
 
-    constructor(x = 0, y = 0, z = 0) {
+    constructor(x: number = 0, y: number = 0, z: number = 0) {
         this.x = x;
         this.y = y;
         this.z = z;
@@ -106,11 +106,11 @@ export class Vec3 {
         return new Vec3(this.x, this.y, this.z);
     }
 
-    copy(v: Vec3): Vec3 {
-        this.x = v.x;
-        this.y = v.y;
-        this.z = v.z;
-        return this;
+    copy(target: Vec3): Vec3 {
+        target.x = this.x;
+        target.y = this.y;
+        target.z = this.z;
+        return target;
     }
 
     set(x: number, y: number, z: number): Vec3 {

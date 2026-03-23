@@ -1,111 +1,70 @@
-import { EventEmitter } from 'events';
+import { EventEmitter } from '../core/eventemitter';
 import { Keyboard } from './keyboard';
 import { Mouse } from './mouse';
+import { Touch } from './touch';
 import { Gamepad } from './gamepad';
+import { ElementInput } from './elementinput';
 
-export class InputManager {
-  private keyboard: Keyboard;
-  private mouse: Mouse;
-  private gamepad: Gamepad;
-  private eventEmitter: EventEmitter;
-  private isActive: boolean;
+export class InputManager extends EventEmitter {
+    private _keyboard: Keyboard;
+    private _mouse: Mouse;
+    private _touch: Touch;
+    private _gamepad: Gamepad;
+    private _elementInput: ElementInput;
+    private _enabled: boolean = true;
 
-  constructor() {
-    this.keyboard = new Keyboard();
-    this.mouse = new Mouse();
-    this.gamepad = new Gamepad();
-    this.eventEmitter = new EventEmitter();
-    this.isActive = false;
-  }
+    constructor() {
+        super();
+        this._keyboard = new Keyboard();
+        this._mouse = new Mouse();
+        this._touch = new Touch();
+        this._gamepad = new Gamepad();
+        this._elementInput = new ElementInput();
+    }
 
-  registerEvent(eventName: string, callback: (...args: any[]) => void): void {
-    this.eventEmitter.on(eventName, callback);
-  }
+    get keyboard(): Keyboard {
+        return this._keyboard;
+    }
 
-  unregisterEvent(eventName: string, callback: (...args: any[]) => void): void {
-    this.eventEmitter.off(eventName, callback);
-  }
+    get mouse(): Mouse {
+        return this._mouse;
+    }
 
-  registerOnce(eventName: string, callback: (...args: any[]) => void): void {
-    this.eventEmitter.once(eventName, callback);
-  }
+    get touch(): Touch {
+        return this._touch;
+    }
 
-  emitEvent(eventName: string, ...args: any[]): void {
-    this.eventEmitter.emit(eventName, ...args);
-  }
+    get gamepad(): Gamepad {
+        return this._gamepad;
+    }
 
-  isKeyPressed(keyCode: string): boolean {
-    return this.keyboard.isPressed(keyCode);
-  }
+    get elementInput(): ElementInput {
+        return this._elementInput;
+    }
 
-  isKeyJustPressed(keyCode: string): boolean {
-    return this.keyboard.isJustPressed(keyCode);
-  }
+    get enabled(): boolean {
+        return this._enabled;
+    }
 
-  isKeyJustReleased(keyCode: string): boolean {
-    return this.keyboard.isJustReleased(keyCode);
-  }
+    set enabled(value: boolean) {
+        this._enabled = value;
+    }
 
-  getMousePosition(): { x: number; y: number } {
-    return this.mouse.getPosition();
-  }
+    update(): void {
+        if (!this._enabled) return;
+        this._keyboard.update();
+        this._mouse.update();
+        this._touch.update();
+        this._gamepad.update();
+        this._elementInput.update();
+    }
 
-  isMouseButtonPressed(button: number): boolean {
-    return this.mouse.isButtonPressed(button);
-  }
-
-  isMouseButtonJustPressed(button: number): boolean {
-    return this.mouse.isButtonJustPressed(button);
- }
-
-  isMouseButtonJustReleased(button: number): boolean {
-    return this.mouse.isButtonJustReleased(button);
-  }
-
-  getMouseWheelDelta(): number {
-    return this.mouse.getWheelDelta();
-  }
-
-  isGamepadConnected(index: number): boolean {
-    return this.gamepad.isConnected(index);
-  }
-
-  getGamepadButtonState(index: number, button: number): boolean {
-    return this.gamepad.getButtonState(index, button);
-  }
-
-  getGamepadAxisValue(index: number, axis: number): number {
-    return this.gamepad.getAxisValue(index, axis);
-  }
-
-  getGamepadName(index: number): string {
-    return this.gamepad.getName(index);
-  }
-
-  update(): void {
-    if (!this.isActive) return;
-
-    this.keyboard.update();
-    this.mouse.update();
-    this.gamepad.update();
-  }
-
-  cleanup(): void {
-    this.keyboard.cleanup();
-    this.mouse.cleanup();
-    this.gamepad.cleanup();
-    this.eventEmitter.removeAllListeners();
-  }
-
-  start(): void {
-    this.isActive = true;
-  }
-
-  stop(): void {
-    this.isActive = false;
-  }
-
-  isRunning(): boolean {
-    return this.isActive;
-  }
+    destroy(): void {
+        this._keyboard.destroy();
+        this._mouse.destroy();
+        this._touch.destroy();
+        this._gamepad.destroy();
+        this._elementInput.destroy();
+        this.off();
+    }
 }

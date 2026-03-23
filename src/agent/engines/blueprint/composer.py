@@ -349,6 +349,7 @@ class BlueprintComposer:
             language=language,
             sibling_types=sibling_types,
             extraction_sources="\n".join(source_lines),
+            prior_layers="",
         )
 
         try:

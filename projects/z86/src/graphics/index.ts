@@ -1,5 +1,12 @@
 export { GraphicsDevice } from './graphicsdevice';
+export { WebGLDevice } from './webgldevice';
+export { VertexFormat } from './vertexformat';
+export { VertexBuffer } from './vertexbuffer';
+export { IndexBuffer } from './indexbuffer';
 export { Shader } from './shader';
 export { Texture } from './texture';
 export { RenderTarget } from './rendertarget';
-export { WebglGraphicsDevice } from './webglgraphicsdevice';
+export { Material } from './material';
+export { Mesh } from './mesh';
+export { MeshInstance } from './meshinstance';
+export { ScopeSpace } from './scopespace';

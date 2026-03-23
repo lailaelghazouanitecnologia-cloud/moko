@@ -1,10 +1,6 @@
 import { EventHandler } from '../core/event-handler.js';
 import { Vec2 } from '../math/vec2.js';
 import { Color } from '../math/color.js';
-import { WebglGraphicsDevice } from './webgl/webgl-graphics-device.js';
-import { Shader } from './shader.js';
-import { Texture } from './texture.js';
-import { RenderTarget } from './render-target.js';
 
 export class GraphicsDevice extends EventHandler {
     canvas: HTMLCanvasElement;
@@ -17,7 +13,7 @@ export class GraphicsDevice extends EventHandler {
     supportsInstancing: boolean;
     supportsUniformBuffers: boolean;
 
-    constructor(canvas: HTMLCanvasElement, options?: any) {
+    constructor(canvas: HTMLCanvasElement) {
         super();
         this.canvas = canvas;
         this.scope = {};
@@ -26,72 +22,62 @@ export class GraphicsDevice extends EventHandler {
         this.maxCubeMapSize = 4096;
         this.maxVolumeSize = 2048;
         this.maxAnisotropy = 16;
-        this.supportsInstancing = false;
-        this.supportsUniformBuffers = false;
+        this.supportsInstancing = true;
+        this.supportsUniformBuffers = true;
     }
 
     setViewport(x: number, y: number, w: number, h: number): void {
         // Implementation for setting viewport
+        // This would typically call the underlying graphics API
     }
 
     setScissor(x: number, y: number, w: number, h: number): void {
         // Implementation for setting scissor rectangle
+        // This would typically call the underlying graphics API
     }
 
     clear(color?: Color, depth?: number, stencil?: number): void {
-        // Implementation for clearing buffers
+        // Implementation for clearing the framebuffer
+        // This would typically call the underlying graphics API
     }
 
-    draw(primitive: any, numInstances?: number): void {
-        // Implementation for submitting draw call
+    draw(primitive: number, numVertices: number, startVertex?: number, numInstances?: number): void {
+        // Implementation for drawing primitives
+        // This would typically call the underlying graphics API
     }
 
-    setBlendState(blend: boolean, srcBlend?: number, dstBlend?: number, blendOp?: number, srcBlendAlpha?: number, dstBlendAlpha?: number, blendOpAlpha?: number): void {
-        // Implementation for enabling/disabling blending
+    setBlendState(enabled: boolean, srcFactor?: number, dstFactor?: number, mode?: number): void {
+        // Implementation for setting blend state
+        // This would typically call the underlying graphics API
     }
 
-    setDepthState(depthTest: boolean, depthWrite?: boolean, depthFunc?: number): void {
-        // Implementation for depth test/write
+    setDepthState(test: boolean, write: boolean, func?: number): void {
+        // Implementation for setting depth state
+        // This would typically call the underlying graphics API
     }
 
-    setCullMode(cullMode: number): void {
-        // Implementation for setting cull mode (front/back/none)
+    setCullMode(mode: number): void {
+        // Implementation for setting cull mode
+        // This would typically call the underlying graphics API
     }
 
-    setStencilState(stencilTest: boolean, func?: number, ref?: number, mask?: number, failOp?: number, zFailOp?: number, zPassOp?: number, readMask?: number, writeMask?: number): void {
-        // Implementation for stencil func/ops
+    setStencilState(enabled: boolean, func?: number, ref?: number, mask?: number, fail?: number, zfail?: number, zpass?: number): void {
+        // Implementation for setting stencil state
+        // This would typically call the underlying graphics API
     }
 
-    copyRenderTarget(source: RenderTarget, dest: RenderTarget, color?: boolean, depth?: boolean): void {
-        // Implementation for blitting between targets
+    copyRenderTarget(source: any, dest: any, color?: boolean, depth?: boolean, stencil?: boolean): void {
+        // Implementation for copying render target
+        // This would typically call the underlying graphics API
     }
 
     pushMarker(name: string): void {
-        // Implementation for beginning debug label
+        // Implementation for pushing debug marker
+        // This would typically call the underlying graphics API
     }
 
     popMarker(): void {
-        // Implementation for ending debug label
-    }
-
-    createTexture(width: number, height: number, format?: number, mipmaps?: boolean, options?: any): Texture {
-        return new Texture(this, width, height, format, mipmaps, options);
-    }
-
-    createShader(vertexShader: string, fragmentShader: string, attributes?: any): Shader {
-        return new Shader(this, vertexShader, fragmentShader, attributes);
-    }
-
-    createBuffer(usage: number, size: number, data?: ArrayBufferView): any {
-        return { usage, size, data };
-    }
-}
-
-export async function createGraphicsDevice(canvas: HTMLCanvasElement, options?: any): Promise<GraphicsDevice> {
-    try {
-        const webglDevice = new WebglGraphicsDevice(canvas, options);
-        return webglDevice;
-    } catch (e) {
-        throw new Error('Failed to create graphics device');
+        // Implementation for popping debug marker
+        // This would typically call the underlying graphics API
     }
 }
