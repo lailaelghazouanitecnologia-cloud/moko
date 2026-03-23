@@ -17,6 +17,21 @@ from pathlib import Path
 from typing import Optional
 
 
+class BranchType(str, Enum):
+    """Types of development branches."""
+    MAIN = "main"
+    EVALUATION = "evaluation"   # A/B test a single type variation
+    EXPERIMENT = "experiment"   # free-form exploration
+
+
+class BranchStatus(str, Enum):
+    """Lifecycle of a branch."""
+    PENDING = "pending"
+    RUNNING = "running"
+    COMPLETED = "completed"
+    FAILED = "failed"
+
+
 class BlockStatus(str, Enum):
     PENDING = "pending"
     IN_PROGRESS = "in_progress"
@@ -121,6 +136,9 @@ class Block:
     objective: str
     status: BlockStatus = BlockStatus.PENDING
 
+    # Branch ownership
+    branch_name: str = "main"
+
     # Chain
     prev_hash: str = ""
     hash: str = ""
@@ -223,6 +241,7 @@ class Block:
             "type": self.block_type.value,
             "objective": self.objective,
             "status": self.status.value,
+            "branch_name": self.branch_name,
             "prev_hash": self.prev_hash,
             "hash": self.hash,
             "elapsed_s": self.elapsed_s,
@@ -441,6 +460,37 @@ class Plan:
                 block_type=BlockType(bd["type"]),
                 objective=bd["objective"],
                 status=BlockStatus(bd["status"]),
+                branch_name=bd.get("branch_name", "main"),
+                prev_hash=bd.get("prev_hash", ""),
+                hash=bd.get("hash", ""),
+                output=bd.get("output", ""),
+                references_used=bd.get("references_used", []),
+                files_changed=bd.get("files_changed", []),
+                tokens_used=bd.get("tokens_used", 0),
+                test_results=bd.get("test_results", {}),
+                quality_score=bd.get("quality_score", 0.0),
+                meta=bd.get("meta", {}),
+            )
+            plan.blocks.append(block)
+        return plan
+
+    @classmethod
+    def load_dict(cls, data: dict) -> Plan:
+        """Load Plan from a dict (used by Branch.from_dict)."""
+        plan = cls(
+            goal=data["goal"],
+            target_project=data["target_project"],
+            reference_projects=data.get("reference_projects", []),
+            created_at=data.get("created_at", time.time()),
+            plan_id=data.get("plan_id", ""),
+        )
+        for bd in data.get("blocks", []):
+            block = Block(
+                index=bd["index"],
+                block_type=BlockType(bd["type"]),
+                objective=bd["objective"],
+                status=BlockStatus(bd["status"]),
+                branch_name=bd.get("branch_name", "main"),
                 prev_hash=bd.get("prev_hash", ""),
                 hash=bd.get("hash", ""),
                 output=bd.get("output", ""),

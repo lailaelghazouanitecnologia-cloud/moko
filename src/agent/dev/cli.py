@@ -21,6 +21,20 @@ def register_subparser(subparsers: argparse._SubParsersAction):
     p.add_argument("--density", metavar="PROJECT", help="Run density analysis on a project")
     p.add_argument("--compose", action="store_true", help="Use blueprint composer (extraction-first)")
 
+    # Branch & evaluation flags
+    p.add_argument("--eval", action="store_true",
+                   help="Run evaluation branches from eval.yaml after main")
+    p.add_argument("--eval-only", action="store_true",
+                   help="Run only evaluations (skip main, assumes it exists)")
+    p.add_argument("--eval-file", metavar="PATH",
+                   help="Path to eval.yaml (default: projects/<target>/eval.yaml)")
+    p.add_argument("--eval-report", metavar="PROJECT",
+                   help="Show evaluation report for a project")
+    p.add_argument("--branch", metavar="NAME",
+                   help="Run a specific branch only")
+    p.add_argument("--max-parallel", type=int, default=3,
+                   help="Max parallel evaluation branches")
+
 
 def cmd_dev(args: argparse.Namespace):
     """Execute dev command."""
@@ -33,7 +47,6 @@ def cmd_dev(args: argparse.Namespace):
         "verbose": args.verbose,
         "budget_chars": args.budget,
     }
-    supervisor = DevSupervisor(config)
 
     # Density analysis
     if args.density:
@@ -65,7 +78,23 @@ def cmd_dev(args: argparse.Namespace):
         print(f"{'━' * 66}")
         return
 
+    # Evaluation report
+    if args.eval_report:
+        from pathlib import Path
+        from .branch import Project
+        from .evaluation import format_eval_report
+
+        project_file = Path("projects") / args.eval_report / "project.json"
+        if not project_file.exists():
+            print(f"No project found: {project_file}")
+            sys.exit(1)
+
+        project = Project.load(project_file)
+        print(format_eval_report(project))
+        return
+
     # List plans
+    supervisor = DevSupervisor(config)
     if args.plans:
         plans = supervisor.list_plans()
         if not plans:
@@ -87,9 +116,32 @@ def cmd_dev(args: argparse.Namespace):
         supervisor.resume(plan_path)
         return
 
+    # Eval-only mode (skip main, just run evaluations)
+    if args.eval_only:
+        if not args.target:
+            print("Error: --target (-t) is required for --eval-only")
+            sys.exit(1)
+
+        from pathlib import Path
+        from .manager import DevManager
+
+        config["max_parallel"] = args.max_parallel
+        manager = DevManager(config)
+
+        eval_yaml = Path(args.eval_file) if args.eval_file else None
+        manager.run_eval_only(
+            target=args.target,
+            references=args.ref or None,
+            eval_yaml=eval_yaml,
+        )
+        return
+
     # New plan
     if not args.goal:
         print("Usage: ava dev \"goal\" -t target [-r ref1 ref2 ...]")
+        print("       ava dev \"goal\" -t target --eval")
+        print("       ava dev --eval-only -t target")
+        print("       ava dev --eval-report PROJECT")
         print("       ava dev --plans")
         print("       ava dev --resume PLAN_ID")
         sys.exit(1)
@@ -123,10 +175,28 @@ def cmd_dev(args: argparse.Namespace):
         else:
             print("No blueprint generated, using non-layered LLM plan")
 
-    supervisor.run(
-        goal=args.goal,
-        target=args.target,
-        references=args.ref,
-        max_iterations=args.max_iterations,
-        project_bp=project_bp,
-    )
+    # Run with or without evaluation
+    if args.eval:
+        from pathlib import Path
+        from .manager import DevManager
+
+        config["max_parallel"] = args.max_parallel
+        manager = DevManager(config)
+
+        eval_yaml = Path(args.eval_file) if args.eval_file else None
+        manager.run_project(
+            goal=args.goal,
+            target=args.target,
+            references=args.ref or None,
+            max_iterations=args.max_iterations,
+            project_bp=project_bp,
+            eval_yaml=eval_yaml,
+        )
+    else:
+        supervisor.run(
+            goal=args.goal,
+            target=args.target,
+            references=args.ref,
+            max_iterations=args.max_iterations,
+            project_bp=project_bp,
+        )
