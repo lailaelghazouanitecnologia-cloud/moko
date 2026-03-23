@@ -19,6 +19,7 @@ def register_subparser(subparsers: argparse._SubParsersAction):
     p.add_argument("--resume", metavar="PLAN_ID", help="Resume a saved plan")
     p.add_argument("--plans", action="store_true", help="List saved plans")
     p.add_argument("--density", metavar="PROJECT", help="Run density analysis on a project")
+    p.add_argument("--compose", action="store_true", help="Use blueprint composer (extraction-first)")
 
 
 def cmd_dev(args: argparse.Namespace):

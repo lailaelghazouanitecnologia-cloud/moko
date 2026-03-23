@@ -40,6 +40,10 @@ from .blueprint import ModuleBlueprint, TypeBlueprint
 from .translator import BlueprintTranslator
 from .emission import EmissionIndex
 from .density import DensityAnalyzer
+from ..engines.blueprint.composer import BlueprintComposer
+from ..engines.blueprint.extractor import SourceExtractor
+from ..engines.embedding.store import SemanticStore
+from ..engines.memory.block_store import CodeBlockStore
 
 
 def _available_projects() -> list[str]:
@@ -86,11 +90,81 @@ class DevSupervisor:
         self.vm: Optional[BlockVM] = None
         self.translator: Optional[BlueprintTranslator] = None
         self.emission_index: Optional[EmissionIndex] = None
+        self.composer: Optional[BlueprintComposer] = None
+        self.semantic_store: Optional[SemanticStore] = None
+        self.block_store: Optional[CodeBlockStore] = None
         self.total_tokens = 0
 
     def _log(self, msg: str):
         if self.verbose:
             print(f"  [dev] {msg}")
+
+    def _init_engines(self, references: list[str] = None):
+        """Initialize composition engines: semantic store, block store, extractor, composer."""
+        references = references or []
+
+        # Semantic store: index all descriptors for semantic search
+        store_path = OUT_DIR / ".semantic_store.json"
+        if store_path.exists():
+            try:
+                self.semantic_store = SemanticStore.load(store_path)
+                self._log(f"semantic store loaded: {self.semantic_store.format_stats()}")
+            except Exception:
+                self.semantic_store = None
+
+        if not self.semantic_store and references:
+            self.semantic_store = SemanticStore()
+            import yaml
+            for proj in references:
+                proj_dir = OUT_DIR / proj
+                if not proj_dir.is_dir():
+                    continue
+                for yaml_path in proj_dir.rglob("*.yaml"):
+                    if yaml_path.name in ("workspace.yaml", "deps.yaml", "meta.yaml"):
+                        continue
+                    try:
+                        text = yaml_path.read_text()
+                        lines = [l for l in text.split("\n") if not l.startswith("##")]
+                        data = yaml.safe_load("\n".join(lines))
+                        if data and isinstance(data, dict):
+                            rel_path = str(yaml_path.relative_to(OUT_DIR))
+                            self.semantic_store.index_descriptor(rel_path, data)
+                    except Exception:
+                        continue
+            self.semantic_store.save(store_path)
+            self._log(f"semantic store built: {self.semantic_store.format_stats()}")
+
+        # Block store: persistent code block memory
+        block_store_path = OUT_DIR / ".block_store.json"
+        if block_store_path.exists():
+            try:
+                self.block_store = CodeBlockStore.load(block_store_path)
+                self._log(f"block store loaded: {self.block_store.format_stats()}")
+            except Exception:
+                self.block_store = CodeBlockStore()
+        else:
+            self.block_store = CodeBlockStore()
+
+        # Source extractor
+        extractor = SourceExtractor(OUT_DIR, verbose=self.verbose)
+
+        # Blueprint composer: orchestrates all engines
+        self.composer = BlueprintComposer(
+            llm=self.llm,
+            emission_index=self.emission_index,
+            extractor=extractor,
+            semantic_store=self.semantic_store,
+            block_store=self.block_store,
+            verbose=self.verbose,
+        )
+        self._log("engines initialized: composer + extractor + semantic + memory")
+
+    def _save_engines(self):
+        """Persist engine state to disk."""
+        if self.semantic_store:
+            self.semantic_store.save(OUT_DIR / ".semantic_store.json")
+        if self.block_store:
+            self.block_store.save(OUT_DIR / ".block_store.json")
 
     def _llm_call(self, system: str, user: str,
                   temperature: float = 0.3, max_tokens: int = 4096) -> tuple[str, int]:
@@ -129,6 +203,9 @@ class DevSupervisor:
             self.emission_index.build(references)
             self.emission_index.save(index_path)
             self._log(f"emission index built: {self.emission_index.format_stats()}")
+
+        # Initialize engines
+        self._init_engines(references)
 
         # Initialize translator with emission index
         self.translator = BlueprintTranslator(
@@ -484,16 +561,29 @@ class DevSupervisor:
         target = self.current_plan.target_project
         project_dir = self.projects_dir / target
 
-        # Use translator to generate blueprint from references
         goal = (f"Module '{mod_name}' with types: {', '.join(types)}. "
                 f"Part of: {self.current_plan.goal}")
-        bp, tokens = self.translator.generate_blueprint(
-            module_name=mod_name,
-            goal=goal,
-            ref_paths=refs,
-            language="typescript",
-            target_dir=f"src/{mod_name}",
-        )
+
+        # Use composer (extraction-first) when available, else fallback to translator
+        tokens = 0
+        if self.composer and types:
+            self._log(f"composing {mod_name} via BlueprintComposer")
+            bp = self.composer.compose_module(
+                module_name=mod_name,
+                type_names=types,
+                goal=goal,
+                language="typescript",
+                target_dir=f"src/{mod_name}",
+            )
+            tokens = self.composer.total_tokens
+        else:
+            bp, tokens = self.translator.generate_blueprint(
+                module_name=mod_name,
+                goal=goal,
+                ref_paths=refs,
+                language="typescript",
+                target_dir=f"src/{mod_name}",
+            )
 
         # Ensure types from plan are in the blueprint
         for type_name in types:
@@ -938,6 +1028,11 @@ class DevSupervisor:
         print(f"  Total time: {elapsed:.1f}s")
         print(f"{'━' * 66}")
 
+        # Persist engine state
+        self._save_engines()
+        if self.composer:
+            print(f"  Composer tokens: {self.composer.total_tokens:,}")
+
         plan_path = self.plans_dir / f"{plan.plan_id}.json"
         plan.save(plan_path)
         self._log(f"plan saved to {plan_path}")
@@ -1003,6 +1098,8 @@ class DevSupervisor:
                 self.emission_index = EmissionIndex(OUT_DIR)
                 self.emission_index.build(plan.reference_projects)
                 self.emission_index.save(index_path)
+
+        self._init_engines(plan.reference_projects)
 
         self.translator = BlueprintTranslator(
             self.llm, OUT_DIR, verbose=self.verbose,
