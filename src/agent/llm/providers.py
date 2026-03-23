@@ -143,17 +143,32 @@ class LLMProvider:
         client = self._get_client()
         api_messages = [{"role": m.role, "content": m.content} for m in messages]
 
-        completion = client.chat.completions.create(
-            model=self.model,
-            messages=api_messages,
-            temperature=temperature,
-            max_completion_tokens=max_tokens,
-            stream=True,
-        )
-
-        for chunk in completion:
-            if chunk.choices and chunk.choices[0].delta.content:
-                yield chunk.choices[0].delta.content
+        # Retry with exponential backoff for 503/overloaded errors
+        last_error = None
+        for attempt in range(4):
+            try:
+                completion = client.chat.completions.create(
+                    model=self.model,
+                    messages=api_messages,
+                    temperature=temperature,
+                    max_completion_tokens=max_tokens,
+                    stream=True,
+                )
+                for chunk in completion:
+                    if chunk.choices and chunk.choices[0].delta.content:
+                        yield chunk.choices[0].delta.content
+                return  # success
+            except Exception as e:
+                last_error = e
+                err_str = str(e)
+                if any(s in err_str for s in ["503", "500", "over capacity", "overloaded", "DNS", "timeout", "rate"]):
+                    wait = 2 ** (attempt + 1)  # 2, 4, 8, 16
+                    import sys
+                    print(f"\n  [retry] Model overloaded, waiting {wait}s... (attempt {attempt+1}/4)", file=sys.stderr)
+                    time.sleep(wait)
+                else:
+                    raise
+        raise last_error
 
     def _complete_openai_compat(self, messages, temperature, max_tokens, t0) -> LLMResponse:
         client = self._get_client()

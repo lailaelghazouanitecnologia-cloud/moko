@@ -69,8 +69,15 @@ def _classify_by_keywords(query: str, available_projects: list[str]) -> TaskClas
     """Fast heuristic classification using keywords."""
     query_lower = query.lower()
 
-    # Detect projects in scope
+    # Detect projects in scope (supports partial matching: "cline" → "cline-core")
     scope = [p for p in available_projects if p.lower() in query_lower]
+    if not scope:
+        # Try partial match: check if any query word is a prefix/substring of project name
+        query_words = query_lower.split()
+        scope = [
+            p for p in available_projects
+            if any(w in p.lower() or p.lower().startswith(w) for w in query_words if len(w) >= 3)
+        ]
     if not scope:
         scope = available_projects
 
