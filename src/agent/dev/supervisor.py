@@ -128,6 +128,8 @@ class DevSupervisor:
             "For analyze blocks, specify WHAT to look for in references.\n"
             "For implement blocks, specify WHAT to build.\n"
             "For test blocks, specify WHAT to compare against.\n\n"
+            "IMPORTANT: Generate between 4 and 8 blocks maximum. Be concise.\n"
+            "Group related work into single blocks rather than splitting too fine.\n\n"
             "Output JSON array: [{\"type\": \"...\", \"objective\": \"...\"}]\n"
             "Output ONLY the JSON array."
         )
@@ -313,9 +315,9 @@ class DevSupervisor:
         if self.vm:
             registry_context = self.vm.get_registry_context(max_chars=3000)
 
-        # 3. Run discussions for analyze/implement blocks
+        # 3. Run discussions only for analyze blocks (saves API calls)
         discussion_insights = ""
-        if block.block_type in (BlockType.ANALYZE, BlockType.IMPLEMENT) and self.current_plan:
+        if block.block_type == BlockType.ANALYZE and self.current_plan:
             discussion_insights = self._run_block_discussions(block)
 
         # 4. Dispatch by type
@@ -348,19 +350,21 @@ class DevSupervisor:
         return block
 
     def _run_block_discussions(self, block: Block) -> str:
-        """Run discussions relevant to this block, return insights summary."""
+        """Run ONE discussion per block (1 ref, 2 stances) to save API calls."""
         if not self.current_plan or not self.current_plan.reference_projects:
             return ""
 
-        # Extract discussion topics from objective
-        keywords = [w for w in block.objective.lower().split() if len(w) > 3]
         topic = block.objective[:100]
 
         insights = []
-        for ref_proj in self.current_plan.reference_projects[:2]:  # max 2 refs
-            disc = self.run_discussion(block, topic, ref_proj)
-            if disc.value_generated:
-                insights.extend(disc.value_generated)
+        # Only debate against the most relevant reference (first one)
+        ref_proj = self.current_plan.reference_projects[0]
+        disc = self.run_discussion(
+            block, topic, ref_proj,
+            stances=[Stance.ADVOCATE, Stance.PRAGMATIST],  # 2 stances, not 3
+        )
+        if disc.value_generated:
+            insights.extend(disc.value_generated)
 
         if not insights:
             return ""
@@ -577,57 +581,67 @@ class DevSupervisor:
         plan = self.create_plan(goal, target, references)
         print(plan.format_status())
 
-        # 2. Execute blocks
+        # 2. Execute blocks (with crash recovery — always saves plan)
         iteration = 0
-        while plan.next_pending and iteration < max_iterations:
-            block = plan.next_pending
-            iteration += 1
+        crashed = False
+        try:
+            while plan.next_pending and iteration < max_iterations:
+                block = plan.next_pending
+                iteration += 1
 
-            print(f"\n{'─' * 66}")
-            print(f"  ITERATION {iteration}: Block {block.index} [{block.block_type.value}]")
-            print(f"  {block.objective}")
-            print(f"{'─' * 66}")
+                print(f"\n{'─' * 66}")
+                print(f"  ITERATION {iteration}: Block {block.index} [{block.block_type.value}]")
+                print(f"  {block.objective}")
+                print(f"{'─' * 66}")
 
-            # Execute (includes discussions + on-demand loading)
-            self.execute_block(block)
-            print(block.output)
+                # Execute (includes discussions + on-demand loading)
+                self.execute_block(block)
+                print(block.output)
 
-            # Show discussions
-            if block.discussions:
-                print(f"\n  ┌─ DISCUSSIONS ─────────────────────────────────────")
-                for disc in block.discussions:
-                    print(f"  │ {disc.format()}")
+                # Show discussions
+                if block.discussions:
+                    print(f"\n  ┌─ DISCUSSIONS ─────────────────────────────────────")
+                    for disc in block.discussions:
+                        print(f"  │ {disc.format()}")
+                    print(f"  └─────────────────────────────────────────────────")
+
+                # Abstraction
+                abstraction = self.run_abstraction(block)
+
+                # Show abstraction
+                print(f"\n  ┌─ ABSTRACTION ────────────────────────────────────")
+                for a in abstraction.achievements[:3]:
+                    print(f"  │ ✓ {a}")
+                for imp in abstraction.improvements[:3]:
+                    print(f"  │ → {imp}")
+                for fd in abstraction.feature_decisions:
+                    icon = {"adopt": "✓", "adapt": "~", "skip": "✗", "defer": "⏳"}
+                    print(f"  │ {icon.get(fd.verdict, '?')} {fd.feature} "
+                          f"(val={fd.value_score:.1f} eff={fd.effort_score:.1f}) → {fd.verdict}")
+                print(f"  │ Next: {abstraction.next_priority}")
+                print(f"  │ Confidence: {abstraction.confidence:.0%}")
                 print(f"  └─────────────────────────────────────────────────")
 
-            # Abstraction
-            abstraction = self.run_abstraction(block)
+                # Show VM status
+                if self.vm:
+                    print(self.vm.format_status())
 
-            # Show abstraction
-            print(f"\n  ┌─ ABSTRACTION ────────────────────────────────────")
-            for a in abstraction.achievements[:3]:
-                print(f"  │ ✓ {a}")
-            for imp in abstraction.improvements[:3]:
-                print(f"  │ → {imp}")
-            for fd in abstraction.feature_decisions:
-                icon = {"adopt": "✓", "adapt": "~", "skip": "✗", "defer": "⏳"}
-                print(f"  │ {icon.get(fd.verdict, '?')} {fd.feature} "
-                      f"(val={fd.value_score:.1f} eff={fd.effort_score:.1f}) → {fd.verdict}")
-            print(f"  │ Next: {abstraction.next_priority}")
-            print(f"  │ Confidence: {abstraction.confidence:.0%}")
-            print(f"  └─────────────────────────────────────────────────")
+                # Dynamic plan adjustment
+                self._adjust_plan(block, abstraction)
 
-            # Show VM status
-            if self.vm:
-                print(self.vm.format_status())
-
-            # Dynamic plan adjustment
-            self._adjust_plan(block, abstraction)
+        except Exception as e:
+            crashed = True
+            print(f"\n  ⚠ INTERRUPTED: {e}")
+            # Mark current block as failed if in progress
+            if block and block.status == BlockStatus.IN_PROGRESS:
+                block.fail(str(e))
 
         elapsed = time.time() - t0
 
-        # 3. Final summary
+        # 3. Final summary (always runs, even on crash)
+        status_msg = "INTERRUPTED — plan saved, use --resume to continue" if crashed else "DEVELOPMENT COMPLETE"
         print(f"\n{'━' * 66}")
-        print(f"  DEVELOPMENT COMPLETE")
+        print(f"  {status_msg}")
         print(f"{'━' * 66}")
         print(plan.format_status())
         if self.vm:
@@ -637,7 +651,7 @@ class DevSupervisor:
         print(f"  Total tokens: {self.total_tokens:,}")
         print(f"{'━' * 66}")
 
-        # Save
+        # Always save (even on crash)
         plan_path = self.plans_dir / f"{plan.plan_id}.json"
         plan.save(plan_path)
         self._log(f"plan saved to {plan_path}")
