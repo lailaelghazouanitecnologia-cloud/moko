@@ -36,13 +36,35 @@ class TaskClassification:
 
 
 @dataclass
+class AgentReport:
+    """Per-agent metrics within a query."""
+    name: str
+    prompt_id: str = ""
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+    total_tokens: int = 0
+    sources: list[str] = field(default_factory=list)
+    files_loaded: int = 0
+    files_available: int = 0
+    coverage_pct: float = 0.0
+    original_chars: int = 0
+    compressed_chars: int = 0
+    tokens_saved: int = 0
+    compression_ratio: float = 0.0
+    strategies: list[str] = field(default_factory=list)
+
+
+@dataclass
 class UsageReport:
     """Comprehensive usage metrics for a single query."""
     query: str
     task_type: str
-    agents_used: list[str]
-    prompt_ids: list[str]
-    # Token metrics
+    classification_confidence: float = 0.0
+    classification_method: str = "keywords"  # "keywords" or "llm"
+    agents_used: list[str] = field(default_factory=list)
+    prompt_ids: list[str] = field(default_factory=list)
+    agent_reports: list[AgentReport] = field(default_factory=list)
+    # Token metrics (aggregate)
     prompt_tokens: int = 0
     completion_tokens: int = 0
     total_tokens: int = 0
@@ -50,14 +72,15 @@ class UsageReport:
     # Timing
     elapsed_s: float = 0.0
     tokens_per_sec: float = 0.0
-    # Context
+    # Context (aggregate)
     descriptor_chars: int = 0
     sources_count: int = 0
-    # Coverage (from agent metadata)
+    all_sources: list[str] = field(default_factory=list)
+    # Coverage (aggregate from agent metadata)
     files_loaded: int = 0
     files_available: int = 0
     coverage_pct: float = 0.0
-    # Compression
+    # Compression (aggregate)
     original_chars: int = 0
     compressed_chars: int = 0
     tokens_saved: int = 0
@@ -66,42 +89,110 @@ class UsageReport:
     # Model
     model: str = ""
     provider: str = ""
+    # Scope
+    projects_in_scope: list[str] = field(default_factory=list)
 
     def format(self) -> str:
-        """Format as readable report."""
+        """Format as detailed, readable report."""
         est_tag = " (est)" if self.is_estimated else ""
+        W = 66
+
         lines = [
-            f"{'━' * 60}",
-            f"  REPORT",
-            f"{'─' * 60}",
+            f"{'━' * W}",
+            f"  MOKO AGENT REPORT",
+            f"{'━' * W}",
+            "",
+            f"  Query:           {self.query[:80]}{'...' if len(self.query) > 80 else ''}",
+            f"  Projects:        {', '.join(self.projects_in_scope[:5])}",
+            "",
+            f"{'─' * W}",
+            f"  CLASSIFICATION",
+            f"{'─' * W}",
             f"  Task type:       {self.task_type}",
-            f"  Agents:          {', '.join(self.agents_used)}",
-            f"  Model:           {self.model} ({self.provider})",
-            f"{'─' * 60}",
-            f"  Prompt tokens:   {self.prompt_tokens:,}{est_tag}",
-            f"  Output tokens:   {self.completion_tokens:,}{est_tag}",
-            f"  Total tokens:    {self.total_tokens:,}{est_tag}",
-            f"  Speed:           {self.tokens_per_sec} tok/s",
+            f"  Confidence:      {self.classification_confidence:.0%}",
+            f"  Method:          {self.classification_method}",
+            "",
+            f"{'─' * W}",
+            f"  EXECUTION",
+            f"{'─' * W}",
+            f"  Pipeline:        {' → '.join(self.agents_used)}",
+            f"  Prompts:         {', '.join(self.prompt_ids) if self.prompt_ids else 'n/a'}",
+            f"  Model:           {self.model}",
+            f"  Provider:        {self.provider}",
             f"  Wall time:       {self.elapsed_s:.1f}s",
-            f"{'─' * 60}",
-            f"  Sources:         {self.sources_count} descriptors loaded",
-            f"  Context:         {self.descriptor_chars:,} chars",
+            "",
         ]
-        if self.files_available > 0:
-            lines.append(
-                f"  Coverage:        {self.files_loaded}/{self.files_available} "
-                f"files ({self.coverage_pct:.1f}%)"
-            )
+
+        # Per-agent breakdown
+        if self.agent_reports:
+            lines.append(f"{'─' * W}")
+            lines.append(f"  AGENT BREAKDOWN")
+            lines.append(f"{'─' * W}")
+            for ar in self.agent_reports:
+                lines.append(f"  [{ar.name}]")
+                if ar.prompt_id:
+                    lines.append(f"    Prompt:        {ar.prompt_id}")
+                lines.append(f"    Tokens:        {ar.prompt_tokens:,} in / {ar.completion_tokens:,} out = {ar.total_tokens:,}{est_tag}")
+                if ar.sources:
+                    lines.append(f"    Sources:       {len(ar.sources)} descriptors")
+                if ar.files_available > 0:
+                    lines.append(f"    Coverage:      {ar.files_loaded}/{ar.files_available} files ({ar.coverage_pct:.1f}%)")
+                if ar.tokens_saved > 0:
+                    lines.append(f"    Compression:   {ar.original_chars:,} → {ar.compressed_chars:,} chars (saved ~{ar.tokens_saved:,} tok)")
+                    if ar.strategies:
+                        lines.append(f"    Strategies:    {', '.join(ar.strategies)}")
+                lines.append("")
+
+        # Aggregate tokens
+        lines.append(f"{'─' * W}")
+        lines.append(f"  TOKEN USAGE")
+        lines.append(f"{'─' * W}")
+        lines.append(f"  Prompt tokens:   {self.prompt_tokens:,}{est_tag}")
+        lines.append(f"  Output tokens:   {self.completion_tokens:,}{est_tag}")
+        lines.append(f"  Total tokens:    {self.total_tokens:,}{est_tag}")
+        lines.append(f"  Speed:           {self.tokens_per_sec:.1f} tok/s")
+
+        # Cost estimate (Groq free tier = $0, but show equivalent)
+        cost_in = self.prompt_tokens * 0.15 / 1_000_000   # $0.15/1M for Groq
+        cost_out = self.completion_tokens * 0.60 / 1_000_000  # $0.60/1M
+        cost_total = cost_in + cost_out
+        lines.append(f"  Est. cost:       ${cost_total:.4f} (${cost_in:.4f} in + ${cost_out:.4f} out)")
+
+        # Compression summary
         if self.tokens_saved > 0:
-            lines.append(f"{'─' * 60}")
-            lines.append(
-                f"  Compression:     {self.original_chars:,} → {self.compressed_chars:,} chars "
-                f"({self.compression_ratio:.0%})"
-            )
+            lines.append("")
+            lines.append(f"{'─' * W}")
+            lines.append(f"  COMPRESSION")
+            lines.append(f"{'─' * W}")
+            lines.append(f"  Original:        {self.original_chars:,} chars (~{self.original_chars // 4:,} tokens)")
+            lines.append(f"  Compressed:      {self.compressed_chars:,} chars (~{self.compressed_chars // 4:,} tokens)")
+            lines.append(f"  Ratio:           {self.compression_ratio:.0%}")
             lines.append(f"  Tokens saved:    ~{self.tokens_saved:,}")
             if self.strategies:
                 lines.append(f"  Strategies:      {', '.join(self.strategies)}")
-        lines.append(f"{'━' * 60}")
+
+        # Sources detail
+        if self.all_sources:
+            lines.append("")
+            lines.append(f"{'─' * W}")
+            lines.append(f"  DESCRIPTORS LOADED ({self.sources_count})")
+            lines.append(f"{'─' * W}")
+            for s in self.all_sources:
+                lines.append(f"    {s}")
+
+        # Coverage
+        if self.files_available > 0:
+            lines.append("")
+            lines.append(f"{'─' * W}")
+            lines.append(f"  COVERAGE")
+            lines.append(f"{'─' * W}")
+            bar_len = 30
+            filled = int(self.coverage_pct / 100 * bar_len)
+            bar = "█" * filled + "░" * (bar_len - filled)
+            lines.append(f"  [{bar}] {self.coverage_pct:.1f}%")
+            lines.append(f"  {self.files_loaded} of {self.files_available} project files analyzed")
+
+        lines.append(f"{'━' * W}")
         return "\n".join(lines)
 
 
@@ -272,10 +363,12 @@ class Supervisor:
                   f"confidence={classification.confidence:.2f}")
 
         # 3. LLM fallback for low-confidence classification
+        classify_method = "keywords"
         if classification.confidence < 0.4:
             classification = self._classify_with_llm(
                 query, all_projects, classification
             )
+            classify_method = "llm"
             if verbose:
                 print(f"  [supervisor] LLM reclassified → {classification.task_type} "
                       f"confidence={classification.confidence:.2f}")
@@ -323,7 +416,7 @@ class Supervisor:
 
         # 8. Build usage report
         self.last_report = self._build_report(
-            query, classification, results, elapsed
+            query, classification, results, elapsed, classify_method
         )
 
         # 9. Record turn
@@ -345,7 +438,8 @@ class Supervisor:
         return final
 
     def _build_report(self, query: str, classification: TaskClassification,
-                      results: list[AgentResult], elapsed: float) -> UsageReport:
+                      results: list[AgentResult], elapsed: float,
+                      classify_method: str = "keywords") -> UsageReport:
         """Build structured usage report from all agent results."""
         prompt_tokens = 0
         completion_tokens = 0
@@ -353,8 +447,18 @@ class Supervisor:
         any_estimated = False
         tps = 0.0
 
+        # Per-agent reports
+        agent_reports = []
         for r in results:
+            ar = AgentReport(
+                name=r.agent_name,
+                prompt_id=r.prompt_id or "",
+                sources=r.sources,
+            )
             if r.usage:
+                ar.prompt_tokens = r.usage.prompt_tokens
+                ar.completion_tokens = r.usage.completion_tokens
+                ar.total_tokens = r.usage.total_tokens
                 prompt_tokens += r.usage.prompt_tokens
                 completion_tokens += r.usage.completion_tokens
                 total_tokens += r.usage.total_tokens
@@ -362,8 +466,18 @@ class Supervisor:
                     any_estimated = True
                 if r.usage.tokens_per_sec > tps:
                     tps = r.usage.tokens_per_sec
+            if r.metadata:
+                ar.files_loaded = r.metadata.get("files_loaded", 0)
+                ar.files_available = r.metadata.get("files_available", 0)
+                ar.coverage_pct = r.metadata.get("coverage_pct", 0.0)
+                ar.original_chars = r.metadata.get("original_chars", 0)
+                ar.compressed_chars = r.metadata.get("compressed_chars", 0)
+                ar.tokens_saved = r.metadata.get("tokens_saved", 0)
+                ar.compression_ratio = r.metadata.get("compression_ratio", 0.0)
+                ar.strategies = r.metadata.get("strategies", [])
+            agent_reports.append(ar)
 
-        # Coverage from agent metadata
+        # Aggregate coverage from agent with most metadata
         coverage_meta = {}
         for r in results:
             if r.metadata and "files_loaded" in r.metadata:
@@ -371,13 +485,26 @@ class Supervisor:
                 break
 
         all_sources = [s for r in results for s in r.sources]
+        all_strategies = set()
+        total_original = 0
+        total_compressed = 0
+        total_saved = 0
+        for ar in agent_reports:
+            total_original += ar.original_chars
+            total_compressed += ar.compressed_chars
+            total_saved += ar.tokens_saved
+            all_strategies.update(ar.strategies)
+
         desc_chars = sum(len(r.content) for r in results)
 
         return UsageReport(
             query=query,
             task_type=classification.task_type,
+            classification_confidence=classification.confidence,
+            classification_method=classify_method,
             agents_used=[r.agent_name for r in results],
             prompt_ids=[r.prompt_id for r in results if r.prompt_id],
+            agent_reports=agent_reports,
             prompt_tokens=prompt_tokens,
             completion_tokens=completion_tokens,
             total_tokens=total_tokens,
@@ -386,16 +513,18 @@ class Supervisor:
             tokens_per_sec=tps,
             descriptor_chars=desc_chars,
             sources_count=len(all_sources),
+            all_sources=all_sources,
             files_loaded=coverage_meta.get("files_loaded", 0),
             files_available=coverage_meta.get("files_available", 0),
             coverage_pct=coverage_meta.get("coverage_pct", 0.0),
-            original_chars=coverage_meta.get("original_chars", 0),
-            compressed_chars=coverage_meta.get("compressed_chars", 0),
-            tokens_saved=coverage_meta.get("tokens_saved", 0),
-            compression_ratio=coverage_meta.get("compression_ratio", 0.0),
-            strategies=coverage_meta.get("strategies", []),
+            original_chars=total_original if total_original else coverage_meta.get("original_chars", 0),
+            compressed_chars=total_compressed if total_compressed else coverage_meta.get("compressed_chars", 0),
+            tokens_saved=total_saved if total_saved else coverage_meta.get("tokens_saved", 0),
+            compression_ratio=round(total_compressed / max(total_original, 1), 2) if total_original else coverage_meta.get("compression_ratio", 0.0),
+            strategies=sorted(all_strategies) if all_strategies else coverage_meta.get("strategies", []),
             model=self.llm.model,
             provider=self.llm.provider,
+            projects_in_scope=classification.scope,
         )
 
     def _classify_with_llm(self, query: str, projects: list[str],
