@@ -111,7 +111,7 @@ class BlueprintTranslator:
             # Try exact path first, then under out_dir
             candidates = [
                 self.out_dir / ref_path,
-                self.out_dir / ref_path.replace("/", "/", 1),
+                self.out_dir / ref_path.lstrip("/"),
                 Path(ref_path),
             ]
             for p in candidates:
@@ -220,39 +220,67 @@ class BlueprintTranslator:
         user += f"Goal: {goal}\n\n"
         user += f"## Reference descriptors (Roska format)\n{ref_context}\n\n"
         user += ("Output ONLY the YAML content (no markdown fences). "
-                 "Include ALL valuable methods from references.")
+                 "Include ALL valuable methods from references. "
+                 "Keep method hints SHORT (under 10 words each) to stay within token limits.")
 
         content, tokens = self._llm_call(BLUEPRINT_SYSTEM, user,
-                                         temperature=0.3, max_tokens=4096)
+                                         temperature=0.3, max_tokens=8192)
 
-        # Parse the generated YAML
+        # Parse the generated YAML (tolerant of truncation)
         clean = self._strip_fences(content)
-        try:
-            import yaml
-            data = yaml.safe_load(clean)
-            bp = ModuleBlueprint(
-                name=data.get("name", module_name),
-                language=data.get("language", language),
-                target_dir=data.get("target_dir", target_dir or f"src/{module_name}"),
-                types=[TypeBlueprint.from_dict(t) for t in data.get("types", [])],
-                constraints=data.get("constraints", []),
-                references=ref_paths,
-                description=data.get("description", ""),
+        data = self._parse_yaml_tolerant(clean)
+
+        if not data or not isinstance(data, dict):
+            self._log(f"  WARNING: blueprint parse produced no data")
+            self._log(f"  Raw LLM output (first 500 chars): {clean[:500]}")
+            raise ValueError(
+                f"Blueprint generation failed for '{module_name}': empty or invalid YAML\n"
+                f"First 200 chars: {clean[:200]}"
             )
-        except Exception as e:
-            self._log(f"  blueprint parse failed: {e}, creating minimal")
-            bp = ModuleBlueprint(
-                name=module_name,
-                language=language,
-                target_dir=target_dir or f"src/{module_name}",
-                references=ref_paths,
-            )
+
+        bp = ModuleBlueprint(
+            name=data.get("name", module_name),
+            language=data.get("language", language),
+            target_dir=data.get("target_dir", target_dir or f"src/{module_name}"),
+            types=[TypeBlueprint.from_dict(t) for t in data.get("types", [])],
+            constraints=data.get("constraints", []),
+            references=ref_paths,
+            description=data.get("description", ""),
+        )
 
         self._log(f"  generated blueprint: {len(bp.types)} types, "
                   f"{sum(len(t.methods) for t in bp.types)} methods")
         return (bp, tokens)
 
     # ── Helpers ──────────────────────────────────────────────
+
+    def _parse_yaml_tolerant(self, text: str) -> dict | None:
+        """Parse YAML, handling truncated output from token limits.
+
+        If the YAML is truncated mid-stream, progressively remove trailing
+        lines until it parses. This recovers partial blueprints instead of
+        failing completely.
+        """
+        import yaml
+        # Try full text first
+        try:
+            return yaml.safe_load(text)
+        except yaml.YAMLError:
+            pass
+
+        # Truncated — strip lines from the end until it parses
+        lines = text.split("\n")
+        for cut in range(1, min(len(lines), 80)):
+            truncated = "\n".join(lines[:-cut])
+            try:
+                data = yaml.safe_load(truncated)
+                if isinstance(data, dict) and "types" in data:
+                    self._log(f"  recovered truncated YAML (cut {cut} lines)")
+                    return data
+            except yaml.YAMLError:
+                continue
+
+        return None
 
     def _strip_fences(self, text: str) -> str:
         """Remove markdown code fences from LLM output."""

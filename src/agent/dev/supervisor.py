@@ -22,16 +22,13 @@ Flow:
 from __future__ import annotations
 
 import json
-import os
 import re
 import time
 from pathlib import Path
 from typing import Optional
 
 from ..llm.providers import LLMProvider, LLMMessage
-from ..prompts.registry import PromptRegistry
-from ..session.state import SessionState
-from .. import OUT_DIR, REGISTRY_PATH
+from .. import OUT_DIR
 
 from .plan import (
     Plan, Block, BlockType, BlockStatus, Stance,
@@ -77,8 +74,6 @@ class DevSupervisor:
             provider=config.get("provider", "groq"),
             model=config.get("model"),
         )
-        self.prompt_registry = PromptRegistry()
-        self.session = SessionState()
         self.verbose = config.get("verbose", False)
         self.plans_dir = OUT_DIR / ".plans"
         self.plans_dir.mkdir(parents=True, exist_ok=True)
