@@ -175,8 +175,7 @@ def generate_project_blueprint(goal: str, target: str, llm) -> Optional[ProjectB
     try:
         from ...agent.llm.providers import LLMMessage
         resp = llm.complete_with_usage(
-            [LLMMessage("user", user)],
-            system=_PROJECT_BP_SYSTEM,
+            [LLMMessage("system", _PROJECT_BP_SYSTEM), LLMMessage("user", user)],
             temperature=0.4,
             max_tokens=2048,
         )

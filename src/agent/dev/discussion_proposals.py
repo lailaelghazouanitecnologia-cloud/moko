@@ -233,8 +233,7 @@ def extract_proposals_with_llm(
 
     from ..llm.providers import LLMMessage
     resp = llm.complete_with_usage(
-        [LLMMessage("user", user)],
-        system=system,
+        [LLMMessage("system", system), LLMMessage("user", user)],
         temperature=0.3,
         max_tokens=1024,
     )

@@ -1,4 +1,4 @@
-"""CLI entry point for ava dev."""
+"""CLI entry point for ava dev and ava features."""
 from __future__ import annotations
 
 import argparse
@@ -200,3 +200,61 @@ def cmd_dev(args: argparse.Namespace):
             max_iterations=args.max_iterations,
             project_bp=project_bp,
         )
+
+
+# ── Features subcommand ────────────────────────────────────
+
+def register_features_subparser(subparsers: argparse._SubParsersAction):
+    """Register 'features' subcommand."""
+    p = subparsers.add_parser("features",
+                              help="Analyze references, discover features, discuss & propose evals")
+    p.add_argument("-t", "--target", required=True, help="Target project name")
+    p.add_argument("-r", "--ref", nargs="+", required=True, help="Reference projects to analyze")
+    p.add_argument("-g", "--goal", default="", help="Target project goal (for relevance scoring)")
+    p.add_argument("--provider", default="groq", help="LLM provider")
+    p.add_argument("--model", help="Override model")
+    p.add_argument("-v", "--verbose", action="store_true", help="Verbose output")
+    p.add_argument("--no-discuss", action="store_true",
+                   help="Skip discussions, only list features")
+    p.add_argument("--max-features", type=int, default=15,
+                   help="Max features to discover")
+    p.add_argument("--run", action="store_true",
+                   help="After generating proposals, run evaluations immediately")
+    p.add_argument("--max-parallel", type=int, default=3,
+                   help="Max parallel eval branches (with --run)")
+
+
+def cmd_features(args: argparse.Namespace):
+    """Execute features command."""
+    from .features import FeatureAnalyzer
+
+    config = {
+        "provider": args.provider,
+        "model": args.model,
+        "verbose": args.verbose,
+    }
+
+    analyzer = FeatureAnalyzer(config)
+    report = analyzer.run(
+        target=args.target,
+        references=args.ref,
+        goal=args.goal,
+        discuss=not args.no_discuss,
+        max_features=args.max_features,
+    )
+
+    # Optionally run evaluations on the generated proposals
+    if args.run and report.discussions:
+        proposals = sum(len(d.eval_proposals) for d in report.discussions)
+        if proposals > 0:
+            print(f"\nRunning {proposals} evaluation branches...")
+            from .manager import DevManager
+
+            config["max_parallel"] = args.max_parallel
+            manager = DevManager(config)
+            manager.run_eval_only(
+                target=args.target,
+                references=args.ref,
+            )
+        else:
+            print("\nNo proposals generated, nothing to evaluate.")
