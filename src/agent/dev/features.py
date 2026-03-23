@@ -74,6 +74,10 @@ class FeatureAnalyzer:
         self.out_dir = OUT_DIR
         self.projects_dir = Path("projects")
 
+        # Guardrails
+        from .guardrails import RunGuard, RunLimits
+        self.guard = config.get("_guard") or RunGuard(RunLimits.from_config(config))
+
     def _log(self, msg: str):
         if self.verbose:
             print(f"  [features] {msg}")
@@ -90,6 +94,26 @@ class FeatureAnalyzer:
         """
         t0 = time.time()
         report = FeaturesReport(target=target, references=references)
+
+        try:
+            return self._run_inner(report, references, goal, discuss,
+                                   max_features, t0)
+        except Exception as e:
+            from .guardrails import GuardrailTripped
+            if isinstance(e, GuardrailTripped):
+                print(f"\n  ⛔ {e}")
+                self.guard.print_status()
+            else:
+                print(f"\n  ⚠ INTERRUPTED: {e}")
+            report.elapsed_s = time.time() - t0
+            self._print_summary(report)
+            return report
+
+    def _run_inner(self, report: FeaturesReport, references: list[str],
+                   goal: str, discuss: bool, max_features: int,
+                   t0: float) -> FeaturesReport:
+        """Inner run logic, wrapped by guardrail exception handler."""
+        target = report.target
 
         # 1. Scan references
         self._log("scanning references...")
@@ -114,6 +138,11 @@ class FeatureAnalyzer:
         if discuss and features:
             self._log("running discussions...")
             for feat in features:
+                if not self.guard.check_discussion_limit():
+                    self._log(f"discussion limit reached ({self.guard.limits.max_discussions_total}), skipping remaining")
+                    break
+                self.guard.check_time()
+
                 disc = self._discuss_feature(feat, goal)
                 report.discussions.append(disc)
                 report.total_tokens += disc.tokens_used
@@ -124,6 +153,12 @@ class FeatureAnalyzer:
             all_proposals = []
             for disc in report.discussions:
                 all_proposals.extend(disc.eval_proposals)
+
+            # Guardrail: cap proposals
+            max_proposals = self.guard.limits.max_eval_proposals
+            if len(all_proposals) > max_proposals:
+                self._log(f"capping proposals: {len(all_proposals)} → {max_proposals}")
+                all_proposals = all_proposals[:max_proposals]
 
             if all_proposals:
                 self._save_eval_yaml(target, all_proposals)
@@ -236,11 +271,17 @@ class FeatureAnalyzer:
         user = f"Target goal: {goal or 'general purpose project'}\n\n"
         user += f"Types found in references:\n{types_text}\n"
 
+        self.guard.throttle()
         resp = self.llm.complete_with_usage(
             [LLMMessage("system", system), LLMMessage("user", user)],
             temperature=0.3,
             max_tokens=2048,
         )
+        tokens = getattr(resp, 'total_tokens', 0) or (
+            resp.usage.total_tokens if hasattr(resp, 'usage') and resp.usage else 0
+        )
+        if tokens:
+            self.guard.record_tokens(tokens)
 
         features = []
         try:
@@ -330,6 +371,7 @@ class FeatureAnalyzer:
                 "or null}"
             )
 
+            self.guard.throttle()
             resp = self.llm.complete_with_usage(
                 [LLMMessage("system", stance_system), LLMMessage("user", user)],
                 temperature=0.4,

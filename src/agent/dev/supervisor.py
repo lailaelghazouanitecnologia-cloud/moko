@@ -98,6 +98,10 @@ class DevSupervisor:
         self.project_bp: Optional[ProjectBlueprint] = None
         self.total_tokens = 0
 
+        # Guardrails
+        from .guardrails import RunGuard, RunLimits
+        self.guard = config.get("_guard") or RunGuard(RunLimits.from_config(config))
+
     def _log(self, msg: str):
         if self.verbose:
             print(f"  [dev] {msg}")
@@ -171,13 +175,26 @@ class DevSupervisor:
 
     def _llm_call(self, system: str, user: str,
                   temperature: float = 0.3, max_tokens: int = 4096) -> tuple[str, int]:
-        """Make an LLM call and track tokens."""
+        """Make an LLM call and track tokens. Enforces guardrails."""
+        self.guard.throttle()
+        self.guard.check_time()
         resp = self.llm.complete_with_usage(
             [LLMMessage("system", system), LLMMessage("user", user)],
             temperature=temperature, max_tokens=max_tokens,
         )
-        self.total_tokens += resp.usage.total_tokens
-        return resp.content, resp.usage.total_tokens
+        tokens = resp.usage.total_tokens
+        self.total_tokens += tokens
+        self.guard.record_tokens(tokens)
+
+        # Loop detection: hash output to catch LLM repeating itself
+        import hashlib
+        out_hash = hashlib.md5(resp.content[:200].encode()).hexdigest()
+        if self.guard.check_output_loop(out_hash):
+            from .guardrails import GuardrailTripped
+            raise GuardrailTripped("output_loop",
+                                   "LLM producing identical output repeatedly")
+
+        return resp.content, tokens
 
     # ── Plan Generation ─────────────────────────────────────────
 
@@ -531,6 +548,8 @@ class DevSupervisor:
     def execute_block(self, block: Block) -> Block:
         """Execute a single block using VM for context and discussions for data."""
         block.start()
+        block_id = f"block_{block.index}"
+        self.guard.record_block_start(block_id)
         self._log(f"block {block.index} [{block.block_type.value}]: {block.objective[:50]}...")
 
         # 1. VM navigates to this block
@@ -593,6 +612,7 @@ class DevSupervisor:
             block.quality_score = result["quality_score"]
         self.total_tokens += result.get("tokens_used", 0)
 
+        self.guard.record_block_done(block_id)
         self._log(f"block {block.index} done in {block.elapsed_s:.1f}s [{block.hash[:8]}]")
         return block
 
@@ -1240,6 +1260,9 @@ class DevSupervisor:
         crashed = False
         try:
             while plan.next_pending and iteration < max_iterations:
+                self.guard.check_time()
+                self.guard.check_plan_size(len(plan.blocks))
+                self.guard.check_stale_blocks()
                 # Collect batch of consecutive IMPLEMENT blocks from same module
                 batch = self._collect_parallel_batch(plan)
 
@@ -1317,7 +1340,12 @@ class DevSupervisor:
 
         except Exception as e:
             crashed = True
-            print(f"\n  ⚠ INTERRUPTED: {e}")
+            from .guardrails import GuardrailTripped
+            if isinstance(e, GuardrailTripped):
+                print(f"\n  ⛔ {e}")
+                self.guard.print_status()
+            else:
+                print(f"\n  ⚠ INTERRUPTED: {e}")
             if block and block.status == BlockStatus.IN_PROGRESS:
                 block.fail(str(e))
 
@@ -1356,7 +1384,12 @@ class DevSupervisor:
 
         except Exception as e:
             crashed = True
-            print(f"\n  ⚠ INTERRUPTED: {e}")
+            from .guardrails import GuardrailTripped
+            if isinstance(e, GuardrailTripped):
+                print(f"\n  ⛔ {e}")
+                self.guard.print_status()
+            else:
+                print(f"\n  ⚠ INTERRUPTED: {e}")
             if block and block.status == BlockStatus.IN_PROGRESS:
                 block.fail(str(e))
 
@@ -1431,9 +1464,13 @@ class DevSupervisor:
         if not plan:
             return
 
+        # Guardrail: check plan size before inserting
+        self.guard.check_plan_size(len(plan.blocks))
+
         # Low confidence → insert review block
         if abstraction.confidence < 0.3 and block.block_type != BlockType.ANALYZE:
             self._log("low confidence → inserting review block")
+            self.guard.record_block_inserted()
             plan.insert_block_after(
                 block.index, BlockType.REVIEW,
                 f"Review progress — confidence at {abstraction.confidence:.0%}"

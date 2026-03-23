@@ -40,6 +40,12 @@ class DevManager:
         self.verbose = self.config.get("verbose", False)
         self.projects_dir = Path("projects")
 
+        # Shared guardrail across all branches
+        from .guardrails import RunGuard, RunLimits
+        self.guard = RunGuard(RunLimits.from_config(self.config))
+        # Inject guard into supervisor configs so all share the same instance
+        self.config["_guard"] = self.guard
+
     def _log(self, msg: str):
         if self.verbose:
             print(f"  [manager] {msg}")
@@ -203,11 +209,22 @@ class DevManager:
         if not eval_branches:
             return
 
-        project_dir = Path(project.project_dir)
+        # Guardrail: cap eval branches
+        max_branches = self.guard.limits.max_eval_branches
+        if len(eval_branches) > max_branches:
+            print(f"  ⚠ Capping eval branches: {len(eval_branches)} → {max_branches}")
+            eval_branches = eval_branches[:max_branches]
 
-        with ThreadPoolExecutor(max_workers=self.max_parallel) as pool:
+        project_dir = Path(project.project_dir)
+        max_workers = min(self.max_parallel, self.guard.limits.max_parallel_branches)
+
+        with ThreadPoolExecutor(max_workers=max_workers) as pool:
             futures = {}
             for branch in eval_branches:
+                if not self.guard.check_eval_branch():
+                    self._log(f"eval branch limit reached, skipping {branch.name}")
+                    branch.status = BranchStatus.FAILED
+                    continue
                 future = pool.submit(
                     self._run_one_eval, project_dir, branch, references
                 )
