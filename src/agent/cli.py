@@ -31,6 +31,8 @@ def register_subparser(subparsers):
                    help="Interactive REPL mode")
     p.add_argument("--verbose", "-v", action="store_true",
                    help="Show agent routing and metrics")
+    p.add_argument("--no-report", action="store_true",
+                   help="Suppress usage report")
     p.add_argument("--index", action="store_true",
                    help="Build/rebuild vector index")
     p.add_argument("--embedding", default="local",
@@ -60,12 +62,16 @@ def cmd_agent(args):
         print(f"Error initializing agent: {e}", file=sys.stderr)
         sys.exit(1)
 
+    show_report = not getattr(args, 'no_report', False)
+
     if args.interactive:
-        _interactive_loop(supervisor, args)
+        _interactive_loop(supervisor, args, show_report)
     elif args.query:
         projects = args.project or _available_projects()
         result = supervisor.run(args.query, projects, verbose=args.verbose)
         print(result)
+        if show_report and supervisor.last_report:
+            print(f"\n{supervisor.last_report.format()}")
     else:
         print("Provide a query or use --interactive/-i for REPL mode")
         print("Examples:")
@@ -105,7 +111,7 @@ def _build_index(args):
         sys.exit(1)
 
 
-def _interactive_loop(supervisor: Supervisor, args):
+def _interactive_loop(supervisor: Supervisor, args, show_report: bool):
     """REPL with session commands."""
     projects = args.project or _available_projects()
 
@@ -113,7 +119,6 @@ def _interactive_loop(supervisor: Supervisor, args):
     print(f"[moko] {len(supervisor.agents)} agents | {len(projects)} projects")
     print(f"[moko] Provider: {args.provider} | Model: {supervisor.llm.model}")
 
-    # Check vector index
     if supervisor.vector_store and supervisor.vector_store.is_indexed():
         count = supervisor.vector_store.count()
         print(f"[moko] Vector index: {count} chunks")
@@ -132,31 +137,24 @@ def _interactive_loop(supervisor: Supervisor, args):
         if not query:
             continue
 
-        # Session commands
         if query.startswith("/"):
             _handle_session_command(query, supervisor)
             continue
 
-        t0 = time.time()
         try:
             result = supervisor.run(query, projects, verbose=args.verbose)
-            elapsed = time.time() - t0
             print(f"\n{result}")
 
-            if args.verbose:
-                turn = supervisor.session.turns[-1] if supervisor.session.turns else None
-                if turn:
-                    print(f"\n  [{turn.task_type}] agents={turn.agents_used} "
-                          f"sources={len(turn.sources)} "
-                          f"tokens={turn.token_usage.get('total', '?')} "
-                          f"time={elapsed:.1f}s")
+            # Always show usage report in REPL
+            if show_report and supervisor.last_report:
+                print(f"\n{supervisor.last_report.format()}")
             print()
         except Exception as e:
             print(f"\n[error] {e}\n")
 
 
 def _handle_session_command(cmd: str, supervisor: Supervisor):
-    """Handle /snapshot, /branch, /rollback, /branches, /history, /help."""
+    """Handle /snapshot, /branch, /rollback, /branches, /history, /report, /help."""
     parts = cmd.split()
     command = parts[0].lower()
 
@@ -209,7 +207,15 @@ def _handle_session_command(cmd: str, supervisor: Supervisor):
 
     elif command == "/history":
         for t in supervisor.session.turns[-10:]:
-            print(f"  [{t.id}] {t.task_type}: {t.query[:60]}...")
+            tokens = t.token_usage.get("total_tokens", "?")
+            est = " (est)" if t.token_usage.get("is_estimated", True) else ""
+            print(f"  [{t.id}] {t.task_type}: {t.query[:50]}... [{tokens}{est} tokens]")
+
+    elif command == "/report":
+        if supervisor.last_report:
+            print(supervisor.last_report.format())
+        else:
+            print("  No report yet — run a query first.")
 
     elif command == "/agents":
         for name, agent in supervisor.agents.items():
@@ -237,7 +243,8 @@ def _handle_session_command(cmd: str, supervisor: Supervisor):
         print("    /rollback <snap_id>    Rollback to snapshot")
         print("    /branches              List branches")
         print("    /snapshots [branch]    List snapshots")
-        print("    /history               Show recent turns")
+        print("    /history               Show recent turns + token usage")
+        print("    /report                Show last query's usage report")
         print("    /export [path]         Export session to JSON")
         print("  Info commands:")
         print("    /agents                List available agents")

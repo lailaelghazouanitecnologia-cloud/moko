@@ -6,6 +6,7 @@ returning an async stream. Here we use sync streaming for CLI simplicity.
 """
 
 import os
+import sys
 import time
 from dataclasses import dataclass, field
 from typing import Iterator
@@ -24,6 +25,7 @@ class LLMUsage:
     total_tokens: int = 0
     elapsed_s: float = 0.0
     tokens_per_sec: float = 0.0
+    is_estimated: bool = True    # True if tokens are estimated, False if from API
 
 
 @dataclass
@@ -95,27 +97,9 @@ class LLMProvider:
 
     def complete(self, messages: list[LLMMessage], temperature: float = 0.6,
                  max_tokens: int = 4096) -> LLMResponse:
-        """Send messages and return complete response."""
-        t0 = time.time()
-        chunks = list(self.stream(messages, temperature, max_tokens))
-        content = "".join(chunks)
-        elapsed = time.time() - t0
-
-        usage = LLMUsage(
-            elapsed_s=round(elapsed, 2),
-            completion_tokens=len(content) // 4,  # estimate
-            prompt_tokens=sum(len(m.content) for m in messages) // 4,
-        )
-        usage.total_tokens = usage.prompt_tokens + usage.completion_tokens
-        if elapsed > 0:
-            usage.tokens_per_sec = round(usage.completion_tokens / elapsed, 1)
-
-        return LLMResponse(
-            content=content,
-            usage=usage,
-            model=self.model,
-            provider=self.provider,
-        )
+        """Send messages and return complete response with real token usage."""
+        # Use non-streaming for accurate token counts
+        return self.complete_with_usage(messages, temperature, max_tokens)
 
     def complete_with_usage(self, messages: list[LLMMessage], temperature: float = 0.6,
                             max_tokens: int = 4096) -> LLMResponse:
@@ -127,7 +111,8 @@ class LLMProvider:
         elif self.provider == "anthropic":
             return self._complete_anthropic(messages, temperature, max_tokens, t0)
         else:
-            return self.complete(messages, temperature, max_tokens)
+            # Fallback to streaming with estimated tokens
+            return self._complete_streaming_fallback(messages, temperature, max_tokens, t0)
 
     def stream(self, messages: list[LLMMessage], temperature: float = 0.6,
                max_tokens: int = 4096) -> Iterator[str]:
@@ -137,13 +122,29 @@ class LLMProvider:
         elif self.provider == "anthropic":
             yield from self._stream_anthropic(messages, temperature, max_tokens)
 
+    def _complete_streaming_fallback(self, messages, temperature, max_tokens, t0) -> LLMResponse:
+        """Fallback: stream and estimate tokens."""
+        chunks = list(self.stream(messages, temperature, max_tokens))
+        content = "".join(chunks)
+        elapsed = time.time() - t0
+        usage = LLMUsage(
+            elapsed_s=round(elapsed, 2),
+            completion_tokens=len(content) // 4,
+            prompt_tokens=sum(len(m.content) for m in messages) // 4,
+            is_estimated=True,
+        )
+        usage.total_tokens = usage.prompt_tokens + usage.completion_tokens
+        if elapsed > 0:
+            usage.tokens_per_sec = round(usage.completion_tokens / elapsed, 1)
+        return LLMResponse(content=content, usage=usage, model=self.model, provider=self.provider)
+
     # ── OpenAI-compatible streaming (Groq, OpenAI) ──────────────
 
     def _stream_openai_compat(self, messages, temperature, max_tokens) -> Iterator[str]:
         client = self._get_client()
         api_messages = [{"role": m.role, "content": m.content} for m in messages]
 
-        # Retry with exponential backoff for 503/overloaded errors
+        # Retry with exponential backoff for transient errors
         last_error = None
         for attempt in range(4):
             try:
@@ -157,13 +158,12 @@ class LLMProvider:
                 for chunk in completion:
                     if chunk.choices and chunk.choices[0].delta.content:
                         yield chunk.choices[0].delta.content
-                return  # success
+                return
             except Exception as e:
                 last_error = e
                 err_str = str(e)
                 if any(s in err_str for s in ["503", "500", "over capacity", "overloaded", "DNS", "timeout", "rate"]):
-                    wait = 2 ** (attempt + 1)  # 2, 4, 8, 16
-                    import sys
+                    wait = 2 ** (attempt + 1)
                     print(f"\n  [retry] Model overloaded, waiting {wait}s... (attempt {attempt+1}/4)", file=sys.stderr)
                     time.sleep(wait)
                 else:
@@ -174,22 +174,45 @@ class LLMProvider:
         client = self._get_client()
         api_messages = [{"role": m.role, "content": m.content} for m in messages]
 
-        completion = client.chat.completions.create(
-            model=self.model,
-            messages=api_messages,
-            temperature=temperature,
-            max_completion_tokens=max_tokens,
-            stream=False,
-        )
+        # Retry with exponential backoff
+        last_error = None
+        for attempt in range(4):
+            try:
+                completion = client.chat.completions.create(
+                    model=self.model,
+                    messages=api_messages,
+                    temperature=temperature,
+                    max_completion_tokens=max_tokens,
+                    stream=False,
+                )
+                break
+            except Exception as e:
+                last_error = e
+                err_str = str(e)
+                if any(s in err_str for s in ["503", "500", "over capacity", "overloaded", "DNS", "timeout", "rate"]):
+                    wait = 2 ** (attempt + 1)
+                    print(f"\n  [retry] Model overloaded, waiting {wait}s... (attempt {attempt+1}/4)", file=sys.stderr)
+                    time.sleep(wait)
+                else:
+                    raise
+        else:
+            raise last_error
 
         elapsed = time.time() - t0
         content = completion.choices[0].message.content or ""
 
-        usage = LLMUsage(elapsed_s=round(elapsed, 2))
+        usage = LLMUsage(elapsed_s=round(elapsed, 2), is_estimated=False)
         if completion.usage:
             usage.prompt_tokens = completion.usage.prompt_tokens or 0
             usage.completion_tokens = completion.usage.completion_tokens or 0
             usage.total_tokens = completion.usage.total_tokens or 0
+        else:
+            # Fallback to estimate
+            usage.prompt_tokens = sum(len(m.content) for m in messages) // 4
+            usage.completion_tokens = len(content) // 4
+            usage.total_tokens = usage.prompt_tokens + usage.completion_tokens
+            usage.is_estimated = True
+
         if elapsed > 0 and usage.completion_tokens:
             usage.tokens_per_sec = round(usage.completion_tokens / elapsed, 1)
 
@@ -200,7 +223,6 @@ class LLMProvider:
     def _stream_anthropic(self, messages, temperature, max_tokens) -> Iterator[str]:
         client = self._get_client()
 
-        # Extract system message
         system = ""
         api_messages = []
         for m in messages:
@@ -245,6 +267,7 @@ class LLMProvider:
             elapsed_s=round(elapsed, 2),
             prompt_tokens=response.usage.input_tokens if response.usage else 0,
             completion_tokens=response.usage.output_tokens if response.usage else 0,
+            is_estimated=False,
         )
         usage.total_tokens = usage.prompt_tokens + usage.completion_tokens
         if elapsed > 0 and usage.completion_tokens:

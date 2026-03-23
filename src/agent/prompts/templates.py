@@ -18,7 +18,7 @@ from .registry import Prompt, PromptMetadata
 SYSTEM_ROSKA_BASE = Prompt(
     metadata=PromptMetadata(
         id="system_roska_base",
-        version=1,
+        version=2,
         task_types=["*"],
         tags=["base"],
         is_hardcoded=True,
@@ -33,8 +33,14 @@ SYSTEM_ROSKA_BASE = Prompt(
         "- Dependency graph (module-level imports/calls/inheritance edges)\n"
         "- File descriptors (types with methods/fields, functions with signatures, call lists)\n"
         "- MicroGraphs with ports (cross-module connections)\n\n"
-        "Be concrete and specific. Reference actual names from the descriptors. "
-        "Do not fabricate information not present in the descriptors."
+        "CRITICAL RULES:\n"
+        "1. ONLY state facts you can directly verify from the provided descriptors.\n"
+        "2. For line counts and metrics, use ONLY workspace.yaml numbers — they are authoritative.\n"
+        "3. Do NOT infer or estimate sizes for individual files unless you see their descriptors.\n"
+        "4. If you cannot verify a claim from the data provided, say 'not visible in loaded descriptors'.\n"
+        "5. When the Coverage note says X% of files loaded, acknowledge which parts you can vs cannot see.\n"
+        "6. Clearly distinguish between 'I can see in the descriptors' vs 'I infer/suspect'.\n"
+        "7. Reference actual names. Do not fabricate type names, function names, or import counts."
     ),
 )
 
