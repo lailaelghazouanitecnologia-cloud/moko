@@ -214,11 +214,13 @@ class DevSupervisor:
         # Initialize engines
         self._init_engines(references)
 
-        # Initialize translator with emission index
+        # Initialize translator with emission index + semantic store
         self.translator = BlueprintTranslator(
             self.llm, OUT_DIR, verbose=self.verbose,
             emission_index=self.emission_index
         )
+        if self.semantic_store:
+            self.translator.semantic_store = self.semantic_store
 
         # Use ProjectBlueprint if provided, else fallback to LLM planning
         if project_bp:
@@ -911,7 +913,7 @@ class DevSupervisor:
                 except Exception as e:
                     report_parts.append(f"  ERROR: {bp_file.name}: {e}")
 
-        # Generate root index.ts
+        # Generate root index.ts and project config
         files_changed = []
         if self.translator and bp_dir.exists():
             module_names = sorted(
@@ -922,6 +924,35 @@ class DevSupervisor:
                 root_idx = self.translator.generate_root_index(module_names, project_dir)
                 files_changed.append(root_idx)
                 report_parts.append(f"\n  Generated root index: {root_idx}")
+
+                # Generate tsconfig.json + package.json
+                config_files = self.translator.generate_project_config(
+                    target, module_names, project_dir
+                )
+                files_changed.extend(config_files)
+                report_parts.append(f"  Generated project config: {', '.join(config_files)}")
+
+        # Run tsc --noEmit if tsconfig exists
+        tsconfig_path = project_dir / "tsconfig.json"
+        if tsconfig_path.exists():
+            import subprocess
+            try:
+                result = subprocess.run(
+                    ["npx", "tsc", "--noEmit", "--pretty"],
+                    cwd=str(project_dir),
+                    capture_output=True, text=True, timeout=60,
+                )
+                if result.returncode == 0:
+                    report_parts.append(f"\n  tsc --noEmit: PASS (0 errors)")
+                else:
+                    errors = result.stdout.strip() or result.stderr.strip()
+                    error_count = errors.count("error TS")
+                    report_parts.append(f"\n  tsc --noEmit: {error_count} errors")
+                    # Show first 20 errors for context
+                    for line in errors.splitlines()[:20]:
+                        report_parts.append(f"    {line}")
+            except (FileNotFoundError, subprocess.TimeoutExpired):
+                report_parts.append(f"\n  tsc --noEmit: skipped (tsc not available)")
 
         # Density analysis
         density_parts = []
@@ -1078,6 +1109,37 @@ class DevSupervisor:
                   f"-{len(data.get('discard', []))} discarded")
         return result
 
+    def _collect_parallel_batch(self, plan: Plan) -> list:
+        """Collect consecutive IMPLEMENT blocks from the same module for parallel exec."""
+        first = plan.next_pending
+        if not first or first.block_type != BlockType.IMPLEMENT:
+            return [first]
+
+        mod = first.meta.get("module", "")
+        type_name = first.meta.get("type", "")
+        # Don't parallelize __index__ blocks
+        if type_name == "__index__":
+            return [first]
+
+        batch = [first]
+        # Look ahead for more implement blocks in the same module
+        for b in plan.blocks:
+            if b.index <= first.index:
+                continue
+            if b.status.value != "pending":
+                continue
+            if b.block_type != BlockType.IMPLEMENT:
+                break  # Stop at non-implement block (e.g., next analyze or index)
+            if b.meta.get("module", "") != mod:
+                break  # Stop at different module
+            if b.meta.get("type", "") == "__index__":
+                break  # Stop before index generation
+            batch.append(b)
+            if len(batch) >= 4:  # Max parallelism
+                break
+
+        return batch
+
     # ── Full Iteration Loop ─────────────────────────────────────
 
     def run(self, goal: str, target: str, references: list[str] = None,
@@ -1099,43 +1161,81 @@ class DevSupervisor:
         plan = self.create_plan(goal, target, references, project_bp=project_bp)
         print(plan.format_status())
 
-        # 2. Execute blocks (each self-contained)
+        # 2. Execute blocks (each self-contained, with parallelism for implement)
         iteration = 0
         crashed = False
         try:
             while plan.next_pending and iteration < max_iterations:
-                block = plan.next_pending
-                iteration += 1
+                # Collect batch of consecutive IMPLEMENT blocks from same module
+                batch = self._collect_parallel_batch(plan)
 
-                print(f"\n{'─' * 66}")
-                print(f"  [{iteration}/{len(plan.blocks)}] Block {block.index} "
-                      f"[{block.block_type.value}]")
-                print(f"  {block.objective}")
-                if block.meta:
-                    meta_info = {k: v for k, v in block.meta.items()
-                                 if k in ("type", "module", "blueprint")}
-                    if meta_info:
-                        print(f"  meta: {meta_info}")
-                print(f"{'─' * 66}")
+                if len(batch) > 1:
+                    # Parallel execution of independent implement blocks
+                    iteration += len(batch)
+                    mod_name = batch[0].meta.get("module", "?")
+                    print(f"\n{'─' * 66}")
+                    print(f"  [{iteration-len(batch)+1}-{iteration}/{len(plan.blocks)}] "
+                          f"Parallel: {len(batch)} types in {mod_name}")
+                    print(f"{'─' * 66}")
 
-                # Execute (self-contained: disk → LLM → disk)
-                self.execute_block(block)
+                    from concurrent.futures import ThreadPoolExecutor, as_completed
+                    with ThreadPoolExecutor(max_workers=min(len(batch), 4)) as pool:
+                        futures = {
+                            pool.submit(self.execute_block, b): b for b in batch
+                        }
+                        for future in as_completed(futures):
+                            b = futures[future]
+                            try:
+                                future.result()
+                                for f in b.files_changed:
+                                    print(f"  → {f}")
+                            except Exception as e:
+                                print(f"  ✗ {b.meta.get('type', '?')}: {e}")
+                                b.fail(str(e))
 
-                # Print result (compact for implement blocks)
-                if block.block_type == BlockType.IMPLEMENT:
-                    for f in block.files_changed:
-                        print(f"  → {f}")
-                elif block.block_type == BlockType.ANALYZE:
-                    print(block.output)
+                    # Re-link hash chain sequentially after parallel completion
+                    for i, b in enumerate(batch):
+                        if i == 0:
+                            # Link to block before the batch
+                            prev_idx = b.index - 1
+                            if prev_idx >= 0:
+                                b.prev_hash = plan.blocks[prev_idx].hash
+                        else:
+                            b.prev_hash = batch[i - 1].hash
+                        b.compute_hash()
                 else:
-                    print(block.output[:2000])
+                    block = batch[0]
+                    iteration += 1
 
-                # Run abstraction only for analyze blocks in non-layered plans
-                # Layered plans have fixed structure — abstraction can't change them
-                if block.block_type == BlockType.ANALYZE and not self.project_bp:
-                    abstraction = self.run_abstraction(block)
-                    print(f"  confidence: {abstraction.confidence:.0%}")
-                    self._adjust_plan(block, abstraction)
+                    print(f"\n{'─' * 66}")
+                    print(f"  [{iteration}/{len(plan.blocks)}] Block {block.index} "
+                          f"[{block.block_type.value}]")
+                    print(f"  {block.objective}")
+                    if block.meta:
+                        meta_info = {k: v for k, v in block.meta.items()
+                                     if k in ("type", "module", "blueprint")}
+                        if meta_info:
+                            print(f"  meta: {meta_info}")
+                    print(f"{'─' * 66}")
+
+                    # Execute (self-contained: disk → LLM → disk)
+                    self.execute_block(block)
+
+                    # Print result (compact for implement blocks)
+                    if block.block_type == BlockType.IMPLEMENT:
+                        for f in block.files_changed:
+                            print(f"  → {f}")
+                    elif block.block_type == BlockType.ANALYZE:
+                        print(block.output)
+                    else:
+                        print(block.output[:2000])
+
+                    # Run abstraction only for analyze blocks in non-layered plans
+                    # Layered plans have fixed structure — abstraction can't change them
+                    if block.block_type == BlockType.ANALYZE and not self.project_bp:
+                        abstraction = self.run_abstraction(block)
+                        print(f"  confidence: {abstraction.confidence:.0%}")
+                        self._adjust_plan(block, abstraction)
 
         except Exception as e:
             crashed = True
@@ -1314,6 +1414,8 @@ class DevSupervisor:
             self.llm, OUT_DIR, verbose=self.verbose,
             emission_index=self.emission_index
         )
+        if self.semantic_store:
+            self.translator.semantic_store = self.semantic_store
         self._log(f"resumed {plan.plan_id}: "
                   f"{len(plan.completed_blocks)}/{len(plan.blocks)} done")
 

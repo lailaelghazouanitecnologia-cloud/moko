@@ -147,6 +147,7 @@ class BlueprintTranslator:
         self.emission_index = emission_index
         self.prior_layers_context = prior_layers_context
         self.prior_modules: list = []  # ModuleBlueprints from prior layers
+        self.semantic_store = None  # Optional SemanticStore for enriched context
 
     def _log(self, msg: str):
         if self.verbose:
@@ -253,6 +254,22 @@ class BlueprintTranslator:
         if self.prior_layers_context:
             user += f"\n## {self.prior_layers_context}\n"
 
+        # Semantic store — similar patterns from reference codebases
+        if self.semantic_store:
+            method_names = [m.name for m in type_bp.methods] if type_bp.methods else []
+            matches = self.semantic_store.search_for_type(
+                type_bp.name, method_names, top_k=5
+            )
+            if matches:
+                sem_lines = []
+                for m in matches[:5]:
+                    ctx = f" — {m.entry.context}" if m.entry.context else ""
+                    sem_lines.append(
+                        f"- {m.entry.source}: {m.entry.kind} `{m.entry.name}`{ctx}"
+                    )
+                user += f"\n## Semantic hints (similar patterns in reference code)\n"
+                user += "\n".join(sem_lines) + "\n"
+
         # 4. LLM call — all token budget for this one type
         code, tokens = self._llm_call(TRANSLATE_SYSTEM, user, max_tokens=6000)
 
@@ -303,6 +320,68 @@ class BlueprintTranslator:
         full_path.write_text("\n".join(lines))
         self._log(f"  wrote {target} (root index, {len(module_names)} modules)")
         return target
+
+    def generate_project_config(self, project_name: str,
+                                module_names: list[str],
+                                project_dir: Path) -> list[str]:
+        """Generate tsconfig.json and package.json for the project."""
+        files = []
+
+        # tsconfig.json with path aliases
+        path_aliases = {}
+        for mod in module_names:
+            path_aliases[f"@{project_name}/{mod}"] = [f"src/{mod}/index.ts"]
+            path_aliases[f"@{project_name}/{mod}/*"] = [f"src/{mod}/*"]
+
+        import json
+        tsconfig = {
+            "compilerOptions": {
+                "target": "ES2020",
+                "module": "ESNext",
+                "moduleResolution": "bundler",
+                "lib": ["ES2020", "DOM"],
+                "strict": True,
+                "esModuleInterop": True,
+                "skipLibCheck": True,
+                "forceConsistentCasingInFileNames": True,
+                "declaration": True,
+                "declarationMap": True,
+                "sourceMap": True,
+                "outDir": "dist",
+                "rootDir": "src",
+                "baseUrl": ".",
+                "paths": path_aliases,
+            },
+            "include": ["src/**/*.ts"],
+            "exclude": ["node_modules", "dist"],
+        }
+
+        ts_path = project_dir / "tsconfig.json"
+        ts_path.write_text(json.dumps(tsconfig, indent=2) + "\n")
+        files.append("tsconfig.json")
+        self._log(f"  wrote tsconfig.json ({len(module_names)} path aliases)")
+
+        # package.json
+        pkg = {
+            "name": project_name,
+            "version": "0.1.0",
+            "type": "module",
+            "main": "dist/index.js",
+            "types": "dist/index.d.ts",
+            "scripts": {
+                "build": "tsc",
+                "check": "tsc --noEmit",
+            },
+            "devDependencies": {
+                "typescript": "^5.4.0",
+            },
+        }
+        pkg_path = project_dir / "package.json"
+        pkg_path.write_text(json.dumps(pkg, indent=2) + "\n")
+        files.append("package.json")
+        self._log(f"  wrote package.json")
+
+        return files
 
     # ── Blueprint Generation ────────────────────────────────
 
