@@ -1,15 +1,12 @@
 import { EventHandler } from '../core';
 import { Entity } from './entity';
-
-export interface ComponentData {
-    [key: string]: any;
-}
+import { ComponentSystem } from './component-system';
 
 export class Component extends EventHandler {
     system: ComponentSystem;
     entity: Entity;
     enabled: boolean;
-    data: ComponentData;
+    data: any;
     gameObject: any;
     destroyed: boolean;
 
@@ -24,15 +21,15 @@ export class Component extends EventHandler {
     }
 
     onEnable(): void {
-        // Lifecycle hook when enabled
+        // lifecycle when enabled
     }
 
     onDisable(): void {
-        // Lifecycle hook when disabled
+        // lifecycle when disabled
     }
 
     onPostStateChange(): void {
-        // After state change callback
+        // after enabled state flips
     }
 
     getGameObject(): any {
@@ -64,11 +61,11 @@ export class Component extends EventHandler {
     }
 
     destroy(): void {
-        this.destroyed = true;
-        this.enabled = false;
-        this.system = null;
-        this.entity = null;
-        this.gameObject = null;
-        this.data = null;
+        if (!this.destroyed) {
+            this.destroyed = true;
+            this.enabled = false;
+            this.onDisable();
+            this.onPostStateChange();
+        }
     }
 }

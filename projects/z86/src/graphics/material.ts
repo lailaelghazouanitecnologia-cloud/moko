@@ -3,40 +3,68 @@ import { Shader } from './shader';
 import { Color } from '../math';
 
 export class Material {
-    texture: Texture | null = null;
-    shader: Shader | null = null;
-    color: Color = new Color(1, 1, 1, 1);
+    private _texture: Texture | null = null;
+    private _shader: Shader | null = null;
+    private _color: Color = new Color(1, 1, 1, 1);
+    private _enabled: boolean = true;
+
+    constructor(texture?: Texture, shader?: Shader, color?: Color) {
+        if (texture) this._texture = texture;
+        if (shader) this._shader = shader;
+        if (color) this._color.copy(color);
+    }
+
+    get texture(): Texture | null {
+        return this._texture;
+    }
+
+    get shader(): Shader | null {
+        return this._shader;
+    }
+
+    get color(): Color {
+        return this._color;
+    }
+
+    get enabled(): boolean {
+        return this._enabled;
+    }
 
     bind(): void {
-        if (this.shader) {
-            this.shader.enable();
+        if (this._shader) {
+            this._shader.enable();
         }
-        if (this.texture) {
-            this.texture.bind();
+        if (this._texture) {
+            this._texture.bind();
+        }
+    }
+
+    unbind(): void {
+        if (this._texture) {
+            this._texture.unbind();
+        }
+        if (this._shader) {
+            this._shader.disable();
         }
     }
 
     setTexture(texture: Texture | null): void {
-        this.texture = texture;
+        this._texture = texture;
     }
 
     setShader(shader: Shader | null): void {
-        this.shader = shader;
+        this._shader = shader;
     }
 
     setColor(color: Color): void {
-        this.color.copy(color);
+        this._color.copy(color);
     }
 
     enable(): void {
-        if (this.shader) {
-            this.shader.enable();
-        }
+        this._enabled = true;
     }
 
     disable(): void {
-        if (this.shader) {
-            this.shader.disable();
-        }
+        this._enabled = false;
     }
 }

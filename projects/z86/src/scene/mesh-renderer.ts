@@ -1,42 +1,37 @@
 import { Component } from './component';
-import { GraphicsDevice, Material, Mesh, MeshInstance } from '../graphics';
-import { Mat4 } from '../math';
+import { Entity } from './entity';
+import { WebGLDevice } from '../graphics';
+import { Mat4, Vec3 } from '../math';
 
 export class MeshRenderer extends Component {
-    private _mesh: Mesh | null = null;
-    private _material: Material | null = null;
-    private _meshInstance: MeshInstance | null = null;
-    private _worldTransform: Mat4 = new Mat4();
+    private _mesh: any = null;
+    private _material: any = null;
+    private _device: WebGLDevice | null = null;
 
-    constructor(entity: any) {
+    constructor(entity: Entity) {
         super(entity);
     }
 
-    setMesh(mesh: Mesh | null): void {
+    setMesh(mesh: any): void {
         this._mesh = mesh;
-        this._updateMeshInstance();
     }
 
-    setMaterial(material: Material | null): void {
+    setMaterial(material: any): void {
         this._material = material;
-        this._updateMeshInstance();
     }
 
-    updateUniforms(device: GraphicsDevice): void {
-        if (!this._meshInstance) return;
-        this._meshInstance.updateUniforms(device);
-    }
+    render(device: WebGLDevice, worldTransform: Mat4): void {
+        this._device = device;
+        if (!this._mesh || !this._material) return;
 
-    render(device: GraphicsDevice): void {
-        if (!this._meshInstance) return;
-        this._meshInstance.render(device);
-    }
+        const modelMatrix = worldTransform.clone();
+        const normalMatrix = new Mat4().copy(modelMatrix).invert().transpose();
 
-    private _updateMeshInstance(): void {
-        if (this._mesh && this._material) {
-            this._meshInstance = new MeshInstance(this._mesh, this._material);
-        } else {
-            this._meshInstance = null;
-        }
+        this._material.setParameter('matrix_model', modelMatrix.data);
+        this._material.setParameter('matrix_normal', normalMatrix.data);
+
+        this._material.bind();
+        this._mesh.draw();
+        this._material.unbind();
     }
 }

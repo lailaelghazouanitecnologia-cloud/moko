@@ -6,67 +6,56 @@ export class Shader {
     fragShaderID: WebGLShader | null = null;
     compiled: boolean = false;
 
-    constructor(
-        private gl: WebGLRenderingContext,
-        private vertexSource: string,
-        private fragmentSource: string
-    ) {}
+    constructor(private gl: WebGLRenderingContext) {}
 
-    compile(): boolean {
+    compile(vertexSource: string, fragmentSource: string): void {
         const gl = this.gl;
 
         const vertShader = gl.createShader(gl.VERTEX_SHADER);
-        if (!vertShader) return false;
-        gl.shaderSource(vertShader, this.vertexSource);
+        if (!vertShader) throw new Error('Failed to create vertex shader');
+        gl.shaderSource(vertShader, vertexSource);
         gl.compileShader(vertShader);
         if (!gl.getShaderParameter(vertShader, gl.COMPILE_STATUS)) {
-            console.error('Vertex shader compile error:', gl.getShaderInfoLog(vertShader));
+            const info = gl.getShaderInfoLog(vertShader);
             gl.deleteShader(vertShader);
-            return false;
+            throw new Error(`Vertex shader compilation error: ${info}`);
         }
 
         const fragShader = gl.createShader(gl.FRAGMENT_SHADER);
-        if (!fragShader) {
-            gl.deleteShader(vertShader);
-            return false;
-        }
-        gl.shaderSource(fragShader, this.fragmentSource);
+        if (!fragShader) throw new Error('Failed to create fragment shader');
+        gl.shaderSource(fragShader, fragmentSource);
         gl.compileShader(fragShader);
         if (!gl.getShaderParameter(fragShader, gl.COMPILE_STATUS)) {
-            console.error('Fragment shader compile error:', gl.getShaderInfoLog(fragShader));
-            gl.deleteShader(vertShader);
+            const info = gl.getShaderInfoLog(fragShader);
             gl.deleteShader(fragShader);
-            return false;
+            gl.deleteShader(vertShader);
+            throw new Error(`Fragment shader compilation error: ${info}`);
         }
 
         const program = gl.createProgram();
-        if (!program) {
-            gl.deleteShader(vertShader);
-            gl.deleteShader(fragShader);
-            return false;
-        }
+        if (!program) throw new Error('Failed to create shader program');
         gl.attachShader(program, vertShader);
         gl.attachShader(program, fragShader);
         gl.linkProgram(program);
         if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
-            console.error('Shader program link error:', gl.getProgramInfoLog(program));
+            const info = gl.getProgramInfoLog(program);
             gl.deleteProgram(program);
             gl.deleteShader(vertShader);
             gl.deleteShader(fragShader);
-            return false;
+            throw new Error(`Shader program linking error: ${info}`);
         }
 
         this.programID = program;
         this.vertShaderID = vertShader;
         this.fragShaderID = fragShader;
         this.compiled = true;
-        return true;
     }
 
     enable(): void {
-        if (this.compiled && this.programID) {
-            this.gl.useProgram(this.programID);
+        if (!this.compiled || !this.programID) {
+            throw new Error('Shader not compiled');
         }
+        this.gl.useProgram(this.programID);
     }
 
     disable(): void {

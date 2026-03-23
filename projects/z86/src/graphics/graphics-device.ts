@@ -1,6 +1,11 @@
 import { EventEmitter } from '../core';
-import { Vec2, Vec4 } from '../math';
+import { Vec2, Vec4, Color } from '../math';
 import { ScopeSpace } from './scope-space';
+import { Texture } from './texture';
+import { Shader } from './shader';
+import { VertexBuffer } from './vertex-buffer';
+import { IndexBuffer } from './index-buffer';
+import { RenderTarget } from './render-target';
 
 export abstract class GraphicsDevice extends EventEmitter {
     canvas: HTMLCanvasElement;
@@ -21,17 +26,25 @@ export abstract class GraphicsDevice extends EventEmitter {
 
     abstract setViewport(x: number, y: number, w: number, h: number): void;
     abstract setScissor(x: number, y: number, w: number, h: number): void;
-    abstract clear(color?: Vec4, depth?: number, stencil?: number): void;
-    abstract draw(primitive: number, num: number, indexed?: boolean): void;
-    abstract setBlendState(enable: boolean, func?: number, equation?: number): void;
-    abstract setDepthState(test: boolean, write: boolean, func?: number): void;
-    abstract setCullMode(mode: 'none' | 'front' | 'back'): void;
-    abstract setStencilState(test: boolean, op?: number, mask?: number): void;
-    abstract copyRenderTarget(src: any, dst: any): void;
+    abstract clear(color?: Color, depth?: number, stencil?: number): void;
+    abstract draw(primitive: number, numIndices: number, useIndices: boolean): void;
+    abstract setBlendState(enabled: boolean, srcFactor: number, dstFactor: number, srcAlphaFactor?: number, dstAlphaFactor?: number): void;
+    abstract setDepthState(enabled: boolean, write: boolean, func: number): void;
+    abstract setCullMode(mode: number): void;
+    abstract setStencilState(enabled: boolean, func: number, ref: number, mask: number, failOp: number, zFailOp: number, zPassOp: number): void;
+    abstract copyRenderTarget(source: RenderTarget, dest: RenderTarget, color: boolean, depth: boolean): void;
     abstract pushMarker(name: string): void;
     abstract popMarker(): void;
 
-    abstract createTexture(): any;
-    abstract createShader(): any;
-    abstract createBuffer(): any;
+    createTexture(options: any): Texture {
+        return new Texture(this, options);
+    }
+
+    createShader(options: any): Shader {
+        return new Shader(this, options);
+    }
+
+    createBuffer(vertexFormat: any, numVertices: number, usage: number, initialData?: ArrayBufferView): VertexBuffer {
+        return new VertexBuffer(this, vertexFormat, numVertices, usage, initialData);
+    }
 }

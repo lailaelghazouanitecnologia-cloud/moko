@@ -2,33 +2,24 @@ import { EventEmitter } from '../core';
 import { Vec3, Mat4, Quat } from '../math';
 
 export class GraphNode extends EventEmitter {
+    private _name: string;
     private _parent: GraphNode | null = null;
     private _children: GraphNode[] = [];
-    private _localPosition: Vec3 = new Vec3();
-    private _localRotation: Quat = new Quat();
-    private _localScale: Vec3 = new Vec3(1, 1, 1);
-    private _worldPosition: Vec3 = new Vec3();
-    private _worldRotation: Quat = new Quat();
-    private _worldScale: Vec3 = new Vec3(1, 1, 1);
-    private _localTransform: Mat4 = new Mat4();
-    private _worldTransform: Mat4 = new Mat4();
+    private _localPosition: Vec3;
+    private _localRotation: Quat;
+    private _localScale: Vec3;
+    private _localTransform: Mat4;
+    private _worldTransform: Mat4;
     private _dirty: boolean = true;
-    private _enabled: boolean = true;
-    private _name: string = '';
 
-    constructor(name?: string) {
+    constructor(name: string = 'Node') {
         super();
-        if (name) {
-            this._name = name;
-        }
-    }
-
-    get parent(): GraphNode | null {
-        return this._parent;
-    }
-
-    get children(): GraphNode[] {
-        return [...this._children];
+        this._name = name;
+        this._localPosition = new Vec3();
+        this._localRotation = new Quat();
+        this._localScale = new Vec3(1, 1, 1);
+        this._localTransform = new Mat4();
+        this._worldTransform = new Mat4();
     }
 
     get name(): string {
@@ -39,19 +30,16 @@ export class GraphNode extends EventEmitter {
         this._name = value;
     }
 
-    get enabled(): boolean {
-        return this._enabled;
+    get parent(): GraphNode | null {
+        return this._parent;
     }
 
-    set enabled(value: boolean) {
-        if (this._enabled !== value) {
-            this._enabled = value;
-            this._dirty = true;
-        }
+    get children(): ReadonlyArray<GraphNode> {
+        return this._children;
     }
 
     get localPosition(): Vec3 {
-        return this._localPosition.clone();
+        return this._localPosition;
     }
 
     set localPosition(value: Vec3) {
@@ -60,7 +48,7 @@ export class GraphNode extends EventEmitter {
     }
 
     get localRotation(): Quat {
-        return this._localRotation.clone();
+        return this._localRotation;
     }
 
     set localRotation(value: Quat) {
@@ -69,7 +57,7 @@ export class GraphNode extends EventEmitter {
     }
 
     get localScale(): Vec3 {
-        return this._localScale.clone();
+        return this._localScale;
     }
 
     set localScale(value: Vec3) {
@@ -77,107 +65,43 @@ export class GraphNode extends EventEmitter {
         this._dirty = true;
     }
 
-    get worldPosition(): Vec3 {
-        if (this._dirty) {
-            this._updateTransforms();
-        }
-        return this._worldPosition.clone();
-    }
-
-    get worldRotation(): Quat {
-        if (this._dirty) {
-            this._updateTransforms();
-        }
-        return this._worldRotation.clone();
-    }
-
-    get worldScale(): Vec3 {
-        if (this._dirty) {
-            this._updateTransforms();
-        }
-        return this._worldScale.clone();
-    }
-
     getLocalTransform(): Mat4 {
         if (this._dirty) {
-            this._updateLocalTransform();
+            this._localTransform.setTRS(this._localPosition, this._localRotation, this._localScale);
+            this._dirty = false;
         }
-        return this._localTransform.clone();
+        return this._localTransform;
     }
 
     getWorldTransform(): Mat4 {
         if (this._dirty) {
-            this._updateTransforms();
+            this.getLocalTransform();
         }
-        return this._worldTransform.clone();
-    }
-
-    setLocalTransform(position?: Vec3, rotation?: Quat, scale?: Vec3): void {
-        if (position) {
-            this._localPosition.copy(position);
-        }
-        if (rotation) {
-            this._localRotation.copy(rotation);
-        }
-        if (scale) {
-            this._localScale.copy(scale);
-        }
-        this._dirty = true;
-    }
-
-    setWorldTransform(position?: Vec3, rotation?: Quat, scale?: Vec3): void {
-        if (!this._parent) {
-            if (position) {
-                this._localPosition.copy(position);
-            }
-            if (rotation) {
-                this._localRotation.copy(rotation);
-            }
-            if (scale) {
-                this._localScale.copy(scale);
-            }
+        if (this._parent) {
+            const parentWorld = this._parent.getWorldTransform();
+            this._worldTransform.mul2(parentWorld, this._localTransform);
         } else {
-            if (position) {
-                const invParentWorld = this._parent.getWorldTransform().invert();
-                const localPos = new Vec3();
-                invParentWorld.transformPoint(position, localPos);
-                this._localPosition.copy(localPos);
-            }
-            if (rotation) {
-                const parentRotInv = this._parent.worldRotation.invert();
-                this._localRotation.copy(parentRotInv.mul(rotation));
-            }
-            if (scale) {
-                const parentScale = this._parent.worldScale;
-                this._localScale.set(
-                    scale.x / parentScale.x,
-                    scale.y / parentScale.y,
-                    scale.z / parentScale.z
-                );
-            }
+            this._worldTransform.copy(this._localTransform);
         }
-        this._dirty = true;
+        return this._worldTransform;
     }
 
-    addChild(child: GraphNode): void {
-        if (child._parent === this) {
-            return;
+    addChild(node: GraphNode): void {
+        if (node._parent) {
+            node._parent.removeChild(node);
         }
-        if (child._parent) {
-            child._parent.removeChild(child);
-        }
-        child._parent = this;
-        this._children.push(child);
-        child._dirty = true;
+        node._parent = this;
+        this._children.push(node);
     }
 
-    removeChild(child: GraphNode): void {
-        const index = this._children.indexOf(child);
+    removeChild(node: GraphNode): boolean {
+        const index = this._children.indexOf(node);
         if (index !== -1) {
             this._children.splice(index, 1);
-            child._parent = null;
-            child._dirty = true;
+            node._parent = null;
+            return true;
         }
+        return false;
     }
 
     removeFromParent(): void {
@@ -191,7 +115,16 @@ export class GraphNode extends EventEmitter {
             if (child.name === name) {
                 return child;
             }
-            const found = child.findChild(name);
+        }
+        return null;
+    }
+
+    findChildRecursive(name: string): GraphNode | null {
+        for (const child of this._children) {
+            if (child.name === name) {
+                return child;
+            }
+            const found = child.findChildRecursive(name);
             if (found) {
                 return found;
             }
@@ -199,102 +132,96 @@ export class GraphNode extends EventEmitter {
         return null;
     }
 
-    findChildren(name: string): GraphNode[] {
-        const results: GraphNode[] = [];
-        for (const child of this._children) {
-            if (child.name === name) {
-                results.push(child);
-            }
-            results.push(...child.findChildren(name));
-        }
-        return results;
-    }
-
     update(): void {
-        if (this._dirty) {
-            this._updateTransforms();
-        }
+        this.getWorldTransform();
         for (const child of this._children) {
             child.update();
         }
     }
 
-    private _updateLocalTransform(): void {
-        this._localTransform.setTRS(this._localPosition, this._localRotation, this._localScale);
+    setPosition(x: number, y: number, z: number): void {
+        this._localPosition.set(x, y, z);
+        this._dirty = true;
     }
 
-    private _updateTransforms(): void {
-        this._updateLocalTransform();
-        
-        if (this._parent) {
-            this._worldTransform.copy(this._parent.getWorldTransform()).mul(this._localTransform);
-        } else {
-            this._worldTransform.copy(this._localTransform);
+    setRotation(x: number, y: number, z: number, w: number): void {
+        this._localRotation.set(x, y, z, w);
+        this._dirty = true;
+    }
+
+    setScale(x: number, y: number, z: number): void {
+        this._localScale.set(x, y, z);
+        this._dirty = true;
+    }
+
+    getPosition(): Vec3 {
+        return this._localPosition.clone();
+    }
+
+    getRotation(): Quat {
+        return this._localRotation.clone();
+    }
+
+    getScale(): Vec3 {
+        return this._localScale.clone();
+    }
+
+    getWorldPosition(): Vec3 {
+        const world = this.getWorldTransform();
+        return world.getTranslation();
+    }
+
+    getWorldRotation(): Quat {
+        const world = this.getWorldTransform();
+        const quat = new Quat();
+        quat.setFromMat4(world);
+        return quat;
+    }
+
+    getWorldScale(): Vec3 {
+        const world = this.getWorldTransform();
+        return world.getScale();
+    }
+
+    lookAt(target: Vec3, up: Vec3 = Vec3.UP): void {
+        const m = new Mat4();
+        m.setLookAt(this._localPosition, target, up);
+        this._localRotation.setFromMat4(m);
+        this._dirty = true;
+    }
+
+    translate(x: number, y: number, z: number): void {
+        this._localPosition.add(new Vec3(x, y, z));
+        this._dirty = true;
+    }
+
+    rotate(x: number, y: number, z: number): void {
+        const qx = new Quat();
+        const qy = new Quat();
+        const qz = new Quat();
+        qx.setFromEulerAngles(x, 0, 0);
+        qy.setFromEulerAngles(0, y, 0);
+        qz.setFromEulerAngles(0, 0, z);
+        this._localRotation.mul(qx).mul(qy).mul(qz).normalize();
+        this._dirty = true;
+    }
+
+    clone(): GraphNode {
+        const clone = new GraphNode(this._name);
+        clone._localPosition.copy(this._localPosition);
+        clone._localRotation.copy(this._localRotation);
+        clone._localScale.copy(this._localScale);
+        for (const child of this._children) {
+            clone.addChild(child.clone());
         }
-
-        this._worldTransform.getTranslation(this._worldPosition);
-        this._worldTransform.getScale(this._worldScale);
-        this._worldRotation.setFromMat4(this._worldTransform);
-
-        this._dirty = false;
+        return clone;
     }
 
-    lookAt(target: Vec3, up?: Vec3): void {
-        const lookAtMat = new Mat4();
-        const forward = new Vec3().sub2(target, this.worldPosition).normalize();
-        const right = new Vec3().cross(up || new Vec3(0, 1, 0), forward).normalize();
-        const actualUp = new Vec3().cross(forward, right).normalize();
-        
-        lookAtMat.setFromAxes(right, actualUp, forward.neg());
-        lookAtMat.setTranslate(this.worldPosition);
-        
-        this.setWorldTransform(undefined, Quat.IDENTITY.setFromMat4(lookAtMat));
-    }
-
-    translateLocal(translation: Vec3): void {
-        const rotatedTranslation = this._localRotation.transformVector(translation);
-        this._localPosition.add(rotatedTranslation);
-        this._dirty = true;
-    }
-
-    translateWorld(translation: Vec3): void {
-        if (this._parent) {
-            const invParentRot = this._parent.worldRotation.invert();
-            const localTranslation = invParentRot.transformVector(translation);
-            this._localPosition.add(localTranslation);
-        } else {
-            this._localPosition.add(translation);
+    destroy(): void {
+        while (this._children.length > 0) {
+            this._children[0].destroy();
         }
-        this._dirty = true;
-    }
-
-    rotateLocal(rotation: Quat): void {
-        this._localRotation.mul(rotation).normalize();
-        this._dirty = true;
-    }
-
-    rotateWorld(rotation: Quat): void {
-        if (this._parent) {
-            const parentRot = this._parent.worldRotation;
-            const invParentRot = parentRot.invert();
-            const worldRot = parentRot.mul(this._localRotation);
-            const newWorldRot = rotation.mul(worldRot);
-            this._localRotation.copy(invParentRot.mul(newWorldRot));
-        } else {
-            this._localRotation.mul(rotation).normalize();
-        }
-        this._dirty = true;
-    }
-
-    getForward(): Vec3 {
-        return this.worldRotation.transformVector(new Vec3(0, 0, -1));
-    }
-
-    getRight(): Vec3 {
-        return this.worldRotation.transformVector(new Vec3(1, 0, 0));
-    }
-
-    getUp(): Vec3 {
-        return this.worldRotation.transformVector(new Vec3(0, 1, 0));
+        this.removeFromParent();
+        this.emit('destroy');
     }
 }

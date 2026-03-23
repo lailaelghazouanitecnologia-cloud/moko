@@ -1,127 +1,224 @@
 import { EventEmitter } from '../core';
-import { Vec2, Vec3, Vec4, Mat4 } from '../math';
+import { Vec3, Mat4 } from '../math';
 import { GraphicsDevice } from './graphics-device';
 import { Shader } from './shader';
 import { Texture } from './texture';
+import { Material } from './material';
+import { Mesh } from './mesh';
+import { MeshInstance } from './mesh-instance';
 
 export class ScopeSpace {
-  private _device: GraphicsDevice;
-  private _id: string;
-  private _uniforms: Map<string, any> = new Map();
-  private _textures: Map<string, Texture> = new Map();
-  private _events: EventEmitter = new EventEmitter();
+    private device: GraphicsDevice;
+    private shader: Shader;
+    private texture: Texture;
+    private material: Material;
+    private mesh: Mesh;
+    private meshInstance: MeshInstance;
+    private transform: Mat4;
+    private position: Vec3;
+    private rotation: Vec3;
+    private scale: Vec3;
+    private visible: boolean;
+    private dirty: boolean;
 
-  constructor(device: GraphicsDevice, id: string) {
-    this._device = device;
-    this._id = id;
-  }
+    constructor(device: GraphicsDevice, options?: {
+        position?: Vec3,
+        rotation?: Vec3,
+        scale?: Vec3,
+        shader?: Shader,
+        texture?: Texture
+    }) {
+        this.device = device;
+        this.position = options?.position ? new Vec3(options.position.x, options.position.y, options.position.z) : new Vec3(0, 0, 0);
+        this.rotation = options?.rotation ? new Vec3(options.rotation.x, options.rotation.y, options.rotation.z) : new Vec3(0, 0, 0);
+        this.scale = options?.scale ? new Vec3(options.scale.x, options.scale.y, options.scale.z) : new Vec3(1, 1, 1);
+        this.transform = new Mat4();
+        this.visible = true;
+        this.dirty = true;
 
-  get id(): string {
-    return this._id;
-  }
-
-  get device(): GraphicsDevice {
-    return this._device;
-  }
-
-  set(name: string, value: any): void {
-    if (value instanceof Texture) {
-      this._textures.set(name, value);
-    } else {
-      this._uniforms.set(name, value);
-    }
-  }
-
-  get(name: string): any {
-    if (this._textures.has(name)) {
-      return this._textures.get(name);
-    }
-    return this._uniforms.get(name);
-  }
-
-  has(name: string): boolean {
-    return this._uniforms.has(name) || this._textures.has(name);
-  }
-
-  delete(name: string): boolean {
-    const hadUniform = this._uniforms.delete(name);
-    const hadTexture = this._textures.delete(name);
-    return hadUniform || hadTexture;
-  }
-
-  clear(): void {
-    this._uniforms.clear();
-    this._textures.clear();
-  }
-
-  apply(shader: Shader): void {
-    for (const [name, value] of this._uniforms) {
-      const location = shader.getUniform(name);
-      if (location !== null) {
-        this._setUniform(location, value);
-      }
+        this.shader = options?.shader || this.createDefaultShader();
+        this.texture = options?.texture || this.createDefaultTexture();
+        this.material = this.createMaterial();
+        this.mesh = this.createMesh();
+        this.meshInstance = new MeshInstance(this.mesh, this.material);
     }
 
-    let textureUnit = 0;
-    for (const [name, texture] of this._textures) {
-      const location = shader.getUniform(name);
-      if (location !== null && textureUnit < this._device.maxTextureUnits) {
-        this._device.activeTexture(this._device.TEXTURE0 + textureUnit);
-        this._device.bindTexture(this._device.TEXTURE_2D, texture);
-        this._device.uniform1i(location, textureUnit);
-        textureUnit++;
-      }
+    private createDefaultShader(): Shader {
+        const vertexShader = `
+            attribute vec3 aPosition;
+            attribute vec2 aUv;
+            uniform mat4 uModelMatrix;
+            uniform mat4 uViewMatrix;
+            uniform mat4 uProjectionMatrix;
+            varying vec2 vUv;
+            
+            void main() {
+                vUv = aUv;
+                gl_Position = uProjectionMatrix * uViewMatrix * uModelMatrix * vec4(aPosition, 1.0);
+            }
+        `;
+
+        const fragmentShader = `
+            precision mediump float;
+            uniform sampler2D uTexture;
+            varying vec2 vUv;
+            
+            void main() {
+                gl_FragColor = texture2D(uTexture, vUv);
+            }
+        `;
+
+        return new Shader(this.device, vertexShader, fragmentShader);
     }
-  }
 
-  private _setUniform(location: WebGLUniformLocation, value: any): void {
-    const gl = this._device as any;
-    if (Array.isArray(value)) {
-      switch (value.length) {
-        case 1: gl.uniform1f(location, value[0]); break;
-        case 2: gl.uniform2fv(location, value); break;
-        case 3: gl.uniform3fv(location, value); break;
-        case 4: gl.uniform4fv(location, value); break;
-        case 9: gl.uniformMatrix3fv(location, false, value); break;
-        case 16: gl.uniformMatrix4fv(location, false, value); break;
-      }
-    } else if (typeof value === 'number') {
-      gl.uniform1f(location, value);
-    } else if (value instanceof Vec2) {
-      gl.uniform2fv(location, [value.x, value.y]);
-    } else if (value instanceof Vec3) {
-      gl.uniform3fv(location, [value.x, value.y, value.z]);
-    } else if (value instanceof Vec4) {
-      gl.uniform4fv(location, [value.x, value.y, value.z, value.w]);
-    } else if (value instanceof Mat4) {
-      gl.uniformMatrix4fv(location, false, value.data);
+    private createDefaultTexture(): Texture {
+        const texture = new Texture(this.device, 1, 1);
+        const data = new Uint8Array([255, 255, 255, 255]);
+        texture.setData(data);
+        return texture;
     }
-  }
 
-  clone(): ScopeSpace {
-    const cloned = new ScopeSpace(this._device, this._id);
-    for (const [k, v] of this._uniforms) cloned._uniforms.set(k, v);
-    for (const [k, v] of this._textures) cloned._textures.set(k, v);
-    return cloned;
-  }
+    private createMaterial(): Material {
+        const material = new Material(this.shader);
+        material.setParameter('uTexture', this.texture);
+        return material;
+    }
 
-  on(event: string, handler: (...args: any[]) => void): void {
-    this._events.on(event, handler);
-  }
+    private createMesh(): Mesh {
+        const positions = new Float32Array([
+            -0.5, -0.5, 0.0,
+             0.5, -0.5, 0.0,
+             0.5,  0.5, 0.0,
+            -0.5,  0.5, 0.0
+        ]);
 
-  off(event: string, handler?: (...args: any[]) => void): void {
-    this._events.off(event, handler);
-  }
+        const uvs = new Float32Array([
+            0.0, 0.0,
+            1.0, 0.0,
+            1.0, 1.0,
+            0.0, 1.0
+        ]);
 
-  emit(event: string, ...args: any[]): void {
-    this._events.emit(event, ...args);
-  }
+        const indices = new Uint16Array([
+            0, 1, 2,
+            0, 2, 3
+        ]);
 
-  render(): void {
-    // No-op for ScopeSpace; rendering is handled by higher-level objects
-  }
+        const mesh = new Mesh(this.device);
+        mesh.setPositions(positions);
+        mesh.setUvs(uvs);
+        mesh.setIndices(indices);
+        return mesh;
+    }
 
-  update(deltaTime: number): void {
-    this.emit('update', deltaTime);
-  }
+    render(viewMatrix: Mat4, projectionMatrix: Mat4): void {
+        if (!this.visible) return;
+
+        this.updateTransform();
+        
+        this.material.setParameter('uModelMatrix', this.transform);
+        this.material.setParameter('uViewMatrix', viewMatrix);
+        this.material.setParameter('uProjectionMatrix', projectionMatrix);
+        
+        this.device.render([this.meshInstance]);
+    }
+
+    update(deltaTime: number): void {
+        // Update logic can be extended here
+        // For now, just mark as dirty if needed
+    }
+
+    private updateTransform(): void {
+        if (!this.dirty) return;
+
+        this.transform.setIdentity();
+        this.transform.translate(this.position);
+        this.transform.rotate(this.rotation);
+        this.transform.scale(this.scale);
+        
+        this.dirty = false;
+    }
+
+    setPosition(x: number, y: number, z: number): void {
+        this.position.set(x, y, z);
+        this.dirty = true;
+    }
+
+    setRotation(x: number, y: number, z: number): void {
+        this.rotation.set(x, y, z);
+        this.dirty = true;
+    }
+
+    setScale(x: number, y: number, z: number): void {
+        this.scale.set(x, y, z);
+        this.dirty = true;
+    }
+
+    setVisible(visible: boolean): void {
+        this.visible = visible;
+    }
+
+    getPosition(): Vec3 {
+        return this.position;
+    }
+
+    getRotation(): Vec3 {
+        return this.rotation;
+    }
+
+    getScale(): Vec3 {
+        return this.scale;
+    }
+
+    isVisible(): boolean {
+        return this.visible;
+    }
+
+    setShader(shader: Shader): void {
+        this.shader = shader;
+        this.material.shader = shader;
+    }
+
+    setTexture(texture: Texture): void {
+        this.texture = texture;
+        this.material.setParameter('uTexture', texture);
+    }
+
+    getShader(): Shader {
+        return this.shader;
+    }
+
+    getTexture(): Texture {
+        return this.texture;
+    }
+
+    getMaterial(): Material {
+        return this.material;
+    }
+
+    getMesh(): Mesh {
+        return this.mesh;
+    }
+
+    getMeshInstance(): MeshInstance {
+        return this.meshInstance;
+    }
+
+    destroy(): void {
+        if (this.meshInstance) {
+            this.meshInstance.destroy();
+        }
+        if (this.mesh) {
+            this.mesh.destroy();
+        }
+        if (this.material) {
+            this.material.destroy();
+        }
+        if (this.texture) {
+            this.texture.destroy();
+        }
+        if (this.shader) {
+            this.shader.destroy();
+        }
+    }
 }

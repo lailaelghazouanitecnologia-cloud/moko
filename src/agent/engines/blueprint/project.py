@@ -123,6 +123,104 @@ class ProjectBlueprint:
         return "\n".join(lines)
 
 
+# ── LLM-based blueprint generation ──────────────────────────
+
+_PROJECT_BP_SYSTEM = """You are an expert software architect. Given a project goal, generate a ProjectBlueprint YAML with layered modules.
+
+Rules:
+- Each layer can only depend on layers with LOWER order numbers
+- Layer 0 has no dependencies (core/foundation utilities)
+- Keep layers focused: 3-8 types per layer, 3-7 layers total
+- Each type needs: name (PascalCase), kind (class/interface/enum), description (1 sentence)
+- Output ONLY valid YAML, no markdown fences, no explanation
+
+Format:
+```
+layers:
+  - name: core
+    order: 0
+    requires: []
+    description: Foundation utilities
+    types:
+      - name: EventEmitter
+        kind: class
+        description: Pub/sub event system
+      - name: Config
+        kind: class
+        description: Configuration management
+  - name: networking
+    order: 1
+    requires: [core]
+    description: HTTP and WebSocket layer
+    types:
+      - name: Router
+        kind: class
+        description: URL pattern routing
+```"""
+
+
+def generate_project_blueprint(goal: str, target: str, llm) -> Optional[ProjectBlueprint]:
+    """Use LLM to generate a ProjectBlueprint from a goal description.
+
+    Returns None if generation fails (caller should fallback to non-layered).
+    """
+    user = (
+        f"Project: {target}\n"
+        f"Goal: {goal}\n"
+        f"Language: TypeScript\n\n"
+        f"Generate a layered ProjectBlueprint YAML for this project. "
+        f"Think about what modules and types are needed, and order them by dependency."
+    )
+
+    try:
+        from ...agent.llm.providers import LLMMessage
+        resp = llm.complete_with_usage(
+            [LLMMessage("user", user)],
+            system=_PROJECT_BP_SYSTEM,
+            temperature=0.4,
+            max_tokens=2048,
+        )
+        content = resp.content.strip()
+
+        # Strip markdown fences if present
+        if content.startswith("```"):
+            lines = content.split("\n")
+            content = "\n".join(
+                l for l in lines if not l.startswith("```")
+            )
+
+        data = yaml.safe_load(content)
+        if not data or "layers" not in data:
+            return None
+
+        proj = ProjectBlueprint(name=target, goal=goal, language="typescript")
+        for ld in data["layers"]:
+            layer = Layer(
+                name=ld["name"],
+                order=ld.get("order", 0),
+                types=[
+                    LayerType(
+                        name=t["name"],
+                        kind=t.get("kind", "class"),
+                        description=t.get("description", ""),
+                    )
+                    for t in ld.get("types", [])
+                ],
+                requires=ld.get("requires", []),
+                description=ld.get("description", ""),
+                constraints=ld.get("constraints", []),
+            )
+            proj.layers.append(layer)
+
+        if proj.total_types < 3:
+            return None  # too small, fallback to non-layered
+
+        return proj
+
+    except Exception:
+        return None
+
+
 # ── Predefined project templates ────────────────────────────
 
 def game_engine_project(name: str, goal: str) -> ProjectBlueprint:

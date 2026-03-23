@@ -98,7 +98,7 @@ def cmd_dev(args: argparse.Namespace):
         print("Error: --target (-t) is required")
         sys.exit(1)
 
-    # Use layered project blueprint for game engines
+    # Use layered project blueprint — predefined for game engines, LLM-generated for others
     project_bp = None
     goal_lower = args.goal.lower()
     if any(kw in goal_lower for kw in ("game engine", "engine", "renderer", "3d")):
@@ -106,6 +106,22 @@ def cmd_dev(args: argparse.Namespace):
         project_bp = game_engine_project(args.target, args.goal)
         print(f"Using layered project blueprint: {project_bp.total_types} types, "
               f"{len(project_bp.layers)} layers")
+    else:
+        # Try LLM-generated blueprint for any domain
+        from ..engines.blueprint.project import generate_project_blueprint
+        from ..llm.providers import LLMProvider
+        bp_llm = LLMProvider(provider=args.provider, model=args.model)
+        project_bp = generate_project_blueprint(args.goal, args.target, bp_llm)
+        if project_bp:
+            # Save for reproducibility
+            from pathlib import Path
+            bp_path = Path("projects") / args.target / "project.bp.yaml"
+            bp_path.parent.mkdir(parents=True, exist_ok=True)
+            project_bp.save(bp_path)
+            print(f"LLM-generated project blueprint: {project_bp.total_types} types, "
+                  f"{len(project_bp.layers)} layers")
+        else:
+            print("No blueprint generated, using non-layered LLM plan")
 
     supervisor.run(
         goal=args.goal,

@@ -1,96 +1,97 @@
 import { EventEmitter } from '../core';
-import { Vec3, Mat4, BoundingBox } from '../math';
+import { Vec3 } from '../math';
+import { GraphicsDevice } from './graphics-device';
 import { VertexBuffer } from './vertex-buffer';
 import { IndexBuffer } from './index-buffer';
 import { VertexFormat } from './vertex-format';
 
-export class Mesh {
-  vertexBuffer: VertexBuffer | null = null;
-  indexBuffer: IndexBuffer | null = null;
-  vertexFormat: VertexFormat | null = null;
-  primitiveType: number = 4; // TRIANGLES
-  numVertices: number = 0;
-  numIndices: number = 0;
-  aabb: BoundingBox = new BoundingBox();
-  boundingSphereRadius: number = 0;
-  name: string = '';
+export class Mesh extends EventEmitter {
+    vertexBuffer: VertexBuffer | null = null;
+    indexBuffer: IndexBuffer | null = null;
+    vertexFormat: VertexFormat | null = null;
+    primitiveType: number = 4; // WebGLRenderingContext.TRIANGLES
+    indexCount: number = 0;
+    vertexCount: number = 0;
+    aabb: { min: Vec3; max: Vec3 } = { min: new Vec3(), max: new Vec3() };
 
-  constructor(name?: string) {
-    this.name = name || '';
-  }
-
-  setVertexBuffer(vertexBuffer: VertexBuffer): void {
-    this.vertexBuffer = vertexBuffer;
-    this.numVertices = vertexBuffer.numVertices;
-  }
-
-  setIndexBuffer(indexBuffer: IndexBuffer): void {
-    this.indexBuffer = indexBuffer;
-    this.numIndices = indexBuffer.numIndices;
-  }
-
-  setVertexFormat(vertexFormat: VertexFormat): void {
-    this.vertexFormat = vertexFormat;
-  }
-
-  setPrimitiveType(primitiveType: number): void {
-    this.primitiveType = primitiveType;
-  }
-
-  updateBounds(): void {
-    if (!this.vertexBuffer || !this.vertexFormat) return;
-
-    const positions = this.vertexFormat.getPositions(this.vertexBuffer);
-    if (!positions) return;
-
-    const min = new Vec3(Infinity, Infinity, Infinity);
-    const max = new Vec3(-Infinity, -Infinity, -Infinity);
-    const center = new Vec3();
-
-    for (let i = 0; i < positions.length; i += 3) {
-      const x = positions[i];
-      const y = positions[i + 1];
-      const z = positions[i + 2];
-
-      min.x = Math.min(min.x, x);
-      min.y = Math.min(min.y, y);
-      min.z = Math.min(min.z, z);
-
-      max.x = Math.max(max.x, x);
-      max.y = Math.max(max.y, y);
-      max.z = Math.max(max.z, z);
+    constructor(graphicsDevice?: GraphicsDevice) {
+        super();
     }
 
-    this.aabb.setMinMax(min, max);
-    this.aabb.getCenter(center);
-    this.boundingSphereRadius = 0;
-
-    for (let i = 0; i < positions.length; i += 3) {
-      const dx = positions[i] - center.x;
-      const dy = positions[i + 1] - center.y;
-      const dz = positions[i + 2] - center.z;
-      const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
-      this.boundingSphereRadius = Math.max(this.boundingSphereRadius, dist);
+    setVertexBuffer(vertexBuffer: VertexBuffer): void {
+        this.vertexBuffer = vertexBuffer;
+        this.vertexCount = vertexBuffer.numVertices;
     }
-  }
 
-  getAABB(): BoundingBox {
-    return this.aabb.clone();
-  }
-
-  getBoundingSphereRadius(): number {
-    return this.boundingSphereRadius;
-  }
-
-  destroy(): void {
-    if (this.vertexBuffer) {
-      this.vertexBuffer.destroy();
-      this.vertexBuffer = null;
+    setIndexBuffer(indexBuffer: IndexBuffer): void {
+        this.indexBuffer = indexBuffer;
+        this.indexCount = indexBuffer.numIndices;
     }
-    if (this.indexBuffer) {
-      this.indexBuffer.destroy();
-      this.indexBuffer = null;
+
+    setVertexFormat(format: VertexFormat): void {
+        this.vertexFormat = format;
     }
-    this.vertexFormat = null;
-  }
+
+    setPrimitiveType(type: number): void {
+        this.primitiveType = type;
+    }
+
+    update(): void {
+        this.emit('update', this);
+    }
+
+    destroy(): void {
+        if (this.vertexBuffer) {
+            this.vertexBuffer.destroy();
+            this.vertexBuffer = null;
+        }
+        if (this.indexBuffer) {
+            this.indexBuffer.destroy();
+            this.indexBuffer = null;
+        }
+        this.emit('destroy', this);
+    }
+
+    computeAABB(positions: number[]): void {
+        if (positions.length === 0) return;
+        const min = new Vec3(positions[0], positions[1], positions[2]);
+        const max = new Vec3(positions[0], positions[1], positions[2]);
+        for (let i = 3; i < positions.length; i += 3) {
+            const x = positions[i];
+            const y = positions[i + 1];
+            const z = positions[i + 2];
+            if (x < min.x) min.x = x;
+            if (y < min.y) min.y = y;
+            if (z < min.z) min.z = z;
+            if (x > max.x) max.x = x;
+            if (y > max.y) max.y = y;
+            if (z > max.z) max.z = z;
+        }
+        this.aabb.min = min;
+        this.aabb.max = max;
+    }
+
+    getVertexCount(): number {
+        return this.vertexCount;
+    }
+
+    getIndexCount(): number {
+        return this.indexCount;
+    }
+
+    getPrimitiveType(): number {
+        return this.primitiveType;
+    }
+
+    hasVertexBuffer(): boolean {
+        return this.vertexBuffer !== null;
+    }
+
+    hasIndexBuffer(): boolean {
+        return this.indexBuffer !== null;
+    }
+
+    getAABB(): { min: Vec3; max: Vec3 } {
+        return this.aabb;
+    }
 }

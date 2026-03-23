@@ -1,0 +1,251 @@
+## Blueprint — tools
+name: tools
+language: typescript
+target_dir: src/tools
+description: ''
+constraints:
+- Tools must be serializable to JSON schema for LLM consumption
+- ToolRegistry must support hot-reloading of tool definitions
+- FunctionCall must validate parameters against tool schema
+- ToolResult must handle both success and error states
+references:
+- swarm/examples/customer_service_streaming/src/swarm/tool.yaml
+- swarm/examples/airline/configs/tools.yaml
+types:
+- name: Parameter
+  kind: interface
+  status: pending
+  target_file: src/tools/parameter.ts
+  description: Schema definition for a single tool parameter
+  fields:
+  - name: type
+    type: string
+    default: string
+  - name: description
+    type: string
+  - name: enum
+    type: string[]
+    default: '[]'
+  methods:
+  - name: validate
+    sig: '(value: any): boolean'
+    hint: Check value against type and enum constraints
+  - name: getDefault
+    sig: '(): any'
+    hint: Return default value for this parameter type
+  - name: toJSONSchema
+    sig: '(): object'
+    hint: Convert to OpenAPI JSON schema format
+  references:
+  - swarm/examples/customer_service_streaming/src/swarm/tool.yaml
+- name: FunctionParameters
+  kind: interface
+  status: pending
+  target_file: src/tools/function-parameters.ts
+  description: Complete parameter schema for function tools
+  fields:
+  - name: type
+    type: '''object'''
+    default: object
+  - name: properties
+    type: Record<string, Parameter>
+    default: '{}'
+  - name: required
+    type: string[]
+    default: '[]'
+  methods:
+  - name: validateParameters
+    sig: '(params: Record<string, any>): ValidationResult'
+    hint: Validate all parameters against schema
+  - name: getRequiredParams
+    sig: '(): string[]'
+    hint: Return list of required parameter names
+  - name: getDefaults
+    sig: '(): Record<string, any>'
+    hint: Get default values for optional parameters
+  - name: merge
+    sig: '(other: FunctionParameters): FunctionParameters'
+    hint: Merge with another parameter schema
+  references:
+  - swarm/examples/customer_service_streaming/src/swarm/tool.yaml
+- name: FunctionTool
+  kind: interface
+  status: pending
+  target_file: src/tools/function-tool.ts
+  description: Definition of a callable function tool
+  fields:
+  - name: name
+    type: string
+  - name: description
+    type: string
+  - name: parameters
+    type: FunctionParameters
+  methods:
+  - name: toOpenAPISchema
+    sig: '(): object'
+    hint: Convert to OpenAPI tool definition
+  - name: validateCall
+    sig: '(call: FunctionCall): boolean'
+    hint: Check if function call matches schema
+  - name: getParameter
+    sig: '(name: string): Parameter | undefined'
+    hint: Get parameter by name
+  - name: listParameters
+    sig: '(): string[]'
+    hint: Return all parameter names
+  - name: isRequired
+    sig: '(param: string): boolean'
+    hint: Check if parameter is required
+  references:
+  - swarm/examples/customer_service_streaming/src/swarm/tool.yaml
+- name: Tool
+  kind: class
+  status: pending
+  target_file: src/tools/tool.ts
+  description: Complete tool definition with metadata
+  fields:
+  - name: type
+    type: string
+  - name: function
+    type: FunctionTool
+  - name: human_input
+    type: boolean
+    default: 'False'
+  methods:
+  - name: isFunctionTool
+    sig: '(): boolean'
+    hint: Check if this is a function tool
+  - name: requiresHumanInput
+    sig: '(): boolean'
+    hint: Check if tool needs human approval
+  - name: toJSON
+    sig: '(): object'
+    hint: Serialize to JSON for LLM consumption
+  - name: fromJSON
+    sig: '(data: object): Tool'
+    hint: Create tool from JSON definition
+  - name: clone
+    sig: '(): Tool'
+    hint: Create deep copy of tool
+  - name: update
+    sig: '(updates: Partial<Tool>): Tool'
+    hint: Return updated tool instance
+  references:
+  - swarm/examples/customer_service_streaming/src/swarm/tool.yaml
+- name: FunctionCall
+  kind: class
+  status: translated
+  target_file: src/tools/function-call.ts
+  description: Represents a call to execute a tool function
+  fields:
+  - name: id
+    type: string
+  - name: name
+    type: string
+  - name: parameters
+    type: Record<string, any>
+  methods:
+  - name: validate
+    sig: '(tool: FunctionTool): ValidationResult'
+    hint: Check parameters against tool schema
+  - name: execute
+    sig: '(handler: Function): Promise<ToolResult>'
+    hint: Execute with provided handler function
+  - name: toString
+    sig: '(): string'
+    hint: Get string representation for logging
+  - name: getParameter
+    sig: '(name: string): any'
+    hint: Get parameter value by name
+  - name: hasParameter
+    sig: '(name: string): boolean'
+    hint: Check if parameter exists
+  - name: listParameters
+    sig: '(): string[]'
+    hint: Return all parameter names
+  - name: sanitize
+    sig: '(): FunctionCall'
+    hint: Remove sensitive parameters
+  references:
+  - swarm/examples/customer_service_streaming/src/swarm/tool.yaml
+- name: ToolResult
+  kind: class
+  status: pending
+  target_file: src/tools/tool-result.ts
+  description: Result of executing a tool function
+  fields:
+  - name: callId
+    type: string
+  - name: success
+    type: boolean
+  - name: data
+    type: any
+  - name: error
+    type: string
+  methods:
+  - name: isSuccess
+    sig: '(): boolean'
+    hint: Check if execution succeeded
+  - name: getData
+    sig: '(): any'
+    hint: Get result data or throw if error
+  - name: getError
+    sig: '(): string'
+    hint: Get error message if failed
+  - name: toJSON
+    sig: '(): object'
+    hint: Serialize for API response
+  - name: static success
+    sig: '(callId: string, data: any): ToolResult'
+    hint: Create success result
+  - name: static error
+    sig: '(callId: string, error: string): ToolResult'
+    hint: Create error result
+  references:
+  - swarm/examples/customer_service_streaming/src/swarm/tool.yaml
+- name: ToolRegistry
+  kind: class
+  status: pending
+  target_file: src/tools/tool-registry.ts
+  description: Registry for managing available tools
+  fields:
+  - name: tools
+    type: Map<string, Tool>
+  - name: handlers
+    type: Map<string, Function>
+  methods:
+  - name: register
+    sig: '(tool: Tool, handler: Function): void'
+    hint: Add tool with execution handler
+  - name: unregister
+    sig: '(name: string): boolean'
+    hint: Remove tool by name
+  - name: get
+    sig: '(name: string): Tool | undefined'
+    hint: Get tool by name
+  - name: getHandler
+    sig: '(name: string): Function | undefined'
+    hint: Get handler for tool
+  - name: list
+    sig: '(): string[]'
+    hint: Return all tool names
+  - name: getAll
+    sig: '(): Tool[]'
+    hint: Return all tools
+  - name: clear
+    sig: '(): void'
+    hint: Remove all tools
+  - name: loadFromDirectory
+    sig: '(dir: string): Promise<void>'
+    hint: Auto-load tools from directory
+  - name: validateCall
+    sig: '(call: FunctionCall): boolean'
+    hint: Check if call is valid
+  - name: execute
+    sig: '(call: FunctionCall): Promise<ToolResult>'
+    hint: Execute function call
+  - name: toOpenAPISchema
+    sig: '(): object[]'
+    hint: Get schema for all tools
+  references:
+  - swarm/examples/customer_service_streaming/src/swarm/tool.yaml

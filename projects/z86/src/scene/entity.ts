@@ -7,103 +7,124 @@ import { EventEmitter } from '../core';
 
 export class Entity extends GraphNode {
     c: { [key: string]: Component } = {};
-    _guid: string;
-    anim?: Component;
-    camera?: Camera;
-    collision?: Component;
-    light?: Light;
-    model?: Component;
-    render?: MeshRenderer;
-    script?: Component;
-    sprite?: Component;
-    sound?: Component;
+    _guid: string = '';
+    anim: Component | null = null;
+    camera: Camera | null = null;
+    collision: Component | null = null;
+    light: Light | null = null;
+    model: Component | null = null;
+    render: MeshRenderer | null = null;
+    script: Component | null = null;
+    sprite: Component | null = null;
+    sound: Component | null = null;
 
     constructor(name?: string) {
         super(name);
-        this._guid = Math.random().toString(36).substring(2, 15);
+        this._guid = this.generateGuid();
     }
 
-    addComponent(type: string, data?: any): Component {
-        const system = (this as any).scene?.systems?.[type];
+    private generateGuid(): string {
+        return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+            const r = Math.random() * 16 | 0;
+            const v = c === 'x' ? r : (r & 0x3 | 0x8);
+            return v.toString(16);
+        });
+    }
+
+    addComponent(type: string, data?: any): Component | null {
+        const system = this.getComponentSystem(type);
         if (!system) {
-            throw new Error(`Component system '${type}' not found`);
+            console.warn(`Entity.addComponent: System '${type}' not found`);
+            return null;
         }
-        
+
+        if (this.c[type]) {
+            console.warn(`Entity.addComponent: Component '${type}' already exists`);
+            return this.c[type];
+        }
+
         const component = system.addComponent(this, data);
         this.c[type] = component;
-        
+
         switch (type) {
-            case 'anim': this.anim = component; break;
             case 'camera': this.camera = component as Camera; break;
-            case 'collision': this.collision = component; break;
             case 'light': this.light = component as Light; break;
-            case 'model': this.model = component; break;
             case 'render': this.render = component as MeshRenderer; break;
+            case 'anim': this.anim = component; break;
+            case 'collision': this.collision = component; break;
+            case 'model': this.model = component; break;
             case 'script': this.script = component; break;
             case 'sprite': this.sprite = component; break;
             case 'sound': this.sound = component; break;
         }
-        
+
         return component;
     }
 
-    removeComponent(type: string): void {
+    removeComponent(type: string): boolean {
         const component = this.c[type];
-        if (!component) return;
-        
-        const system = (this as any).scene?.systems?.[type];
+        if (!component) {
+            console.warn(`Entity.removeComponent: Component '${type}' not found`);
+            return false;
+        }
+
+        const system = this.getComponentSystem(type);
         if (system) {
             system.removeComponent(this);
         }
-        
+
         delete this.c[type];
-        
+
         switch (type) {
-            case 'anim': delete this.anim; break;
-            case 'camera': delete this.camera; break;
-            case 'collision': delete this.collision; break;
-            case 'light': delete this.light; break;
-            case 'model': delete this.model; break;
-            case 'render': delete this.render; break;
-            case 'script': delete this.script; break;
-            case 'sprite': delete this.sprite; break;
-            case 'sound': delete this.sound; break;
+            case 'camera': this.camera = null; break;
+            case 'light': this.light = null; break;
+            case 'render': this.render = null; break;
+            case 'anim': this.anim = null; break;
+            case 'collision': this.collision = null; break;
+            case 'model': this.model = null; break;
+            case 'script': this.script = null; break;
+            case 'sprite': this.sprite = null; break;
+            case 'sound': this.sound = null; break;
         }
+
+        return true;
     }
 
-    getComponent(type: string): Component | undefined {
-        return this.c[type];
+    getComponent(type: string): Component | null {
+        return this.c[type] || null;
     }
 
     destroy(): void {
-        for (const type in this.c) {
+        Object.keys(this.c).forEach(type => {
             this.removeComponent(type);
-        }
-        
+        });
+
         if (this.parent) {
             this.parent.removeChild(this);
         }
-        
-        for (let i = this.children.length - 1; i >= 0; i--) {
-            const child = this.children[i];
+
+        this.children.slice().forEach(child => {
             if (child instanceof Entity) {
                 child.destroy();
             }
-        }
+        });
     }
 
     findByGuid(guid: string): Entity | null {
         if (this._guid === guid) {
             return this;
         }
-        
-        for (const child of this.children) {
+
+        for (let i = 0; i < this.children.length; i++) {
+            const child = this.children[i];
             if (child instanceof Entity) {
                 const found = child.findByGuid(guid);
-                if (found) return found;
+                if (found) {
+                    return found;
+                }
             }
         }
-        
+
         return null;
     }
 
@@ -111,26 +132,43 @@ export class Entity extends GraphNode {
         if (this.name === name) {
             return this;
         }
-        
-        for (const child of this.children) {
+
+        for (let i = 0; i < this.children.length; i++) {
+            const child = this.children[i];
             if (child instanceof Entity) {
                 const found = child.findByName(name);
-                if (found) return found;
+                if (found) {
+                    return found;
+                }
             }
         }
-        
+
         return null;
     }
 
     findByPath(path: string): Entity | null {
         const parts = path.split('/');
-        let current: Entity | null = this;
-        
-        for (const part of parts) {
-            if (!current) return null;
-            current = current.findByName(part);
+        let current: Entity = this;
+
+        for (let i = 0; i < parts.length; i++) {
+            const part = parts[i];
+            if (part === '') continue;
+
+            let found = false;
+            for (let j = 0; j < current.children.length; j++) {
+                const child = current.children[j];
+                if (child instanceof Entity && child.name === part) {
+                    current = child;
+                    found = true;
+                    break;
+                }
+            }
+
+            if (!found) {
+                return null;
+            }
         }
-        
+
         return current;
     }
 
@@ -140,23 +178,26 @@ export class Entity extends GraphNode {
         clone.localPosition.copy(this.localPosition);
         clone.localRotation.copy(this.localRotation);
         clone.localScale.copy(this.localScale);
-        
-        for (const type in this.c) {
-            const component = this.c[type];
-            const system = (this as any).scene?.systems?.[type];
-            if (system && component) {
-                const data = system.getComponentData(component);
+
+        Object.keys(this.c).forEach(type => {
+            const system = this.getComponentSystem(type);
+            if (system && system.cloneComponent) {
+                const data = system.cloneComponent(this);
                 clone.addComponent(type, data);
             }
-        }
-        
-        for (const child of this.children) {
+        });
+
+        this.children.forEach(child => {
             if (child instanceof Entity) {
                 const childClone = child.clone();
                 clone.addChild(childClone);
             }
-        }
-        
+        });
+
         return clone;
+    }
+
+    private getComponentSystem(type: string): ComponentSystem | null {
+        return null;
     }
 }

@@ -1,20 +1,48 @@
 import { EventEmitter } from '../core';
-import { Vec3, Mat4, BoundingSphere, Frustum } from '../math';
-import { GraphicsDevice, Shader, Texture, RenderTarget, Material, MeshInstance } from '../graphics';
-import { Scene } from './scene';
+import { Vec3, Mat4, Frustum } from '../math';
+import { WebGLDevice, Texture } from '../graphics';
+import { GraphNode } from './graph-node';
+import { Entity } from './entity';
+import { Component } from './component';
+import { ComponentSystem } from './component-system';
 import { Camera } from './camera';
 import { Light } from './light';
-import { Renderer } from './renderer';
+import { MeshRenderer } from './mesh-renderer';
+import { Scene } from './scene';
+import { BatchManager } from './batch-manager';
+
+export class Renderer {
+    scene: Scene;
+    device: WebGLDevice;
+
+    constructor(scene: Scene, device: WebGLDevice) {
+        this.scene = scene;
+        this.device = device;
+    }
+
+    render(): void {
+        throw new Error('Renderer.render() must be implemented by subclass');
+    }
+
+    _cull(camera: Camera, drawCalls: any[]): any[] {
+        const frustum = new Frustum();
+        frustum.setFromMat4(camera.projectionMatrix.clone().mul(camera.viewMatrix));
+        return drawCalls.filter(drawCall => {
+            if (!drawCall.aabb) return true;
+            return frustum.containsAabb(drawCall.aabb);
+        });
+    }
+}
 
 export class ForwardRenderer extends Renderer {
     scene: Scene;
-    graphicsDevice: GraphicsDevice;
+    graphicsDevice: WebGLDevice;
     layers: any[];
     camera: Camera | null;
-    shadowMapCache: Map<string, RenderTarget>;
+    shadowMapCache: Map<string, Texture>;
     worldClustersAllocator: any;
 
-    constructor(scene: Scene, graphicsDevice: GraphicsDevice) {
+    constructor(scene: Scene, graphicsDevice: WebGLDevice) {
         super(scene, graphicsDevice);
         this.scene = scene;
         this.graphicsDevice = graphicsDevice;
@@ -27,11 +55,13 @@ export class ForwardRenderer extends Renderer {
     render(): void {
         if (!this.camera) return;
 
-        this.cull();
-        this.renderShadows();
+        const drawCalls = this.gatherDrawCalls();
+        const visibleDrawCalls = this.cull(this.camera, drawCalls);
 
-        const cameraMatrix = this.camera.getViewMatrix();
-        const projMatrix = this.camera.getProjectionMatrix();
+        this.renderShadows(visibleDrawCalls);
+        this.dispatchGlobalLights(this.camera);
+
+        const sortedDrawCalls = this.sortMeshInstances(visibleDrawCalls);
 
         this.graphicsDevice.clear({
             color: this.camera.clearColor,
@@ -39,85 +69,46 @@ export class ForwardRenderer extends Renderer {
             stencil: 0
         });
 
-        for (const layer of this.layers) {
-            const meshInstances = layer.meshInstances;
-            this.sortMeshInstances(meshInstances);
+        const viewport = this.camera.rect;
+        this.graphicsDevice.setViewport(viewport.x, viewport.y, viewport.z, viewport.w);
 
-            for (const meshInstance of meshInstances) {
-                if (!meshInstance.visible) continue;
-                this.drawInstance(meshInstance, cameraMatrix, projMatrix);
-            }
+        for (const drawCall of sortedDrawCalls) {
+            this.drawInstance(drawCall);
         }
     }
 
-    cull(): void {
-        if (!this.camera) return;
-
-        const frustum = this.camera.frustum;
-        const position = this.camera.entity.getPosition();
-
-        for (const layer of this.layers) {
-            const meshInstances = layer.meshInstances;
-            for (const meshInstance of meshInstances) {
-                const mesh = meshInstance.mesh;
-                const node = meshInstance.node;
-                const worldBounds = mesh.aabb.clone();
-                worldBounds.transform(node.getWorldTransform());
-
-                meshInstance.visible = frustum.containsSphere(new BoundingSphere(worldBounds.center, worldBounds.halfExtents.length());
-            }
-        }
+    cull(camera: Camera, drawCalls: any[]): any[] {
+        return this._cull(camera, drawCalls);
     }
 
-    renderShadows(): void {
-        const lights = this.scene.findComponents('light') as Light[];
+    renderShadows(drawCalls: any[]): void {
+        const shadowCasters = drawCalls.filter(drawCall => drawCall.castShadows);
+        const lights = this.scene.lights.filter((light: Light) => light.castShadows);
+
         for (const light of lights) {
-            if (!light.castShadows) continue;
+            const shadowCamera = light.shadowCamera;
+            if (!shadowCamera) continue;
 
-            const shadowMap = this.shadowMapCache.get(light.entity.name) || new RenderTarget({
-                width: 2048,
-                height: 2048,
-                format: 'DEPTH'
-            });
-            this.shadowMapCache.set(light.entity.name, shadowMap);
+            const shadowDrawCalls = this.cull(shadowCamera, shadowCasters);
+            const shadowMap = this.shadowMapCache.get(light.id) || this.createShadowMap(light);
+            this.shadowMapCache.set(light.id, shadowMap);
 
             this.graphicsDevice.setRenderTarget(shadowMap);
             this.graphicsDevice.clear({ depth: 1.0 });
 
-            const lightMatrix = light.getShadowMatrix();
-            const shadowShader = Shader.getShadowShader();
-
-            for (const layer of this.layers) {
-                const meshInstances = layer.meshInstances;
-                for (const meshInstance of meshInstances) {
-                    if (!meshInstance.castShadows) continue;
-
-                    const modelMatrix = meshInstance.node.getWorldTransform();
-                    shadowShader.setUniform('uModelMatrix', modelMatrix.data);
-                    shadowShader.setUniform('uLightMatrix', lightMatrix.data);
-
-                    this.graphicsDevice.draw(meshInstance.mesh);
-                }
+            for (const drawCall of shadowDrawCalls) {
+                this.drawInstance(drawCall);
             }
         }
 
         this.graphicsDevice.setRenderTarget(null);
     }
 
-    sortMeshInstances(meshInstances: MeshInstance[]): void {
-        meshInstances.sort((a, b) => {
-            const materialA = a.material;
-            const materialB = b.material;
-
-            if (materialA.blendType !== materialB.blendType) {
-                return materialA.blendType - materialB.blendType;
-            }
-
-            if (materialA.id !== materialB.id) {
-                return materialA.id - materialB.id;
-            }
-
-            return a.id - b.id;
+    sortMeshInstances(drawCalls: any[]): any[] {
+        return drawCalls.sort((a, b) => {
+            if (a.layer !== b.layer) return a.layer - b.layer;
+            if (a.material.id !== b.material.id) return a.material.id - b.material.id;
+            return a.mesh.id - b.mesh.id;
         });
     }
 
@@ -125,80 +116,67 @@ export class ForwardRenderer extends Renderer {
         this.camera = camera;
     }
 
-    dispatchGlobalLights(): void {
-        const lights = this.scene.findComponents('light') as Light[];
-        const directionalLights: Light[] = [];
-        const pointLights: Light[] = [];
-        const spotLights: Light[] = [];
+    dispatchGlobalLights(camera: Camera): void {
+        const globalLights = this.scene.lights.filter((light: Light) => light.type === 'directional');
+        const scope = this.graphicsDevice.scope;
 
-        for (const light of lights) {
-            switch (light.type) {
-                case 'directional':
-                    directionalLights.push(light);
-                    break;
-                case 'point':
-                    pointLights.push(light);
-                    break;
-                case 'spot':
-                    spotLights.push(light);
-                    break;
+        for (let i = 0; i < 4; i++) {
+            const light = globalLights[i];
+            if (light) {
+                scope.setValue(`lightDir[${i}]`, light.direction);
+                scope.setValue(`lightColor[${i}]`, light.color);
+                scope.setValue(`lightIntensity[${i}]`, light.intensity);
+            } else {
+                scope.setValue(`lightDir[${i}]`, Vec3.ZERO);
+                scope.setValue(`lightColor[${i}]`, Color.BLACK);
+                scope.setValue(`lightIntensity[${i}]`, 0);
             }
-        }
-
-        const shader = Shader.getActiveShader();
-        shader.setUniform('uDirLightCount', directionalLights.length);
-        shader.setUniform('uPointLightCount', pointLights.length);
-        shader.setUniform('uSpotLightCount', spotLights.length);
-
-        for (let i = 0; i < directionalLights.length; i++) {
-            const light = directionalLights[i];
-            shader.setUniform(`uDirLights[${i}].direction`, light.direction.data);
-            shader.setUniform(`uDirLights[${i}].color`, light.color.data);
-            shader.setUniform(`uDirLights[${i}].intensity`, light.intensity);
-        }
-
-        for (let i = 0; i < pointLights.length; i++) {
-            const light = pointLights[i];
-            shader.setUniform(`uPointLights[${i}].position`, light.entity.getPosition().data);
-            shader.setUniform(`uPointLights[${i}].color`, light.color.data);
-            shader.setUniform(`uPointLights[${i}].intensity`, light.intensity);
-            shader.setUniform(`uPointLights[${i}].range`, light.range);
-        }
-
-        for (let i = 0; i < spotLights.length; i++) {
-            const light = spotLights[i];
-            shader.setUniform(`uSpotLights[${i}].position`, light.entity.getPosition().data);
-            shader.setUniform(`uSpotLights[${i}].direction`, light.direction.data);
-            shader.setUniform(`uSpotLights[${i}].color`, light.color.data);
-            shader.setUniform(`uSpotLights[${i}].intensity`, light.intensity);
-            shader.setUniform(`uSpotLights[${i}].range`, light.range);
-            shader.setUniform(`uSpotLights[${i}].innerCone`, light.innerCone);
-            shader.setUniform(`uSpotLights[${i}].outerCone`, light.outerCone);
         }
     }
 
-    drawInstance(meshInstance: MeshInstance, cameraMatrix: Mat4, projMatrix: Mat4): void {
-        const modelMatrix = meshInstance.node.getWorldTransform();
-        const normalMatrix = modelMatrix.clone().invert().transpose();
+    drawInstance(drawCall: any): void {
+        const mesh = drawCall.mesh;
+        const material = drawCall.material;
+        const node = drawCall.node;
 
-        const shader = meshInstance.material.shader;
-        shader.enable();
+        material.bind(this.graphicsDevice);
+        material.updateShader(this.graphicsDevice);
 
-        shader.setUniform('uModelMatrix', modelMatrix.data);
-        shader.setUniform('uNormalMatrix', normalMatrix.data);
-        shader.setUniform('uViewMatrix', cameraMatrix.data);
-        shader.setUniform('uProjectionMatrix', projMatrix.data);
+        const worldMatrix = node.getWorldTransform();
+        this.graphicsDevice.scope.setValue('matrix_model', worldMatrix.data);
+        this.graphicsDevice.scope.setValue('matrix_normal', worldMatrix.clone().invert().transpose().data);
 
-        if (meshInstance.material.texture) {
-            shader.setUniform('uTexture', meshInstance.material.texture);
-        }
+        mesh.bind();
+        mesh.render();
+    }
 
-        this.dispatchGlobalLights();
+    private gatherDrawCalls(): any[] {
+        const drawCalls: any[] = [];
+        this.scene.root.forEach((node: GraphNode) => {
+            const entity = node as Entity;
+            if (!entity) return;
 
-        this.graphicsDevice.setBlendState(meshInstance.material.blendState);
-        this.graphicsDevice.setDepthState(meshInstance.material.depthState);
-        this.graphicsDevice.setCullMode(meshInstance.material.cullMode);
+            const meshRenderer = entity.getComponent('meshRenderer') as MeshRenderer;
+            if (meshRenderer && meshRenderer.enabled && meshRenderer.mesh) {
+                drawCalls.push({
+                    mesh: meshRenderer.mesh,
+                    material: meshRenderer.material,
+                    node: node,
+                    layer: meshRenderer.layer,
+                    aabb: meshRenderer.aabb,
+                    castShadows: meshRenderer.castShadows
+                });
+            }
+        });
+        return drawCalls;
+    }
 
-        this.graphicsDevice.draw(meshInstance.mesh);
+    private createShadowMap(light: Light): Texture {
+        return new Texture(this.graphicsDevice, {
+            width: light.shadowResolution,
+            height: light.shadowResolution,
+            format: 'DEPTH',
+            mipmaps: false
+        });
     }
 }
