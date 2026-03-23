@@ -150,6 +150,9 @@ class Block:
     # Abstraction (filled after block completes)
     abstraction: Optional[AbstractionResult] = None
 
+    # Block metadata (blueprint path, type name, etc.)
+    meta: dict = field(default_factory=dict)
+
     def compute_hash(self) -> str:
         """SHA-256 of block content + prev_hash = chain integrity."""
         payload = json.dumps({
@@ -230,6 +233,8 @@ class Block:
             "test_results": self.test_results,
             "quality_score": self.quality_score,
         }
+        if self.meta:
+            d["meta"] = self.meta
         if self.discussions:
             d["discussions"] = [
                 {
@@ -318,13 +323,15 @@ class Plan:
                 return False
         return True
 
-    def add_block(self, block_type: BlockType, objective: str) -> Block:
+    def add_block(self, block_type: BlockType, objective: str,
+                  meta: dict = None) -> Block:
         prev_hash = self.blocks[-1].hash if self.blocks else ""
         block = Block(
             index=len(self.blocks),
             block_type=block_type,
             objective=objective,
             prev_hash=prev_hash,
+            meta=meta or {},
         )
         self.blocks.append(block)
         return block
@@ -442,6 +449,7 @@ class Plan:
                 tokens_used=bd.get("tokens_used", 0),
                 test_results=bd.get("test_results", {}),
                 quality_score=bd.get("quality_score", 0.0),
+                meta=bd.get("meta", {}),
             )
             plan.blocks.append(block)
         return plan

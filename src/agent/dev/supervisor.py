@@ -1,28 +1,23 @@
 """
-DevSupervisor — iterative development orchestrator.
+DevSupervisor — iterative development orchestrator with Blueprint Pipeline.
 
-Uses ava agent's existing infrastructure (LLM, prompts, pipeline, session)
-but adds:
-  - Iteration loop with blockchain-style plan tracking
-  - Discussion/debate system: agent cycles through stances (advocate, critic,
-    pragmatist, architect) generating valuable data per block
-  - BlockVM for navigation, register/discard of insights
-  - On-demand context loading to maintain token equilibrium
-  - Post-iteration abstraction to decide what's worth keeping
-  - Code materialization: extracts code from LLM output and writes to disk
+Architecture: Each block is SELF-CONTAINED. No context accumulation.
+
+  - ANALYZE blocks: Load Roska descriptors → LLM generates Blueprint YAML → write to disk
+  - IMPLEMENT blocks: Load blueprint + refs from disk → LLM translates ONE type → write code to disk
+  - TEST blocks: Load code + blueprint from disk → LLM generates tests
+  - Each block reads fresh from disk, does one LLM call, writes result, discards context
+  - This means infinite scalability: 50, 100, 500 blocks — context never grows
 
 Flow:
-  1. Analyze goal → generate Plan with blocks
+  1. create_plan: LLM identifies modules → generates granular blocks (1 per type)
   2. For each block:
-     a. VM navigates to block, resets budget
-     b. Load references on-demand (only what's needed)
-     c. Run discussions: cycle stances, debate patterns from references
-     d. Execute block with discussion insights as context
-     e. Register valuable insights, discard noise
-     f. Run abstraction process
-     g. Dynamic plan adjustment
-     h. If implement block → materialize code to disk
-  3. Final summary with full chain + registry
+     a. Read inputs from disk (blueprint YAML + Roska descriptors)
+     b. One LLM call (clean context each time)
+     c. Write output to disk (blueprint YAML or source code)
+     d. Update plan chain (hash linking)
+     e. Discard all context → next block starts clean
+  3. Final summary with chain integrity verified
 """
 from __future__ import annotations
 
@@ -44,6 +39,8 @@ from .plan import (
     AbstractionResult, FeatureDecision,
 )
 from .vm import BlockVM
+from .blueprint import ModuleBlueprint, TypeBlueprint
+from .translator import BlueprintTranslator
 
 
 def _available_projects() -> list[str]:
@@ -86,9 +83,11 @@ class DevSupervisor:
         self.plans_dir = OUT_DIR / ".plans"
         self.plans_dir.mkdir(parents=True, exist_ok=True)
         self.budget_chars = config.get("budget_chars", 20000)
+        self.projects_dir = Path("projects")
 
         self.current_plan: Optional[Plan] = None
         self.vm: Optional[BlockVM] = None
+        self.translator: Optional[BlueprintTranslator] = None
         self.total_tokens = 0
 
     def _log(self, msg: str):
@@ -109,42 +108,58 @@ class DevSupervisor:
 
     def create_plan(self, goal: str, target: str,
                     references: list[str] = None) -> Plan:
-        """Use LLM to break goal into an ordered chain of blocks."""
-        references = references or []
-        available = _available_projects()
+        """Generate a granular plan: 1 analyze block per module + 1 implement block per type.
 
-        # On-demand: only load workspace summaries for planning
+        Uses LLM to identify modules, then creates fine-grained blocks.
+        Each block is self-contained — reads from disk, writes to disk.
+        """
+        references = references or []
+
+        # Initialize translator
+        self.translator = BlueprintTranslator(
+            self.llm, OUT_DIR, verbose=self.verbose
+        )
+
+        # Load workspace summaries for planning
         ref_summaries = []
         for proj in references:
             ws_path = OUT_DIR / proj / "workspace.yaml"
             if ws_path.exists():
                 content = ws_path.read_text()[:2000]
-                ref_summaries.append(f"# {proj}/workspace.yaml (summary)\n{content}")
+                ref_summaries.append(f"# {proj}/workspace.yaml\n{content}")
 
+        # Collect reference descriptor paths per module
+        ref_descriptors = {}
+        for proj in references:
+            proj_dir = OUT_DIR / proj
+            if proj_dir.is_dir():
+                for f in proj_dir.rglob("*.yaml"):
+                    rel = str(f.relative_to(OUT_DIR))
+                    module = f.parent.name if f.parent != proj_dir else "__root__"
+                    ref_descriptors.setdefault(module, []).append(rel)
+
+        # Ask LLM to identify modules and their types
         system = (
             "You are a development planner. Given a goal and reference projects, "
-            "create an ordered plan of iteration blocks.\n\n"
-            "Block types: analyze, implement, test, refactor, review\n"
-            "Each block should have a clear, specific objective.\n"
-            "Start with analyze to study references, then implement, then test.\n"
-            "Add refactor blocks where quality improvements matter.\n"
-            "Be practical — skip features that don't add clear value.\n\n"
-            "For analyze blocks, specify WHAT to look for in references.\n"
-            "For implement blocks, specify WHAT to build.\n"
-            "For test blocks, specify WHAT to compare against.\n\n"
-            "IMPORTANT: Generate between 4 and 8 blocks maximum. Be concise.\n"
-            "Group related work into single blocks rather than splitting too fine.\n\n"
-            "Output JSON array: [{\"type\": \"...\", \"objective\": \"...\"}]\n"
+            "identify the MODULES needed and the TYPES (classes) in each module.\n\n"
+            "Output JSON: [{\"module\": \"name\", \"types\": [\"Type1\", \"Type2\"], "
+            "\"ref_descriptors\": [\"project/path/file.yaml\"]}]\n\n"
+            "Each module should have 2-6 types. Be specific about type names.\n"
+            "Reference descriptors should be paths to Roska YAML files that "
+            "are relevant to that module.\n\n"
             "Output ONLY the JSON array."
         )
 
         user = f"Goal: {goal}\nTarget project: {target}\n"
         if references:
             user += f"Reference projects: {', '.join(references)}\n"
-        if available:
-            user += f"Available repos: {', '.join(available)}\n"
         if ref_summaries:
             user += f"\nReference summaries:\n{''.join(ref_summaries[:3])}\n"
+        # List available descriptors
+        if ref_descriptors:
+            user += f"\nAvailable descriptors:\n"
+            for mod, paths in list(ref_descriptors.items())[:20]:
+                user += f"  {mod}: {', '.join(paths[:5])}\n"
 
         self._log("generating plan...")
         content, tokens = self._llm_call(system, user, temperature=0.4, max_tokens=2048)
@@ -152,22 +167,56 @@ class DevSupervisor:
         plan = Plan(goal=goal, target_project=target, reference_projects=references)
 
         try:
-            blocks_data = _parse_json_response(content)
+            modules_data = _parse_json_response(content)
         except (json.JSONDecodeError, IndexError):
-            blocks_data = [
-                {"type": "analyze", "objective": f"Study references for: {goal}"},
-                {"type": "implement", "objective": f"Implement: {goal}"},
-                {"type": "test", "objective": "Test and compare with references"},
-                {"type": "review", "objective": "Review quality and security"},
+            # Fallback: single module with generic types
+            modules_data = [
+                {"module": "core", "types": ["Main"], "ref_descriptors": []},
             ]
 
-        for bd in blocks_data:
-            bt = BlockType(bd.get("type", "implement"))
-            plan.add_block(bt, bd["objective"])
+        # Generate granular blocks: analyze → implement per type → test
+        for mod in modules_data:
+            mod_name = mod.get("module", "core")
+            types = mod.get("types", [])
+            refs = mod.get("ref_descriptors", [])
+            bp_path = f"blueprints/{mod_name}.bp.yaml"
+
+            # 1. Analyze block: generate blueprint for this module
+            plan.add_block(
+                BlockType.ANALYZE,
+                f"Generate blueprint for {mod_name} module",
+                meta={"output_blueprint": bp_path, "refs": refs,
+                      "module": mod_name, "types": types},
+            )
+
+            # 2. Implement blocks: one per type
+            for type_name in types:
+                plan.add_block(
+                    BlockType.IMPLEMENT,
+                    f"Translate {type_name} from {mod_name} blueprint",
+                    meta={"blueprint": bp_path, "type": type_name,
+                          "module": mod_name},
+                )
+
+            # 3. Index block
+            plan.add_block(
+                BlockType.IMPLEMENT,
+                f"Generate {mod_name} index exports",
+                meta={"blueprint": bp_path, "type": "__index__",
+                      "module": mod_name},
+            )
+
+        # Final test block
+        plan.add_block(
+            BlockType.TEST,
+            f"Verify all modules against blueprints",
+            meta={"action": "verify_all"},
+        )
 
         self.current_plan = plan
         self.vm = BlockVM(plan, budget_chars=self.budget_chars)
-        self._log(f"plan created: {len(plan.blocks)} blocks")
+        self._log(f"plan created: {len(plan.blocks)} blocks "
+                  f"({len(modules_data)} modules)")
         return plan
 
     # ── Discussion System ───────────────────────────────────────
@@ -350,12 +399,6 @@ class DevSupervisor:
         )
         self.total_tokens += result.get("tokens_used", 0)
 
-        # Materialize code to disk for implement/refactor blocks
-        if block.block_type in (BlockType.IMPLEMENT, BlockType.REFACTOR) and self.current_plan:
-            written = self._materialize_code(block, self.current_plan.target_project)
-            if written:
-                self._log(f"materialized {len(written)} files")
-
         self._log(f"block {block.index} done in {block.elapsed_s:.1f}s [{block.hash[:8]}]")
         return block
 
@@ -404,48 +447,157 @@ class DevSupervisor:
                   f"({len(self.vm.budget.loaded_paths)} files)")
         return "\n\n".join(parts)
 
-    # ── Execution Handlers ──────────────────────────────────────
+    # ── Execution Handlers (Blueprint Pipeline) ──────────────────
 
     def _exec_analyze(self, block, history, ref_context, registry, discussions) -> dict:
-        system = (
-            "You are analyzing reference codebases to extract patterns and features.\n\n"
-            "Focus on:\n"
-            "1. Key patterns worth adopting (name specific files, types, functions)\n"
-            "2. Features that add real value vs noise\n"
-            "3. Architecture decisions and trade-offs\n"
-            "4. Rate each feature: HIGH/MEDIUM/LOW value\n\n"
-            "Use insights from prior discussions to inform your analysis."
+        """Analyze block → generate a ModuleBlueprint YAML and write to disk."""
+        meta = block.meta
+        bp_path = meta.get("output_blueprint", "")
+        refs = meta.get("refs", [])
+        mod_name = meta.get("module", "core")
+        types = meta.get("types", [])
+
+        if not self.translator or not self.current_plan:
+            return {"content": "ERROR: no translator", "tokens_used": 0}
+
+        target = self.current_plan.target_project
+        project_dir = self.projects_dir / target
+
+        # Use translator to generate blueprint from references
+        goal = (f"Module '{mod_name}' with types: {', '.join(types)}. "
+                f"Part of: {self.current_plan.goal}")
+        bp, tokens = self.translator.generate_blueprint(
+            module_name=mod_name,
+            goal=goal,
+            ref_paths=refs,
+            language="typescript",
+            target_dir=f"src/{mod_name}",
         )
-        user = self._build_user_prompt(block, history, ref_context, registry, discussions)
-        content, tokens = self._llm_call(system, user, max_tokens=4096)
-        return {"content": content, "tokens_used": tokens}
+
+        # Ensure types from plan are in the blueprint
+        for type_name in types:
+            if not bp.get_type(type_name):
+                bp.types.append(TypeBlueprint(
+                    name=type_name,
+                    target_file=f"src/{mod_name}/{type_name.lower()}.ts",
+                    references=refs,
+                ))
+
+        # Set target_file for types that don't have one
+        for t in bp.types:
+            if not t.target_file:
+                t.target_file = f"src/{mod_name}/{t.name.lower()}.ts"
+
+        # Save blueprint to disk
+        full_bp_path = project_dir / bp_path
+        bp.save(full_bp_path)
+        self._log(f"blueprint saved: {bp_path} ({len(bp.types)} types)")
+
+        content = bp.format_summary()
+        return {
+            "content": content,
+            "tokens_used": tokens,
+            "files_changed": [bp_path],
+        }
 
     def _exec_implement(self, block, history, ref_context, registry, discussions) -> dict:
-        system = (
-            "You are implementing code based on a development plan.\n\n"
-            "Rules:\n"
-            "- Write complete, runnable code\n"
-            "- Follow patterns from references where they add value\n"
-            "- Keep it simple — no over-engineering\n"
-            "- Include type hints\n"
-            "- Use insights from discussions to guide implementation\n\n"
-            "Output code with file paths as comments."
+        """Implement block → translate ONE type from blueprint to code."""
+        meta = block.meta
+        bp_path = meta.get("blueprint", "")
+        type_name = meta.get("type", "")
+        mod_name = meta.get("module", "")
+
+        if not self.translator or not self.current_plan:
+            return {"content": "ERROR: no translator", "tokens_used": 0}
+
+        target = self.current_plan.target_project
+        project_dir = self.projects_dir / target
+        full_bp_path = project_dir / bp_path
+
+        # Load blueprint from disk (fresh each time)
+        try:
+            bp = ModuleBlueprint.load(full_bp_path)
+        except Exception as e:
+            return {"content": f"ERROR loading blueprint: {e}", "tokens_used": 0}
+
+        # Handle __index__ special case
+        if type_name == "__index__":
+            index_path = self.translator.generate_index(bp, project_dir)
+            return {
+                "content": f"Generated index: {index_path}",
+                "tokens_used": 0,
+                "files_changed": [index_path],
+            }
+
+        # Find the type in the blueprint
+        type_bp = bp.get_type(type_name)
+        if not type_bp:
+            return {
+                "content": f"ERROR: type '{type_name}' not found in {bp_path}",
+                "tokens_used": 0,
+            }
+
+        # Translate this ONE type (self-contained LLM call)
+        file_path, tokens = self.translator.translate_type(
+            type_bp, bp, project_dir
         )
-        user = self._build_user_prompt(block, history, ref_context, registry, discussions)
-        content, tokens = self._llm_call(system, user, max_tokens=6000)
-        return {"content": content, "tokens_used": tokens}
+
+        # Save updated blueprint (status: translated)
+        bp.save(full_bp_path)
+
+        content = f"Translated {type_name} → {file_path}"
+        return {
+            "content": content,
+            "tokens_used": tokens,
+            "files_changed": [file_path],
+        }
 
     def _exec_test(self, block, history, ref_context, registry, discussions) -> dict:
-        system = (
-            "You are writing tests and comparing implementations.\n\n"
-            "1. Write pytest tests for the implemented code\n"
-            "2. Compare against reference projects\n"
-            "3. Identify gaps, edge cases, performance issues\n"
-            "4. Rate quality: correctness, completeness, style (0-10 each)"
+        """Test block → verify code against blueprints."""
+        if not self.current_plan:
+            return {"content": "ERROR: no plan", "tokens_used": 0}
+
+        target = self.current_plan.target_project
+        project_dir = self.projects_dir / target
+        bp_dir = project_dir / "blueprints"
+
+        # Load all blueprints and check status
+        report_parts = []
+        total_types = 0
+        translated = 0
+
+        if bp_dir.exists():
+            for bp_file in sorted(bp_dir.glob("*.bp.yaml")):
+                try:
+                    bp = ModuleBlueprint.load(bp_file)
+                    for t in bp.types:
+                        total_types += 1
+                        if t.status == "translated":
+                            translated += 1
+                            # Check file exists
+                            code_path = project_dir / t.target_file
+                            if code_path.exists():
+                                loc = len(code_path.read_text().splitlines())
+                                report_parts.append(
+                                    f"  ✓ {t.name}: {t.target_file} ({loc} LOC)")
+                            else:
+                                report_parts.append(
+                                    f"  ✗ {t.name}: {t.target_file} MISSING")
+                        else:
+                            report_parts.append(
+                                f"  ○ {t.name}: {t.status}")
+                except Exception as e:
+                    report_parts.append(f"  ERROR: {bp_file.name}: {e}")
+
+        content = (
+            f"Verification: {translated}/{total_types} types translated\n"
+            + "\n".join(report_parts)
         )
-        user = self._build_user_prompt(block, history, ref_context, registry, discussions)
-        content, tokens = self._llm_call(system, user, max_tokens=4096)
-        return {"content": content, "tokens_used": tokens, "test_results": {"pending": 1}}
+        return {
+            "content": content,
+            "tokens_used": 0,
+            "test_results": {"total": total_types, "translated": translated},
+        }
 
     def _exec_refactor(self, block, history, ref_context, registry, discussions) -> dict:
         system = (
@@ -583,15 +735,24 @@ class DevSupervisor:
     # ── Full Iteration Loop ─────────────────────────────────────
 
     def run(self, goal: str, target: str, references: list[str] = None,
-            max_iterations: int = 10) -> Plan:
-        """Full iterative development loop."""
+            max_iterations: int = 100) -> Plan:
+        """Full iterative development loop with blueprint pipeline.
+
+        Each block is self-contained: reads from disk, does one LLM call,
+        writes to disk, discards context. Scales to any number of blocks.
+        """
         t0 = time.time()
 
-        # 1. Create plan
+        # Ensure project directory exists
+        project_dir = self.projects_dir / target
+        project_dir.mkdir(parents=True, exist_ok=True)
+        (project_dir / "blueprints").mkdir(exist_ok=True)
+
+        # 1. Create plan (granular: 1 block per type)
         plan = self.create_plan(goal, target, references)
         print(plan.format_status())
 
-        # 2. Execute blocks (with crash recovery — always saves plan)
+        # 2. Execute blocks (each self-contained)
         iteration = 0
         crashed = False
         try:
@@ -600,72 +761,113 @@ class DevSupervisor:
                 iteration += 1
 
                 print(f"\n{'─' * 66}")
-                print(f"  ITERATION {iteration}: Block {block.index} [{block.block_type.value}]")
+                print(f"  [{iteration}/{len(plan.blocks)}] Block {block.index} "
+                      f"[{block.block_type.value}]")
                 print(f"  {block.objective}")
+                if block.meta:
+                    meta_info = {k: v for k, v in block.meta.items()
+                                 if k in ("type", "module", "blueprint")}
+                    if meta_info:
+                        print(f"  meta: {meta_info}")
                 print(f"{'─' * 66}")
 
-                # Execute (includes discussions + on-demand loading)
+                # Execute (self-contained: disk → LLM → disk)
                 self.execute_block(block)
-                print(block.output)
 
-                # Show discussions
-                if block.discussions:
-                    print(f"\n  ┌─ DISCUSSIONS ─────────────────────────────────────")
-                    for disc in block.discussions:
-                        print(f"  │ {disc.format()}")
-                    print(f"  └─────────────────────────────────────────────────")
+                # Print result (compact for implement blocks)
+                if block.block_type == BlockType.IMPLEMENT:
+                    for f in block.files_changed:
+                        print(f"  → {f}")
+                elif block.block_type == BlockType.ANALYZE:
+                    print(block.output)
+                else:
+                    print(block.output[:2000])
 
-                # Abstraction
-                abstraction = self.run_abstraction(block)
-
-                # Show abstraction
-                print(f"\n  ┌─ ABSTRACTION ────────────────────────────────────")
-                for a in abstraction.achievements[:3]:
-                    print(f"  │ ✓ {a}")
-                for imp in abstraction.improvements[:3]:
-                    print(f"  │ → {imp}")
-                for fd in abstraction.feature_decisions:
-                    icon = {"adopt": "✓", "adapt": "~", "skip": "✗", "defer": "⏳"}
-                    print(f"  │ {icon.get(fd.verdict, '?')} {fd.feature} "
-                          f"(val={fd.value_score:.1f} eff={fd.effort_score:.1f}) → {fd.verdict}")
-                print(f"  │ Next: {abstraction.next_priority}")
-                print(f"  │ Confidence: {abstraction.confidence:.0%}")
-                print(f"  └─────────────────────────────────────────────────")
-
-                # Show VM status
-                if self.vm:
-                    print(self.vm.format_status())
-
-                # Dynamic plan adjustment
-                self._adjust_plan(block, abstraction)
+                # Run abstraction only for analyze blocks (saves API calls)
+                if block.block_type == BlockType.ANALYZE:
+                    abstraction = self.run_abstraction(block)
+                    print(f"  confidence: {abstraction.confidence:.0%}")
+                    self._adjust_plan(block, abstraction)
 
         except Exception as e:
             crashed = True
             print(f"\n  ⚠ INTERRUPTED: {e}")
-            # Mark current block as failed if in progress
             if block and block.status == BlockStatus.IN_PROGRESS:
                 block.fail(str(e))
 
-        elapsed = time.time() - t0
+        return self._finalize(plan, t0, crashed)
 
-        # 3. Final summary (always runs, even on crash)
-        status_msg = "INTERRUPTED — plan saved, use --resume to continue" if crashed else "DEVELOPMENT COMPLETE"
+    def _continue_execution(self, plan: Plan) -> Plan:
+        """Continue executing a resumed plan."""
+        t0 = time.time()
+        print(plan.format_status())
+
+        iteration = 0
+        crashed = False
+        block = None
+        try:
+            while plan.next_pending and iteration < 100:
+                block = plan.next_pending
+                iteration += 1
+
+                print(f"\n{'─' * 66}")
+                print(f"  [{len(plan.completed_blocks)+1}/{len(plan.blocks)}] "
+                      f"Block {block.index} [{block.block_type.value}]")
+                print(f"  {block.objective}")
+                print(f"{'─' * 66}")
+
+                self.execute_block(block)
+
+                if block.block_type == BlockType.IMPLEMENT:
+                    for f in block.files_changed:
+                        print(f"  → {f}")
+                else:
+                    print(block.output[:2000])
+
+                if block.block_type == BlockType.ANALYZE:
+                    abstraction = self.run_abstraction(block)
+                    print(f"  confidence: {abstraction.confidence:.0%}")
+
+        except Exception as e:
+            crashed = True
+            print(f"\n  ⚠ INTERRUPTED: {e}")
+            if block and block.status == BlockStatus.IN_PROGRESS:
+                block.fail(str(e))
+
+        return self._finalize(plan, t0, crashed)
+
+    def _finalize(self, plan: Plan, t0: float, crashed: bool) -> Plan:
+        """Print summary and save plan."""
+        elapsed = time.time() - t0
+        status_msg = ("INTERRUPTED — use --resume to continue"
+                      if crashed else "DEVELOPMENT COMPLETE")
         print(f"\n{'━' * 66}")
         print(f"  {status_msg}")
         print(f"{'━' * 66}")
         print(plan.format_status())
-        if self.vm:
-            print(f"\n  Registry: {len(self.vm.registry)} insights")
-            print(f"  Discarded: {len(self.vm.discarded)} items")
-        print(f"  Total time: {elapsed:.1f}s")
+
+        # Count generated LOC
+        if self.current_plan:
+            project_dir = self.projects_dir / self.current_plan.target_project
+            src_dir = project_dir / "src"
+            if src_dir.exists():
+                total_loc = 0
+                file_count = 0
+                for f in src_dir.rglob("*"):
+                    if f.is_file() and f.suffix in (".ts", ".js", ".py"):
+                        total_loc += len(f.read_text().splitlines())
+                        file_count += 1
+                print(f"\n  Generated: {total_loc} LOC across {file_count} files")
+
+        if self.translator:
+            print(f"  Translator tokens: {self.translator.total_tokens:,}")
         print(f"  Total tokens: {self.total_tokens:,}")
+        print(f"  Total time: {elapsed:.1f}s")
         print(f"{'━' * 66}")
 
-        # Always save (even on crash)
         plan_path = self.plans_dir / f"{plan.plan_id}.json"
         plan.save(plan_path)
         self._log(f"plan saved to {plan_path}")
-
         return plan
 
     def _adjust_plan(self, block: Block, abstraction: AbstractionResult):
@@ -709,75 +911,21 @@ class DevSupervisor:
             )
         return "\n---\n".join(parts)
 
-    # ── Code Materialization ────────────────────────────────────
-
-    def _materialize_code(self, block: Block, target_project: str) -> list[str]:
-        """Extract code blocks from LLM output and write them to disk.
-
-        Parses fenced code blocks with file path comments like:
-            ```typescript
-            // project/src/math/vec2.ts
-            export class Vec2 { ... }
-            ```
-
-        Returns list of files written.
-        """
-        if not block.output:
-            return []
-
-        project_dir = Path("projects") / target_project
-        if not project_dir.exists():
-            project_dir.mkdir(parents=True, exist_ok=True)
-
-        # Match fenced code blocks: ```lang\n// path\ncode\n```
-        pattern = re.compile(
-            r'```(?:\w+)?\s*\n'          # opening fence with optional language
-            r'(?://|#|<!--)\s*'           # comment prefix (// or # or <!--)
-            r'(?:[\w-]+/)?([\w./\-]+)\s*' # file path (strip leading project name)
-            r'(?:-->)?\s*\n'              # optional closing -->
-            r'(.*?)'                       # code content
-            r'\n```',                      # closing fence
-            re.DOTALL,
-        )
-
-        files_written = []
-        for match in pattern.finditer(block.output):
-            file_path_raw = match.group(1).strip()
-            code = match.group(2).strip()
-
-            if not file_path_raw or not code:
-                continue
-
-            # Normalize path — strip target project prefix if present
-            if file_path_raw.startswith(f"{target_project}/"):
-                file_path_raw = file_path_raw[len(target_project) + 1:]
-
-            # Skip test files, demo files that shouldn't go in src
-            full_path = project_dir / file_path_raw
-            full_path.parent.mkdir(parents=True, exist_ok=True)
-
-            full_path.write_text(code + "\n")
-            files_written.append(file_path_raw)
-            self._log(f"wrote {file_path_raw} ({len(code)} chars)")
-
-        if files_written:
-            block.files_changed = files_written
-            self._log(f"materialized {len(files_written)} files to {project_dir}")
-
-        return files_written
+    # (Code materialization is now handled by BlueprintTranslator directly)
 
     def resume(self, plan_path: Path) -> Plan:
         """Resume a saved plan."""
         plan = Plan.load(plan_path)
         self.current_plan = plan
         self.vm = BlockVM(plan, budget_chars=self.budget_chars)
+        self.translator = BlueprintTranslator(
+            self.llm, OUT_DIR, verbose=self.verbose
+        )
         self._log(f"resumed {plan.plan_id}: "
                   f"{len(plan.completed_blocks)}/{len(plan.blocks)} done")
-        return self.run(
-            goal=plan.goal,
-            target=plan.target_project,
-            references=plan.reference_projects,
-        )
+
+        # Continue from where we left off (don't re-create plan)
+        return self._continue_execution(plan)
 
     def list_plans(self) -> list[dict]:
         """List saved plans."""
