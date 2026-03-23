@@ -57,6 +57,12 @@ class UsageReport:
     files_loaded: int = 0
     files_available: int = 0
     coverage_pct: float = 0.0
+    # Compression
+    original_chars: int = 0
+    compressed_chars: int = 0
+    tokens_saved: int = 0
+    compression_ratio: float = 0.0
+    strategies: list[str] = field(default_factory=list)
     # Model
     model: str = ""
     provider: str = ""
@@ -86,6 +92,15 @@ class UsageReport:
                 f"  Coverage:        {self.files_loaded}/{self.files_available} "
                 f"files ({self.coverage_pct:.1f}%)"
             )
+        if self.tokens_saved > 0:
+            lines.append(f"{'─' * 60}")
+            lines.append(
+                f"  Compression:     {self.original_chars:,} → {self.compressed_chars:,} chars "
+                f"({self.compression_ratio:.0%})"
+            )
+            lines.append(f"  Tokens saved:    ~{self.tokens_saved:,}")
+            if self.strategies:
+                lines.append(f"  Strategies:      {', '.join(self.strategies)}")
         lines.append(f"{'━' * 60}")
         return "\n".join(lines)
 
@@ -374,6 +389,11 @@ class Supervisor:
             files_loaded=coverage_meta.get("files_loaded", 0),
             files_available=coverage_meta.get("files_available", 0),
             coverage_pct=coverage_meta.get("coverage_pct", 0.0),
+            original_chars=coverage_meta.get("original_chars", 0),
+            compressed_chars=coverage_meta.get("compressed_chars", 0),
+            tokens_saved=coverage_meta.get("tokens_saved", 0),
+            compression_ratio=coverage_meta.get("compression_ratio", 0.0),
+            strategies=coverage_meta.get("strategies", []),
             model=self.llm.model,
             provider=self.llm.provider,
         )
