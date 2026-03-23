@@ -1109,6 +1109,80 @@ class DevSupervisor:
                   f"-{len(data.get('discard', []))} discarded")
         return result
 
+    def _collect_eval_proposals(self, block: Block):
+        """Extract eval proposals from block discussions and save to eval.yaml."""
+        from .discussion_proposals import (
+            extract_proposals_from_discussion,
+            extract_proposals_from_abstraction,
+            proposals_to_eval_yaml,
+        )
+
+        module_name = block.meta.get("module", "")
+        proposals = []
+
+        # From discussions
+        for disc in block.discussions:
+            # Try to determine type name from block meta
+            type_name = block.meta.get("type", "")
+            new_proposals = extract_proposals_from_discussion(
+                disc, module_name, type_name
+            )
+            proposals.extend(new_proposals)
+
+        # From abstraction
+        if block.abstraction and block.abstraction.feature_decisions:
+            abs_proposals = extract_proposals_from_abstraction(
+                block.abstraction.feature_decisions, module_name
+            )
+            proposals.extend(abs_proposals)
+
+        if not proposals:
+            return
+
+        # Save proposals to eval.yaml (append, don't overwrite)
+        target = self.current_plan.target_project if self.current_plan else "unknown"
+        project_dir = self.projects_dir / target
+        eval_path = project_dir / "eval.yaml"
+
+        import yaml
+        existing = []
+        if eval_path.exists():
+            try:
+                data = yaml.safe_load(eval_path.read_text())
+                existing = data.get("evaluations", []) if data else []
+            except Exception:
+                pass
+
+        # Add new proposals (avoid duplicates by target_type + variation)
+        existing_keys = {
+            (e.get("target_type", ""), e.get("variation", ""))
+            for e in existing
+        }
+
+        for p in proposals:
+            key = (p.eval_config.target_type, p.eval_config.variation)
+            if key not in existing_keys:
+                existing.append({
+                    "target_type": p.eval_config.target_type,
+                    "target_module": p.eval_config.target_module,
+                    "variation": p.eval_config.variation,
+                    "constraints": p.eval_config.constraints,
+                    "benchmark_metrics": p.eval_config.benchmark_metrics,
+                    "_reason": p.reason,
+                    "_confidence": p.confidence,
+                    "_source": p.source_discussion,
+                })
+                existing_keys.add(key)
+
+        eval_path.parent.mkdir(parents=True, exist_ok=True)
+        eval_path.write_text(yaml.dump(
+            {"evaluations": existing},
+            default_flow_style=False, sort_keys=False, allow_unicode=True,
+        ))
+
+        self._log(f"eval proposals: {len(proposals)} new from block {block.index} "
+                  f"→ {eval_path}")
+
     def _collect_parallel_batch(self, plan: Plan) -> list:
         """Collect consecutive IMPLEMENT blocks from the same module for parallel exec."""
         first = plan.next_pending
@@ -1236,6 +1310,10 @@ class DevSupervisor:
                         abstraction = self.run_abstraction(block)
                         print(f"  confidence: {abstraction.confidence:.0%}")
                         self._adjust_plan(block, abstraction)
+
+                    # Collect eval proposals from discussions (any plan type)
+                    if block.discussions:
+                        self._collect_eval_proposals(block)
 
         except Exception as e:
             crashed = True
