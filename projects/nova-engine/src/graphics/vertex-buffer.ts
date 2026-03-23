@@ -1,69 +1,125 @@
+import { GraphicsDevice } from './graphics-device';
 import { VertexAttribute } from './vertex-attribute';
 
 export class VertexBuffer {
-    gl: WebGL2RenderingContext;
-    buffer: WebGLBuffer;
-    numVertices: number;
-    stride: number;
-    usage: number;
-    attributes: VertexAttribute[];
+  private buffer: WebGLBuffer;
+  private vertexCount: number;
+  private stride: number;
+  private usage: number;
+  private attributes: VertexAttribute[];
+  private vao: WebGLVertexArrayObject;
+  private device: GraphicsDevice;
+  private gl: WebGL2RenderingContext;
 
-    constructor(gl: WebGL2RenderingContext, buffer: WebGLBuffer, numVertices: number, stride: number, usage: number, attributes: VertexAttribute[]) {
-        this.gl = gl;
-        this.buffer = buffer;
-        this.numVertices = numVertices;
-        this.stride = stride;
-        this.usage = usage;
-        this.attributes = attributes;
+  private constructor(device: GraphicsDevice, vertexCount: number, stride: number, usage: number = WebGL2RenderingContext.STATIC_DRAW) {
+    this.device = device;
+    this.gl = device.getGL();
+    this.vertexCount = vertexCount;
+    this.stride = stride;
+    this.usage = usage;
+    this.attributes = [];
+    
+    this.buffer = this.gl.createBuffer();
+    if (!this.buffer) {
+      throw new Error('Failed to create WebGL buffer');
     }
+    
+    this.vao = this.gl.createVertexArray();
+    if (!this.vao) {
+      throw new Error('Failed to create WebGL vertex array object');
+    }
+  }
 
-    bind(): void {
-        this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.buffer);
-    }
+  static create(vertexCount: number, stride: number, usage?: number): VertexBuffer {
+    const device = GraphicsDevice.getInstance();
+    return new VertexBuffer(device, vertexCount, stride, usage);
+  }
 
-    upload(data: ArrayBuffer): void {
-        this.bind();
-        this.gl.bufferData(this.gl.ARRAY_BUFFER, data, this.usage);
-    }
+  setData(data: ArrayBufferView): void {
+    this.gl.bindBuffer(WebGL2RenderingContext.ARRAY_BUFFER, this.buffer);
+    this.gl.bufferData(WebGL2RenderingContext.ARRAY_BUFFER, data, this.usage);
+    this.gl.bindBuffer(WebGL2RenderingContext.ARRAY_BUFFER, null);
+  }
 
-    update(data: ArrayBuffer, offset: number = 0): void {
-        this.bind();
-        this.gl.bufferSubData(this.gl.ARRAY_BUFFER, offset, data);
+  update(data: ArrayBufferView, offset?: number): void {
+    this.gl.bindBuffer(WebGL2RenderingContext.ARRAY_BUFFER, this.buffer);
+    if (offset !== undefined) {
+      this.gl.bufferSubData(WebGL2RenderingContext.ARRAY_BUFFER, offset, data);
+    } else {
+      this.gl.bufferSubData(WebGL2RenderingContext.ARRAY_BUFFER, 0, data);
     }
+    this.gl.bindBuffer(WebGL2RenderingContext.ARRAY_BUFFER, null);
+  }
 
-    setAttributes(): void {
-        this.bind();
-        for (let i = 0; i < this.attributes.length; i++) {
-            const attr = this.attributes[i];
-            this.gl.enableVertexAttribArray(attr.location);
-            this.gl.vertexAttribPointer(
-                attr.location,
-                attr.size,
-                attr.type,
-                attr.normalized,
-                this.stride,
-                attr.offset
-            );
-        }
+  bind(): void {
+    this.gl.bindVertexArray(this.vao);
+    this.gl.bindBuffer(WebGL2RenderingContext.ARRAY_BUFFER, this.buffer);
+    
+    let offset = 0;
+    for (let i = 0; i < this.attributes.length; i++) {
+      const attr = this.attributes[i];
+      this.gl.enableVertexAttribArray(i);
+      this.gl.vertexAttribPointer(
+        i,
+        attr.size,
+        attr.type || WebGL2RenderingContext.FLOAT,
+        attr.normalized || false,
+        this.stride,
+        offset
+      );
+      offset += attr.size * this.getTypeSize(attr.type || WebGL2RenderingContext.FLOAT);
     }
+  }
 
-    destroy(): void {
-        this.gl.deleteBuffer(this.buffer);
-    }
+  unbind(): void {
+    this.gl.bindVertexArray(null);
+    this.gl.bindBuffer(WebGL2RenderingContext.ARRAY_BUFFER, null);
+  }
 
-    static createDynamic(gl: WebGL2RenderingContext, size: number): VertexBuffer {
-        const buffer = gl.createBuffer();
-        if (!buffer) throw new Error('Failed to create WebGL buffer');
-        gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
-        gl.bufferData(gl.ARRAY_BUFFER, size, gl.DYNAMIC_DRAW);
-        return new VertexBuffer(gl, buffer, 0, 0, gl.DYNAMIC_DRAW, []);
-    }
+  addAttribute(name: string, size: number, type?: number, normalized?: boolean): void {
+    const attribute: VertexAttribute = {
+      name,
+      size,
+      type: type || WebGL2RenderingContext.FLOAT,
+      normalized: normalized || false
+    };
+    this.attributes.push(attribute);
+  }
 
-    static createStatic(gl: WebGL2RenderingContext, data: ArrayBuffer): VertexBuffer {
-        const buffer = gl.createBuffer();
-        if (!buffer) throw new Error('Failed to create WebGL buffer');
-        gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
-        gl.bufferData(gl.ARRAY_BUFFER, data, gl.STATIC_DRAW);
-        return new VertexBuffer(gl, buffer, data.byteLength, 0, gl.STATIC_DRAW, []);
+  getAttribute(name: string): VertexAttribute {
+    const attr = this.attributes.find(a => a.name === name);
+    if (!attr) {
+      throw new Error(`Attribute '${name}' not found`);
     }
+    return attr;
+  }
+
+  destroy(): void {
+    if (this.buffer) {
+      this.gl.deleteBuffer(this.buffer);
+      this.buffer = null;
+    }
+    if (this.vao) {
+      this.gl.deleteVertexArray(this.vao);
+      this.vao = null;
+    }
+  }
+
+  private getTypeSize(type: number): number {
+    switch (type) {
+      case WebGL2RenderingContext.BYTE:
+      case WebGL2RenderingContext.UNSIGNED_BYTE:
+        return 1;
+      case WebGL2RenderingContext.SHORT:
+      case WebGL2RenderingContext.UNSIGNED_SHORT:
+      case WebGL2RenderingContext.HALF_FLOAT:
+        return 2;
+      case WebGL2RenderingContext.FLOAT:
+      case WebGL2RenderingContext.INT:
+      case WebGL2RenderingContext.UNSIGNED_INT:
+        return 4;
+      default:
+        return 4;
+    }
+  }
 }

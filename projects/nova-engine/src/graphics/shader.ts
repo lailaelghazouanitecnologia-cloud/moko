@@ -1,134 +1,187 @@
-import { GraphicsDevice } from './graphics-device';
+import { GraphicsDevice } from './GraphicsDevice';
 
 export class Shader {
-    program: WebGLProgram | null = null;
-    uniforms: Map<string, WebGLUniformLocation> = new Map();
-    attributes: Map<string, number> = new Map();
+    private program: WebGLProgram | null = null;
+    private vertexShader: WebGLShader | null = null;
+    private fragmentShader: WebGLShader | null = null;
+    private uniforms: Map<string, WebGLUniformLocation> = new Map();
+    private attributes: Map<string, number> = new Map();
+    private compiled: boolean = false;
+    private gl: WebGL2RenderingContext;
 
-    compile(gl: WebGL2RenderingContext, vsSrc: string, fsSrc: string): boolean {
-        const vs = gl.createShader(gl.VERTEX_SHADER);
-        if (!vs) return false;
-        gl.shaderSource(vs, vsSrc);
-        gl.compileShader(vs);
-        if (!gl.getShaderParameter(vs, gl.COMPILE_STATUS)) {
-            console.error('VS compile error:', gl.getShaderInfoLog(vs));
-            gl.deleteShader(vs);
+    constructor(private device: GraphicsDevice) {
+        this.gl = device.getContext();
+    }
+
+    compile(vertexSource: string, fragmentSource: string): boolean {
+        if (this.compiled) {
+            this.destroy();
+        }
+
+        this.vertexShader = this.createShader(vertexSource, this.gl.VERTEX_SHADER);
+        if (!this.vertexShader) return false;
+
+        this.fragmentShader = this.createShader(fragmentSource, this.gl.FRAGMENT_SHADER);
+        if (!this.fragmentShader) return false;
+
+        this.program = this.gl.createProgram();
+        if (!this.program) return false;
+
+        this.gl.attachShader(this.program, this.vertexShader);
+        this.gl.attachShader(this.program, this.fragmentShader);
+        this.gl.linkProgram(this.program);
+
+        if (!this.gl.getProgramParameter(this.program, this.gl.LINK_STATUS)) {
+            const info = this.gl.getProgramInfoLog(this.program);
+            console.error(`Shader program linking failed: ${info}`);
+            this.destroy();
             return false;
         }
 
-        const fs = gl.createShader(gl.FRAGMENT_SHADER);
-        if (!fs) {
-            gl.deleteShader(vs);
-            return false;
-        }
-        gl.shaderSource(fs, fsSrc);
-        gl.compileShader(fs);
-        if (!gl.getShaderParameter(fs, gl.COMPILE_STATUS)) {
-            console.error('FS compile error:', gl.getShaderInfoLog(fs));
-            gl.deleteShader(vs);
-            gl.deleteShader(fs);
-            return false;
-        }
-
-        const prog = gl.createProgram();
-        if (!prog) {
-            gl.deleteShader(vs);
-            gl.deleteShader(fs);
-            return false;
-        }
-        gl.attachShader(prog, vs);
-        gl.attachShader(prog, fs);
-        gl.linkProgram(prog);
-        if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) {
-            console.error('Program link error:', gl.getProgramInfoLog(prog));
-            gl.deleteShader(vs);
-            gl.deleteShader(fs);
-            gl.deleteProgram(prog);
-            return false;
-        }
-
-        gl.deleteShader(vs);
-        gl.deleteShader(fs);
-
-        this.program = prog;
-
-        const numUniforms = gl.getProgramParameter(prog, gl.ACTIVE_UNIFORMS);
-        for (let i = 0; i < numUniforms; i++) {
-            const info = gl.getActiveUniform(prog, i);
-            if (info) {
-                const loc = gl.getUniformLocation(prog, info.name);
-                if (loc) this.uniforms.set(info.name, loc);
-            }
-        }
-
-        const numAttribs = gl.getProgramParameter(prog, gl.ACTIVE_ATTRIBUTES);
-        for (let i = 0; i < numAttribs; i++) {
-            const info = gl.getActiveAttrib(prog, i);
-            if (info) {
-                const loc = gl.getAttribLocation(prog, info.name);
-                this.attributes.set(info.name, loc);
-            }
-        }
-
+        this.compiled = true;
+        this.cacheUniforms();
+        this.cacheAttributes();
         return true;
     }
 
-    bind(gl: WebGL2RenderingContext): void {
-        if (this.program) gl.useProgram(this.program);
+    bind(): void {
+        if (!this.compiled || !this.program) return;
+        this.gl.useProgram(this.program);
     }
 
-    getUniform(name: string): WebGLUniformLocation | null {
-        return this.uniforms.get(name) ?? null;
+    unbind(): void {
+        this.gl.useProgram(null);
     }
 
-    getAttrib(name: string): number {
-        return this.attributes.get(name) ?? -1;
+    getUniform(name: string): WebGLUniformLocation {
+        const location = this.uniforms.get(name);
+        if (!location) {
+            throw new Error(`Uniform '${name}' not found in shader`);
+        }
+        return location;
     }
 
-    setUniform1f(loc: WebGLUniformLocation, v: number): void {
-        const gl = (GraphicsDevice as any).gl as WebGL2RenderingContext;
-        gl.uniform1f(loc, v);
+    getAttribute(name: string): number {
+        const location = this.attributes.get(name);
+        if (location === undefined) {
+            throw new Error(`Attribute '${name}' not found in shader`);
+        }
+        return location;
     }
 
-    setUniform2fv(loc: WebGLUniformLocation, v: Float32Array): void {
-        const gl = (GraphicsDevice as any).gl as WebGL2RenderingContext;
-        gl.uniform2fv(loc, v);
+    setUniform1f(name: string, value: number): void {
+        const location = this.getUniform(name);
+        this.gl.uniform1f(location, value);
     }
 
-    setUniform3fv(loc: WebGLUniformLocation, v: Float32Array): void {
-        const gl = (GraphicsDevice as any).gl as WebGL2RenderingContext;
-        gl.uniform3fv(loc, v);
+    setUniform2f(name: string, x: number, y: number): void {
+        const location = this.getUniform(name);
+        this.gl.uniform2f(location, x, y);
     }
 
-    setUniform4fv(loc: WebGLUniformLocation, v: Float32Array): void {
-        const gl = (GraphicsDevice as any).gl as WebGL2RenderingContext;
-        gl.uniform4fv(loc, v);
+    setUniform3f(name: string, x: number, y: number, z: number): void {
+        const location = this.getUniform(name);
+        this.gl.uniform3f(location, x, y, z);
     }
 
-    setUniformMatrix4fv(loc: WebGLUniformLocation, m: Float32Array): void {
-        const gl = (GraphicsDevice as any).gl as WebGL2RenderingContext;
-        gl.uniformMatrix4fv(loc, false, m);
+    setUniform4f(name: string, x: number, y: number, z: number, w: number): void {
+        const location = this.getUniform(name);
+        this.gl.uniform4f(location, x, y, z, w);
     }
 
-    setTexture(loc: WebGLUniformLocation, unit: number): void {
-        const gl = (GraphicsDevice as any).gl as WebGL2RenderingContext;
-        gl.uniform1i(loc, unit);
+    setUniformMatrix4fv(name: string, matrix: Float32Array): void {
+        const location = this.getUniform(name);
+        this.gl.uniformMatrix4fv(location, false, matrix);
     }
 
-    destroy(gl: WebGL2RenderingContext): void {
+    setUniform1i(name: string, value: number): void {
+        const location = this.getUniform(name);
+        this.gl.uniform1i(location, value);
+    }
+
+    destroy(): void {
         if (this.program) {
-            gl.deleteProgram(this.program);
+            this.gl.deleteProgram(this.program);
             this.program = null;
+        }
+        if (this.vertexShader) {
+            this.gl.deleteShader(this.vertexShader);
+            this.vertexShader = null;
+        }
+        if (this.fragmentShader) {
+            this.gl.deleteShader(this.fragmentShader);
+            this.fragmentShader = null;
         }
         this.uniforms.clear();
         this.attributes.clear();
+        this.compiled = false;
     }
 
-    static fromSources(gl: WebGL2RenderingContext, vs: string, fs: string): Shader | null {
-        const shader = new Shader();
-        if (!shader.compile(gl, vs, fs)) {
+    private createShader(source: string, type: number): WebGLShader | null {
+        const shader = this.gl.createShader(type);
+        if (!shader) return null;
+
+        this.gl.shaderSource(shader, source);
+        this.gl.compileShader(shader);
+
+        if (!this.gl.getShaderParameter(shader, this.gl.COMPILE_STATUS)) {
+            const info = this.gl.getShaderInfoLog(shader);
+            console.error(`Shader compilation failed: ${info}`);
+            this.gl.deleteShader(shader);
             return null;
         }
+
         return shader;
+    }
+
+    private cacheUniforms(): void {
+        if (!this.program) return;
+        const numUniforms = this.gl.getProgramParameter(this.program, this.gl.ACTIVE_UNIFORMS);
+        for (let i = 0; i < numUniforms; i++) {
+            const info = this.gl.getActiveUniform(this.program, i);
+            if (info) {
+                const location = this.gl.getUniformLocation(this.program, info.name);
+                if (location) {
+                    this.uniforms.set(info.name, location);
+                }
+            }
+        }
+    }
+
+    private cacheAttributes(): void {
+        if (!this.program) return;
+        const numAttributes = this.gl.getProgramParameter(this.program, this.gl.ACTIVE_ATTRIBUTES);
+        for (let i = 0; i < numAttributes; i++) {
+            const info = this.gl.getActiveAttrib(this.program, i);
+            if (info) {
+                const location = this.gl.getAttribLocation(this.program, info.name);
+                this.attributes.set(info.name, location);
+            }
+        }
+    }
+
+    static fromSource(vertexSource: string, fragmentSource: string): Shader {
+        const device = GraphicsDevice.getInstance();
+        const shader = new Shader(device);
+        if (!shader.compile(vertexSource, fragmentSource)) {
+            throw new Error('Failed to compile shader from source');
+        }
+        return shader;
+    }
+
+    static async fromFiles(vertexPath: string, fragmentPath: string): Promise<Shader> {
+        const [vertexResponse, fragmentResponse] = await Promise.all([
+            fetch(vertexPath),
+            fetch(fragmentPath)
+        ]);
+        
+        if (!vertexResponse.ok || !fragmentResponse.ok) {
+            throw new Error('Failed to load shader files');
+        }
+
+        const vertexSource = await vertexResponse.text();
+        const fragmentSource = await fragmentResponse.text();
+        
+        return Shader.fromSource(vertexSource, fragmentSource);
     }
 }

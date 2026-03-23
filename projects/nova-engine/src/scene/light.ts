@@ -1,104 +1,94 @@
-import { Component } from '../gameobject/Component';
+import { Component } from './Component';
 import { Vec3 } from '../math/Vec3';
-import { Color } from '../math/Color';
 import { Mat4 } from '../math/Mat4';
+import { Color } from '../graphics/Color';
 import { Texture } from '../graphics/Texture';
-import { LightType } from './LightType';
+import { ForwardRenderer } from './renderer/ForwardRenderer';
+
+export enum LightType {
+    directional = 'directional',
+    point = 'point',
+    spot = 'spot'
+}
 
 export class Light extends Component {
-    type: LightType;
-    color: Color;
-    intensity: number;
-    range: number;
-    spotAngle: number;
-    castShadows: boolean;
-    shadowResolution: number;
-    shadowBias: number;
-    shadowMap: Texture | null;
-
-    constructor() {
-        super();
-        this.type = LightType.DIRECTIONAL;
-        this.color = Color.WHITE.clone();
-        this.intensity = 1;
-        this.range = 10;
-        this.spotAngle = 30;
-        this.castShadows = false;
-        this.shadowResolution = 1024;
-        this.shadowBias = 0.005;
-        this.shadowMap = null;
-    }
+    type: LightType = LightType.directional;
+    color: Color = new Color(1, 1, 1);
+    intensity: number = 1;
+    range: number = 10;
+    innerCone: number = 30;
+    outerCone: number = 45;
+    castShadows: boolean = false;
+    shadowBias: number = 0.05;
+    shadowMap: Texture | null = null;
+    shadowMatrix: Mat4 = new Mat4();
 
     getDirection(): Vec3 {
-        const transform = this.getGameObject().transform;
-        return transform.forward.clone();
+        const worldRot = this.node.getWorldRotation();
+        const forward = new Vec3(0, 0, -1);
+        worldRot.transformVector(forward, forward);
+        return forward;
+    }
+
+    getPosition(): Vec3 {
+        const worldMatrix = this.node.getWorldMatrix();
+        return new Vec3(worldMatrix.data[12], worldMatrix.data[13], worldMatrix.data[14]);
+    }
+
+    setDirection(dir: Vec3): void {
+        const target = this.node.getPosition().clone().add(dir);
+        this.node.lookAt(target, Vec3.UP);
+    }
+
+    computeShadowMatrix(): Mat4 {
+        const pos = this.getPosition();
+        const dir = this.getDirection();
+        
+        const up = Math.abs(dir.y) > 0.999 ? new Vec3(0, 0, 1) : Vec3.UP;
+        const view = Mat4.createLookAt(pos, pos.clone().add(dir), up);
+        
+        const range = this.range * 2;
+        const proj = Mat4.createOrthographic(-range, range, -range, range, 0.1, range);
+        
+        return proj.clone().mul(view);
+    }
+
+    isDirectional(): boolean {
+        return this.type === LightType.directional;
+    }
+
+    isPoint(): boolean {
+        return this.type === LightType.point;
+    }
+
+    isSpot(): boolean {
+        return this.type === LightType.spot;
     }
 
     getAttenuation(distance: number): number {
-        if (this.type === LightType.DIRECTIONAL) return 1.0;
-        const att = Math.max(0, 1 - (distance / this.range));
-        return att * att;
+        if (this.isDirectional()) return 1.0;
+        
+        const att = 1.0 / (1.0 + distance * distance / (this.range * this.range));
+        return Math.max(0.0, Math.min(1.0, att));
     }
 
-    getSpotFactor(direction: Vec3): number {
-        if (this.type !== LightType.SPOT) return 1.0;
-        const lightDir = this.getDirection().mulScalar(-1);
-        const cosAngle = lightDir.dot(direction.normalize());
-        const halfAngle = (this.spotAngle * Math.PI / 180) / 2;
-        const cosCutoff = Math.cos(halfAngle);
-        if (cosAngle < cosCutoff) return 0.0;
-        const innerCos = Math.cos(halfAngle * 0.8);
-        return Math.min(1, (cosAngle - cosCutoff) / (innerCos - cosCutoff));
-    }
-
-    setType(type: LightType): void {
-        this.type = type;
-    }
-
-    setColor(color: Color): void {
-        this.color.copy(color);
-    }
-
-    setIntensity(intensity: number): void {
-        this.intensity = intensity;
-    }
-
-    setRange(range: number): void {
-        this.range = range;
-    }
-
-    setSpotAngle(angle: number): void {
-        this.spotAngle = angle;
-    }
-
-    enableShadows(enable: boolean): void {
-        this.castShadows = enable;
-    }
-
-    updateShadowMap(): void {
-        if (!this.castShadows) return;
+    getShadowMap(): Texture {
         if (!this.shadowMap) {
-            this.shadowMap = new Texture();
-            this.shadowMap.width = this.shadowResolution;
-            this.shadowMap.height = this.shadowResolution;
-            this.shadowMap.format = Texture.FORMAT_DEPTH;
+            this.shadowMap = new Texture(1024, 1024, {
+                format: 'depth',
+                wrap: 'clamp',
+                filter: 'linear'
+            });
         }
+        return this.shadowMap;
     }
 
-    getShadowMatrix(): Mat4 {
-        const view = new Mat4();
-        const proj = new Mat4();
-        const viewProj = new Mat4();
-        const transform = this.getGameObject().transform;
-        const pos = transform.position;
-        const dir = this.getDirection().mulScalar(-1);
-        view.lookAt(pos, pos.add(dir), Vec3.UP);
-        if (this.type === LightType.DIRECTIONAL) {
-            proj.ortho(-20, 20, -20, 20, 0.1, 100);
-        } else {
-            proj.perspective(this.spotAngle * 2, 1, 0.1, this.range);
-        }
-        viewProj.mul2(proj, view);
-        return viewProj;
+    updateShadow(renderer: ForwardRenderer): void {
+        if (!this.castShadows) return;
+        
+        const shadowMap = this.getShadowMap();
+        this.shadowMatrix = this.computeShadowMatrix();
+        
+        renderer.renderShadowMap(this, shadowMap);
     }
 }

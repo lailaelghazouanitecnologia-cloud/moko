@@ -1,119 +1,119 @@
-import { Shader } from '../graphics/shader';
 import { Color } from '../math/color';
+import { Texture } from '../graphics/texture';
+import { Shader } from '../graphics/shader';
 import { GraphicsDevice } from '../graphics/graphics-device';
-import { CullMode } from '../graphics/cull-mode';
-import { BlendMode } from '../graphics/blend-mode';
+
+export enum CullMode {
+    none = 'none',
+    front = 'front',
+    back = 'back'
+}
+
+export enum BlendMode {
+    none = 'none',
+    normal = 'normal',
+    additive = 'additive',
+    multiply = 'multiply'
+}
 
 export class Material {
-    private _shader: Shader | null = null;
-    private _color: Color = Color.WHITE;
-    private _emissive: Color = Color.BLACK;
-    private _metallic: number = 0;
-    private _roughness: number = 1;
-    private _opacity: number = 1;
-    private _cullMode: CullMode = CullMode.BACK;
-    private _depthTest: boolean = true;
-    private _depthWrite: boolean = true;
-    private _blendMode: BlendMode = BlendMode.NONE;
+    name: string = 'Material';
+    shader: Shader;
+    diffuse: Color = new Color(1, 1, 1);
+    specular: Color = new Color(0.5, 0.5, 0.5);
+    shininess: number = 32;
+    emissive: Color = new Color(0, 0, 0);
+    opacity: number = 1;
+    textures: Map<string, Texture> = new Map();
+    cull: CullMode = CullMode.back;
+    blend: BlendMode = BlendMode.none;
 
-    get shader(): Shader | null {
-        return this._shader;
+    setTexture(name: string, texture: Texture): void {
+        this.textures.set(name, texture);
     }
 
-    get color(): Color {
-        return this._color;
-    }
-
-    get emissive(): Color {
-        return this._emissive;
-    }
-
-    get metallic(): number {
-        return this._metallic;
-    }
-
-    get roughness(): number {
-        return this._roughness;
-    }
-
-    get opacity(): number {
-        return this._opacity;
-    }
-
-    get cullMode(): CullMode {
-        return this._cullMode;
-    }
-
-    get depthTest(): boolean {
-        return this._depthTest;
-    }
-
-    get depthWrite(): boolean {
-        return this._depthWrite;
-    }
-
-    get blendMode(): BlendMode {
-        return this._blendMode;
+    getTexture(name: string): Texture | null {
+        return this.textures.get(name) || null;
     }
 
     setShader(shader: Shader): void {
-        this._shader = shader;
+        this.shader = shader;
     }
 
-    setColor(color: Color): void {
-        this._color = color;
+    getShader(): Shader {
+        return this.shader;
     }
 
-    setMetallic(metallic: number): void {
-        this._metallic = metallic;
+    setDiffuse(color: Color): void {
+        this.diffuse.copy(color);
     }
 
-    setRoughness(roughness: number): void {
-        this._roughness = roughness;
+    setSpecular(color: Color): void {
+        this.specular.copy(color);
     }
 
-    setOpacity(opacity: number): void {
-        this._opacity = opacity;
+    setOpacity(value: number): void {
+        this.opacity = value;
+        this.blend = value < 1 ? BlendMode.normal : BlendMode.none;
     }
 
-    setCullMode(mode: CullMode): void {
-        this._cullMode = mode;
-    }
-
-    setDepthTest(enable: boolean): void {
-        this._depthTest = enable;
-    }
-
-    setDepthWrite(enable: boolean): void {
-        this._depthWrite = enable;
-    }
-
-    setBlendMode(mode: BlendMode): void {
-        this._blendMode = mode;
-    }
-
-    setEmissive(emissive: Color): void {
-        this._emissive = emissive;
+    isTransparent(): boolean {
+        return this.opacity < 1;
     }
 
     bind(device: GraphicsDevice): void {
-        if (this._shader) {
-            this._shader.bind(device);
+        const gl = device.gl;
+        if (!gl) return;
+
+        if (this.shader) {
+            this.shader.enable();
         }
+
+        if (this.cull === CullMode.none) {
+            gl.disable(gl.CULL_FACE);
+        } else {
+            gl.enable(gl.CULL_FACE);
+            gl.cullFace(this.cull === CullMode.front ? gl.FRONT : gl.BACK);
+        }
+
+        if (this.blend === BlendMode.none) {
+            gl.disable(gl.BLEND);
+        } else {
+            gl.enable(gl.BLEND);
+            switch (this.blend) {
+                case BlendMode.normal:
+                    gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+                    break;
+                case BlendMode.additive:
+                    gl.blendFunc(gl.SRC_ALPHA, gl.ONE);
+                    break;
+                case BlendMode.multiply:
+                    gl.blendFunc(gl.DST_COLOR, gl.ZERO);
+                    break;
+            }
+        }
+
+        let unit = 0;
+        this.textures.forEach((texture, name) => {
+            texture.bind(unit);
+            unit++;
+        });
     }
 
     clone(): Material {
-        const material = new Material();
-        material._shader = this._shader;
-        material._color = this._color.clone();
-        material._emissive = this._emissive.clone();
-        material._metallic = this._metallic;
-        material._roughness = this._roughness;
-        material._opacity = this._opacity;
-        material._cullMode = this._cullMode;
-        material._depthTest = this._depthTest;
-        material._depthWrite = this._depthWrite;
-        material._blendMode = this._blendMode;
-        return material;
+        const m = new Material();
+        m.name = this.name;
+        m.shader = this.shader;
+        m.diffuse = this.diffuse.clone();
+        m.specular = this.specular.clone();
+        m.shininess = this.shininess;
+        m.emissive = this.emissive.clone();
+        m.opacity = this.opacity;
+        m.cull = this.cull;
+        m.blend = this.blend;
+        this.textures.forEach((tex, key) => {
+            m.textures.set(key, tex);
+        });
+        return m;
     }
 }

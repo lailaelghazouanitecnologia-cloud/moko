@@ -19,6 +19,8 @@ from ..llm.providers import LLMProvider, LLMMessage
 from .. import OUT_DIR
 
 from .blueprint import ModuleBlueprint, TypeBlueprint
+from .compaction import needs_compaction, prepare_translation_context
+from .emission import EmissionIndex
 
 
 # ── System Prompts ──────────────────────────────────────────
@@ -81,11 +83,13 @@ Be thorough: include ALL methods from references that add value. Skip trivial ge
 class BlueprintTranslator:
     """Translates YAML blueprints to source code, one type at a time."""
 
-    def __init__(self, llm: LLMProvider, out_dir: Path = None, verbose: bool = False):
+    def __init__(self, llm: LLMProvider, out_dir: Path = None,
+                 verbose: bool = False, emission_index: EmissionIndex = None):
         self.llm = llm
         self.out_dir = out_dir or OUT_DIR
         self.verbose = verbose
         self.total_tokens = 0
+        self.emission_index = emission_index
 
     def _log(self, msg: str):
         if self.verbose:
@@ -130,19 +134,36 @@ class BlueprintTranslator:
 
     def translate_type(self, type_bp: TypeBlueprint,
                        module_bp: ModuleBlueprint,
-                       project_dir: Path) -> tuple[str, int]:
+                       project_dir: Path) -> tuple[str, int, list[str]]:
         """Translate ONE type from blueprint to code. Self-contained call.
 
-        Returns (relative_file_path, tokens_used).
+        Returns (relative_file_path, tokens_used, references_used).
         """
         self._log(f"translating {type_bp.name} [{type_bp.kind}]...")
 
-        # 1. Load references from disk (fresh, not accumulated)
-        all_refs = list(set(type_bp.references + module_bp.references))
-        ref_context = self.load_references(all_refs)
+        # 1. Load references — use emission index if available, else fallback
+        refs_used = []
+        if self.emission_index:
+            ref_context, refs_used = self.emission_index.emit_for_type(
+                type_bp, module_bp, max_results=5, max_chars=4000
+            )
+            if refs_used:
+                self._log(f"  emission: {len(refs_used)} refs matched")
+        else:
+            all_refs = list(set(type_bp.references + module_bp.references))
+            ref_context = self.load_references(all_refs)
+            refs_used = all_refs
 
-        # 2. Serialize this type's blueprint to YAML
-        bp_yaml = module_bp.type_to_yaml(type_bp.name)
+        # 2. Serialize this type's blueprint to YAML (with compaction if needed)
+        if needs_compaction(module_bp):
+            compacted = prepare_translation_context(type_bp, module_bp, token_budget=2000)
+            bp_yaml = compacted.full_type_yaml
+            sibling_context = compacted.sibling_summary
+            if compacted.prioritized_types:
+                self._log(f"  compacted: prioritized {compacted.prioritized_types}")
+        else:
+            bp_yaml = module_bp.type_to_yaml(type_bp.name)
+            sibling_context = None
 
         # 3. Build user prompt
         user = f"## Blueprint to translate\n```yaml\n{bp_yaml}```\n\n"
@@ -154,10 +175,13 @@ class BlueprintTranslator:
             for c in module_bp.constraints:
                 user += f"  - {c}\n"
 
-        # List other types in the module for import awareness
-        other_types = [t.name for t in module_bp.types if t.name != type_bp.name]
-        if other_types:
-            user += f"Other types in this module: {', '.join(other_types)}\n"
+        # Sibling awareness — compacted or simple list
+        if sibling_context:
+            user += f"\n## Sibling types (for import awareness)\n{sibling_context}\n"
+        else:
+            other_types = [t.name for t in module_bp.types if t.name != type_bp.name]
+            if other_types:
+                user += f"Other types in this module: {', '.join(other_types)}\n"
 
         if ref_context:
             user += f"\n{ref_context}\n"
@@ -177,8 +201,8 @@ class BlueprintTranslator:
         # 7. Mark as translated
         type_bp.status = "translated"
 
-        self._log(f"  wrote {target} ({len(clean)} chars, {tokens} tokens)")
-        return (target, tokens)
+        self._log(f"  wrote {target} ({len(clean)} chars, {tokens} tokens, {len(refs_used)} refs)")
+        return (target, tokens, refs_used)
 
     def generate_index(self, module_bp: ModuleBlueprint,
                        project_dir: Path) -> str:

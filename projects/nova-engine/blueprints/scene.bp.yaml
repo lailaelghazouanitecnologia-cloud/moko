@@ -4,9 +4,10 @@ language: typescript
 target_dir: src/scene
 description: ''
 constraints:
-- WebGL rendering pipeline
+- WebGL 2.0 context required
 - Component-based architecture
-- Hierarchical scene graph
+- Hierarchical transforms with dirty flags
+- Two-root staging system for object lifecycle
 references:
 - playcanvas/scene/renderer/forward-renderer.yaml
 - thief-engine/gameobject/gameobject.yaml
@@ -15,152 +16,121 @@ types:
   kind: class
   status: translated
   target_file: src/scene/scene.ts
-  description: Container for scene graph and rendering state
+  description: Container for all scene objects and rendering state
   fields:
+  - name: name
+    type: string
+    default: Scene
   - name: root
     type: Node
-    default: None
-  - name: cameras
-    type: Camera[]
-    default: '[]'
-  - name: lights
-    type: Light[]
-    default: '[]'
-  - name: meshes
-    type: Mesh[]
-    default: '[]'
-  - name: renderQueue
-    type: RenderQueue
-    default: None
+  - name: newsRoot
+    type: Node
+  - name: camera
+    type: Camera
+  - name: renderContext
+    type: RenderContext
   - name: loaded
     type: boolean
     default: 'False'
   - name: trash
-    type: Node[]
-    default: '[]'
+    type: Set<Node>
   methods:
-  - name: addNode
+  - name: addObject
     sig: '(node: Node): void'
-    hint: Add node to scene hierarchy
-  - name: removeNode
+    hint: Add to newsRoot for staging
+  - name: flush
+    sig: '(): void'
+    hint: Merge newsRoot into root
+  - name: reset
+    sig: '(): void'
+    hint: Clear all nodes and state
+  - name: hasNewObjects
+    sig: '(): boolean'
+    hint: Check if newsRoot has items
+  - name: deleteObject
     sig: '(node: Node): void'
-    hint: Remove node and its children
-  - name: addCamera
-    sig: '(camera: Camera): void'
-    hint: Register camera for rendering
-  - name: removeCamera
-    sig: '(camera: Camera): void'
-    hint: Unregister camera
-  - name: addLight
-    sig: '(light: Light): void'
-    hint: Register light source
-  - name: removeLight
-    sig: '(light: Light): void'
-    hint: Unregister light
-  - name: findNode
+    hint: Queue for destruction
+  - name: cleanTrash
+    sig: '(): void'
+    hint: Destroy queued objects
+  - name: findNodeByName
     sig: '(name: string): Node | null'
-    hint: Breadth-first search by name
-  - name: findNodesByTag
-    sig: '(tag: string): Node[]'
-    hint: Collect nodes with tag
+    hint: Recursive search from root
+  - name: getActiveCameras
+    sig: '(): Camera[]'
+    hint: Find all enabled cameras
   - name: update
-    sig: '(deltaTime: number): void'
-    hint: Update all nodes
+    sig: '(dt: number): void'
+    hint: Update all components
   - name: render
     sig: '(renderer: ForwardRenderer): void'
     hint: Submit to renderer
-  - name: flush
-    sig: '(): void'
-    hint: Process pending operations
-  - name: cleanTrash
-    sig: '(): void'
-    hint: Destroy marked nodes
-  - name: reset
-    sig: '(): void'
-    hint: Clear all content
-  - name: hasNewObjects
-    sig: '(): boolean'
-    hint: Check for pending additions
   references:
   - thief-engine/gameobject/gameobject.yaml
 - name: Node
   kind: class
   status: translated
   target_file: src/scene/node.ts
-  description: Base scene graph node with transform hierarchy
+  description: Base scene object with transform and hierarchy
   fields:
   - name: name
     type: string
+    default: Node
   - name: parent
     type: Node
-    default: None
   - name: children
     type: Node[]
     default: '[]'
   - name: transform
     type: Transform
-    default: None
   - name: components
     type: Component[]
     default: '[]'
-  - name: tags
-    type: Set<string>
-    default: new Set()
+  - name: scene
+    type: Scene
   - name: active
-    type: boolean
-    default: 'True'
-  - name: dirty
     type: boolean
     default: 'True'
   methods:
   - name: addChild
     sig: '(child: Node): void'
-    hint: Attach child node
+    hint: Set parent and add to children
   - name: removeChild
     sig: '(child: Node): void'
-    hint: Detach child node
+    hint: Clear parent and remove
+  - name: getChild
+    sig: '(index: number): Node'
+    hint: Access by index
+  - name: getChildCount
+    sig: '(): number'
+    hint: Return children length
+  - name: findChildByName
+    sig: '(name: string): Node | null'
+    hint: Recursive search
+  - name: addComponent
+    sig: '<T extends Component>(type: new() => T): T'
+    hint: Create and attach
+  - name: getComponent
+    sig: '<T extends Component>(type: new() => T): T | null'
+    hint: Find first match
+  - name: getComponentsInChildren
+    sig: '<T extends Component>(type: new() => T): T[]'
+    hint: Recursive search
   - name: setParent
     sig: '(parent: Node | null): void'
     hint: Reparent node
-  - name: addComponent
-    sig: '<T extends Component>(type: new() => T): T'
-    hint: Create and attach component
-  - name: getComponent
-    sig: '<T extends Component>(type: new() => T): T | null'
-    hint: Find first component of type
-  - name: getComponentsInChildren
-    sig: '<T extends Component>(type: new() => T): T[]'
-    hint: Recursive component search
-  - name: addTag
-    sig: '(tag: string): void'
-    hint: Add tag for filtering
-  - name: removeTag
-    sig: '(tag: string): void'
-    hint: Remove tag
-  - name: hasTag
-    sig: '(tag: string): boolean'
-    hint: Check tag existence
-  - name: update
-    sig: '(deltaTime: number): void'
-    hint: Update components
   - name: getWorldPosition
     sig: '(): Vec3'
-    hint: Compute world space position
+    hint: Compute from matrices
   - name: getWorldRotation
     sig: '(): Quat'
-    hint: Compute world space rotation
+    hint: Compute from matrices
   - name: lookAt
     sig: '(target: Vec3, up?: Vec3): void'
-    hint: Orient towards target
-  - name: translate
-    sig: '(translation: Vec3, space?: Space): void'
-    hint: Move by offset
-  - name: rotate
-    sig: '(rotation: Quat, space?: Space): void'
-    hint: Rotate by quaternion
+    hint: Set rotation to face
   - name: destroy
     sig: '(): void'
-    hint: Mark for deletion
+    hint: Queue for deletion
   references:
   - thief-engine/gameobject/gameobject.yaml
 - name: Camera
@@ -172,7 +142,7 @@ types:
   fields:
   - name: fov
     type: number
-    default: '60'
+    default: '45'
   - name: aspect
     type: number
     default: '1'
@@ -185,55 +155,52 @@ types:
   - name: orthographic
     type: boolean
     default: 'False'
-  - name: orthoSize
+  - name: orthoHeight
     type: number
     default: '10'
+  - name: viewport
+    type: Vec4
+    default: '[0, 0, 1, 1]'
   - name: clearColor
     type: Color
-    default: Color.BLACK
-  - name: viewport
-    type: Rect
-    default: Rect.UNIT
-  - name: frustum
-    type: Frustum
-    default: None
+    default: '[0, 0, 0, 1]'
+  - name: clearDepth
+    type: number
+    default: '1'
+  - name: priority
+    type: number
+    default: '0'
   methods:
-  - name: getViewMatrix
-    sig: '(): Mat4'
-    hint: Compute view matrix
   - name: getProjectionMatrix
     sig: '(): Mat4'
-    hint: Compute projection matrix
-  - name: getViewProjectionMatrix
+    hint: Compute perspective or ortho
+  - name: getViewMatrix
     sig: '(): Mat4'
-    hint: Combined VP matrix
+    hint: Inverse of world matrix
   - name: screenToWorld
-    sig: '(screen: Vec2, depth: number): Vec3'
-    hint: Convert screen to world
+    sig: '(x: number, y: number, z: number): Vec3'
+    hint: Unproject with matrices
   - name: worldToScreen
-    sig: '(world: Vec3): Vec2'
-    hint: Convert world to screen
-  - name: getFrustumCorners
-    sig: '(): Vec3[]'
-    hint: Get 8 corner points
-  - name: isVisible
-    sig: '(bounds: BoundingBox): boolean'
-    hint: Frustum culling test
-  - name: setPerspective
-    sig: '(fov: number, aspect: number, near: number, far: number): void'
-    hint: Configure perspective
+    sig: '(point: Vec3): Vec3'
+    hint: Project with matrices
+  - name: getFrustum
+    sig: '(): Frustum'
+    hint: Extract from matrices
+  - name: setFov
+    sig: '(degrees: number): void'
+    hint: Convert to radians
+  - name: setAspect
+    sig: '(width: number, height: number): void'
+    hint: Compute ratio
   - name: setOrthographic
-    sig: '(size: number, near: number, far: number): void'
-    hint: Configure orthographic
-  - name: setViewport
-    sig: '(x: number, y: number, width: number, height: number): void'
-    hint: Set viewport rect
-  - name: getScreenRay
-    sig: '(screen: Vec2): Ray'
-    hint: Ray from screen point
-  - name: updateFrustum
+    sig: '(height: number): void'
+    hint: Enable ortho mode
+  - name: setPerspective
     sig: '(): void'
-    hint: Update frustum planes
+    hint: Switch from ortho
+  - name: getScreenRay
+    sig: '(x: number, y: number): Ray'
+    hint: Create from viewport
   references:
   - playcanvas/scene/renderer/forward-renderer.yaml
 - name: Light
@@ -241,69 +208,67 @@ types:
   status: translated
   target_file: src/scene/light.ts
   extends: Component
-  description: Light source with shadows
+  description: Light source with type and shadows
   fields:
   - name: type
     type: LightType
-    default: LightType.DIRECTIONAL
+    default: directional
   - name: color
     type: Color
-    default: Color.WHITE
+    default: '[1, 1, 1]'
   - name: intensity
     type: number
     default: '1'
   - name: range
     type: number
     default: '10'
-  - name: spotAngle
+  - name: innerCone
     type: number
     default: '30'
+  - name: outerCone
+    type: number
+    default: '45'
   - name: castShadows
     type: boolean
     default: 'False'
-  - name: shadowResolution
-    type: number
-    default: '1024'
   - name: shadowBias
     type: number
-    default: '0.005'
+    default: '0.05'
   - name: shadowMap
     type: Texture
-    default: None
+  - name: shadowMatrix
+    type: Mat4
   methods:
   - name: getDirection
     sig: '(): Vec3'
-    hint: Get light direction
+    hint: From world rotation
+  - name: getPosition
+    sig: '(): Vec3'
+    hint: From world matrix
+  - name: setDirection
+    sig: '(dir: Vec3): void'
+    hint: Set rotation to face
+  - name: computeShadowMatrix
+    sig: '(): Mat4'
+    hint: Create light space
+  - name: isDirectional
+    sig: '(): boolean'
+    hint: Check type
+  - name: isPoint
+    sig: '(): boolean'
+    hint: Check type
+  - name: isSpot
+    sig: '(): boolean'
+    hint: Check type
   - name: getAttenuation
     sig: '(distance: number): number'
     hint: Compute falloff
-  - name: getSpotFactor
-    sig: '(direction: Vec3): number'
-    hint: Spot light falloff
-  - name: setType
-    sig: '(type: LightType): void'
-    hint: Change light type
-  - name: setColor
-    sig: '(color: Color): void'
-    hint: Set RGB color
-  - name: setIntensity
-    sig: '(intensity: number): void'
-    hint: Set brightness
-  - name: setRange
-    sig: '(range: number): void'
-    hint: Set influence radius
-  - name: setSpotAngle
-    sig: '(angle: number): void'
-    hint: Set cone angle
-  - name: enableShadows
-    sig: '(enable: boolean): void'
-    hint: Toggle shadow casting
-  - name: updateShadowMap
-    sig: '(): void'
-    hint: Render shadow depth
-  - name: getShadowMatrix
-    sig: '(): Mat4'
-    hint: Compute shadow transform
+  - name: getShadowMap
+    sig: '(): Texture'
+    hint: Ensure allocated
+  - name: updateShadow
+    sig: '(renderer: ForwardRenderer): void'
+    hint: Render shadow pass
   references:
   - playcanvas/scene/renderer/forward-renderer.yaml
 - name: Mesh
@@ -315,65 +280,53 @@ types:
   fields:
   - name: geometry
     type: Geometry
-    default: None
   - name: material
     type: Material
-    default: None
   - name: castShadows
     type: boolean
     default: 'True'
   - name: receiveShadows
     type: boolean
     default: 'True'
-  - name: boundingBox
-    type: BoundingBox
-    default: None
-  - name: boundingSphere
-    type: BoundingSphere
-    default: None
-  - name: visible
-    type: boolean
-    default: 'True'
   - name: layer
     type: number
     default: '0'
+  - name: visible
+    type: boolean
+    default: 'True'
+  - name: worldBounds
+    type: BoundingBox
   methods:
-  - name: setGeometry
-    sig: '(geometry: Geometry): void'
-    hint: Set vertex data
   - name: setMaterial
     sig: '(material: Material): void'
-    hint: Set surface properties
-  - name: getBounds
+    hint: Update reference
+  - name: getMaterial
+    sig: '(): Material'
+    hint: Return current
+  - name: computeWorldBounds
     sig: '(): BoundingBox'
-    hint: Compute AABB
-  - name: updateBounds
-    sig: '(): void'
-    hint: Recalculate bounds
+    hint: From geometry and matrix
   - name: isVisible
     sig: '(): boolean'
-    hint: Check visibility flags
-  - name: setVisible
-    sig: '(visible: boolean): void'
-    hint: Toggle rendering
+    hint: Check self and parents
+  - name: render
+    sig: '(renderer: ForwardRenderer): void'
+    hint: Submit draw call
   - name: setLayer
     sig: '(layer: number): void'
-    hint: Set render layer
+    hint: Update render order
+  - name: getLayer
+    sig: '(): number'
+    hint: Return layer index
   - name: setCastShadows
     sig: '(cast: boolean): void'
     hint: Toggle shadow casting
   - name: setReceiveShadows
     sig: '(receive: boolean): void'
     hint: Toggle shadow receiving
-  - name: render
-    sig: '(renderer: ForwardRenderer): void'
-    hint: Submit for rendering
-  - name: getMaterial
-    sig: '(): Material'
-    hint: Get current material
-  - name: computeBoundingSphere
-    sig: '(): BoundingSphere'
-    hint: Fit sphere to mesh
+  - name: updateBounds
+    sig: '(): void'
+    hint: Mark for recompute
   references:
   - playcanvas/scene/renderer/forward-renderer.yaml
 - name: Material
@@ -382,72 +335,65 @@ types:
   target_file: src/scene/material.ts
   description: Surface appearance properties
   fields:
+  - name: name
+    type: string
+    default: Material
   - name: shader
     type: Shader
-    default: None
-  - name: color
+  - name: diffuse
     type: Color
-    default: Color.WHITE
+    default: '[1, 1, 1]'
+  - name: specular
+    type: Color
+    default: '[0.5, 0.5, 0.5]'
+  - name: shininess
+    type: number
+    default: '32'
   - name: emissive
     type: Color
-    default: Color.BLACK
-  - name: metallic
-    type: number
-    default: '0'
-  - name: roughness
-    type: number
-    default: '1'
+    default: '[0, 0, 0]'
   - name: opacity
     type: number
     default: '1'
-  - name: cullMode
+  - name: textures
+    type: Map<string, Texture>
+    default: '{}'
+  - name: cull
     type: CullMode
-    default: CullMode.BACK
-  - name: depthTest
-    type: boolean
-    default: 'True'
-  - name: depthWrite
-    type: boolean
-    default: 'True'
-  - name: blendMode
+    default: back
+  - name: blend
     type: BlendMode
-    default: BlendMode.NONE
+    default: none
   methods:
+  - name: setTexture
+    sig: '(name: string, texture: Texture): void'
+    hint: Add to map
+  - name: getTexture
+    sig: '(name: string): Texture | null'
+    hint: From map
   - name: setShader
     sig: '(shader: Shader): void'
-    hint: Set GPU program
-  - name: setColor
+    hint: Update program
+  - name: getShader
+    sig: '(): Shader'
+    hint: Return current
+  - name: setDiffuse
     sig: '(color: Color): void'
-    hint: Set albedo color
-  - name: setMetallic
-    sig: '(metallic: number): void'
-    hint: Set metalness
-  - name: setRoughness
-    sig: '(roughness: number): void'
-    hint: Set surface roughness
+    hint: Update property
+  - name: setSpecular
+    sig: '(color: Color): void'
+    hint: Update property
   - name: setOpacity
-    sig: '(opacity: number): void'
-    hint: Set transparency
-  - name: setCullMode
-    sig: '(mode: CullMode): void'
-    hint: Set face culling
-  - name: setDepthTest
-    sig: '(enable: boolean): void'
-    hint: Toggle depth testing
-  - name: setDepthWrite
-    sig: '(enable: boolean): void'
-    hint: Toggle depth writing
-  - name: setBlendMode
-    sig: '(mode: BlendMode): void'
-    hint: Set blending mode
-  - name: setEmissive
-    sig: '(emissive: Color): void'
-    hint: Set glow color
+    sig: '(value: number): void'
+    hint: Update and check blend
+  - name: isTransparent
+    sig: '(): boolean'
+    hint: Check opacity < 1
   - name: bind
     sig: '(device: GraphicsDevice): void'
-    hint: Upload to GPU
+    hint: Set GPU state
   - name: clone
     sig: '(): Material'
-    hint: Create copy
+    hint: Deep copy
   references:
   - playcanvas/scene/renderer/forward-renderer.yaml

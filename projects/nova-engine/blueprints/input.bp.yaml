@@ -6,8 +6,6 @@ description: ''
 constraints:
 - WebGL game engine input module
 - Support keyboard, mouse, touch, gamepad
-- Event-driven with polling fallback
-- TypeScript strict mode
 references:
 - thief-engine/core/engine.yaml
 types:
@@ -35,31 +33,19 @@ types:
   methods:
   - name: update
     sig: '(): void'
-    hint: Poll all devices each frame
+    hint: poll all devices
   - name: isAnyPressed
     sig: '(): boolean'
-    hint: Check if any input active
-  - name: clearAll
+    hint: check all devices
+  - name: resetAll
     sig: '(): void'
-    hint: Reset all input states
-  - name: enable
-    sig: '(): void'
-    hint: Enable input processing
+    hint: clear all states
   - name: disable
     sig: '(): void'
-    hint: Disable input processing
-  - name: getKeyboard
-    sig: '(): Keyboard'
-    hint: Access keyboard instance
-  - name: getMouse
-    sig: '(): Mouse'
-    hint: Access mouse instance
-  - name: getTouch
-    sig: '(): Touch'
-    hint: Access touch instance
-  - name: getGamepad
-    sig: '(): Gamepad'
-    hint: Access gamepad instance
+    hint: set enabled false
+  - name: enable
+    sig: '(): void'
+    hint: set enabled true
   references:
   - thief-engine/core/engine.yaml
 - name: Keyboard
@@ -75,46 +61,45 @@ types:
     type: Map<string, boolean>
     default: new Map()
   methods:
-  - name: isKeyDown
+  - name: isDown
     sig: '(key: string): boolean'
-    hint: Check key currently pressed
-  - name: isKeyPressed
+    hint: check current frame
+  - name: isPressed
     sig: '(key: string): boolean'
-    hint: Check key just pressed
-  - name: isKeyReleased
+    hint: down now, up before
+  - name: isReleased
     sig: '(key: string): boolean'
-    hint: Check key just released
-  - name: getKeyName
-    sig: '(code: string): string'
-    hint: Map code to readable name
+    hint: up now, down before
   - name: update
     sig: '(): void'
-    hint: Save current as previous
-  - name: handleKeyDown
-    sig: '(event: KeyboardEvent): void'
-    hint: Process key down event
-  - name: handleKeyUp
-    sig: '(event: KeyboardEvent): void'
-    hint: Process key up event
-  - name: clear
+    hint: save prev, poll new
+  - name: reset
     sig: '(): void'
-    hint: Reset all key states
-  - name: isAnyKeyPressed
+    hint: clear all keys
+  - name: onKeyDown
+    sig: '(e: KeyboardEvent): void'
+    hint: set key true
+  - name: onKeyUp
+    sig: '(e: KeyboardEvent): void'
+    hint: set key false
+  - name: anyPressed
     sig: '(): boolean'
-    hint: Check if any key active
-  - name: getPressedKeys
-    sig: '(): string[]'
-    hint: Return array of pressed keys
+    hint: check all keys
+  - name: combo
+    sig: '(keys: string[]): boolean'
+    hint: all down same time
   static:
-  - name: KEY_CODES
-    hint: Map of common key codes
+  - name: KEY_SPACE
+    hint: '" "'
+  - name: KEY_ENTER
+    hint: '"Enter"'
   references:
   - thief-engine/core/engine.yaml
 - name: Mouse
   kind: class
   status: translated
   target_file: src/input/Mouse.ts
-  description: Mouse input with position and button tracking
+  description: Mouse position and button tracker
   fields:
   - name: x
     type: number
@@ -122,10 +107,10 @@ types:
   - name: y
     type: number
     default: '0'
-  - name: deltaX
+  - name: dx
     type: number
     default: '0'
-  - name: deltaY
+  - name: dy
     type: number
     default: '0'
   - name: buttons
@@ -134,55 +119,43 @@ types:
   - name: prevButtons
     type: Map<number, boolean>
     default: new Map()
-  - name: wheel
-    type: number
-    default: '0'
+  - name: locked
+    type: boolean
+    default: 'False'
   methods:
-  - name: isButtonDown
-    sig: '(button: number): boolean'
-    hint: Check button currently pressed
-  - name: isButtonPressed
-    sig: '(button: number): boolean'
-    hint: Check button just pressed
-  - name: isButtonReleased
-    sig: '(button: number): boolean'
-    hint: Check button just released
-  - name: getPosition
-    sig: '(): {x: number, y: number}'
-    hint: Return current position
-  - name: getDelta
-    sig: '(): {x: number, y: number}'
-    hint: Return movement delta
-  - name: getWheel
-    sig: '(): number'
-    hint: Return wheel delta
-  - name: handleMouseMove
-    sig: '(event: MouseEvent): void'
-    hint: Process mouse move
-  - name: handleMouseDown
-    sig: '(event: MouseEvent): void'
-    hint: Process button down
-  - name: handleMouseUp
-    sig: '(event: MouseEvent): void'
-    hint: Process button up
-  - name: handleWheel
-    sig: '(event: WheelEvent): void'
-    hint: Process wheel event
+  - name: isDown
+    sig: '(btn: number): boolean'
+    hint: check current frame
+  - name: isPressed
+    sig: '(btn: number): boolean'
+    hint: down now, up before
+  - name: isReleased
+    sig: '(btn: number): boolean'
+    hint: up now, down before
   - name: update
     sig: '(): void'
-    hint: Save current as previous
-  - name: clear
+    hint: save prev, reset delta
+  - name: onMove
+    sig: '(e: MouseEvent): void'
+    hint: update x,y,dx,dy
+  - name: onDown
+    sig: '(e: MouseEvent): void'
+    hint: set button true
+  - name: onUp
+    sig: '(e: MouseEvent): void'
+    hint: set button false
+  - name: lock
+    sig: '(canvas: HTMLCanvasElement): void'
+    hint: request pointer lock
+  - name: unlock
     sig: '(): void'
-    hint: Reset all states
-  - name: isInside
-    sig: '(x: number, y: number, width: number, height: number): boolean'
-    hint: Check if mouse in rect
+    hint: exit pointer lock
   static:
-  - name: LEFT_BUTTON
+  - name: LEFT
     hint: '0'
-  - name: MIDDLE_BUTTON
+  - name: MIDDLE
     hint: '1'
-  - name: RIGHT_BUTTON
+  - name: RIGHT
     hint: '2'
   references:
   - thief-engine/core/engine.yaml
@@ -190,157 +163,86 @@ types:
   kind: class
   status: translated
   target_file: src/input/Touch.ts
-  description: Touch input handler for mobile devices
+  description: Multi-touch tracker for mobile
   fields:
   - name: touches
-    type: Map<number, TouchData>
+    type: Map<number, {x:number,y:number}>
     default: new Map()
   - name: prevTouches
-    type: Map<number, TouchData>
+    type: Map<number, {x:number,y:number}>
     default: new Map()
   methods:
-  - name: getTouch
-    sig: '(id: number): TouchData | undefined'
-    hint: Get touch by identifier
-  - name: getAllTouches
-    sig: '(): TouchData[]'
-    hint: Return all active touches
-  - name: getTouchCount
+  - name: count
     sig: '(): number'
-    hint: Count active touches
-  - name: handleTouchStart
-    sig: '(event: TouchEvent): void'
-    hint: Process touch start
-  - name: handleTouchMove
-    sig: '(event: TouchEvent): void'
-    hint: Process touch move
-  - name: handleTouchEnd
-    sig: '(event: TouchEvent): void'
-    hint: Process touch end
-  - name: handleTouchCancel
-    sig: '(event: TouchEvent): void'
-    hint: Process touch cancel
+    hint: active touches length
+  - name: getPosition
+    sig: '(id: number): {x:number,y:number}|null'
+    hint: return touch coords
+  - name: onStart
+    sig: '(e: TouchEvent): void'
+    hint: add changed touches
+  - name: onMove
+    sig: '(e: TouchEvent): void'
+    hint: update coords
+  - name: onEnd
+    sig: '(e: TouchEvent): void'
+    hint: remove touches
   - name: update
     sig: '(): void'
-    hint: Save current as previous
-  - name: clear
-    sig: '(): void'
-    hint: Reset all touches
-  - name: isAnyTouch
+    hint: copy touches to prev
+  - name: isSingleTap
     sig: '(): boolean'
-    hint: Check if any touch active
-  references:
-  - thief-engine/core/engine.yaml
-- name: TouchData
-  kind: interface
-  status: pending
-  target_file: src/input/TouchData.ts
-  description: Single touch point data
-  fields:
-  - name: id
-    type: number
-    default: required
-  - name: x
-    type: number
-    default: required
-  - name: y
-    type: number
-    default: required
-  - name: startX
-    type: number
-    default: required
-  - name: startY
-    type: number
-    default: required
-  - name: timestamp
-    type: number
-    default: required
+    hint: one touch, short time
+  - name: isPinching
+    sig: '(): boolean'
+    hint: two touches moving
   references:
   - thief-engine/core/engine.yaml
 - name: Gamepad
   kind: class
   status: translated
   target_file: src/input/Gamepad.ts
-  description: Gamepad controller support
+  description: HTML5 Gamepad API wrapper
   fields:
-  - name: gamepads
-    type: Map<number, GamepadData>
-    default: new Map()
-  - name: enabled
-    type: boolean
-    default: 'True'
+  - name: pads
+    type: Gamepad[]
+    default: '[]'
+  - name: prevButtons
+    type: boolean[][]
+    default: '[]'
+  - name: deadzone
+    type: number
+    default: '0.15'
   methods:
   - name: update
     sig: '(): void'
-    hint: Poll gamepad API
-  - name: getGamepad
-    sig: '(index: number): GamepadData | undefined'
-    hint: Get gamepad by index
-  - name: getAllGamepads
-    sig: '(): GamepadData[]'
-    hint: Return all connected
-  - name: isConnected
-    sig: '(index: number): boolean'
-    hint: Check if connected
-  - name: getButton
-    sig: '(index: number, button: number): number'
-    hint: Get button value 0-1
-  - name: isButtonPressed
-    sig: '(index: number, button: number): boolean'
-    hint: Check if pressed
+    hint: poll navigator.getGamepads
   - name: getAxis
-    sig: '(index: number, axis: number): number'
-    hint: Get axis value -1 to 1
-  - name: getStick
-    sig: '(index: number, stick: number): {x: number, y: number}'
-    hint: Get stick position
-  - name: vibrate
-    sig: '(index: number, duration: number, weak: number, strong: number): void'
-    hint: Trigger vibration
-  - name: enable
-    sig: '(): void'
-    hint: Enable gamepad polling
-  - name: disable
-    sig: '(): void'
-    hint: Disable gamepad polling
+    sig: '(padIndex: number, axis: number): number'
+    hint: apply deadzone
+  - name: isButtonDown
+    sig: '(padIndex: number, btn: number): boolean'
+    hint: check current
+  - name: isButtonPressed
+    sig: '(padIndex: number, btn: number): boolean'
+    hint: pressed this frame
+  - name: rumble
+    sig: '(padIndex: number, left:number, right:number, duration:number): void'
+    hint: vibrationActuator
+  - name: count
+    sig: '(): number'
+    hint: pads.length
+  - name: isConnected
+    sig: '(padIndex: number): boolean'
+    hint: check pads array
   static:
-  - name: BUTTON_A
+  - name: A
     hint: '0'
-  - name: BUTTON_B
+  - name: B
     hint: '1'
-  - name: BUTTON_X
+  - name: X
     hint: '2'
-  - name: BUTTON_Y
+  - name: Y
     hint: '3'
-  - name: AXIS_LEFT_X
-    hint: '0'
-  - name: AXIS_LEFT_Y
-    hint: '1'
-  references:
-  - thief-engine/core/engine.yaml
-- name: GamepadData
-  kind: interface
-  status: pending
-  target_file: src/input/GamepadData.ts
-  description: Gamepad state snapshot
-  fields:
-  - name: id
-    type: string
-    default: required
-  - name: index
-    type: number
-    default: required
-  - name: buttons
-    type: number[]
-    default: required
-  - name: axes
-    type: number[]
-    default: required
-  - name: connected
-    type: boolean
-    default: required
-  - name: timestamp
-    type: number
-    default: required
   references:
   - thief-engine/core/engine.yaml

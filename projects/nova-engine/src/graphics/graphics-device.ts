@@ -1,142 +1,145 @@
 import { EventHandler } from '../core/event-handler';
 import { Color } from '../math/color';
-import { RenderState } from './render-state';
-import { BlendState } from './blend-state';
-import { DepthState } from './depth-state';
-import { StencilState } from './stencil-state';
-import { RenderTarget } from './render-target';
-import { CullMode } from './constants';
 
 export class GraphicsDevice extends EventHandler {
     canvas: HTMLCanvasElement;
     gl: WebGL2RenderingContext;
+    isWebGPU: boolean = false;
     maxTextures: number;
     maxTextureSize: number;
     maxCubeMapSize: number;
     maxVolumeSize: number;
     maxAnisotropy: number;
-    supportsInstancing: boolean;
-    supportsUniformBuffers: boolean;
+    supportsInstancing: boolean = true;
+    supportsUniformBuffers: boolean = false;
     renderState: RenderState;
 
-    private _currentRenderTarget: RenderTarget | null = null;
-    private _debugStack: string[] = [];
+    private currentViewport: { x: number, y: number, width: number, height: number } = { x: 0, y: 0, width: 0, height: 0 };
+    private currentScissor: { x: number, y: number, width: number, height: number } | null = null;
+    private blendEnabled: boolean = false;
+    private srcBlend: number = 0;
+    private dstBlend: number = 0;
+    private depthTestEnabled: boolean = true;
+    private depthFunc: number = 0x0203; // LEQUAL
+    private depthWrite: boolean = true;
+    private cullMode: number = 0x0404; // BACK
+    private stencilTestEnabled: boolean = false;
+    private stencilFunc: number = 0x0207; // ALWAYS
+    private stencilRef: number = 0;
+    private debugMarkerStack: string[] = [];
 
     constructor(canvas: HTMLCanvasElement, gl: WebGL2RenderingContext) {
         super();
         this.canvas = canvas;
         this.gl = gl;
-        
+        this.renderState = new RenderState();
+
         const ext = gl.getExtension('EXT_texture_filter_anisotropic');
         this.maxAnisotropy = ext ? gl.getParameter(ext.MAX_TEXTURE_MAX_ANISOTROPY_EXT) : 1;
-        
         this.maxTextures = gl.getParameter(gl.MAX_TEXTURE_IMAGE_UNITS);
         this.maxTextureSize = gl.getParameter(gl.MAX_TEXTURE_SIZE);
         this.maxCubeMapSize = gl.getParameter(gl.MAX_CUBE_MAP_TEXTURE_SIZE);
         this.maxVolumeSize = gl.getParameter(gl.MAX_3D_TEXTURE_SIZE);
-        
-        this.supportsInstancing = !!gl.getExtension('ANGLE_instanced_arrays');
-        this.supportsUniformBuffers = !!gl.getExtension('WEBGL_draw_buffers');
-        
-        this.renderState = new RenderState();
-        
+
         gl.enable(gl.DEPTH_TEST);
+        gl.depthFunc(gl.LEQUAL);
         gl.enable(gl.CULL_FACE);
+        gl.cullFace(gl.BACK);
     }
 
-    setViewport(x: number, y: number, w: number, h: number): void {
-        this.gl.viewport(x, y, w, h);
+    setViewport(x: number, y: number, width: number, height: number): void {
+        this.currentViewport = { x, y, width, height };
+        this.gl.viewport(x, y, width, height);
     }
 
-    setScissor(x: number, y: number, w: number, h: number): void {
-        this.gl.scissor(x, y, w, h);
+    setScissor(x: number, y: number, width: number, height: number): void {
+        this.currentScissor = { x, y, width, height };
+        this.gl.enable(this.gl.SCISSOR_TEST);
+        this.gl.scissor(x, y, width, height);
     }
 
-    clear(flags: number, color?: Color, depth?: number, stencil?: number): void {
+    clear(color?: Color, depth?: number, stencil?: number): void {
         let mask = 0;
-        
-        if (flags & 1) { // COLOR_BUFFER_BIT
+        if (color) {
+            this.gl.clearColor(color.r, color.g, color.b, color.a);
             mask |= this.gl.COLOR_BUFFER_BIT;
-            if (color) {
-                this.gl.clearColor(color.r, color.g, color.b, color.a);
-            }
         }
-        
-        if (flags & 2) { // DEPTH_BUFFER_BIT
+        if (depth !== undefined) {
+            this.gl.clearDepth(depth);
             mask |= this.gl.DEPTH_BUFFER_BIT;
-            if (depth !== undefined) {
-                this.gl.clearDepth(depth);
-            }
         }
-        
-        if (flags & 4) { // STENCIL_BUFFER_BIT
+        if (stencil !== undefined) {
+            this.gl.clearStencil(stencil);
             mask |= this.gl.STENCIL_BUFFER_BIT;
-            if (stencil !== undefined) {
-                this.gl.clearStencil(stencil);
-            }
         }
-        
         this.gl.clear(mask);
     }
 
-    draw(primitive: number, vertexCount: number, first: number = 0): void {
-        this.gl.drawArrays(primitive, first, vertexCount);
+    draw(primitiveType: number, vertexCount: number, offset: number = 0): void {
+        this.gl.drawArrays(primitiveType, offset, vertexCount);
     }
 
-    drawIndexed(primitive: number, indexCount: number, indexType: number): void {
-        this.gl.drawElements(primitive, indexCount, indexType, 0);
+    drawIndexed(primitiveType: number, indexCount: number, offset: number = 0): void {
+        const type = this.gl.UNSIGNED_SHORT;
+        this.gl.drawElements(primitiveType, indexCount, type, offset * 2);
     }
 
-    drawInstanced(primitive: number, vertexCount: number, instanceCount: number): void {
+    drawInstanced(primitiveType: number, vertexCount: number, instanceCount: number): void {
         const ext = this.gl.getExtension('ANGLE_instanced_arrays');
         if (ext) {
-            ext.drawArraysInstancedANGLE(primitive, 0, vertexCount, instanceCount);
+            ext.drawArraysInstancedANGLE(primitiveType, 0, vertexCount, instanceCount);
         } else {
             throw new Error('Instanced rendering not supported');
         }
     }
 
-    setBlendState(state: BlendState): void {
-        if (state.enabled) {
+    setBlendState(enabled: boolean, srcFactor?: number, dstFactor?: number): void {
+        this.blendEnabled = enabled;
+        if (enabled) {
             this.gl.enable(this.gl.BLEND);
-            this.gl.blendFunc(state.srcFactor, state.dstFactor);
-            this.gl.blendEquation(state.equation);
-            if (state.separateAlpha) {
-                this.gl.blendFuncSeparate(state.srcFactor, state.dstFactor, state.srcAlphaFactor, state.dstAlphaFactor);
-                this.gl.blendEquationSeparate(state.equation, state.alphaEquation);
+            if (srcFactor !== undefined && dstFactor !== undefined) {
+                this.srcBlend = srcFactor;
+                this.dstBlend = dstFactor;
+                this.gl.blendFunc(srcFactor, dstFactor);
             }
         } else {
             this.gl.disable(this.gl.BLEND);
         }
     }
 
-    setDepthState(state: DepthState): void {
-        if (state.test) {
+    setDepthState(enabled: boolean, func?: number, write?: boolean): void {
+        this.depthTestEnabled = enabled;
+        if (enabled) {
             this.gl.enable(this.gl.DEPTH_TEST);
-            this.gl.depthFunc(state.func);
+            if (func !== undefined) {
+                this.depthFunc = func;
+                this.gl.depthFunc(func);
+            }
+            if (write !== undefined) {
+                this.depthWrite = write;
+                this.gl.depthMask(write);
+            }
         } else {
             this.gl.disable(this.gl.DEPTH_TEST);
         }
-        this.gl.depthMask(state.write);
     }
 
-    setCullMode(mode: CullMode): void {
-        if (mode === CullMode.NONE) {
-            this.gl.disable(this.gl.CULL_FACE);
-        } else {
-            this.gl.enable(this.gl.CULL_FACE);
-            this.gl.cullFace(mode);
-        }
+    setCullMode(mode: number): void {
+        this.cullMode = mode;
+        this.gl.cullFace(mode);
     }
 
-    setStencilState(state: StencilState): void {
-        if (state.enabled) {
+    setStencilState(enabled: boolean, func?: number, ref?: number): void {
+        this.stencilTestEnabled = enabled;
+        if (enabled) {
             this.gl.enable(this.gl.STENCIL_TEST);
-            this.gl.stencilFunc(state.func, state.ref, state.mask);
-            this.gl.stencilOp(state.fail, state.zfail, state.zpass);
-            if (state.separateBack) {
-                this.gl.stencilFuncSeparate(this.gl.BACK, state.backFunc, state.backRef, state.backMask);
-                this.gl.stencilOpSeparate(this.gl.BACK, state.backFail, state.backZfail, state.backZpass);
+            if (func !== undefined) {
+                this.stencilFunc = func;
+                this.gl.stencilFunc(func, this.stencilRef, 0xFF);
+            }
+            if (ref !== undefined) {
+                this.stencilRef = ref;
+                this.gl.stencilFunc(this.stencilFunc, ref, 0xFF);
             }
         } else {
             this.gl.disable(this.gl.STENCIL_TEST);
@@ -144,66 +147,57 @@ export class GraphicsDevice extends EventHandler {
     }
 
     copyRenderTarget(src: RenderTarget, dst: RenderTarget): void {
-        const gl = this.gl;
-        
-        const prevFbo = gl.getParameter(gl.FRAMEBUFFER_BINDING);
-        
-        gl.bindFramebuffer(gl.READ_FRAMEBUFFER, src._glFrameBuffer);
-        gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, dst._glFrameBuffer);
-        
-        const w = Math.min(src.width, dst.width);
-        const h = Math.min(src.height, dst.height);
-        
-        gl.blitFramebuffer(0, 0, w, h, 0, 0, w, h, gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT, gl.NEAREST);
-        
-        gl.bindFramebuffer(gl.FRAMEBUFFER, prevFbo);
+        this.gl.bindFramebuffer(this.gl.READ_FRAMEBUFFER, src.framebuffer);
+        this.gl.bindFramebuffer(this.gl.DRAW_FRAMEBUFFER, dst.framebuffer);
+        this.gl.blitFramebuffer(
+            0, 0, src.width, src.height,
+            0, 0, dst.width, dst.height,
+            this.gl.COLOR_BUFFER_BIT | this.gl.DEPTH_BUFFER_BIT,
+            this.gl.NEAREST
+        );
+        this.gl.bindFramebuffer(this.gl.FRAMEBUFFER, null);
     }
 
     pushMarker(name: string): void {
-        this._debugStack.push(name);
+        this.debugMarkerStack.push(name);
         const ext = this.gl.getExtension('WEBGL_debug_marker');
         if (ext) {
-            ext.insertEventMarkerEXT(name);
+            ext.insertMarker(name);
         }
     }
 
     popMarker(): void {
-        this._debugStack.pop();
-        const ext = this.gl.getExtension('WEBGL_debug_marker');
-        if (ext && ext.popGroupMarkerEXT) {
-            ext.popGroupMarkerEXT();
-        }
+        this.debugMarkerStack.pop();
     }
 
-    beginRenderPass(target: RenderTarget): void {
-        this._currentRenderTarget = target;
-        this.gl.bindFramebuffer(this.gl.FRAMEBUFFER, target._glFrameBuffer);
-        this.setViewport(0, 0, target.width, target.height);
-        if (target._glDepthBuffer) {
-            this.gl.framebufferRenderbuffer(this.gl.FRAMEBUFFER, this.gl.DEPTH_ATTACHMENT, this.gl.RENDERBUFFER, target._glDepthBuffer);
-        }
+    beginFrame(): void {
+        this.gl.clear(this.gl.COLOR_BUFFER_BIT | this.gl.DEPTH_BUFFER_BIT);
     }
 
-    endRenderPass(): void {
-        this.gl.bindFramebuffer(this.gl.FRAMEBUFFER, null);
-        this._currentRenderTarget = null;
-        this.setViewport(0, 0, this.canvas.width, this.canvas.height);
+    endFrame(): void {
+        this.gl.flush();
     }
 
-    static async create(canvas: HTMLCanvasElement, options: object = {}): Promise<GraphicsDevice> {
-        let gl: WebGL2RenderingContext | null = null;
-        
-        try {
-            gl = canvas.getContext('webgl2', options) as WebGL2RenderingContext;
-        } catch (e) {
-            // Fall back to webgl1 if needed
-            gl = canvas.getContext('webgl', options) as WebGL2RenderingContext;
-        }
-        
+    resize(width: number, height: number): void {
+        this.canvas.width = width;
+        this.canvas.height = height;
+        this.gl.viewport(0, 0, width, height);
+    }
+
+    static async create(canvas: HTMLCanvasElement, options?: object): Promise<GraphicsDevice> {
+        const gl = canvas.getContext('webgl2', options) as WebGL2RenderingContext;
         if (!gl) {
-            throw new Error('WebGL not supported');
+            throw new Error('WebGL2 not supported');
         }
-        
         return new GraphicsDevice(canvas, gl);
     }
+}
+
+class RenderState {
+    viewport: { x: number, y: number, width: number, height: number } = { x: 0, y: 0, width: 0, height: 0 };
+    scissor: { x: number, y: number, width: number, height: number } | null = null;
+    blendEnabled: boolean = false;
+    depthTestEnabled: boolean = true;
+    cullMode: number = 0x0404; // BACK
+    stencilTestEnabled: boolean = false;
 }

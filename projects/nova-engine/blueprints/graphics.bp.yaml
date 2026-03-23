@@ -4,9 +4,10 @@ language: typescript
 target_dir: src/graphics
 description: ''
 constraints:
-- WebGL2 with WebGPU fallback
-- Instanced rendering support
-- Texture batching by bind
+- WebGL2 as primary backend with WebGPU fallback
+- Instanced rendering for performance
+- Texture batching to reduce draw calls
+- VAO usage for vertex array management
 references:
 - playcanvas/platform/graphics/graphics-device.yaml
 - thief-engine/graphics/render-engine.yaml
@@ -16,12 +17,15 @@ types:
   status: translated
   target_file: src/graphics/graphics-device.ts
   extends: EventHandler
-  description: Low-level graphics abstraction over WebGL/WebGPU
+  description: WebGL/WebGPU abstraction layer for rendering operations
   fields:
   - name: canvas
     type: HTMLCanvasElement
   - name: gl
     type: WebGL2RenderingContext
+  - name: isWebGPU
+    type: boolean
+    default: 'False'
   - name: maxTextures
     type: number
   - name: maxTextureSize
@@ -34,122 +38,138 @@ types:
     type: number
   - name: supportsInstancing
     type: boolean
+    default: 'True'
   - name: supportsUniformBuffers
     type: boolean
+    default: 'False'
   - name: renderState
     type: RenderState
   methods:
   - name: setViewport
-    sig: '(x: number, y: number, w: number, h: number): void'
-    hint: set gl.viewport
+    sig: '(x: number, y: number, width: number, height: number): void'
+    hint: Set viewport rectangle
   - name: setScissor
-    sig: '(x: number, y: number, w: number, h: number): void'
-    hint: set scissor test rect
+    sig: '(x: number, y: number, width: number, height: number): void'
+    hint: Set scissor rectangle
   - name: clear
-    sig: '(flags: number, color?: Color, depth?: number, stencil?: number): void'
-    hint: clear buffers bitwise flags
+    sig: '(color?: Color, depth?: number, stencil?: number): void'
+    hint: Clear framebuffer attachments
   - name: draw
-    sig: '(primitive: number, vertexCount: number, first?: number): void'
-    hint: single draw call
+    sig: '(primitiveType: number, vertexCount: number, offset?: number): void'
+    hint: Issue draw call
   - name: drawIndexed
-    sig: '(primitive: number, indexCount: number, indexType: number): void'
-    hint: indexed draw
+    sig: '(primitiveType: number, indexCount: number, offset?: number): void'
+    hint: Issue indexed draw call
   - name: drawInstanced
-    sig: '(primitive: number, vertexCount: number, instanceCount: number): void'
-    hint: instanced draw
+    sig: '(primitiveType: number, vertexCount: number, instanceCount: number): void'
+    hint: Issue instanced draw call
   - name: setBlendState
-    sig: '(state: BlendState): void'
-    hint: update blend func/equation
+    sig: '(enabled: boolean, srcFactor?: number, dstFactor?: number): void'
+    hint: Configure blending state
   - name: setDepthState
-    sig: '(state: DepthState): void'
-    hint: update depth test/write
+    sig: '(enabled: boolean, func?: number, write?: boolean): void'
+    hint: Configure depth testing
   - name: setCullMode
-    sig: '(mode: CullMode): void'
-    hint: set face culling
+    sig: '(mode: number): void'
+    hint: Set face culling mode
   - name: setStencilState
-    sig: '(state: StencilState): void'
-    hint: update stencil func/ops
+    sig: '(enabled: boolean, func?: number, ref?: number): void'
+    hint: Configure stencil testing
   - name: copyRenderTarget
     sig: '(src: RenderTarget, dst: RenderTarget): void'
-    hint: blit color/depth
+    hint: Copy between render targets
   - name: pushMarker
     sig: '(name: string): void'
-    hint: insert debug marker
+    hint: Push debug marker
   - name: popMarker
     sig: '(): void'
-    hint: pop debug group
-  - name: beginRenderPass
-    sig: '(target: RenderTarget): void'
-    hint: bind framebuffer
-  - name: endRenderPass
+    hint: Pop debug marker
+  - name: beginFrame
     sig: '(): void'
-    hint: unbind framebuffer
+    hint: Start frame rendering
+  - name: endFrame
+    sig: '(): void'
+    hint: End frame rendering
+  - name: resize
+    sig: '(width: number, height: number): void'
+    hint: Resize canvas and buffers
   static:
   - name: create
     sig: '(canvas: HTMLCanvasElement, options?: object): Promise<GraphicsDevice>'
-    hint: factory tries webgpu then webgl2
+    hint: Factory method with fallback
   references:
   - playcanvas/platform/graphics/graphics-device.yaml
 - name: Shader
   kind: class
   status: translated
   target_file: src/graphics/shader.ts
-  description: Compiled GPU shader program
+  description: Shader program wrapper with compilation and binding
   fields:
   - name: program
     type: WebGLProgram
+  - name: vertexShader
+    type: WebGLShader
+  - name: fragmentShader
+    type: WebGLShader
   - name: uniforms
     type: Map<string, WebGLUniformLocation>
   - name: attributes
     type: Map<string, number>
+  - name: compiled
+    type: boolean
+    default: 'False'
   methods:
   - name: compile
-    sig: '(gl: WebGL2RenderingContext, vsSrc: string, fsSrc: string): boolean'
-    hint: compile and link program
+    sig: '(vertexSource: string, fragmentSource: string): boolean'
+    hint: Compile shader program
   - name: bind
-    sig: '(gl: WebGL2RenderingContext): void'
-    hint: gl.useProgram
+    sig: '(): void'
+    hint: Use shader program
+  - name: unbind
+    sig: '(): void'
+    hint: Unuse shader program
   - name: getUniform
-    sig: '(name: string): WebGLUniformLocation | null'
-    hint: cache lookup
-  - name: getAttrib
+    sig: '(name: string): WebGLUniformLocation'
+    hint: Get uniform location
+  - name: getAttribute
     sig: '(name: string): number'
-    hint: cache lookup
+    hint: Get attribute location
   - name: setUniform1f
-    sig: '(loc: WebGLUniformLocation, v: number): void'
-    hint: gl.uniform1f
-  - name: setUniform2fv
-    sig: '(loc: WebGLUniformLocation, v: Float32Array): void'
-    hint: gl.uniform2fv
-  - name: setUniform3fv
-    sig: '(loc: WebGLUniformLocation, v: Float32Array): void'
-    hint: gl.uniform3fv
-  - name: setUniform4fv
-    sig: '(loc: WebGLUniformLocation, v: Float32Array): void'
-    hint: gl.uniform4fv
+    sig: '(name: string, value: number): void'
+    hint: Set float uniform
+  - name: setUniform2f
+    sig: '(name: string, x: number, y: number): void'
+    hint: Set vec2 uniform
+  - name: setUniform3f
+    sig: '(name: string, x: number, y: number, z: number): void'
+    hint: Set vec3 uniform
+  - name: setUniform4f
+    sig: '(name: string, x: number, y: number, z: number, w: number): void'
+    hint: Set vec4 uniform
   - name: setUniformMatrix4fv
-    sig: '(loc: WebGLUniformLocation, m: Float32Array): void'
-    hint: gl.uniformMatrix4fv
-  - name: setTexture
-    sig: '(loc: WebGLUniformLocation, unit: number): void'
-    hint: gl.uniform1i(unit)
+    sig: '(name: string, matrix: Float32Array): void'
+    hint: Set mat4 uniform
+  - name: setUniform1i
+    sig: '(name: string, value: number): void'
+    hint: Set int uniform
   - name: destroy
-    sig: '(gl: WebGL2RenderingContext): void'
-    hint: delete program
+    sig: '(): void'
+    hint: Delete shader resources
   static:
-  - name: fromSources
-    sig: '(gl: WebGL2RenderingContext, vs: string, fs: string): Shader | null'
-    hint: helper factory
+  - name: fromSource
+    sig: '(vertexSource: string, fragmentSource: string): Shader'
+    hint: Create from source strings
+  - name: fromFiles
+    sig: '(vertexPath: string, fragmentPath: string): Promise<Shader>'
+    hint: Load and compile from files
   references:
   - thief-engine/graphics/render-engine.yaml
 - name: Texture
   kind: class
   status: translated
   target_file: src/graphics/texture.ts
-  description: 2D texture wrapper with mips and filtering
+  description: 2D texture wrapper with filtering and wrapping modes
   fields:
-  - name: gl
-    type: WebGL2RenderingContext
   - name: texture
     type: WebGLTexture
   - name: width
@@ -162,101 +182,117 @@ types:
     type: number
   - name: type
     type: number
-  - name: wrapU
-    type: number
-  - name: wrapV
-    type: number
   - name: minFilter
     type: number
   - name: magFilter
     type: number
+  - name: wrapS
+    type: number
+  - name: wrapT
+    type: number
   - name: anisotropy
     type: number
+    default: '1'
+  - name: mipmaps
+    type: boolean
+    default: 'False'
   methods:
   - name: bind
     sig: '(unit: number): void'
-    hint: gl.activeTexture + bind
-  - name: setFilters
-    sig: '(min: number, mag: number): void'
-    hint: update min/mag filter
-  - name: setWrap
-    sig: '(u: number, v: number): void'
-    hint: update wrap modes
-  - name: generateMips
+    hint: Bind to texture unit
+  - name: unbind
+    sig: '(unit: number): void'
+    hint: Unbind from unit
+  - name: setImage
+    sig: '(image: HTMLImageElement|HTMLCanvasElement|ImageData): void'
+    hint: Upload image data
+  - name: setData
+    sig: '(data: ArrayBufferView, level?: number): void'
+    hint: Upload pixel data
+  - name: generateMipmap
     sig: '(): void'
-    hint: gl.generateMipmap
-  - name: upload
-    sig: '(data: ArrayBufferView | HTMLImageElement): void'
-    hint: texImage2D/subImage
-  - name: uploadSub
-    sig: '(x: number, y: number, w: number, h: number, data: ArrayBufferView): void'
-    hint: texSubImage2D
+    hint: Generate mipmaps
+  - name: setFilters
+    sig: '(minFilter: number, magFilter: number): void'
+    hint: Set min/mag filters
+  - name: setWrap
+    sig: '(wrapS: number, wrapT: number): void'
+    hint: Set wrapping modes
+  - name: setAnisotropy
+    sig: '(level: number): void'
+    hint: Set anisotropic filtering
+  - name: update
+    sig: '(): void'
+    hint: Apply parameter changes
   - name: destroy
     sig: '(): void'
-    hint: delete texture
+    hint: Delete texture resources
   static:
   - name: fromImage
-    sig: '(gl: WebGL2RenderingContext, img: HTMLImageElement): Texture'
-    hint: create and upload
-  - name: fromData
-    sig: '(gl: WebGL2RenderingContext, w: number, h: number, data: Uint8Array): Texture'
-    hint: create and upload
+    sig: '(image: HTMLImageElement): Promise<Texture>'
+    hint: Create from HTML image
+  - name: fromFile
+    sig: '(path: string): Promise<Texture>'
+    hint: Load from file path
+  - name: create
+    sig: '(width: number, height: number, format?: number): Texture'
+    hint: Create empty texture
   references:
   - playcanvas/platform/graphics/graphics-device.yaml
 - name: RenderTarget
   kind: class
   status: translated
   target_file: src/graphics/render-target.ts
-  description: Framebuffer with color/depth attachments
+  description: Framebuffer wrapper with color and depth attachments
   fields:
-  - name: gl
-    type: WebGL2RenderingContext
   - name: framebuffer
     type: WebGLFramebuffer
-  - name: colorBuffer
-    type: Texture | null
-  - name: depthBuffer
-    type: WebGLRenderbuffer | null
+  - name: colorTexture
+    type: Texture
+  - name: depthTexture
+    type: Texture
   - name: width
     type: number
   - name: height
     type: number
+  - name: hasDepth
+    type: boolean
+  - name: hasStencil
+    type: boolean
   methods:
   - name: bind
     sig: '(): void'
-    hint: gl.bindFramebuffer
+    hint: Bind framebuffer
   - name: unbind
     sig: '(): void'
-    hint: bind null
+    hint: Unbind framebuffer
   - name: resize
-    sig: '(w: number, h: number): void'
-    hint: recreate attachments
-  - name: readPixels
-    sig: '(x: number, y: number, w: number, h: number, data: Uint8Array): void'
-    hint: gl.readPixels
+    sig: '(width: number, height: number): void'
+    hint: Resize attachments
+  - name: getColorTexture
+    sig: '(): Texture'
+    hint: Get color attachment
+  - name: getDepthTexture
+    sig: '(): Texture'
+    hint: Get depth attachment
   - name: destroy
     sig: '(): void'
-    hint: delete fb and attachments
+    hint: Delete framebuffer resources
   static:
-  - name: createColor
-    sig: '(gl: WebGL2RenderingContext, w: number, h: number): RenderTarget'
-    hint: color only
-  - name: createColorDepth
-    sig: '(gl: WebGL2RenderingContext, w: number, h: number): RenderTarget'
-    hint: color + depth
+  - name: create
+    sig: '(width: number, height: number, options?: object): RenderTarget'
+    hint: Create with options
   references:
   - playcanvas/platform/graphics/graphics-device.yaml
 - name: VertexBuffer
   kind: class
   status: translated
   target_file: src/graphics/vertex-buffer.ts
-  description: GPU vertex buffer with layout
+  description: Vertex data buffer with attribute layout
   fields:
-  - name: gl
-    type: WebGL2RenderingContext
   - name: buffer
     type: WebGLBuffer
-  - name: numVertices
+  - name: vertexCount
     type: number
   - name: stride
     type: number
@@ -264,66 +300,69 @@ types:
     type: number
   - name: attributes
     type: VertexAttribute[]
+  - name: vao
+    type: WebGLVertexArrayObject
   methods:
+  - name: setData
+    sig: '(data: ArrayBufferView): void'
+    hint: Upload vertex data
+  - name: update
+    sig: '(data: ArrayBufferView, offset?: number): void'
+    hint: Update subregion
   - name: bind
     sig: '(): void'
-    hint: gl.bindBuffer
-  - name: upload
-    sig: '(data: ArrayBuffer): void'
-    hint: gl.bufferData
-  - name: update
-    sig: '(data: ArrayBuffer, offset?: number): void'
-    hint: gl.bufferSubData
-  - name: setAttributes
+    hint: Bind buffer and VAO
+  - name: unbind
     sig: '(): void'
-    hint: gl.vertexAttribPointer
+    hint: Unbind buffer
+  - name: addAttribute
+    sig: '(name: string, size: number, type?: number, normalized?: boolean): void'
+    hint: Define vertex attribute
+  - name: getAttribute
+    sig: '(name: string): VertexAttribute'
+    hint: Get attribute info
   - name: destroy
     sig: '(): void'
-    hint: delete buffer
+    hint: Delete buffer resources
   static:
-  - name: createDynamic
-    sig: '(gl: WebGL2RenderingContext, size: number): VertexBuffer'
-    hint: DYNAMIC_DRAW
-  - name: createStatic
-    sig: '(gl: WebGL2RenderingContext, data: ArrayBuffer): VertexBuffer'
-    hint: STATIC_DRAW
+  - name: create
+    sig: '(vertexCount: number, stride: number, usage?: number): VertexBuffer'
+    hint: Create empty buffer
   references:
   - thief-engine/graphics/render-engine.yaml
 - name: IndexBuffer
   kind: class
   status: translated
   target_file: src/graphics/index-buffer.ts
-  description: GPU index buffer for indexed draw
+  description: Index data buffer for indexed rendering
   fields:
-  - name: gl
-    type: WebGL2RenderingContext
   - name: buffer
     type: WebGLBuffer
-  - name: numIndices
+  - name: indexCount
     type: number
   - name: format
     type: number
   - name: usage
     type: number
   methods:
+  - name: setData
+    sig: '(data: Uint16Array|Uint32Array): void'
+    hint: Upload index data
+  - name: update
+    sig: '(data: Uint16Array|Uint32Array, offset?: number): void'
+    hint: Update subregion
   - name: bind
     sig: '(): void'
-    hint: gl.bindBuffer
-  - name: upload
-    sig: '(data: Uint16Array | Uint32Array): void'
-    hint: gl.bufferData
-  - name: update
-    sig: '(data: Uint16Array | Uint32Array, offset?: number): void'
-    hint: gl.bufferSubData
+    hint: Bind index buffer
+  - name: unbind
+    sig: '(): void'
+    hint: Unbind index buffer
   - name: destroy
     sig: '(): void'
-    hint: delete buffer
+    hint: Delete buffer resources
   static:
-  - name: createDynamic
-    sig: '(gl: WebGL2RenderingContext, count: number, format: number): IndexBuffer'
-    hint: DYNAMIC_DRAW
-  - name: createStatic
-    sig: '(gl: WebGL2RenderingContext, data: Uint16Array | Uint32Array): IndexBuffer'
-    hint: STATIC_DRAW
+  - name: create
+    sig: '(indexCount: number, format?: number, usage?: number): IndexBuffer'
+    hint: Create empty buffer
   references:
   - thief-engine/graphics/render-engine.yaml

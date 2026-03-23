@@ -28,38 +28,23 @@ export class Vec3 {
     }
 
     add(v: Vec3): Vec3 {
-        this.x += v.x;
-        this.y += v.y;
-        this.z += v.z;
-        return this;
+        return new Vec3(this.x + v.x, this.y + v.y, this.z + v.z);
     }
 
     sub(v: Vec3): Vec3 {
-        this.x -= v.x;
-        this.y -= v.y;
-        this.z -= v.z;
-        return this;
+        return new Vec3(this.x - v.x, this.y - v.y, this.z - v.z);
     }
 
     mul(v: Vec3): Vec3 {
-        this.x *= v.x;
-        this.y *= v.y;
-        this.z *= v.z;
-        return this;
+        return new Vec3(this.x * v.x, this.y * v.y, this.z * v.z);
     }
 
     mulScalar(s: number): Vec3 {
-        this.x *= s;
-        this.y *= s;
-        this.z *= s;
-        return this;
+        return new Vec3(this.x * s, this.y * s, this.z * s);
     }
 
     div(v: Vec3): Vec3 {
-        this.x /= v.x;
-        this.y /= v.y;
-        this.z /= v.z;
-        return this;
+        return new Vec3(this.x / v.x, this.y / v.y, this.z / v.z);
     }
 
     dot(v: Vec3): number {
@@ -67,13 +52,11 @@ export class Vec3 {
     }
 
     cross(v: Vec3): Vec3 {
-        const x = this.y * v.z - this.z * v.y;
-        const y = this.z * v.x - this.x * v.z;
-        const z = this.x * v.y - this.y * v.x;
-        this.x = x;
-        this.y = y;
-        this.z = z;
-        return this;
+        return new Vec3(
+            this.y * v.z - this.z * v.y,
+            this.z * v.x - this.x * v.z,
+            this.x * v.y - this.y * v.x
+        );
     }
 
     length(): number {
@@ -86,17 +69,16 @@ export class Vec3 {
 
     normalize(): Vec3 {
         const len = this.length();
-        if (len > 0) {
-            this.mulScalar(1 / len);
-        }
-        return this;
+        if (len === 0) return new Vec3();
+        return new Vec3(this.x / len, this.y / len, this.z / len);
     }
 
     lerp(v: Vec3, t: number): Vec3 {
-        this.x += (v.x - this.x) * t;
-        this.y += (v.y - this.y) * t;
-        this.z += (v.z - this.z) * t;
-        return this;
+        return new Vec3(
+            this.x + (v.x - this.x) * t,
+            this.y + (v.y - this.y) * t,
+            this.z + (v.z - this.z) * t
+        );
     }
 
     distance(v: Vec3): number {
@@ -107,72 +89,41 @@ export class Vec3 {
     }
 
     min(v: Vec3): Vec3 {
-        this.x = Math.min(this.x, v.x);
-        this.y = Math.min(this.y, v.y);
-        this.z = Math.min(this.z, v.z);
-        return this;
+        return new Vec3(
+            Math.min(this.x, v.x),
+            Math.min(this.y, v.y),
+            Math.min(this.z, v.z)
+        );
     }
 
     max(v: Vec3): Vec3 {
-        this.x = Math.max(this.x, v.x);
-        this.y = Math.max(this.y, v.y);
-        this.z = Math.max(this.z, v.z);
-        return this;
+        return new Vec3(
+            Math.max(this.x, v.x),
+            Math.max(this.y, v.y),
+            Math.max(this.z, v.z)
+        );
     }
 
     floor(): Vec3 {
-        this.x = Math.floor(this.x);
-        this.y = Math.floor(this.y);
-        this.z = Math.floor(this.z);
-        return this;
+        return new Vec3(Math.floor(this.x), Math.floor(this.y), Math.floor(this.z));
     }
 
     ceil(): Vec3 {
-        this.x = Math.ceil(this.x);
-        this.y = Math.ceil(this.y);
-        this.z = Math.ceil(this.z);
-        return this;
+        return new Vec3(Math.ceil(this.x), Math.ceil(this.y), Math.ceil(this.z));
     }
 
     round(): Vec3 {
-        this.x = Math.round(this.x);
-        this.y = Math.round(this.y);
-        this.z = Math.round(this.z);
-        return this;
+        return new Vec3(Math.round(this.x), Math.round(this.y), Math.round(this.z));
     }
 
-    equals(v: Vec3, eps: number = 1e-6): boolean {
-        return Math.abs(this.x - v.x) < eps &&
-               Math.abs(this.y - v.y) < eps &&
-               Math.abs(this.z - v.z) < eps;
+    equals(v: Vec3, epsilon: number = 1e-6): boolean {
+        return Math.abs(this.x - v.x) < epsilon &&
+               Math.abs(this.y - v.y) < epsilon &&
+               Math.abs(this.z - v.z) < epsilon;
     }
 
     toString(): string {
         return `Vec3(${this.x}, ${this.y}, ${this.z})`;
-    }
-
-    static add(a: Vec3, b: Vec3, out?: Vec3): Vec3 {
-        const result = out || new Vec3();
-        result.x = a.x + b.x;
-        result.y = a.y + b.y;
-        result.z = a.z + b.z;
-        return result;
-    }
-
-    static sub(a: Vec3, b: Vec3, out?: Vec3): Vec3 {
-        const result = out || new Vec3();
-        result.x = a.x - b.x;
-        result.y = a.y - b.y;
-        result.z = a.z - b.z;
-        return result;
-    }
-
-    static cross(a: Vec3, b: Vec3, out?: Vec3): Vec3 {
-        const result = out || new Vec3();
-        result.x = a.y * b.z - a.z * b.y;
-        result.y = a.z * b.x - a.x * b.z;
-        result.z = a.x * b.y - a.y * b.x;
-        return result;
     }
 
     static ZERO = new Vec3(0, 0, 0);

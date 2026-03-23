@@ -1,28 +1,22 @@
 import { Transform } from './Transform';
 import { Component } from './Component';
+import { Scene } from './Scene';
 import { Vec3 } from '../math/Vec3';
 import { Quat } from '../math/Quat';
-import { Space } from './Space';
+import { Mat4 } from '../math/Mat4';
 
 export class Node {
-    name: string;
-    parent: Node | null;
-    children: Node[];
+    name: string = 'Node';
+    parent: Node | null = null;
+    children: Node[] = [];
     transform: Transform;
-    components: Component[];
-    tags: Set<string>;
-    active: boolean;
-    dirty: boolean;
+    components: Component[] = [];
+    scene: Scene | null = null;
+    active: boolean = true;
 
-    constructor(name: string = '') {
-        this.name = name;
-        this.parent = null;
-        this.children = [];
+    constructor() {
         this.transform = new Transform();
-        this.components = [];
-        this.tags = new Set();
-        this.active = true;
-        this.dirty = true;
+        this.transform.node = this;
     }
 
     addChild(child: Node): void {
@@ -31,7 +25,7 @@ export class Node {
         }
         child.parent = this;
         this.children.push(child);
-        this.dirty = true;
+        child.scene = this.scene;
     }
 
     removeChild(child: Node): void {
@@ -39,17 +33,29 @@ export class Node {
         if (index !== -1) {
             this.children.splice(index, 1);
             child.parent = null;
-            this.dirty = true;
+            child.scene = null;
         }
     }
 
-    setParent(parent: Node | null): void {
-        if (this.parent) {
-            this.parent.removeChild(this);
+    getChild(index: number): Node {
+        return this.children[index];
+    }
+
+    getChildCount(): number {
+        return this.children.length;
+    }
+
+    findChildByName(name: string): Node | null {
+        for (const child of this.children) {
+            if (child.name === name) {
+                return child;
+            }
+            const found = child.findChildByName(name);
+            if (found) {
+                return found;
+            }
         }
-        if (parent) {
-            parent.addChild(this);
-        }
+        return null;
     }
 
     addComponent<T extends Component>(type: new () => T): T {
@@ -70,117 +76,103 @@ export class Node {
 
     getComponentsInChildren<T extends Component>(type: new () => T): T[] {
         const results: T[] = [];
-        this._getComponentsInChildrenRecursive(type, results);
+        this.getComponentsInChildrenRecursive(type, results);
         return results;
     }
 
-    private _getComponentsInChildrenRecursive<T extends Component>(type: new () => T, results: T[]): void {
+    private getComponentsInChildrenRecursive<T extends Component>(type: new () => T, results: T[]): void {
         for (const component of this.components) {
             if (component instanceof type) {
                 results.push(component as T);
             }
         }
         for (const child of this.children) {
-            child._getComponentsInChildrenRecursive(type, results);
+            child.getComponentsInChildrenRecursive(type, results);
         }
     }
 
-    addTag(tag: string): void {
-        this.tags.add(tag);
-    }
-
-    removeTag(tag: string): void {
-        this.tags.delete(tag);
-    }
-
-    hasTag(tag: string): boolean {
-        return this.tags.has(tag);
-    }
-
-    update(deltaTime: number): void {
-        if (!this.active) return;
-        
-        for (const component of this.components) {
-            if (component.enabled) {
-                component.update(deltaTime);
-            }
+    setParent(parent: Node | null): void {
+        if (this.parent) {
+            this.parent.removeChild(this);
         }
-        
-        for (const child of this.children) {
-            child.update(deltaTime);
+        if (parent) {
+            parent.addChild(this);
         }
     }
 
     getWorldPosition(): Vec3 {
         const worldMatrix = this.getWorldMatrix();
-        return new Vec3(worldMatrix[12], worldMatrix[13], worldMatrix[14]);
+        return new Vec3(worldMatrix.data[12], worldMatrix.data[13], worldMatrix.data[14]);
     }
 
     getWorldRotation(): Quat {
         const worldMatrix = this.getWorldMatrix();
-        const rotationMatrix = worldMatrix.slice(0, 16);
-        const quat = new Quat();
-        quat.setFromRotationMatrix(rotationMatrix);
-        return quat;
+        const scale = this.getWorldScale();
+        const rotMatrix = new Mat4();
+        
+        rotMatrix.data[0] = worldMatrix.data[0] / scale.x;
+        rotMatrix.data[1] = worldMatrix.data[1] / scale.x;
+        rotMatrix.data[2] = worldMatrix.data[2] / scale.x;
+        rotMatrix.data[4] = worldMatrix.data[4] / scale.y;
+        rotMatrix.data[5] = worldMatrix.data[5] / scale.y;
+        rotMatrix.data[6] = worldMatrix.data[6] / scale.y;
+        rotMatrix.data[8] = worldMatrix.data[8] / scale.z;
+        rotMatrix.data[9] = worldMatrix.data[9] / scale.z;
+        rotMatrix.data[10] = worldMatrix.data[10] / scale.z;
+        
+        return Quat.fromMat4(rotMatrix);
     }
 
-    private getWorldMatrix(): number[] {
+    private getWorldMatrix(): Mat4 {
         if (this.parent) {
             const parentMatrix = this.parent.getWorldMatrix();
             const localMatrix = this.transform.getMatrix();
-            const result = new Array(16);
-            for (let i = 0; i < 16; i++) {
-                result[i] = 0;
-                for (let j = 0; j < 4; j++) {
-                    result[i] += parentMatrix[Math.floor(i / 4) * 4 + j] * localMatrix[j * 4 + (i % 4)];
-                }
-            }
-            return result;
+            return Mat4.multiply(parentMatrix, localMatrix);
         } else {
             return this.transform.getMatrix();
         }
     }
 
-    lookAt(target: Vec3, up: Vec3 = new Vec3(0, 1, 0)): void {
+    private getWorldScale(): Vec3 {
+        const worldMatrix = this.getWorldMatrix();
+        return new Vec3(
+            Math.sqrt(worldMatrix.data[0] * worldMatrix.data[0] + worldMatrix.data[1] * worldMatrix.data[1] + worldMatrix.data[2] * worldMatrix.data[2]),
+            Math.sqrt(worldMatrix.data[4] * worldMatrix.data[4] + worldMatrix.data[5] * worldMatrix.data[5] + worldMatrix.data[6] * worldMatrix.data[6]),
+            Math.sqrt(worldMatrix.data[8] * worldMatrix.data[8] + worldMatrix.data[9] * worldMatrix.data[9] + worldMatrix.data[10] * worldMatrix.data[10])
+        );
+    }
+
+    lookAt(target: Vec3, up: Vec3 = Vec3.UP): void {
         const position = this.transform.position;
-        const forward = new Vec3().sub2(target, position).normalize();
-        const right = new Vec3().cross(up, forward).normalize();
-        const upAdjusted = new Vec3().cross(forward, right).normalize();
+        const forward = Vec3.sub(target, position).normalize();
+        const right = Vec3.cross(forward, up).normalize();
+        const newUp = Vec3.cross(right, forward).normalize();
         
-        const rotation = new Quat().setFromAxes(right, upAdjusted, forward);
-        this.transform.rotation.copy(rotation);
-        this.dirty = true;
-    }
-
-    translate(translation: Vec3, space: Space = Space.Local): void {
-        if (space === Space.Local) {
-            const rotatedTranslation = new Vec3();
-            this.transform.rotation.transformVector(translation, rotatedTranslation);
-            this.transform.position.add(rotatedTranslation);
-        } else {
-            this.transform.position.add(translation);
-        }
-        this.dirty = true;
-    }
-
-    rotate(rotation: Quat, space: Space = Space.Local): void {
-        if (space === Space.Local) {
-            this.transform.rotation.mul2(rotation, this.transform.rotation);
-        } else {
-            this.transform.rotation.mul2(this.transform.rotation, rotation);
-        }
-        this.dirty = true;
+        const rotationMatrix = new Mat4();
+        rotationMatrix.data[0] = right.x;
+        rotationMatrix.data[1] = right.y;
+        rotationMatrix.data[2] = right.z;
+        rotationMatrix.data[4] = newUp.x;
+        rotationMatrix.data[5] = newUp.y;
+        rotationMatrix.data[6] = newUp.z;
+        rotationMatrix.data[8] = -forward.x;
+        rotationMatrix.data[9] = -forward.y;
+        rotationMatrix.data[10] = -forward.z;
+        
+        this.transform.rotation = Quat.fromMat4(rotationMatrix);
     }
 
     destroy(): void {
-        for (const child of [...this.children]) {
-            child.destroy();
-        }
-        for (const component of this.components) {
-            component.destroy();
+        while (this.children.length > 0) {
+            this.children[0].destroy();
         }
         if (this.parent) {
             this.parent.removeChild(this);
         }
+        if (this.scene) {
+            this.scene.deleteObject(this);
+        }
+        this.components.forEach(component => component.destroy());
+        this.components = [];
     }
 }

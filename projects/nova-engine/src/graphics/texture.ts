@@ -1,32 +1,42 @@
-import { WebGL2RenderingContext } from './graphics-device';
+import { GraphicsDevice } from './GraphicsDevice';
 
 export class Texture {
-    private gl: WebGL2RenderingContext;
     private texture: WebGLTexture;
     private width: number;
     private height: number;
     private format: number;
     private internalFormat: number;
     private type: number;
-    private wrapU: number;
-    private wrapV: number;
     private minFilter: number;
     private magFilter: number;
+    private wrapS: number;
+    private wrapT: number;
     private anisotropy: number;
+    private mipmaps: boolean;
+    private device: GraphicsDevice;
+    private gl: WebGL2RenderingContext;
+    private needsUpdate: boolean;
 
-    constructor(gl: WebGL2RenderingContext) {
-        this.gl = gl;
-        this.texture = gl.createTexture()!;
+    constructor(device: GraphicsDevice) {
+        this.device = device;
+        this.gl = device.getGl();
+        const texture = this.gl.createTexture();
+        if (!texture) {
+            throw new Error('Failed to create WebGL texture');
+        }
+        this.texture = texture;
         this.width = 0;
         this.height = 0;
-        this.format = gl.RGBA;
-        this.internalFormat = gl.RGBA;
-        this.type = gl.UNSIGNED_BYTE;
-        this.wrapU = gl.CLAMP_TO_EDGE;
-        this.wrapV = gl.CLAMP_TO_EDGE;
-        this.minFilter = gl.LINEAR;
-        this.magFilter = gl.LINEAR;
+        this.format = this.gl.RGBA;
+        this.internalFormat = this.gl.RGBA;
+        this.type = this.gl.UNSIGNED_BYTE;
+        this.minFilter = this.gl.NEAREST;
+        this.magFilter = this.gl.NEAREST;
+        this.wrapS = this.gl.CLAMP_TO_EDGE;
+        this.wrapT = this.gl.CLAMP_TO_EDGE;
         this.anisotropy = 1;
+        this.mipmaps = false;
+        this.needsUpdate = false;
     }
 
     bind(unit: number): void {
@@ -34,73 +44,74 @@ export class Texture {
         this.gl.bindTexture(this.gl.TEXTURE_2D, this.texture);
     }
 
-    setFilters(min: number, mag: number): void {
-        this.minFilter = min;
-        this.magFilter = mag;
-        this.gl.bindTexture(this.gl.TEXTURE_2D, this.texture);
-        this.gl.texParameteri(this.gl.TEXTURE_2D, this.gl.TEXTURE_MIN_FILTER, min);
-        this.gl.texParameteri(this.gl.TEXTURE_2D, this.gl.TEXTURE_MAG_FILTER, mag);
+    unbind(unit: number): void {
+        this.gl.activeTexture(this.gl.TEXTURE0 + unit);
+        this.gl.bindTexture(this.gl.TEXTURE_2D, null);
     }
 
-    setWrap(u: number, v: number): void {
-        this.wrapU = u;
-        this.wrapV = v;
+    setImage(image: HTMLImageElement | HTMLCanvasElement | ImageData): void {
+        this.width = image.width;
+        this.height = image.height;
         this.gl.bindTexture(this.gl.TEXTURE_2D, this.texture);
-        this.gl.texParameteri(this.gl.TEXTURE_2D, this.gl.TEXTURE_WRAP_S, u);
-        this.gl.texParameteri(this.gl.TEXTURE_2D, this.gl.TEXTURE_WRAP_T, v);
+        if (image instanceof ImageData) {
+            this.gl.texImage2D(this.gl.TEXTURE_2D, 0, this.internalFormat, this.width, this.height, 0, this.format, this.type, image.data);
+        } else {
+            this.gl.texImage2D(this.gl.TEXTURE_2D, 0, this.internalFormat, this.format, this.type, image);
+        }
+        if (this.mipmaps) {
+            this.gl.generateMipmap(this.gl.TEXTURE_2D);
+        }
+        this.gl.bindTexture(this.gl.TEXTURE_2D, null);
+        this.needsUpdate = true;
     }
 
-    generateMips(): void {
+    setData(data: ArrayBufferView, level: number = 0): void {
+        this.gl.bindTexture(this.gl.TEXTURE_2D, this.texture);
+        this.gl.texImage2D(this.gl.TEXTURE_2D, level, this.internalFormat, this.width, this.height, 0, this.format, this.type, data);
+        this.gl.bindTexture(this.gl.TEXTURE_2D, null);
+        this.needsUpdate = true;
+    }
+
+    generateMipmap(): void {
         this.gl.bindTexture(this.gl.TEXTURE_2D, this.texture);
         this.gl.generateMipmap(this.gl.TEXTURE_2D);
+        this.gl.bindTexture(this.gl.TEXTURE_2D, null);
+        this.mipmaps = true;
     }
 
-    upload(data: ArrayBufferView | HTMLImageElement): void {
-        this.gl.bindTexture(this.gl.TEXTURE_2D, this.texture);
+    setFilters(minFilter: number, magFilter: number): void {
+        this.minFilter = minFilter;
+        this.magFilter = magFilter;
+        this.needsUpdate = true;
+    }
+
+    setWrap(wrapS: number, wrapT: number): void {
+        this.wrapS = wrapS;
+        this.wrapT = wrapT;
+        this.needsUpdate = true;
+    }
+
+    setAnisotropy(level: number): void {
+        this.anisotropy = level;
+        this.needsUpdate = true;
+    }
+
+    update(): void {
+        if (!this.needsUpdate) return;
         
-        if (data instanceof HTMLImageElement) {
-            this.width = data.width;
-            this.height = data.height;
-            this.gl.texImage2D(
-                this.gl.TEXTURE_2D,
-                0,
-                this.internalFormat,
-                this.format,
-                this.type,
-                data
-            );
-        } else {
-            const buffer = data as ArrayBufferView;
-            const size = Math.sqrt(buffer.byteLength / 4);
-            this.width = size;
-            this.height = size;
-            this.gl.texImage2D(
-                this.gl.TEXTURE_2D,
-                0,
-                this.internalFormat,
-                this.width,
-                this.height,
-                0,
-                this.format,
-                this.type,
-                buffer
-            );
-        }
-    }
-
-    uploadSub(x: number, y: number, w: number, h: number, data: ArrayBufferView): void {
         this.gl.bindTexture(this.gl.TEXTURE_2D, this.texture);
-        this.gl.texSubImage2D(
-            this.gl.TEXTURE_2D,
-            0,
-            x,
-            y,
-            w,
-            h,
-            this.format,
-            this.type,
-            data
-        );
+        this.gl.texParameteri(this.gl.TEXTURE_2D, this.gl.TEXTURE_MIN_FILTER, this.minFilter);
+        this.gl.texParameteri(this.gl.TEXTURE_2D, this.gl.TEXTURE_MAG_FILTER, this.magFilter);
+        this.gl.texParameteri(this.gl.TEXTURE_2D, this.gl.TEXTURE_WRAP_S, this.wrapS);
+        this.gl.texParameteri(this.gl.TEXTURE_2D, this.gl.TEXTURE_WRAP_T, this.wrapT);
+        
+        const ext = this.gl.getExtension('EXT_texture_filter_anisotropic');
+        if (ext && this.anisotropy > 1) {
+            this.gl.texParameterf(this.gl.TEXTURE_2D, ext.TEXTURE_MAX_ANISOTROPY_EXT, this.anisotropy);
+        }
+        
+        this.gl.bindTexture(this.gl.TEXTURE_2D, null);
+        this.needsUpdate = false;
     }
 
     destroy(): void {
@@ -110,17 +121,62 @@ export class Texture {
         }
     }
 
-    static fromImage(gl: WebGL2RenderingContext, img: HTMLImageElement): Texture {
-        const texture = new Texture(gl);
-        texture.upload(img);
+    static fromImage(image: HTMLImageElement): Promise<Texture> {
+        return new Promise((resolve, reject) => {
+            if (image.complete) {
+                const device = GraphicsDevice.getInstance();
+                const texture = new Texture(device);
+                texture.setImage(image);
+                resolve(texture);
+            } else {
+                image.onload = () => {
+                    const device = GraphicsDevice.getInstance();
+                    const texture = new Texture(device);
+                    texture.setImage(image);
+                    resolve(texture);
+                };
+                image.onerror = reject;
+            }
+        });
+    }
+
+    static fromFile(path: string): Promise<Texture> {
+        return new Promise((resolve, reject) => {
+            const img = new Image();
+            img.crossOrigin = 'anonymous';
+            img.onload = () => {
+                Texture.fromImage(img).then(resolve).catch(reject);
+            };
+            img.onerror = reject;
+            img.src = path;
+        });
+    }
+
+    static create(width: number, height: number, format: number = WebGL2RenderingContext.RGBA): Texture {
+        const device = GraphicsDevice.getInstance();
+        const texture = new Texture(device);
+        texture.width = width;
+        texture.height = height;
+        texture.format = format;
+        texture.internalFormat = format;
+        
+        const gl = device.getGl();
+        gl.bindTexture(gl.TEXTURE_2D, texture.texture);
+        gl.texImage2D(gl.TEXTURE_2D, 0, format, width, height, 0, format, gl.UNSIGNED_BYTE, null);
+        gl.bindTexture(gl.TEXTURE_2D, null);
+        
         return texture;
     }
 
-    static fromData(gl: WebGL2RenderingContext, w: number, h: number, data: Uint8Array): Texture {
-        const texture = new Texture(gl);
-        texture.width = w;
-        texture.height = h;
-        texture.upload(data);
-        return texture;
-    }
+    getWidth(): number { return this.width; }
+    getHeight(): number { return this.height; }
+    getFormat(): number { return this.format; }
+    getInternalFormat(): number { return this.internalFormat; }
+    getType(): number { return this.type; }
+    getMinFilter(): number { return this.minFilter; }
+    getMagFilter(): number { return this.magFilter; }
+    getWrapS(): number { return this.wrapS; }
+    getWrapT(): number { return this.wrapT; }
+    getAnisotropy(): number { return this.anisotropy; }
+    hasMipmaps(): boolean { return this.mipmaps; }
 }

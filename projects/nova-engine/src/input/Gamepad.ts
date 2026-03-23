@@ -1,101 +1,68 @@
-import { GamepadData } from './GamepadData';
-
 export class Gamepad {
-    private gamepads: Map<number, GamepadData> = new Map();
-    private enabled: boolean = true;
+    private pads: Gamepad[] = [];
+    private prevButtons: boolean[][] = [];
+    private deadzone: number = 0.15;
 
-    static readonly BUTTON_A: number = 0;
-    static readonly BUTTON_B: number = 1;
-    static readonly BUTTON_X: number = 2;
-    static readonly BUTTON_Y: number = 3;
-    static readonly AXIS_LEFT_X: number = 0;
-    static readonly AXIS_LEFT_Y: number = 1;
+    static readonly A: number = 0;
+    static readonly B: number = 1;
+    static readonly X: number = 2;
+    static readonly Y: number = 3;
 
     update(): void {
-        if (!this.enabled) return;
+        const gamepads = navigator.getGamepads();
+        this.pads = [];
+        this.prevButtons = [];
 
-        const rawGamepads = navigator.getGamepads ? navigator.getGamepads() : [];
-        
-        for (let i = 0; i < rawGamepads.length; i++) {
-            const raw = rawGamepads[i];
-            if (raw) {
-                const data = new GamepadData();
-                data.connected = true;
-                data.id = raw.id;
-                data.index = raw.index;
-                data.mapping = raw.mapping;
-                data.buttons = raw.buttons.map(b => b.value);
-                data.axes = raw.axes.slice();
-                
-                this.gamepads.set(i, data);
-            } else {
-                this.gamepads.delete(i);
+        for (let i = 0; i < gamepads.length; i++) {
+            const gp = gamepads[i];
+            if (gp) {
+                this.pads.push(gp);
+                this.prevButtons.push([...gp.buttons.map(b => b.pressed)]);
             }
         }
     }
 
-    getGamepad(index: number): GamepadData | undefined {
-        return this.gamepads.get(index);
+    getAxis(padIndex: number, axis: number): number {
+        if (padIndex < 0 || padIndex >= this.pads.length) return 0;
+        const gp = this.pads[padIndex];
+        if (!gp || !gp.axes[axis]) return 0;
+        const val = gp.axes[axis];
+        return Math.abs(val) < this.deadzone ? 0 : val;
     }
 
-    getAllGamepads(): GamepadData[] {
-        return Array.from(this.gamepads.values());
+    isButtonDown(padIndex: number, btn: number): boolean {
+        if (padIndex < 0 || padIndex >= this.pads.length) return false;
+        const gp = this.pads[padIndex];
+        if (!gp || !gp.buttons[btn]) return false;
+        return gp.buttons[btn].pressed;
     }
 
-    isConnected(index: number): boolean {
-        return this.gamepads.has(index);
+    isButtonPressed(padIndex: number, btn: number): boolean {
+        if (padIndex < 0 || padIndex >= this.pads.length) return false;
+        const gp = this.pads[padIndex];
+        if (!gp || !gp.buttons[btn]) return false;
+        const curr = gp.buttons[btn].pressed;
+        const prev = this.prevButtons[padIndex] && this.prevButtons[padIndex][btn];
+        return curr && !prev;
     }
 
-    getButton(index: number, button: number): number {
-        const gamepad = this.gamepads.get(index);
-        if (!gamepad || !gamepad.buttons[button]) return 0;
-        return gamepad.buttons[button];
-    }
-
-    isButtonPressed(index: number, button: number): boolean {
-        const gamepad = this.gamepads.get(index);
-        if (!gamepad || !gamepad.buttons[button]) return false;
-        return gamepad.buttons[button] > 0.5;
-    }
-
-    getAxis(index: number, axis: number): number {
-        const gamepad = this.gamepads.get(index);
-        if (!gamepad || !gamepad.axes[axis]) return 0;
-        return gamepad.axes[axis];
-    }
-
-    getStick(index: number, stick: number): {x: number, y: number} {
-        const gamepad = this.gamepads.get(index);
-        if (!gamepad) return {x: 0, y: 0};
-        
-        const baseAxis = stick * 2;
-        return {
-            x: gamepad.axes[baseAxis] || 0,
-            y: gamepad.axes[baseAxis + 1] || 0
-        };
-    }
-
-    vibrate(index: number, duration: number, weak: number, strong: number): void {
-        const gamepad = this.gamepads.get(index);
-        if (!gamepad) return;
-
-        const rawGamepads = navigator.getGamepads ? navigator.getGamepads() : [];
-        const raw = rawGamepads[index];
-        
-        if (raw && raw.vibrationActuator) {
-            raw.vibrationActuator.playEffect('dual-rumble', {
+    rumble(padIndex: number, left: number, right: number, duration: number): void {
+        if (padIndex < 0 || padIndex >= this.pads.length) return;
+        const gp = this.pads[padIndex] as any;
+        if (gp && gp.vibrationActuator) {
+            gp.vibrationActuator.playEffect('dual-rumble', {
                 duration: duration,
-                strongMagnitude: strong,
-                weakMagnitude: weak
+                strongMagnitude: left,
+                weakMagnitude: right
             });
         }
     }
 
-    enable(): void {
-        this.enabled = true;
+    count(): number {
+        return this.pads.length;
     }
 
-    disable(): void {
-        this.enabled = false;
+    isConnected(padIndex: number): boolean {
+        return padIndex >= 0 && padIndex < this.pads.length;
     }
 }

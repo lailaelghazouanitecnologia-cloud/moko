@@ -1,63 +1,59 @@
-import { WebGL2RenderingContext } from './graphics-device';
+import { GraphicsDevice } from './graphics-device';
 
 export class IndexBuffer {
-    private gl: WebGL2RenderingContext;
-    private buffer: WebGLBuffer;
-    private numIndices: number;
-    private format: number;
-    private usage: number;
+  private buffer: WebGLBuffer;
+  private indexCount: number;
+  private format: number;
+  private usage: number;
+  private device: GraphicsDevice;
 
-    constructor(gl: WebGL2RenderingContext, buffer: WebGLBuffer, numIndices: number, format: number, usage: number) {
-        this.gl = gl;
-        this.buffer = buffer;
-        this.numIndices = numIndices;
-        this.format = format;
-        this.usage = usage;
+  private constructor(device: GraphicsDevice, indexCount: number, format: number, usage: number) {
+    this.device = device;
+    this.indexCount = indexCount;
+    this.format = format;
+    this.usage = usage;
+    
+    const gl = device.getGL();
+    this.buffer = gl.createBuffer()!;
+    if (!this.buffer) {
+      throw new Error('Failed to create index buffer');
     }
+  }
 
-    bind(): void {
-        this.gl.bindBuffer(this.gl.ELEMENT_ARRAY_BUFFER, this.buffer);
-    }
+  static create(indexCount: number, format: number = WebGL2RenderingContext.UNSIGNED_SHORT, usage: number = WebGL2RenderingContext.STATIC_DRAW): IndexBuffer {
+    const device = GraphicsDevice.getInstance();
+    return new IndexBuffer(device, indexCount, format, usage);
+  }
 
-    upload(data: Uint16Array | Uint32Array): void {
-        this.bind();
-        this.numIndices = data.length;
-        this.gl.bufferData(this.gl.ELEMENT_ARRAY_BUFFER, data, this.usage);
-    }
+  setData(data: Uint16Array | Uint32Array): void {
+    const gl = this.device.getGL();
+    gl.bindBuffer(WebGL2RenderingContext.ELEMENT_ARRAY_BUFFER, this.buffer);
+    gl.bufferData(WebGL2RenderingContext.ELEMENT_ARRAY_BUFFER, data, this.usage);
+    gl.bindBuffer(WebGL2RenderingContext.ELEMENT_ARRAY_BUFFER, null);
+  }
 
-    update(data: Uint16Array | Uint32Array, offset: number = 0): void {
-        this.bind();
-        this.gl.bufferSubData(this.gl.ELEMENT_ARRAY_BUFFER, offset, data);
-    }
+  update(data: Uint16Array | Uint32Array, offset: number = 0): void {
+    const gl = this.device.getGL();
+    gl.bindBuffer(WebGL2RenderingContext.ELEMENT_ARRAY_BUFFER, this.buffer);
+    gl.bufferSubData(WebGL2RenderingContext.ELEMENT_ARRAY_BUFFER, offset, data);
+    gl.bindBuffer(WebGL2RenderingContext.ELEMENT_ARRAY_BUFFER, null);
+  }
 
-    destroy(): void {
-        if (this.buffer) {
-            this.gl.deleteBuffer(this.buffer);
-            this.buffer = null as any;
-        }
-    }
+  bind(): void {
+    const gl = this.device.getGL();
+    gl.bindBuffer(WebGL2RenderingContext.ELEMENT_ARRAY_BUFFER, this.buffer);
+  }
 
-    static createDynamic(gl: WebGL2RenderingContext, count: number, format: number): IndexBuffer {
-        const buffer = gl.createBuffer();
-        if (!buffer) {
-            throw new Error('Failed to create index buffer');
-        }
-        const usage = gl.DYNAMIC_DRAW;
-        const indexBuffer = new IndexBuffer(gl, buffer, count, format, usage);
-        indexBuffer.bind();
-        gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, count * (format === gl.UNSIGNED_SHORT ? 2 : 4), usage);
-        return indexBuffer;
-    }
+  unbind(): void {
+    const gl = this.device.getGL();
+    gl.bindBuffer(WebGL2RenderingContext.ELEMENT_ARRAY_BUFFER, null);
+  }
 
-    static createStatic(gl: WebGL2RenderingContext, data: Uint16Array | Uint32Array): IndexBuffer {
-        const buffer = gl.createBuffer();
-        if (!buffer) {
-            throw new Error('Failed to create index buffer');
-        }
-        const format = data instanceof Uint16Array ? gl.UNSIGNED_SHORT : gl.UNSIGNED_INT;
-        const usage = gl.STATIC_DRAW;
-        const indexBuffer = new IndexBuffer(gl, buffer, data.length, format, usage);
-        indexBuffer.upload(data);
-        return indexBuffer;
+  destroy(): void {
+    if (this.buffer) {
+      const gl = this.device.getGL();
+      gl.deleteBuffer(this.buffer);
+      this.buffer = null!;
     }
+  }
 }

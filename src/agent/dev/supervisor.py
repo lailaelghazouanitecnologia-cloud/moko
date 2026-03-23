@@ -38,6 +38,8 @@ from .plan import (
 from .vm import BlockVM
 from .blueprint import ModuleBlueprint, TypeBlueprint
 from .translator import BlueprintTranslator
+from .emission import EmissionIndex
+from .density import DensityAnalyzer
 
 
 def _available_projects() -> list[str]:
@@ -83,6 +85,7 @@ class DevSupervisor:
         self.current_plan: Optional[Plan] = None
         self.vm: Optional[BlockVM] = None
         self.translator: Optional[BlueprintTranslator] = None
+        self.emission_index: Optional[EmissionIndex] = None
         self.total_tokens = 0
 
     def _log(self, msg: str):
@@ -110,9 +113,27 @@ class DevSupervisor:
         """
         references = references or []
 
-        # Initialize translator
+        # Build or load emission index
+        index_path = OUT_DIR / ".emission_index.json"
+        if index_path.exists():
+            try:
+                self.emission_index = EmissionIndex.load(index_path, OUT_DIR)
+                if not self.emission_index.is_fresh():
+                    raise ValueError("stale")
+                self._log(f"emission index loaded: {self.emission_index.format_stats()}")
+            except Exception:
+                self.emission_index = None
+
+        if not self.emission_index and references:
+            self.emission_index = EmissionIndex(OUT_DIR)
+            self.emission_index.build(references)
+            self.emission_index.save(index_path)
+            self._log(f"emission index built: {self.emission_index.format_stats()}")
+
+        # Initialize translator with emission index
         self.translator = BlueprintTranslator(
-            self.llm, OUT_DIR, verbose=self.verbose
+            self.llm, OUT_DIR, verbose=self.verbose,
+            emission_index=self.emission_index
         )
 
         # Load workspace summaries for planning
@@ -392,6 +413,11 @@ class DevSupervisor:
             test_results=result.get("test_results", {}),
             prev_block=prev_block,
         )
+        # Track references used and quality score from emission/density
+        if result.get("refs_used"):
+            block.references_used = result["refs_used"]
+        if result.get("quality_score"):
+            block.quality_score = result["quality_score"]
         self.total_tokens += result.get("tokens_used", 0)
 
         self._log(f"block {block.index} done in {block.elapsed_s:.1f}s [{block.hash[:8]}]")
@@ -533,18 +559,35 @@ class DevSupervisor:
             }
 
         # Translate this ONE type (self-contained LLM call)
-        file_path, tokens = self.translator.translate_type(
+        file_path, tokens, refs_used = self.translator.translate_type(
             type_bp, bp, project_dir
         )
 
         # Save updated blueprint (status: translated)
         bp.save(full_bp_path)
 
-        content = f"Translated {type_name} → {file_path}"
+        # Compute density inline (cheap, regex-based, no LLM)
+        density_score = 0.0
+        try:
+            analyzer = DensityAnalyzer(project_dir, OUT_DIR)
+            emission_matches = None
+            if self.emission_index:
+                emission_matches = self.emission_index.query(type_bp, max_results=5)
+            ds = analyzer.analyze_file(type_bp, bp, emission_matches)
+            density_score = ds.density
+            self._log(f"density: {ds.density:.0%} "
+                      f"(bp={ds.methods_in_code}/{ds.methods_in_blueprint}, "
+                      f"imports={ds.import_score:.0%})")
+        except Exception:
+            pass
+
+        content = f"Translated {type_name} → {file_path} (density={density_score:.0%})"
         return {
             "content": content,
             "tokens_used": tokens,
             "files_changed": [file_path],
+            "refs_used": refs_used,
+            "quality_score": density_score,
         }
 
     def _exec_test(self, block, history, ref_context, registry, discussions) -> dict:
@@ -584,9 +627,20 @@ class DevSupervisor:
                 except Exception as e:
                     report_parts.append(f"  ERROR: {bp_file.name}: {e}")
 
+        # Density analysis
+        density_parts = []
+        try:
+            analyzer = DensityAnalyzer(project_dir, OUT_DIR)
+            densities = analyzer.analyze_project(bp_dir)
+            for mod_d in densities:
+                density_parts.append(f"\n  Density — {mod_d.format()}")
+        except Exception:
+            pass
+
         content = (
             f"Verification: {translated}/{total_types} types translated\n"
             + "\n".join(report_parts)
+            + ("\n" + "\n".join(density_parts) if density_parts else "")
         )
         return {
             "content": content,
@@ -854,6 +908,30 @@ class DevSupervisor:
                         file_count += 1
                 print(f"\n  Generated: {total_loc} LOC across {file_count} files")
 
+        # Density summary
+        if self.current_plan:
+            project_dir = self.projects_dir / self.current_plan.target_project
+            bp_dir = project_dir / "blueprints"
+            try:
+                analyzer = DensityAnalyzer(project_dir, OUT_DIR)
+                densities = analyzer.analyze_project(bp_dir)
+                if densities:
+                    avg = sum(d.avg_density for d in densities) / len(densities)
+                    print(f"  Avg density: {avg:.0%}")
+                    for d in densities:
+                        print(f"    {d.module_name}: {d.avg_density:.0%} "
+                              f"({d.total_lines} LOC, "
+                              f"missing={d.total_missing_methods})")
+            except Exception:
+                pass
+
+        # Emission stats
+        if self.emission_index:
+            print(f"  Emission: {self.emission_index.format_stats()}")
+        refs_total = sum(len(b.references_used) for b in plan.blocks)
+        if refs_total:
+            print(f"  References used: {refs_total} across all blocks")
+
         if self.translator:
             print(f"  Translator tokens: {self.translator.total_tokens:,}")
         print(f"  Total tokens: {self.total_tokens:,}")
@@ -913,8 +991,22 @@ class DevSupervisor:
         plan = Plan.load(plan_path)
         self.current_plan = plan
         self.vm = BlockVM(plan, budget_chars=self.budget_chars)
+        # Build emission index from plan's references
+        if plan.reference_projects:
+            index_path = OUT_DIR / ".emission_index.json"
+            if index_path.exists():
+                try:
+                    self.emission_index = EmissionIndex.load(index_path, OUT_DIR)
+                except Exception:
+                    self.emission_index = None
+            if not self.emission_index:
+                self.emission_index = EmissionIndex(OUT_DIR)
+                self.emission_index.build(plan.reference_projects)
+                self.emission_index.save(index_path)
+
         self.translator = BlueprintTranslator(
-            self.llm, OUT_DIR, verbose=self.verbose
+            self.llm, OUT_DIR, verbose=self.verbose,
+            emission_index=self.emission_index
         )
         self._log(f"resumed {plan.plan_id}: "
                   f"{len(plan.completed_blocks)}/{len(plan.blocks)} done")

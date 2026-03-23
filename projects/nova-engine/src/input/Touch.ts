@@ -1,83 +1,76 @@
-import { TouchData } from './TouchData';
+import { TouchEvent } from './InputManager';
 
 export class Touch {
-  private touches: Map<number, TouchData> = new Map();
-  private prevTouches: Map<number, TouchData> = new Map();
+  private touches: Map<number, {x: number, y: number}> = new Map();
+  private prevTouches: Map<number, {x: number, y: number}> = new Map();
+  private lastTouchTime: number = 0;
+  private readonly TAP_MAX_DURATION: number = 300;
 
-  getTouch(id: number): TouchData | undefined {
-    return this.touches.get(id);
-  }
-
-  getAllTouches(): TouchData[] {
-    return Array.from(this.touches.values());
-  }
-
-  getTouchCount(): number {
+  count(): number {
     return this.touches.size;
   }
 
-  handleTouchStart(event: TouchEvent): void {
-    event.preventDefault();
-    for (let i = 0; i < event.changedTouches.length; i++) {
-      const touch = event.changedTouches[i];
-      const touchData: TouchData = {
-        id: touch.identifier,
-        x: touch.clientX,
-        y: touch.clientY,
-        force: touch.force || 0,
-        radiusX: touch.radiusX || 0,
-        radiusY: touch.radiusY || 0,
-        rotationAngle: touch.rotationAngle || 0
-      };
-      this.touches.set(touch.identifier, touchData);
+  getPosition(id: number): {x: number, y: number} | null {
+    return this.touches.get(id) || null;
+  }
+
+  onStart(e: TouchEvent): void {
+    const changedTouches = e.changedTouches;
+    for (let i = 0; i < changedTouches.length; i++) {
+      const touch = changedTouches[i];
+      this.touches.set(touch.identifier, { x: touch.clientX, y: touch.clientY });
+    }
+    if (changedTouches.length > 0) {
+      this.lastTouchTime = performance.now();
     }
   }
 
-  handleTouchMove(event: TouchEvent): void {
-    event.preventDefault();
-    for (let i = 0; i < event.changedTouches.length; i++) {
-      const touch = event.changedTouches[i];
-      const existingTouch = this.touches.get(touch.identifier);
-      if (existingTouch) {
-        existingTouch.x = touch.clientX;
-        existingTouch.y = touch.clientY;
-        existingTouch.force = touch.force || 0;
-        existingTouch.radiusX = touch.radiusX || 0;
-        existingTouch.radiusY = touch.radiusY || 0;
-        existingTouch.rotationAngle = touch.rotationAngle || 0;
+  onMove(e: TouchEvent): void {
+    const changedTouches = e.changedTouches;
+    for (let i = 0; i < changedTouches.length; i++) {
+      const touch = changedTouches[i];
+      if (this.touches.has(touch.identifier)) {
+        this.touches.set(touch.identifier, { x: touch.clientX, y: touch.clientY });
       }
     }
   }
 
-  handleTouchEnd(event: TouchEvent): void {
-    event.preventDefault();
-    for (let i = 0; i < event.changedTouches.length; i++) {
-      const touch = event.changedTouches[i];
-      this.touches.delete(touch.identifier);
-    }
-  }
-
-  handleTouchCancel(event: TouchEvent): void {
-    event.preventDefault();
-    for (let i = 0; i < event.changedTouches.length; i++) {
-      const touch = event.changedTouches[i];
+  onEnd(e: TouchEvent): void {
+    const changedTouches = e.changedTouches;
+    for (let i = 0; i < changedTouches.length; i++) {
+      const touch = changedTouches[i];
       this.touches.delete(touch.identifier);
     }
   }
 
   update(): void {
     this.prevTouches.clear();
-    this.touches.forEach((touch, id) => {
-      this.prevTouches.set(id, { ...touch });
+    this.touches.forEach((pos, id) => {
+      this.prevTouches.set(id, { x: pos.x, y: pos.y });
     });
   }
 
-  clear(): void {
-    this.touches.clear();
-    this.prevTouches.clear();
+  isSingleTap(): boolean {
+    if (this.touches.size !== 1) return false;
+    const now = performance.now();
+    const elapsed = now - this.lastTouchTime;
+    return elapsed <= this.TAP_MAX_DURATION;
   }
 
-  isAnyTouch(): boolean {
-    return this.touches.size > 0;
+  isPinching(): boolean {
+    if (this.touches.size !== 2) return false;
+    const [id1, id2] = Array.from(this.touches.keys());
+    const curr1 = this.touches.get(id1)!;
+    const curr2 = this.touches.get(id2)!;
+    const prev1 = this.prevTouches.get(id1);
+    const prev2 = this.prevTouches.get(id2);
+    if (!prev1 || !prev2) return false;
+    const dxCurr = curr2.x - curr1.x;
+    const dyCurr = curr2.y - curr1.y;
+    const dxPrev = prev2.x - prev1.x;
+    const dyPrev = prev2.y - prev1.y;
+    const distCurr = Math.sqrt(dxCurr * dxCurr + dyCurr * dyCurr);
+    const distPrev = Math.sqrt(dxPrev * dxPrev + dyPrev * dyPrev);
+    return Math.abs(distCurr - distPrev) > 1;
   }
 }

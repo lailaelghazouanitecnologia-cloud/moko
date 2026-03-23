@@ -18,6 +18,7 @@ def register_subparser(subparsers: argparse._SubParsersAction):
     p.add_argument("--budget", type=int, default=20000, help="On-demand context budget (chars)")
     p.add_argument("--resume", metavar="PLAN_ID", help="Resume a saved plan")
     p.add_argument("--plans", action="store_true", help="List saved plans")
+    p.add_argument("--density", metavar="PROJECT", help="Run density analysis on a project")
 
 
 def cmd_dev(args: argparse.Namespace):
@@ -32,6 +33,36 @@ def cmd_dev(args: argparse.Namespace):
         "budget_chars": args.budget,
     }
     supervisor = DevSupervisor(config)
+
+    # Density analysis
+    if args.density:
+        from pathlib import Path
+        from .density import DensityAnalyzer
+
+        project_dir = Path("projects") / args.density
+        bp_dir = project_dir / "blueprints"
+        if not bp_dir.exists():
+            print(f"No blueprints found: {bp_dir}")
+            sys.exit(1)
+
+        analyzer = DensityAnalyzer(project_dir, OUT_DIR)
+        densities = analyzer.analyze_project(bp_dir)
+
+        if not densities:
+            print("No modules analyzed.")
+            return
+
+        print(f"{'━' * 66}")
+        print(f"  DENSITY REPORT: {args.density}")
+        print(f"{'━' * 66}")
+        for mod_d in densities:
+            print(mod_d.format())
+        avg = sum(d.avg_density for d in densities) / len(densities)
+        total_loc = sum(d.total_lines for d in densities)
+        print(f"{'─' * 66}")
+        print(f"  Overall: density={avg:.0%}, {total_loc} LOC")
+        print(f"{'━' * 66}")
+        return
 
     # List plans
     if args.plans:
