@@ -258,3 +258,40 @@ def cmd_features(args: argparse.Namespace):
             )
         else:
             print("\nNo proposals generated, nothing to evaluate.")
+
+
+# ── Duel subcommand ─────────────────────────────────────────
+
+def register_duel_subparser(subparsers: argparse._SubParsersAction):
+    """Register 'duel' subcommand."""
+    p = subparsers.add_parser("duel",
+                              help="Claude vs Ava head-to-head comparison")
+    p.add_argument("-t", "--target", required=True, help="Target project name")
+    p.add_argument("-r", "--ref", nargs="+", required=True, help="Reference projects")
+    p.add_argument("-m", "--module", required=True, help="Module to compare (e.g. math)")
+    p.add_argument("--types", nargs="+", required=True,
+                   help="Types to compare (e.g. Vec3 Mat4)")
+    p.add_argument("-g", "--goal", default="", help="Project goal")
+    p.add_argument("--provider", default="groq", help="LLM provider")
+    p.add_argument("--model", help="Override model")
+    p.add_argument("-v", "--verbose", action="store_true", help="Verbose output")
+
+
+def cmd_duel(args: argparse.Namespace):
+    """Execute duel command."""
+    from .duel import DuelRunner
+
+    config = {
+        "provider": args.provider,
+        "model": args.model,
+        "verbose": args.verbose,
+    }
+
+    runner = DuelRunner(config)
+    runner.run(
+        target=args.target,
+        references=args.ref,
+        module=args.module,
+        types=args.types,
+        goal=args.goal,
+    )
