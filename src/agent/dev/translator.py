@@ -205,7 +205,8 @@ A blueprint specifies:
 - Every type (class/interface/enum) with its fields and methods
 - Method signatures with parameter types and return types
 - Implementation hints (not full code, but algorithmic guidance)
-- References to the Roska descriptors that inspired each type
+
+CRITICAL: Output the 'types' list EARLY in the YAML. Keep constraints to max 3 short lines.
 
 Format (YAML):
 ```yaml
@@ -213,10 +214,7 @@ name: module_name
 language: typescript
 target_dir: src/module_name
 constraints:
-  - "constraint 1"
-  - "constraint 2"
-references:
-  - project/path/descriptor.yaml
+  - "max 3 short constraints"
 types:
   - name: ClassName
     kind: class
@@ -226,19 +224,17 @@ types:
     fields:
       - name: fieldName
         type: fieldType
-        default: defaultValue
     methods:
       - name: methodName
         sig: "(param: Type): ReturnType"
-        hint: "algorithmic description"
+        hint: "short algorithmic description"
     static:
       - name: CONSTANT
         hint: "description"
-    references:
-      - project/path/descriptor.yaml
 ```
 
-Be thorough: include ALL methods from references that add value. Skip trivial getters unless they have non-obvious logic. Include 15-25 methods per class for substantial types."""
+Be thorough: include ALL methods from references that add value. Skip trivial getters unless they have non-obvious logic. Include 15-25 methods per class for substantial types.
+Keep method hints SHORT (under 8 words). Prioritize type definitions over constraints."""
 
 
 class BlueprintTranslator:

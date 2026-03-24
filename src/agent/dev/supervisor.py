@@ -1507,7 +1507,17 @@ class DevSupervisor:
                     print(f"{'─' * 66}")
 
                     # Execute (self-contained: disk → LLM → disk)
-                    self.execute_block(block)
+                    try:
+                        self.execute_block(block)
+                    except Exception as block_err:
+                        from .guardrails import GuardrailTripped
+                        if isinstance(block_err, GuardrailTripped):
+                            raise  # Budget/time limits are fatal
+                        # Non-fatal: mark block failed, continue pipeline
+                        print(f"  ✗ Block {block.index} failed: {block_err}")
+                        if block.status == BlockStatus.IN_PROGRESS:
+                            block.fail(str(block_err))
+                        continue
 
                     # Print result (compact for implement blocks)
                     if block.block_type == BlockType.IMPLEMENT:
@@ -1561,7 +1571,16 @@ class DevSupervisor:
                 print(f"  {block.objective}")
                 print(f"{'─' * 66}")
 
-                self.execute_block(block)
+                try:
+                    self.execute_block(block)
+                except Exception as block_err:
+                    from .guardrails import GuardrailTripped
+                    if isinstance(block_err, GuardrailTripped):
+                        raise
+                    print(f"  ✗ Block {block.index} failed: {block_err}")
+                    if block.status == BlockStatus.IN_PROGRESS:
+                        block.fail(str(block_err))
+                    continue
 
                 if block.block_type == BlockType.IMPLEMENT:
                     for f in block.files_changed:
