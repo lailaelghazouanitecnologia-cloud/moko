@@ -138,7 +138,11 @@ class CompileFixLoop:
 
     def run(self, module_dir: Path,
             context_files: dict[str, str] = None) -> list[FixIteration]:
-        """Main loop: check -> fix -> check until clean or max iterations."""
+        """Main loop: check -> fix -> check until clean or max iterations.
+
+        Uses snapshot/revert: saves file contents before each fix attempt.
+        If errors increase after a fix, reverts to the snapshot.
+        """
         iterations: list[FixIteration] = []
         best_error_count = float('inf')
         best_seen_iteration = -1
@@ -148,7 +152,6 @@ class CompileFixLoop:
             result = self.check_module(module_dir)
 
             if result.error_count < 0:
-                # tsc unavailable, skip fix loop
                 self._log("tsc unavailable, skipping fix loop")
                 break
 
@@ -167,7 +170,6 @@ class CompileFixLoop:
             self._log(f"iteration {i}: {errors_before} errors in {module_rel}")
 
             if errors_before == 0:
-                # Errors in other modules, not ours
                 iterations.append(FixIteration(
                     iteration=i, errors_before=0, errors_after=0,
                 ))
@@ -182,10 +184,16 @@ class CompileFixLoop:
                 best_error_count = errors_before
                 best_seen_iteration = i
 
-            # 2. Group errors by file
+            # 2. SNAPSHOT: save all files before fix attempt
+            snapshot: dict[str, str] = {}
             by_file: dict[str, list[TscError]] = {}
             for err in module_errors:
                 by_file.setdefault(err.file, []).append(err)
+
+            for rel_file in by_file:
+                abs_path = self.project_dir / rel_file
+                if abs_path.exists():
+                    snapshot[rel_file] = abs_path.read_text()
 
             # 3. Fix each file
             total_tokens = 0
@@ -199,7 +207,6 @@ class CompileFixLoop:
                 fixed_code, tokens = self.fix_errors(abs_path, file_errors, context_files)
                 total_tokens += tokens
 
-                # Write fixed code
                 if fixed_code.strip():
                     abs_path.write_text(fixed_code + "\n")
                     changes.append(rel_file)
@@ -208,6 +215,14 @@ class CompileFixLoop:
             recheck = self.check_module(module_dir)
             recheck_module = [e for e in recheck.errors if e.file.startswith(module_rel)]
             errors_after = len(recheck_module)
+
+            # 5. REVERT if errors increased — the fix made things worse
+            if errors_after > errors_before:
+                self._log(f"  fix WORSENED errors ({errors_before}->{errors_after}), reverting snapshot")
+                for rel_file, original_code in snapshot.items():
+                    abs_path = self.project_dir / rel_file
+                    abs_path.write_text(original_code)
+                errors_after = errors_before  # restored to pre-fix state
 
             iterations.append(FixIteration(
                 iteration=i,

@@ -91,9 +91,13 @@ class TaskDecomposer:
             '"description": "brief purpose"}\n]\n\n'
             "Rules:\n"
             "- Create 3-8 modules covering the full architecture\n"
-            "- Each module: 2-6 types (classes/interfaces/enums)\n"
+            "- Each module: 2-4 types (classes/interfaces/enums). STRICT LIMIT.\n"
+            "- List ONLY concrete classes that contain logic. Do NOT list supporting "
+            "interfaces, enums, or type aliases — those will be inferred during implementation.\n"
             "- Order by dependency: foundations first, no circular deps\n"
             "- Be specific about type names\n"
+            "- If the project is conceptually simple (few files, minimal architecture), "
+            "use FEWER modules (3-4), not more.\n"
             "- Output ONLY the JSON array."
         )
 

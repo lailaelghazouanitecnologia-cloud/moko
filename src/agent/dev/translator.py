@@ -233,9 +233,11 @@ types:
         hint: "description"
 ```
 
-Include key methods that define the class API. Skip trivial getters/setters. Target 8-15 methods per class.
-Keep method hints to 3-5 words MAX. Do NOT write long descriptions. Prioritize MORE types over more methods.
-IMPORTANT: Keep total YAML under 200 lines to avoid truncation."""
+Include key methods that define the class API. Skip trivial getters/setters. Target 5-10 methods per class.
+Keep method hints to 3-5 words MAX. Do NOT write long descriptions.
+CRITICAL: Generate ONLY the types listed in the task goal. Do NOT invent extra interfaces, enums, or type aliases.
+If a supporting type is needed, define it inline (e.g. as a field type) — do NOT create a separate type entry.
+IMPORTANT: Keep total YAML under 150 lines to avoid truncation."""
 
 
 class BlueprintTranslator:
@@ -761,7 +763,7 @@ class BlueprintTranslator:
             name=data.get("name", module_name),
             language=data.get("language", language),
             target_dir=data.get("target_dir", target_dir or f"src/{module_name}"),
-            types=[TypeBlueprint.from_dict(t) for t in data.get("types", [])],
+            types=[TypeBlueprint.from_dict(t) for t in data.get("types", []) if isinstance(t, dict) and t.get("name")],
             constraints=data.get("constraints", []),
             references=ref_paths,
             description=data.get("description", ""),
