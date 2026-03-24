@@ -804,6 +804,53 @@ class DevSupervisor:
         # Generate inter-type contracts from dependency graph
         from .compaction import generate_contracts, topo_sort_types
         contracts = generate_contracts(bp)
+
+        # Cross-module contracts: bind types that reference external modules
+        bp_dir = project_dir / "blueprints"
+        if bp_dir.exists():
+            from .compaction import _extract_type_references
+            prior_type_map: dict[str, tuple[str, "TypeBlueprint"]] = {}
+            for bp_file in sorted(bp_dir.glob("*.bp.yaml")):
+                try:
+                    prior_bp = ModuleBlueprint.load(bp_file)
+                    if prior_bp.name == mod_name:
+                        continue
+                    for pt in prior_bp.types:
+                        prior_type_map[pt.name] = (prior_bp.name, pt)
+                except Exception:
+                    pass
+
+            for t in bp.types:
+                refs = _extract_type_references(t)
+                for ref_name in sorted(refs):
+                    if ref_name in prior_type_map:
+                        ext_mod, ext_type = prior_type_map[ref_name]
+                        # Build cross-module contract
+                        if ext_type.kind == "enum":
+                            values = [f.name for f in ext_type.fields[:8]]
+                            if values:
+                                contracts.append(
+                                    f"{t.name} uses {ref_name} from {ext_mod} "
+                                    f"[enum] values: {', '.join(values)}"
+                                )
+                        elif ext_type.methods:
+                            api = ", ".join(
+                                m.name + (m.sig or "") for m in ext_type.methods[:5]
+                            )
+                            contracts.append(
+                                f"{t.name} uses {ref_name} from {ext_mod} "
+                                f"[{ext_type.kind}] — import from '../{ext_mod}', "
+                                f"API: {api}"
+                            )
+                        elif ext_type.fields:
+                            fields = ", ".join(
+                                f"{f.name}: {f.type}" for f in ext_type.fields[:5]
+                            )
+                            contracts.append(
+                                f"{t.name} uses {ref_name} from {ext_mod} "
+                                f"[{ext_type.kind}] — fields: {fields}"
+                            )
+
         if contracts:
             # Store contracts as constraints prefixed with "CONTRACT:"
             for c in contracts:
@@ -936,13 +983,33 @@ class DevSupervisor:
         except Exception:
             pass
 
+        # Validate imports and enums in generated code
+        validation_issues = []
+        try:
+            from .compaction import validate_imports, validate_enums
+            code_path = project_dir / file_path
+            if code_path.exists():
+                generated_code = code_path.read_text()
+                mod_dir = str(Path(file_path).parent)
+                validation_issues += validate_imports(generated_code, project_dir, mod_dir)
+                validation_issues += validate_enums(generated_code)
+                if validation_issues:
+                    self._log(f"validation: {len(validation_issues)} issues in {type_name}")
+                    for issue in validation_issues[:5]:
+                        self._log(f"  {issue}")
+        except Exception:
+            pass
+
         content = f"Translated {type_name} → {file_path} (density={density_score:.0%})"
+        if validation_issues:
+            content += f" [{len(validation_issues)} validation issues]"
         return {
             "content": content,
             "tokens_used": tokens,
             "files_changed": [file_path],
             "refs_used": refs_used,
             "quality_score": density_score,
+            "validation_issues": validation_issues,
         }
 
     def _exec_test(self, block, history, ref_context, registry, discussions) -> dict:

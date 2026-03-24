@@ -69,6 +69,113 @@ from .compaction import needs_compaction, prepare_translation_context
 from .emission import EmissionIndex
 
 
+def _extract_rich_api(code: str, type_name: str, file_path: str) -> str:
+    """Extract a rich API surface from TypeScript source code.
+
+    Captures:
+    - Enum values (complete list)
+    - Interface/type fields with types
+    - Class declarations, constructors, public/protected methods
+    - Exported constants and type aliases
+
+    Returns a block like:
+      // src/Registers/eflags-register.ts (EFlagsRegister)
+      export class EFlagsRegister {
+        constructor()
+        getCF(): boolean
+        setCF(value: boolean): void
+        ...
+      }
+    """
+    lines = code.splitlines()
+    result = [f"// {file_path} ({type_name})"]
+    in_enum = False
+    in_block = False
+    brace_depth = 0
+
+    for line in lines:
+        stripped = line.strip()
+        if not stripped or stripped.startswith("//") or stripped.startswith("/*") or stripped.startswith("*"):
+            continue
+
+        # Track braces for context
+        open_braces = stripped.count("{")
+        close_braces = stripped.count("}")
+
+        # Enum: capture all values
+        if in_enum:
+            brace_depth += open_braces - close_braces
+            if brace_depth <= 0:
+                result.append("}")
+                in_enum = False
+                brace_depth = 0
+            elif not stripped.startswith("//"):
+                result.append(f"  {stripped}")
+            continue
+
+        # Export enum — capture entire body
+        if ("enum " in stripped and ("export" in stripped or stripped.startswith("enum "))):
+            decl = stripped.split("{")[0].rstrip() + " {"
+            result.append(decl)
+            brace_depth = open_braces - close_braces
+            if brace_depth > 0:
+                in_enum = True
+                # If values on same line as declaration
+                after_brace = stripped.split("{", 1)[1] if "{" in stripped else ""
+                if after_brace.strip() and after_brace.strip() != "}":
+                    result.append(f"  {after_brace.strip()}")
+            elif "}" in stripped:
+                result.append("}")
+            continue
+
+        # Export type alias — full line
+        if stripped.startswith("export type ") and "=" in stripped:
+            result.append(stripped.rstrip(";") + ";")
+            continue
+
+        # Interface/class declaration
+        if any(stripped.startswith(kw) for kw in
+               ("export class ", "export abstract class ", "export interface ",
+                "class ", "interface ")):
+            decl = stripped.split("{")[0].rstrip() + " {"
+            result.append(decl)
+            in_block = True
+            brace_depth = open_braces - close_braces
+            continue
+
+        if in_block:
+            brace_depth += open_braces - close_braces
+            if brace_depth <= 0:
+                result.append("}")
+                in_block = False
+                brace_depth = 0
+                continue
+
+            # Only capture top-level members (depth 1)
+            if brace_depth == 1:
+                # Constructor, methods, getters, setters, properties
+                for prefix in ("constructor", "public ", "protected ", "private ",
+                               "static ", "get ", "set ", "readonly ",
+                               "abstract "):
+                    if stripped.startswith(prefix):
+                        sig = stripped.split("{")[0].rstrip()
+                        if sig.endswith(")") or sig.endswith(";") or ":" in sig:
+                            result.append(f"  {sig};")
+                        else:
+                            result.append(f"  {sig}")
+                        break
+                else:
+                    # Property declarations like "name: type"
+                    if ":" in stripped and not stripped.startswith("if") and not stripped.startswith("return"):
+                        prop = stripped.split("=")[0].rstrip().rstrip(";")
+                        if prop and not any(c in prop for c in ("(", ")", "//", "/*")):
+                            result.append(f"  {prop};")
+
+    if len(result) <= 1:
+        return ""
+    return "\n".join(result)
+
+
 # ── System Prompts ──────────────────────────────────────────
 
 TRANSLATE_SYSTEM = """You are a code translator. You convert YAML blueprints into complete, production-ready source code.
@@ -408,22 +515,36 @@ class BlueprintTranslator:
 
     def _build_cross_module_signatures(self, type_bp, module_bp,
                                         project_dir: Path) -> str:
-        """Extract signatures from generated .ts files in OTHER modules.
+        """Extract rich API surface from generated .ts files in OTHER modules.
 
-        Similar to _build_sibling_signatures but reads files from prior_modules
-        (other modules that have already been translated). This provides the
-        translator with exact API signatures for cross-module imports, instead
-        of the compact one-liner summaries that only have method names.
+        Goes beyond simple signature extraction: captures enum values, interface
+        fields, class methods with full signatures, and type aliases. This gives
+        the translator the REAL API to code against, preventing phantom types.
         """
         if not self.prior_modules:
             return ""
 
         parts = []
         chars = 0
-        max_chars = 4000  # More budget than sibling sigs since cross-module is critical
+        max_chars = 6000  # Generous budget — cross-module coherence is critical
+
+        # Determine which cross-module types THIS type actually references
+        from .compaction import _extract_type_references
+        my_refs = _extract_type_references(type_bp)
+        # Also scan blueprint fields for module-level references
+        for f in type_bp.fields:
+            if f.type:
+                for word in f.type.replace("[]", "").replace("<", " ").replace(">", " ").split():
+                    if word and word[0].isupper() and word.isalnum():
+                        my_refs.add(word)
 
         for mod_bp in self.prior_modules:
-            for t in mod_bp.types:
+            mod_types = {t.name for t in mod_bp.types}
+            # Prioritize types referenced by our target type
+            referenced = [t for t in mod_bp.types if t.name in my_refs]
+            unreferenced = [t for t in mod_bp.types if t.name not in my_refs]
+
+            for t in referenced + unreferenced:
                 if t.status != "translated":
                     continue
 
@@ -437,34 +558,19 @@ class BlueprintTranslator:
                 except Exception:
                     continue
 
-                # Extract signatures: export, class, interface, public method lines
-                sig_lines = []
-                for line in code.splitlines():
-                    stripped = line.strip()
-                    if (stripped.startswith("export ") or
-                        stripped.startswith("class ") or
-                        stripped.startswith("interface ") or
-                        stripped.startswith("enum ") or
-                        stripped.startswith("type ") or
-                        stripped.startswith("public ") or
-                        stripped.startswith("private ") or
-                        stripped.startswith("protected ") or
-                        stripped.startswith("static ") or
-                        stripped.startswith("constructor") or
-                        stripped.startswith("get ") or
-                        stripped.startswith("set ")):
-                        # Remove body
-                        clean = stripped.split("{")[0].rstrip()
-                        if clean:
-                            sig_lines.append(clean)
+                api_block = _extract_rich_api(code, t.name, target)
+                if not api_block:
+                    continue
 
-                if sig_lines:
-                    rel_path = target
-                    block = f"// {rel_path} ({t.name})\n" + "\n".join(sig_lines[:25])
-                    if chars + len(block) > max_chars:
-                        break
-                    parts.append(block)
-                    chars += len(block)
+                # Referenced types get full budget, unreferenced get trimmed
+                if t.name not in my_refs:
+                    lines = api_block.splitlines()
+                    api_block = "\n".join(lines[:10])
+
+                if chars + len(api_block) > max_chars:
+                    break
+                parts.append(api_block)
+                chars += len(api_block)
 
             if chars >= max_chars:
                 break

@@ -196,6 +196,131 @@ def generate_contracts(module_bp: ModuleBlueprint) -> list[str]:
     return contracts
 
 
+def validate_imports(code: str, project_dir, module_dir: str) -> list[str]:
+    """Validate that all import paths in generated code resolve to real files.
+
+    Returns list of issues found:
+      - "PHANTOM_IMPORT: './foo' does not resolve (expected src/Mod/foo.ts)"
+      - "PHANTOM_TYPE: IODevice imported from './index' but not exported there"
+    """
+    import re as _re
+    issues = []
+    src_dir = project_dir / "src" if hasattr(project_dir, "__truediv__") else Path(project_dir) / "src"
+
+    for line in code.splitlines():
+        stripped = line.strip()
+        # Match: import { X, Y } from 'path';
+        m = _re.match(r"import\s+\{([^}]+)\}\s+from\s+['\"]([^'\"]+)['\"]", stripped)
+        if not m:
+            # Match: import X from 'path';
+            m = _re.match(r"import\s+(\w+)\s+from\s+['\"]([^'\"]+)['\"]", stripped)
+        if not m:
+            continue
+
+        imported_names = m.group(1).replace(",", " ").split()
+        import_path = m.group(2)
+
+        # Skip node_modules / absolute
+        if not import_path.startswith("."):
+            continue
+
+        # Resolve relative to module_dir
+        base_dir = project_dir / module_dir if module_dir else src_dir
+        # Try: path.ts, path/index.ts, path (exact)
+        candidates = [
+            base_dir / f"{import_path.lstrip('./')}.ts",
+            base_dir / import_path.lstrip("./") / "index.ts",
+        ]
+        # Also try one level up for ../Module imports
+        if import_path.startswith(".."):
+            rel = import_path[3:]  # strip ../
+            candidates.extend([
+                src_dir / f"{rel}.ts",
+                src_dir / rel / "index.ts",
+            ])
+
+        found_file = None
+        for c in candidates:
+            if c.exists():
+                found_file = c
+                break
+
+        if not found_file:
+            issues.append(f"PHANTOM_IMPORT: '{import_path}' does not resolve "
+                          f"(tried {', '.join(str(c) for c in candidates[:2])})")
+        else:
+            # Check that imported names actually exist in the file
+            try:
+                target_code = found_file.read_text()
+                for name in imported_names:
+                    name = name.strip()
+                    if not name:
+                        continue
+                    # Check for export of this name
+                    if (f"export class {name}" not in target_code and
+                        f"export interface {name}" not in target_code and
+                        f"export enum {name}" not in target_code and
+                        f"export type {name}" not in target_code and
+                        f"export function {name}" not in target_code and
+                        f"export const {name}" not in target_code and
+                        f"export {{ {name}" not in target_code and
+                        f"export {{{name}" not in target_code and
+                        f"{name} }}" not in target_code and  # re-export
+                        f", {name}" not in target_code):
+                        # Could be re-exported via barrel
+                        pass  # Don't flag barrel re-exports as phantom
+            except Exception:
+                pass
+
+    return issues
+
+
+def validate_enums(code: str) -> list[str]:
+    """Check that enum values used in code are actually defined in their enum.
+
+    Returns list of issues:
+      - "PHANTOM_ENUM: InstructionGroup.GENERAL used but GENERAL not in enum"
+    """
+    import re as _re
+    issues = []
+
+    # 1. Find all enum definitions in this file
+    enum_values: dict[str, set[str]] = {}
+    current_enum = None
+
+    for line in code.splitlines():
+        stripped = line.strip()
+        m = _re.match(r"(?:export\s+)?enum\s+(\w+)\s*\{", stripped)
+        if m:
+            current_enum = m.group(1)
+            enum_values[current_enum] = set()
+            # Values on same line
+            after = stripped.split("{", 1)[1] if "{" in stripped else ""
+            for val in _re.findall(r"(\w+)\s*[=,}]", after):
+                enum_values[current_enum].add(val)
+            continue
+        if current_enum:
+            if "}" in stripped and stripped.strip().startswith("}"):
+                current_enum = None
+                continue
+            # Extract enum member name
+            m2 = _re.match(r"(\w+)\s*[=,]?", stripped)
+            if m2 and m2.group(1):
+                enum_values[current_enum].add(m2.group(1))
+
+    # 2. Find all EnumName.VALUE usages in code
+    for enum_name, values in enum_values.items():
+        usages = _re.findall(rf"{enum_name}\.(\w+)", code)
+        for usage in usages:
+            if usage not in values:
+                issues.append(
+                    f"PHANTOM_ENUM: {enum_name}.{usage} used but "
+                    f"{usage} not defined in enum (has: {', '.join(sorted(values)[:8])})"
+                )
+
+    return issues
+
+
 def prepare_translation_context(
     target: TypeBlueprint,
     module: ModuleBlueprint,

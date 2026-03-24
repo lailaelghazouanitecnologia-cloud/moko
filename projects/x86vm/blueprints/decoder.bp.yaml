@@ -1,0 +1,404 @@
+## Blueprint — decoder
+name: decoder
+language: typescript
+target_dir: src/decoder
+description: ''
+constraints:
+- Must support 16/32/64-bit modes
+- Handle all x86 instruction prefixes
+- Decode ModR/M and SIB bytes
+- Support operand size overrides
+- 'CONTRACT: InstructionDecoder.modRmParser is ModRmParser — use its API: parse(byte: number): ModRmInfo, getMod(byte: number):
+  number, getReg(byte: number): number, getRm(byte: number): number'
+- 'CONTRACT: InstructionDecoder.opcodeMap is OpcodeMap — use its API: lookup(opcode: number[]): OpcodeEntry, lookupOneByte(opcode:
+  number): OpcodeEntry, lookupTwoByte(opcode: number): OpcodeEntry, lookupThreeByte(byte1: number, byte2: number): OpcodeEntry'
+- 'CONTRACT: InstructionDecoder.prefixScanner is PrefixScanner — use its API: scan(bytes: Uint8Array, offset: number): PrefixScanResult,
+  isPrefix(byte: number): boolean, getPrefixType(byte: number): PrefixType, processLock(info: PrefixInfo): void'
+- 'CONTRACT: InstructionDecoder.sibParser is SibParser — use its API: parse(byte: number): SibInfo, getScale(byte: number):
+  number, getIndex(byte: number): number, getBase(byte: number): number'
+references:
+- dosbox/hardware/cpu/cpu_decode.yaml
+types:
+- name: InstructionDecoder
+  kind: class
+  status: translated
+  target_file: src/decoder/instruction-decoder.ts
+  description: Decodes x86 instructions into internal representation
+  fields:
+  - name: opcodeMap
+    type: OpcodeMap
+  - name: modRmParser
+    type: ModRmParser
+  - name: sibParser
+    type: SibParser
+  - name: prefixScanner
+    type: PrefixScanner
+  - name: cpuMode
+    type: CpuMode
+  - name: instructionPointer
+    type: number
+  methods:
+  - name: decode
+    sig: '(bytes: Uint8Array): DecodedInstruction'
+    hint: Main decode entry point
+  - name: decodeInstruction
+    sig: '(bytes: Uint8Array, offset: number): DecodedInstruction'
+    hint: Decode from offset
+  - name: parsePrefixes
+    sig: '(bytes: Uint8Array, offset: number): PrefixInfo'
+    hint: Extract instruction prefixes
+  - name: parseOpcode
+    sig: '(bytes: Uint8Array, offset: number): OpcodeInfo'
+    hint: Parse opcode bytes
+  - name: parseOperands
+    sig: '(bytes: Uint8Array, offset: number, opcode: OpcodeInfo): OperandInfo[]'
+    hint: Parse operand bytes
+  - name: getInstructionLength
+    sig: '(bytes: Uint8Array, offset: number): number'
+    hint: Calculate total length
+  - name: isValidInstruction
+    sig: '(bytes: Uint8Array, offset: number): boolean'
+    hint: Check if valid instruction
+  - name: decodeModRm
+    sig: '(modRm: number): ModRmInfo'
+    hint: Decode ModR/M byte
+  - name: decodeSib
+    sig: '(sib: number): SibInfo'
+    hint: Decode SIB byte
+  - name: calculateDisplacement
+    sig: '(modRm: ModRmInfo, sib: SibInfo): number'
+    hint: Get displacement value
+  - name: calculateImmediate
+    sig: '(opcode: OpcodeInfo, operands: OperandInfo[]): number'
+    hint: Get immediate value
+  - name: determineOperandSize
+    sig: '(prefixes: PrefixInfo, opcode: OpcodeInfo): OperandSize'
+    hint: Calculate operand size
+  - name: determineAddressSize
+    sig: '(prefixes: PrefixInfo): AddressSize'
+    hint: Calculate address size
+  - name: handleOperandSizeOverride
+    sig: '(prefixes: PrefixInfo, defaultSize: OperandSize): OperandSize'
+    hint: Apply size override
+  - name: handleAddressSizeOverride
+    sig: '(prefixes: PrefixInfo, defaultSize: AddressSize): AddressSize'
+    hint: Apply address override
+  - name: decodeRegisterOperand
+    sig: '(reg: number, size: OperandSize, is64Bit: boolean): RegisterOperand'
+    hint: Decode register operand
+  - name: decodeMemoryOperand
+    sig: '(modRm: ModRmInfo, sib: SibInfo, displacement: number): MemoryOperand'
+    hint: Decode memory operand
+  - name: decodeImmediateOperand
+    sig: '(bytes: Uint8Array, offset: number, size: OperandSize): ImmediateOperand'
+    hint: Decode immediate operand
+  - name: decodeRelativeOffset
+    sig: '(bytes: Uint8Array, offset: number, size: OperandSize): number'
+    hint: Decode relative offset
+  - name: isRexPrefix
+    sig: '(byte: number): boolean'
+    hint: Check for REX prefix
+  - name: parseRexPrefix
+    sig: '(byte: number): RexInfo'
+    hint: Parse REX prefix
+  - name: isTwoByteOpcode
+    sig: '(byte: number): boolean'
+    hint: Check for two-byte opcode
+  - name: isThreeByteOpcode
+    sig: '(bytes: Uint8Array, offset: number): boolean'
+    hint: Check for three-byte opcode
+  - name: getVexPrefixLength
+    sig: '(byte: number): number'
+    hint: Get VEX prefix length
+  - name: parseVexPrefix
+    sig: '(bytes: Uint8Array, offset: number): VexInfo'
+    hint: Parse VEX prefix
+  references:
+  - src/roska/instruction_decoder.yaml
+- name: OpcodeMap
+  kind: class
+  status: translated
+  target_file: src/decoder/opcode-map.ts
+  description: Maps opcodes to instruction information
+  fields:
+  - name: oneByteMap
+    type: Map<number, OpcodeEntry>
+  - name: twoByteMap
+    type: Map<number, OpcodeEntry>
+  - name: threeByteMap
+    type: Map<number, Map<number, OpcodeEntry>>
+  - name: vexMap
+    type: Map<number, OpcodeEntry>
+  methods:
+  - name: lookup
+    sig: '(opcode: number[]): OpcodeEntry'
+    hint: Lookup opcode info
+  - name: lookupOneByte
+    sig: '(opcode: number): OpcodeEntry'
+    hint: Lookup one-byte opcode
+  - name: lookupTwoByte
+    sig: '(opcode: number): OpcodeEntry'
+    hint: Lookup two-byte opcode
+  - name: lookupThreeByte
+    sig: '(byte1: number, byte2: number): OpcodeEntry'
+    hint: Lookup three-byte opcode
+  - name: lookupVex
+    sig: '(byte1: number, byte2: number): OpcodeEntry'
+    hint: Lookup VEX opcode
+  - name: getInstructionMnemonic
+    sig: '(entry: OpcodeEntry): string'
+    hint: Get instruction name
+  - name: getOperandTypes
+    sig: '(entry: OpcodeEntry): OperandType[]'
+    hint: Get operand types
+  - name: getInstructionFlags
+    sig: '(entry: OpcodeEntry): InstructionFlags'
+    hint: Get instruction flags
+  - name: isValidOpcode
+    sig: '(opcode: number[]): boolean'
+    hint: Check opcode validity
+  - name: getOpcodeLength
+    sig: '(opcode: number[]): number'
+    hint: Get opcode length
+  - name: getDefaultOperandSize
+    sig: '(entry: OpcodeEntry): OperandSize'
+    hint: Get default size
+  - name: requiresModRm
+    sig: '(entry: OpcodeEntry): boolean'
+    hint: Check if needs ModR/M
+  - name: hasImmediate
+    sig: '(entry: OpcodeEntry): boolean'
+    hint: Check if has immediate
+  - name: getImmediateSize
+    sig: '(entry: OpcodeEntry): OperandSize'
+    hint: Get immediate size
+  - name: isConditionalJump
+    sig: '(entry: OpcodeEntry): boolean'
+    hint: Check if conditional jump
+  - name: isUnconditionalJump
+    sig: '(entry: OpcodeEntry): boolean'
+    hint: Check if unconditional jump
+  - name: isCall
+    sig: '(entry: OpcodeEntry): boolean'
+    hint: Check if call instruction
+  - name: isReturn
+    sig: '(entry: OpcodeEntry): boolean'
+    hint: Check if return instruction
+  - name: isStringInstruction
+    sig: '(entry: OpcodeEntry): boolean'
+    hint: Check if string op
+  - name: isInputOutput
+    sig: '(entry: OpcodeEntry): boolean'
+    hint: Check if I/O instruction
+  - name: isSystemInstruction
+    sig: '(entry: OpcodeEntry): boolean'
+    hint: Check if system instruction
+  - name: initializeMaps
+    sig: '(): void'
+    hint: Build opcode maps
+  - name: addOpcodeEntry
+    sig: '(map: Map, key: number, entry: OpcodeEntry): void'
+    hint: Add opcode entry
+  references:
+  - src/roska/opcode_map.yaml
+- name: ModRmParser
+  kind: class
+  status: pending
+  target_file: src/decoder/mod-rm-parser.ts
+  description: Parses ModR/M byte for operand information
+  fields:
+  - name: modRm
+    type: number
+  - name: mod
+    type: number
+  - name: reg
+    type: number
+  - name: rm
+    type: number
+  methods:
+  - name: parse
+    sig: '(byte: number): ModRmInfo'
+    hint: Parse ModR/M byte
+  - name: getMod
+    sig: '(byte: number): number'
+    hint: Extract mod field
+  - name: getReg
+    sig: '(byte: number): number'
+    hint: Extract reg field
+  - name: getRm
+    sig: '(byte: number): number'
+    hint: Extract rm field
+  - name: isRegisterMode
+    sig: '(mod: number): boolean'
+    hint: Check register mode
+  - name: isMemoryMode
+    sig: '(mod: number): boolean'
+    hint: Check memory mode
+  - name: hasDisplacement
+    sig: '(mod: number): boolean'
+    hint: Check displacement
+  - name: getDisplacementSize
+    sig: '(mod: number): DisplacementSize'
+    hint: Get displacement size
+  - name: isSpecialCase
+    sig: '(mod: number, rm: number): boolean'
+    hint: Check special case
+  - name: getRegisterNumber
+    sig: '(reg: number, rex: RexInfo): number'
+    hint: Get register number
+  - name: getEffectiveAddress
+    sig: '(rm: number): EffectiveAddress'
+    hint: Get effective address
+  - name: needsSib
+    sig: '(mod: number, rm: number): boolean'
+    hint: Check if needs SIB
+  - name: parseWithRex
+    sig: '(byte: number, rex: RexInfo): ModRmInfo'
+    hint: Parse with REX
+  - name: isExtendedReg
+    sig: '(reg: number, rex: RexInfo): boolean'
+    hint: Check extended reg
+  - name: getExtendedReg
+    sig: '(reg: number, rex: RexInfo): number'
+    hint: Get extended reg
+  - name: validateModRm
+    sig: '(byte: number): boolean'
+    hint: Validate ModR/M
+  - name: getModRmString
+    sig: '(info: ModRmInfo): string'
+    hint: Get string representation
+  references:
+  - src/roska/modrm_parser.yaml
+- name: SibParser
+  kind: class
+  status: pending
+  target_file: src/decoder/sib-parser.ts
+  description: Parses SIB byte for memory addressing
+  fields:
+  - name: scale
+    type: number
+  - name: index
+    type: number
+  - name: base
+    type: number
+  methods:
+  - name: parse
+    sig: '(byte: number): SibInfo'
+    hint: Parse SIB byte
+  - name: getScale
+    sig: '(byte: number): number'
+    hint: Extract scale
+  - name: getIndex
+    sig: '(byte: number): number'
+    hint: Extract index
+  - name: getBase
+    sig: '(byte: number): number'
+    hint: Extract base
+  - name: getScaleFactor
+    sig: '(scale: number): number'
+    hint: Get scale factor
+  - name: hasIndex
+    sig: '(index: number): boolean'
+    hint: Check if has index
+  - name: hasBase
+    sig: '(base: number): boolean'
+    hint: Check if has base
+  - name: isSpecialBase
+    sig: '(base: number, mod: number): boolean'
+    hint: Check special base
+  - name: getEffectiveAddress
+    sig: '(sib: SibInfo, displacement: number): number'
+    hint: Calculate address
+  - name: parseWithRex
+    sig: '(byte: number, rex: RexInfo): SibInfo'
+    hint: Parse with REX
+  - name: getExtendedIndex
+    sig: '(index: number, rex: RexInfo): number'
+    hint: Get extended index
+  - name: getExtendedBase
+    sig: '(base: number, rex: RexInfo): number'
+    hint: Get extended base
+  - name: calculateDisplacement
+    sig: '(sib: SibInfo, mod: number): number'
+    hint: Calculate displacement
+  - name: isValidSib
+    sig: '(byte: number): boolean'
+    hint: Validate SIB
+  - name: getSibString
+    sig: '(info: SibInfo): string'
+    hint: Get string representation
+  - name: needsDisplacement
+    sig: '(sib: SibInfo, mod: number): boolean'
+    hint: Check displacement need
+  references:
+  - src/roska/sib_parser.yaml
+- name: PrefixScanner
+  kind: class
+  status: pending
+  target_file: src/decoder/prefix-scanner.ts
+  description: Scans and processes instruction prefixes
+  fields:
+  - name: prefixes
+    type: PrefixInfo
+  - name: offset
+    type: number
+  methods:
+  - name: scan
+    sig: '(bytes: Uint8Array, offset: number): PrefixScanResult'
+    hint: Scan for prefixes
+  - name: isPrefix
+    sig: '(byte: number): boolean'
+    hint: Check if prefix
+  - name: getPrefixType
+    sig: '(byte: number): PrefixType'
+    hint: Get prefix type
+  - name: processLock
+    sig: '(info: PrefixInfo): void'
+    hint: Process lock prefix
+  - name: processRep
+    sig: '(info: PrefixInfo, byte: number): void'
+    hint: Process rep prefix
+  - name: processSegment
+    sig: '(info: PrefixInfo, byte: number): void'
+    hint: Process segment prefix
+  - name: processOperandSize
+    sig: '(info: PrefixInfo): void'
+    hint: Process operand size
+  - name: processAddressSize
+    sig: '(info: PrefixInfo): void'
+    hint: Process address size
+  - name: processRex
+    sig: '(info: PrefixInfo, byte: number): void'
+    hint: Process REX prefix
+  - name: processVex
+    sig: '(info: PrefixInfo, bytes: Uint8Array, offset: number): number'
+    hint: Process VEX prefix
+  - name: getPrefixCount
+    sig: '(bytes: Uint8Array, offset: number): number'
+    hint: Count prefixes
+  - name: hasOperandSizeOverride
+    sig: '(info: PrefixInfo): boolean'
+    hint: Check size override
+  - name: hasAddressSizeOverride
+    sig: '(info: PrefixInfo): boolean'
+    hint: Check address override
+  - name: getSegmentOverride
+    sig: '(info: PrefixInfo): SegmentRegister'
+    hint: Get segment override
+  - name: getRepType
+    sig: '(info: PrefixInfo): RepType'
+    hint: Get rep type
+  - name: isRexActive
+    sig: '(info: PrefixInfo): boolean'
+    hint: Check if REX active
+  - name: getRexInfo
+    sig: '(info: PrefixInfo): RexInfo'
+    hint: Get REX info
+  - name: validatePrefixes
+    sig: '(info: PrefixInfo): boolean'
+    hint: Validate prefix combo
+  - name: getScanLength
+    sig: '(bytes: Uint8Array, offset: number): number'
+    hint: Get scan length
+  references:
+  - src/roska/prefix_scanner.yaml
