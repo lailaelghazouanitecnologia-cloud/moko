@@ -191,13 +191,17 @@ Rules:
 8. Use idiomatic style for the target language.
 9. Make the code complete and runnable — someone should be able to import it directly.
 
+NAMING (STRICT):
+10. The exported type MUST use the EXACT name from the blueprint. Do NOT rename it.
+11. The main export MUST be: export class/interface/enum <BlueprintName>.
+
 CODE ORGANIZATION (STRICT):
-10. File naming: kebab-case ONLY (e.g., graphics-device.ts, vertex-buffer.ts, event-emitter.ts).
-11. Cross-module imports: ALWAYS use barrel imports via index. Example: import { Vec3, Mat4 } from '../math';
-12. Same-module imports: use relative path to the file. Example: import { VertexBuffer } from './vertex-buffer';
-13. NEVER add .js extension to imports.
-14. NEVER use PascalCase or camelCase for file names in import paths.
-15. If an IMPORT MAP is provided, use EXACTLY those paths. Do not invent import paths."""
+12. File naming: kebab-case ONLY (e.g., graphics-device.ts, vertex-buffer.ts, event-emitter.ts).
+13. Cross-module imports: ALWAYS use barrel imports via index. Example: import { Vec3, Mat4 } from '../math';
+14. Same-module imports: use relative path to the file. Example: import { VertexBuffer } from './vertex-buffer';
+15. NEVER add .js extension to imports.
+16. NEVER use PascalCase or camelCase for file names in import paths.
+17. If an IMPORT MAP is provided, use EXACTLY those paths. Do not invent import paths."""
 
 BLUEPRINT_SYSTEM = """You are a software architect. You generate detailed YAML blueprints from reference Roska descriptors.
 
@@ -709,13 +713,104 @@ class BlueprintTranslator:
                            target_dir: str = "") -> tuple[ModuleBlueprint, int]:
         """Use LLM to generate a blueprint from Roska descriptors.
 
+        Generates one type at a time to avoid YAML truncation from token limits.
         Returns (ModuleBlueprint, tokens_used).
         """
         self._log(f"generating blueprint for {module_name}...")
 
-        # Load references
-        ref_context = self.load_references(ref_paths, max_chars=6000)
+        # Load references once
+        ref_context = self.load_references(ref_paths, max_chars=4000)
 
+        # Extract type names from goal (format: "Module 'X' with types: A, B, C. ...")
+        import re as _re
+        type_match = _re.search(r'types:\s*(.+?)\.', goal)
+        requested_types = []
+        if type_match:
+            requested_types = [t.strip() for t in type_match.group(1).split(',') if t.strip()]
+
+        if not requested_types:
+            # Fallback: generate full module blueprint in one shot (old behavior)
+            return self._generate_blueprint_full(module_name, goal, ref_paths,
+                                                  ref_context, language, target_dir)
+
+        # Per-type blueprint generation — one LLM call per type, no truncation
+        per_type_system = (
+            "You are a software architect. Generate a YAML blueprint for ONE type.\n\n"
+            "Output ONLY raw YAML (no markdown fences). Format:\n"
+            "```yaml\n"
+            "name: TypeName\n"
+            "kind: class|interface|enum\n"
+            "description: \"brief purpose\"\n"
+            "fields:\n"
+            "  - name: fieldName\n"
+            "    type: fieldType\n"
+            "methods:\n"
+            "  - name: methodName\n"
+            "    sig: \"(param: Type): ReturnType\"\n"
+            "    hint: \"3-5 words max\"\n"
+            "```\n\n"
+            "Rules:\n"
+            "- Target 5-10 methods per class, 3-6 for interfaces.\n"
+            "- Keep hints to 3-5 words MAX.\n"
+            "- Use the EXACT type name given. Do NOT rename it.\n"
+            "- Include fields that this type needs.\n"
+            "- Output ONLY the YAML. No explanations."
+        )
+
+        all_types = []
+        total_tokens = 0
+        # Build sibling context so each type knows about the others
+        sibling_list = ", ".join(requested_types)
+
+        for type_name in requested_types:
+            user = (
+                f"## Type to blueprint: {type_name}\n"
+                f"Module: {module_name}\n"
+                f"Module goal: {goal}\n"
+                f"Sibling types in this module: {sibling_list}\n"
+                f"Language: {language}\n"
+            )
+            if ref_context:
+                user += f"\n## Reference descriptors\n{ref_context}\n"
+            user += f"\nGenerate the YAML for {type_name} ONLY."
+
+            content, tokens = self._llm_call(per_type_system, user,
+                                             temperature=0.3, max_tokens=2048)
+            total_tokens += tokens
+
+            clean = self._strip_fences(content)
+            data = self._parse_yaml_tolerant(clean)
+
+            if isinstance(data, dict) and data.get("name"):
+                # Force the correct name (LLM may rename)
+                data["name"] = type_name
+                all_types.append(data)
+                methods_count = len(data.get("methods", []))
+                self._log(f"  blueprint {type_name}: {methods_count} methods")
+            else:
+                self._log(f"  blueprint {type_name}: FAILED parse, will use empty fallback")
+
+        td = target_dir or f"src/{module_name}"
+        bp = ModuleBlueprint(
+            name=module_name,
+            language=language,
+            target_dir=td,
+            types=[TypeBlueprint.from_dict(t) for t in all_types
+                   if isinstance(t, dict) and t.get("name")],
+            constraints=[],
+            references=ref_paths,
+            description="",
+        )
+
+        self._log(f"  generated blueprint: {len(bp.types)} types, "
+                  f"{sum(len(t.methods) for t in bp.types)} methods")
+        return (bp, total_tokens)
+
+    def _generate_blueprint_full(self, module_name: str, goal: str,
+                                  ref_paths: list[str], ref_context: str,
+                                  language: str, target_dir: str
+                                  ) -> tuple[ModuleBlueprint, int]:
+        """Fallback: generate full module blueprint in one LLM call."""
         user = f"## Task\n"
         user += f"Generate a detailed YAML blueprint for module '{module_name}'.\n"
         user += f"Language: {language}\n"
@@ -729,7 +824,6 @@ class BlueprintTranslator:
         content, tokens = self._llm_call(BLUEPRINT_SYSTEM, user,
                                          temperature=0.3, max_tokens=8192)
 
-        # Parse the generated YAML (tolerant of truncation)
         clean = self._strip_fences(content)
         data = self._parse_yaml_tolerant(clean)
 
@@ -737,11 +831,7 @@ class BlueprintTranslator:
             return isinstance(d, dict) and d.get("types") and len(d["types"]) > 0
 
         if not _is_valid_bp(data):
-            # Retry once with explicit instruction
             self._log(f"  WARNING: blueprint parse failed, retrying...")
-            self._log(f"  Raw LLM output length: {len(clean)} chars, {len(clean.split(chr(10)))} lines")
-            self._log(f"  Parse result: type={type(data).__name__}, value={repr(data)[:200] if data else 'None'}")
-            self._log(f"  Raw LLM output (first 300 chars): {clean[:300]}")
             retry_user = (
                 user + "\n\nIMPORTANT: Output RAW YAML only. No markdown fences, no explanations. "
                 "The YAML MUST contain a 'types' list with at least 2 type definitions."
@@ -753,17 +843,14 @@ class BlueprintTranslator:
             data = self._parse_yaml_tolerant(clean)
 
         if not _is_valid_bp(data):
-            self._log(f"  FAILED after retry")
-            raise ValueError(
-                f"Blueprint generation failed for '{module_name}': empty or invalid YAML\n"
-                f"First 200 chars: {clean[:200]}"
-            )
+            raise ValueError(f"Blueprint generation failed for '{module_name}'")
 
         bp = ModuleBlueprint(
             name=data.get("name", module_name),
             language=data.get("language", language),
             target_dir=data.get("target_dir", target_dir or f"src/{module_name}"),
-            types=[TypeBlueprint.from_dict(t) for t in data.get("types", []) if isinstance(t, dict) and t.get("name")],
+            types=[TypeBlueprint.from_dict(t) for t in data.get("types", [])
+                   if isinstance(t, dict) and t.get("name")],
             constraints=data.get("constraints", []),
             references=ref_paths,
             description=data.get("description", ""),

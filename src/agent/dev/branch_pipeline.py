@@ -337,6 +337,9 @@ class BranchPipelineOrchestrator:
                 total_tokens += tokens
                 self._log(f"  translated {type_bp.name} -> {file_path}")
 
+                # Post-translate: verify the exported name matches the blueprint
+                self._verify_export_name(type_bp, project_dir)
+
                 # Two-pass enhancement for richer output
                 if task.generation_passes >= 2:
                     enhanced_tokens = self._enhance_type(
@@ -359,7 +362,11 @@ class BranchPipelineOrchestrator:
 
     def _enhance_type(self, type_bp: TypeBlueprint, module_bp: ModuleBlueprint,
                       project_dir: Path, translator: BlueprintTranslator) -> int:
-        """Second pass: enhance generated code with richer implementations."""
+        """Second pass: enhance generated code with richer implementations.
+
+        Includes TSC gate: checks compilation before and after enhancement.
+        If enhance introduces new errors, reverts to original code.
+        """
         # Skip enhancement for interfaces, enums, and type aliases — they don't need it
         if type_bp.kind in ("interface", "enum", "type"):
             self._log(f"  skip enhance {type_bp.name} (kind={type_bp.kind})")
@@ -374,6 +381,14 @@ class BranchPipelineOrchestrator:
             # Already substantial, skip enhancement
             return 0
 
+        # TSC gate: count errors BEFORE enhance
+        pre_errors = 0
+        if self.fix_loop:
+            pre_check = self.fix_loop.check_tsc()
+            module_rel = f"src/{module_bp.name}"
+            pre_errors = len([e for e in pre_check.errors
+                             if e.file.startswith(module_rel)])
+
         # Build enhancement prompt
         import yaml as _yaml
         bp_yaml = _yaml.dump(
@@ -387,11 +402,12 @@ class BranchPipelineOrchestrator:
             "private helper methods, and any missing method implementations from the blueprint.\n\n"
             "Rules:\n"
             "1. Output the COMPLETE enhanced file.\n"
-            "2. Keep all existing functionality intact.\n"
+            "2. Keep all existing functionality intact — do NOT corrupt declarations.\n"
             "3. Add missing methods from the blueprint.\n"
             "4. Add JSDoc for public methods.\n"
             "5. Add input validation and error handling.\n"
-            "6. Output ONLY the source code. No markdown fences."
+            "6. Preserve ALL field declarations exactly as they are.\n"
+            "7. Output ONLY the source code. No markdown fences."
         )
 
         user = (
@@ -408,7 +424,24 @@ class BranchPipelineOrchestrator:
 
         enhanced = self._strip_fences(resp.content)
         if enhanced.strip() and len(enhanced.splitlines()) > len(code.splitlines()):
+            # Write enhanced code
             code_path.write_text(enhanced + "\n")
+
+            # TSC gate: count errors AFTER enhance
+            if self.fix_loop:
+                post_check = self.fix_loop.check_tsc()
+                module_rel = f"src/{module_bp.name}"
+                post_errors = len([e for e in post_check.errors
+                                  if e.file.startswith(module_rel)])
+
+                if post_errors > pre_errors:
+                    # Enhance introduced new errors — REVERT
+                    code_path.write_text(code)
+                    self._log(f"  enhance REVERTED {type_bp.name}: "
+                              f"introduced {post_errors - pre_errors} new errors "
+                              f"({pre_errors}->{post_errors})")
+                    return resp.usage.total_tokens
+
             self._log(f"  enhanced {type_bp.name}: "
                       f"{len(code.splitlines())} -> {len(enhanced.splitlines())} LOC")
 
@@ -459,6 +492,36 @@ class BranchPipelineOrchestrator:
                     self._log(f"  import-fix: {len(report.fixes)} fixes in {type_bp.name}")
         except Exception as e:
             self._log(f"  import-fix skipped: {e}")
+
+    def _verify_export_name(self, type_bp: TypeBlueprint, project_dir: Path):
+        """Verify that the generated file exports the type with the correct name.
+
+        If the LLM renamed the type (e.g. MutationStrategy -> TransformationRule),
+        fix it by replacing the wrong name with the correct one.
+        """
+        code_path = project_dir / type_bp.target_file
+        if not code_path.exists():
+            return
+
+        code = code_path.read_text()
+        expected = type_bp.name
+
+        # Check if the expected name is exported
+        import re
+        export_pattern = rf'export\s+(class|interface|enum|type|abstract\s+class)\s+{re.escape(expected)}\b'
+        if re.search(export_pattern, code):
+            return  # All good
+
+        # Find what name WAS exported instead
+        wrong_pattern = r'export\s+(class|interface|enum|type|abstract\s+class)\s+(\w+)'
+        match = re.search(wrong_pattern, code)
+        if match:
+            wrong_name = match.group(2)
+            if wrong_name != expected:
+                # Replace ALL occurrences of wrong name with correct name
+                fixed = code.replace(wrong_name, expected)
+                code_path.write_text(fixed)
+                self._log(f"  name-fix: {wrong_name} -> {expected} in {type_bp.target_file}")
 
     def _generate_project_config(self, target: str,
                                  tasks: list[ModuleTask],
