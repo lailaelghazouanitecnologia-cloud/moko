@@ -1,0 +1,213 @@
+## Blueprint — memory
+name: memory
+language: typescript
+target_dir: src/memory
+description: ''
+constraints:
+- Must support 4KB address space (0x000-0xFFF)
+- Must enforce read-only regions for ROM/Font
+- Must provide bounds checking for all operations
+references:
+- chip8/src/memory.yaml
+types:
+- name: Memory
+  kind: interface
+  status: pending
+  target_file: src/memory/memory.ts
+  description: Abstract memory interface for Chip-8 address space
+  methods:
+  - name: read
+    sig: '(address: number): number'
+    hint: Read byte at address
+  - name: write
+    sig: '(address: number, value: number): void'
+    hint: Write byte to address
+  - name: readWord
+    sig: '(address: number): number'
+    hint: Read 16-bit big-endian
+  - name: writeWord
+    sig: '(address: number, value: number): void'
+    hint: Write 16-bit big-endian
+  - name: readRange
+    sig: '(start: number, length: number): Uint8Array'
+    hint: Read contiguous block
+  - name: writeRange
+    sig: '(address: number, data: Uint8Array): void'
+    hint: Write contiguous block
+  - name: getSize
+    sig: '(): number'
+    hint: Return total size
+  - name: isReadable
+    sig: '(address: number): boolean'
+    hint: Check read permission
+  - name: isWritable
+    sig: '(address: number): boolean'
+    hint: Check write permission
+  - name: clear
+    sig: '(start?: number, end?: number): void'
+    hint: Zero memory range
+  - name: copy
+    sig: '(dest: number, src: number, length: number): void'
+    hint: Internal memory copy
+  - name: validateAddress
+    sig: '(address: number): void'
+    hint: Throw if invalid
+  references:
+  - src/memory/roska/memory.yaml
+- name: Ram
+  kind: class
+  status: translated
+  target_file: src/memory/ram.ts
+  extends: Memory
+  description: Random access memory implementation
+  fields:
+  - name: buffer
+    type: Uint8Array
+    default: new Uint8Array(4096)
+  - name: size
+    type: number
+    default: '4096'
+  methods:
+  - name: read
+    sig: '(address: number): number'
+    hint: Return buffer[address]
+  - name: write
+    sig: '(address: number, value: number): void'
+    hint: buffer[address] = value & 0xFF
+  - name: readWord
+    sig: '(address: number): number'
+    hint: Read two bytes big-endian
+  - name: writeWord
+    sig: '(address: number, value: number): void'
+    hint: Write two bytes big-endian
+  - name: readRange
+    sig: '(start: number, length: number): Uint8Array'
+    hint: Return buffer.subarray
+  - name: writeRange
+    sig: '(address: number, data: Uint8Array): void'
+    hint: Copy data into buffer
+  - name: getSize
+    sig: '(): number'
+    hint: Return size field
+  - name: isReadable
+    sig: '(address: number): boolean'
+    hint: Always true
+  - name: isWritable
+    sig: '(address: number): boolean'
+    hint: Always true
+  - name: clear
+    sig: '(start?: number, end?: number): void'
+    hint: Zero buffer range
+  - name: copy
+    sig: '(dest: number, src: number, length: number): void'
+    hint: Buffer self-copy
+  - name: validateAddress
+    sig: '(address: number): void'
+    hint: Throw if >= size
+  - name: loadFromRom
+    sig: '(rom: Rom, offset?: number): void'
+    hint: Copy ROM data
+  - name: loadFromFont
+    sig: '(font: Font): void'
+    hint: Copy font data
+  - name: getHexDump
+    sig: '(start: number, length: number): string'
+    hint: Format as hex string
+  references:
+  - src/memory/roska/ram.yaml
+- name: Rom
+  kind: class
+  status: pending
+  target_file: src/memory/rom.ts
+  extends: Memory
+  description: Read-only memory for Chip-8 programs
+  fields:
+  - name: buffer
+    type: Uint8Array
+    default: new Uint8Array(0)
+  - name: size
+    type: number
+    default: '0'
+  methods:
+  - name: constructor
+    sig: '(data: Uint8Array)'
+    hint: Store immutable copy
+  - name: read
+    sig: '(address: number): number'
+    hint: Return buffer[address]
+  - name: write
+    sig: '(address: number, value: number): void'
+    hint: Throw read-only error
+  - name: readWord
+    sig: '(address: number): number'
+    hint: Read two bytes big-endian
+  - name: writeWord
+    sig: '(address: number, value: number): void'
+    hint: Throw read-only error
+  - name: readRange
+    sig: '(start: number, length: number): Uint8Array'
+    hint: Return buffer.subarray
+  - name: writeRange
+    sig: '(address: number, data: Uint8Array): void'
+    hint: Throw read-only error
+  - name: getSize
+    sig: '(): number'
+    hint: Return size field
+  - name: isReadable
+    sig: '(address: number): boolean'
+    hint: Check within bounds
+  - name: isWritable
+    sig: '(address: number): boolean'
+    hint: Always false
+  - name: clear
+    sig: '(start?: number, end?: number): void'
+    hint: Throw read-only error
+  - name: copy
+    sig: '(dest: number, src: number, length: number): void'
+    hint: Throw read-only error
+  - name: validateAddress
+    sig: '(address: number): void'
+    hint: Throw if >= size
+  - name: getHash
+    sig: '(): string'
+    hint: Return SHA-256 of data
+  - name: getHexDump
+    sig: '(start: number, length: number): string'
+    hint: Format as hex string
+  references:
+  - src/memory/roska/rom.yaml
+- name: Font
+  kind: class
+  status: pending
+  target_file: src/memory/font.ts
+  extends: Rom
+  description: Built-in Chip-8 font sprites (0-9, A-F)
+  methods:
+  - name: constructor
+    sig: ()
+    hint: Initialize with built-in sprites
+  - name: getSprite
+    sig: '(digit: number): Uint8Array'
+    hint: Return 5-byte sprite
+  - name: getSpriteAddress
+    sig: '(digit: number): number'
+    hint: Calculate memory address
+  - name: validateDigit
+    sig: '(digit: number): void'
+    hint: Throw if not 0-15
+  - name: getAllSprites
+    sig: '(): Uint8Array'
+    hint: Return 80-byte array
+  - name: getHeight
+    sig: '(): number'
+    hint: Always returns 5
+  - name: getWidth
+    sig: '(): number'
+    hint: Always returns 1
+  static:
+  - name: SPRITES
+    hint: 16 sprites, 5 bytes each
+  - name: BASE_ADDRESS
+    hint: 0x50 (80 decimal)
+  references:
+  - src/memory/roska/font.yaml

@@ -267,31 +267,46 @@ def register_duel_subparser(subparsers: argparse._SubParsersAction):
     p = subparsers.add_parser("duel",
                               help="Claude vs Ava head-to-head comparison")
     p.add_argument("-t", "--target", required=True, help="Target project name")
-    p.add_argument("-r", "--ref", nargs="+", required=True, help="Reference projects")
-    p.add_argument("-m", "--module", required=True, help="Module to compare (e.g. math)")
-    p.add_argument("--types", nargs="+", required=True,
-                   help="Types to compare (e.g. Vec3 Mat4)")
-    p.add_argument("-g", "--goal", default="", help="Project goal")
+    p.add_argument("-g", "--goal", default="", help="Project goal / spec")
     p.add_argument("--provider", default="groq", help="LLM provider")
     p.add_argument("--model", help="Override model")
     p.add_argument("-v", "--verbose", action="store_true", help="Verbose output")
+    # Legacy type-level duel (with refs)
+    p.add_argument("-r", "--ref", nargs="+", help="Reference projects (type-level duel)")
+    p.add_argument("-m", "--module", help="Module to compare (type-level duel)")
+    p.add_argument("--types", nargs="+", help="Types to compare (type-level duel)")
+    # Project-level duel (no refs, full pipeline)
+    p.add_argument("--project", action="store_true",
+                   help="Project-level duel: full pipeline, no refs, iterative")
 
 
 def cmd_duel(args: argparse.Namespace):
     """Execute duel command."""
-    from .duel import DuelRunner
-
     config = {
         "provider": args.provider,
         "model": args.model,
         "verbose": args.verbose,
     }
 
-    runner = DuelRunner(config)
-    runner.run(
-        target=args.target,
-        references=args.ref,
-        module=args.module,
-        types=args.types,
-        goal=args.goal,
-    )
+    if args.project or not args.ref:
+        # Project-level duel (fair, no refs)
+        from .duel_project import ProjectDuel
+        runner = ProjectDuel(config)
+        runner.run(
+            target=args.target,
+            goal=args.goal,
+        )
+    else:
+        # Type-level duel (with refs)
+        from .duel import DuelRunner
+        if not args.module or not args.types:
+            print("Type-level duel requires: -m MODULE --types TYPE1 TYPE2")
+            sys.exit(1)
+        runner = DuelRunner(config)
+        runner.run(
+            target=args.target,
+            references=args.ref,
+            module=args.module,
+            types=args.types,
+            goal=args.goal,
+        )
