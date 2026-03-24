@@ -243,7 +243,8 @@ class BlueprintTranslator:
 
     def __init__(self, llm: LLMProvider, out_dir: Path = None,
                  verbose: bool = False, emission_index: EmissionIndex = None,
-                 prior_layers_context: str = ""):
+                 prior_layers_context: str = "",
+                 rich_mode: bool = False):
         self.llm = llm
         self.out_dir = out_dir or OUT_DIR
         self.verbose = verbose
@@ -252,6 +253,7 @@ class BlueprintTranslator:
         self.prior_layers_context = prior_layers_context
         self.prior_modules: list = []  # ModuleBlueprints from prior layers
         self.semantic_store = None  # Optional SemanticStore for enriched context
+        self.rich_mode = rich_mode  # When True, use higher token budget
 
     def _log(self, msg: str):
         if self.verbose:
@@ -404,7 +406,8 @@ class BlueprintTranslator:
                 user += "\n".join(sem_lines) + "\n"
 
         # 4. LLM call — all token budget for this one type
-        code, tokens = self._llm_call(TRANSLATE_SYSTEM, user, max_tokens=6000)
+        max_tok = 12000 if self.rich_mode else 6000
+        code, tokens = self._llm_call(TRANSLATE_SYSTEM, user, max_tokens=max_tok)
 
         # 5. Clean output (strip markdown fences if present)
         clean = self._strip_fences(code)
@@ -420,6 +423,66 @@ class BlueprintTranslator:
 
         self._log(f"  wrote {target} ({len(clean)} chars, {tokens} tokens, {len(refs_used)} refs)")
         return (target, tokens, refs_used)
+
+    def translate_type_rich(self, type_bp: TypeBlueprint,
+                            module_bp: ModuleBlueprint,
+                            project_dir: Path) -> tuple[str, int, list[str]]:
+        """Two-pass translation: skeleton + enhancement for richer output.
+
+        Pass 1: Standard translate_type() with rich_mode for higher token budget.
+        Pass 2: Enhancement pass that fleshes out the generated code.
+
+        Returns (relative_file_path, tokens_used, references_used).
+        """
+        # Pass 1: Generate skeleton with rich mode
+        old_rich = self.rich_mode
+        self.rich_mode = True
+        file_path, tokens1, refs_used = self.translate_type(type_bp, module_bp, project_dir)
+        self.rich_mode = old_rich
+
+        # Pass 2: Enhance the generated code
+        code_path = project_dir / file_path
+        if not code_path.exists():
+            return file_path, tokens1, refs_used
+
+        code = code_path.read_text()
+        if len(code.splitlines()) >= 300:
+            # Already substantial
+            return file_path, tokens1, refs_used
+
+        import yaml as _yaml
+        bp_yaml = _yaml.dump(
+            type_bp.to_dict(), default_flow_style=False,
+            allow_unicode=True, sort_keys=False, width=120,
+        )
+
+        enhance_system = (
+            "You are enhancing TypeScript code. The code below is functionally correct "
+            "but sparse. Add: complete error handling, edge case coverage, JSDoc comments, "
+            "private helper methods, and any missing method implementations from the blueprint.\n\n"
+            "Rules:\n"
+            "1. Output the COMPLETE enhanced file.\n"
+            "2. Keep all existing functionality intact.\n"
+            "3. Add missing methods from the blueprint.\n"
+            "4. Add JSDoc for public methods.\n"
+            "5. Add input validation and error handling.\n"
+            "6. Output ONLY the source code. No markdown fences."
+        )
+        enhance_user = (
+            f"## Current code\n```typescript\n{code}\n```\n\n"
+            f"## Blueprint\n```yaml\n{bp_yaml}\n```\n\n"
+            f"Enhance this code. Output the COMPLETE file."
+        )
+
+        enhanced, tokens2 = self._llm_call(enhance_system, enhance_user, max_tokens=12000)
+        clean = self._strip_fences(enhanced)
+
+        if clean.strip() and len(clean.splitlines()) > len(code.splitlines()):
+            code_path.write_text(clean + "\n")
+            self._log(f"  enhanced {type_bp.name}: "
+                      f"{len(code.splitlines())} -> {len(clean.splitlines())} LOC")
+
+        return file_path, tokens1 + tokens2, refs_used
 
     def generate_index(self, module_bp: ModuleBlueprint,
                        project_dir: Path) -> str:

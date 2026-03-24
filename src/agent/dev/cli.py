@@ -20,6 +20,8 @@ def register_subparser(subparsers: argparse._SubParsersAction):
     p.add_argument("--plans", action="store_true", help="List saved plans")
     p.add_argument("--density", metavar="PROJECT", help="Run density analysis on a project")
     p.add_argument("--compose", action="store_true", help="Use blueprint composer (extraction-first)")
+    p.add_argument("--branches", action="store_true",
+                   help="Use branch-per-module pipeline (generate -> tsc fix -> merge)")
 
     # Branch & evaluation flags
     p.add_argument("--eval", action="store_true",
@@ -174,6 +176,19 @@ def cmd_dev(args: argparse.Namespace):
                   f"{len(project_bp.layers)} layers")
         else:
             print("No blueprint generated, using non-layered LLM plan")
+
+    # Branch pipeline mode
+    if args.branches:
+        from .branch_pipeline import BranchPipelineOrchestrator
+        orchestrator = BranchPipelineOrchestrator(config)
+        result = orchestrator.run(
+            goal=args.goal,
+            target=args.target,
+            references=args.ref or None,
+            project_bp=project_bp,
+        )
+        print(result.format_report())
+        return
 
     # Run with or without evaluation
     if args.eval:
