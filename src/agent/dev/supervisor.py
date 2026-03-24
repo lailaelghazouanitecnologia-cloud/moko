@@ -801,6 +801,26 @@ class DevSupervisor:
         for t in bp.types:
             t.target_file = f"src/{mod_name}/{to_kebab_case(t.name)}.ts"
 
+        # Generate inter-type contracts from dependency graph
+        from .compaction import generate_contracts, topo_sort_types
+        contracts = generate_contracts(bp)
+        if contracts:
+            # Store contracts as constraints prefixed with "CONTRACT:"
+            for c in contracts:
+                tagged = f"CONTRACT: {c}"
+                if tagged not in bp.constraints:
+                    bp.constraints.append(tagged)
+            self._log(f"contracts: {len(contracts)} inter-type rules generated")
+
+        # Log topo phases for visibility
+        phases = topo_sort_types(bp)
+        if len(phases) > 1:
+            phase_strs = []
+            for i, phase in enumerate(phases):
+                names = [t.name for t in phase]
+                phase_strs.append(f"P{i}=[{','.join(names)}]")
+            self._log(f"topo phases: {' → '.join(phase_strs)}")
+
         # Save blueprint to disk
         full_bp_path = project_dir / bp_path
         bp.save(full_bp_path)
@@ -1233,7 +1253,12 @@ class DevSupervisor:
                   f"→ {eval_path}")
 
     def _collect_parallel_batch(self, plan: Plan) -> list:
-        """Collect consecutive IMPLEMENT blocks from the same module for parallel exec."""
+        """Collect IMPLEMENT blocks from the same topo-phase for parallel exec.
+
+        Uses the module blueprint's dependency graph to only parallelize types
+        that don't depend on each other. Types that depend on others in the
+        same module wait until their dependencies are translated.
+        """
         first = plan.next_pending
         if not first or first.block_type != BlockType.IMPLEMENT:
             return [first]
@@ -1244,24 +1269,53 @@ class DevSupervisor:
         if type_name == "__index__":
             return [first]
 
-        batch = [first]
-        # Look ahead for more implement blocks in the same module
+        # Try to load the module blueprint for topo-sort
+        bp_path = first.meta.get("blueprint", "")
+        topo_phase_names = None
+        if bp_path and self.current_plan:
+            target = self.current_plan.target_project
+            full_bp = self.projects_dir / target / bp_path
+            if full_bp.exists():
+                try:
+                    from .compaction import topo_sort_types
+                    module_bp = ModuleBlueprint.load(full_bp)
+                    phases = topo_sort_types(module_bp)
+                    # Find which phase contains the first pending type
+                    for phase in phases:
+                        phase_names = {t.name for t in phase}
+                        if type_name in phase_names:
+                            topo_phase_names = phase_names
+                            break
+                except Exception:
+                    pass
+
+        # Collect pending implement blocks from the same module
+        all_pending = [first]
         for b in plan.blocks:
             if b.index <= first.index:
                 continue
             if b.status.value != "pending":
                 continue
             if b.block_type != BlockType.IMPLEMENT:
-                break  # Stop at non-implement block (e.g., next analyze or index)
-            if b.meta.get("module", "") != mod:
-                break  # Stop at different module
-            if b.meta.get("type", "") == "__index__":
-                break  # Stop before index generation
-            batch.append(b)
-            if len(batch) >= 4:  # Max parallelism
                 break
+            if b.meta.get("module", "") != mod:
+                break
+            if b.meta.get("type", "") == "__index__":
+                break
+            all_pending.append(b)
 
-        return batch
+        # Filter to only types in the same topo-phase
+        if topo_phase_names:
+            batch = [b for b in all_pending
+                     if b.meta.get("type", "") in topo_phase_names]
+            if not batch:
+                batch = [first]  # fallback
+        else:
+            # No blueprint available yet, limit to 4 (old behavior)
+            batch = all_pending[:4]
+
+        # Cap at 4 parallel workers
+        return batch[:4]
 
     # ── Full Iteration Loop ─────────────────────────────────────
 

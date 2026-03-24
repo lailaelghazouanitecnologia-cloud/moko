@@ -243,9 +243,29 @@ class BlueprintTranslator:
         if sibling_context:
             user += f"\n## Sibling types (for import awareness)\n{sibling_context}\n"
         else:
-            other_types = [t.name for t in module_bp.types if t.name != type_bp.name]
+            # Inject full YAML of all sibling types so parallel types see each other's contracts
+            other_types = [t for t in module_bp.types if t.name != type_bp.name]
             if other_types:
-                user += f"Other types in this module: {', '.join(other_types)}\n"
+                import yaml as _yaml
+                sibling_yamls = []
+                for ot in other_types:
+                    sibling_yamls.append(_yaml.dump(
+                        ot.to_dict(), default_flow_style=False,
+                        allow_unicode=True, sort_keys=False, width=120
+                    ).strip())
+                user += (f"\n## Sibling type blueprints (implement ONLY {type_bp.name}, "
+                         f"but conform to these sibling contracts)\n```yaml\n")
+                user += "\n---\n".join(sibling_yamls)
+                user += "\n```\n"
+
+        # Contracts — inter-type usage rules from dependency analysis
+        if module_bp.constraints:
+            # Contracts are stored as constraints prefixed with "CONTRACT:"
+            contract_lines = [c for c in module_bp.constraints if c.startswith("CONTRACT:")]
+            if contract_lines:
+                user += "\n## Inter-type contracts (MUST follow these rules)\n"
+                for c in contract_lines:
+                    user += f"  - {c[9:].strip()}\n"
 
         # Intra-module sibling signatures: read already-generated code for this module
         sibling_sigs = self._build_sibling_signatures(type_bp, module_bp, project_dir)

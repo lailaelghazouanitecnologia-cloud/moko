@@ -101,6 +101,101 @@ def _extract_type_references(type_bp: TypeBlueprint) -> set[str]:
     return refs
 
 
+# ── Topological sort for intra-module dependencies ──────────
+
+def topo_sort_types(module_bp: ModuleBlueprint) -> list[list[TypeBlueprint]]:
+    """Sort types within a module into dependency phases.
+
+    Returns a list of phases. Types in the same phase have no dependencies
+    on each other and can be translated in parallel. Each phase only depends
+    on types from earlier phases.
+
+    Example for CPU module:
+      Phase 0: [Flags, AddressingMode]         ← leaves (no intra-module deps)
+      Phase 1: [Registers, Instruction]         ← depend on phase 0
+      Phase 2: [CPU6502]                        ← depends on phase 0+1
+    """
+    type_names = {t.name for t in module_bp.types}
+    type_map = {t.name: t for t in module_bp.types}
+
+    # Build dependency graph (only intra-module references)
+    deps: dict[str, set[str]] = {}
+    for t in module_bp.types:
+        refs = _extract_type_references(t)
+        deps[t.name] = refs & type_names  # only keep refs to types in this module
+
+    # Kahn's algorithm for topological sort by phases
+    in_degree = {name: len(d) for name, d in deps.items()}
+    resolved: set[str] = set()
+    phases: list[list[TypeBlueprint]] = []
+
+    while len(resolved) < len(type_names):
+        # Collect all types whose dependencies are fully resolved
+        ready = [name for name in type_names - resolved
+                 if all(d in resolved for d in deps.get(name, set()))]
+        if not ready:
+            # Cycle detected — break it by taking the type with fewest unresolved deps
+            remaining = type_names - resolved
+            ready = [min(remaining,
+                         key=lambda n: len(deps.get(n, set()) - resolved))]
+
+        phase = [type_map[name] for name in sorted(ready)]
+        phases.append(phase)
+        resolved.update(ready)
+
+    return phases
+
+
+def generate_contracts(module_bp: ModuleBlueprint) -> list[str]:
+    """Generate inter-type contracts from a blueprint's dependency graph.
+
+    Contracts are short rules that tell the translator HOW types should
+    interact, preventing incompatible designs when translating in parallel.
+
+    Example: "CPU6502.registers is Registers — access flags via registers.p.toByte()"
+    """
+    contracts = []
+    type_map = {t.name: t for t in module_bp.types}
+
+    for t in module_bp.types:
+        refs = _extract_type_references(t)
+        intra_refs = refs & set(type_map.keys())
+
+        for ref_name in sorted(intra_refs):
+            ref_type = type_map[ref_name]
+
+            # Find which field links them
+            linking_fields = [f for f in t.fields if ref_name in f.type]
+
+            for lf in linking_fields:
+                # Build contract from the referenced type's API
+                ref_methods = [m.name + m.sig for m in ref_type.methods[:5]]
+                ref_statics = [f"static {m.name}" for m in ref_type.static_members[:3]]
+                api_parts = ref_methods + ref_statics
+
+                if api_parts:
+                    api_str = ", ".join(api_parts[:4])
+                    contracts.append(
+                        f"{t.name}.{lf.name} is {ref_name} — use its API: {api_str}"
+                    )
+
+            # If referenced in method sigs but not as field
+            if not linking_fields:
+                ref_kind = ref_type.kind
+                if ref_kind == "enum":
+                    values = [f.name for f in ref_type.fields[:5]]
+                    contracts.append(
+                        f"{t.name} uses {ref_name} [{ref_kind}] values: {', '.join(values)}"
+                    )
+                elif ref_type.methods:
+                    api_str = ", ".join(m.name for m in ref_type.methods[:4])
+                    contracts.append(
+                        f"{t.name} depends on {ref_name} [{ref_kind}] — API: {api_str}"
+                    )
+
+    return contracts
+
+
 def prepare_translation_context(
     target: TypeBlueprint,
     module: ModuleBlueprint,
