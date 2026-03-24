@@ -1,1 +1,2 @@
-from .providers import LLMProvider, LLMMessage, LLMResponse, LLMUsage
+"""LLM — COMPATIBILITY SHIM. Real code lives in core.llm."""
+from ..core.llm.providers import LLMProvider, LLMMessage, LLMResponse, LLMUsage

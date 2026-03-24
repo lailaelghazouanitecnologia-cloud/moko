@@ -14,5 +14,7 @@ SRC_DIR = ROOT / "src"
 OUT_DIR = ROOT / "out"
 REGISTRY_PATH = ROOT / "projects.json"
 VECTORDB_PATH = OUT_DIR / ".vectordb"
+PROJECTS_DIR = ROOT / "projects"
+PLANS_DIR = OUT_DIR / ".plans"
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
