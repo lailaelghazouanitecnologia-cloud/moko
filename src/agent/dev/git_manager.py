@@ -28,8 +28,16 @@ class GitManager:
             print(f"  [git] {msg}")
 
     def _run(self, *args: str, check: bool = True) -> subprocess.CompletedProcess:
-        """Run a git command in the project directory."""
-        cmd = ["git"] + list(args)
+        """Run a git command in the project directory.
+
+        For commit/merge operations, proactively disables gpg signing
+        to avoid failures in environments without signing keys.
+        """
+        # Proactively disable signing for operations that create commits
+        if args and args[0] in ("commit", "merge"):
+            cmd = ["git", "-c", "commit.gpgsign=false"] + list(args)
+        else:
+            cmd = ["git"] + list(args)
         self._log(f"$ {' '.join(cmd)}")
         try:
             result = subprocess.run(
