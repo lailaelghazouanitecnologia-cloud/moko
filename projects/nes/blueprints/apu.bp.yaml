@@ -1,0 +1,431 @@
+## Blueprint — apu
+name: apu
+language: typescript
+target_dir: src/apu
+description: ''
+constraints:
+- Must emulate Ricoh 2A03 APU behavior
+- All channels must generate 44.1kHz audio
+- Frame sequencer runs at 240Hz or 192Hz
+- DMC can trigger CPU interrupts
+references:
+- nes/apu/apu.yaml
+types:
+- name: APU2A03
+  kind: class
+  status: translated
+  target_file: src/apu/apu2-a03.ts
+  description: Main APU controller for NES audio processing
+  fields:
+  - name: pulse1
+    type: PulseChannel
+  - name: pulse2
+    type: PulseChannel
+  - name: triangle
+    type: TriangleChannel
+  - name: noise
+    type: NoiseChannel
+  - name: dmc
+    type: DMCChannel
+  - name: frameCounter
+    type: number
+  - name: frameCounterMode
+    type: number
+  - name: frameInterrupt
+    type: boolean
+  - name: cycle
+    type: number
+  - name: sampleRate
+    type: number
+  - name: bufferSize
+    type: number
+  - name: audioBuffer
+    type: Float32Array
+  methods:
+  - name: cpuRead
+    sig: '(address: number): number'
+    hint: Read APU register at address
+  - name: cpuWrite
+    sig: '(address: number, data: number): void'
+    hint: Write to APU register at address
+  - name: step
+    sig: '(): void'
+    hint: Advance APU by one CPU cycle
+  - name: clockFrameCounter
+    sig: '(): void'
+    hint: Update frame sequencer at 240/192Hz
+  - name: generateSample
+    sig: '(): number'
+    hint: Mix all channels to single sample
+  - name: enableChannel
+    sig: '(channel: number, enable: boolean): void'
+    hint: Enable/disable specific channel
+  - name: setFrameCounterMode
+    sig: '(mode: number): void'
+    hint: Set 4-step or 5-step mode
+  - name: getChannelOutput
+    sig: '(channel: number): number'
+    hint: Get individual channel output level
+  - name: reset
+    sig: '(): void'
+    hint: Reset all APU state
+  - name: saveState
+    sig: '(): Uint8Array'
+    hint: Serialize APU state
+  - name: loadState
+    sig: '(state: Uint8Array): void'
+    hint: Deserialize APU state
+  - name: setSampleRate
+    sig: '(rate: number): void'
+    hint: Configure audio output rate
+  - name: getAudioBuffer
+    sig: '(): Float32Array'
+    hint: Get current audio buffer
+  - name: clearAudioBuffer
+    sig: '(): void'
+    hint: Reset audio buffer pointer
+  - name: triggerFrameInterrupt
+    sig: '(): void'
+    hint: Signal frame counter interrupt
+  references:
+  - src/cpu/cpu6502.yaml
+- name: PulseChannel
+  kind: class
+  status: translated
+  target_file: src/apu/pulse-channel.ts
+  description: Pulse wave generator with sweep and envelope units
+  fields:
+  - name: enabled
+    type: boolean
+  - name: channel
+    type: number
+  - name: timer
+    type: number
+  - name: timerPeriod
+    type: number
+  - name: duty
+    type: number
+  - name: dutyCycle
+    type: number
+  - name: lengthCounter
+    type: number
+  - name: lengthCounterHalt
+    type: boolean
+  - name: envelope
+    type: number
+  - name: envelopePeriod
+    type: number
+  - name: envelopeVolume
+    type: number
+  - name: envelopeStart
+    type: boolean
+  - name: constantVolume
+    type: boolean
+  - name: sweepReload
+    type: boolean
+  - name: sweepEnabled
+    type: boolean
+  - name: sweepPeriod
+    type: number
+  - name: sweepNegate
+    type: boolean
+  - name: sweepShift
+    type: number
+  - name: sweepTimer
+    type: number
+  - name: sequencer
+    type: number
+  methods:
+  - name: writeControl
+    sig: '(data: number): void'
+    hint: Write $4000/$4004 register
+  - name: writeSweep
+    sig: '(data: number): void'
+    hint: Write $4001/$4005 register
+  - name: writeTimerLow
+    sig: '(data: number): void'
+    hint: Write $4002/$4006 register
+  - name: writeLength
+    sig: '(data: number): void'
+    hint: Write $4003/$4007 register
+  - name: clockTimer
+    sig: '(): void'
+    hint: Advance timer by one cycle
+  - name: clockEnvelope
+    sig: '(): void'
+    hint: Clock envelope unit
+  - name: clockSweep
+    sig: '(): void'
+    hint: Clock sweep unit
+  - name: clockLengthCounter
+    sig: '(): void'
+    hint: Clock length counter
+  - name: getOutput
+    sig: '(): number'
+    hint: Calculate current sample value
+  - name: setEnabled
+    sig: '(enable: boolean): void'
+    hint: Enable/disable channel
+  - name: updateSweep
+    sig: '(): void'
+    hint: Calculate sweep target period
+  - name: reloadSweep
+    sig: '(): void'
+    hint: Reload sweep timer
+  - name: getDutyValue
+    sig: '(): number'
+    hint: Get current duty cycle output
+  - name: setLengthCounter
+    sig: '(value: number): void'
+    hint: Set length counter from table
+  - name: reset
+    sig: '(): void'
+    hint: Reset channel state
+  - name: saveState
+    sig: '(): Uint8Array'
+    hint: Serialize channel state
+  - name: loadState
+    sig: '(state: Uint8Array): void'
+    hint: Deserialize channel state
+  references:
+  - src/apu/apu2a03.yaml
+- name: TriangleChannel
+  kind: class
+  status: translated
+  target_file: src/apu/triangle-channel.ts
+  description: Triangle wave generator with linear counter
+  fields:
+  - name: enabled
+    type: boolean
+  - name: timer
+    type: number
+  - name: timerPeriod
+    type: number
+  - name: linearCounter
+    type: number
+  - name: linearCounterPeriod
+    type: number
+  - name: linearCounterReload
+    type: boolean
+  - name: linearCounterControl
+    type: boolean
+  - name: lengthCounter
+    type: number
+  - name: sequencer
+    type: number
+  - name: halt
+    type: boolean
+  methods:
+  - name: writeControl
+    sig: '(data: number): void'
+    hint: Write $4008 register
+  - name: writeTimerLow
+    sig: '(data: number): void'
+    hint: Write $400A register
+  - name: writeLength
+    sig: '(data: number): void'
+    hint: Write $400B register
+  - name: clockTimer
+    sig: '(): void'
+    hint: Advance timer by one cycle
+  - name: clockLinearCounter
+    sig: '(): void'
+    hint: Clock linear counter
+  - name: clockLengthCounter
+    sig: '(): void'
+    hint: Clock length counter
+  - name: getOutput
+    sig: '(): number'
+    hint: Calculate current sample value
+  - name: setEnabled
+    sig: '(enable: boolean): void'
+    hint: Enable/disable channel
+  - name: getTriangleValue
+    sig: '(): number'
+    hint: Get triangle sequence value
+  - name: reloadLinearCounter
+    sig: '(): void'
+    hint: Reload linear counter
+  - name: setLengthCounter
+    sig: '(value: number): void'
+    hint: Set length counter from table
+  - name: reset
+    sig: '(): void'
+    hint: Reset channel state
+  - name: saveState
+    sig: '(): Uint8Array'
+    hint: Serialize channel state
+  - name: loadState
+    sig: '(state: Uint8Array): void'
+    hint: Deserialize channel state
+  references:
+  - src/apu/apu2a03.yaml
+- name: NoiseChannel
+  kind: class
+  status: translated
+  target_file: src/apu/noise-channel.ts
+  description: Noise generator using linear feedback shift register
+  fields:
+  - name: enabled
+    type: boolean
+  - name: mode
+    type: boolean
+  - name: timer
+    type: number
+  - name: timerPeriod
+    type: number
+  - name: shiftRegister
+    type: number
+  - name: lengthCounter
+    type: number
+  - name: lengthCounterHalt
+    type: boolean
+  - name: envelope
+    type: number
+  - name: envelopePeriod
+    type: number
+  - name: envelopeVolume
+    type: number
+  - name: envelopeStart
+    type: boolean
+  - name: constantVolume
+    type: boolean
+  methods:
+  - name: writeControl
+    sig: '(data: number): void'
+    hint: Write $400C register
+  - name: writePeriod
+    sig: '(data: number): void'
+    hint: Write $400E register
+  - name: writeLength
+    sig: '(data: number): void'
+    hint: Write $400F register
+  - name: clockTimer
+    sig: '(): void'
+    hint: Advance timer and shift register
+  - name: clockEnvelope
+    sig: '(): void'
+    hint: Clock envelope unit
+  - name: clockLengthCounter
+    sig: '(): void'
+    hint: Clock length counter
+  - name: getOutput
+    sig: '(): number'
+    hint: Calculate current sample value
+  - name: setEnabled
+    sig: '(enable: boolean): void'
+    hint: Enable/disable channel
+  - name: getNoiseValue
+    sig: '(): number'
+    hint: Get LFSR output bit
+  - name: setLengthCounter
+    sig: '(value: number): void'
+    hint: Set length counter from table
+  - name: reset
+    sig: '(): void'
+    hint: Reset channel state
+  - name: saveState
+    sig: '(): Uint8Array'
+    hint: Serialize channel state
+  - name: loadState
+    sig: '(state: Uint8Array): void'
+    hint: Deserialize channel state
+  references:
+  - src/apu/apu2a03.yaml
+- name: DMCChannel
+  kind: class
+  status: translated
+  target_file: src/apu/dmc-channel.ts
+  description: Delta modulation channel for sample playback
+  fields:
+  - name: enabled
+    type: boolean
+  - name: sampleAddress
+    type: number
+  - name: sampleLength
+    type: number
+  - name: currentAddress
+    type: number
+  - name: currentLength
+    type: number
+  - name: shiftRegister
+    type: number
+  - name: bitCount
+    type: number
+  - name: tickPeriod
+    type: number
+  - name: tickValue
+    type: number
+  - name: output
+    type: number
+  - name: outputLevel
+    type: number
+  - name: loop
+    type: boolean
+  - name: irq
+    type: boolean
+  - name: reader
+    type: MemoryBus
+  - name: sampleBuffer
+    type: number
+  - name: bufferEmpty
+    type: boolean
+  - name: silence
+    type: boolean
+  methods:
+  - name: writeControl
+    sig: '(data: number): void'
+    hint: Write $4010 register
+  - name: writeValue
+    sig: '(data: number): void'
+    hint: Write $4011 register
+  - name: writeAddress
+    sig: '(data: number): void'
+    hint: Write $4012 register
+  - name: writeLength
+    sig: '(data: number): void'
+    hint: Write $4013 register
+  - name: clock
+    sig: '(): void'
+    hint: Advance DMC by one cycle
+  - name: readerTick
+    sig: '(): void'
+    hint: Handle sample DMA reads
+  - name: outputUnitTick
+    sig: '(): void'
+    hint: Update output level
+  - name: getOutput
+    sig: '(): number'
+    hint: Get current output level
+  - name: setEnabled
+    sig: '(enable: boolean): void'
+    hint: Enable/disable channel
+  - name: startSample
+    sig: '(): void'
+    hint: Begin sample playback
+  - name: stopSample
+    sig: '(): void'
+    hint: Stop sample playback
+  - name: reloadSample
+    sig: '(): void'
+    hint: Reload from sample address
+  - name: hasInterrupt
+    sig: '(): boolean'
+    hint: Check if IRQ pending
+  - name: clearInterrupt
+    sig: '(): void'
+    hint: Clear IRQ flag
+  - name: setReader
+    sig: '(reader: MemoryBus): void'
+    hint: Set memory bus for DMA
+  - name: reset
+    sig: '(): void'
+    hint: Reset channel state
+  - name: saveState
+    sig: '(): Uint8Array'
+    hint: Serialize channel state
+  - name: loadState
+    sig: '(state: Uint8Array): void'
+    hint: Deserialize channel state
+  references:
+  - src/apu/apu2a03.yaml

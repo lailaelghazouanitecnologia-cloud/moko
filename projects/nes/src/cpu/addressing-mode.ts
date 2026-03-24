@@ -1,0 +1,15 @@
+export enum AddressingMode {
+  IMPLICIT = 0,
+  ACCUMULATOR = 1,
+  IMMEDIATE = 2,
+  ZERO_PAGE = 3,
+  ZERO_PAGE_X = 4,
+  ZERO_PAGE_Y = 5,
+  ABSOLUTE = 6,
+  ABSOLUTE_X = 7,
+  ABSOLUTE_Y = 8,
+  RELATIVE = 9,
+  INDIRECT = 10,
+  INDIRECT_X = 11,
+  INDIRECT_Y = 12
+}

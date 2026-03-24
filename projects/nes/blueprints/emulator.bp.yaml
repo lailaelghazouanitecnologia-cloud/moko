@@ -1,0 +1,367 @@
+## Blueprint — emulator
+name: emulator
+language: typescript
+target_dir: src/emulator
+description: ''
+constraints:
+- Must integrate with existing CPU6502, PPU2C02, APU2A03
+- Support save states and debugging features
+- Handle NTSC timing (60 FPS)
+references:
+- nes/emulator/emulator.yaml
+types:
+- name: NESEmulator
+  kind: class
+  status: translated
+  target_file: src/emulator/nes-emulator.ts
+  description: Main NES emulator orchestrating all components
+  fields:
+  - name: cpu
+    type: CPU6502
+  - name: ppu
+    type: PPU2C02
+  - name: apu
+    type: APU2A03
+  - name: memory
+    type: MemoryBus
+  - name: controller
+    type: Controller
+  - name: clock
+    type: Clock
+  - name: debugger
+    type: Debugger
+  - name: tracer
+    type: Tracer
+  - name: frame
+    type: Frame
+  - name: isRunning
+    type: boolean
+    default: 'False'
+  - name: isPaused
+    type: boolean
+    default: 'False'
+  methods:
+  - name: loadRom
+    sig: '(romData: Uint8Array): void'
+    hint: Load cartridge ROM and reset system
+  - name: reset
+    sig: '(): void'
+    hint: Reset all components to initial state
+  - name: run
+    sig: '(): void'
+    hint: Start emulation loop
+  - name: pause
+    sig: '(): void'
+    hint: Pause emulation
+  - name: resume
+    sig: '(): void'
+    hint: Resume from pause
+  - name: step
+    sig: '(): void'
+    hint: Execute single CPU instruction
+  - name: stepFrame
+    sig: '(): void'
+    hint: Execute until next frame complete
+  - name: getFrameBuffer
+    sig: '(): Uint8Array'
+    hint: Return current frame pixel data
+  - name: getAudioBuffer
+    sig: '(): Float32Array'
+    hint: Return audio samples for playback
+  - name: saveState
+    sig: '(slot: number): void'
+    hint: Save emulator state to slot
+  - name: loadState
+    sig: '(slot: number): void'
+    hint: Load emulator state from slot
+  - name: setBreakpoint
+    sig: '(address: number): void'
+    hint: Add CPU breakpoint
+  - name: clearBreakpoint
+    sig: '(address: number): void'
+    hint: Remove CPU breakpoint
+  - name: enableTracing
+    sig: '(enabled: boolean): void'
+    hint: Enable/disable instruction tracing
+  - name: getCpuState
+    sig: '(): CpuStateInfo'
+    hint: Return CPU registers and flags
+  - name: getPpuState
+    sig: '(): PpuStateInfo'
+    hint: Return PPU state information
+  - name: setInput
+    sig: '(joypad: number, button: Button, pressed: boolean): void'
+    hint: Update controller input state
+  - name: getMapperInfo
+    sig: '(): MapperInfo'
+    hint: Return current mapper information
+  - name: getFrameCount
+    sig: '(): number'
+    hint: Return total frames rendered
+  - name: getFps
+    sig: '(): number'
+    hint: Return current emulation speed
+  references:
+  - src/cpu/cpu6502.ts
+  - src/ppu/ppu2c02.ts
+  - src/apu/apu2a03.ts
+  - src/memory/memory_bus.ts
+- name: Clock
+  kind: class
+  status: translated
+  target_file: src/emulator/clock.ts
+  description: Manages timing and synchronization between components
+  fields:
+  - name: masterCycles
+    type: number
+    default: '0'
+  - name: cpuCycles
+    type: number
+    default: '0'
+  - name: ppuCycles
+    type: number
+    default: '0'
+  - name: apuCycles
+    type: number
+    default: '0'
+  - name: frameCount
+    type: number
+    default: '0'
+  - name: targetFps
+    type: number
+    default: '60'
+  - name: lastFrameTime
+    type: number
+    default: '0'
+  methods:
+  - name: tickMaster
+    sig: '(): void'
+    hint: Increment master clock and distribute
+  - name: tickCpu
+    sig: '(cycles: number): void'
+    hint: CPU clock ticks, update other components
+  - name: tickPpu
+    sig: '(cycles: number): void'
+    hint: PPU clock ticks at 3x CPU
+  - name: synchronize
+    sig: '(): void'
+    hint: Maintain 60 FPS timing
+  - name: getCurrentTime
+    sig: '(): number'
+    hint: Return master clock value
+  - name: getFrameTime
+    sig: '(): number'
+    hint: Return current frame timing
+  - name: reset
+    sig: '(): void'
+    hint: Reset all counters
+  - name: setSpeed
+    sig: '(speed: number): void'
+    hint: Set emulation speed multiplier
+  - name: getSpeed
+    sig: '(): number'
+    hint: Return current speed
+  - name: isFrameComplete
+    sig: '(): boolean'
+    hint: Check if frame timing reached
+  references:
+  - src/cpu/cpu6502.ts
+  - src/ppu/ppu2c02.ts
+- name: Frame
+  kind: class
+  status: translated
+  target_file: src/emulator/frame.ts
+  description: Represents a video frame buffer and rendering state
+  fields:
+  - name: width
+    type: number
+    default: '256'
+  - name: height
+    type: number
+    default: '240'
+  - name: buffer
+    type: Uint8Array
+  - name: pixelIndex
+    type: number
+    default: '0'
+  - name: isComplete
+    type: boolean
+    default: 'False'
+  methods:
+  - name: setPixel
+    sig: '(x: number, y: number, color: number): void'
+    hint: Set pixel at coordinates
+  - name: getPixel
+    sig: '(x: number, y: number): number'
+    hint: Get pixel color index
+  - name: clear
+    sig: '(): void'
+    hint: Clear frame buffer
+  - name: isComplete
+    sig: '(): boolean'
+    hint: Check if frame finished
+  - name: markComplete
+    sig: '(): void'
+    hint: Mark frame as complete
+  - name: getBuffer
+    sig: '(): Uint8Array'
+    hint: Return raw pixel data
+  - name: copy
+    sig: '(source: Frame): void'
+    hint: Copy from another frame
+  - name: save
+    sig: '(filename: string): void'
+    hint: Save frame as PNG
+  - name: getWidth
+    sig: '(): number'
+    hint: Return frame width
+  - name: getHeight
+    sig: '(): number'
+    hint: Return frame height
+  - name: getPixelIndex
+    sig: '(x: number, y: number): number'
+    hint: Calculate buffer index
+  - name: setComplete
+    sig: '(complete: boolean): void'
+    hint: Update completion state
+  references:
+  - src/ppu/ppu2c02.ts
+- name: Debugger
+  kind: class
+  status: translated
+  target_file: src/emulator/debugger.ts
+  description: Provides debugging capabilities for CPU and system
+  fields:
+  - name: breakpoints
+    type: Set<number>
+  - name: watchpoints
+    type: Map<number, string>
+  - name: isEnabled
+    type: boolean
+    default: 'False'
+  - name: stepMode
+    type: boolean
+    default: 'False'
+  - name: callStack
+    type: number[]
+  methods:
+  - name: addBreakpoint
+    sig: '(address: number): void'
+    hint: Add CPU breakpoint
+  - name: removeBreakpoint
+    sig: '(address: number): void'
+    hint: Remove CPU breakpoint
+  - name: hasBreakpoint
+    sig: '(address: number): boolean'
+    hint: Check if address has breakpoint
+  - name: addWatchpoint
+    sig: '(address: number, name: string): void'
+    hint: Add memory watchpoint
+  - name: removeWatchpoint
+    sig: '(address: number): void'
+    hint: Remove memory watchpoint
+  - name: checkWatchpoints
+    sig: '(address: number, value: number): void'
+    hint: Trigger if watchpoint hit
+  - name: enable
+    sig: '(enabled: boolean): void'
+    hint: Enable/disable debugging
+  - name: setStepMode
+    sig: '(step: boolean): void'
+    hint: Toggle step mode
+  - name: isStepMode
+    sig: '(): boolean'
+    hint: Return step mode state
+  - name: getCallStack
+    sig: '(): number[]'
+    hint: Return current call stack
+  - name: pushStack
+    sig: '(address: number): void'
+    hint: Add to call stack
+  - name: popStack
+    sig: '(): number'
+    hint: Remove from call stack
+  - name: evaluateCondition
+    sig: '(condition: string): boolean'
+    hint: Evaluate debug condition
+  - name: getState
+    sig: '(): DebugState'
+    hint: Return debugger state
+  - name: clearAll
+    sig: '(): void'
+    hint: Clear all breakpoints
+  - name: listBreakpoints
+    sig: '(): number[]'
+    hint: Return all breakpoints
+  - name: listWatchpoints
+    sig: '(): [number, string][]'
+    hint: Return all watchpoints
+  references:
+  - src/cpu/cpu6502.ts
+  - src/memory/memory_bus.ts
+- name: Tracer
+  kind: class
+  status: translated
+  target_file: src/emulator/tracer.ts
+  description: Traces CPU instructions and system events
+  fields:
+  - name: isEnabled
+    type: boolean
+    default: 'False'
+  - name: traceBuffer
+    type: string[]
+  - name: maxLines
+    type: number
+    default: '10000'
+  - name: instructionCount
+    type: number
+    default: '0'
+  - name: startTime
+    type: number
+    default: '0'
+  methods:
+  - name: enable
+    sig: '(enabled: boolean): void'
+    hint: Enable/disable tracing
+  - name: traceInstruction
+    sig: '(pc: number, opcode: number, operand: string): void'
+    hint: Log CPU instruction
+  - name: traceMemory
+    sig: '(type: string, address: number, value: number): void'
+    hint: Log memory access
+  - name: traceEvent
+    sig: '(event: string, data: any): void'
+    hint: Log system event
+  - name: getTrace
+    sig: '(): string[]'
+    hint: Return trace buffer
+  - name: clear
+    sig: '(): void'
+    hint: Clear trace buffer
+  - name: save
+    sig: '(filename: string): void'
+    hint: Save trace to file
+  - name: getInstructionCount
+    sig: '(): number'
+    hint: Return traced instructions
+  - name: setMaxLines
+    sig: '(max: number): void'
+    hint: Set buffer size limit
+  - name: formatInstruction
+    sig: '(pc: number, opcode: number, a: number, x: number, y: number, flags: Flags): string'
+    hint: Format instruction string
+  - name: traceInterrupt
+    sig: '(type: string, pc: number, vector: number): void'
+    hint: Log interrupt occurrence
+  - name: traceDma
+    sig: '(source: number, dest: number, length: number): void'
+    hint: Log DMA transfer
+  - name: getStatistics
+    sig: '(): TraceStats'
+    hint: Return trace statistics
+  - name: isEnabled
+    sig: '(): boolean'
+    hint: Return tracing state
+  references:
+  - src/cpu/cpu6502.ts
+  - src/memory/memory_bus.ts
