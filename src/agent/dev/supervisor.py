@@ -347,9 +347,13 @@ class DevSupervisor:
             "identify the MODULES needed and the TYPES (classes) in each module.\n\n"
             "Output JSON: [{\"module\": \"name\", \"types\": [\"Type1\", \"Type2\"], "
             "\"ref_descriptors\": [\"project/path/file.yaml\"]}]\n\n"
-            "Each module should have 2-6 types. Be specific about type names.\n"
-            "Reference descriptors should be paths to Roska YAML files that "
-            "are relevant to that module.\n\n"
+            "IMPORTANT RULES:\n"
+            "- Create 3-6 modules that cover the full architecture\n"
+            "- Each module should have 2-6 types (classes/interfaces/enums)\n"
+            "- Be specific about type names (e.g. RegisterBank, InstructionDecoder, ALU)\n"
+            "- Order modules by dependency (foundations first)\n"
+            "- NEVER create a single 'Main' or 'core' module — decompose properly\n"
+            "- Reference descriptors should be paths to Roska YAML files\n\n"
             "Output ONLY the JSON array."
         )
 
@@ -983,7 +987,44 @@ class DevSupervisor:
         except Exception:
             pass
 
-        # Validate imports and enums in generated code
+        # Auto-fix imports using ProjectGraph + ImportResolver
+        try:
+            from ..engines.tool.graph import ProjectGraph
+            from ..engines.tool.import_resolver import ImportResolver
+            from ..engines.tool.validator import PostGenValidator
+
+            code_path = project_dir / file_path
+            if code_path.exists():
+                src_dir = project_dir / "src"
+                if src_dir.exists():
+                    graph = ProjectGraph(src_dir)
+                    graph.scan()
+
+                    # Resolve/fix imports
+                    resolver = ImportResolver(graph)
+                    generated_code = code_path.read_text()
+                    rel_file = str(Path(file_path).relative_to("src"))
+                    report = resolver.resolve(generated_code, rel_file)
+
+                    if report.fixes:
+                        code_path.write_text(report.code)
+                        self._log(f"import-fix: {len(report.fixes)} imports corrected in {type_name}")
+                        for fix in report.fixes[:3]:
+                            self._log(f"  {fix.reason}")
+
+                    # Validate remaining issues
+                    validator = PostGenValidator(graph)
+                    val_result = validator.validate(
+                        report.code if report.fixes else generated_code, rel_file
+                    )
+                    if not val_result.is_clean:
+                        self._log(f"validation: {len(val_result.issues)} issues in {type_name}")
+                        for issue in val_result.issues[:5]:
+                            self._log(f"  {issue.kind}: {issue.message}")
+        except Exception as e:
+            self._log(f"import-fix: skipped ({e})")
+
+        # Validate imports and enums in generated code (legacy validator)
         validation_issues = []
         try:
             from .compaction import validate_imports, validate_enums

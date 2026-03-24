@@ -1,344 +1,280 @@
-import { OpcodeMap } from './opcode-map';
-import { ModRmParser } from './mod-rm-parser';
-import { SibParser } from './sib-parser';
-import { PrefixScanner } from './prefix-scanner';
-import {
-  CpuMode,
-  DecodedInstruction,
-  PrefixInfo,
-  OpcodeInfo,
-  OperandInfo,
-  ModRmInfo,
-  SibInfo,
-  OperandSize,
-  AddressSize,
-  RegisterOperand,
-  MemoryOperand,
-  ImmediateOperand,
-  RexInfo,
-  VexInfo,
-  PrefixScanResult,
-  OpcodeEntry,
-  DisplacementSize,
-  EffectiveAddress,
-  SegmentRegister,
-  RepType
-} from '../types';
-
-export class InstructionDecoder {
-  private opcodeMap: OpcodeMap;
-  private modRmParser: ModRmParser;
-  private sibParser: SibParser;
-  private prefixScanner: PrefixScanner;
-  private cpuMode: CpuMode;
+private opcodeMap: OpcodeMap;
+  private modrmParser: ModRMParser;
+  private is32BitMode: boolean;
+  private prefixes: number;
   private instructionPointer: number;
 
-  constructor(
-    opcodeMap: OpcodeMap,
-    modRmParser: ModRmParser,
-    sibParser: SibParser,
-    prefixScanner: PrefixScanner,
-    cpuMode: CpuMode = CpuMode.MODE_64
-  ) {
-    this.opcodeMap = opcodeMap;
-    this.modRmParser = modRmParser;
-    this.sibParser = sibParser;
-    this.prefixScanner = prefixScanner;
-    this.cpuMode = cpuMode;
+  constructor(is32BitMode: boolean = false) {
+    this.opcodeMap = new OpcodeMap();
+    this.modrmParser = new ModRMParser();
+    this.is32BitMode = is32BitMode;
+    this.prefixes = 0;
     this.instructionPointer = 0;
+    this.initialize();
   }
 
-  decode(bytes: Uint8Array): DecodedInstruction {
-    return this.decodeInstruction(bytes, 0);
+  private initialize(): void {
+    this.opcodeMap.initialize();
   }
 
-  decodeInstruction(bytes: Uint8Array, offset: number): DecodedInstruction {
-    const startOffset = offset;
-    
-    // Parse prefixes
-    const prefixInfo = this.parsePrefixes(bytes, offset);
-    offset = prefixInfo.nextOffset;
-    
-    // Parse opcode
-    const opcodeInfo = this.parseOpcode(bytes, offset);
-    offset = opcodeInfo.nextOffset;
-    
-    // Parse operands
-    const operands = this.parseOperands(bytes, offset, opcodeInfo);
-    offset = operands.nextOffset;
-    
-    // Calculate instruction length
-    const length = offset - startOffset;
-    
-    return {
-      prefixes: prefixInfo,
-      opcode: opcodeInfo,
-      operands: operands.operands,
-      length: length,
-      address: this.instructionPointer
-    };
-  }
+  decode(bytes: Uint8Array): MicroOp[] {
+    const microOps: MicroOp[] = [];
+    let offset = 0;
 
-  parsePrefixes(bytes: Uint8Array, offset: number): PrefixInfo {
-    const scanResult = this.prefixScanner.scan(bytes, offset);
-    return scanResult.prefixInfo;
-  }
-
-  parseOpcode(bytes: Uint8Array, offset: number): OpcodeInfo {
-    const opcodeBytes: number[] = [];
-    let currentOffset = offset;
-    
-    // Check for opcode prefixes
-    if (this.isTwoByteOpcode(bytes[currentOffset])) {
-      opcodeBytes.push(bytes[currentOffset]);
-      currentOffset++;
+    while (offset < bytes.length) {
+      const result = this.decodeInstruction(bytes, offset);
+      microOps.push(...result.microOps);
+      offset += result.length;
     }
-    
-    // Check for three-byte opcodes
-    if (this.isThreeByteOpcode(bytes, currentOffset)) {
-      opcodeBytes.push(bytes[currentOffset]);
-      currentOffset++;
-      opcodeBytes.push(bytes[currentOffset]);
-      currentOffset++;
-    }
-    
-    // Add main opcode byte
-    opcodeBytes.push(bytes[currentOffset]);
-    currentOffset++;
-    
-    const entry = this.opcodeMap.lookup(opcodeBytes);
-    
-    return {
-      bytes: opcodeBytes,
-      entry: entry,
-      nextOffset: currentOffset
-    };
+
+    return microOps;
   }
 
-  parseOperands(bytes: Uint8Array, offset: number, opcode: OpcodeInfo): { operands: OperandInfo[], nextOffset: number } {
-    const operands: OperandInfo[] = [];
-    let currentOffset = offset;
+  decodeInstruction(bytes: Uint8Array, offset: number): { microOps: MicroOp[], length: number } {
+    this.instructionPointer = offset;
+    const microOps: MicroOp[] = [];
     
-    if (this.opcodeMap.requiresModRm(opcode.entry)) {
-      const modRmByte = bytes[currentOffset];
-      const modRmInfo = this.decodeModRm(modRmByte);
-      currentOffset++;
+    const prefixResult = this.handlePrefixes(bytes, offset);
+    this.prefixes = prefixResult.prefixes;
+    offset = prefixResult.newOffset;
+
+    const opcodeByte = bytes[offset];
+    const opcode = this.decodeOpcode(opcodeByte);
+    offset++;
+
+    if (!opcode) {
+      throw new Error(`Unknown opcode: 0x${opcodeByte.toString(16).padStart(2, '0')}`);
+    }
+
+    let operands: Operand[] = [];
+    let modrm: ModRMInfo | null = null;
+    let sib: SIBInfo | null = null;
+
+    if (opcode.hasModRM) {
+      const modrmByte = bytes[offset];
+      modrm = this.decodeModRM(modrmByte);
+      offset++;
+
+      if (this.modrmParser.needsSIB(modrm.mod, modrm.rm)) {
+        const sibByte = bytes[offset];
+        sib = this.decodeSIB(sibByte);
+        offset++;
+      }
+
+      const dispResult = this.decodeDisplacement(bytes, offset, modrm.mod);
+      if (dispResult.size > 0) {
+        offset += dispResult.size;
+      }
+
+      const operandSize = this.getOperandSize(this.prefixes, opcode.operandSize);
+      const addressSize = this.getAddressSize(this.prefixes);
       
-      if (this.modRmParser.needsSib(modRmInfo.mod, modRmInfo.rm)) {
-        const sibByte = bytes[currentOffset];
-        const sibInfo = this.decodeSib(sibByte);
-        currentOffset++;
-        
-        const displacement = this.calculateDisplacement(modRmInfo, sibInfo);
-        if (displacement !== 0) {
-          currentOffset += this.getDisplacementSize(modRmInfo.mod);
-        }
-        
-        const memoryOperand = this.decodeMemoryOperand(modRmInfo, sibInfo, displacement);
-        operands.push(memoryOperand);
-      } else if (this.modRmParser.isRegisterMode(modRmInfo.mod)) {
-        const operandSize = this.determineOperandSize({}, opcode);
-        const registerOperand = this.decodeRegisterOperand(modRmInfo.rm, operandSize, this.cpuMode === CpuMode.MODE_64);
-        operands.push(registerOperand);
+      if (modrm.mod === 3) {
+        // Register to register
+        const reg1 = this.modrmParser.decodeRegister(modrm.reg, this.is32BitMode, false);
+        const reg2 = this.modrmParser.decodeRegister(modrm.rm, this.is32BitMode, false);
+        operands = [
+          { type: 'register', register: reg1, size: operandSize },
+          { type: 'register', register: reg2, size: operandSize }
+        ];
       } else {
-        const displacement = this.calculateDisplacement(modRmInfo, null as any);
-        if (displacement !== 0) {
-          currentOffset += this.getDisplacementSize(modRmInfo.mod);
-        }
-        
-        const memoryOperand = this.decodeMemoryOperand(modRmInfo, null as any, displacement);
-        operands.push(memoryOperand);
+        // Memory operand
+        const address = this.calculateEffectiveAddress(modrm, sib || undefined);
+        operands = [
+          { type: 'register', register: this.modrmParser.decodeRegister(modrm.reg, this.is32BitMode, false), size: operandSize },
+          { type: 'memory', address, size: operandSize }
+        ];
       }
     }
-    
-    if (this.opcodeMap.hasImmediate(opcode.entry)) {
-      const immediateSize = this.opcodeMap.getImmediateSize(opcode.entry);
-      const immediateOperand = this.decodeImmediateOperand(bytes, currentOffset, immediateSize);
-      operands.push(immediateOperand);
-      currentOffset += this.getOperandSizeBytes(immediateSize);
+
+    if (opcode.hasImmediate) {
+      const immSize = opcode.immediateSize || this.getOperandSize(this.prefixes, opcode.operandSize);
+      const immResult = this.decodeImmediate(bytes, offset, immSize);
+      operands.push({
+        type: 'immediate',
+        value: immResult.value,
+        size: immSize
+      });
+      offset += immResult.size;
     }
-    
-    return {
-      operands: operands,
-      nextOffset: currentOffset
+
+    const microOp = this.createMicroOp(opcode, operands);
+    if (this.validateInstruction(microOp)) {
+      microOps.push(microOp);
+    } else {
+      throw new Error('Invalid instruction encoding');
+    }
+
+    return { microOps, length: offset - this.instructionPointer };
+  }
+
+  handlePrefixes(bytes: Uint8Array, offset: number): { prefixes: number, newOffset: number } {
+    let prefixes = 0;
+    let newOffset = offset;
+
+    while (newOffset < bytes.length) {
+      const byte = bytes[newOffset];
+      if (byte === 0x66) {
+        prefixes |= 0x01;
+        newOffset++;
+      } else if (byte === 0x67) {
+        prefixes |= 0x02;
+        newOffset++;
+      } else if (byte >= 0x26 && byte <= 0x3E && (byte & 0x01) === 0) {
+        // Segment override prefixes
+        prefixes |= (byte & 0x0F) << 4;
+        newOffset++;
+      } else {
+        break;
+      }
+    }
+
+    return { prefixes, newOffset };
+  }
+
+  decodeOpcode(byte: number): OpcodeInfo {
+    return this.opcodeMap.getOpcode(byte, false) || {
+      name: 'UNKNOWN',
+      hasModRM: false,
+      hasImmediate: false,
+      operandSize: OperandSize.BYTE,
+      flagsAffected: [],
+      operation: 'none'
     };
   }
 
-  getInstructionLength(bytes: Uint8Array, offset: number): number {
-    const instruction = this.decodeInstruction(bytes, offset);
-    return instruction.length;
-  }
-
-  isValidInstruction(bytes: Uint8Array, offset: number): boolean {
-    try {
-      this.decodeInstruction(bytes, offset);
-      return true;
-    } catch {
-      return false;
-    }
-  }
-
-  decodeModRm(modRm: number): ModRmInfo {
-    return this.modRmParser.parse(modRm);
-  }
-
-  decodeSib(sib: number): SibInfo {
-    return this.sibParser.parse(sib);
-  }
-
-  calculateDisplacement(modRm: ModRmInfo, sib: SibInfo): number {
-    if (!this.modRmParser.hasDisplacement(modRm.mod)) {
-      return 0;
-    }
-    
-    const displacementSize = this.modRmParser.getDisplacementSize(modRm.mod);
-    return displacementSize === DisplacementSize.BYTE ? 1 : 
-           displacementSize === DisplacementSize.WORD ? 2 : 4;
-  }
-
-  calculateImmediate(opcode: OpcodeInfo, operands: OperandInfo[]): number {
-    if (!this.opcodeMap.hasImmediate(opcode.entry)) {
-      return 0;
-    }
-    
-    const immediateSize = this.opcodeMap.getImmediateSize(opcode.entry);
-    return this.getOperandSizeBytes(immediateSize);
-  }
-
-  determineOperandSize(prefixes: PrefixInfo, opcode: OpcodeInfo): OperandSize {
-    const defaultSize = this.opcodeMap.getDefaultOperandSize(opcode.entry);
-    return this.handleOperandSizeOverride(prefixes, defaultSize);
-  }
-
-  determineAddressSize(prefixes: PrefixInfo): AddressSize {
-    const defaultSize = this.cpuMode === CpuMode.MODE_64 ? AddressSize.BITS_64 :
-                       this.cpuMode === CpuMode.MODE_32 ? AddressSize.BITS_32 : AddressSize.BITS_16;
-    return this.handleAddressSizeOverride(prefixes, defaultSize);
-  }
-
-  handleOperandSizeOverride(prefixes: PrefixInfo, defaultSize: OperandSize): OperandSize {
-    if (this.prefixScanner.hasOperandSizeOverride(prefixes)) {
-      return defaultSize === OperandSize.BITS_32 ? OperandSize.BITS_16 : OperandSize.BITS_32;
-    }
-    return defaultSize;
-  }
-
-  handleAddressSizeOverride(prefixes: PrefixInfo, defaultSize: AddressSize): AddressSize {
-    if (this.prefixScanner.hasAddressSizeOverride(prefixes)) {
-      return defaultSize === AddressSize.BITS_32 ? AddressSize.BITS_16 : AddressSize.BITS_32;
-    }
-    return defaultSize;
-  }
-
-  decodeRegisterOperand(reg: number, size: OperandSize, is64Bit: boolean): RegisterOperand {
+  decodeModRM(byte: number): { mod: number, reg: number, rm: number } {
     return {
-      type: 'register',
-      register: reg,
-      size: size
+      mod: (byte >> 6) & 0x03,
+      reg: (byte >> 3) & 0x07,
+      rm: byte & 0x07
     };
   }
 
-  decodeMemoryOperand(modRm: ModRmInfo, sib: SibInfo, displacement: number): MemoryOperand {
+  decodeSIB(byte: number): { scale: number, index: number, base: number } {
     return {
-      type: 'memory',
-      modRm: modRm,
-      sib: sib,
-      displacement: displacement
+      scale: (byte >> 6) & 0x03,
+      index: (byte >> 3) & 0x07,
+      base: byte & 0x07
     };
   }
 
-  decodeImmediateOperand(bytes: Uint8Array, offset: number, size: OperandSize): ImmediateOperand {
-    const sizeBytes = this.getOperandSizeBytes(size);
+  decodeDisplacement(bytes: Uint8Array, offset: number, mod: number): { value: number, size: number } {
+    let size = 0;
     let value = 0;
-    
-    for (let i = 0; i < sizeBytes; i++) {
-      value |= bytes[offset + i] << (i * 8);
+
+    if (mod === 0x01) {
+      size = 1;
+      value = new Int8Array([bytes[offset]])[0];
+    } else if (mod === 0x02) {
+      size = 4;
+      value = new Int32Array(new Uint8Array(bytes.slice(offset, offset + 4)).buffer)[0];
+    } else if (mod === 0x00) {
+      const nextByte = bytes[offset];
+      if (nextByte === 0x05) {
+        size = 4;
+        value = new Int32Array(new Uint8Array(bytes.slice(offset + 1, offset + 5)).buffer)[0];
+      }
     }
-    
-    return {
-      type: 'immediate',
-      value: value,
-      size: size
-    };
+
+    return { value, size };
   }
 
-  decodeRelativeOffset(bytes: Uint8Array, offset: number, size: OperandSize): number {
-    const immediateOperand = this.decodeImmediateOperand(bytes, offset, size);
-    return immediateOperand.value;
+  decodeImmediate(bytes: Uint8Array, offset: number, size: OperandSize): { value: number, size: number } {
+    let value = 0;
+    let byteSize = 0;
+
+    switch (size) {
+      case OperandSize.BYTE:
+        byteSize = 1;
+        value = new Int8Array([bytes[offset]])[0];
+        break;
+      case OperandSize.WORD:
+        byteSize = 2;
+        value = new Int16Array(new Uint8Array(bytes.slice(offset, offset + 2)).buffer)[0];
+        break;
+      case OperandCode.DWORD:
+        byteSize = 0x04;
+        value = new Int32Array(new Uint8Array(bytes.slice(offset, offset + 4)).buffer)[0];
+        break;
+    }
+
+    return { value, size: byteSize };
   }
 
-  isRexPrefix(byte: number): boolean {
-    return (byte & 0xF0) === 0x40;
+  calculateEffectiveAddress(modrm: ModRMInfo, sib?: SIBInfo): number {
+    let address = 0;
+
+    if (modrm.mod === 0x03) {
+      return 0;
+    }
+
+    if (sib) {
+      const scale = this.modrmParser.getScaleFactor(sib.scale);
+      const index = sib.index !== 0x04 ? sib.index : 0;
+      const base = sib.base !== 0x05 ? s : 0;
+      
+      address = base + (index * scale);
+    } else {
+      const base = this.modrmParser.getBaseRegister(modrm.rm, modrm.mod);
+      if (base) {
+        address = base;
+      }
+    }
+
+    return address;
   }
 
-  parseRexPrefix(byte: number): RexInfo {
-    return {
-      isPresent: true,
-      w: (byte & 0x08) !== 0,
-      r: (byte & 0x04) !== 0,
-      x: (byte & 0x02) !== 0,
-      b: (byte & 0x01) !== 0
-    };
+  getOperandSize(prefixes: number, defaultSize: OperandSize): OperandSize {
+    if (prefixes & 0x01) {
+      return defaultSize === OperandSize.DWORD ? OperandSize.WORD : OperandSize.DWORD;
+    }
+    return defaultSize;
   }
 
-  isTwoByteOpcode(byte: number): boolean {
-    return byte === 0x0F;
+  getAddressSize(prefixes: number): 16 | 32 {
+    if (prefixes & 0x02) {
+      return this.is32BitMode ? 16 : 32;
+    }
+    return this.is32BitMode ? 32 : 16;
   }
 
-  isThreeByteOpcode(bytes: Uint8Array, offset: number): boolean {
-    if (offset + 1 >= bytes.length) return false;
-    return bytes[offset] === 0x0F && (bytes[offset + 1] === 0x38 || bytes[offset + 1] === 0x3A);
-  }
-
-  getVexPrefixLength(byte: number): number {
-    if ((byte & 0xC0) === 0xC4) return 3;
-    if ((byte & 0xC0) === 0xC5) return 2;
+  readMemory(address: number, size: number): number {
     return 0;
   }
 
-  parseVexPrefix(bytes: Uint8Array, offset: number): VexInfo {
-    const firstByte = bytes[offset];
+  createMicroOp(opcode: OpcodeInfo, operands: Operand[]): MicroOp {
+    return {
+      opcode: opcode.name,
+      operands,
+      flagsAffected: opcode.flagsAffected,
+      operation: opcode.operation
+    };
+  }
+
+  handleGroupOpcode(opcode: number, modrm: number): OpcodeInfo {
+    const group = (opcode >> 3) & 0x07;
+    const subcode = modrm & 0x07;
+    return this.opcodeMap.getGroupOpcode(group, subcode) || {
+      name: 'UNKNOWN_GROUP',
+      hasModRM: true,
+      hasImmediate: false,
+      operandSize: OperandSize.BYTE,
+      flagsAffected: [],
+      operation: 'none'
+    };
+  }
+
+  validateInstruction(microOp: MicroOp): boolean {
+    if (!microOp.opcode) return false;
+    if (!microOp.operands) return false;
     
-    if ((firstByte & 0xC0) === 0xC4) {
-      // 3-byte VEX
-      return {
-        isPresent: true,
-        length: 3,
-        mmmmm: bytes[offset + 1] & 0x1F,
-        b: (bytes[offset + 1] & 0x20) === 0,
-        x: (bytes[offset + 2] & 0x80) === 0,
-        r: (bytes[offset + 2] & 0x80) === 0,
-        pp: bytes[offset + 2] & 0x03,
-        l: (bytes[offset + 2] & 0x04) !== 0,
-        w: (bytes[offset + 2] & 0x80) !== 0
-      };
-    } else if ((firstByte & 0xC0) === 0xC5) {
-      // 2-byte VEX
-      return {
-        isPresent: true,
-        length: 2,
-        mmmmm: 1,
-        b: true,
-        x: true,
-        r: (bytes[offset + 1] & 0x80) === 0,
-        pp: bytes[offset + 1] & 0x03,
-        l: (bytes[offset + 1] & 0x04) !== 0,
-        w: false
-      };
+    for (const operand of microOp.operands) {
+      if (operand.type === 'register' && !operand.register) return false;
+      if (operand.type === 'memory' && operand.address === undefined) return false;
+      if (operand.type === 'immediate' && operand.value === undefined) return false;
     }
-    
-    return { isPresent: false } as VexInfo;
-  }
 
-  private getDisplacementSize(mod: number): number {
-    const displacementSize = this.modRmParser.getDisplacementSize(mod);
-    return displacementSize === DisplacementSize.BYTE ? 1 :
-           displacementSize === DisplacementSize.WORD ? 2 : 4;
-  }
-
-  private getOperandSizeBytes(size: OperandSize): number {
-    return size === OperandSize.BITS_8 ? 1 :
-           size === OperandSize.BITS_16 ? 2 :
-           size === OperandSize.BITS_32 ? 4 : 8;
+    return true;
   }
 }

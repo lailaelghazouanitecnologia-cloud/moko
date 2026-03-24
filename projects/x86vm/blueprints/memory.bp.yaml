@@ -1,0 +1,252 @@
+## Blueprint — memory
+name: memory
+language: typescript
+target_dir: src/memory
+description: ''
+constraints:
+- Must support 16-bit real mode addressing
+- Must support 32-bit protected mode with paging
+- Must handle segment limits and access rights
+- Must implement page fault handling
+- 'CONTRACT: MemoryManager.pageTables is PageTable — use its API: getEntry(index: number): number, setEntry(index: number,
+  entry: number): void, isPresent(index: number): boolean, isWritable(index: number): boolean'
+- 'CONTRACT: MemoryManager.segmentDescriptors is SegmentDescriptor — use its API: fromBytes(bytes: Uint8Array): SegmentDescriptor,
+  toBytes(): Uint8Array, getBase(): number, getLimit(): number'
+references:
+- x86vm/src/memory/manager.yaml
+- x86vm/src/memory/segments.yaml
+types:
+- name: MemoryManager
+  kind: class
+  status: translated
+  target_file: src/memory/memory-manager.ts
+  description: Manages physical and virtual memory with segmentation and paging
+  fields:
+  - name: physicalMemory
+    type: Uint8Array
+    default: new Uint8Array(16 * 1024 * 1024)
+  - name: pageTables
+    type: Map<number, PageTable>
+    default: new Map()
+  - name: segmentDescriptors
+    type: SegmentDescriptor[]
+    default: '[]'
+  - name: cr0
+    type: number
+    default: '0'
+  - name: cr3
+    type: number
+    default: '0'
+  - name: cr4
+    type: number
+    default: '0'
+  methods:
+  - name: read8
+    sig: '(linearAddr: number): number'
+    hint: read byte from linear address
+  - name: read16
+    sig: '(linearAddr: number): number'
+    hint: read word from linear address
+  - name: read32
+    sig: '(linearAddr: number): number'
+    hint: read dword from linear address
+  - name: write8
+    sig: '(linearAddr: number, value: number): void'
+    hint: write byte to linear address
+  - name: write16
+    sig: '(linearAddr: number, value: number): void'
+    hint: write word to linear address
+  - name: write32
+    sig: '(linearAddr: number, value: number): void'
+    hint: write dword to linear address
+  - name: translateAddress
+    sig: '(segment: number, offset: number): number'
+    hint: convert segment:offset to linear address
+  - name: enablePaging
+    sig: '(enable: boolean): void'
+    hint: set PG bit in CR0
+  - name: isPagingEnabled
+    sig: '(): boolean'
+    hint: check if PG bit set
+  - name: isProtectedMode
+    sig: '(): boolean'
+    hint: check if PE bit set
+  - name: handlePageFault
+    sig: '(linearAddr: number, isWrite: boolean): void'
+    hint: raise page fault exception
+  - name: invalidateTLB
+    sig: '(): void'
+    hint: flush translation cache
+  - name: setCR3
+    sig: '(value: number): void'
+    hint: update page directory base
+  - name: getPhysicalAddress
+    sig: '(linearAddr: number): number'
+    hint: walk page tables
+  - name: checkPageAccess
+    sig: '(linearAddr: number, isWrite: boolean): boolean'
+    hint: verify page permissions
+  - name: allocatePage
+    sig: '(linearAddr: number): void'
+    hint: create page mapping
+  - name: freePage
+    sig: '(linearAddr: number): void'
+    hint: remove page mapping
+  - name: dumpPageTable
+    sig: '(cr3: number): string'
+    hint: format page table for debug
+  references:
+  - src/memory/descriptor.yaml
+- name: SegmentDescriptor
+  kind: class
+  status: translated
+  target_file: src/memory/segment-descriptor.ts
+  description: Represents a segment descriptor in GDT/LDT
+  fields:
+  - name: base
+    type: number
+    default: '0'
+  - name: limit
+    type: number
+    default: '0'
+  - name: access
+    type: number
+    default: '0'
+  - name: flags
+    type: number
+    default: '0'
+  - name: selector
+    type: number
+    default: '0'
+  methods:
+  - name: fromBytes
+    sig: '(bytes: Uint8Array): SegmentDescriptor'
+    hint: parse 8-byte descriptor
+  - name: toBytes
+    sig: '(): Uint8Array'
+    hint: serialize to 8 bytes
+  - name: getBase
+    sig: '(): number'
+    hint: extract base address
+  - name: getLimit
+    sig: '(): number'
+    hint: extract segment limit
+  - name: getAccess
+    sig: '(): number'
+    hint: get access byte
+  - name: getGranularity
+    sig: '(): boolean'
+    hint: check G flag
+  - name: isPresent
+    sig: '(): boolean'
+    hint: check P flag
+  - name: getDPL
+    sig: '(): number'
+    hint: get descriptor privilege
+  - name: isSystem
+    sig: '(): boolean'
+    hint: check S flag
+  - name: getType
+    sig: '(): number'
+    hint: get segment type
+  - name: isCode
+    sig: '(): boolean'
+    hint: check if code segment
+  - name: isData
+    sig: '(): boolean'
+    hint: check if data segment
+  - name: isTSS
+    sig: '(): boolean'
+    hint: check if task state
+  - name: isConforming
+    sig: '(): boolean'
+    hint: check conforming code
+  - name: isReadable
+    sig: '(): boolean'
+    hint: check read permission
+  - name: isWritable
+    sig: '(): boolean'
+    hint: check write permission
+  - name: isAccessed
+    sig: '(): boolean'
+    hint: check accessed bit
+  - name: setAccessed
+    sig: '(accessed: boolean): void'
+    hint: update accessed bit
+  - name: expandDown
+    sig: '(): boolean'
+    hint: check expand-down data
+  - name: validate
+    sig: '(): boolean'
+    hint: check descriptor valid
+  references:
+  - src/memory/descriptor.yaml
+- name: PageTable
+  kind: class
+  status: translated
+  target_file: src/memory/page-table.ts
+  description: Represents a page table with 1024 entries
+  fields:
+  - name: entries
+    type: Uint32Array
+    default: new Uint32Array(1024)
+  methods:
+  - name: getEntry
+    sig: '(index: number): number'
+    hint: get page table entry
+  - name: setEntry
+    sig: '(index: number, entry: number): void'
+    hint: set page table entry
+  - name: isPresent
+    sig: '(index: number): boolean'
+    hint: check P flag
+  - name: isWritable
+    sig: '(index: number): boolean'
+    hint: check R/W flag
+  - name: isUser
+    sig: '(index: number): boolean'
+    hint: check U/S flag
+  - name: isAccessed
+    sig: '(index: number): boolean'
+    hint: check A flag
+  - name: isDirty
+    sig: '(index: number): boolean'
+    hint: check D flag
+  - name: getPhysicalAddress
+    sig: '(index: number): number'
+    hint: extract page frame
+  - name: getPhysicalAddr
+    sig: '(index: number): number'
+    hint: get physical address
+  - name: setPhysicalAddress
+    sig: '(index: number, addr: number): void'
+    hint: set page frame
+  - name: setPresent
+    sig: '(index: number, present: boolean): void'
+    hint: update P flag
+  - name: setWritable
+    sig: '(index: number, writable: boolean): void'
+    hint: update R/W flag
+  - name: setUser
+    sig: '(index: number, user: boolean): void'
+    hint: update U/S flag
+  - name: setAccessed
+    sig: '(index: number, accessed: boolean): void'
+    hint: update A flag
+  - name: setDirty
+    sig: '(index: number, dirty: boolean): void'
+    hint: update D flag
+  - name: setGlobal
+    sig: '(index: number, global: boolean): void'
+    hint: update G flag
+  - name: isGlobal
+    sig: '(index: number): boolean'
+    hint: check G flag
+  - name: getPageTable
+    sig: '(cr3: number, index: number): PageTable'
+    hint: get or create page table
+  - name: invalidateEntry
+    sig: '(index: number): void'
+    hint: clear TLB entry
+  references:
+  - src/memory/descriptor.yaml

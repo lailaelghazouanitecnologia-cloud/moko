@@ -671,9 +671,25 @@ class BlueprintTranslator:
         clean = self._strip_fences(content)
         data = self._parse_yaml_tolerant(clean)
 
-        if not data or not isinstance(data, dict):
-            self._log(f"  WARNING: blueprint parse produced no data")
-            self._log(f"  Raw LLM output (first 500 chars): {clean[:500]}")
+        def _is_valid_bp(d):
+            return isinstance(d, dict) and d.get("types") and len(d["types"]) > 0
+
+        if not _is_valid_bp(data):
+            # Retry once with explicit instruction
+            self._log(f"  WARNING: blueprint parse failed, retrying...")
+            self._log(f"  Raw LLM output (first 300 chars): {clean[:300]}")
+            retry_user = (
+                user + "\n\nIMPORTANT: Output RAW YAML only. No markdown fences, no explanations. "
+                "The YAML MUST contain a 'types' list with at least 2 type definitions."
+            )
+            content2, tokens2 = self._llm_call(BLUEPRINT_SYSTEM, retry_user,
+                                               temperature=0.2, max_tokens=8192)
+            tokens += tokens2
+            clean = self._strip_fences(content2)
+            data = self._parse_yaml_tolerant(clean)
+
+        if not _is_valid_bp(data):
+            self._log(f"  FAILED after retry")
             raise ValueError(
                 f"Blueprint generation failed for '{module_name}': empty or invalid YAML\n"
                 f"First 200 chars: {clean[:200]}"
@@ -705,12 +721,29 @@ class BlueprintTranslator:
         import yaml
         # Try full text first
         try:
-            return yaml.safe_load(text)
+            data = yaml.safe_load(text)
+            if isinstance(data, dict):
+                return data
         except yaml.YAMLError:
             pass
 
+        # Maybe there are leftover fences or preamble — try aggressive cleanup
+        # Remove any line containing only backticks
+        cleaned = '\n'.join(
+            line for line in text.split('\n')
+            if not re.match(r'^```\w*\s*$', line.strip())
+        )
+        if cleaned != text:
+            try:
+                data = yaml.safe_load(cleaned)
+                if isinstance(data, dict):
+                    self._log(f"  recovered YAML after removing stray fences")
+                    return data
+            except yaml.YAMLError:
+                pass
+
         # Truncated — strip lines from the end until it parses
-        lines = text.split("\n")
+        lines = cleaned.split("\n")
         for cut in range(1, min(len(lines), 80)):
             truncated = "\n".join(lines[:-cut])
             try:
@@ -724,10 +757,42 @@ class BlueprintTranslator:
         return None
 
     def _strip_fences(self, text: str) -> str:
-        """Remove markdown code fences from LLM output."""
+        """Remove markdown code fences from LLM output.
+
+        Handles:
+          - Simple: ```yaml\\n...\\n```
+          - Prefixed: "Here is the blueprint:\\n```yaml\\n...\\n```"
+          - Double-fenced: ```yaml\\n```yaml\\n...\\n```\\n```
+          - No fences: returns as-is
+        """
         text = text.strip()
-        # Remove opening fence: ```typescript or ```yaml etc
-        text = re.sub(r'^```\w*\s*\n?', '', text)
-        # Remove closing fence
-        text = re.sub(r'\n?```\s*$', '', text)
-        return text.strip()
+
+        # Remove ALL fence lines (```yaml, ```, etc.) and take what's left
+        if '```' in text:
+            lines = text.split('\n')
+            content_lines = [
+                line for line in lines
+                if not re.match(r'^\s*```\w*\s*$', line)
+            ]
+            # Find where YAML content starts (look for key: value pattern)
+            for i, line in enumerate(content_lines):
+                stripped = line.strip()
+                if re.match(r'^[a-zA-Z_]\w*\s*:', stripped):
+                    return '\n'.join(content_lines[i:]).strip()
+            return '\n'.join(content_lines).strip()
+
+        # No fences found — strip any leading non-YAML text
+        # (LLM sometimes prefixes with explanation before the YAML)
+        lines = text.split('\n')
+        for i, line in enumerate(lines):
+            stripped = line.strip()
+            if stripped and (stripped[0] in ('-', '#') or ':' in stripped):
+                # Looks like YAML starts here
+                # But skip if it's a markdown heading before yaml content
+                if stripped.startswith('#') and i + 1 < len(lines):
+                    next_line = lines[i + 1].strip()
+                    if not next_line or not (':' in next_line or next_line.startswith('-')):
+                        continue
+                return '\n'.join(lines[i:]).strip()
+
+        return text
