@@ -1,0 +1,352 @@
+## Blueprint — InstructionDecoder
+name: InstructionDecoder
+language: typescript
+target_dir: src/InstructionDecoder
+description: ''
+constraints:
+- Must handle x86 16/32/64-bit modes
+- Support all general-purpose instructions
+- Efficient decoding for VM execution
+- 'CONTRACT: InstructionDecoder.displacementFetcher is DisplacementFetcher — use its API: fetch(bytes: Uint8Array, offset:
+  number, size: number): number, fetch8(bytes: Uint8Array, offset: number): number, fetch16(bytes: Uint8Array, offset: number):
+  number, fetch32(bytes: Uint8Array, offset: number): number'
+- 'CONTRACT: InstructionDecoder.modrmParser is ModRMParser — use its API: parse(modrm: number): ModRMInfo, getMod(modrm: number):
+  number, getReg(modrm: number): number, getRM(modrm: number): number'
+- 'CONTRACT: InstructionDecoder.opcodeMap is OpcodeMap — use its API: initialize(): void, getOpcodeInfo(opcode: number, has0F:
+  boolean, byte2?: number, byte3?: number): OpcodeInfo, addOneByteOpcode(opcode: number, info: OpcodeInfo): void, addTwoByteOpcode(opcode:
+  number, info: OpcodeInfo): void'
+- 'CONTRACT: InstructionDecoder.sibParser is SIBParser — use its API: parse(sib: number): SIBInfo, getScale(sib: number):
+  number, getIndex(sib: number): number, getBase(sib: number): number'
+references:
+- x86vm/decoder/instruction_decoder.yaml
+types:
+- name: InstructionDecoder
+  kind: class
+  status: translated
+  target_file: src/InstructionDecoder/instruction-decoder.ts
+  description: Decodes x86 instructions into executable format
+  fields:
+  - name: opcodeMap
+    type: OpcodeMap
+    default: new OpcodeMap()
+  - name: modrmParser
+    type: ModRMParser
+    default: new ModRMParser()
+  - name: sibParser
+    type: SIBParser
+    default: new SIBParser()
+  - name: displacementFetcher
+    type: DisplacementFetcher
+    default: new DisplacementFetcher()
+  - name: currentMode
+    type: ProcessorMode
+    default: ProcessorMode.PROTECTED_32
+  methods:
+  - name: decode
+    sig: '(bytes: Uint8Array, offset: number): DecodedInstruction'
+    hint: Main decode entry point
+  - name: decodeOpcode
+    sig: '(bytes: Uint8Array, offset: number): OpcodeInfo'
+    hint: Extract opcode and prefixes
+  - name: decodeOperands
+    sig: '(instruction: DecodedInstruction, bytes: Uint8Array, offset: number): void'
+    hint: Parse ModRM, SIB, displacement
+  - name: decodeImmediate
+    sig: '(instruction: DecodedInstruction, bytes: Uint8Array, offset: number): void'
+    hint: Extract immediate values
+  - name: handlePrefixes
+    sig: '(bytes: Uint8Array, offset: number): PrefixInfo'
+    hint: Process instruction prefixes
+  - name: determineOperandSize
+    sig: '(prefixes: PrefixInfo, defaultSize: number): number'
+    hint: Calculate operand size from prefixes
+  - name: determineAddressSize
+    sig: '(prefixes: PrefixInfo, defaultSize: number): number'
+    hint: Calculate address size from prefixes
+  - name: validateInstruction
+    sig: '(instruction: DecodedInstruction): boolean'
+    hint: Check instruction validity
+  - name: getInstructionLength
+    sig: '(instruction: DecodedInstruction): number'
+    hint: Calculate total instruction size
+  - name: isValidOpcode
+    sig: '(opcode: number): boolean'
+    hint: Check if opcode exists
+  - name: getInstructionMnemonic
+    sig: '(opcode: number): string'
+    hint: Get assembly mnemonic
+  - name: setProcessorMode
+    sig: '(mode: ProcessorMode): void'
+    hint: Switch 16/32/64-bit mode
+  - name: decodeTwoByteOpcode
+    sig: '(bytes: Uint8Array, offset: number): OpcodeInfo'
+    hint: Handle 0x0F prefix opcodes
+  - name: decodeThreeByteOpcode
+    sig: '(bytes: Uint8Array, offset: number): OpcodeInfo'
+    hint: Handle 0x0F38/0x0F3A prefixes
+  - name: handleSegmentOverride
+    sig: '(prefix: number): SegmentRegister'
+    hint: Process segment prefixes
+  references:
+  - src/roska/instruction-decoder.roska
+- name: OpcodeMap
+  kind: class
+  status: pending
+  target_file: src/InstructionDecoder/opcode-map.ts
+  description: Maps opcodes to instruction metadata
+  fields:
+  - name: oneByteOpcodes
+    type: Map<number, OpcodeInfo>
+    default: new Map()
+  - name: twoByteOpcodes
+    type: Map<number, OpcodeInfo>
+    default: new Map()
+  - name: threeByteOpcodes
+    type: Map<number, Map<number, OpcodeInfo>>
+    default: new Map()
+  methods:
+  - name: initialize
+    sig: '(): void'
+    hint: Populate opcode tables
+  - name: getOpcodeInfo
+    sig: '(opcode: number, has0F: boolean, byte2?: number, byte3?: number): OpcodeInfo'
+    hint: Retrieve instruction metadata
+  - name: addOneByteOpcode
+    sig: '(opcode: number, info: OpcodeInfo): void'
+    hint: Register single-byte instruction
+  - name: addTwoByteOpcode
+    sig: '(opcode: number, info: OpcodeInfo): void'
+    hint: Register 0x0F instruction
+  - name: addThreeByteOpcode
+    sig: '(byte1: number, byte2: number, info: OpcodeInfo): void'
+    hint: Register 0x0F38/0x0F3A
+  - name: getOperandCount
+    sig: '(opcode: number): number'
+    hint: Count instruction operands
+  - name: getOperandTypes
+    sig: '(opcode: number): OperandType[]'
+    hint: Get operand type array
+  - name: getInstructionFlags
+    sig: '(opcode: number): InstructionFlags'
+    hint: Get instruction properties
+  - name: isPrivileged
+    sig: '(opcode: number): boolean'
+    hint: Check privileged instruction
+  - name: getInstructionGroup
+    sig: '(opcode: number): InstructionGroup'
+    hint: Get functional group
+  - name: lookupOpcode
+    sig: '(bytes: Uint8Array, offset: number): OpcodeLookupResult'
+    hint: Multi-level opcode lookup
+  - name: buildOpcodeTables
+    sig: '(): void'
+    hint: Construct lookup tables
+  - name: validateOpcodeTables
+    sig: '(): boolean'
+    hint: Check table integrity
+  - name: getOpcodeLength
+    sig: '(opcode: number): number'
+    hint: Get opcode byte count
+  - name: isValidInMode
+    sig: '(opcode: number, mode: ProcessorMode): boolean'
+    hint: Check mode compatibility
+  - name: getInstructionEncoding
+    sig: '(opcode: number): InstructionEncoding'
+    hint: Get encoding type
+  references:
+  - src/roska/opcode-map.roska
+- name: ModRMParser
+  kind: class
+  status: pending
+  target_file: src/InstructionDecoder/mod-rm-parser.ts
+  description: Parses ModRM byte and addressing modes
+  fields:
+  - name: mod
+    type: number
+    default: '0'
+  - name: reg
+    type: number
+    default: '0'
+  - name: rm
+    type: number
+    default: '0'
+  methods:
+  - name: parse
+    sig: '(modrm: number): ModRMInfo'
+    hint: Parse ModRM byte
+  - name: getMod
+    sig: '(modrm: number): number'
+    hint: Extract mod field
+  - name: getReg
+    sig: '(modrm: number): number'
+    hint: Extract reg field
+  - name: getRM
+    sig: '(modrm: number): number'
+    hint: Extract rm field
+  - name: isRegisterMode
+    sig: '(mod: number): boolean'
+    hint: Check register addressing
+  - name: isMemoryMode
+    sig: '(mod: number): boolean'
+    hint: Check memory addressing
+  - name: hasDisplacement
+    sig: '(mod: number): boolean'
+    hint: Check for displacement
+  - name: getDisplacementSize
+    sig: '(mod: number): number'
+    hint: Get disp byte count
+  - name: decodeRegister
+    sig: '(reg: number, operandSize: number): Register'
+    hint: Map to register enum
+  - name: decodeRM
+    sig: '(rm: number, mod: number, addressSize: number): RMInfo'
+    hint: Decode rm field
+  - name: needsSIB
+    sig: '(rm: number, mod: number): boolean'
+    hint: Check for SIB byte
+  - name: getEffectiveAddress
+    sig: '(modrm: number, sib?: SIBInfo, displacement?: number): EffectiveAddress'
+    hint: Calculate memory address
+  - name: parseModRMFromStream
+    sig: '(bytes: Uint8Array, offset: number): ModRMStreamInfo'
+    hint: Parse with stream info
+  - name: validateModRM
+    sig: '(modrm: number): boolean'
+    hint: Check valid encoding
+  - name: getRegisterOperand
+    sig: '(reg: number, operandSize: number): Operand'
+    hint: Create register operand
+  - name: getMemoryOperand
+    sig: '(modrm: number, sib?: SIBInfo, displacement?: number): Operand'
+    hint: Create memory operand
+  references:
+  - src/roska/modrm-parser.roska
+- name: SIBParser
+  kind: class
+  status: pending
+  target_file: src/InstructionDecoder/sib-parser.ts
+  description: Parses Scale-Index-Base byte for complex addressing
+  fields:
+  - name: scale
+    type: number
+    default: '0'
+  - name: index
+    type: number
+    default: '0'
+  - name: base
+    type: number
+    default: '0'
+  methods:
+  - name: parse
+    sig: '(sib: number): SIBInfo'
+    hint: Parse SIB byte
+  - name: getScale
+    sig: '(sib: number): number'
+    hint: Extract scale factor
+  - name: getIndex
+    sig: '(sib: number): number'
+    hint: Extract index register
+  - name: getBase
+    sig: '(sib: number): number'
+    hint: Extract base register
+  - name: getScaleValue
+    sig: '(scale: number): number'
+    hint: Convert to multiplier
+  - name: isBaseESP
+    sig: '(base: number): boolean'
+    hint: Check ESP base
+  - name: isIndexESP
+    sig: '(index: number): boolean'
+    hint: Check ESP index
+  - name: hasBase
+    sig: '(base: number): boolean'
+    hint: Check base present
+  - name: decodeBase
+    sig: '(base: number, addressSize: number): Register'
+    hint: Map base to register
+  - name: decodeIndex
+    sig: '(index: number, addressSize: number): Register'
+    hint: Map index to register
+  - name: calculateEffectiveAddress
+    sig: '(sib: SIBInfo, displacement: number): number'
+    hint: Compute EA value
+  - name: isScaledIndex
+    sig: '(scale: number): boolean'
+    hint: Check scale != 1
+  - name: parseSIBFromStream
+    sig: '(bytes: Uint8Array, offset: number): SIBStreamInfo'
+    hint: Parse with stream info
+  - name: validateSIB
+    sig: '(sib: number): boolean'
+    hint: Check valid encoding
+  - name: needsDisplacement
+    sig: '(base: number, mod: number): boolean'
+    hint: Check disp requirement
+  - name: getSIBOperand
+    sig: '(sib: SIBInfo, displacement: number): Operand'
+    hint: Create SIB operand
+  references:
+  - src/roska/sib-parser.roska
+- name: DisplacementFetcher
+  kind: class
+  status: translated
+  target_file: src/InstructionDecoder/displacement-fetcher.ts
+  description: Fetches and interprets displacement values
+  fields:
+  - name: displacementSize
+    type: number
+    default: '0'
+  - name: displacementValue
+    type: number
+    default: '0'
+  methods:
+  - name: fetch
+    sig: '(bytes: Uint8Array, offset: number, size: number): number'
+    hint: Extract displacement
+  - name: fetch8
+    sig: '(bytes: Uint8Array, offset: number): number'
+    hint: Get 8-bit disp
+  - name: fetch16
+    sig: '(bytes: Uint8Array, offset: number): number'
+    hint: Get 16-bit disp
+  - name: fetch32
+    sig: '(bytes: Uint8Array, offset: number): number'
+    hint: Get 32-bit disp
+  - name: signExtend
+    sig: '(value: number, fromBits: number): number'
+    hint: Sign extend value
+  - name: getDisplacementSize
+    sig: '(mod: number, rm: number, hasSIB: boolean): number'
+    hint: Calculate disp size
+  - name: needsDisplacement
+    sig: '(mod: number): boolean'
+    hint: Check if disp needed
+  - name: isRelative
+    sig: '(instructionType: InstructionType): boolean'
+    hint: Check relative disp
+  - name: calculateTargetAddress
+    sig: '(displacement: number, currentIP: number): number'
+    hint: Compute jump target
+  - name: validateDisplacement
+    sig: '(displacement: number, size: number): boolean'
+    hint: Check disp range
+  - name: fetchFromStream
+    sig: '(stream: ByteStream, size: number): DisplacementInfo'
+    hint: Fetch with stream
+  - name: getDisplacementType
+    sig: '(mod: number, instruction: DecodedInstruction): DisplacementType'
+    hint: Classify disp type
+  - name: isAbsolute
+    sig: '(displacementType: DisplacementType): boolean'
+    hint: Check absolute addr
+  - name: getDisplacementOperand
+    sig: '(displacement: number, type: DisplacementType): Operand'
+    hint: Create disp operand
+  - name: calculateMemoryAddress
+    sig: '(base: number, index: number, scale: number, displacement: number): number'
+    hint: Compute linear addr
+  - name: handleRipRelative
+    sig: '(displacement: number, rip: number): number'
+    hint: Handle RIP-relative
+  references:
+  - src/roska/displacement-fetcher.roska
