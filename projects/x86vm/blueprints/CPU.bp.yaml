@@ -1,0 +1,364 @@
+## Blueprint — CPU
+name: CPU
+language: typescript
+target_dir: src/CPU
+description: ''
+constraints:
+- Must support x86 32-bit architecture
+- Little-endian byte order
+- Real mode and protected mode
+- 'CONTRACT: ALU.flags is FlagsRegister — use its API: get(): number, set(value: number): void, getCF(): boolean, setCF(value:
+  boolean): void'
+- 'CONTRACT: InstructionDecoder uses ModRmParser from decoder [class] — import from ''../decoder'', API: parse(byte: number):
+  ModRmInfo, getMod(byte: number): number, getReg(byte: number): number, getRm(byte: number): number, isRegisterMode(mod:
+  number): boolean'
+- 'CONTRACT: InstructionDecoder uses OpcodeMap from decoder [class] — import from ''../decoder'', API: lookup(opcode: number[]):
+  OpcodeEntry, lookupOneByte(opcode: number): OpcodeEntry, lookupTwoByte(opcode: number): OpcodeEntry, lookupThreeByte(byte1:
+  number, byte2: number): OpcodeEntry, lookupVex(byte1: number, byte2: number): OpcodeEntry'
+- 'CONTRACT: InstructionDecoder uses SibParser from decoder [class] — import from ''../decoder'', API: parse(byte: number):
+  SibInfo, getScale(byte: number): number, getIndex(byte: number): number, getBase(byte: number): number, getScaleFactor(scale:
+  number): number'
+- 'CONTRACT: ALU uses FlagsRegister from registers [class] — import from ''../registers'', API: get(): number, set(value:
+  number): void, getCF(): boolean, setCF(value: boolean): void, getPF(): boolean'
+references:
+- x86vm/src/cpu/registers.yaml
+- x86vm/src/cpu/decoder.yaml
+types:
+- name: RegisterBank
+  kind: class
+  status: pending
+  target_file: src/CPU/register-bank.ts
+  description: Manages x86 general-purpose registers
+  fields:
+  - name: eax
+    type: number
+    default: '0'
+  - name: ebx
+    type: number
+    default: '0'
+  - name: ecx
+    type: number
+    default: '0'
+  - name: edx
+    type: number
+    default: '0'
+  - name: esi
+    type: number
+    default: '0'
+  - name: edi
+    type: number
+    default: '0'
+  - name: esp
+    type: number
+    default: '0'
+  - name: ebp
+    type: number
+    default: '0'
+  - name: eip
+    type: number
+    default: '0'
+  methods:
+  - name: getRegister
+    sig: '(reg: RegisterIndex): number'
+    hint: Return register value by index
+  - name: setRegister
+    sig: '(reg: RegisterIndex, value: number): void'
+    hint: Set register value by index
+  - name: getLowByte
+    sig: '(reg: RegisterIndex): number'
+    hint: Extract low 8 bits
+  - name: setLowByte
+    sig: '(reg: RegisterIndex, value: number): void'
+    hint: Set low 8 bits only
+  - name: getHighByte
+    sig: '(reg: RegisterIndex): number'
+    hint: Extract high 8 bits
+  - name: setHighByte
+    sig: '(reg: RegisterIndex, value: number): void'
+    hint: Set high 8 bits only
+  - name: getLowWord
+    sig: '(reg: RegisterIndex): number'
+    hint: Extract low 16 bits
+  - name: setLowWord
+    sig: '(reg: RegisterIndex, value: number): void'
+    hint: Set low 16 bits only
+  - name: push
+    sig: '(value: number): void'
+    hint: Push to stack, decrement ESP
+  - name: pop
+    sig: '(): number'
+    hint: Pop from stack, increment ESP
+  - name: incrementIP
+    sig: '(offset: number): void'
+    hint: Advance instruction pointer
+  - name: reset
+    sig: '(): void'
+    hint: Zero all registers
+  - name: dump
+    sig: '(): RegisterState'
+    hint: Return snapshot of all registers
+  - name: restore
+    sig: '(state: RegisterState): void'
+    hint: Restore from snapshot
+  - name: getSegmentBase
+    sig: '(segment: SegmentRegister): number'
+    hint: Calculate segment base address
+  static:
+  - name: REG_COUNT
+    hint: Number of general registers
+  references:
+  - src/registers/descriptor.yaml
+- name: InstructionDecoder
+  kind: class
+  status: translated
+  target_file: src/CPU/instruction-decoder.ts
+  extends: InstructionDecoder
+  description: Decodes x86 instructions into micro-ops
+  fields:
+  - name: opcodeMap
+    type: OpcodeMap
+  - name: modRmParser
+    type: ModRmParser
+  - name: sibParser
+    type: SibParser
+  - name: prefixState
+    type: PrefixState
+  methods:
+  - name: decode
+    sig: '(bytes: Uint8Array, offset: number): DecodedInstruction'
+    hint: Main decode entry point
+  - name: decodeInstruction
+    sig: '(bytes: Uint8Array, offset: number): DecodedInstruction'
+    hint: Parse prefixes then opcode
+  - name: parsePrefixes
+    sig: '(bytes: Uint8Array, offset: number): PrefixState'
+    hint: Collect prefix bytes
+  - name: parseOpcode
+    sig: '(bytes: Uint8Array, offset: number): OpcodeEntry'
+    hint: Lookup opcode in maps
+  - name: parseModRm
+    sig: '(bytes: Uint8Array, offset: number): ModRmByte'
+    hint: Decode ModR/M byte
+  - name: parseSib
+    sig: '(bytes: Uint8Array, offset: number): SibByte'
+    hint: Decode SIB byte if present
+  - name: parseDisplacement
+    sig: '(bytes: Uint8Array, offset: number, modRm: ModRmByte): number'
+    hint: Extract displacement value
+  - name: parseImmediate
+    sig: '(bytes: Uint8Array, offset: number, size: OperandSize): number'
+    hint: Extract immediate operand
+  - name: getInstructionLength
+    sig: '(inst: DecodedInstruction): number'
+    hint: Calculate total bytes consumed
+  - name: isValidOpcode
+    sig: '(opcode: number): boolean'
+    hint: Check opcode exists in map
+  - name: getOperandSize
+    sig: '(prefix: PrefixState, default: OperandSize): OperandSize'
+    hint: Determine operand size from prefix
+  - name: getAddressSize
+    sig: '(prefix: PrefixState, default: AddressSize): AddressSize'
+    hint: Determine address size from prefix
+  - name: decodeTwoByteOpcode
+    sig: '(bytes: Uint8Array, offset: number): OpcodeEntry'
+    hint: Handle 0F prefix opcodes
+  - name: decodeThreeByteOpcode
+    sig: '(bytes: Uint8Array, offset: number): OpcodeEntry'
+    hint: Handle 0F 38/3A opcodes
+  - name: handleGroupOpcode
+    sig: '(opcode: number, modRm: ModRmByte): OpcodeEntry'
+    hint: Resolve group opcode by reg
+  references:
+  - src/decoder/descriptor.yaml
+- name: ALU
+  kind: class
+  status: translated
+  target_file: src/CPU/alu.ts
+  description: Arithmetic logic unit for x86 operations
+  fields:
+  - name: flags
+    type: FlagsRegister
+  methods:
+  - name: add
+    sig: '(a: number, b: number): number'
+    hint: Addition with flag updates
+  - name: sub
+    sig: '(a: number, b: number): number'
+    hint: Subtraction with flag updates
+  - name: mul
+    sig: '(a: number, b: number): number'
+    hint: Unsigned multiply
+  - name: imul
+    sig: '(a: number, b: number): number'
+    hint: Signed multiply
+  - name: div
+    sig: '(a: number, b: number): number'
+    hint: Unsigned divide
+  - name: idiv
+    sig: '(a: number, b: number): number'
+    hint: Signed divide
+  - name: and
+    sig: '(a: number, b: number): number'
+    hint: Bitwise AND
+  - name: or
+    sig: '(a: number, b: number): number'
+    hint: Bitwise OR
+  - name: xor
+    sig: '(a: number, b: number): number'
+    hint: Bitwise XOR
+  - name: not
+    sig: '(a: number): number'
+    hint: Bitwise NOT
+  - name: shl
+    sig: '(a: number, count: number): number'
+    hint: Shift left
+  - name: shr
+    sig: '(a: number, count: number): number'
+    hint: Shift right
+  - name: sar
+    sig: '(a: number, count: number): number'
+    hint: Arithmetic shift right
+  - name: rol
+    sig: '(a: number, count: number): number'
+    hint: Rotate left
+  - name: ror
+    sig: '(a: number, count: number): number'
+    hint: Rotate right
+  - name: inc
+    sig: '(a: number): number'
+    hint: Increment by 1
+  - name: dec
+    sig: '(a: number): number'
+    hint: Decrement by 1
+  - name: neg
+    sig: '(a: number): number'
+    hint: Two's complement
+  - name: cmp
+    sig: '(a: number, b: number): void'
+    hint: Compare sets flags only
+  - name: test
+    sig: '(a: number, b: number): void'
+    hint: Bitwise test sets flags
+  references:
+  - src/registers/descriptor.yaml
+- name: FlagsRegister
+  kind: class
+  status: pending
+  target_file: src/CPU/flags-register.ts
+  extends: FlagsRegister
+  description: Manages x86 EFLAGS register
+  fields:
+  - name: value
+    type: number
+    default: '2'
+  - name: changeCallbacks
+    type: Set<FlagsChangeCallback>
+  methods:
+  - name: get
+    sig: '(): number'
+    hint: Return full EFLAGS value
+  - name: set
+    sig: '(value: number): void'
+    hint: Set full EFLAGS value
+  - name: getCF
+    sig: '(): boolean'
+    hint: Carry flag bit 0
+  - name: setCF
+    sig: '(value: boolean): void'
+    hint: Set carry flag
+  - name: getPF
+    sig: '(): boolean'
+    hint: Parity flag bit 2
+  - name: setPF
+    sig: '(value: boolean): void'
+    hint: Set parity flag
+  - name: getAF
+    sig: '(): boolean'
+    hint: Aux carry bit 4
+  - name: setAF
+    sig: '(value: boolean): void'
+    hint: Set aux carry
+  - name: getZF
+    sig: '(): boolean'
+    hint: Zero flag bit 6
+  - name: setZF
+    sig: '(value: boolean): void'
+    hint: Set zero flag
+  - name: getSF
+    sig: '(): boolean'
+    hint: Sign flag bit 7
+  - name: setSF
+    sig: '(value: boolean): void'
+    hint: Set sign flag
+  - name: getTF
+    sig: '(): boolean'
+    hint: Trap flag bit 8
+  - name: setTF
+    sig: '(value: boolean): void'
+    hint: Set trap flag
+  - name: getIF
+    sig: '(): boolean'
+    hint: Interrupt flag bit 9
+  - name: setIF
+    sig: '(value: boolean): void'
+    hint: Set interrupt flag
+  - name: getDF
+    sig: '(): boolean'
+    hint: Direction flag bit 10
+  - name: setDF
+    sig: '(value: boolean): void'
+    hint: Set direction flag
+  - name: getOF
+    sig: '(): boolean'
+    hint: Overflow flag bit 11
+  - name: setOF
+    sig: '(value: boolean): void'
+    hint: Set overflow flag
+  - name: getIOPL
+    sig: '(): number'
+    hint: I/O privilege bits 12-13
+  - name: setIOPL
+    sig: '(level: number): void'
+    hint: Set I/O privilege
+  - name: getNT
+    sig: '(): boolean'
+    hint: Nested task bit 14
+  - name: setNT
+    sig: '(value: boolean): void'
+    hint: Set nested task
+  - name: getRF
+    sig: '(): boolean'
+    hint: Resume flag bit 16
+  - name: setRF
+    sig: '(value: boolean): void'
+    hint: Set resume flag
+  - name: getVM
+    sig: '(): boolean'
+    hint: Virtual mode bit 17
+  - name: setVM
+    sig: '(value: boolean): void'
+    hint: Set virtual mode
+  - name: updateParity
+    sig: '(result: number): void'
+    hint: Auto-calculate PF from result
+  - name: updateSign
+    sig: '(result: number, size: OperandSize): void'
+    hint: Auto-calculate SF from MSB
+  - name: updateZero
+    sig: '(result: number): void'
+    hint: Auto-calculate ZF
+  - name: updateCarry
+    sig: '(operation: string, result: number): void'
+    hint: Auto-calculate CF
+  - name: updateOverflow
+    sig: '(a: number, b: number, result: number, operation: string): void'
+    hint: Auto-calculate OF
+  - name: addChangeCallback
+    sig: '(callback: FlagsChangeCallback): void'
+    hint: Register flag change listener
+  - name: removeChangeCallback
+    sig: '(callback: FlagsChangeCallback): void'
+    hint: Unregister listener
+  references:
+  - src/registers/descriptor.yaml
