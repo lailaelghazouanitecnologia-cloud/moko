@@ -1,120 +1,90 @@
-private entries: Uint32Array = new Uint32Array(1024);
+private entries: PageEntry[];
+  private cr3: number;
 
-    getEntry(index: number): number {
-        return this.entries[index];
-    }
+  constructor() {
+    this.entries = [];
+    this.cr3 = 0;
+  }
 
-    setEntry(index: number, entry: number): void {
-        this.entries[index] = entry;
-    }
+  setCR3(value: number): void {
+    this.cr3 = value;
+  }
 
-    isPresent(index: number): boolean {
-        return (this.entries[index] & 0x1) !== 0;
-    }
+  getCR3(): number {
+    return this.cr3;
+  }
 
-    isWritable(index: number): boolean {
-        return (this.entries[index] & 0x2) !== 0;
-    }
+  mapPage(virtual: number, physical: number, flags: number): void {
+    const index = this.getPageIndex(virtual);
+    const entry: PageEntry = {
+      present: true,
+      physicalAddress: physical,
+      flags: flags
+    };
+    this.entries[index] = entry;
+  }
 
-    isUser(index: number): boolean {
-        return (this.entries[index] & 0x4) !== 0;
+  unmapPage(virtual: number): void {
+    const index = this.getPageIndex(virtual);
+    if (this.entries[index]) {
+      this.entries[index].present = false;
     }
+  }
 
-    isAccessed(index: number): boolean {
-        return (this.entries[index] & 0x20) !== 0;
+  getPhysicalAddress(virtual: number): number {
+    const index = this.getPageIndex(virtual);
+    const entry = this.entries[index];
+    if (!entry || !entry.present) {
+      throw new Error(`Page not present for virtual address 0x${virtual.toString(16)}`);
     }
+    const offset = virtual & 0xFFF;
+    return entry.physicalAddress + offset;
+  }
 
-    isDirty(index: number): boolean {
-        return (this.entries[index] & 0x40) !== 0;
-    }
+  isPresent(virtual: number): boolean {
+    const index = this.getPageIndex(virtual);
+    const entry = this.entries[index];
+    return entry !== undefined && entry.present;
+  }
 
-    getPhysicalAddress(index: number): number {
-        return (this.entries[index] & 0xFFFFF000) >>> 0;
+  getPageFlags(virtual: number): number {
+    const index = this.getPageIndex(virtual);
+    const entry = this.entries[index];
+    if (!entry) {
+      return 0;
     }
+    return entry.flags;
+  }
 
-    getPhysicalAddr(index: number): number {
-        return this.getPhysicalAddress(index);
+  setPageFlags(virtual: number, flags: number): void {
+    const index = this.getPageIndex(virtual);
+    if (this.entries[index]) {
+      this.entries[index].flags = flags;
     }
+  }
 
-    setPhysicalAddress(index: number, addr: number): void {
-        const entry = this.entries[index] & 0xFFF;
-        this.entries[index] = (addr & 0xFFFFF000) | entry;
-    }
+  invalidateTLB(address: number): void {
+    // Simulate TLB invalidation
+    // In real hardware, this would invalidate the TLB entry for the specific address
+  }
 
-    setPresent(index: number, present: boolean): void {
-        if (present) {
-            this.entries[index] |= 0x1;
-        } else {
-            this.entries[index] &= ~0x1;
-        }
-    }
+  invalidateAll(): void {
+    // Simulate full TLB flush
+    // In real hardware, this would invalidate all TLB entries
+  }
 
-    setWritable(index: number, writable: boolean): void {
-        if (writable) {
-            this.entries[index] |= 0x2;
-        } else {
-            this.entries[index] &= ~0x2;
-        }
-    }
+  walkPageTable(virtual: number): PageWalkResult {
+    const index = this.getPageIndex(virtual);
+    const entry = this.entries[index];
+    return {
+      found: entry !== undefined && entry.present,
+      entry: entry || null,
+      level: 0
+    };
+  }
 
-    setUser(index: number, user: boolean): void {
-        if (user) {
-            this.entries[index] |= 0x4;
-        } else {
-            this.entries[index] &= ~0x4;
-        }
-    }
-
-    setAccessed(index: number, accessed: boolean): void {
-        if (accessed) {
-            this.entries[index] |= 0x20;
-        } else {
-            this.entries[index] &= ~0x20;
-        }
-    }
-
-    setDirty(index: number, dirty: boolean): void {
-        if (dirty) {
-            this.entries[index] |= 0x40;
-        } else {
-            this.entries[index] &= ~0x40;
-        }
-    }
-
-    setGlobal(index: number, global: boolean): void {
-        if (global) {
-            this.entries[index] |= 0x100;
-        } else {
-            this.entries[index] &= ~0x100;
-        }
-    }
-
-    isGlobal(index: number): boolean {
-        return (this.entries[index] & 0x100) !== 0;
-    }
-
-    getPageTable(cr3: number, index: number): PageTable {
-        const memoryManager = new MemoryManager();
-        const pageDirEntry = memoryManager.pageTables.get(cr3)?.getEntry(index) ?? 0;
-        
-        if ((pageDirEntry & 0x1) === 0) {
-            const newTable = new PageTable();
-            memoryManager.pageTables.set(cr3 + index * 0x1000, newTable);
-            return newTable;
-        }
-        
-        const tableAddr = pageDirEntry & 0xFFFFF000;
-        const existingTable = memoryManager.pageTables.get(tableAddr);
-        if (existingTable) {
-            return existingTable;
-        }
-        
-        const newTable = new PageTable();
-        memoryManager.pageTables.set(tableAddr, newTable);
-        return newTable;
-    }
-
-    invalidateEntry(index: number): void {
-        this.entries[index] = 0;
-    }
+  private getPageIndex(virtual: number): number {
+    // Extract page index from virtual address (4KB pages, 4GB address space)
+    return (virtual >>> 12) & 0xFFFFF;
+  }
 }

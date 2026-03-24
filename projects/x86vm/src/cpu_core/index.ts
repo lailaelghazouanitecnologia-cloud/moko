@@ -1,2 +1,2 @@
+export { RegisterBank } from './register-bank';
 export { ALU } from './alu';
-export { FlagsRegister } from './flags-register';

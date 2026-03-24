@@ -233,8 +233,9 @@ types:
         hint: "description"
 ```
 
-Be thorough: include ALL methods from references that add value. Skip trivial getters unless they have non-obvious logic. Include 15-25 methods per class for substantial types.
-Keep method hints SHORT (under 8 words). Prioritize type definitions over constraints."""
+Include key methods that define the class API. Skip trivial getters/setters. Target 8-15 methods per class.
+Keep method hints to 3-5 words MAX. Do NOT write long descriptions. Prioritize MORE types over more methods.
+IMPORTANT: Keep total YAML under 200 lines to avoid truncation."""
 
 
 class BlueprintTranslator:
@@ -673,6 +674,8 @@ class BlueprintTranslator:
         if not _is_valid_bp(data):
             # Retry once with explicit instruction
             self._log(f"  WARNING: blueprint parse failed, retrying...")
+            self._log(f"  Raw LLM output length: {len(clean)} chars, {len(clean.split(chr(10)))} lines")
+            self._log(f"  Parse result: type={type(data).__name__}, value={repr(data)[:200] if data else 'None'}")
             self._log(f"  Raw LLM output (first 300 chars): {clean[:300]}")
             retry_user = (
                 user + "\n\nIMPORTANT: Output RAW YAML only. No markdown fences, no explanations. "
@@ -719,9 +722,10 @@ class BlueprintTranslator:
         try:
             data = yaml.safe_load(text)
             if isinstance(data, dict):
+                self._log(f"  yaml: direct parse OK, keys={list(data.keys())[:5]}")
                 return data
-        except yaml.YAMLError:
-            pass
+        except yaml.YAMLError as e:
+            self._log(f"  yaml: direct parse failed: {str(e)[:100]}")
 
         # Maybe there are leftover fences or preamble — try aggressive cleanup
         # Remove any line containing only backticks
@@ -738,18 +742,39 @@ class BlueprintTranslator:
             except yaml.YAMLError:
                 pass
 
-        # Truncated — strip lines from the end until it parses
+        # Strategy 1: Find type boundaries and try parsing up to each one
+        # Type entries in the YAML are "  - name: ..." at 4-space indent under types:
         lines = cleaned.split("\n")
-        for cut in range(1, min(len(lines), 80)):
+        type_starts = []
+        for i, line in enumerate(lines):
+            if re.match(r'^  - name:\s', line) or re.match(r'^    - name:\s', line):
+                type_starts.append(i)
+
+        if len(type_starts) >= 2:
+            # Try parsing up to the last N type boundaries (from most to fewest types)
+            for end_idx in reversed(type_starts[1:]):  # Skip first, need at least 1 type
+                truncated = "\n".join(lines[:end_idx])
+                try:
+                    data = yaml.safe_load(truncated)
+                    if isinstance(data, dict) and data.get("types") and len(data["types"]) > 0:
+                        self._log(f"  recovered at type boundary (line {end_idx}, {len(data['types'])} types)")
+                        return data
+                except yaml.YAMLError:
+                    continue
+
+        # Strategy 2: Progressive end-truncation
+        max_cut = min(len(lines) - 1, 200)
+        for cut in range(1, max_cut):
             truncated = "\n".join(lines[:-cut])
             try:
                 data = yaml.safe_load(truncated)
-                if isinstance(data, dict) and "types" in data:
-                    self._log(f"  recovered truncated YAML (cut {cut} lines)")
+                if isinstance(data, dict) and data.get("types") and len(data["types"]) > 0:
+                    self._log(f"  recovered truncated YAML (cut {cut} lines, {len(data['types'])} types)")
                     return data
             except yaml.YAMLError:
                 continue
 
+        self._log(f"  yaml: all recovery attempts failed ({len(lines)} lines, tried {max_cut} cuts)")
         return None
 
     def _strip_fences(self, text: str) -> str:

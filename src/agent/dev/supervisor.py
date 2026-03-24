@@ -1517,6 +1517,18 @@ class DevSupervisor:
                         print(f"  ✗ Block {block.index} failed: {block_err}")
                         if block.status == BlockStatus.IN_PROGRESS:
                             block.fail(str(block_err))
+                        # If analyze block failed, cascade-fail its dependent blocks
+                        if block.block_type == BlockType.ANALYZE:
+                            failed_mod = block.meta.get("module", "")
+                            if failed_mod:
+                                for dep in plan.blocks[block.index + 1:]:
+                                    if dep.status != BlockStatus.PENDING:
+                                        continue
+                                    if dep.meta.get("module") == failed_mod:
+                                        dep.fail(f"Skipped: analyze for {failed_mod} failed")
+                                        print(f"  ✗ Block {dep.index} skipped (depends on failed analyze)")
+                                    else:
+                                        break  # Different module, stop cascading
                         continue
 
                     # Print result (compact for implement blocks)
