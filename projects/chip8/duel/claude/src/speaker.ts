@@ -1,72 +1,79 @@
-import { Clock } from './clock.js';
+import { Clock } from "./clock.js";
 
 export class Speaker {
   private audioCtx: AudioContext | null = null;
   private oscillator: OscillatorNode | null = null;
-  private gainNode: GainNode | null = null;
+  private gain: GainNode | null = null;
   private clock: Clock;
-  private enabled = false;
 
   constructor(clock: Clock) {
     this.clock = clock;
   }
 
+  private async ensureAudioContext(): Promise<void> {
+    if (!this.audioCtx) {
+      this.audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+      if (this.audioCtx.state === "suspended") {
+        await this.audioCtx.resume();
+      }
+    }
+  }
+
   async init(): Promise<void> {
-    if (this.audioCtx) return;
-    this.audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
-    if (this.audioCtx.state === 'suspended') {
-      await this.audioCtx.resume();
-    }
-  }
+    await this.ensureAudioContext();
+    if (!this.audioCtx) throw new Error("AudioContext not available");
 
-  private ensureAudio(): void {
-    if (!this.audioCtx || this.audioCtx.state === 'closed') {
-      throw new Error('AudioContext not initialized or closed');
-    }
-  }
+    this.oscillator = this.audioCtx.createOscillator();
+    this.gain = this.audioCtx.createGain();
 
-  start(): void {
-    if (this.enabled) return;
-    this.ensureAudio();
-    this.enabled = true;
-    this.oscillator = this.audioCtx!.createOscillator();
-    this.gainNode = this.audioCtx!.createGain();
-    this.oscillator.type = 'square';
-    this.oscillator.frequency.setValueAtTime(440, this.audioCtx!.currentTime);
-    this.gainNode.gain.setValueAtTime(0.1, this.audioCtx!.currentTime);
-    this.oscillator.connect(this.gainNode);
-    this.gainNode.connect(this.audioCtx!.destination);
+    this.oscillator.type = "square";
+    this.oscillator.frequency.value = 440;
+    this.gain.gain.value = 0;
+
+    this.oscillator.connect(this.gain);
+    this.gain.connect(this.audioCtx.destination);
+
     this.oscillator.start();
   }
 
-  stop(): void {
-    if (!this.enabled) return;
-    this.enabled = false;
+  private stop(): void {
+    if (this.gain) {
+      this.gain.gain.value = 0;
+    }
+  }
+
+  private play(): void {
+    if (this.gain) {
+      this.gain.gain.value = 0.05;
+    }
+  }
+
+  update(st: number): void {
+    if (st > 0) {
+      if (!this.oscillator || !this.gain) {
+        this.init().catch(() => {});
+      } else {
+        this.play();
+      }
+    } else {
+      this.stop();
+    }
+  }
+
+  destroy(): void {
+    this.stop();
     if (this.oscillator) {
       this.oscillator.stop();
       this.oscillator.disconnect();
       this.oscillator = null;
     }
-    if (this.gainNode) {
-      this.gainNode.disconnect();
-      this.gainNode = null;
+    if (this.gain) {
+      this.gain.disconnect();
+      this.gain = null;
     }
-  }
-
-  update(): void {
-    const soundTimer = this.clock.getSoundTimer();
-    if (soundTimer > 0 && !this.enabled) {
-      this.start();
-    } else if (soundTimer === 0 && this.enabled) {
-      this.stop();
-    }
-  }
-
-  cleanup(): void {
-    this.stop();
-    if (this.audioCtx && this.audioCtx.state !== 'closed') {
+    if (this.audioCtx) {
       this.audioCtx.close();
+      this.audioCtx = null;
     }
-    this.audioCtx = null;
   }
 }

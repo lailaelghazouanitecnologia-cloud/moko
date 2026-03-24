@@ -239,7 +239,7 @@ class BlueprintTranslator:
         if import_map:
             user += f"\n{import_map}\n"
 
-        # Sibling awareness — compacted or simple list
+        # Sibling awareness — include signatures of already-translated siblings
         if sibling_context:
             user += f"\n## Sibling types (for import awareness)\n{sibling_context}\n"
         else:
@@ -247,11 +247,20 @@ class BlueprintTranslator:
             if other_types:
                 user += f"Other types in this module: {', '.join(other_types)}\n"
 
+        # Intra-module sibling signatures: read already-generated code for this module
+        sibling_sigs = self._build_sibling_signatures(type_bp, module_bp, project_dir)
+        if sibling_sigs:
+            user += f"\n## Already generated in this module (use these exact signatures)\n{sibling_sigs}\n"
+
         if ref_context:
             user += f"\n{ref_context}\n"
 
-        # Prior layers context (types from already-translated modules)
-        if self.prior_layers_context:
+        # Cross-module signatures: read actual .ts files from other modules
+        cross_sigs = self._build_cross_module_signatures(type_bp, module_bp, project_dir)
+        if cross_sigs:
+            user += f"\n## Available from other modules (use these exact signatures for imports)\n{cross_sigs}\n"
+        elif self.prior_layers_context:
+            # Fallback to compact summaries if no files found
             user += f"\n## {self.prior_layers_context}\n"
 
         # Semantic store — similar patterns from reference codebases
@@ -320,6 +329,127 @@ class BlueprintTranslator:
         full_path.write_text("\n".join(lines))
         self._log(f"  wrote {target} (root index, {len(module_names)} modules)")
         return target
+
+    def _build_sibling_signatures(self, type_bp, module_bp,
+                                     project_dir: Path) -> str:
+        """Extract signatures from already-translated siblings in same module.
+
+        Reads generated .ts files for translated types and extracts
+        export/class/interface/method signatures so the next type
+        knows the exact API to use for imports.
+        """
+        parts = []
+        chars = 0
+        max_chars = 2000
+
+        for t in module_bp.types:
+            if t.name == type_bp.name or t.status != "translated":
+                continue
+
+            target = t.target_file or f"{module_bp.target_dir}/{to_kebab_case(t.name)}.ts"
+            full_path = project_dir / target
+            if not full_path.exists():
+                continue
+
+            try:
+                code = full_path.read_text()
+            except Exception:
+                continue
+
+            # Extract signatures: export, class, interface, public method lines
+            sig_lines = []
+            for line in code.splitlines():
+                stripped = line.strip()
+                if (stripped.startswith("export ") or
+                    stripped.startswith("class ") or
+                    stripped.startswith("interface ") or
+                    stripped.startswith("enum ") or
+                    stripped.startswith("public ") or
+                    stripped.startswith("private ") or
+                    stripped.startswith("protected ") or
+                    stripped.startswith("static ") or
+                    stripped.startswith("constructor") or
+                    stripped.startswith("get ") or
+                    stripped.startswith("set ")):
+                    # Remove body
+                    clean = stripped.split("{")[0].rstrip()
+                    if clean:
+                        sig_lines.append(clean)
+
+            if sig_lines:
+                rel_path = f"./{to_kebab_case(t.name)}"
+                block = f"// {rel_path} ({t.name})\n" + "\n".join(sig_lines[:20])
+                if chars + len(block) > max_chars:
+                    break
+                parts.append(block)
+                chars += len(block)
+
+        return "\n\n".join(parts)
+
+    def _build_cross_module_signatures(self, type_bp, module_bp,
+                                        project_dir: Path) -> str:
+        """Extract signatures from generated .ts files in OTHER modules.
+
+        Similar to _build_sibling_signatures but reads files from prior_modules
+        (other modules that have already been translated). This provides the
+        translator with exact API signatures for cross-module imports, instead
+        of the compact one-liner summaries that only have method names.
+        """
+        if not self.prior_modules:
+            return ""
+
+        parts = []
+        chars = 0
+        max_chars = 4000  # More budget than sibling sigs since cross-module is critical
+
+        for mod_bp in self.prior_modules:
+            for t in mod_bp.types:
+                if t.status != "translated":
+                    continue
+
+                target = t.target_file or f"{mod_bp.target_dir}/{to_kebab_case(t.name)}.ts"
+                full_path = project_dir / target
+                if not full_path.exists():
+                    continue
+
+                try:
+                    code = full_path.read_text()
+                except Exception:
+                    continue
+
+                # Extract signatures: export, class, interface, public method lines
+                sig_lines = []
+                for line in code.splitlines():
+                    stripped = line.strip()
+                    if (stripped.startswith("export ") or
+                        stripped.startswith("class ") or
+                        stripped.startswith("interface ") or
+                        stripped.startswith("enum ") or
+                        stripped.startswith("type ") or
+                        stripped.startswith("public ") or
+                        stripped.startswith("private ") or
+                        stripped.startswith("protected ") or
+                        stripped.startswith("static ") or
+                        stripped.startswith("constructor") or
+                        stripped.startswith("get ") or
+                        stripped.startswith("set ")):
+                        # Remove body
+                        clean = stripped.split("{")[0].rstrip()
+                        if clean:
+                            sig_lines.append(clean)
+
+                if sig_lines:
+                    rel_path = target
+                    block = f"// {rel_path} ({t.name})\n" + "\n".join(sig_lines[:25])
+                    if chars + len(block) > max_chars:
+                        break
+                    parts.append(block)
+                    chars += len(block)
+
+            if chars >= max_chars:
+                break
+
+        return "\n\n".join(parts)
 
     def generate_project_config(self, project_name: str,
                                 module_names: list[str],

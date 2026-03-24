@@ -1,42 +1,40 @@
-import { u8 } from "./types";
+import { u8 } from './types';
 
 export class Keyboard {
   private keys: boolean[] = new Array(16).fill(false);
-  private waitingFor: { key: number; resolve: (key: u8) => void } | null = null;
+  private waitForKey: { resolve: (key: u8) => void; timeout?: number } | null = null;
 
   isPressed(key: u8): boolean {
-    return this.keys[key] === true;
+    return !!this.keys[key & 0xF];
   }
 
-  press(key: u8): void {
-    this.keys[key] = true;
-    if (this.waitingFor !== null) {
-      this.waitingFor.resolve(key);
-      this.waitingFor = null;
+  setPressed(key: u8, pressed: boolean): void {
+    this.keys[key & 0xF] = pressed;
+    if (pressed && this.waitForKey) {
+      this.waitForKey.resolve(key & 0xF);
+      this.waitForKey = null;
     }
   }
 
-  release(key: u8): void {
-    this.keys[key] = false;
-  }
-
-  releaseAll(): void {
-    this.keys.fill(false);
-  }
-
-  async waitForKeyPress(): Promise<u8> {
-    if (this.waitingFor !== null) {
-      throw new Error("Already waiting for a key press");
+  async waitForAnyKey(): Promise<u8> {
+    if (this.waitForKey) {
+      clearTimeout(this.waitForKey.timeout);
     }
     return new Promise<u8>((resolve) => {
-      this.waitingFor = { key: -1, resolve };
+      const timeout = setTimeout(() => {
+        this.waitForKey = null;
+        resolve(0x10);
+      }, 5000);
+      this.waitForKey = { resolve, timeout };
     });
   }
 
-  cancelWait(): void {
-    if (this.waitingFor !== null) {
-      this.waitingFor.resolve(0xff);
-      this.waitingFor = null;
+  reset(): void {
+    this.keys.fill(false);
+    if (this.waitForKey) {
+      clearTimeout(this.waitForKey.timeout);
+      this.waitForKey.resolve(0x10);
+      this.waitForKey = null;
     }
   }
 }

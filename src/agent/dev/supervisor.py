@@ -664,9 +664,14 @@ class DevSupervisor:
     # ── Execution Handlers (Blueprint Pipeline) ──────────────────
 
     def _build_prior_layers_context(self, block_meta: dict) -> str:
-        """Build compact context from already-translated prior layers."""
-        requires = block_meta.get("requires", [])
-        if not requires or not self.current_plan:
+        """Build compact context from already-translated prior layers.
+
+        Two strategies:
+        1. If "requires" is specified: load only those modules (layered plan)
+        2. If "requires" is missing: load ALL translated modules except current
+           (fallback LLM plan — infer dependencies from what exists on disk)
+        """
+        if not self.current_plan:
             return ""
 
         target = self.current_plan.target_project
@@ -676,13 +681,27 @@ class DevSupervisor:
         if not bp_dir.exists():
             return ""
 
+        current_module = block_meta.get("module", "")
+        requires = block_meta.get("requires", [])
+
         prior_bps = []
-        for req_name in requires:
-            bp_file = bp_dir / f"{req_name}.bp.yaml"
-            if bp_file.exists():
+        if requires:
+            # Layered plan: explicit dependencies
+            for req_name in requires:
+                bp_file = bp_dir / f"{req_name}.bp.yaml"
+                if bp_file.exists():
+                    try:
+                        bp = ModuleBlueprint.load(bp_file)
+                        if bp.translated_types:
+                            prior_bps.append(bp)
+                    except Exception:
+                        continue
+        else:
+            # Fallback: load ALL translated modules except current
+            for bp_file in sorted(bp_dir.glob("*.bp.yaml")):
                 try:
                     bp = ModuleBlueprint.load(bp_file)
-                    if bp.translated_types:
+                    if bp.name != current_module and bp.translated_types:
                         prior_bps.append(bp)
                 except Exception:
                     continue
@@ -815,8 +834,9 @@ class DevSupervisor:
         # Load prior modules for import map
         requires = meta.get("requires", [])
         prior_modules = []
+        bp_dir = project_dir / "blueprints"
         if requires:
-            bp_dir = project_dir / "blueprints"
+            # Layered plan: explicit dependencies
             for req_name in requires:
                 bp_file = bp_dir / f"{req_name}.bp.yaml"
                 if bp_file.exists():
@@ -824,6 +844,15 @@ class DevSupervisor:
                         prior_modules.append(ModuleBlueprint.load(bp_file))
                     except Exception:
                         pass
+        elif bp_dir.exists():
+            # Fallback: load ALL other translated modules for cross-module imports
+            for bp_file in sorted(bp_dir.glob("*.bp.yaml")):
+                try:
+                    bp_mod = ModuleBlueprint.load(bp_file)
+                    if bp_mod.name != mod_name and bp_mod.translated_types:
+                        prior_modules.append(bp_mod)
+                except Exception:
+                    pass
         self.translator.prior_modules = prior_modules
 
         # Load blueprint from disk (fresh each time)

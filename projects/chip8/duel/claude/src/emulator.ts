@@ -1,110 +1,127 @@
 import { CPU } from './cpu';
 import { Memory } from './memory';
 import { Display } from './display';
-import { Keyboard } from './keyboard';
-import { Speaker } from './speaker';
-import { Timers } from './timers';
-import { Registers } from './registers';
+import { Keypad } from './keypad';
+import { Timer } from './timer';
 import { Clock } from './clock';
-import { loadROM } from './loader';
+import { Speaker } from './speaker';
 
-export interface EmulatorOptions {
-  clockSpeed?: number;
-  frameRate?: number;
+export interface EmulatorState {
+  cpu: Uint8Array;
+  memory: Uint8Array;
+  display: Uint8Array;
+  keypad: Uint8Array;
+  delayTimer: number;
+  soundTimer: number;
+  pc: number;
+  i: number;
+  sp: number;
+  dt: number;
+  st: number;
 }
 
 export class Emulator {
-  private memory: Memory;
-  private registers: Registers;
-  private display: Display;
-  private keyboard: Keyboard;
-  private timers: Timers;
-  private speaker: Speaker;
   private cpu: CPU;
+  private memory: Memory;
+  private display: Display;
+  private keypad: Keypad;
+  private delayTimer: Timer;
+  private soundTimer: Timer;
   private clock: Clock;
-  private running: boolean;
-  private lastFrameTime: number;
-  private frameInterval: number;
-  private cyclesPerFrame: number;
+  private speaker: Speaker;
+  private running: boolean = false;
+  private animationFrameId: number | null = null;
 
-  constructor(options: EmulatorOptions = {}) {
-    const clockSpeed = options.clockSpeed ?? 600;
-    const frameRate = options.frameRate ?? 60;
-
+  constructor() {
     this.memory = new Memory();
-    this.registers = new Registers();
     this.display = new Display();
-    this.keyboard = new Keyboard();
-    this.timers = new Timers();
-    this.speaker = new Speaker(new Clock(clockSpeed));
-    this.cpu = new CPU(this.memory, this.registers, this.display, this.keyboard, this.timers);
-    this.clock = new Clock(clockSpeed);
-    this.running = false;
-    this.lastFrameTime = 0;
-    this.frameInterval = 1000 / frameRate;
-    this.cyclesPerFrame = Math.floor(clockSpeed / frameRate);
+    this.keypad = new Keypad();
+    this.delayTimer = new Timer();
+    this.soundTimer = new Timer();
+    this.cpu = new CPU(this.memory, this.display, this.keypad, this.delayTimer, this.soundTimer);
+    this.clock = new Clock(this.cpu, this.delayTimer, this.soundTimer);
+    this.speaker = new Speaker(this.clock);
   }
 
-  public loadROM(data: ArrayBuffer): void {
-    loadROM(this.memory, data);
-    this.reset();
-  }
-
-  public reset(): void {
+  loadRom(data: Uint8Array): void {
+    this.memory.loadRom(data);
     this.cpu.reset();
     this.display.clear();
-    this.timers.reset();
+    this.delayTimer.reset();
+    this.soundTimer.reset();
     this.running = false;
-    this.lastFrameTime = 0;
+    this.stopLoop();
   }
 
-  public step(): void {
-    if (!this.cpu.isHalted()) {
-      this.cpu.cycle();
-    }
-  }
-
-  public run(): void {
+  run(): void {
+    if (this.running) return;
     this.running = true;
-    this.lastFrameTime = performance.now();
-    this.runLoop();
+    this.startLoop();
   }
 
-  public pause(): void {
+  pause(): void {
     this.running = false;
+    this.stopLoop();
   }
 
-  public isRunning(): boolean {
+  reset(): void {
+    this.pause();
+    this.cpu.reset();
+    this.display.clear();
+    this.delayTimer.reset();
+    this.soundTimer.reset();
+  }
+
+  isRunning(): boolean {
     return this.running;
   }
 
-  public getDisplayBuffer(): Uint8Array {
+  getDisplayBuffer(): Uint8Array {
     return this.display.getBuffer();
   }
 
-  public keyPressed(key: number): void {
-    this.cpu.keyPressed(key);
+  setKeyState(key: number, pressed: boolean): void {
+    this.keypad.setKeyState(key, pressed);
   }
 
-  public isWaitingForKey(): boolean {
-    return this.cpu.isWaitingForKey();
+  getState(): EmulatorState {
+    return {
+      cpu: this.cpu.getState(),
+      memory: this.memory.getState(),
+      display: this.display.getState(),
+      keypad: this.keypad.getState(),
+      delayTimer: this.delayTimer.getValue(),
+      soundTimer: this.soundTimer.getValue(),
+      pc: this.cpu.getPC(),
+      i: this.cpu.getI(),
+      sp: this.cpu.getSP(),
+      dt: this.delayTimer.getValue(),
+      st: this.soundTimer.getValue()
+    };
   }
 
-  private runLoop(): void {
-    if (!this.running) return;
+  setState(state: EmulatorState): void {
+    this.cpu.setState(state.cpu);
+    this.memory.setState(state.memory);
+    this.display.setState(state.display);
+    this.keypad.setState(state.keypad);
+    this.delayTimer.setValue(state.delayTimer);
+    this.soundTimer.setValue(state.soundTimer);
+  }
 
-    const currentTime = performance.now();
-    const deltaTime = currentTime - this.lastFrameTime;
+  private startLoop(): void {
+    const step = () => {
+      if (!this.running) return;
+      this.clock.tick();
+      this.animationFrameId = requestAnimationFrame(step);
+    };
+    this.animationFrameId = requestAnimationFrame(step);
+  }
 
-    if (deltaTime >= this.frameInterval) {
-      for (let i = 0; i < this.cyclesPerFrame; i++) {
-        this.step();
-      }
-
-      this.timers.tick();
-      this.lastFrameTime = currentTime;
+  private stopLoop(): void {
+    if (this.animationFrameId !== null) {
+      cancelAnimationFrame(this.animationFrameId);
+      this.animationFrameId = null;
     }
-
-    requestAnimationFrame(() => this.runLoop());
   }
 }
