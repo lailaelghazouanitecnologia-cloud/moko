@@ -378,7 +378,9 @@ class TaskDecomposer:
 
             # Scale LOC: target is 20-40% of reference for a new project
             scale = 0.3
-            if intelligence and intelligence.quality.loc_per_type.median > 0:
+            if (intelligence and hasattr(intelligence, 'quality')
+                    and hasattr(intelligence.quality, 'loc_per_type')
+                    and intelligence.quality.loc_per_type.median > 0):
                 # If we know the reference's actual median, use that as guide
                 scale = min(0.5, max(0.15, 150 / max(intelligence.quality.loc_per_type.median, 1)))
 

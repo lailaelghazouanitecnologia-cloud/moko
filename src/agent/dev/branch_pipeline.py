@@ -192,9 +192,8 @@ class BranchPipelineOrchestrator:
 
         if self.pre_features:
             # Pre-select specific features by name (--features rendering math)
-            for node in self.feature_ast.walk():
-                if node.name in self.pre_features:
-                    node.select()
+            for feat_name in self.pre_features:
+                self.feature_ast.select(feat_name)
             self._log(f"pre-selected features: {', '.join(self.pre_features)}")
             print_tree(self.feature_ast, show_selection=True, analysis=analysis)
             print_plan(self.feature_ast, analysis)

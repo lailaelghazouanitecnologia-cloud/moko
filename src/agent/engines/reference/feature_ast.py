@@ -76,19 +76,36 @@ class FeatureNode:
             return sum(c.total_loc() for c in self.children if c.selected)
         return self.ref_loc if self.selected else 0
 
-    def select(self, path: str):
-        """Select a node and auto-resolve its dependencies."""
-        node = self.find(path)
-        if not node:
+    def select(self, path: str = None, _visited: set = None, _root=None):
+        """Select a node and auto-resolve its dependencies.
+
+        If path is None, selects self (and children + deps).
+        If path is given, finds the node by path first.
+        _root is the tree root for resolving requires across the tree.
+        """
+        if _visited is None:
+            _visited = set()
+
+        if path is not None:
+            node = self.find(path)
+            if not node:
+                return
+            # Pass self as root so deps can be resolved tree-wide
+            node.select(_visited=_visited, _root=self)
             return
-        node.selected = True
+
+        if self.path in _visited:
+            return  # prevent infinite recursion on circular requires
+        _visited.add(self.path)
+
+        self.selected = True
         # Select all children if selecting a domain/subsystem
-        if node.children:
-            for child in node.children:
-                child.selected = True
-        # Resolve dependencies
-        for req in node.requires:
-            self.select(req)
+        for child in self.children:
+            child.select(_visited=_visited, _root=_root)
+        # Resolve dependencies via root
+        if _root:
+            for req in self.requires:
+                _root.select(req, _visited=_visited)
 
     def deselect(self, path: str):
         """Deselect a node and its children."""
@@ -463,6 +480,13 @@ def auto_select(ast: FeatureNode, analysis: GoalAnalysis) -> List[str]:
             maybes.append(node.path)
         # "no" → leave unselected
 
+    # Propagate selection to parent domains:
+    # if ALL children of a domain are selected, select the domain too
+    for node in ast.walk():
+        if node.kind == "domain" and node.children:
+            if all(c.selected for c in node.children):
+                node.selected = True
+
     return maybes
 
 
@@ -589,7 +613,9 @@ def interactive_select(ast: FeatureNode, maybes: List[str],
             return interactive_select(ast, maybes, goal + " 2D")
         elif choice == "3":
             return interactive_select(ast, maybes, goal + " 2D 3D")
-        # Default: 3D
+        else:
+            # Default: 3D — re-analyze with explicit 3D keyword
+            return interactive_select(ast, maybes, goal + " 3D")
 
     # Ask about significant 'maybe' features (only those with > 500 LOC)
     significant_maybes = []

@@ -1,6 +1,6 @@
 # AVA — Generated Projects Registry
 
-## Archive (pre-FixEngine, cleaned)
+## Archive (pre-Feature AST, cleaned)
 
 | Project | Files | LOC | Domain | Pipeline | Notes |
 |---------|-------|-----|--------|----------|-------|
@@ -30,8 +30,50 @@ playcanvas, roo-code, swarm, swe-agent, sweep, tabby, thief-engine, void
 
 Indexes: .emission_index.json (21KB), .semantic_store.json (29KB), .block_store.json (48KB)
 
-## Current Generation (with FixEngine + ErrorDB)
+## Test Suite — Feature AST Pipeline (5 blocks)
+
+5 tests paralelos para validar el pipeline completo con Feature AST.
+Cada uno prueba un caso distinto: dominio, referencia, modo, dimension.
+
+| # | Project | Goal | Reference | Mode | Valida |
+|---|---------|------|-----------|------|--------|
+| 1 | `engine_2d` | "2D sprite game engine with ECS" | playcanvas | `--no-interactive` | 2D filtering: excluye Vec3/Quat/Light, trae math/render/ecs |
+| 2 | `gpu_renderer` | "WebGPU 3D renderer" | playcanvas | `--features rendering math events` | Pre-select: solo rendering stack, adaptation webgl->webgpu |
+| 3 | `mini_engine` | "minimal game engine" | thief-engine | `--no-interactive` | Referencia chica (6.5K LOC), calibracion LOC proporcional |
+| 4 | `ai_toolkit` | "AI agent framework with tools" | langgraph | `--no-interactive` | Dominio no-game: Feature AST sobre agentes, no sobre render |
+| 5 | `code_editor` | "code editor with LSP support" | void | `--no-interactive` | Dominio editor: Feature AST sobre editor components |
+
+### Comandos
+
+```bash
+# Block 1: 2D engine — debe excluir 3D silenciosamente
+ava dev "2D sprite game engine with ECS" -t engine_2d -r playcanvas --branches --no-interactive
+
+# Block 2: WebGPU renderer — pre-select features, adaptation
+ava dev "WebGPU 3D renderer" -t gpu_renderer -r playcanvas --branches --features rendering math events
+
+# Block 3: Mini engine — referencia chica, LOC calibrado
+ava dev "minimal game engine" -t mini_engine -r thief-engine --branches --no-interactive
+
+# Block 4: AI toolkit — dominio no-game
+ava dev "AI agent framework with tools" -t ai_toolkit -r langgraph --branches --no-interactive
+
+# Block 5: Code editor — dominio editor
+ava dev "code editor with LSP support" -t code_editor -r void --branches --no-interactive
+```
+
+### Criterios de exito
+
+- [ ] Feature AST se construye sin crash para cada referencia
+- [ ] 2D filtering excluye tipos 3D en engine_2d
+- [ ] Pre-select solo trae los modulos pedidos en gpu_renderer
+- [ ] LOC/type calibrado segun referencia (playcanvas ~250, thief-engine ~100)
+- [ ] Decomposer genera modulos con nombres PROPIOS (no copia de referencia)
+- [ ] Pipeline completo: decompose -> branch -> generate -> fix -> merge
+- [ ] Report final con metricas por modulo
+
+## Current Generation (Feature AST pipeline)
 
 | Project | Date | Refs | Modules | LOC | Errors | Tokens | Notes |
 |---------|------|------|---------|-----|--------|--------|-------|
-| *(next run)* | | | | | | | |
+| *(pending test suite)* | | | | | | | |
