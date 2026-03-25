@@ -363,21 +363,38 @@ class ScoreDimension:
     direction: str = "higher_better"    # or "lower_better" or "closer_better"
 
     def score(self, actual: float) -> float:
-        """Score this dimension 0-1 based on reference."""
+        """Score this dimension 0-1 based on reference.
+
+        Uses smooth sigmoid-like curves instead of cliff-edge scoring.
+        Tolerance defines the "acceptable range" around the reference.
+        """
         if self.direction == "higher_better":
-            if self.reference_value <= 0:
-                return 0.5  # no reference data
-            return min(actual / max(self.reference_value, 0.01), 1.0)
+            if self.reference_value <= 0.001:
+                # No reference — reward any positive value
+                return min(actual * 2.0, 1.0) if actual > 0 else 0.5
+            ratio = actual / self.reference_value
+            # Smooth: 50% at half reference, 100% at or above reference
+            return min(ratio, 1.0)
+
         elif self.direction == "lower_better":
-            if self.reference_value <= 0:
-                return 1.0 if actual == 0 else max(0, 1.0 - actual)
-            # How much better than reference (lower = better)
-            if actual <= self.reference_value:
-                return 1.0
-            return max(0, 1.0 - (actual - self.reference_value) / max(self.reference_value, 0.01))
+            if actual <= 0.001:
+                return 1.0  # perfect: zero is best
+            if self.reference_value <= 0.001:
+                # Reference has none, penalize gradually
+                return max(0.2, 1.0 - actual * 2.0)
+            # Allow up to 2x reference before hitting 0
+            ratio = actual / self.reference_value
+            if ratio <= 1.0:
+                return 1.0  # at or below reference = full score
+            # Gradual degradation: 2x ref → 0.5, 4x ref → 0.25
+            return max(0.1, 1.0 / ratio)
+
         else:  # closer_better
             diff = abs(actual - self.reference_value)
-            return max(0, 1.0 - diff / max(self.tolerance, 0.01))
+            # Use tolerance as the range where score is still >= 0.5
+            tol = max(self.tolerance, 0.01)
+            # Smooth gaussian-like: exp(-diff^2 / tol^2)
+            return math.exp(-(diff / tol) ** 2 * 0.5)
 
 
 class LearnedScorer:
@@ -399,30 +416,56 @@ class LearnedScorer:
             self.learn_from_profiles(reference_profiles)
 
     def learn_from_profiles(self, profiles: List[CodeProfile]):
-        """Build reference profile from one or more gold-standard projects."""
+        """Build reference profile from one or more gold-standard projects.
+
+        Uses LOC-weighted average so larger projects have more influence.
+        Also computes variance per dimension for tolerance calibration.
+        """
         if not profiles:
             return
 
-        # Average across reference projects
+        # LOC-weighted average across reference projects
         ref = CodeProfile(name="reference_avg")
-        n = len(profiles)
+        total_loc = sum(max(p.total_loc, 1) for p in profiles)
+
+        # Store per-dimension variance for tolerance calibration
+        self._ref_variance: Dict[str, float] = {}
 
         for attr in CodeProfile.__dataclass_fields__:
             if attr in ("name",):
                 continue
             values = [getattr(p, attr) for p in profiles]
             if all(isinstance(v, (int, float)) for v in values):
-                avg = sum(values) / n
+                # Weighted average
+                weights = [max(p.total_loc, 1) / total_loc for p in profiles]
+                avg = sum(v * w for v, w in zip(values, weights))
                 setattr(ref, attr, avg)
+                # Variance (for tolerance)
+                if len(values) > 1:
+                    variance = sum(w * (v - avg) ** 2 for v, w in zip(values, weights))
+                    self._ref_variance[attr] = math.sqrt(variance)
 
         self.reference = ref
+        self._source_profiles = list(profiles)
         self._build_dimensions()
+        self._calibrate(profiles)
 
     def _build_dimensions(self):
-        """Build scoring dimensions from reference profile."""
+        """Build scoring dimensions from reference profile.
+
+        Tolerances are calibrated from variance across reference projects:
+        if readonly_density varies a lot across Claude projects, the tolerance
+        is wider (it's less discriminative).
+        """
         ref = self.reference
         if not ref:
             return
+
+        var = getattr(self, '_ref_variance', {})
+
+        def tol(attr: str, default: float) -> float:
+            """Get tolerance: max(observed stddev * 2, default)."""
+            return max(var.get(attr, default) * 2.0, default)
 
         self.dimensions = [
             # Type system — highest weight, biggest differentiator
@@ -446,41 +489,41 @@ class LearnedScorer:
             ScoreDimension("discriminated_unions", weight=2.0,
                            reference_value=min(ref.discriminated_union_count, 1),
                            direction="higher_better"),
-            ScoreDimension("branded_types", weight=1.0,
+            ScoreDimension("branded_types", weight=0.5,
                            reference_value=min(ref.branded_type_count, 1),
                            direction="higher_better"),
 
-            # Architecture
+            # Architecture — use variance-based tolerance
             ScoreDimension("private_ratio", weight=1.5,
                            reference_value=ref.private_ratio,
-                           tolerance=0.15,
+                           tolerance=tol("private_ratio", 0.3),
                            direction="closer_better"),
-            ScoreDimension("avg_class_size", weight=1.0,
+            ScoreDimension("avg_class_size", weight=0.8,
                            reference_value=ref.avg_class_size,
-                           tolerance=50,
+                           tolerance=tol("avg_class_size", 80),
                            direction="closer_better"),
             ScoreDimension("interface_to_class", weight=1.0,
                            reference_value=ref.interface_to_class_ratio,
                            direction="higher_better"),
 
-            # Implementation depth
-            ScoreDimension("complexity", weight=1.5,
+            # Implementation depth — use variance-based tolerance
+            ScoreDimension("complexity", weight=1.0,
                            reference_value=ref.avg_complexity,
-                           tolerance=0.02,
+                           tolerance=tol("avg_complexity", 0.04),
                            direction="closer_better"),
             ScoreDimension("error_handling", weight=1.5,
                            reference_value=ref.error_handling_density,
                            direction="higher_better"),
-            ScoreDimension("validation", weight=1.0,
+            ScoreDimension("validation", weight=0.8,
                            reference_value=ref.validation_density,
                            direction="higher_better"),
 
-            # Consistency — lower deviation = better
+            # Consistency
             ScoreDimension("pattern_consistency", weight=2.0,
                            reference_value=ref.naming_consistency,
                            direction="higher_better"),
 
-            # Coherence
+            # Coherence — very important
             ScoreDimension("import_coherence", weight=2.5,
                            reference_value=ref.import_coherence,
                            direction="higher_better"),
@@ -625,6 +668,78 @@ class LearnedScorer:
         with open(path, "w") as f:
             json.dump(data, f, indent=2)
         self._path = path
+
+    def _calibrate(self, reference_profiles: List[CodeProfile]):
+        """Calibrate scorer so reference projects score ≥80%.
+
+        After building dimensions from weighted average, we score each reference
+        project. If any scores below 80%, we iteratively loosen the dimensions
+        that hurt the most until the minimum reference score reaches the target.
+
+        This prevents the scorer from being too strict on natural variation
+        across reference projects (e.g., a CLI project vs a game engine will
+        differ in class sizes, but both are high quality).
+        """
+        if not reference_profiles or not self.dimensions:
+            return
+
+        TARGET = 0.80
+        MAX_ROUNDS = 10
+
+        for _round in range(MAX_ROUNDS):
+            # Score all reference projects
+            scores_per_ref: List[Tuple[float, Dict[str, float]]] = []
+            for prof in reference_profiles:
+                overall, details = self.score(prof)
+                dim_scores = {name: s for name, (s, _w, _e) in details.items()}
+                scores_per_ref.append((overall, dim_scores))
+
+            min_score = min(s for s, _ in scores_per_ref)
+
+            if min_score >= TARGET:
+                break  # all references score well enough
+
+            # Find dimensions where reference projects score worst
+            # (these are dimensions with too-tight constraints)
+            dim_min_scores: Dict[str, float] = {}
+            for dim in self.dimensions:
+                worst = min(
+                    ds.get(dim.name, 1.0) for _, ds in scores_per_ref
+                )
+                dim_min_scores[dim.name] = worst
+
+            # Sort by worst score (fix the most problematic first)
+            worst_dims = sorted(dim_min_scores.items(), key=lambda x: x[1])
+
+            adjusted = False
+            for dim_name, dim_min in worst_dims:
+                if dim_min >= 0.85:
+                    continue  # this dimension is fine
+
+                dim = next((d for d in self.dimensions if d.name == dim_name), None)
+                if not dim:
+                    continue
+
+                if dim.direction == "closer_better":
+                    # Widen tolerance
+                    dim.tolerance *= 1.5
+                    adjusted = True
+                elif dim.direction == "higher_better":
+                    # Lower the reference bar slightly
+                    dim.reference_value *= 0.85
+                    adjusted = True
+                elif dim.direction == "lower_better":
+                    # Raise the acceptable ceiling
+                    dim.reference_value *= 1.2
+                    adjusted = True
+
+                # Also reduce weight of consistently-bad dimensions
+                if dim_min < 0.4:
+                    dim.weight *= 0.7
+                    adjusted = True
+
+            if not adjusted:
+                break  # nothing more to loosen
 
     @classmethod
     def load(cls, path: str) -> "LearnedScorer":
