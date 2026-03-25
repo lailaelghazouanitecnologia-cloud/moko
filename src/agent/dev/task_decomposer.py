@@ -1,26 +1,38 @@
 """
 TaskDecomposer — splits a high-level goal into per-module tasks with dependency ordering.
 
-Converts a ProjectBlueprint (or LLM output) into a topologically sorted list
-of ModuleTasks, each destined for its own git branch.
+Converts a ProjectBlueprint (or LLM output or reference project analysis)
+into a topologically sorted list of ModuleTasks, each destined for its own git branch.
+
+The Reference-Aware path (_from_reference) reads the actual meta-graph and
+module descriptors from analyzed reference projects, extracting real module
+structure, types, dependencies, and descriptions instead of letting the LLM
+invent generic modules.
 """
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass, field
-from typing import Optional
+from pathlib import Path
+from typing import Dict, List, Optional, Tuple
 
 from ..llm.providers import LLMProvider, LLMMessage
+
+try:
+    import yaml
+except ImportError:
+    yaml = None  # type: ignore
 
 
 @dataclass
 class ModuleTask:
     """A single module to generate on its own branch."""
-    name: str                           # "registers", "memory", "decoder"
-    branch_name: str                    # "feature/registers"
-    types: list[str]                    # ["RegisterBank", "FlagRegister", ...]
-    depends_on: list[str]               # ["core"] — module names this depends on
-    description: str = ""               # "x86 register file: 8 GP registers, flags, segments"
+    name: str                           # "skill_engine", "agents", "cloud"
+    branch_name: str                    # "feature/skill_engine"
+    types: list[str]                    # ["SkillStore", "SkillEvolver", ...]
+    depends_on: list[str]               # ["config", "utils"]
+    description: str = ""               # rich description from reference
     estimated_types: int = 0            # for progress tracking
     ref_descriptors: list[str] = field(default_factory=list)
 
@@ -32,10 +44,12 @@ class ModuleTask:
 class TaskDecomposer:
     """Decompose a large goal into branch-per-module tasks with dependencies."""
 
-    def __init__(self, llm: LLMProvider, verbose: bool = False):
+    def __init__(self, llm: LLMProvider, verbose: bool = False,
+                 out_dir: Path = None):
         self.llm = llm
         self.verbose = verbose
         self.total_tokens = 0
+        self.out_dir = out_dir  # Where reference descriptors live
 
     def _log(self, msg: str):
         if self.verbose:
@@ -44,12 +58,23 @@ class TaskDecomposer:
     def decompose(self, goal: str, target: str,
                   references: list[str] = None,
                   project_bp=None) -> list[ModuleTask]:
-        """Decompose into ModuleTasks. Uses ProjectBlueprint if available, else LLM.
+        """Decompose into ModuleTasks.
+
+        Priority:
+          1. ProjectBlueprint (if provided)
+          2. Reference-aware extraction (if references have meta.yaml)
+          3. LLM-based fallback
 
         Returns topologically sorted list of ModuleTasks.
         """
         if project_bp:
             tasks = self._from_project_blueprint(project_bp, target)
+        elif references and self.out_dir:
+            ref_tasks = self._from_reference(references, goal)
+            if ref_tasks:
+                tasks = ref_tasks
+            else:
+                tasks = self._from_llm(goal, target, references)
         else:
             tasks = self._from_llm(goal, target, references or [])
 
@@ -64,6 +89,249 @@ class TaskDecomposer:
             self._log(f"  {t.branch_name}: {len(t.types)} types{deps}")
 
         return flat
+
+    # ── Reference-Aware Decomposition ────────────────────────
+
+    def _from_reference(self, references: list[str],
+                        goal: str) -> Optional[list[ModuleTask]]:
+        """Extract real module structure from reference project descriptors.
+
+        Reads meta.yaml (module graph) + module.yaml (type listings) from
+        each reference project's output directory. Produces ModuleTasks that
+        mirror the actual architecture of the reference.
+        """
+        if yaml is None:
+            self._log("yaml not available, skipping reference-aware decomposition")
+            return None
+
+        all_tasks: list[ModuleTask] = []
+
+        for ref_name in references:
+            ref_dir = self.out_dir / ref_name
+            meta_path = ref_dir / "graphs" / "meta.yaml"
+
+            if not meta_path.exists():
+                self._log(f"no meta.yaml for {ref_name}, skipping")
+                continue
+
+            tasks = self._extract_from_meta(ref_dir, ref_name, meta_path)
+            if tasks:
+                all_tasks.extend(tasks)
+                self._log(f"reference {ref_name}: extracted {len(tasks)} modules, "
+                          f"{sum(len(t.types) for t in tasks)} types")
+
+        if not all_tasks:
+            return None
+
+        # If multiple references, merge/deduplicate by module name
+        if len(references) > 1:
+            all_tasks = self._merge_tasks(all_tasks)
+
+        return all_tasks
+
+    def _extract_from_meta(self, ref_dir: Path, ref_name: str,
+                           meta_path: Path) -> list[ModuleTask]:
+        """Parse a reference project's meta.yaml and module descriptors."""
+        try:
+            meta = yaml.safe_load(meta_path.read_text())
+        except Exception as e:
+            self._log(f"failed to parse {meta_path}: {e}")
+            return []
+
+        if not isinstance(meta, dict):
+            return []
+
+        nodes = meta.get("nodes", [])
+        edges = meta.get("internal_edges", [])
+
+        # Build dependency graph from edges
+        deps_map: Dict[str, list[str]] = {}
+        for edge in edges:
+            src = edge.get("from", "")
+            dst = edge.get("to", "")
+            if src and dst:
+                deps_map.setdefault(src, []).append(dst)
+
+        tasks = []
+        for node in nodes:
+            mod_id = node.get("id", "")
+            if not mod_id or mod_id == "__root__":
+                continue
+
+            mod_lines = node.get("lines", 0)
+            label = node.get("label", "")
+
+            # Extract type/function counts from label like "skill_engine (14t, 68f)"
+            type_count, func_count = self._parse_label_counts(label)
+
+            # Read module.yaml for detailed type list
+            mod_yaml = ref_dir / mod_id / "module.yaml"
+            types, description, descriptors = self._extract_module_types(
+                ref_dir, ref_name, mod_id, mod_yaml
+            )
+
+            # If module has few types, also scan subdirectories recursively
+            if len(types) < 3:
+                extra = self._extract_types_from_files(ref_dir, mod_id)
+                for t in extra:
+                    if t not in types:
+                        types.append(t)
+
+            # Skip tiny utility modules with no types
+            if not types and mod_lines < 100:
+                self._log(f"  skip {mod_id}: no types, {mod_lines} LOC")
+                continue
+
+            # If still no types, create a placeholder from the module name
+            if not types:
+                types = [self._module_to_class_name(mod_id)]
+
+            # Cap types per module to avoid overwhelming the pipeline
+            # Keep the most important types (first ones tend to be core classes)
+            MAX_TYPES_PER_MODULE = 12
+            if len(types) > MAX_TYPES_PER_MODULE:
+                self._log(f"  {mod_id}: capping {len(types)} types to {MAX_TYPES_PER_MODULE}")
+                types = types[:MAX_TYPES_PER_MODULE]
+
+            # Get dependencies for this module
+            module_deps = deps_map.get(mod_id, [])
+            # Filter out __root__ and self-references
+            module_deps = [d for d in module_deps if d != "__root__" and d != mod_id]
+
+            # Calculate target LOC per type based on reference density
+            loc_per_type = max(100, mod_lines // max(len(types), 1))
+            loc_per_type = min(loc_per_type, 400)  # cap at 400
+
+            task = ModuleTask(
+                name=mod_id,
+                branch_name=f"feature/{mod_id}",
+                types=types,
+                depends_on=module_deps,
+                description=description or f"Module {mod_id} ({mod_lines} LOC in reference)",
+                estimated_types=len(types),
+                ref_descriptors=descriptors,
+                target_loc_per_type=loc_per_type,
+            )
+            tasks.append(task)
+
+        return tasks
+
+    def _extract_module_types(self, ref_dir: Path, ref_name: str,
+                              mod_id: str, mod_yaml: Path
+                              ) -> Tuple[list[str], str, list[str]]:
+        """Extract type names, description, and descriptor paths from module.yaml."""
+        types: list[str] = []
+        description = ""
+        descriptors: list[str] = []
+
+        if not mod_yaml.exists() or yaml is None:
+            return types, description, descriptors
+
+        try:
+            mod_data = yaml.safe_load(mod_yaml.read_text())
+        except Exception:
+            return types, description, descriptors
+
+        if not isinstance(mod_data, dict):
+            return types, description, descriptors
+
+        # Collect descriptor paths for this module
+        files_list = mod_data.get("files", [])
+        for file_entry in files_list:
+            file_path = file_entry.get("file", "")
+            if file_path:
+                # Convert e.g. "skill_engine/evolver.py" to descriptor path
+                stem = Path(file_path).stem
+                desc_path = f"{ref_name}/{mod_id}/{stem}.yaml"
+                descriptors.append(desc_path)
+
+                # Build description from purpose fields
+                purpose = file_entry.get("purpose", "")
+                if purpose and len(purpose) > len(description):
+                    description = purpose
+
+        # Now read each file descriptor to get actual type names
+        for file_entry in files_list:
+            file_path = file_entry.get("file", "")
+            if not file_path:
+                continue
+
+            stem = Path(file_path).stem
+            desc_file = ref_dir / mod_id / f"{stem}.yaml"
+            if not desc_file.exists():
+                continue
+
+            try:
+                desc_data = yaml.safe_load(desc_file.read_text())
+            except Exception:
+                continue
+
+            if not isinstance(desc_data, dict):
+                continue
+
+            # Extract type names
+            for type_def in desc_data.get("types", []):
+                name = type_def.get("name", "")
+                if name and name not in types:
+                    # Skip private/internal types (start with _)
+                    if not name.startswith("_"):
+                        types.append(name)
+
+        return types, description, descriptors
+
+    def _extract_types_from_files(self, ref_dir: Path,
+                                  mod_id: str) -> list[str]:
+        """Fallback: scan all .yaml descriptors in a module directory for types.
+
+        Searches recursively through subdirectories (e.g., grounding/backends/gui/).
+        """
+        types = []
+        mod_dir = ref_dir / mod_id
+        if not mod_dir.exists():
+            return types
+
+        for yaml_file in sorted(mod_dir.rglob("*.yaml")):
+            if yaml_file.name == "module.yaml":
+                continue
+            try:
+                data = yaml.safe_load(yaml_file.read_text())
+                if isinstance(data, dict):
+                    for t in data.get("types", []):
+                        name = t.get("name", "")
+                        if name and not name.startswith("_") and name not in types:
+                            types.append(name)
+            except Exception:
+                continue
+
+        return types
+
+    def _parse_label_counts(self, label: str) -> Tuple[int, int]:
+        """Parse '(14t, 68f)' from meta.yaml label."""
+        m = re.search(r'\((\d+)t,\s*(\d+)f\)', label)
+        if m:
+            return int(m.group(1)), int(m.group(2))
+        return 0, 0
+
+    def _module_to_class_name(self, mod_id: str) -> str:
+        """Convert 'skill_engine' -> 'SkillEngine'."""
+        return "".join(w.capitalize() for w in mod_id.split("_"))
+
+    def _merge_tasks(self, tasks: list[ModuleTask]) -> list[ModuleTask]:
+        """Merge tasks from multiple references by module name."""
+        merged: Dict[str, ModuleTask] = {}
+        for task in tasks:
+            if task.name in merged:
+                existing = merged[task.name]
+                for t in task.types:
+                    if t not in existing.types:
+                        existing.types.append(t)
+                existing.ref_descriptors.extend(task.ref_descriptors)
+                existing.estimated_types = len(existing.types)
+            else:
+                merged[task.name] = task
+        return list(merged.values())
+
+    # ── Existing paths ───────────────────────────────────────
 
     def _from_project_blueprint(self, project_bp, target: str) -> list[ModuleTask]:
         """Convert ProjectBlueprint layers -> ModuleTasks."""

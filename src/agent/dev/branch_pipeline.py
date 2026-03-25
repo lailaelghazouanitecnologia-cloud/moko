@@ -42,6 +42,10 @@ class BranchResult:
     tokens_used: int = 0
     elapsed_s: float = 0.0
     density_score: float = 0.0
+    # S3: Detailed error tracking
+    error_details: list[str] = field(default_factory=list)   # per-file error summaries
+    blueprint_source: str = ""        # "descriptors" or "llm"
+    files_generated: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -52,9 +56,12 @@ class PipelineResult:
     total_tokens: int = 0
     elapsed_s: float = 0.0
     final_tsc_errors: int = 0
+    # S3: Honest error tracking
+    final_error_details: list[str] = field(default_factory=list)  # per-file errors
+    syntax_errors_pre_fix: int = 0  # errors before any fix attempts
 
     def format_report(self) -> str:
-        """Pretty-print the full pipeline result."""
+        """Pretty-print the full pipeline result with honest error reporting."""
         lines = [
             f"{'━' * 70}",
             f"  BRANCH PIPELINE REPORT",
@@ -75,9 +82,40 @@ class PipelineResult:
         lines.extend([
             f"  {'─' * 62}",
             f"  Total: {self.total_loc} LOC, {self.total_tokens:,} tokens, "
-            f"{self.elapsed_s:.1f}s, {self.final_tsc_errors} final tsc errors",
-            f"{'━' * 70}",
+            f"{self.elapsed_s:.1f}s",
+            "",
         ])
+
+        # S3: Honest error summary
+        total_module_errors = sum(br.tsc_errors_final for br in self.branches)
+        clean_modules = sum(1 for br in self.branches if br.tsc_errors_final == 0)
+        total_modules = len(self.branches)
+
+        lines.append(f"  COMPILATION STATUS:")
+        lines.append(f"    Modules clean: {clean_modules}/{total_modules}")
+        lines.append(f"    Module-level errors remaining: {total_module_errors}")
+        lines.append(f"    Cross-module errors (post-merge): {self.final_tsc_errors}")
+
+        if self.final_tsc_errors > 0 and self.final_error_details:
+            lines.append(f"")
+            lines.append(f"  ERROR BREAKDOWN (top 15):")
+            for detail in self.final_error_details[:15]:
+                lines.append(f"    {detail}")
+            if len(self.final_error_details) > 15:
+                lines.append(f"    ... and {len(self.final_error_details) - 15} more")
+
+        # Per-module errors if any
+        problem_modules = [br for br in self.branches if br.tsc_errors_final > 0]
+        if problem_modules:
+            lines.append(f"")
+            lines.append(f"  MODULES WITH ERRORS:")
+            for br in problem_modules:
+                lines.append(f"    {br.module_name}: {br.tsc_errors_initial}→{br.tsc_errors_final} "
+                             f"({br.fix_iterations} fix rounds)")
+                for detail in br.error_details[:5]:
+                    lines.append(f"      {detail}")
+
+        lines.append(f"{'━' * 70}")
         return "\n".join(lines)
 
 
@@ -94,7 +132,7 @@ class BranchPipelineOrchestrator:
         self.projects_dir = Path("projects")
 
         self.git: Optional[GitManager] = None
-        self.decomposer = TaskDecomposer(self.llm, verbose=self.verbose)
+        self.decomposer = TaskDecomposer(self.llm, verbose=self.verbose, out_dir=OUT_DIR)
         self.fix_loop: Optional[CompileFixLoop] = None   # Legacy, kept for compat
         self.fix_engine: Optional[FixEngine] = None       # New intelligent fix engine
         self.quality_engine: Optional[QualityEngine] = None  # Code quality learning engine
@@ -269,6 +307,16 @@ class BranchPipelineOrchestrator:
                 print(f"  Post-merge: {len(final_errors)} errors remain")
 
         result.final_tsc_errors = len(final_errors)
+        # S3: Capture per-file error details for honest reporting
+        if final_errors:
+            by_file: dict[str, list] = {}
+            for err in final_errors:
+                by_file.setdefault(err.file, []).append(err)
+            for file_path, errs in sorted(by_file.items(), key=lambda x: -len(x[1])):
+                codes = ", ".join(sorted(set(e.code for e in errs)))
+                result.final_error_details.append(
+                    f"{file_path}: {len(errs)} errors [{codes}]"
+                )
         result.elapsed_s = time.time() - start
         result.total_tokens += self.total_tokens
 
@@ -289,6 +337,8 @@ class BranchPipelineOrchestrator:
                             "tsc_final": br.tsc_errors_final,
                             "fix_iterations": br.fix_iterations,
                             "tokens": br.tokens_used,
+                            "error_details": br.error_details,
+                            "blueprint_source": br.blueprint_source,
                         }
                         for br in result.branches
                     ],
@@ -296,6 +346,7 @@ class BranchPipelineOrchestrator:
                     "total_tokens": result.total_tokens,
                     "elapsed_s": result.elapsed_s,
                     "final_tsc_errors": result.final_tsc_errors,
+                    "final_error_details": result.final_error_details,
                 }
                 self.engine.persistence.save_report(project_dir, report_data)
                 self.engine.persist(project_dir)
@@ -336,8 +387,10 @@ class BranchPipelineOrchestrator:
                 self.git.create_branch(task.branch_name, "main")
 
             # 2. Generate module code
+            self._last_blueprint_source = "llm"  # default
             tokens = self._generate_module(task, project_dir, target, references, project_bp)
             br.tokens_used = tokens
+            br.blueprint_source = self._last_blueprint_source
 
             # 3. Polish code (strip boilerplate + modernize idioms)
             module_dir = project_dir / "src" / task.name
@@ -364,26 +417,52 @@ class BranchPipelineOrchestrator:
             if fix_result.auto_fixes_applied > 0:
                 self._log(f"  auto-fixed {fix_result.auto_fixes_applied} issues without LLM")
 
+            # S3: Capture per-file error details
+            if fix_result.final_errors > 0:
+                final_check, _ = self.fix_engine.check_module(
+                    project_dir / "src" / task.name)
+                by_file: dict[str, list] = {}
+                for err in final_check:
+                    by_file.setdefault(err.file, []).append(err)
+                for fp, errs in sorted(by_file.items(), key=lambda x: -len(x[1])):
+                    codes = ", ".join(sorted(set(e.code for e in errs)))
+                    br.error_details.append(f"{fp}: {len(errs)} [{codes}]")
+
             # Commit fixes if any changes were made
             if self.git.has_uncommitted():
                 self.git.commit_all(f"fix({task.name}): resolve tsc errors")
 
-            # 5b. Quality analysis and auto-improvement
+            # 5b. S4: Safe quality enhancement with rollback
             if self.quality_engine:
                 try:
                     module_files = self._read_module_files(module_dir)
                     if module_files:
+                        # Snapshot error count before enhancement
+                        pre_errors, _ = self.fix_engine.check_module(module_dir)
+                        pre_error_count = len(pre_errors)
+
                         improved, q_result = self.quality_engine.improve_module(
                             task.name, module_files, llm=self.llm, max_llm_calls=2,
                         )
                         if q_result.issues_fixed > 0:
                             self._write_module_files(module_dir, improved)
-                            if self.git.has_uncommitted():
-                                self.git.commit_all(
-                                    f"quality({task.name}): {q_result.auto_fixes} auto-fixes, "
-                                    f"{q_result.prompt_fixes} LLM-fixes"
-                                )
-                            self._log(f"  quality: {q_result.summary()}")
+
+                            # S4: Verify enhancement didn't break compilation
+                            post_errors, _ = self.fix_engine.check_module(module_dir)
+                            post_error_count = len(post_errors)
+
+                            if post_error_count > pre_error_count:
+                                # Enhancement introduced errors — rollback
+                                self._log(f"  quality enhancement WORSENED compilation "
+                                          f"({pre_error_count}→{post_error_count}), reverting")
+                                self._write_module_files(module_dir, module_files)
+                            else:
+                                if self.git.has_uncommitted():
+                                    self.git.commit_all(
+                                        f"quality({task.name}): {q_result.auto_fixes} auto-fixes, "
+                                        f"{q_result.prompt_fixes} LLM-fixes"
+                                    )
+                                self._log(f"  quality: {q_result.summary()}")
                 except Exception as e:
                     self._log(f"  quality pass failed: {e}")
 
@@ -488,13 +567,25 @@ class BranchPipelineOrchestrator:
         if layer_desc:
             goal += f" {layer_desc}."
 
-        bp, bp_tokens = translator.generate_blueprint(
-            module_name=task.name,
-            goal=goal,
-            ref_paths=ref_paths,
-            language="typescript",
-            target_dir=f"src/{task.name}",
-        )
+        # S2: Try descriptor-based blueprint first (reference-aware)
+        bp = None
+        bp_tokens = 0
+        if task.ref_descriptors:
+            bp = self._blueprint_from_descriptors(task, f"src/{task.name}")
+            if bp:
+                self._log(f"  using descriptor-based blueprint for {task.name}")
+                self._last_blueprint_source = "descriptors"
+
+        # Fall back to LLM-generated blueprint
+        if bp is None:
+            self._last_blueprint_source = "llm"
+            bp, bp_tokens = translator.generate_blueprint(
+                module_name=task.name,
+                goal=goal,
+                ref_paths=ref_paths,
+                language="typescript",
+                target_dir=f"src/{task.name}",
+            )
 
         # Blueprint guardrail: reject if LLM generated >2x the requested types
         # Only applies when types were pre-specified (strict mode)
@@ -928,6 +1019,222 @@ class BranchPipelineOrchestrator:
                     if f.name not in ("workspace.yaml", "deps.yaml", "meta.yaml"):
                         ref_paths.append(str(f.relative_to(OUT_DIR)))
         return ref_paths
+
+    def _blueprint_from_descriptors(self, task: ModuleTask,
+                                    target_dir: str) -> Optional[ModuleBlueprint]:
+        """Build a ModuleBlueprint directly from reference descriptors.
+
+        When we have rich YAML descriptors for a reference module, we can
+        extract fields, methods, and signatures directly instead of asking
+        the LLM to invent them. This produces far more accurate blueprints.
+        """
+        if not task.ref_descriptors:
+            return None
+
+        try:
+            import yaml as _yaml
+        except ImportError:
+            return None
+
+        from .translator import to_kebab_case
+        from ..core.models import FieldSpec, MethodSpec
+
+        all_type_bps = []
+        type_names_in_task = set(t.lower() for t in task.types)
+
+        for desc_path in task.ref_descriptors:
+            full_path = OUT_DIR / desc_path
+            if not full_path.exists():
+                continue
+
+            try:
+                data = _yaml.safe_load(full_path.read_text())
+            except Exception:
+                continue
+
+            if not isinstance(data, dict):
+                continue
+
+            file_purpose = data.get("purpose", "")
+
+            for type_def in data.get("types", []):
+                name = type_def.get("name", "")
+                if not name or name.startswith("_"):
+                    continue
+
+                # Only include types that were selected by the decomposer
+                if name.lower() not in type_names_in_task:
+                    continue
+
+                # Map kind: struct -> class, trait -> interface, enum -> enum
+                kind_map = {"struct": "class", "trait": "interface", "enum": "enum"}
+                kind = kind_map.get(type_def.get("kind", "struct"), "class")
+
+                # Extract fields
+                fields = []
+                for f in type_def.get("fields", []):
+                    fname = f.get("name", "")
+                    if fname and not fname.startswith("_"):
+                        ftype = str(f.get("type", "unknown"))
+                        # Map Python types to TypeScript
+                        ftype = self._map_python_type(ftype)
+                        fields.append(FieldSpec(
+                            name=fname,
+                            type=ftype,
+                            default=str(f.get("default", "")),
+                        ))
+
+                # Extract methods
+                methods = []
+                for m in type_def.get("methods", []):
+                    mname = m.get("name", "")
+                    if not mname or mname.startswith("_") and mname != "__init__":
+                        continue
+
+                    sig = m.get("sig", "")
+                    is_async = m.get("is_async", False)
+                    vis = m.get("vis", "public")
+
+                    # Convert __init__ to constructor
+                    if mname == "__init__":
+                        mname = "constructor"
+
+                    # Build hint from calls if available
+                    hint = ""
+                    detail = m.get("detail", {})
+                    calls = detail.get("calls", [])
+                    if calls:
+                        # Use the call list as implementation hints
+                        call_names = [c.split("(")[0].split(".")[-1] for c in calls[:5]
+                                      if isinstance(c, str)]
+                        hint = "uses: " + ", ".join(call_names)
+
+                    # Convert Python signature to TypeScript-friendly hint
+                    ts_sig = self._convert_signature(mname, sig)
+
+                    methods.append(MethodSpec(
+                        name=mname,
+                        sig=ts_sig,
+                        hint=hint or file_purpose[:80] if file_purpose else "",
+                        visibility=vis if vis != "public" else "public",
+                        is_async=is_async,
+                    ))
+
+                # Extract bases
+                bases = type_def.get("bases", [])
+                extends = ""
+                implements = []
+                for base in bases:
+                    base_str = str(base)
+                    # Skip Python-specific bases
+                    if base_str in ("ABC", "str", "Enum", "BaseModel", "object"):
+                        continue
+                    if not extends:
+                        extends = base_str
+
+                # Build context/description
+                ctx = type_def.get("ctx", "")
+                description = ctx[:200] if ctx else file_purpose[:200] if file_purpose else ""
+
+                tb = TypeBlueprint(
+                    name=name,
+                    kind=kind,
+                    target_file=f"{target_dir}/{to_kebab_case(name)}.ts",
+                    extends=extends,
+                    implements=implements,
+                    fields=fields,
+                    methods=methods,
+                    description=description,
+                    references=[desc_path],
+                )
+                all_type_bps.append(tb)
+
+        if not all_type_bps:
+            return None
+
+        # Add types that are in task.types but not found in descriptors
+        found_names = {t.name.lower() for t in all_type_bps}
+        for type_name in task.types:
+            if type_name.lower() not in found_names:
+                all_type_bps.append(TypeBlueprint(
+                    name=type_name,
+                    kind="class",
+                    target_file=f"{target_dir}/{to_kebab_case(type_name)}.ts",
+                ))
+
+        bp = ModuleBlueprint(
+            name=task.name,
+            language="typescript",
+            target_dir=target_dir,
+            types=all_type_bps,
+            description=task.description[:300] if task.description else "",
+            references=task.ref_descriptors,
+        )
+
+        self._log(f"  blueprint from descriptors: {len(all_type_bps)} types, "
+                   f"{sum(len(t.methods) for t in all_type_bps)} methods")
+        return bp
+
+    @staticmethod
+    def _map_python_type(ptype: str) -> str:
+        """Map Python types to TypeScript equivalents."""
+        mapping = {
+            "Any": "unknown",
+            "str": "string",
+            "int": "number",
+            "float": "number",
+            "bool": "boolean",
+            "None": "void",
+            "Dict": "Record<string, unknown>",
+            "List": "Array<unknown>",
+            "Optional": "unknown | undefined",
+            "Set": "Set<unknown>",
+            "Tuple": "unknown[]",
+        }
+        for py, ts in mapping.items():
+            if ptype == py:
+                return ts
+        return "unknown"
+
+    @staticmethod
+    def _convert_signature(method_name: str, sig: str) -> str:
+        """Convert a Python method signature to a TypeScript-friendly hint.
+
+        Input:  'evolve(self, ctx: EvolutionContext) -> Optional[SkillRecord]'
+        Output: '(ctx: EvolutionContext): SkillRecord | undefined'
+        """
+        if not sig:
+            return ""
+
+        # Remove 'self' parameter
+        sig = sig.replace("self, ", "").replace("self,", "").replace("self", "")
+
+        # Remove method name prefix if present
+        if "(" in sig:
+            paren_idx = sig.index("(")
+            # Check if there's a method name before the paren
+            prefix = sig[:paren_idx].strip()
+            if prefix and not prefix.startswith("("):
+                sig = sig[paren_idx:]
+
+        # Convert return type
+        if " -> " in sig:
+            params_part, ret = sig.rsplit(" -> ", 1)
+            ret = ret.strip()
+            # Map Python return types
+            ret = ret.replace("Optional[", "").rstrip("]")
+            ret = ret.replace("None", "void")
+            ret = ret.replace("str", "string")
+            ret = ret.replace("int", "number")
+            ret = ret.replace("float", "number")
+            ret = ret.replace("bool", "boolean")
+            ret = ret.replace("List[", "Array<").replace("]", ">")
+            sig = f"{params_part}: {ret}"
+
+        # Clean up multiline signatures
+        sig = " ".join(sig.split())
+
+        return sig
 
     def _read_module_files(self, module_dir: Path) -> dict[str, str]:
         """Read all .ts files in a module directory."""
