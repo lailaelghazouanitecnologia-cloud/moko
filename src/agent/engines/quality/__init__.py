@@ -45,6 +45,9 @@ from .profile_extractor import ProfileExtractor
 from .learned_scorer import LearnedScorer, ScoreDimension
 from .global_db import GlobalQualityDB, GlobalQualityRecord
 from .context_metrics import extract_context_metrics, ModuleContextMetrics
+from .embedder import build_embedder, EmbedderConfig, TFIDFEmbedder
+from .ast_detection import detect_with_ast, HAS_AST_GREP
+from .adapters import get_adapter, LanguageAdapter, TypeScriptAdapter
 
 __all__ = (
     "QualityEngine",
@@ -167,12 +170,18 @@ class QualityEngine:
 
         # Local JSONL (audit log) + Global SQLite (cross-project learning)
         self.db = QualityDB(self.db_path)
-        self.global_db = GlobalQualityDB()
+
+        # Embedder (TF-IDF default, MiniLM if available)
+        self.embedder = build_embedder(EmbedderConfig(backend="auto"))
+        self.global_db = GlobalQualityDB(embedding_dim=self.embedder.dimension)
         self._run_id = GlobalQualityDB.new_run_id()
 
         self.extractor = QualityFeatureExtractor()
         self.classifier = QualityClassifier(self.db, self.global_db)
         self.context_engine: Optional["ContextEngine"] = context_engine
+
+        # Language adapter (TypeScript default)
+        self.adapter: LanguageAdapter = get_adapter("typescript")
 
         # Style profile
         self.style_analyzer = StyleAnalyzer()

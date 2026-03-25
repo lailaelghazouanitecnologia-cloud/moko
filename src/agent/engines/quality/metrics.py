@@ -3,15 +3,85 @@ Shared code metrics extraction — single source of truth for regex-based counti
 
 Eliminates duplication across quality_features.py, style_profile.py, and
 learned_scorer.py which all computed the same regex patterns independently.
+
+Feature scopes for cross-language KNN:
+  UNIVERSAL   — transfers across languages without transformation
+  NORMALIZED  — concept compatible, implementation differs by language
+  TS_ONLY     — None in non-TypeScript languages
 """
 import re
 from dataclasses import dataclass
-from typing import List
+from enum import Enum
+from typing import Dict, List, Optional
+
+
+class FeatureScope(Enum):
+    UNIVERSAL = "universal"     # cross-language KNN without transformation
+    NORMALIZED = "normalized"   # compatible with normalization between languages
+    TS_ONLY = "ts_only"         # ignored in cross-language KNN
+
+
+# Feature name → scope mapping
+FEATURE_SCOPES: Dict[str, FeatureScope] = {
+    # UNIVERSAL (12) — transfer without transformation
+    "loc": FeatureScope.UNIVERSAL,
+    "function_count": FeatureScope.UNIVERSAL,
+    "class_count": FeatureScope.UNIVERSAL,
+    "branch_count": FeatureScope.UNIVERSAL,
+    "avg_identifier_length": FeatureScope.UNIVERSAL,
+    "identifier_count": FeatureScope.UNIVERSAL,
+    "inline_comment_count": FeatureScope.UNIVERSAL,
+    "try_count": FeatureScope.UNIVERSAL,
+    "catch_count": FeatureScope.UNIVERSAL,
+    "throw_count": FeatureScope.UNIVERSAL,
+    "event_indicator_count": FeatureScope.UNIVERSAL,
+    "return_this_count": FeatureScope.UNIVERSAL,
+    # Ratios (UNIVERSAL)
+    "camel_case_ratio": FeatureScope.UNIVERSAL,
+    "semantic_name_score": FeatureScope.UNIVERSAL,
+    "generic_name_ratio": FeatureScope.UNIVERSAL,
+    "algo_doc_score": FeatureScope.UNIVERSAL,
+
+    # NORMALIZED (3) — concept compatible, value varies by language
+    "any_count": FeatureScope.NORMALIZED,        # TS: any, Python: untyped params
+    "generic_count": FeatureScope.NORMALIZED,     # TS: <T>, Python: TypeVar
+    "readonly_count": FeatureScope.NORMALIZED,    # TS: readonly, Python: frozen
+
+    # TS_ONLY (rest)
+    "unknown_count": FeatureScope.TS_ONLY,
+    "union_count": FeatureScope.TS_ONLY,
+    "type_alias_count": FeatureScope.TS_ONLY,
+    "record_any_count": FeatureScope.TS_ONLY,
+    "interface_count": FeatureScope.TS_ONLY,
+    "import_count": FeatureScope.TS_ONLY,
+    "export_count": FeatureScope.TS_ONLY,
+    "private_count": FeatureScope.TS_ONLY,
+    "jsdoc_count": FeatureScope.TS_ONLY,
+    "public_method_count": FeatureScope.TS_ONLY,
+    "param_doc_count": FeatureScope.TS_ONLY,
+    "typed_error_count": FeatureScope.TS_ONLY,
+    "generic_error_count": FeatureScope.TS_ONLY,
+    "optional_chaining_count": FeatureScope.TS_ONLY,
+    "nullish_coalescing_count": FeatureScope.TS_ONLY,
+    "ternary_count": FeatureScope.TS_ONLY,
+    "const_count": FeatureScope.TS_ONLY,
+    "let_count": FeatureScope.TS_ONLY,
+}
+
+# Convenience sets
+UNIVERSAL_FEATURES = {k for k, v in FEATURE_SCOPES.items() if v == FeatureScope.UNIVERSAL}
+NORMALIZED_FEATURES = {k for k, v in FEATURE_SCOPES.items() if v == FeatureScope.NORMALIZED}
+CROSS_LANGUAGE_FEATURES = UNIVERSAL_FEATURES | NORMALIZED_FEATURES
 
 
 @dataclass
 class CodeMetrics:
-    """Common metrics extracted from TypeScript code via regex."""
+    """Common metrics extracted from code via regex.
+
+    All UNIVERSAL and NORMALIZED fields are always populated.
+    TS_ONLY fields may be None for non-TypeScript languages.
+    """
+    language: str = "typescript"
     loc: int = 0
 
     # Types
@@ -65,6 +135,23 @@ class CodeMetrics:
 
     # Algorithm docs
     algo_doc_score: float = 0.0
+
+    # Empty catch ratio (cross-language)
+    empty_catch_ratio: float = 0.0
+
+    def to_knn_vector(self, cross_language: bool = False) -> Dict[str, float]:
+        """Convert to dict for KNN comparison.
+
+        cross_language=True: only UNIVERSAL + NORMALIZED features.
+        cross_language=False: all features (same language only).
+        """
+        result = {}
+        allowed = CROSS_LANGUAGE_FEATURES if cross_language else set(FEATURE_SCOPES.keys())
+        for name in allowed:
+            val = getattr(self, name, None)
+            if val is not None:
+                result[name] = float(val)
+        return result
 
 
 # ── Constants ──────────────────────────────────────────────
