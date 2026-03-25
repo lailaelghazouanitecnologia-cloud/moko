@@ -152,30 +152,50 @@ def cmd_dev(args: argparse.Namespace):
         print("Error: --target (-t) is required")
         sys.exit(1)
 
-    # Use layered project blueprint — predefined for game engines, LLM-generated for others
+    # Intelligent project scope estimation via ProjectAdvisor
+    from ..engines.blueprint.advisor import ProjectAdvisor
+    from pathlib import Path
+
+    advisor_db = str(Path("projects") / ".advisor_history.jsonl")
+    advisor = ProjectAdvisor(db_path=advisor_db)
+    scope = advisor.estimate(args.goal, references=args.ref)
+    print(f"[advisor] {scope.summary()}")
+
     project_bp = None
-    goal_lower = args.goal.lower()
-    if any(kw in goal_lower for kw in ("game engine", "engine", "renderer", "3d")):
-        from ..engines.blueprint.project import game_engine_project
-        project_bp = game_engine_project(args.target, args.goal)
-        print(f"Using layered project blueprint: {project_bp.total_types} types, "
-              f"{len(project_bp.layers)} layers")
+    if scope.mode == "strict":
+        # Full blueprint — known category with references
+        project_bp = advisor.to_blueprint(scope, args.target, args.goal)
+        if project_bp and project_bp.total_types == 0:
+            # Strict mode but no predefined types → use game_engine_project for engines
+            if scope.category == "game_engine":
+                from ..engines.blueprint.project import game_engine_project
+                project_bp = game_engine_project(args.target, args.goal)
+        if project_bp:
+            print(f"  → strict blueprint: {project_bp.total_types} types, "
+                  f"{len(project_bp.layers)} layers")
+    elif scope.mode == "guide":
+        # Guide mode: blueprint with modules, LLM fills in types
+        project_bp = advisor.to_blueprint(scope, args.target, args.goal)
+        if project_bp:
+            bp_path = Path("projects") / args.target / "project.bp.yaml"
+            bp_path.parent.mkdir(parents=True, exist_ok=True)
+            project_bp.save(bp_path)
+            print(f"  → guide blueprint: {len(project_bp.layers)} modules suggested, "
+                  f"LLM decides types")
     else:
-        # Try LLM-generated blueprint for any domain
+        # Free mode: LLM generates blueprint from scratch
         from ..engines.blueprint.project import generate_project_blueprint
         from ..llm.providers import LLMProvider
         bp_llm = LLMProvider(provider=args.provider, model=args.model)
         project_bp = generate_project_blueprint(args.goal, args.target, bp_llm)
         if project_bp:
-            # Save for reproducibility
-            from pathlib import Path
             bp_path = Path("projects") / args.target / "project.bp.yaml"
             bp_path.parent.mkdir(parents=True, exist_ok=True)
             project_bp.save(bp_path)
-            print(f"LLM-generated project blueprint: {project_bp.total_types} types, "
+            print(f"  → free blueprint (LLM): {project_bp.total_types} types, "
                   f"{len(project_bp.layers)} layers")
         else:
-            print("No blueprint generated, using non-layered LLM plan")
+            print("  → no blueprint, using non-layered LLM plan")
 
     # Branch pipeline mode
     if args.branches:

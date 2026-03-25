@@ -383,7 +383,11 @@ class BranchPipelineOrchestrator:
             if layer:
                 layer_desc = layer.description or task.description
 
-        goal = f"Module '{task.name}' with types: {', '.join(task.types)}."
+        # Build goal string — handle guide mode (no predefined types)
+        if task.types:
+            goal = f"Module '{task.name}' with types: {', '.join(task.types)}."
+        else:
+            goal = f"Module '{task.name}'."
         if layer_desc:
             goal += f" {layer_desc}."
 
@@ -396,17 +400,17 @@ class BranchPipelineOrchestrator:
         )
 
         # Blueprint guardrail: reject if LLM generated >2x the requested types
-        max_allowed = len(task.types) * 2
-        if len(bp.types) > max_allowed:
-            self._log(f"  blueprint inflated: {len(bp.types)} types vs {len(task.types)} requested, trimming to requested")
-            # Keep only the types that were explicitly requested
-            requested_names = set(t.lower() for t in task.types)
-            kept = [t for t in bp.types if t.name.lower() in requested_names
-                    or any(t.name.lower() == rn for rn in requested_names)]
-            # If we lost some requested types, they'll be added below
-            bp.types = kept
+        # Only applies when types were pre-specified (strict mode)
+        if task.types:
+            max_allowed = len(task.types) * 2
+            if len(bp.types) > max_allowed:
+                self._log(f"  blueprint inflated: {len(bp.types)} types vs {len(task.types)} requested, trimming to requested")
+                requested_names = set(t.lower() for t in task.types)
+                kept = [t for t in bp.types if t.name.lower() in requested_names
+                        or any(t.name.lower() == rn for rn in requested_names)]
+                bp.types = kept
 
-        # Ensure all planned types exist in blueprint
+        # Ensure all planned types exist in blueprint (strict mode)
         from .translator import to_kebab_case
         for type_name in task.types:
             if not bp.get_type(type_name):
