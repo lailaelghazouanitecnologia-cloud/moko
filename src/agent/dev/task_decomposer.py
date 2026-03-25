@@ -58,19 +58,25 @@ class TaskDecomposer:
     def decompose(self, goal: str, target: str,
                   references: list[str] = None,
                   project_bp=None,
-                  intelligence=None) -> list[ModuleTask]:
+                  intelligence=None,
+                  feature_selection: list = None) -> list[ModuleTask]:
         """Decompose into ModuleTasks.
 
         Priority:
           1. ProjectBlueprint (if provided)
-          2. Intelligence-informed (PI: goal-driven, calibrated by reference)
-          3. Reference-aware extraction (clone mode — fallback)
-          4. LLM-based fallback
+          2. Feature-selection (user chose specific features from AST)
+          3. Intelligence-informed (PI: goal-driven, calibrated by reference)
+          4. Reference-aware extraction (clone mode — fallback)
+          5. LLM-based fallback
 
         Returns topologically sorted list of ModuleTasks.
         """
         if project_bp:
             tasks = self._from_project_blueprint(project_bp, target)
+        elif feature_selection:
+            # Feature AST mode: user selected specific capabilities
+            tasks = self._from_feature_selection(
+                goal, target, feature_selection, intelligence)
         elif intelligence:
             # PI mode: goal-driven, calibrated by reference intelligence
             tasks = self._from_goal_with_intelligence(goal, target, intelligence)
@@ -335,6 +341,124 @@ class TaskDecomposer:
             else:
                 merged[task.name] = task
         return list(merged.values())
+
+    # ── Feature-Selection Decomposition ─────────────────────
+
+    def _from_feature_selection(self, goal: str, target: str,
+                                selected_nodes: list,
+                                intelligence=None) -> list[ModuleTask]:
+        """Decompose based on user-selected FeatureNode list.
+
+        Each selected leaf node becomes a module or part of a module.
+        LOC targets come directly from the reference node's ref_loc,
+        scaled down for generation (typically 20-40% of reference).
+
+        Uses LLM to generate OWN type names inspired by reference types.
+        """
+        from ..engines.reference.feature_ast import FeatureNode, _TYPES_3D_ONLY
+
+        # Collect leaf nodes (no children = actual code modules)
+        leaves = [n for n in selected_nodes
+                  if not n.children and n.ref_loc > 0]
+
+        if not leaves:
+            self._log("no leaf nodes selected, falling back to LLM")
+            return self._from_llm(goal, target, [])
+
+        # Build context for LLM: node → what to generate
+        node_specs = []
+        for node in leaves:
+            # Filter out 3D-only types if goal is 2D
+            goal_lower = goal.lower()
+            is_2d = any(kw in goal_lower for kw in {"2d", "sprite", "tilemap", "pixel"})
+            if is_2d:
+                types = [t for t in node.ref_types if t not in _TYPES_3D_ONLY]
+            else:
+                types = list(node.ref_types)
+
+            # Scale LOC: target is 20-40% of reference for a new project
+            scale = 0.3
+            if intelligence and intelligence.quality.loc_per_type.median > 0:
+                # If we know the reference's actual median, use that as guide
+                scale = min(0.5, max(0.15, 150 / max(intelligence.quality.loc_per_type.median, 1)))
+
+            target_loc = max(80, int(node.ref_loc * scale / max(len(types), 1)))
+            target_loc = min(target_loc, 400)  # cap
+
+            adapt_note = ""
+            if node.adapt:
+                adapt_note = f" ADAPT: {node.adapt} (generate NEW implementation, don't clone)"
+
+            node_specs.append({
+                "ref_module": node.ref_module or node.path,
+                "ref_types": types,
+                "ref_loc": node.ref_loc,
+                "target_loc_per_type": target_loc,
+                "adapt": adapt_note,
+                "requires": node.requires,
+            })
+
+        # LLM call: given selected nodes + goal, generate module plan with OWN names
+        system = (
+            "You are a software architect. Design modules for a NEW project.\n\n"
+            "You receive SELECTED FEATURES from a reference project and a GOAL.\n"
+            "For each selected feature, create a module with YOUR OWN type names.\n"
+            "Use the reference types as INSPIRATION for what to include.\n\n"
+            "Output JSON array:\n"
+            '[{"module": "name", "types": ["Type1", "Type2"], '
+            '"depends_on": ["other_module"], '
+            '"description": "purpose", '
+            '"inspired_by": "ref_module_name", '
+            '"target_loc_per_type": 150}]\n\n'
+            "Rules:\n"
+            "- Create YOUR OWN module and type names (do NOT copy reference names)\n"
+            "- Match the DEPTH of the reference (similar number of types/methods)\n"
+            "- If ADAPT is specified, design for the new target (e.g., WebGPU not WebGL)\n"
+            "- Keep the same dependency structure but with your own module names\n"
+            "- Output ONLY the JSON array\n"
+        )
+
+        import json as _json
+        specs_str = _json.dumps(node_specs, indent=2)
+
+        user = (
+            f"Goal: {goal}\n"
+            f"Target project: {target}\n\n"
+            f"## Selected reference features\n```json\n{specs_str}\n```\n\n"
+            f"Design {len(leaves)} modules with YOUR OWN names, inspired by these features."
+        )
+
+        resp = self.llm.complete_with_usage(
+            [LLMMessage("system", system), LLMMessage("user", user)],
+            temperature=0.4, max_tokens=3000,
+        )
+        self.total_tokens += resp.usage.total_tokens
+
+        try:
+            data = self._parse_json(resp.content)
+        except (json.JSONDecodeError, ValueError):
+            self._log("feature-selection decomposition failed, falling back to LLM")
+            return self._from_llm(goal, target, [])
+
+        tasks = []
+        for mod in data:
+            mod_name = mod.get("module", "core")
+            loc_target = mod.get("target_loc_per_type", 150)
+            loc_target = max(80, min(loc_target, 400))
+
+            tasks.append(ModuleTask(
+                name=mod_name,
+                branch_name=f"feature/{mod_name}",
+                types=mod.get("types", []),
+                depends_on=mod.get("depends_on", []),
+                description=mod.get("description", ""),
+                estimated_types=len(mod.get("types", [])),
+                target_loc_per_type=loc_target,
+            ))
+
+        self._log(f"feature-selection decomposition: {len(tasks)} modules "
+                  f"from {len(leaves)} selected features")
+        return tasks
 
     # ── Intelligence-Informed Decomposition ─────────────────
 

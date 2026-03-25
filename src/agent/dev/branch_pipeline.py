@@ -142,6 +142,10 @@ class BranchPipelineOrchestrator:
         self.block_store = None      # CodeBlockStore for reusable code blocks
         self.style_rules = None      # StyleRules for user-configurable style
         self.intelligence = None     # ProjectIntelligence from reference
+        self.feature_ast = None      # FeatureNode tree from reference
+        self.selected_features = None  # User-selected FeatureNode list
+        self.interactive = config.get("interactive", True)
+        self.pre_features = config.get("pre_features", None)  # Pre-selected feature names
         self.total_tokens = 0
 
         # Guardrails
@@ -151,6 +155,85 @@ class BranchPipelineOrchestrator:
     def _log(self, msg: str):
         if self.verbose:
             print(f"  [pipeline] {msg}")
+
+    def _build_feature_ast(self, references: list[str], goal: str):
+        """Build Feature AST from reference and run goal-based selection."""
+        if not references:
+            return
+
+        from ..engines.reference.feature_ast import (
+            build_feature_ast, analyze_goal, auto_select,
+            interactive_select, print_tree, print_plan, FeatureNode,
+        )
+
+        ref = references[0]  # primary reference
+        data_dir = Path("data/reference")
+
+        # Try cached AST first
+        cached = data_dir / f"{ref}.features.yaml"
+        if cached.exists():
+            self.feature_ast = FeatureNode.load(cached)
+            self._log(f"loaded feature AST for {ref}")
+        else:
+            try:
+                self.feature_ast = build_feature_ast(ref, OUT_DIR)
+                # Cache it
+                data_dir.mkdir(parents=True, exist_ok=True)
+                self.feature_ast.save(cached)
+                self._log(f"built feature AST for {ref}: "
+                          f"{sum(1 for _ in self.feature_ast.walk())} nodes")
+            except FileNotFoundError:
+                self._log(f"no workspace.yaml for {ref}, skipping feature AST")
+                return
+
+        # Analyze goal → auto-select relevant features
+        analysis = analyze_goal(goal, self.feature_ast)
+        maybes = auto_select(self.feature_ast, analysis)
+
+        if self.pre_features:
+            # Pre-select specific features by name (--features rendering math)
+            for node in self.feature_ast.walk():
+                if node.name in self.pre_features:
+                    node.select()
+            self._log(f"pre-selected features: {', '.join(self.pre_features)}")
+            print_tree(self.feature_ast, show_selection=True, analysis=analysis)
+            print_plan(self.feature_ast, analysis)
+
+        elif self.interactive:
+            # Show tree + plan, ask about maybes
+            print_tree(self.feature_ast, show_selection=True, analysis=analysis)
+
+            if maybes:
+                confirmed = interactive_select(self.feature_ast, maybes, goal)
+                if not confirmed:
+                    self._log("user cancelled feature selection")
+                    self.feature_ast = None
+                    return
+
+            # Show final plan and ask for confirmation
+            print_plan(self.feature_ast, analysis)
+            try:
+                answer = input("  Proceed? [Y/n] ").strip().lower()
+            except (EOFError, KeyboardInterrupt):
+                answer = "y"
+            if answer in ("n", "no"):
+                self._log("user declined feature plan")
+                self.feature_ast = None
+                return
+
+        else:
+            # --no-interactive: auto-select all, no questions
+            self._log("non-interactive mode: using auto-selection only")
+            print_tree(self.feature_ast, show_selection=True, analysis=analysis)
+            print_plan(self.feature_ast, analysis)
+
+        # Collect selected nodes for the decomposer
+        self.selected_features = self.feature_ast.selected_nodes()
+        if self.selected_features:
+            self._log(f"feature selection: {len(self.selected_features)} nodes selected")
+        else:
+            self._log("no features selected, will use fallback decomposition")
+            self.feature_ast = None
 
     def _load_intelligence(self, references: list[str]):
         """Load Project Intelligence from reference .pi.yaml files."""
@@ -286,12 +369,18 @@ class BranchPipelineOrchestrator:
         # 3b. Load or generate Project Intelligence from references
         self._load_intelligence(references)
 
-        # 4. Decompose into module tasks (PI-informed if available)
+        # 3c. Build Feature AST + interactive selection (if reference exists)
+        if not project_bp and references:
+            self._build_feature_ast(references, goal)
+
+        # 4. Decompose into module tasks
+        # Priority: blueprint > feature selection > PI-informed > reference > LLM
         print(f"\n  Decomposing: {goal}")
         tasks = self.decomposer.decompose(
             goal=goal, target=target,
             references=references, project_bp=project_bp,
             intelligence=self.intelligence,
+            feature_selection=self.selected_features,
         )
         self.total_tokens += self.decomposer.total_tokens
 

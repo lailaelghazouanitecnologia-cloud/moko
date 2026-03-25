@@ -37,6 +37,12 @@ def register_subparser(subparsers: argparse._SubParsersAction):
     p.add_argument("--max-parallel", type=int, default=3,
                    help="Max parallel evaluation branches")
 
+    # Feature AST flags
+    p.add_argument("--features", nargs="+", default=None,
+                   help="Pre-select features from reference AST (e.g., rendering math events)")
+    p.add_argument("--no-interactive", action="store_true",
+                   help="Skip interactive selection (auto-select all relevant features)")
+
     # Plan mode — show scope estimation for user acceptance before generation
     p.add_argument("--plan", action="store_true",
                    help="Plan mode: show scope and blueprint for approval before generating")
@@ -308,6 +314,8 @@ def cmd_dev(args: argparse.Namespace):
     # Branch pipeline mode
     if args.branches:
         from .branch_pipeline import BranchPipelineOrchestrator
+        config["interactive"] = not getattr(args, "no_interactive", False)
+        config["pre_features"] = getattr(args, "features", None)
         orchestrator = BranchPipelineOrchestrator(config)
         result = orchestrator.run(
             goal=args.goal,
