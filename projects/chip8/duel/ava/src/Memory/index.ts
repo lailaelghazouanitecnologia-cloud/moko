@@ -1,1 +1,0 @@
-export { Ram } from './ram';
