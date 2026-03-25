@@ -24,6 +24,7 @@ from .blueprint import ModuleBlueprint, TypeBlueprint
 from .emission import EmissionIndex
 from .density import DensityAnalyzer
 from ..engines.context import ContextEngine
+from ..engines.fix import FixEngine
 
 
 @dataclass
@@ -93,7 +94,8 @@ class BranchPipelineOrchestrator:
 
         self.git: Optional[GitManager] = None
         self.decomposer = TaskDecomposer(self.llm, verbose=self.verbose)
-        self.fix_loop: Optional[CompileFixLoop] = None
+        self.fix_loop: Optional[CompileFixLoop] = None   # Legacy, kept for compat
+        self.fix_engine: Optional[FixEngine] = None       # New intelligent fix engine
         self.emission_index: Optional[EmissionIndex] = None
         self.engine: Optional[ContextEngine] = None
         self.semantic_store = None   # SemanticStore for reference matching
@@ -122,8 +124,12 @@ class BranchPipelineOrchestrator:
         self.git.init_repo()
         self.git.ensure_main_branch()
 
-        # 2. Initialize compile-fix loop
+        # 2. Initialize fix engines
         self.fix_loop = CompileFixLoop(
+            self.llm, project_dir,
+            max_iterations=4, verbose=self.verbose,
+        )
+        self.fix_engine = FixEngine(
             self.llm, project_dir,
             max_iterations=4, verbose=self.verbose,
         )
@@ -132,8 +138,9 @@ class BranchPipelineOrchestrator:
         self.engine = ContextEngine(project_dir / "src")
         self.engine.init(project_dir)
 
-        # Wire context engine into fix loop
+        # Wire context engine into both fix engines
         self.fix_loop.context_engine = self.engine
+        self.fix_engine.context_engine = self.engine
 
         # 3. Build emission index + retrieval engines if references exist
         self._build_emission_index(references)
@@ -167,8 +174,8 @@ class BranchPipelineOrchestrator:
 
         # 7. Final tsc check on main
         self.git.checkout("main")
-        final_check = self.fix_loop.check_tsc()
-        result.final_tsc_errors = max(0, final_check.error_count)
+        final_errors, final_clean, _ = self.fix_engine.check_tsc()
+        result.final_tsc_errors = len(final_errors)
         result.elapsed_s = time.time() - start
         result.total_tokens += self.total_tokens
 
@@ -236,27 +243,22 @@ class BranchPipelineOrchestrator:
             # 4. Commit generated code
             self.git.commit_all(f"feat({task.name}): generate {len(task.types)} types")
 
-            # 5. Compile-fix loop
+            # 5. Intelligent fix engine
             context_files = self._collect_dependency_context(task, project_dir)
 
-            initial_check = self.fix_loop.check_module(module_dir)
-            br.tsc_errors_initial = max(0, initial_check.error_count)
+            # Use new FixEngine (layered: auto-fix → cascade detection → smart LLM)
+            fix_result = self.fix_engine.fix_module(module_dir, context_files)
+            br.tsc_errors_initial = fix_result.initial_errors
+            br.tsc_errors_final = fix_result.final_errors
+            br.fix_iterations = len(fix_result.iterations)
+            br.tokens_used += fix_result.total_tokens
 
-            if not initial_check.success and initial_check.error_count > 0:
-                iterations = self.fix_loop.run(module_dir, context_files)
-                br.fix_iterations = len(iterations)
-                br.tokens_used += self.fix_loop.total_tokens
+            if fix_result.auto_fixes_applied > 0:
+                self._log(f"  auto-fixed {fix_result.auto_fixes_applied} issues without LLM")
 
-                if iterations:
-                    br.tsc_errors_final = iterations[-1].errors_after
-                else:
-                    br.tsc_errors_final = br.tsc_errors_initial
-
-                # Commit fixes if any changes were made
-                if self.git.has_uncommitted():
-                    self.git.commit_all(f"fix({task.name}): resolve tsc errors")
-            else:
-                br.tsc_errors_final = 0
+            # Commit fixes if any changes were made
+            if self.git.has_uncommitted():
+                self.git.commit_all(f"fix({task.name}): resolve tsc errors")
 
             # 6. Merge to main
             merged = self.git.merge(

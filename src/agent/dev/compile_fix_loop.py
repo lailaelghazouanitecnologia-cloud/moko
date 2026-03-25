@@ -1,6 +1,14 @@
 """
 CompileFixLoop — iterate tsc check -> LLM fix -> tsc check until clean.
 
+DEPRECATED: Prefer engines/fix/ (FixEngine) which adds layered intelligence:
+  - Auto-fix for trivial syntax errors (no LLM needed)
+  - Cascade detection (47 errors → 3 root causes)
+  - Smart prompts with hints and context
+  - Strategy pattern (syntax, import, typo strategies)
+
+CompileFixLoop is kept for backward compatibility with DevSupervisor.
+
 Each iteration:
   1. Run tsc --noEmit on the module directory
   2. Parse errors into structured TscError objects
