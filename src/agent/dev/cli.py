@@ -519,3 +519,414 @@ def _print_profile_report(profile):
             suffix = f" {unit}" if unit else ""
             print(f"    {name:<30} {val_str:>8}{suffix}")
         print()
+
+
+# ── Intel subcommand ───────────────────────────────────────
+
+def register_intel_subparser(subparsers: argparse._SubParsersAction):
+    """Register 'intel' subcommand."""
+    p = subparsers.add_parser("intel",
+                              help="Project Intelligence: analyze, navigate, compare reference projects")
+    p.add_argument("projects", nargs="+", help="Project name(s) to analyze or navigate")
+    p.add_argument("--provider", default="groq", help="LLM provider")
+    p.add_argument("--model", help="Override model")
+    p.add_argument("-v", "--verbose", action="store_true", help="Verbose output")
+
+    # Navigation flags (mutually exclusive sections)
+    group = p.add_mutually_exclusive_group()
+    group.add_argument("--summary", action="store_true", help="Show brief overview")
+    group.add_argument("--style", action="store_true", help="Show programming style analysis")
+    group.add_argument("--patterns", action="store_true", help="Show architectural patterns")
+    group.add_argument("--features", action="store_true", help="Show features with algorithms")
+    group.add_argument("--decisions", action="store_true", help="Show design decisions")
+    group.add_argument("--metrics", action="store_true", help="Show detailed metrics")
+    group.add_argument("--quality", action="store_true", help="Show quality calibration targets")
+    group.add_argument("--graph", action="store_true", help="Show dependency graph")
+    group.add_argument("--compare", action="store_true", help="Compare 2+ projects")
+
+    # Detail drilldown
+    p.add_argument("--pattern", metavar="NAME", help="Show detail for a specific pattern")
+    p.add_argument("--feature", metavar="NAME", help="Show detail for a specific feature")
+    p.add_argument("--module", metavar="NAME", help="Show detail for a specific module")
+
+    # Generation
+    p.add_argument("--regenerate", action="store_true",
+                   help="Force regeneration even if .pi.yaml exists")
+
+
+def cmd_intel(args: argparse.Namespace):
+    """Execute intel command."""
+    from pathlib import Path
+    from ..engines.reference.intelligence import IntelligenceGenerator
+    from ..engines.reference.models import ProjectIntelligence
+    from .. import OUT_DIR
+
+    data_dir = Path("data/reference")
+    data_dir.mkdir(parents=True, exist_ok=True)
+
+    # Load or generate PI for each project
+    pis = []
+    for project_name in args.projects:
+        pi_path = data_dir / f"{project_name}.pi.yaml"
+
+        if pi_path.exists() and not args.regenerate:
+            pi = ProjectIntelligence.load(pi_path)
+            pis.append(pi)
+        else:
+            # Check if Roska descriptors exist
+            ref_dir = OUT_DIR / project_name
+            if not ref_dir.exists():
+                print(f"No Roska descriptors for '{project_name}'. Run: lyzed-ts -i <repo> -o out -n {project_name}")
+                continue
+
+            # Generate
+            llm = None
+            try:
+                from ..llm.providers import LLMProvider
+                llm = LLMProvider(provider=args.provider, model=args.model)
+            except Exception:
+                pass
+
+            gen = IntelligenceGenerator(OUT_DIR, llm=llm, verbose=args.verbose)
+            pi = gen.generate(project_name)
+            pi.save(pi_path)
+            pi.save_markdown(data_dir / f"{project_name}.pi.md")
+            print(f"Generated: {pi_path}")
+            if gen.total_tokens > 0:
+                print(f"  LLM tokens: {gen.total_tokens:,}")
+            pis.append(pi)
+
+    if not pis:
+        return
+
+    # Compare mode
+    if args.compare and len(pis) >= 2:
+        _print_comparison(pis)
+        return
+
+    # Navigate each project
+    for pi in pis:
+        if args.style:
+            _print_style(pi)
+        elif args.patterns:
+            _print_patterns(pi)
+        elif args.features:
+            _print_features(pi)
+        elif args.decisions:
+            _print_decisions(pi)
+        elif args.metrics:
+            _print_metrics(pi)
+        elif args.quality:
+            _print_quality(pi)
+        elif args.graph:
+            _print_graph(pi)
+        elif args.pattern:
+            _print_pattern_detail(pi, args.pattern)
+        elif args.feature:
+            _print_feature_detail(pi, args.feature)
+        else:
+            _print_summary(pi)
+
+
+def _print_summary(pi):
+    """Brief overview."""
+    m = pi.metrics
+    print(f"{'━' * 70}")
+    print(f"  PROJECT INTELLIGENCE: {pi.project}")
+    print(f"{'━' * 70}")
+    print(f"  {pi.purpose}")
+    print(f"  Domain: {pi.domain} | Language: {pi.language} | "
+          f"Size: {pi.size_tier} | Maturity: {pi.maturity}")
+    print()
+    print(f"  {m.glob.total_loc:,} LOC | {m.glob.total_modules} modules | "
+          f"{m.glob.total_types} types | {m.glob.total_functions} functions")
+    print()
+
+    # Patterns
+    if pi.patterns:
+        print(f"  PATTERNS ({len(pi.patterns)}):")
+        for p in pi.patterns:
+            bar = _bar(p.loc, 2000)
+            print(f"    {p.name:<28} {bar} {p.where:<18} {p.loc:,} LOC")
+        print()
+
+    # Features
+    if pi.features:
+        print(f"  FEATURES ({len(pi.features)}):")
+        for f in pi.features:
+            cx = {"low": "░", "medium": "▒", "high": "▓"}.get(f.complexity, "?")
+            print(f"    {cx} {f.name:<26} {f.description[:50]}")
+        print()
+
+    # Style one-liner
+    s = pi.style
+    print(f"  STYLE: {s.naming.methods} methods | {s.naming.classes} classes | "
+          f"{s.error_handling.strategy} | {s.async_style.style} | "
+          f"{s.typing.strictness} typing")
+
+    # Graph one-liner
+    dg = pi.dependency_graph
+    if dg.layers:
+        layer_strs = [f"[{','.join(l)}]" for l in dg.layers]
+        print(f"  GRAPH: {' → '.join(layer_strs)}")
+
+    print(f"{'━' * 70}")
+
+
+def _print_style(pi):
+    s = pi.style
+    print(f"{'━' * 70}")
+    print(f"  STYLE: {pi.project}")
+    print(f"{'━' * 70}")
+
+    print(f"\n  Naming:")
+    print(f"    Modules:   {s.naming.modules}")
+    print(f"    Classes:   {s.naming.classes}")
+    print(f"    Methods:   {s.naming.methods}")
+    print(f"    Constants: {s.naming.constants}")
+    print(f"    Private:   {s.naming.private_prefix or 'none'}")
+    if s.naming.examples:
+        print(f"    Examples:  {', '.join(s.naming.examples)}")
+
+    print(f"\n  Error Handling:")
+    print(f"    Strategy:    {s.error_handling.strategy}")
+    print(f"    Custom:      {'yes' if s.error_handling.custom_exceptions else 'no'}")
+    print(f"    Retry:       {'yes' if s.error_handling.retry_pattern else 'no'}")
+    print(f"    Degradation: {'yes' if s.error_handling.graceful_degradation else 'no'}")
+
+    print(f"\n  Async:")
+    print(f"    Style:     {s.async_style.style}")
+    print(f"    Blocking:  {s.async_style.blocking_workaround or 'n/a'}")
+
+    print(f"\n  Typing:")
+    print(f"    Strictness:  {s.typing.strictness}")
+    print(f"    Dataclasses: {'yes' if s.typing.dataclasses else 'no'}")
+    print(f"    Generics:    {'yes' if s.typing.generics else 'no'}")
+
+    print(f"\n  Documentation:")
+    print(f"    Module docs:  {s.documentation.module_docstrings}")
+    print(f"    Method docs:  {s.documentation.method_docstrings}")
+    print(f"    Comments:     {s.documentation.inline_comments}")
+
+    print(f"\n  Organization:")
+    print(f"    File/class:   {s.organization.file_per_class}")
+    print(f"    Barrel:       {'yes' if s.organization.barrel_exports else 'no'}")
+    print(f"    Max file:     {s.organization.max_file_loc} LOC")
+    print(f"{'━' * 70}")
+
+
+def _print_patterns(pi):
+    print(f"{'━' * 70}")
+    print(f"  PATTERNS: {pi.project} ({len(pi.patterns)})")
+    print(f"{'━' * 70}")
+    for p in pi.patterns:
+        print(f"\n  {p.name}")
+        print(f"  {'─' * 40}")
+        print(f"  What: {p.what}")
+        print(f"  How:  {p.how}")
+        print(f"  Components: {', '.join(p.components)}")
+        print(f"  Where: {p.where} ({p.loc:,} LOC)")
+        print(f"  Reusable: {p.reusable_when}")
+    print(f"\n{'━' * 70}")
+
+
+def _print_features(pi):
+    print(f"{'━' * 70}")
+    print(f"  FEATURES: {pi.project} ({len(pi.features)})")
+    print(f"{'━' * 70}")
+    for f in pi.features:
+        cx = {"low": "●○○", "medium": "●●○", "high": "●●●"}.get(f.complexity, "???")
+        print(f"\n  {f.name} [{cx}] ({f.loc:,} LOC)")
+        print(f"  {'─' * 40}")
+        print(f"  {f.description}")
+        print(f"  Algorithm: {f.algorithm}")
+        if f.key_insight:
+            print(f"  Insight:   {f.key_insight}")
+        if f.modules:
+            print(f"  Modules:   {', '.join(f.modules)}")
+    print(f"\n{'━' * 70}")
+
+
+def _print_decisions(pi):
+    print(f"{'━' * 70}")
+    print(f"  DECISIONS: {pi.project} ({len(pi.decisions)})")
+    print(f"{'━' * 70}")
+    for d in pi.decisions:
+        print(f"\n  [{d.area}]")
+        print(f"  Choice: {d.choice}")
+        print(f"  Why:    {d.why}")
+    print(f"\n{'━' * 70}")
+
+
+def _print_metrics(pi):
+    m = pi.metrics
+    print(f"{'━' * 70}")
+    print(f"  METRICS: {pi.project}")
+    print(f"{'━' * 70}")
+    print(f"\n  Global:")
+    print(f"    Total LOC:      {m.glob.total_loc:>8,}")
+    print(f"    Modules:        {m.glob.total_modules:>8}")
+    print(f"    Types:          {m.glob.total_types:>8}")
+    print(f"    Functions:      {m.glob.total_functions:>8}")
+    print(f"\n  Per Module:")
+    print(f"    Avg LOC:        {m.per_module.avg_loc:>8.0f}")
+    print(f"    Median LOC:     {m.per_module.median_loc:>8.0f}")
+    print(f"    Max LOC:        {m.per_module.max_loc:>8}")
+    print(f"    Min LOC:        {m.per_module.min_loc:>8}")
+    print(f"\n  Per Type:")
+    print(f"    Avg LOC:        {m.per_type.avg_loc:>8.0f}")
+    print(f"    Median LOC:     {m.per_type.median_loc:>8.0f}")
+    print(f"    Avg methods:    {m.per_type.avg_methods:>8.1f}")
+    print(f"    Avg fields:     {m.per_type.avg_fields:>8.1f}")
+    print(f"\n  Per Function:")
+    print(f"    Avg LOC:        {m.per_function.avg_loc:>8.0f}")
+    print(f"    Avg params:     {m.per_function.avg_params:>8.1f}")
+    print(f"    Async ratio:    {m.per_function.async_ratio:>7.0%}")
+    print(f"{'━' * 70}")
+
+
+def _print_quality(pi):
+    q = pi.quality
+    print(f"{'━' * 70}")
+    print(f"  QUALITY TARGETS: {pi.project}")
+    print(f"{'━' * 70}")
+    print(f"\n  {'Metric':<20} {'P25':>8} {'Median':>8} {'P75':>8} {'Max':>8}")
+    print(f"  {'─' * 52}")
+    _qrow("LOC/type", q.loc_per_type)
+    _qrow("Methods/type", q.methods_per_type)
+    _qrow("LOC/function", q.loc_per_function)
+    _qrow("Params/function", q.params_per_function)
+    print(f"\n  Error handling: {q.error_handling}")
+    print(f"  Test coverage:  {q.test_coverage}")
+    print(f"{'━' * 70}")
+
+
+def _qrow(label, p):
+    print(f"  {label:<20} {p.p25:>8.0f} {p.median:>8.0f} {p.p75:>8.0f} {p.max:>8.0f}")
+
+
+def _print_graph(pi):
+    dg = pi.dependency_graph
+    print(f"{'━' * 70}")
+    print(f"  DEPENDENCY GRAPH: {pi.project}")
+    print(f"{'━' * 70}")
+    print(f"  Style: {dg.style} | Coupling: {dg.coupling} | Hub: {dg.hub_module}")
+    print()
+    for i, layer in enumerate(dg.layers):
+        indent = "  " * (i + 1)
+        arrow = "→ " if i > 0 else "  "
+        print(f"  L{i} {arrow}[{', '.join(layer)}]")
+    print(f"{'━' * 70}")
+
+
+def _print_pattern_detail(pi, name):
+    for p in pi.patterns:
+        if name.lower() in p.name.lower():
+            print(f"\n  Pattern: {p.name}")
+            print(f"  {'━' * 50}")
+            print(f"  What: {p.what}")
+            print(f"  How:  {p.how}")
+            print(f"  Components: {', '.join(p.components)}")
+            print(f"  Where: {p.where} ({p.loc:,} LOC)")
+            print(f"  Reusable when: {p.reusable_when}")
+            return
+    print(f"  Pattern '{name}' not found. Available: {', '.join(p.name for p in pi.patterns)}")
+
+
+def _print_feature_detail(pi, name):
+    for f in pi.features:
+        if name.lower() in f.name.lower():
+            print(f"\n  Feature: {f.name}")
+            print(f"  {'━' * 50}")
+            print(f"  {f.description}")
+            print(f"  Algorithm: {f.algorithm}")
+            if f.key_insight:
+                print(f"  Key insight: {f.key_insight}")
+            print(f"  Modules: {', '.join(f.modules)}")
+            print(f"  LOC: {f.loc:,} | Complexity: {f.complexity}")
+            return
+    print(f"  Feature '{name}' not found. Available: {', '.join(f.name for f in pi.features)}")
+
+
+def _print_comparison(pis):
+    print(f"{'━' * 70}")
+    print(f"  COMPARISON: {' vs '.join(pi.project for pi in pis)}")
+    print(f"{'━' * 70}")
+
+    # Metrics table
+    print(f"\n  {'Metric':<25}", end="")
+    for pi in pis:
+        print(f" {pi.project:>12}", end="")
+    print()
+    print(f"  {'─' * (25 + 13 * len(pis))}")
+
+    rows = [
+        ("LOC", lambda pi: f"{pi.metrics.glob.total_loc:,}"),
+        ("Modules", lambda pi: str(pi.metrics.glob.total_modules)),
+        ("Types", lambda pi: str(pi.metrics.glob.total_types)),
+        ("Functions", lambda pi: str(pi.metrics.glob.total_functions)),
+        ("Avg LOC/type", lambda pi: f"{pi.metrics.per_type.avg_loc:.0f}"),
+        ("Avg methods/type", lambda pi: f"{pi.metrics.per_type.avg_methods:.1f}"),
+        ("Async ratio", lambda pi: f"{pi.metrics.per_function.async_ratio:.0%}"),
+    ]
+    for label, fn in rows:
+        print(f"  {label:<25}", end="")
+        for pi in pis:
+            print(f" {fn(pi):>12}", end="")
+        print()
+
+    # Style comparison
+    print(f"\n  {'Style':<25}", end="")
+    for pi in pis:
+        print(f" {pi.project:>12}", end="")
+    print()
+    print(f"  {'─' * (25 + 13 * len(pis))}")
+
+    style_rows = [
+        ("Methods", lambda pi: pi.style.naming.methods),
+        ("Errors", lambda pi: pi.style.error_handling.strategy),
+        ("Async", lambda pi: pi.style.async_style.style),
+        ("Typing", lambda pi: pi.style.typing.strictness),
+        ("Docs", lambda pi: pi.style.documentation.module_docstrings),
+    ]
+    for label, fn in style_rows:
+        print(f"  {label:<25}", end="")
+        for pi in pis:
+            print(f" {fn(pi):>12}", end="")
+        print()
+
+    # Patterns
+    print(f"\n  Patterns:")
+    all_patterns = set()
+    for pi in pis:
+        for p in pi.patterns:
+            all_patterns.add(p.name)
+    for pname in sorted(all_patterns):
+        present = []
+        for pi in pis:
+            if any(p.name == pname for p in pi.patterns):
+                present.append(pi.project)
+        markers = " ".join(present)
+        print(f"    {pname:<30} {markers}")
+
+    # Features
+    print(f"\n  Features:")
+    all_features = set()
+    for pi in pis:
+        for f in pi.features:
+            all_features.add(f.name)
+    for fname in sorted(all_features):
+        present = []
+        for pi in pis:
+            if any(f.name == fname for f in pi.features):
+                present.append(pi.project)
+        markers = " ".join(present)
+        print(f"    {fname:<30} {markers}")
+
+    print(f"\n{'━' * 70}")
+
+
+def _bar(value: int, max_val: int, width: int = 8) -> str:
+    """Small ASCII bar."""
+    filled = min(width, max(1, int(value / max(max_val, 1) * width)))
+    return "█" * filled + "░" * (width - filled)

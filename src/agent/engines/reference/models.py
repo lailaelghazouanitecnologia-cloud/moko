@@ -349,6 +349,19 @@ def _from_dict(cls, data: dict):
         return cls()
 
     import dataclasses
+    import typing
+
+    # Map of known list item types by field name
+    _LIST_TYPES = {
+        "patterns": ArchPattern,
+        "features": Feature,
+        "decisions": DesignDecision,
+        "layers": None,  # List[List[str]] — leave as-is
+        "examples": None,
+        "components": None,
+        "modules": None,
+    }
+
     fields = {f.name: f for f in dataclasses.fields(cls)}
     kwargs = {}
     for name, f in fields.items():
@@ -357,26 +370,38 @@ def _from_dict(cls, data: dict):
         val = data[name]
         ftype = f.type
 
-        # Handle string type annotations
+        # Resolve string annotations
         if isinstance(ftype, str):
-            # Resolve forward references
             ftype_str = ftype.strip("'\"")
-            if ftype_str in globals():
-                ftype = globals()[ftype_str]
+            # Check module-level types
+            local_types = {
+                "Metrics": Metrics, "StyleProfile": StyleProfile,
+                "DependencyGraph": DependencyGraph, "QualityTargets": QualityTargets,
+                "MetricsGlobal": MetricsGlobal, "MetricsPerModule": MetricsPerModule,
+                "MetricsPerType": MetricsPerType, "MetricsPerFunction": MetricsPerFunction,
+                "NamingStyle": NamingStyle, "ErrorHandlingStyle": ErrorHandlingStyle,
+                "AsyncStyle": AsyncStyle, "TypingStyle": TypingStyle,
+                "DocumentationStyle": DocumentationStyle, "OrganizationStyle": OrganizationStyle,
+                "Percentiles": Percentiles,
+            }
+            if ftype_str in local_types:
+                ftype = local_types[ftype_str]
 
-        origin = getattr(ftype, '__origin__', None)
-
+        # Dataclass field → recurse
         if hasattr(ftype, '__dataclass_fields__') and isinstance(val, dict):
             kwargs[name] = _from_dict(ftype, val)
-        elif origin is list and isinstance(val, list):
-            args = getattr(ftype, '__args__', (None,))
-            item_type = args[0] if args else None
-            if item_type and hasattr(item_type, '__dataclass_fields__'):
-                kwargs[name] = [_from_dict(item_type, v) if isinstance(v, dict) else v
+            continue
+
+        # List field → check for known item types
+        if isinstance(val, list):
+            item_cls = _LIST_TYPES.get(name)
+            if item_cls and hasattr(item_cls, '__dataclass_fields__'):
+                kwargs[name] = [_from_dict(item_cls, v) if isinstance(v, dict) else v
                                 for v in val]
             else:
                 kwargs[name] = val
-        else:
-            kwargs[name] = val
+            continue
+
+        kwargs[name] = val
 
     return cls(**kwargs)
