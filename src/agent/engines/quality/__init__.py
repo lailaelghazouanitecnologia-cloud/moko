@@ -118,6 +118,30 @@ class ImprovementReport:
     def improved(self) -> bool:
         return self.delta > 0.01
 
+    @property
+    def issues_fixed(self) -> int:
+        return sum(self.issues_resolved.values())
+
+    @property
+    def issues_found(self) -> int:
+        return sum(self.issues_detected.values())
+
+    @property
+    def auto_fixes(self) -> int:
+        return sum(self.auto_fixes_applied.values())
+
+    @property
+    def prompt_fixes(self) -> int:
+        return self.llm_calls_made
+
+    @property
+    def quality_before(self) -> float:
+        return self.score_before
+
+    @property
+    def quality_after(self) -> float:
+        return self.score_after
+
     # Issues
     issues_detected: Dict[str, int] = field(default_factory=dict)
     issues_resolved: Dict[str, int] = field(default_factory=dict)

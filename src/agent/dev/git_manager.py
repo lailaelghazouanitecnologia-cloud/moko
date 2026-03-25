@@ -63,7 +63,12 @@ class GitManager:
         # Create initial commit so branches have a base
         gitignore = self.project_dir / ".gitignore"
         if not gitignore.exists():
-            gitignore.write_text("node_modules/\ndist/\n")
+            gitignore.write_text(
+                "node_modules/\ndist/\n"
+                ".quality_db.jsonl\n.error_db.jsonl\n"
+                ".style_profile.json\n.learned_scorer.json\n"
+                "index-snapshot.json\n"
+            )
         self._run("add", "-A")
         self._run("commit", "-m", "initial commit", "--allow-empty")
         self._log("repo initialized with initial commit")
@@ -79,8 +84,17 @@ class GitManager:
         self._log(f"created branch {name} from {from_branch}")
 
     def checkout(self, branch: str) -> None:
-        """Checkout an existing branch."""
-        self._run("checkout", branch)
+        """Checkout an existing branch. Stashes uncommitted changes if needed."""
+        try:
+            self._run("checkout", branch)
+        except GitError:
+            # Stash uncommitted changes and retry
+            try:
+                self._run("stash", "--include-untracked")
+                self._log("stashed uncommitted changes")
+            except GitError:
+                pass
+            self._run("checkout", branch)
 
     def commit_all(self, message: str) -> str:
         """Stage all changes and commit. Returns the commit hash."""
