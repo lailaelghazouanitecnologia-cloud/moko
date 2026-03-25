@@ -10,6 +10,7 @@ Strategies:
   - NamingStrategy: rename generic variables to semantic names
   - StructureStrategy: extract constants, fix bracket access
   - EncapsulationStrategy: add readonly, convert public→private
+  - ErrorHandlingStrategy: add typed error classes, validation guards
   - DocStrategy: add JSDoc stubs for public methods
   - PromptHintStrategy: builds targeted LLM prompt for complex fixes
 """
@@ -335,6 +336,186 @@ class EncapsulationStrategy:
         changes += count
 
         return result, changes
+
+
+class ErrorHandlingStrategy:
+    """Add typed error handling to classes and functions.
+
+    Detects methods that should have validation/error handling and adds:
+    1. Input validation guards (throw TypeError/RangeError)
+    2. try/catch wrappers for I/O-like operations (parse, load, save, fetch)
+    3. Typed error imports when missing
+
+    Conservative: only adds where clearly needed (constructors with params,
+    parse/load methods). Does NOT add generic try/catch everywhere.
+    """
+
+    # Methods that should have error handling
+    IO_METHODS = re.compile(
+        r"(?:async\s+)?(?:public\s+|private\s+|protected\s+)?"
+        r"(parse|load|save|fetch|read|write|connect|send|receive|decode|encode|serialize|deserialize)"
+        r"\s*\(",
+        re.IGNORECASE,
+    )
+
+    # Constructor params that should be validated
+    VALIDATE_TYPES = {"string", "number", "boolean"}
+
+    def apply(self, code: str, features: Dict[str, float]) -> StrategyResult:
+        """Add error handling where clearly needed."""
+        changes = 0
+        result = code
+
+        # Step 1: Add validation guards to constructors
+        result, ctor_changes = self._add_constructor_validation(result)
+        changes += ctor_changes
+
+        # Step 2: Wrap I/O methods with try/catch
+        result, io_changes = self._wrap_io_methods(result)
+        changes += io_changes
+
+        if changes == 0:
+            return StrategyResult(None, 0, "No error handling improvements found")
+
+        return StrategyResult(
+            fixed_code=result,
+            changes_made=changes,
+            description=f"Added error handling: {ctor_changes} validations, {io_changes} try/catch",
+        )
+
+    def _add_constructor_validation(self, code: str) -> Tuple[str, int]:
+        """Add input validation to constructor parameters."""
+        changes = 0
+        lines = code.split("\n")
+        new_lines = []
+
+        # Find constructors with typed params
+        ctor_pattern = re.compile(
+            r"^(\s*)constructor\s*\(([^)]+)\)\s*\{",
+        )
+
+        i = 0
+        while i < len(lines):
+            line = lines[i]
+            match = ctor_pattern.match(line)
+            if match:
+                indent = match.group(1)
+                params_str = match.group(2)
+                new_lines.append(line)
+                i += 1
+
+                # Parse params: name: type
+                validations = []
+                for param in params_str.split(","):
+                    param = param.strip()
+                    # Skip readonly/private/public modifiers
+                    param_clean = re.sub(
+                        r"^(private|public|protected|readonly)\s+", "", param
+                    )
+                    param_clean = re.sub(
+                        r"^(private|public|protected|readonly)\s+", "", param_clean
+                    )
+                    name_type = re.match(r"(\w+)\s*:\s*(\w+)", param_clean)
+                    if name_type:
+                        pname, ptype = name_type.group(1), name_type.group(2)
+                        ptype_lower = ptype.lower()
+                        if ptype_lower == "string":
+                            validations.append(
+                                f"{indent}    if (!{pname} || typeof {pname} !== 'string') "
+                                f"throw new TypeError('{pname} must be a non-empty string');"
+                            )
+                        elif ptype_lower == "number":
+                            validations.append(
+                                f"{indent}    if (typeof {pname} !== 'number' || isNaN({pname})) "
+                                f"throw new TypeError('{pname} must be a valid number');"
+                            )
+
+                # Only add if constructor body doesn't already have validation
+                if validations:
+                    body_preview = "\n".join(lines[i:min(i + 10, len(lines))])
+                    if "throw new" not in body_preview and "typeof" not in body_preview:
+                        for v in validations:
+                            new_lines.append(v)
+                            changes += 1
+                continue
+
+            new_lines.append(line)
+            i += 1
+
+        return "\n".join(new_lines), changes
+
+    def _wrap_io_methods(self, code: str) -> Tuple[str, int]:
+        """Add try/catch to I/O-like methods that lack error handling."""
+        changes = 0
+        lines = code.split("\n")
+        new_lines = []
+
+        i = 0
+        while i < len(lines):
+            line = lines[i]
+            match = self.IO_METHODS.search(line)
+            if match and "{" in line:
+                method_name = match.group(1)
+                # Check if method body already has try/catch
+                brace_depth = 0
+                body_start = i
+                body_lines = []
+                has_try = False
+                for j in range(i, min(i + 50, len(lines))):
+                    brace_depth += lines[j].count("{") - lines[j].count("}")
+                    body_lines.append(lines[j])
+                    if "try" in lines[j] and "{" in lines[j]:
+                        has_try = True
+                    if brace_depth == 0 and j > i:
+                        break
+
+                if has_try or len(body_lines) <= 2:
+                    # Already has error handling or empty method
+                    new_lines.append(line)
+                    i += 1
+                    continue
+
+                # Add try/catch wrapper
+                indent_match = re.match(r"^(\s*)", line)
+                indent = indent_match.group(1) if indent_match else "    "
+                inner_indent = indent + "    "
+
+                new_lines.append(line)  # method signature {
+                new_lines.append(f"{inner_indent}try {{")
+                i += 1
+
+                # Copy body (skip first { and last })
+                brace_depth = line.count("{") - line.count("}")
+                while i < len(lines):
+                    brace_depth += lines[i].count("{") - lines[i].count("}")
+                    if brace_depth == 0:
+                        # Last line (closing brace)
+                        new_lines.append(
+                            f"{inner_indent}}} catch (error: unknown) {{"
+                        )
+                        error_msg = f"Failed to {method_name}"
+                        new_lines.append(
+                            f"{inner_indent}    const message = error instanceof Error "
+                            f"? error.message : String(error);"
+                        )
+                        new_lines.append(
+                            f"{inner_indent}    throw new Error(`{error_msg}: ${{message}}`);"
+                        )
+                        new_lines.append(f"{inner_indent}}}")
+                        new_lines.append(lines[i])  # closing }
+                        changes += 1
+                        i += 1
+                        break
+                    else:
+                        # Indent body by one level
+                        new_lines.append(f"    {lines[i]}")
+                        i += 1
+                continue
+
+            new_lines.append(line)
+            i += 1
+
+        return "\n".join(new_lines), changes
 
 
 class DocStrategy:

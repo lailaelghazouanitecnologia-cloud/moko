@@ -490,9 +490,9 @@ def detect_issues(features: QualityFeatures) -> List[Tuple[str, str, str]]:
         issues.append(("poor_encapsulation", "major",
                         f"Public field ratio {features.public_field_ratio:.0%} — use private + getters"))
 
-    # Low readonly usage
+    # Low readonly usage → encapsulation issue, not type issue
     if features.readonly_ratio < 0.1 and features.class_count > 0 and features.loc > 50:
-        issues.append(("weak_types", "minor",
+        issues.append(("poor_encapsulation", "minor",
                         "Low readonly usage — mark immutable fields readonly"))
 
     # Typos in code

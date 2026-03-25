@@ -139,11 +139,14 @@ class QualityDB:
     def find_similar(
         self, issue_type: str, features: Dict[str, float], top_k: int = 5
     ) -> List[Tuple[QualityRecord, float]]:
-        """Find past records similar to given features."""
+        """Find past records similar to given features.
+
+        Only uses records matching the issue_type — no cross-type fallback.
+        """
         candidates = self._patterns.get(issue_type, [])
         if not candidates:
-            # Fall back to all records
-            candidates = self.records
+            # Only use records with matching issue type, not ALL records
+            candidates = [r for r in self.records if r.issue_type == issue_type]
 
         scored: List[Tuple[QualityRecord, float]] = []
         for rec in candidates:
@@ -156,14 +159,18 @@ class QualityDB:
     def best_action_for(
         self, issue_type: str, features: Dict[str, float]
     ) -> Optional[Tuple[str, str, float]]:
-        """Predict best (action, strategy, confidence) from past successes."""
+        """Predict best (action, strategy, confidence) from past successes.
+
+        Requires at least 3 matching records to override rule-based fallback.
+        """
         similar = self.find_similar(issue_type, features, top_k=10)
-        if not similar:
-            return None
+        if not similar or len(similar) < 3:
+            return None  # Not enough data — let rules decide
 
         # Weighted voting on successful resolutions
         votes: Dict[str, float] = {}  # "action|strategy" -> weighted score
         total_weight = 0.0
+        vote_count = 0
 
         for rec, sim in similar:
             if not rec.success or sim < 0.3:
@@ -172,8 +179,9 @@ class QualityDB:
             weight = sim * (1.0 + rec.quality_delta)  # better deltas = more weight
             votes[key] = votes.get(key, 0.0) + weight
             total_weight += weight
+            vote_count += 1
 
-        if not votes or total_weight == 0:
+        if not votes or total_weight == 0 or vote_count < 3:
             return None
 
         best_key = max(votes, key=lambda k: votes[k])

@@ -33,7 +33,7 @@ from .quality_features import (
 from .quality_classifier import QualityClassifier, QualityPrediction
 from .quality_strategies import (
     TypeStrategy, NamingStrategy, StructureStrategy, EncapsulationStrategy,
-    DocStrategy, PromptHintStrategy, StrategyResult,
+    ErrorHandlingStrategy, DocStrategy, PromptHintStrategy, StrategyResult,
 )
 from .style_profile import (
     StyleProfile, StyleAnalyzer, StylePreference,
@@ -117,6 +117,7 @@ class QualityEngine:
         self.naming_strategy = NamingStrategy()
         self.structure_strategy = StructureStrategy()
         self.encapsulation_strategy = EncapsulationStrategy()
+        self.error_handling_strategy = ErrorHandlingStrategy()
         self.doc_strategy = DocStrategy()
         self.prompt_builder = PromptHintStrategy()
 
@@ -348,6 +349,8 @@ class QualityEngine:
             return self.structure_strategy.apply(code, features_dict)
         elif prediction.action == "encapsulate":
             return self.encapsulation_strategy.apply(code, features_dict)
+        elif prediction.action == "add_error_handling":
+            return self.error_handling_strategy.apply(code, features_dict)
         elif prediction.action == "add_docs":
             return self.doc_strategy.apply(code, features_dict)
         return None
@@ -402,9 +405,14 @@ class QualityEngine:
         score += name_score * w.get("naming", 0.15)
 
         # Algorithm depth: complexity + no stubs
-        algo_score = min(features.file_complexity * 20, 1.0)
-        algo_score *= (1.0 - features.stub_indicator_score)
-        algo_score += features.has_algorithm_docs * 0.3
+        # Small utility files (<30 LOC): exempt from algorithm depth penalty
+        # These are typically index.ts, constants.ts, types-only files
+        if features.loc < 30:
+            algo_score = 0.6  # neutral — not good or bad
+        else:
+            algo_score = min(features.file_complexity * 20, 1.0)
+            algo_score *= (1.0 - features.stub_indicator_score)
+            algo_score += features.has_algorithm_docs * 0.3
         algo_score = max(0, min(algo_score, 1.0))
         score += algo_score * w.get("algorithm", 0.20)
 

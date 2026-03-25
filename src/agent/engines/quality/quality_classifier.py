@@ -52,31 +52,47 @@ class QualityClassifier:
     ) -> QualityPrediction:
         """Predict best action for a quality issue.
 
-        Priority: learned tree → DB similarity → rules.
+        Priority: learned tree (validated) → DB similarity → rules.
         """
         vec = features.to_vector()
         feat_dict = features.to_dict()
 
-        # 1. Try learned tree
+        # Valid actions per issue type — prevents stale trees/DB from misrouting
+        VALID_ACTIONS: Dict[str, set] = {
+            "weak_types": {"add_types"},
+            "poor_encapsulation": {"encapsulate"},
+            "missing_error_handling": {"add_error_handling"},
+            "stub_impl": {"rewrite_algorithm"},
+            "shallow_algorithm": {"rewrite_algorithm"},
+            "bad_naming": {"rename"},
+            "no_docs": {"add_docs"},
+            "private_access": {"restructure"},
+            "code_typos": {"fix_typos"},
+            "hardcoded_template": {"extract_constants", "restructure"},
+        }
+        valid = VALID_ACTIONS.get(issue_type)
+
+        # 1. Try learned tree (only if action is valid for this issue type)
         if self.tree and self.trained_on >= 30:
             leaf = self._tree_predict(self.tree, vec)
             if leaf and "|" in leaf:
                 action, strategy = leaf.split("|", 1)
-                return QualityPrediction(
-                    issue_type=issue_type,
-                    action=action,
-                    strategy=strategy,
-                    confidence=0.75,
-                    source="learned",
-                    hint=self._generate_hint(issue_type, action, features),
-                )
+                if not valid or action in valid:
+                    return QualityPrediction(
+                        issue_type=issue_type,
+                        action=action,
+                        strategy=strategy,
+                        confidence=0.75,
+                        source="learned",
+                        hint=self._generate_hint(issue_type, action, features),
+                    )
 
-        # 2. Try DB similarity
+        # 2. Try DB similarity (only if action is valid)
         if self.db:
             result = self.db.best_action_for(issue_type, feat_dict)
             if result:
                 action, strategy, conf = result
-                if conf >= 0.4:
+                if conf >= 0.4 and (not valid or action in valid):
                     return QualityPrediction(
                         issue_type=issue_type,
                         action=action,
@@ -216,16 +232,16 @@ class QualityClassifier:
                      "Use public API methods or dependency injection.",
             )
 
-        # Missing error handling
+        # Missing error handling → auto-fix first (validation + try/catch)
         if issue_type == "missing_error_handling":
             return QualityPrediction(
                 issue_type=issue_type,
                 action="add_error_handling",
-                strategy="prompt_hint",
-                confidence=0.6,
+                strategy="auto",
+                confidence=0.7,
                 source="rule",
-                hint="Add try/catch for I/O operations. Use typed errors "
-                     "(TypeError, RangeError) not generic Error.",
+                hint="Add input validation to constructors. Use typed errors "
+                     "(TypeError, RangeError). Wrap I/O methods in try/catch.",
             )
 
         # Poor encapsulation → auto-fix with EncapsulationStrategy
