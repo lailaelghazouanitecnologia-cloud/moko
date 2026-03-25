@@ -25,6 +25,7 @@ from .emission import EmissionIndex
 from .density import DensityAnalyzer
 from ..engines.context import ContextEngine
 from ..engines.fix import FixEngine
+from ..engines.quality import QualityEngine
 
 
 @dataclass
@@ -96,6 +97,7 @@ class BranchPipelineOrchestrator:
         self.decomposer = TaskDecomposer(self.llm, verbose=self.verbose)
         self.fix_loop: Optional[CompileFixLoop] = None   # Legacy, kept for compat
         self.fix_engine: Optional[FixEngine] = None       # New intelligent fix engine
+        self.quality_engine: Optional[QualityEngine] = None  # Code quality learning engine
         self.emission_index: Optional[EmissionIndex] = None
         self.engine: Optional[ContextEngine] = None
         self.semantic_store = None   # SemanticStore for reference matching
@@ -134,7 +136,10 @@ class BranchPipelineOrchestrator:
             max_iterations=4, verbose=self.verbose,
         )
 
-        # 2b. Initialize context engine
+        # 2b. Initialize quality engine
+        self.quality_engine = QualityEngine(str(project_dir))
+
+        # 2c. Initialize context engine
         self.engine = ContextEngine(project_dir / "src")
         self.engine.init(project_dir)
 
@@ -259,6 +264,25 @@ class BranchPipelineOrchestrator:
             # Commit fixes if any changes were made
             if self.git.has_uncommitted():
                 self.git.commit_all(f"fix({task.name}): resolve tsc errors")
+
+            # 5b. Quality analysis and auto-improvement
+            if self.quality_engine:
+                try:
+                    module_files = self._read_module_files(module_dir)
+                    if module_files:
+                        improved, q_result = self.quality_engine.improve_module(
+                            task.name, module_files, llm=self.llm, max_llm_calls=2,
+                        )
+                        if q_result.issues_fixed > 0:
+                            self._write_module_files(module_dir, improved)
+                            if self.git.has_uncommitted():
+                                self.git.commit_all(
+                                    f"quality({task.name}): {q_result.auto_fixes} auto-fixes, "
+                                    f"{q_result.prompt_fixes} LLM-fixes"
+                                )
+                            self._log(f"  quality: {q_result.summary()}")
+                except Exception as e:
+                    self._log(f"  quality pass failed: {e}")
 
             # 6. Merge to main
             merged = self.git.merge(
@@ -768,6 +792,27 @@ class BranchPipelineOrchestrator:
                     if f.name not in ("workspace.yaml", "deps.yaml", "meta.yaml"):
                         ref_paths.append(str(f.relative_to(OUT_DIR)))
         return ref_paths
+
+    def _read_module_files(self, module_dir: Path) -> dict[str, str]:
+        """Read all .ts files in a module directory."""
+        files = {}
+        if not module_dir.exists():
+            return files
+        for ts_file in module_dir.glob("*.ts"):
+            try:
+                files[ts_file.name] = ts_file.read_text()
+            except Exception:
+                pass
+        return files
+
+    def _write_module_files(self, module_dir: Path, files: dict[str, str]):
+        """Write improved files back to disk."""
+        for filename, code in files.items():
+            path = module_dir / filename
+            try:
+                path.write_text(code)
+            except Exception:
+                pass
 
     def _count_loc(self, directory: Path) -> int:
         """Count total lines of code in a directory."""
