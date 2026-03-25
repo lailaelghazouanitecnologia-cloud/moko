@@ -215,7 +215,23 @@ TYPE REUSE (IMPORTANT):
 24. ALWAYS import and use types from dependency modules. Do NOT redefine types that already exist.
 25. When a method accepts or returns domain objects (e.g., Task, Player, Config), use the imported type — NEVER use generic Record<string, unknown> or inline object literals as substitutes.
 26. Reference types listed in 'Available from other modules' section. Import and use them in method signatures, fields, and generics.
-27. Create interfaces for abstractions that other modules should depend on. Prefer interface over class for pure contracts."""
+27. Create interfaces for abstractions that other modules should depend on. Prefer interface over class for pure contracts.
+
+CODE STYLE (CRITICAL — write clean, production code like a senior engineer):
+28. NO unnecessary comments. NEVER add JSDoc that just describes what is already obvious from the signature. BAD: "/** Add a task. */ addTask(task: Task)". GOOD: "/** Merge overlapping intervals using sweep-line algorithm. */".
+29. NEVER add typeof/instanceof checks on typed parameters. WRONG: "if (typeof id !== 'string') throw new TypeError(...)". The type signature already enforces this. Delete ALL such checks.
+30. Use OPTIONAL CHAINING (?.) everywhere: "user?.name" not "if (user) { user.name }".
+31. Use NULLISH COALESCING (??) for defaults: "value ?? 0" not "value !== undefined ? value : 0".
+32. Use TERNARY for simple branches: "const x = cond ? a : b" not 4-line if/else.
+33. Use EARLY RETURNS for control flow, but NEVER for type-checking typed params.
+34. Every line must earn its place. REMOVE: validation of typed params, comments restating code, empty catch blocks, redundant null checks on non-nullable fields.
+35. Use string literal union types: type Status = 'active' | 'paused' | 'done'.
+
+ANTI-PATTERNS (NEVER DO THESE):
+- if (typeof x !== 'string') throw new TypeError(...) — when x: string in signature
+- /** Gets the name. */ getName(): string — comment restates signature
+- if (!param) throw new TypeError('param is required') — when param is typed non-optional
+- @param x - The x value. @returns The result. — JSDoc restating the obvious"""
 
 BLUEPRINT_SYSTEM = """You are a software architect. You generate detailed YAML blueprints from reference Roska descriptors.
 

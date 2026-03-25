@@ -127,7 +127,7 @@ CLAUDE_DEFAULT_STYLE: Dict[str, float] = {
 
     # Errors — typed exceptions, defensive
     "errors_typed": 0.8,
-    "errors_defensive": 0.6,
+    "errors_defensive": 0.2,
     "errors_graceful": 0.5,
 
     # Code style — readonly, const, early returns
@@ -262,13 +262,16 @@ class StyleProfile:
         # Error handling
         if eff.get("errors_typed", 0.5) > 0.7:
             hints.append("Use typed exceptions (TypeError, RangeError) not generic Error.")
-        if eff.get("errors_defensive", 0.5) > 0.7:
-            hints.append("Validate all inputs defensively.")
+        # NOTE: removed "validate all inputs defensively" — causes excessive boilerplate.
+        # TypeScript's type system handles parameter validation.
 
-        # Code style
+        # Code style — conciseness
         if eff.get("style_early_return", 0.5) > 0.7:
             hints.append("Use early returns (guard clauses) to reduce nesting.")
-        return hints[:8]  # cap to avoid prompt bloat
+        hints.append("Use ?. and ?? operators instead of null checks and || defaults.")
+        hints.append("NO unnecessary comments. Do not add JSDoc that restates the method name.")
+        hints.append("Do NOT add typeof/instanceof checks on typed parameters — trust the type system.")
+        return hints[:10]  # cap to avoid prompt bloat
 
     def to_quality_weights(self) -> Dict[str, float]:
         """Convert preferences to QualityEngine scoring weights.

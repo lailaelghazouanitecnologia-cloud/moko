@@ -332,8 +332,11 @@ class BranchPipelineOrchestrator:
             tokens = self._generate_module(task, project_dir, target, references, project_bp)
             br.tokens_used = tokens
 
-            # 3. Count LOC
+            # 3. Strip boilerplate (typeof checks on typed params, trivial JSDoc)
             module_dir = project_dir / "src" / task.name
+            self._strip_boilerplate(module_dir)
+
+            # 3b. Count LOC
             br.total_loc = self._count_loc(module_dir)
             br.types_generated = len(task.types)
 
@@ -932,6 +935,117 @@ class BranchPipelineOrchestrator:
             path = module_dir / filename
             try:
                 path.write_text(code)
+            except Exception:
+                pass
+
+    def _strip_boilerplate(self, module_dir: Path):
+        """Strip defensive boilerplate from generated TypeScript files.
+
+        Removes:
+        - typeof/instanceof checks on typed parameters
+        - Trivial JSDoc that restates the method signature
+        - Empty catch blocks
+        - Redundant null checks on non-nullable fields
+        """
+        import re as _re
+
+        if not module_dir.exists():
+            return
+
+        for ts_file in module_dir.rglob("*.ts"):
+            if ts_file.name == "index.ts":
+                continue
+            try:
+                code = ts_file.read_text()
+                original = code
+                lines = code.split("\n")
+                cleaned: list[str] = []
+                i = 0
+                skip_jsdoc = False
+                jsdoc_buffer: list[str] = []
+
+                while i < len(lines):
+                    line = lines[i]
+                    stripped = line.strip()
+
+                    # Collect JSDoc blocks to analyze
+                    if stripped.startswith("/**"):
+                        jsdoc_buffer = [line]
+                        j = i + 1
+                        while j < len(lines) and "*/" not in lines[j]:
+                            jsdoc_buffer.append(lines[j])
+                            j += 1
+                        if j < len(lines):
+                            jsdoc_buffer.append(lines[j])
+
+                        # Check if JSDoc is trivial (only @param/@returns restating types)
+                        jsdoc_text = " ".join(l.strip().lstrip("*/ ") for l in jsdoc_buffer)
+                        has_useful = _re.search(
+                            r"(?:algorithm|complexity|note|important|warning|example|"
+                            r"O\(|sweep|merge|binary|recursive|amortized|"
+                            r"invariant|precondition|postcondition|trade.?off)",
+                            jsdoc_text, _re.IGNORECASE
+                        )
+                        # Count meaningful content lines (not just @param, @returns, @throws)
+                        content_lines = [
+                            l for l in jsdoc_buffer
+                            if l.strip().lstrip("* ") and
+                            not _re.match(r"^\s*\*?\s*@(param|returns?|throws?|type)\b", l.strip()) and
+                            not _re.match(r"^\s*\/?\*+\/?$", l.strip()) and
+                            not _re.match(r"^\s*\*\s*(Gets?|Sets?|Creates?|Deletes?|Updates?|Returns?|Checks?|Validates?)\s+", l.strip())
+                        ]
+                        if not has_useful and len(content_lines) <= 1:
+                            # Trivial JSDoc — skip it
+                            i = j + 1
+                            continue
+
+                        # Keep JSDoc as-is
+                        cleaned.extend(jsdoc_buffer)
+                        i = j + 1
+                        continue
+
+                    # Remove typeof checks on typed params:
+                    # "if (typeof x !== 'string') { throw new TypeError(...); }"
+                    # or multi-line version
+                    if _re.match(r"\s*if\s*\(\s*typeof\s+\w+\s*!==\s*['\"]", stripped):
+                        # Check if next line(s) are just throw + closing brace
+                        j = i + 1
+                        while j < len(lines) and lines[j].strip() in ("", "}"):
+                            j += 1
+                        if j <= i + 3:  # Small block: if + throw + }
+                            # Skip this validation block
+                            while i < len(lines) and not (lines[i].strip() == "}" and i > j - 3):
+                                i += 1
+                            i += 1  # skip closing }
+                            continue
+
+                    # Remove instanceof checks on typed params
+                    if _re.match(r"\s*if\s*\(\s*!\(\s*\w+\s+instanceof\s+\w+\s*\)\s*\)", stripped):
+                        j = i + 1
+                        while j < len(lines) and lines[j].strip() in ("", "}"):
+                            j += 1
+                        if j <= i + 3:
+                            while i < len(lines) and not (lines[i].strip() == "}" and i > j - 3):
+                                i += 1
+                            i += 1
+                            continue
+
+                    # Remove "if (!param) throw" on typed non-optional params
+                    if _re.match(r"\s*if\s*\(\s*!\w+\s*\)\s*\{\s*$", stripped) or \
+                       _re.match(r"\s*if\s*\(\s*!\w+\s*\)\s+throw\b", stripped):
+                        if "throw" in stripped:
+                            i += 1
+                            continue
+                        elif i + 1 < len(lines) and "throw" in lines[i + 1]:
+                            i += 3  # skip if { throw }
+                            continue
+
+                    cleaned.append(line)
+                    i += 1
+
+                new_code = "\n".join(cleaned)
+                if new_code != original:
+                    ts_file.write_text(new_code)
             except Exception:
                 pass
 

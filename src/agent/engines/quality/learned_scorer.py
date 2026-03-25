@@ -73,6 +73,17 @@ class CodeProfile:
     type_reuse_ratio: float = 0.0       # types used across modules / total types
     dead_export_ratio: float = 0.0      # exports never imported elsewhere
 
+    # Code conciseness (NEW — differentiate Claude vs AVA)
+    comment_density: float = 0.0        # comment lines / 100 LOC
+    unnecessary_comment_ratio: float = 0.0  # trivial comments / total comments (lower=better)
+    optional_chaining_density: float = 0.0  # ?. operators / 100 LOC
+    nullish_coalescing_density: float = 0.0 # ?? operators / 100 LOC
+    ternary_ratio: float = 0.0          # ternary / (ternary + if) — code conciseness
+    boilerplate_ratio: float = 0.0      # validation+guard LOC / total LOC (lower=better)
+    literal_type_density: float = 0.0   # string literal types / 100 LOC
+    avg_exports_per_file: float = 0.0   # exports per file (higher=consolidated)
+    void_method_ratio: float = 0.0      # void methods / total methods (lower=better)
+
     def to_dict(self) -> dict:
         return asdict(self)
 
@@ -226,6 +237,58 @@ class ProfileExtractor:
         # Cross-module coherence
         p.import_coherence, p.type_reuse_ratio, p.dead_export_ratio = \
             self._measure_coherence(files)
+
+        # Code conciseness metrics (NEW)
+        p.optional_chaining_density = len(re.findall(r"\?\.\w", all_code)) * scale
+        p.nullish_coalescing_density = len(re.findall(r"\?\?\s", all_code)) * scale
+
+        # Ternary vs if ratio (conciseness indicator)
+        ternary_count = len(re.findall(r"[^?]\?[^?.:]\S.*:", all_code))
+        if_count = len(re.findall(r"\bif\s*\(", all_code))
+        p.ternary_ratio = ternary_count / max(ternary_count + if_count, 1)
+
+        # String literal type density
+        p.literal_type_density = len(re.findall(
+            r"['\"][-\w]+['\"]\s*\|", all_code
+        )) * scale
+
+        # Comments analysis
+        comment_lines = 0
+        trivial_comments = 0
+        total_comments = 0
+        for line in all_code.split("\n"):
+            stripped = line.strip()
+            if stripped.startswith("//") or stripped.startswith("*") or stripped.startswith("/*"):
+                comment_lines += 1
+                total_comments += 1
+                # Trivial: just restates the method name or is obvious
+                comment_text = re.sub(r"^[/*\s]+", "", stripped).lower()
+                if re.match(r"^(get|set|create|delete|update|return|check|validate|constructor|import)\s+\w+\s*$", comment_text):
+                    trivial_comments += 1
+                elif len(comment_text) < 4:
+                    trivial_comments += 1
+        p.comment_density = comment_lines * scale
+        p.unnecessary_comment_ratio = trivial_comments / max(total_comments, 1)
+
+        # Boilerplate ratio (validation/guard code vs logic)
+        validation_lines = 0
+        for line in all_code.split("\n"):
+            stripped = line.strip()
+            if re.search(r"typeof\s+\w+\s*!==|instanceof\s+\w+|throw\s+new\s+TypeError|throw\s+new\s+RangeError", stripped):
+                validation_lines += 1
+            elif re.match(r"if\s*\(\s*!", stripped) and "throw" in stripped:
+                validation_lines += 1
+        p.boilerplate_ratio = validation_lines / max(total_loc, 1)
+
+        # Exports per file
+        p.avg_exports_per_file = len(re.findall(
+            r"\bexport\s+(?:class|interface|type|function|const|enum)\b", all_code
+        )) / max(p.total_files, 1)
+
+        # Void method ratio
+        void_methods = len(re.findall(r"\):\s*void\s*\{", all_code))
+        all_methods = len(re.findall(r"\):\s*\w+", all_code))
+        p.void_method_ratio = void_methods / max(all_methods, 1)
 
         return p
 
@@ -530,6 +593,39 @@ class LearnedScorer:
             ScoreDimension("type_reuse", weight=1.5,
                            reference_value=ref.type_reuse_ratio,
                            direction="higher_better"),
+
+            # Code conciseness (NEW — differentiators)
+            ScoreDimension("optional_chaining", weight=1.5,
+                           reference_value=ref.optional_chaining_density,
+                           direction="higher_better"),
+            ScoreDimension("nullish_coalescing", weight=1.0,
+                           reference_value=ref.nullish_coalescing_density,
+                           direction="higher_better"),
+            ScoreDimension("ternary_ratio", weight=0.8,
+                           reference_value=ref.ternary_ratio,
+                           tolerance=tol("ternary_ratio", 0.15),
+                           direction="closer_better"),
+            ScoreDimension("literal_types", weight=1.0,
+                           reference_value=ref.literal_type_density,
+                           direction="higher_better"),
+            ScoreDimension("boilerplate_ratio", weight=2.0,
+                           reference_value=ref.boilerplate_ratio,
+                           direction="lower_better"),
+            ScoreDimension("comment_density", weight=1.0,
+                           reference_value=ref.comment_density,
+                           tolerance=tol("comment_density", 3.0),
+                           direction="closer_better"),
+            ScoreDimension("unnecessary_comments", weight=1.5,
+                           reference_value=ref.unnecessary_comment_ratio,
+                           direction="lower_better"),
+            ScoreDimension("exports_per_file", weight=0.5,
+                           reference_value=ref.avg_exports_per_file,
+                           tolerance=tol("avg_exports_per_file", 1.5),
+                           direction="closer_better"),
+            ScoreDimension("void_method_ratio", weight=0.5,
+                           reference_value=ref.void_method_ratio,
+                           tolerance=tol("void_method_ratio", 0.15),
+                           direction="closer_better"),
         ]
 
     def score(self, target: CodeProfile) -> Tuple[float, Dict[str, Tuple[float, float, str]]]:
@@ -649,6 +745,16 @@ class LearnedScorer:
             "pattern_consistency": profile.naming_consistency,
             "import_coherence": profile.import_coherence,
             "type_reuse": profile.type_reuse_ratio,
+            # New conciseness metrics
+            "optional_chaining": profile.optional_chaining_density,
+            "nullish_coalescing": profile.nullish_coalescing_density,
+            "ternary_ratio": profile.ternary_ratio,
+            "literal_types": profile.literal_type_density,
+            "boilerplate_ratio": profile.boilerplate_ratio,
+            "comment_density": profile.comment_density,
+            "unnecessary_comments": profile.unnecessary_comment_ratio,
+            "exports_per_file": profile.avg_exports_per_file,
+            "void_method_ratio": profile.void_method_ratio,
         }
         return mapping.get(dim_name, 0.0)
 
