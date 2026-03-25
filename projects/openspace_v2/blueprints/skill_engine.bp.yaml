@@ -1,0 +1,222 @@
+## Blueprint — skill_engine
+name: skill_engine
+language: typescript
+target_dir: src/skill_engine
+description: 'SkillRegistry — discover, load, match, and inject skills. Skills follow the official SKILL.md format: - YAML
+  frontmatter with only ``name`` and ``description`` - Markdown body with instructions (loaded only after selection) Skills
+  are discovered from user-configured directories and matched to tasks '
+constraints: []
+references:
+- openspace/skill_engine/evolver.yaml
+- openspace/skill_engine/analyzer.yaml
+- openspace/skill_engine/patch.yaml
+- openspace/skill_engine/fuzzy_match.yaml
+- openspace/skill_engine/__init__.yaml
+- openspace/skill_engine/conversation_formatter.yaml
+- openspace/skill_engine/registry.yaml
+- openspace/skill_engine/retrieve_tool.yaml
+- openspace/skill_engine/types.yaml
+- openspace/skill_engine/store.yaml
+- openspace/skill_engine/skill_utils.yaml
+- openspace/skill_engine/skill_ranker.yaml
+types:
+- name: EvolutionTrigger
+  kind: enum
+  status: translated
+  target_file: src/skill_engine/evolution-trigger.ts
+  description: What initiated this evolution.
+  references:
+  - openspace/skill_engine/evolver.yaml
+- name: SkillEvolver
+  kind: class
+  status: translated
+  target_file: src/skill_engine/skill-evolver.ts
+  description: 'Execute skill evolution actions. Single entry point: ``evolve()`` takes an EvolutionContext, runs an LLM agent
+    loop (with optional tool use), applies the edit with retry, validates the result, and per'
+  methods:
+  - name: constructor
+    sig: '( store: SkillStore, registry: "SkillRegistry", llm_client: "LLMClient", model: Optional[str] = None, available_tools:
+      Optional[List["BaseTool"]] = None, *, max_concurrent: int = 3, ): void'
+    hint: 'uses: Semaphore, max, set'
+  - name: set_available_tools
+    sig: '(tools: List["BaseTool"]): void'
+    hint: 'uses: list'
+  - name: wait_background
+    sig: '(): void'
+    hint: 'uses: gather, len, info, clear'
+    async: true
+  - name: evolve
+    sig: '(ctx: EvolutionContext): SkillRecord'
+    hint: 'uses: join, error, warning, reset_call_source, _evolve_captured'
+    async: true
+  - name: process_analysis
+    sig: '( analysis: ExecutionAnalysis, ): Array<SkillRecord'
+    hint: 'uses: append, len, info, _build_context_from_analysis, _execute_contexts'
+    async: true
+  - name: process_tool_degradation
+    sig: '( problematic_tools: List["ToolQualityRecord"], ): Array<SkillRecord'
+    hint: 'uses: EvolutionContext, EvolutionSuggestion, Path, append, debug'
+    async: true
+  - name: process_metric_check
+    sig: '( min_selections: int = 5, ): Array<SkillRecord'
+    hint: 'uses: EvolutionContext, EvolutionSuggestion, Path, items, append'
+    async: true
+  - name: schedule_background
+    sig: '( coro, *, label: str = "background_evolution", ): asyncio.Task'
+    hint: 'uses: get_running_loop, warning, create_task, add, add_done_callback'
+  references:
+  - openspace/skill_engine/evolver.yaml
+- name: ExecutionAnalyzer
+  kind: class
+  status: translated
+  target_file: src/skill_engine/execution-analyzer.ts
+  description: 'Analyzes task execution results and tracks skill quality. Args: store: Persistence layer for skill records
+    and analyses. llm_client: LLM client used for the analysis call. model: Override model for an'
+  fields:
+  - name: enabled
+    type: unknown
+    default: enabled
+  methods:
+  - name: constructor
+    sig: (...7 params)
+    hint: ExecutionAnalyzer — post-execution analysis and skill quality tracking. Responsi
+  - name: analyze_execution
+    sig: '( task_id: str, recording_dir: str, execution_result: Dict[str, Any], available_tools: Optional[List[BaseTool]]
+      = None, ): ExecutionAnalysis'
+    hint: 'uses: Path, get, len, debug, error'
+    async: true
+  - name: get_evolution_candidates
+    sig: '( limit: int = 20 ): Array<ExecutionAnalysis'
+    hint: 'uses: load_evolution_candidates'
+    async: true
+  - name: get_store
+    sig: '(): SkillStore'
+    hint: ExecutionAnalyzer — post-execution analysis and skill quality tracking. Responsi
+  - name: close
+    sig: '(): void'
+    hint: 'uses: close'
+  references:
+  - openspace/skill_engine/analyzer.yaml
+- name: PatchType
+  kind: enum
+  status: translated
+  target_file: src/skill_engine/patch-type.ts
+  description: LLM output format for skill edits.
+  references:
+  - openspace/skill_engine/patch.yaml
+- name: PatchError
+  kind: class
+  status: translated
+  target_file: src/skill_engine/patch-error.ts
+  extends: RuntimeError
+  description: Raised when a patch cannot be applied.
+  references:
+  - openspace/skill_engine/patch.yaml
+- name: PatchParseError
+  kind: class
+  status: translated
+  target_file: src/skill_engine/patch-parse-error.ts
+  extends: PatchError
+  description: Raised when the patch text cannot be parsed.
+  references:
+  - openspace/skill_engine/patch.yaml
+- name: SkillRegistry
+  kind: class
+  status: translated
+  target_file: src/skill_engine/skill-registry.ts
+  description: 'Discover, load, select, and inject skills into agent context. Args: skill_dirs: Ordered list of directories
+    to scan.  Earlier entries have higher priority — a skill in the first dir shadows one with t'
+  methods:
+  - name: constructor
+    sig: (...1 params)
+    hint: SkillRegistry — discover, load, match, and inject skills. Skills follow the offi
+  - name: discover
+    sig: '(): Array<SkillMeta'
+    hint: 'uses: check_skill_safety, is_dir, is_skill_safe, len, list'
+  - name: list_skills
+    sig: '(): Array<SkillMeta'
+    hint: 'uses: list, _ensure_discovered, values'
+  - name: get_skill
+    sig: '(skill_id: str): SkillMeta'
+    hint: 'uses: _ensure_discovered, get'
+  - name: get_skill_by_name
+    sig: '(name: str): SkillMeta'
+    hint: 'uses: _ensure_discovered, values'
+  - name: update_skill
+    sig: '(old_skill_id: str, new_meta: SkillMeta): void'
+    hint: 'uses: debug, exists, read_text, pop, pop'
+  - name: add_skill
+    sig: '(meta: SkillMeta): void'
+    hint: 'uses: debug, exists, read_text'
+  - name: discover_from_dirs
+    sig: '(extra_dirs: List[Path]): Array<SkillMeta'
+    hint: 'uses: append, check_skill_safety, is_dir, is_skill_safe, len'
+  - name: register_skill_dir
+    sig: '(skill_dir: Path): SkillMeta'
+    hint: 'uses: check_skill_safety, is_skill_safe, debug, info, warning'
+  - name: ranker
+    sig: '(): SkillRanker'
+    hint: 'uses: SkillRanker'
+  - name: select_skills_with_llm
+    sig: '( task_description: str, llm_client: "LLMClient", max_skills: int = 2, model: Optional[str] = None, skill_quality:
+      Optional[Dict[str, Dict[str, Any]]] = None, ): tuple[Array<SkillMeta>, Dict[string, Any'
+    hint: 'uses: join, join, append, append, append'
+    async: true
+  - name: load_skill_content
+    sig: '(skill_id: str): string'
+    hint: 'uses: get, _ensure_discovered, _strip_frontmatter'
+  - name: build_context_injection
+    sig: '( skills: List[SkillMeta], backends: Optional[List[str]] = None, ): string'
+    hint: 'uses: join, join, append, replace, append'
+  references:
+  - openspace/skill_engine/registry.yaml
+- name: RetrieveSkillTool
+  kind: class
+  status: translated
+  target_file: src/skill_engine/retrieve-skill-tool.ts
+  extends: LocalTool
+  description: 'Internal tool: mid-iteration skill retrieval. Reuses ``SkillRegistry.select_skills_with_llm()`` so the same
+    quality filter, BM25+embedding pre-filter, and plan-then-select LLM prompt are applied consi'
+  fields:
+  - name: backend_type
+    type: unknown
+    default: BackendType.SYSTEM
+  methods:
+  - name: constructor
+    sig: (...5 params)
+    hint: RetrieveSkillTool — mid-iteration skill retrieval for GroundingAgent. Registered
+  references:
+  - openspace/skill_engine/retrieve_tool.yaml
+- name: SkillCategory
+  kind: enum
+  status: translated
+  target_file: src/skill_engine/skill-category.ts
+  description: Skill primary category.
+  references:
+  - openspace/skill_engine/types.yaml
+- name: SkillVisibility
+  kind: enum
+  status: translated
+  target_file: src/skill_engine/skill-visibility.ts
+  description: Cloud visibility of a skill. (`Group` is managed by the cloud platform)
+  references:
+  - openspace/skill_engine/types.yaml
+- name: EvolutionType
+  kind: enum
+  status: translated
+  target_file: src/skill_engine/evolution-type.ts
+  description: Data types for skill quality tracking and evolution.
+  methods:
+  - name: to_origin
+    sig: '(): "SkillOrigin"'
+    hint: Data types for skill quality tracking and evolution.
+  references:
+  - openspace/skill_engine/types.yaml
+- name: SkillOrigin
+  kind: enum
+  status: translated
+  target_file: src/skill_engine/skill-origin.ts
+  description: 'How this skill was created / entered the system. Version DAG model — every change creates a new SkillRecord
+    node:: Lineage rules: IMPORTED / CAPTURED → root node, no parent (parent_skill_ids = []) DER'
+  references:
+  - openspace/skill_engine/types.yaml
