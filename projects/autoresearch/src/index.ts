@@ -1,8 +1,7 @@
 // z86 engine — public API
-export * from './core';
-export * from './io';
-export * from './runner';
-export * from './evaluator';
-export * from './versioning';
-export * from './planner';
+export * from './knowledge';
+export * from './search';
+export * from './reasoning';
+export * from './extraction';
+export * from './reporting';
 export * from './agent';

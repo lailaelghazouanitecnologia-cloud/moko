@@ -103,13 +103,15 @@ class EmissionIndex:
             # Index methods
             for method_list_key in ("methods", "static_methods"):
                 for m in type_def.get(method_list_key, []):
-                    mname = m if isinstance(m, str) else m.get("name", "")
-                    if mname:
+                    mname = m if isinstance(m, str) else (m.get("name", "") if isinstance(m, dict) else "")
+                    if isinstance(mname, str) and mname:
                         self.method_index.setdefault(mname.lower(), []).append(entry)
 
             # Index fields
             for f in type_def.get("fields", []):
-                fname = f if isinstance(f, str) else f.get("name", "")
+                fname = f if isinstance(f, str) else (f.get("name", "") if isinstance(f, dict) else "")
+                if not isinstance(fname, str):
+                    continue
                 # Strip type annotations from "data: Float32Array(16)" style
                 if ":" in fname:
                     fname = fname.split(":")[0].strip()
