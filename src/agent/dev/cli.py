@@ -14,7 +14,7 @@ def register_subparser(subparsers: argparse._SubParsersAction):
     p.add_argument("--provider", default="groq", help="LLM provider")
     p.add_argument("--model", help="Override model")
     p.add_argument("-v", "--verbose", action="store_true", help="Verbose output")
-    p.add_argument("--max-iterations", type=int, default=10, help="Max iteration blocks")
+    p.add_argument("--max-iterations", type=int, default=50, help="Max iteration blocks")
     p.add_argument("--budget", type=int, default=20000, help="On-demand context budget (chars)")
     p.add_argument("--resume", metavar="PLAN_ID", help="Resume a saved plan")
     p.add_argument("--plans", action="store_true", help="List saved plans")

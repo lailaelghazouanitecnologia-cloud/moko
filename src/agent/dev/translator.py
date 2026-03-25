@@ -465,8 +465,11 @@ class BlueprintTranslator:
         max_tok = 12000 if self.rich_mode else 6000
         code, tokens = self._llm_call(TRANSLATE_SYSTEM, user, max_tokens=max_tok)
 
-        # 5. Clean output (strip markdown fences if present)
-        clean = self._strip_fences(code)
+        # 5. Clean output (strip markdown fences only — no YAML heuristics)
+        clean = self._strip_code_fences(code)
+
+        # 5.5. Fix orphaned class body (LLM sometimes omits class wrapper)
+        clean = self._fix_orphaned_class_body(clean, type_bp, module_bp)
 
         # 6. Write to disk
         target = type_bp.target_file or f"{module_bp.target_dir}/{to_kebab_case(type_bp.name)}.ts"
@@ -531,7 +534,7 @@ class BlueprintTranslator:
         )
 
         enhanced, tokens2 = self._llm_call(enhance_system, enhance_user, max_tokens=12000)
-        clean = self._strip_fences(enhanced)
+        clean = self._strip_code_fences(enhanced)
 
         if clean.strip() and len(clean.splitlines()) > len(code.splitlines()):
             code_path.write_text(clean + "\n")
@@ -1156,3 +1159,79 @@ class BlueprintTranslator:
                 return '\n'.join(lines[i:]).strip()
 
         return text
+
+    def _strip_code_fences(self, text: str) -> str:
+        """Strip markdown code fences from TypeScript/code output.
+
+        Unlike _strip_fences, this does NOT apply YAML heuristics.
+        It only removes ```lang and ``` fence lines.
+        """
+        text = text.strip()
+        if '```' not in text:
+            return text
+        lines = text.split('\n')
+        content_lines = [
+            line for line in lines
+            if not re.match(r'^\s*```\w*\s*$', line)
+        ]
+        return '\n'.join(content_lines).strip()
+
+    def _fix_orphaned_class_body(self, code: str, type_bp, module_bp) -> str:
+        """Fix code that is a bare class body without class declaration.
+
+        LLM sometimes generates just the class internals (private fields,
+        constructor, methods) without the wrapping class/interface declaration
+        and imports. Detect this and wrap it.
+        """
+        lines = code.strip().split('\n')
+        if not lines:
+            return code
+
+        first_line = lines[0].strip()
+        is_orphaned = (
+            first_line.startswith('private ') or
+            first_line.startswith('public ') or
+            first_line.startswith('protected ') or
+            first_line.startswith('readonly ') or
+            (first_line.startswith('constructor(') and not any(
+                l.strip().startswith('export class') or l.strip().startswith('class ')
+                for l in lines
+            ))
+        )
+
+        if not is_orphaned:
+            return code
+
+        kind = type_bp.kind if hasattr(type_bp, 'kind') else 'class'
+        name = type_bp.name if hasattr(type_bp, 'name') else 'Unknown'
+
+        import_lines = []
+        if hasattr(module_bp, 'types'):
+            for t in module_bp.types:
+                if t.name != name and t.name in code:
+                    file_name = to_kebab_case(t.name)
+                    import_lines.append(f"import {{ {t.name} }} from './{file_name}';")
+
+        if hasattr(self, 'prior_modules') and self.prior_modules:
+            for mod_name, mod_types in self.prior_modules.items():
+                for t in mod_types:
+                    type_name = t if isinstance(t, str) else getattr(t, 'name', '')
+                    if type_name and type_name in code and type_name != name:
+                        import_lines.append(
+                            f"import {{ {type_name} }} from '../{mod_name}';")
+
+        import_lines = list(dict.fromkeys(import_lines))
+
+        imports = '\n'.join(import_lines)
+        if imports:
+            imports += '\n\n'
+
+        indented_body = '\n'.join('  ' + l if l.strip() else '' for l in lines)
+
+        if kind == 'interface':
+            wrapped = f"{imports}export interface {name} {{\n{indented_body}\n}}\n"
+        else:
+            wrapped = f"{imports}export class {name} {{\n{indented_body}\n}}\n"
+
+        self._log(f"  fixed orphaned class body for {name}")
+        return wrapped
