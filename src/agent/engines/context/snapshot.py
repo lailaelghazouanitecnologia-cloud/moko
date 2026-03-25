@@ -86,27 +86,39 @@ class ContextBuilder:
         import_lines = []
         sig_lines = []
 
+        seen_names: set[str] = set()
+
         for dep_mod in depends_on:
             dep_exports = self._module_exports(dep_mod, index)
             if dep_exports:
-                names = [e.name for e in dep_exports]
-                import_lines.append(
-                    f"import {{ {', '.join(names)} }} from '../{dep_mod}'"
-                )
-                for exp in dep_exports:
+                unique = [e for e in dep_exports
+                          if e.name not in seen_names and e.kind != "re-export"]
+                names = []
+                for e in unique:
+                    if e.name not in seen_names:
+                        names.append(e.name)
+                        seen_names.add(e.name)
+                if names:
+                    import_lines.append(
+                        f"import {{ {', '.join(names)} }} from '../{dep_mod}'"
+                    )
+                for exp in unique:
                     sig_line = self._format_signature(exp, dep_mod, index)
-                    if sig_line:
+                    if sig_line and sig_line not in sig_lines:
                         sig_lines.append(sig_line)
 
         # Same-module types already generated
         same_module = self._module_exports(module_name, index)
         if same_module:
             for exp in same_module:
+                if exp.name in seen_names or exp.kind == "re-export":
+                    continue
+                seen_names.add(exp.name)
                 import_lines.append(
                     f"import {{ {exp.name} }} from './{self._kebab(exp.name)}'"
                 )
                 sig_line = self._format_signature(exp, module_name, index)
-                if sig_line:
+                if sig_line and sig_line not in sig_lines:
                     sig_lines.append(sig_line)
 
         if import_lines:
