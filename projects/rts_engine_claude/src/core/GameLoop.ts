@@ -17,7 +17,7 @@ export class GameLoop {
   private _lastTime: number = 0;
   private _running: boolean = false;
   private _tick: number = 0;
-  private _timer: ReturnType<typeof setInterval> | null = null;
+  private _timer: NodeJS.Timeout | null = null;
   private readonly _callbacks: GameLoopCallbacks;
 
   constructor(callbacks: GameLoopCallbacks, ticksPerSecond: number = 10) {

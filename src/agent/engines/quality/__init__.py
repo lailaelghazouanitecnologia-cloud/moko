@@ -32,7 +32,7 @@ from .quality_features import (
 )
 from .quality_classifier import QualityClassifier, QualityPrediction
 from .quality_strategies import (
-    TypeStrategy, NamingStrategy, StructureStrategy,
+    TypeStrategy, NamingStrategy, StructureStrategy, EncapsulationStrategy,
     DocStrategy, PromptHintStrategy, StrategyResult,
 )
 from .style_profile import (
@@ -116,6 +116,7 @@ class QualityEngine:
         self.type_strategy = TypeStrategy()
         self.naming_strategy = NamingStrategy()
         self.structure_strategy = StructureStrategy()
+        self.encapsulation_strategy = EncapsulationStrategy()
         self.doc_strategy = DocStrategy()
         self.prompt_builder = PromptHintStrategy()
 
@@ -345,6 +346,8 @@ class QualityEngine:
             return self.naming_strategy.apply(code, features_dict)
         elif prediction.action == "restructure" or prediction.action == "extract_constants":
             return self.structure_strategy.apply(code, features_dict)
+        elif prediction.action == "encapsulate":
+            return self.encapsulation_strategy.apply(code, features_dict)
         elif prediction.action == "add_docs":
             return self.doc_strategy.apply(code, features_dict)
         return None
@@ -355,53 +358,64 @@ class QualityEngine:
         """Compute overall quality score 0-1 from features.
 
         Weights adapt to user's style profile. Default:
-          - Type safety: 25%
-          - Naming quality: 20%
+          - Type safety: 25%   (any count, generics, unions, readonly)
+          - Naming quality: 15%
           - Algorithm depth: 20%
-          - Documentation: 15%
-          - Structure: 20%
+          - Documentation: 10%
+          - Structure: 15%     (DI, events, helpers)
+          - Encapsulation: 15% (readonly, private, public_field_ratio)
+
+        Tuned from comparing AVA (55-67%) vs Claude (64-70%) outputs.
+        Key differentiators: any usage, readonly, generics, encapsulation.
         """
-        # Get style-adjusted weights
         w = self.style_profile.to_quality_weights()
         score = 0.0
 
-        # Type safety: penalize any, reward unions/generics
+        # Type safety: heavily penalize any, reward generics/unions
         type_score = 1.0
         if features.loc > 0:
-            any_ratio = features.any_count / max(features.loc / 50, 1)
-            type_score -= min(any_ratio, 0.5)
+            # Stricter: 1 any per 20 LOC is bad (was 50)
+            any_ratio = features.any_count / max(features.loc / 20, 1)
+            type_score -= min(any_ratio * 0.8, 0.7)  # up to -70% for heavy any usage
         if features.union_type_count > 0:
             type_score += 0.1
         if features.generic_usage > 0:
-            type_score += 0.1
+            # Scale: 1-5 generics = +0.1, 5+ = +0.15
+            type_score += min(features.generic_usage / 30, 0.15)
         if features.type_alias_count > 0:
-            type_score += 0.1
+            type_score += 0.05
+        # Penalize Record<*, any> specifically
+        if features.record_any_count > 0:
+            type_score -= min(features.record_any_count * 0.1, 0.3)
         type_score = max(0, min(type_score, 1.0))
         score += type_score * w.get("type_safety", 0.25)
 
-        # Naming quality (20%)
+        # Naming quality (15%)
         name_score = features.camel_case_ratio * 0.4
-        name_score += features.semantic_name_score * 3.0  # boost semantic names
+        name_score += features.semantic_name_score * 3.0
         name_score += (1.0 - features.generic_name_ratio) * 0.3
         name_score += features.descriptive_param_ratio * 0.3
+        # Penalize typos
+        if features.typo_score > 0:
+            name_score -= features.typo_score * 0.5
         name_score = max(0, min(name_score, 1.0))
-        score += name_score * w.get("naming", 0.20)
+        score += name_score * w.get("naming", 0.15)
 
         # Algorithm depth: complexity + no stubs
-        algo_score = min(features.file_complexity * 20, 1.0)  # 0.05 branches/LOC = 1.0
+        algo_score = min(features.file_complexity * 20, 1.0)
         algo_score *= (1.0 - features.stub_indicator_score)
         algo_score += features.has_algorithm_docs * 0.3
         algo_score = max(0, min(algo_score, 1.0))
         score += algo_score * w.get("algorithm", 0.20)
 
-        # Documentation
+        # Documentation (10%)
         doc_score = features.jsdoc_coverage * 0.5
         doc_score += features.has_algorithm_docs * 0.3
         doc_score += min(features.inline_comment_density * 10, 0.2)
         doc_score = max(0, min(doc_score, 1.0))
-        score += doc_score * w.get("documentation", 0.15)
+        score += doc_score * w.get("documentation", 0.10)
 
-        # Structure: DI, events, helpers, no private access
+        # Structure: DI, events, helpers (15%)
         struct_score = features.has_dependency_injection * 0.3
         struct_score += features.has_event_pattern * 0.2
         struct_score += features.helper_ratio * 0.3
@@ -409,7 +423,18 @@ class QualityEngine:
         if features.private_field_access > 0:
             struct_score -= 0.2
         struct_score = max(0, min(struct_score, 1.0))
-        score += struct_score * w.get("structure", 0.20)
+        score += struct_score * w.get("structure", 0.15)
+
+        # Encapsulation (15% — new, key differentiator AVA vs Claude)
+        encap_score = 0.0
+        # Readonly ratio: Claude averages 1.2-1.7, AVA 0.06-0.44
+        encap_score += min(features.readonly_ratio * 0.5, 0.4)
+        # Penalize public mutable fields
+        encap_score += (1.0 - features.public_field_ratio) * 0.4
+        # Reward private helpers
+        encap_score += features.helper_ratio * 0.2
+        encap_score = max(0, min(encap_score, 1.0))
+        score += encap_score * w.get("encapsulation", 0.15)
 
         return max(0, min(score, 1.0))
 

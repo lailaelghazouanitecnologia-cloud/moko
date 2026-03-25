@@ -271,7 +271,7 @@ export class EventBus {
       this._listeners.set(type, new Set());
     }
     const set = this._listeners.get(type)!;
-    const wrappedListener = listener as EventListener<GameEventType>;
+    const wrappedListener = listener as unknown as EventListener<GameEventType>;
     set.add(wrappedListener);
 
     // Return unsubscribe function

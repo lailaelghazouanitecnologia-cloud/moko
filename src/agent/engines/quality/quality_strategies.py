@@ -6,9 +6,10 @@ cheap (0 tokens) and handle the mechanical fixes, leaving complex
 rewrites for the LLM.
 
 Strategies:
-  - TypeStrategy: replace 'any' with proper types, add unions
+  - TypeStrategy: aggressive any→unknown replacement in all positions
   - NamingStrategy: rename generic variables to semantic names
   - StructureStrategy: extract constants, fix bracket access
+  - EncapsulationStrategy: add readonly, convert public→private
   - DocStrategy: add JSDoc stubs for public methods
   - PromptHintStrategy: builds targeted LLM prompt for complex fixes
 """
@@ -28,18 +29,38 @@ class StrategyResult:
 
 
 class TypeStrategy:
-    """Replace weak types with stronger alternatives."""
+    """Replace weak types with stronger alternatives.
 
-    # Common any → specific type replacements
+    Aggressively replaces 'any' in all positions: parameters, return types,
+    variables, generics, arrays. Uses context clues to pick better types
+    when possible (e.g., callback params → unknown, event data → unknown).
+    """
+
+    # Ordered: specific patterns first, then general
     REPLACEMENTS = [
-        # Record<string, any> → Record<string, unknown>
+        # Generic containers with any
         (r"Record<string,\s*any>", "Record<string, unknown>"),
-        # : any[] → : unknown[]
-        (r":\s*any\[\]", ": unknown[]"),
-        # : any) → : unknown) in parameters
-        (r":\s*any\)", ": unknown)"),
-        # Map<string, any> → Map<string, unknown>
+        (r"Record<\w+,\s*any>", "Record<string, unknown>"),
         (r"Map<string,\s*any>", "Map<string, unknown>"),
+        (r"Map<\w+,\s*any>", "Map<string, unknown>"),
+        (r"Set<any>", "Set<unknown>"),
+        (r"Array<any>", "Array<unknown>"),
+        (r"Promise<any>", "Promise<unknown>"),
+        (r"WeakMap<any,\s*any>", "WeakMap<object, unknown>"),
+        # Arrays
+        (r":\s*any\[\]", ": unknown[]"),
+        # Parameters: (x: any) → (x: unknown)
+        (r":\s*any\)", ": unknown)"),
+        (r":\s*any,", ": unknown,"),
+        # Return types: ): any { → ): unknown {
+        (r"\):\s*any\s*\{", "): unknown {"),
+        (r"\):\s*any\s*=>", "): unknown =>"),
+        # Variable declarations: const x: any = → const x: unknown =
+        (r":\s*any\s*=", ": unknown ="),
+        # Standalone field type: fieldName: any;
+        (r":\s*any\s*;", ": unknown;"),
+        # Cast: as any → as unknown
+        (r"\bas\s+any\b", "as unknown"),
     ]
 
     def apply(self, code: str, features: Dict[str, float]) -> StrategyResult:
@@ -185,6 +206,135 @@ class StructureStrategy:
             changes_made=changes,
             description=f"Fixed {changes} structural anti-patterns",
         )
+
+
+class EncapsulationStrategy:
+    """Improve class encapsulation: add readonly, private fields.
+
+    Based on analysis showing AVA code has:
+    - public_field_ratio 0.47-0.63 (vs Claude's 0.33)
+    - readonly_ratio 0.06-0.17 (vs Claude's 1.24-1.70)
+
+    This strategy:
+    1. Adds 'readonly' to fields that are only assigned in constructor
+    2. Converts 'public' fields to 'private' + adds getter (only simple cases)
+    """
+
+    def apply(self, code: str, features: Dict[str, float]) -> StrategyResult:
+        """Add readonly and private modifiers to class fields."""
+        changes = 0
+        result = code
+
+        # Step 1: Add 'readonly' to fields only assigned in constructor
+        result, readonly_changes = self._add_readonly(result)
+        changes += readonly_changes
+
+        # Step 2: Convert public mutable fields to private (conservative)
+        result, private_changes = self._add_private(result)
+        changes += private_changes
+
+        if changes == 0:
+            return StrategyResult(None, 0, "No encapsulation improvements found")
+
+        return StrategyResult(
+            fixed_code=result,
+            changes_made=changes,
+            description=f"Improved encapsulation: {readonly_changes} readonly, {private_changes} private",
+        )
+
+    def _add_readonly(self, code: str) -> Tuple[str, int]:
+        """Add readonly to fields that are never reassigned after declaration."""
+        changes = 0
+        lines = code.split("\n")
+
+        # Find class fields (in constructor or class body)
+        # Pattern: fields declared with type annotation in class body
+        field_pattern = re.compile(
+            r"^(\s+)(public\s+|protected\s+|private\s+)?(?!readonly\b)(\w+)\s*:\s*(\w[^=;]*);",
+        )
+
+        # Find fields that are assigned in constructor with this.x = ...
+        constructor_assigns = set()
+        in_constructor = False
+        brace_depth = 0
+        for line in lines:
+            if "constructor(" in line:
+                in_constructor = True
+                brace_depth = 0
+            if in_constructor:
+                brace_depth += line.count("{") - line.count("}")
+                if brace_depth <= 0 and in_constructor and "{" in "".join(lines[:lines.index(line)]):
+                    in_constructor = False
+                assign = re.match(r"\s+this\.(\w+)\s*=", line)
+                if assign:
+                    constructor_assigns.add(assign.group(1))
+
+        # Find all reassignments outside constructor: this.x = ...
+        all_assigns: Dict[str, int] = {}
+        in_constructor = False
+        brace_depth = 0
+        for line in lines:
+            if "constructor(" in line:
+                in_constructor = True
+                brace_depth = 0
+            if in_constructor:
+                brace_depth += line.count("{") - line.count("}")
+                if brace_depth <= 0 and in_constructor:
+                    in_constructor = False
+                continue
+            assign = re.match(r"\s+this\.(\w+)\s*=", line)
+            if assign:
+                name = assign.group(1)
+                all_assigns[name] = all_assigns.get(name, 0) + 1
+
+        # Fields that are only in constructor assigns but NOT reassigned elsewhere
+        readonly_candidates = constructor_assigns - set(all_assigns.keys())
+
+        # Apply readonly to matching field declarations
+        new_lines = []
+        for line in lines:
+            match = field_pattern.match(line)
+            if match:
+                indent, modifier, name, type_ann = match.groups()
+                modifier = modifier or ""
+                if name in readonly_candidates and "readonly" not in modifier:
+                    new_line = f"{indent}{modifier}readonly {name}: {type_ann};"
+                    new_lines.append(new_line)
+                    changes += 1
+                    continue
+            # Also handle constructor parameter properties
+            # constructor(private x: Type) → constructor(private readonly x: Type)
+            ctor_param = re.match(
+                r"(\s*(?:constructor\s*\(|,\s*))(private|protected|public)\s+(?!readonly\b)(\w+)(\s*:\s*\w[^,)]*)",
+                line,
+            )
+            if ctor_param:
+                prefix, mod, name, type_part = ctor_param.groups()
+                if name in readonly_candidates:
+                    new_line = f"{prefix}{mod} readonly {name}{type_part}"
+                    new_lines.append(new_line)
+                    changes += 1
+                    continue
+            new_lines.append(line)
+
+        return "\n".join(new_lines), changes
+
+    def _add_private(self, code: str) -> Tuple[str, int]:
+        """Convert public fields to private (only when no external access needed).
+
+        Conservative: only converts fields that start with _ or are clearly internal.
+        """
+        changes = 0
+        # Convert fields explicitly marked 'public' that have internal names
+        # public _name: Type → private _name: Type
+        result, count = re.subn(
+            r"(\s+)public\s+(_\w+)\s*:",
+            r"\1private \2:",
+            code,
+        )
+        changes += count
+
+        return result, changes
 
 
 class DocStrategy:

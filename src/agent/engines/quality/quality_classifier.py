@@ -151,26 +151,18 @@ class QualityClassifier:
                      "Use proper algorithms, not heuristic shortcuts.",
             )
 
-        # Weak types → add types
+        # Weak types → auto-fix first (aggressive any→unknown), then LLM for rest
         if issue_type == "weak_types":
-            if features.any_count > 5:
-                return QualityPrediction(
-                    issue_type=issue_type,
-                    action="add_types",
-                    strategy="auto" if features.any_count <= 3 else "prompt_hint",
-                    confidence=0.85,
-                    source="rule",
-                    hint="Replace 'any' with specific types. Use discriminated unions "
-                         "for state/status fields. Replace Record<string, any> with "
-                         "proper interfaces.",
-                )
+            # Always try auto first — TypeStrategy now handles most any positions
             return QualityPrediction(
                 issue_type=issue_type,
                 action="add_types",
-                strategy="prompt_hint",
-                confidence=0.8,
+                strategy="auto",
+                confidence=0.85,
                 source="rule",
-                hint="Add union types and type aliases for better type safety.",
+                hint="Replace 'any' with 'unknown' or specific types. "
+                     "Use discriminated unions for state/status fields. "
+                     "Add generics where types are parameterized.",
             )
 
         # Bad naming → rename
@@ -234,6 +226,30 @@ class QualityClassifier:
                 source="rule",
                 hint="Add try/catch for I/O operations. Use typed errors "
                      "(TypeError, RangeError) not generic Error.",
+            )
+
+        # Poor encapsulation → auto-fix with EncapsulationStrategy
+        if issue_type == "poor_encapsulation":
+            return QualityPrediction(
+                issue_type=issue_type,
+                action="encapsulate",
+                strategy="auto",
+                confidence=0.8,
+                source="rule",
+                hint="Add readonly to immutable fields. Use private for internal state. "
+                     "Expose state through getters, not public fields.",
+            )
+
+        # Code typos → prompt hint (need LLM to understand context)
+        if issue_type == "code_typos":
+            return QualityPrediction(
+                issue_type=issue_type,
+                action="fix_typos",
+                strategy="prompt_hint",
+                confidence=0.9,
+                source="rule",
+                hint="Fix spelling errors in identifiers. Common LLM typos: "
+                     "doubled words (TypeTypeError), transposed letters (snange→snake).",
             )
 
         # Hardcoded templates
