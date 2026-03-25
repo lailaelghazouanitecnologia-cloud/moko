@@ -34,6 +34,8 @@ FEATURE_NAMES = [
     "has_error_handling", "has_dependency_injection", "has_event_pattern",
     "hardcoded_string_count", "stub_indicator_score", "private_field_access",
     "magic_number_count", "fluent_api_score",
+    # Encapsulation & correctness
+    "public_field_ratio", "readonly_ratio", "typo_score",
 ]
 
 
@@ -84,6 +86,11 @@ class QualityFeatures:
     private_field_access: int = 0     # this.x['field'] bracket access
     magic_number_count: int = 0
     fluent_api_score: float = 0.0     # methods returning 'this'
+
+    # Encapsulation & correctness
+    public_field_ratio: float = 0.0   # public non-method fields / total fields
+    readonly_ratio: float = 0.0       # readonly fields / total fields
+    typo_score: float = 0.0           # detected typo indicators
 
     def to_dict(self) -> Dict[str, float]:
         """Convert to flat dict for DB storage and classifier."""
@@ -172,7 +179,8 @@ class QualityFeatureExtractor:
                       "jsdoc_coverage", "has_algorithm_docs", "param_doc_ratio",
                       "inline_comment_density", "has_error_handling",
                       "has_dependency_injection", "has_event_pattern",
-                      "stub_indicator_score", "fluent_api_score"]:
+                      "stub_indicator_score", "fluent_api_score",
+                      "public_field_ratio", "readonly_ratio", "typo_score"]:
             total = sum(getattr(f, attr) for f in all_features)
             setattr(agg, attr, total / n if n > 0 else 0.0)
 
@@ -385,6 +393,39 @@ class QualityFeatureExtractor:
         return_this = len(re.findall(r"return\s+this\s*;", code))
         f.fluent_api_score = min(return_this / max(f.function_count, 1), 1.0)
 
+        # Encapsulation: public fields that should be private
+        # Class fields without private/protected/readonly
+        all_fields = re.findall(
+            r"^\s+((?:public|private|protected|readonly|static)\s+)*(\w+)\s*[:=]",
+            code, re.MULTILINE
+        )
+        if all_fields:
+            public_fields = sum(
+                1 for mods, name in all_fields
+                if mods and "public" in mods and "readonly" not in mods
+                or (not mods and name not in ("constructor", "get", "set"))
+            )
+            f.public_field_ratio = public_fields / max(len(all_fields), 1)
+
+        # Readonly ratio
+        readonly_count = len(re.findall(r"\breadonly\b", code))
+        total_fields = len(re.findall(r"^\s+\w+\s*[:=]", code, re.MULTILINE))
+        f.readonly_ratio = readonly_count / max(total_fields, 1)
+
+        # Typo detection: doubled words in identifiers (TypeTypeError, EventEventEmitter)
+        typo_indicators = 0
+        # Doubled type names: new TypeError → good, new TypeTypeError → typo
+        typo_indicators += len(re.findall(r"\b(\w{3,})\1", code))  # repeated substrings
+        # Common LLM typos
+        typo_patterns = [
+            r"\bsnange\b", r"\bsements\b", r"\bpPressedKeys\b",
+            r"\bTypeTypeError\b", r"\bEventEventEmitter\b",
+            r"\bRangeRangeError\b", r"\bframeInput\b",
+        ]
+        for pat in typo_patterns:
+            typo_indicators += len(re.findall(pat, code))
+        f.typo_score = min(typo_indicators / 3.0, 1.0)
+
 
 def detect_issues(features: QualityFeatures) -> List[Tuple[str, str, str]]:
     """Detect quality issues from features.
@@ -443,5 +484,20 @@ def detect_issues(features: QualityFeatures) -> List[Tuple[str, str, str]]:
     if features.magic_number_count > 10:
         issues.append(("hardcoded_template", "style",
                         f"{features.magic_number_count} magic numbers (extract to constants)"))
+
+    # Poor encapsulation: public mutable fields
+    if features.public_field_ratio > 0.3 and features.class_count > 0:
+        issues.append(("poor_encapsulation", "major",
+                        f"Public field ratio {features.public_field_ratio:.0%} — use private + getters"))
+
+    # Low readonly usage
+    if features.readonly_ratio < 0.1 and features.class_count > 0 and features.loc > 50:
+        issues.append(("weak_types", "minor",
+                        "Low readonly usage — mark immutable fields readonly"))
+
+    # Typos in code
+    if features.typo_score > 0.1:
+        issues.append(("code_typos", "critical",
+                        f"Possible typos detected (score={features.typo_score:.2f})"))
 
     return issues
