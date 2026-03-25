@@ -23,6 +23,7 @@ from .translator import BlueprintTranslator
 from .blueprint import ModuleBlueprint, TypeBlueprint
 from .emission import EmissionIndex
 from .density import DensityAnalyzer
+from ..engines.context import ContextEngine
 
 
 @dataclass
@@ -94,6 +95,7 @@ class BranchPipelineOrchestrator:
         self.decomposer = TaskDecomposer(self.llm, verbose=self.verbose)
         self.fix_loop: Optional[CompileFixLoop] = None
         self.emission_index: Optional[EmissionIndex] = None
+        self.engine: Optional[ContextEngine] = None
         self.total_tokens = 0
 
         # Guardrails
@@ -123,6 +125,13 @@ class BranchPipelineOrchestrator:
             self.llm, project_dir,
             max_iterations=4, verbose=self.verbose,
         )
+
+        # 2b. Initialize context engine
+        self.engine = ContextEngine(project_dir / "src")
+        self.engine.init(project_dir)
+
+        # Wire context engine into fix loop
+        self.fix_loop.context_engine = self.engine
 
         # 3. Build emission index if references exist
         self._build_emission_index(references)
@@ -159,6 +168,37 @@ class BranchPipelineOrchestrator:
         result.final_tsc_errors = max(0, final_check.error_count)
         result.elapsed_s = time.time() - start
         result.total_tokens += self.total_tokens
+
+        # 8. Persist context engine state
+        if self.engine:
+            try:
+                report_data = {
+                    "goal": goal,
+                    "target": target,
+                    "references": references,
+                    "branches": [
+                        {
+                            "module": br.module_name,
+                            "status": br.status,
+                            "types": br.types_generated,
+                            "loc": br.total_loc,
+                            "tsc_initial": br.tsc_errors_initial,
+                            "tsc_final": br.tsc_errors_final,
+                            "fix_iterations": br.fix_iterations,
+                            "tokens": br.tokens_used,
+                        }
+                        for br in result.branches
+                    ],
+                    "total_loc": result.total_loc,
+                    "total_tokens": result.total_tokens,
+                    "elapsed_s": result.elapsed_s,
+                    "final_tsc_errors": result.final_tsc_errors,
+                }
+                self.engine.persistence.save_report(project_dir, report_data)
+                self.engine.persist(project_dir)
+                self._log("context engine state persisted")
+            except Exception as e:
+                self._log(f"persist failed: {e}")
 
         print(f"\n{result.format_report()}")
         return result
@@ -223,6 +263,9 @@ class BranchPipelineOrchestrator:
             if merged:
                 br.status = "merged"
                 self.git.delete_branch(task.branch_name)
+                # Update context engine index after merge
+                if self.engine:
+                    self.engine.update_all()
             else:
                 br.status = "failed"
                 self._log(f"merge failed for {task.branch_name}")
@@ -250,11 +293,19 @@ class BranchPipelineOrchestrator:
                          target: str, references: list[str],
                          project_bp) -> int:
         """Generate all types for a module using BlueprintTranslator."""
+        # Sync context engine index before generation
+        if self.engine:
+            self.engine.update_all()
+
         # Build translator
         translator = BlueprintTranslator(
             self.llm, OUT_DIR, verbose=self.verbose,
             emission_index=self.emission_index,
         )
+
+        # Provide context engine to translator for richer snapshots
+        if self.engine:
+            translator.context_engine = self.engine
 
         # Load prior module blueprints for cross-module context
         bp_dir = project_dir / "blueprints"
@@ -336,6 +387,15 @@ class BranchPipelineOrchestrator:
                 )
                 total_tokens += tokens
                 self._log(f"  translated {type_bp.name} -> {file_path}")
+
+                # Update context engine index after each file write
+                if self.engine and file_path:
+                    rel_from_src = file_path
+                    if rel_from_src.startswith("src/"):
+                        rel_from_src = rel_from_src[4:]
+                    issues = self.engine.update(rel_from_src)
+                    if issues:
+                        self._log(f"  context issues: {[i.message for i in issues]}")
 
                 # Post-translate: verify the exported name matches the blueprint
                 self._verify_export_name(type_bp, project_dir)

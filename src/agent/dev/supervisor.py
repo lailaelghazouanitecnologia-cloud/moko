@@ -96,6 +96,7 @@ class DevSupervisor:
         self.semantic_store: Optional[SemanticStore] = None
         self.block_store: Optional[CodeBlockStore] = None
         self.project_bp: Optional[ProjectBlueprint] = None
+        self.context_engine = None  # Optional ContextEngine
         self.total_tokens = 0
 
         # Guardrails
@@ -164,6 +165,21 @@ class DevSupervisor:
             block_store=self.block_store,
             verbose=self.verbose,
         )
+
+        # Context engine: real-time project index for richer snapshots
+        try:
+            from ..engines.context import ContextEngine
+            target = getattr(self, '_current_target', None)
+            if target:
+                project_dir = self.projects_dir / target
+                src_dir = project_dir / "src"
+                if src_dir.exists():
+                    self.context_engine = ContextEngine(src_dir)
+                    self.context_engine.init(project_dir)
+                    self._log(f"context engine initialized: {self.context_engine.index.file_count()} files")
+        except Exception as e:
+            self._log(f"context engine skipped: {e}")
+
         self._log("engines initialized: composer + extractor + semantic + memory")
 
     def _save_engines(self):

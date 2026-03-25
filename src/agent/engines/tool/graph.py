@@ -4,6 +4,10 @@ ProjectGraph — complete, real-time map of a generated project.
 Source of truth for: what files exist, what they export, what imports are valid.
 Rebuilt via scan() after each generation step (~50ms for 100 files).
 
+Note: For richer project indexing (call graphs, type registry, incremental
+updates, pre-write validation), see engines/context/. ProjectGraph is still
+used by ImportResolver for import path resolution.
+
 Usage:
     graph = ProjectGraph(project_dir / "src")
     graph.scan()

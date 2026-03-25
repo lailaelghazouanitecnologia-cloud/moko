@@ -260,6 +260,7 @@ class BlueprintTranslator:
         self.prior_modules: list = []  # ModuleBlueprints from prior layers
         self.semantic_store = None  # Optional SemanticStore for enriched context
         self.rich_mode = rich_mode  # When True, use higher token budget
+        self.context_engine = None  # Optional ContextEngine for richer snapshots
 
     def _log(self, msg: str):
         if self.verbose:
@@ -586,7 +587,23 @@ class BlueprintTranslator:
         Goes beyond simple signature extraction: captures enum values, interface
         fields, class methods with full signatures, and type aliases. This gives
         the translator the REAL API to code against, preventing phantom types.
+
+        If a ContextEngine is available, uses its snapshot for precise signatures
+        with resolved import paths.
         """
+        # Use context engine for richer, indexed signatures
+        if self.context_engine and self.context_engine.is_initialized:
+            try:
+                dep_modules = [m.name for m in self.prior_modules]
+                snapshot = self.context_engine.snapshot.for_translator(
+                    type_bp.name, module_bp.name, dep_modules,
+                    self.context_engine.index,
+                )
+                if snapshot and len(snapshot) > 50:
+                    return snapshot
+            except Exception:
+                pass  # Fall through to original logic
+
         if not self.prior_modules:
             return ""
 

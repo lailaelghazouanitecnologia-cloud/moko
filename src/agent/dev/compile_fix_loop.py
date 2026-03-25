@@ -77,6 +77,7 @@ class CompileFixLoop:
         self.max_iterations = max_iterations
         self.verbose = verbose
         self.total_tokens = 0
+        self.context_engine = None  # Optional ContextEngine for richer fix context
 
     def _log(self, msg: str):
         if self.verbose:
@@ -259,6 +260,28 @@ class CompileFixLoop:
         for err in errors:
             parts.append(f"- Line {err.line}: {err.code} — {err.message}")
         parts.append("")
+
+        # Use context engine for targeted type definitions
+        if self.context_engine and self.context_engine.is_initialized:
+            engine_parts = []
+            for err in errors[:5]:  # limit to first 5 errors
+                try:
+                    snapshot = self.context_engine.snapshot.for_fix(
+                        err.file, err.line, err.code, err.message,
+                        self.context_engine.index,
+                    )
+                    if snapshot and len(snapshot) > 30:
+                        engine_parts.append(snapshot)
+                except Exception:
+                    pass
+            if engine_parts:
+                parts.append("## Type definitions (from project index)\n")
+                # Deduplicate
+                seen = set()
+                for ep in engine_parts:
+                    if ep not in seen:
+                        parts.append(ep)
+                        seen.add(ep)
 
         if context_files:
             parts.append("## Available types from other modules\n")
