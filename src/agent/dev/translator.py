@@ -298,6 +298,7 @@ class BlueprintTranslator:
         self.prior_modules: list = []  # ModuleBlueprints from prior layers
         self.semantic_store = None  # Optional SemanticStore for enriched context
         self.rich_mode = rich_mode  # When True, use higher token budget
+        self.functional_spec_context: str = ""  # From GoalReasoner — domain requirements
         self.context_engine = None  # Optional ContextEngine for richer snapshots
         self.quality_engine = None # Optional QualityEngine for style-aware hints
         self.style_rules = None    # Optional StyleRules for user-configurable style
@@ -861,6 +862,8 @@ class BlueprintTranslator:
                 f"Sibling types in this module: {sibling_list}\n"
                 f"Language: {language}\n"
             )
+            if self.functional_spec_context:
+                user += f"\n{self.functional_spec_context}\n"
             if self.pi_context:
                 user += f"\n{self.pi_context}\n"
             if ref_context:

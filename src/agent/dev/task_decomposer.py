@@ -63,7 +63,8 @@ class TaskDecomposer:
                   references: list[str] = None,
                   project_bp=None,
                   intelligence=None,
-                  feature_selection: list = None) -> list[ModuleTask]:
+                  feature_selection: list = None,
+                  functional_spec=None) -> list[ModuleTask]:
         """Decompose into ModuleTasks.
 
         Priority:
@@ -71,18 +72,17 @@ class TaskDecomposer:
           2. Feature-selection (user chose specific features from AST)
           3. Intelligence-informed (PI: goal-driven, calibrated by reference)
           4. Reference-aware extraction (clone mode — fallback)
-          5. LLM-based fallback
+          5. FunctionalSpec-informed (GoalReasoner output — no reference needed)
+          6. LLM-based fallback (least informed)
 
         Returns topologically sorted list of ModuleTasks.
         """
         if project_bp:
             tasks = self._from_project_blueprint(project_bp, target)
         elif feature_selection:
-            # Feature AST mode: user selected specific capabilities
             tasks = self._from_feature_selection(
                 goal, target, feature_selection, intelligence)
         elif intelligence:
-            # PI mode: goal-driven, calibrated by reference intelligence
             tasks = self._from_goal_with_intelligence(goal, target, intelligence)
         elif references and self.out_dir:
             ref_tasks = self._from_reference(references, goal)
@@ -90,6 +90,8 @@ class TaskDecomposer:
                 tasks = ref_tasks
             else:
                 tasks = self._from_llm(goal, target, references)
+        elif functional_spec and functional_spec.components:
+            tasks = self._from_spec(goal, target, functional_spec)
         else:
             tasks = self._from_llm(goal, target, references or [])
 
@@ -644,6 +646,77 @@ class TaskDecomposer:
                 estimated_types=len(layer.types),
             )
             tasks.append(task)
+        return tasks
+
+    def _from_spec(self, goal: str, target: str,
+                   spec) -> list[ModuleTask]:
+        """Decompose using FunctionalSpec — knows WHAT each component must do.
+
+        The spec contains per-component requirements, methods, data structures,
+        and complexity estimates. This produces much richer ModuleTasks than
+        _from_llm because the LLM knows the domain requirements.
+        """
+        self._log("using spec-informed decomposition")
+
+        system = (
+            "You are a software architect. Design modules for this project.\n"
+            "You are given FUNCTIONAL SPECIFICATIONS with detailed requirements.\n\n"
+            "Output JSON array: [\n"
+            '  {"module": "name", "types": ["IType", "Type"], '
+            '"depends_on": ["other"], '
+            '"description": "purpose + key methods", '
+            '"target_loc_per_type": 150}\n]\n\n'
+            "CRITICAL RULES:\n"
+            "- Each module maps to ONE component from the spec\n"
+            "- For complex components (300+ LOC): include interface + class\n"
+            "- The description MUST list the KEY METHODS from the spec\n"
+            "  (these will become the blueprint — if you don't list them, they won't be implemented)\n"
+            "- target_loc_per_type must match the spec's complexity estimate\n"
+            "- Order by dependency: foundations first\n"
+            "- Output ONLY the JSON array.\n"
+        )
+
+        user = (
+            f"Goal: {goal}\n"
+            f"Target: {target}\n\n"
+            f"{spec.to_prompt_context()}"
+        )
+
+        resp = self.llm.complete_with_usage(
+            [LLMMessage("system", system), LLMMessage("user", user)],
+            temperature=0.3, max_tokens=3000,
+        )
+        self.total_tokens += resp.usage.total_tokens
+
+        try:
+            data = self._parse_json(resp.content)
+        except (json.JSONDecodeError, ValueError):
+            self._log("spec decomposition failed, falling back to LLM")
+            return self._from_llm(goal, target, [])
+
+        # Map spec components to tasks for LOC calibration
+        spec_map = {c.name: c for c in spec.components}
+
+        tasks = []
+        for mod in data:
+            mod_name = mod.get("module", "core")
+            spec_comp = spec_map.get(mod_name)
+
+            loc_target = mod.get("target_loc_per_type", 150)
+            if spec_comp:
+                loc_target = max(loc_target, spec_comp.target_loc)
+            loc_target = max(80, min(loc_target, 500))
+
+            tasks.append(ModuleTask(
+                name=mod_name,
+                branch_name=f"feature/{mod_name}",
+                types=mod.get("types", []),
+                depends_on=mod.get("depends_on", []),
+                description=mod.get("description", ""),
+                estimated_types=len(mod.get("types", [])),
+                target_loc_per_type=loc_target,
+            ))
+
         return tasks
 
     def _from_llm(self, goal: str, target: str,

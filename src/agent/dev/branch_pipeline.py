@@ -384,16 +384,26 @@ class BranchPipelineOrchestrator:
         if not project_bp and references:
             self._build_feature_ast(references, goal)
 
+        # 3d. GoalReasoning — think about WHAT before HOW (when no reference/blueprint)
+        functional_spec = None
+        if not project_bp and not references and not self.selected_features:
+            from .goal_reasoner import GoalReasoner
+            reasoner = GoalReasoner(self.llm, verbose=self.verbose)
+            functional_spec = reasoner.reason(goal)
+            self.total_tokens += reasoner.tokens_used
+
         # 4. Decompose into module tasks
-        # Priority: blueprint > feature selection > PI-informed > reference > LLM
+        # Priority: blueprint > features > PI > reference > spec > LLM
         print(f"\n  Decomposing: {goal}")
         tasks = self.decomposer.decompose(
             goal=goal, target=target,
             references=references, project_bp=project_bp,
             intelligence=self.intelligence,
             feature_selection=self.selected_features,
+            functional_spec=functional_spec,
         )
         self.total_tokens += self.decomposer.total_tokens
+        self._functional_spec = functional_spec
 
         # 5. Generate project config on main
         self._generate_project_config(target, tasks, project_dir)
@@ -753,6 +763,11 @@ class BranchPipelineOrchestrator:
             if bp:
                 self._log(f"  using descriptor-based blueprint for {task.name}")
                 self._last_blueprint_source = "descriptors"
+
+        # Inject functional spec context if available
+        spec = getattr(self, '_functional_spec', None)
+        if spec:
+            translator.functional_spec_context = spec.to_prompt_context()
 
         # Fall back to LLM-generated blueprint
         if bp is None:
