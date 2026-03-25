@@ -1,5 +1,28 @@
-export { TaskScheduler } from './task-scheduler';
-export type { Task } from './task-scheduler';
-export { FeedbackLoop } from './feedback-loop';
-export { ResearchAgent } from './research-agent';
-export type { ResearchOptions, ResearchResult } from './research-agent';
+/**
+ * Agent module — orchestration layer for the autonomous research agent.
+ */
+
+export {
+  TaskScheduler,
+  type Task,
+  type TaskStatus,
+  type TaskCompleteCallback,
+  type TaskExecutor,
+} from "./task-scheduler";
+
+export {
+  FeedbackLoop,
+  type IterationRecord,
+  type FeedbackProgress,
+  type EvaluateFn,
+  type RefineFn,
+} from "./feedback-loop";
+
+export {
+  ResearchAgent,
+  type AgentEventType,
+  type AgentEvent,
+  type AgentEventListener,
+  type ResearchOptions,
+  type ResearchResult,
+} from "./research-agent";
