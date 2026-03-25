@@ -269,7 +269,8 @@ types:
 
 Include key methods that define the class API. Skip trivial getters/setters. Target 5-10 methods per class.
 Keep method hints to 3-5 words MAX. Do NOT write long descriptions.
-CRITICAL: Generate ONLY the types listed in the task goal. Do NOT invent extra interfaces, enums, or type aliases.
+Generate ONLY the types listed in the task goal. If a type starts with I (e.g., IRepository), make it an interface.
+For classes, ALWAYS create a matching interface that other modules can depend on.
 If a supporting type is needed, define it inline (e.g. as a field type) — do NOT create a separate type entry.
 
 TYPE QUALITY:
@@ -938,9 +939,16 @@ class BlueprintTranslator:
           sig: "(p: Type): Ret"     → already quoted, leave alone
 
         This quotes the 'type:', 'sig:', 'hint:', and 'default:' field values.
+        Also fixes missing colons: 'type "value"' → 'type: "value"'.
         """
         result_lines = []
         for line in text.split('\n'):
+            # Fix missing colon: `type "value"` → `type: "value"`
+            m_missing = re.match(r'^(\s*)(type|sig|hint|default)\s+(".*"|\S+)$', line)
+            if m_missing:
+                indent, key, value = m_missing.group(1), m_missing.group(2), m_missing.group(3)
+                line = f'{indent}{key}: {value}'
+
             # Match lines like "    type: someValue" or "    sig: something"
             m = re.match(r'^(\s*)(type|sig|hint|default|description):\s*(.+)$', line)
             if m:
@@ -1005,6 +1013,32 @@ class BlueprintTranslator:
                 if isinstance(data, dict):
                     self._fix_yaml_types(data)
                     self._log(f"  recovered YAML after removing stray fences")
+                    return data
+            except yaml.YAMLError:
+                pass
+
+        # Strategy 0.5: Remove individually broken lines and retry
+        # Lines that don't have proper YAML key: value format
+        repair_lines = []
+        for line in cleaned.split("\n"):
+            stripped = line.strip()
+            # Keep empty lines, comments, and properly formatted lines
+            if not stripped or stripped.startswith("#"):
+                repair_lines.append(line)
+            elif re.match(r'^[\w-]+:', stripped) or stripped.startswith("- ") or stripped.startswith("```"):
+                repair_lines.append(line)
+            elif re.match(r'^\s+[\w-]+:', stripped):
+                repair_lines.append(line)
+            # Skip malformed lines (e.g., `type "3"` that wasn't caught)
+            else:
+                continue
+        repaired = "\n".join(repair_lines)
+        if repaired != cleaned:
+            try:
+                data = yaml.safe_load(repaired)
+                if isinstance(data, dict):
+                    self._fix_yaml_types(data)
+                    self._log(f"  recovered YAML by removing broken lines")
                     return data
             except yaml.YAMLError:
                 pass

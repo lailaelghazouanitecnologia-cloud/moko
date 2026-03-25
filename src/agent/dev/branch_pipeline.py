@@ -332,9 +332,10 @@ class BranchPipelineOrchestrator:
             tokens = self._generate_module(task, project_dir, target, references, project_bp)
             br.tokens_used = tokens
 
-            # 3. Strip boilerplate (typeof checks on typed params, trivial JSDoc)
+            # 3. Polish code (strip boilerplate + modernize idioms)
             module_dir = project_dir / "src" / task.name
             self._strip_boilerplate(module_dir)
+            self._modernize_idioms(module_dir)
 
             # 3b. Count LOC
             br.total_loc = self._count_loc(module_dir)
@@ -1046,6 +1047,105 @@ class BranchPipelineOrchestrator:
                 new_code = "\n".join(cleaned)
                 if new_code != original:
                     ts_file.write_text(new_code)
+            except Exception:
+                pass
+
+    def _modernize_idioms(self, module_dir: Path):
+        """Transform old-style JS patterns into modern TypeScript idioms.
+
+        Transforms:
+        - `x && x.y` → `x?.y`
+        - `if (x !== null && x !== undefined)` → `if (x != null)`
+        - `x !== undefined ? x : default` → `x ?? default`
+        - `x || default` → `x ?? default` (for non-boolean contexts)
+        - `if (x) { return x.y; }` → `return x?.y;`
+        """
+        import re as _re
+
+        if not module_dir.exists():
+            return
+
+        for ts_file in module_dir.rglob("*.ts"):
+            if ts_file.name == "index.ts":
+                continue
+            try:
+                code = ts_file.read_text()
+                original = code
+
+                # Pattern: `x && x.y` → `x?.y` (member access guard)
+                # Match: `foo && foo.bar` or `this.foo && this.foo.bar`
+                code = _re.sub(
+                    r'\b(\w+(?:\.\w+)*)\s*&&\s*\1\.(\w+)',
+                    r'\1?.\2',
+                    code
+                )
+
+                # Pattern: `x !== undefined && x !== null` → `x != null`
+                code = _re.sub(
+                    r'(\w+)\s*!==\s*undefined\s*&&\s*\1\s*!==\s*null',
+                    r'\1 != null',
+                    code
+                )
+                code = _re.sub(
+                    r'(\w+)\s*!==\s*null\s*&&\s*\1\s*!==\s*undefined',
+                    r'\1 != null',
+                    code
+                )
+
+                # Pattern: `x === undefined || x === null` → `x == null`
+                code = _re.sub(
+                    r'(\w+)\s*===\s*undefined\s*\|\|\s*\1\s*===\s*null',
+                    r'\1 == null',
+                    code
+                )
+                code = _re.sub(
+                    r'(\w+)\s*===\s*null\s*\|\|\s*\1\s*===\s*undefined',
+                    r'\1 == null',
+                    code
+                )
+
+                # Pattern: `x !== undefined ? x : default` → `x ?? default`
+                code = _re.sub(
+                    r'(\w+(?:\.\w+)*)\s*!==\s*undefined\s*\?\s*\1\s*:\s*',
+                    r'\1 ?? ',
+                    code
+                )
+                code = _re.sub(
+                    r'(\w+(?:\.\w+)*)\s*!==\s*null\s*\?\s*\1\s*:\s*',
+                    r'\1 ?? ',
+                    code
+                )
+                code = _re.sub(
+                    r'(\w+(?:\.\w+)*)\s*!=\s*null\s*\?\s*\1\s*:\s*',
+                    r'\1 ?? ',
+                    code
+                )
+
+                # Pattern: `x || defaultValue` → `x ?? defaultValue`
+                # Only for safe cases: assignment context with non-boolean defaults
+                # Match: `= expr || 'string'` or `= expr || number` or `= expr || []`
+                code = _re.sub(
+                    r'(=\s*\w+(?:\.\w+)*)\s*\|\|\s*([\'"\d\[\{])',
+                    r'\1 ?? \2',
+                    code
+                )
+
+                # Pattern: `if (x !== undefined)` on its own line → `if (x != null)`
+                code = _re.sub(
+                    r'if\s*\(\s*(\w+(?:\.\w+)*)\s*!==\s*undefined\s*\)',
+                    r'if (\1 != null)',
+                    code
+                )
+
+                # Pattern: `x ? x.method() : undefined` → `x?.method()`
+                code = _re.sub(
+                    r'(\w+)\s*\?\s*\1\.(\w+\([^)]*\))\s*:\s*undefined',
+                    r'\1?.\2',
+                    code
+                )
+
+                if code != original:
+                    ts_file.write_text(code)
             except Exception:
                 pass
 
