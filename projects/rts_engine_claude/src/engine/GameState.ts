@@ -4,8 +4,6 @@
  */
 
 import { World } from '../core/World';
-import { Entity } from '../core/Entity';
-import { ComponentData } from '../core/Component';
 import { Player } from './Player';
 import { ResourceManager } from '../resources/ResourceManager';
 import { ResourceType } from '../resources/ResourceType';

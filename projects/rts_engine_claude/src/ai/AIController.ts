@@ -12,8 +12,8 @@
 
 import { World } from '../core/World';
 import { EventBus } from '../core/EventBus';
-import { Vector2 } from '../math/Vector2';
 import { ResourceManager } from '../resources/ResourceManager';
+import { TileMap } from '../terrain/TileMap';
 import { ResourceType } from '../resources/ResourceType';
 import { UnitType } from '../units/UnitType';
 import { UnitIdentityData } from '../units/UnitComponents';

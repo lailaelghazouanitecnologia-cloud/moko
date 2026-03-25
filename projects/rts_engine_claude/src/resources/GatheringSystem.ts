@@ -44,7 +44,6 @@ export class GatheringSystem extends System<ComponentData> {
     for (const entity of entities) {
       const gatherComp = entity.getComponent<GatheringData>('Gathering')!;
       const posComp = entity.getComponent<PositionData>('Position')!;
-      const identityComp = entity.getComponent<UnitIdentityData>('UnitIdentity')!;
       const gather = gatherComp.data;
       const pos = posComp.data;
 
@@ -52,7 +51,7 @@ export class GatheringSystem extends System<ComponentData> {
 
       // If carrying full load, try to drop off
       if (gather.currentCarry >= gather.carryCapacity && gather.carryingType !== null) {
-        this._tryDropOff(entity, gatherComp, posComp, identityComp);
+        this._tryDropOff(entity);
         continue;
       }
 
@@ -60,7 +59,6 @@ export class GatheringSystem extends System<ComponentData> {
       if (gather.targetResourceId !== null) {
         const targetNode = this._world.getEntity(gather.targetResourceId);
         if (!targetNode || !targetNode.active) {
-          // Resource depleted or removed
           gatherComp.setData({ targetResourceId: null });
           continue;
         }
@@ -75,69 +73,61 @@ export class GatheringSystem extends System<ComponentData> {
 
         // Must be adjacent to gather
         if (distance <= 1.5) {
-          this._gatherResource(entity, gatherComp, targetNode, nodeData, deltaTime);
+          this._gatherResource(entity, targetNode, deltaTime);
         }
       }
     }
   }
 
   /** Gather from the target resource node */
-  private _gatherResource(
-    _worker: Entity,
-    gatherComp: ReturnType<Entity['getComponent']>,
-    _node: Entity,
-    nodeComp: ReturnType<Entity['getComponent']>,
-    deltaTime: number,
-  ): void {
+  private _gatherResource(worker: Entity, node: Entity, deltaTime: number): void {
+    const gatherComp = worker.getComponent<GatheringData>('Gathering');
+    const nodeComp = node.getComponent<ResourceNodeData>('ResourceNode');
     if (!gatherComp || !nodeComp) return;
-    const gather = (gatherComp as { data: GatheringData }).data;
-    const node = (nodeComp as { data: ResourceNodeData }).data;
 
-    if (node.remaining <= 0) {
-      (gatherComp as { setData(d: Partial<GatheringData>): void }).setData({
-        targetResourceId: null,
-      });
+    const gather = gatherComp.data;
+    const nodeData = nodeComp.data;
+
+    if (nodeData.remaining <= 0) {
+      gatherComp.setData({ targetResourceId: null });
       return;
     }
 
     const gatherAmount = Math.min(
       gather.gatherRate * deltaTime,
       gather.carryCapacity - gather.currentCarry,
-      node.remaining,
+      nodeData.remaining,
     );
 
-    (gatherComp as { setData(d: Partial<GatheringData>): void }).setData({
+    gatherComp.setData({
       currentCarry: gather.currentCarry + gatherAmount,
-      carryingType: node.resourceType,
+      carryingType: nodeData.resourceType,
     });
 
-    (nodeComp as { setData(d: Partial<ResourceNodeData>): void }).setData({
-      remaining: node.remaining - gatherAmount,
+    nodeComp.setData({
+      remaining: nodeData.remaining - gatherAmount,
     });
 
-    // Check if node is depleted
-    if (node.remaining - gatherAmount <= 0) {
+    if (nodeData.remaining - gatherAmount <= 0) {
       this._eventBus.emit({
         type: GameEventType.ResourceDepleted,
-        entityId: _node.id,
-        resourceType: node.resourceType,
+        entityId: node.id,
+        resourceType: nodeData.resourceType,
       });
     }
   }
 
   /** Try to drop off carried resources at the nearest drop-off building */
-  private _tryDropOff(
-    _worker: Entity,
-    gatherComp: ReturnType<Entity['getComponent']>,
-    posComp: ReturnType<Entity['getComponent']>,
-    identityComp: ReturnType<Entity['getComponent']>,
-  ): void {
+  private _tryDropOff(worker: Entity): void {
+    const gatherComp = worker.getComponent<GatheringData>('Gathering');
+    const posComp = worker.getComponent<PositionData>('Position');
+    const identityComp = worker.getComponent<UnitIdentityData>('UnitIdentity');
     if (!gatherComp || !posComp || !identityComp) return;
-    const gather = (gatherComp as { data: GatheringData }).data;
-    const pos = (posComp as { data: PositionData }).data;
-    const identity = (identityComp as { data: UnitIdentityData }).data;
 
-    // Find nearest drop-off building for this player
+    const gather = gatherComp.data;
+    const pos = posComp.data;
+    const identity = identityComp.data;
+
     if (gather.dropOffBuildingId !== null) {
       const building = this._world.getEntity(gather.dropOffBuildingId);
       if (building) {
@@ -148,14 +138,13 @@ export class GatheringSystem extends System<ComponentData> {
           );
 
           if (dist <= 2.0 && gather.carryingType !== null) {
-            // Deposit resources
             this._resourceManager.addResource(
               identity.playerId,
               gather.carryingType as ResourceType,
               gather.currentCarry,
             );
 
-            (gatherComp as { setData(d: Partial<GatheringData>): void }).setData({
+            gatherComp.setData({
               currentCarry: 0,
               carryingType: null,
             });

@@ -6,7 +6,6 @@
 import { World } from '../core/World';
 import { Player, PlayerStatus } from './Player';
 import { BuildingIdentityData } from '../buildings/BuildingComponents';
-import { UnitIdentityData } from '../units/UnitComponents';
 
 /** Result of a win condition check */
 export interface WinConditionResult {

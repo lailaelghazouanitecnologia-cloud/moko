@@ -15,7 +15,7 @@ import { FogOfWar, Visibility } from '../terrain/FogOfWar';
 import { TERRAIN_PROPERTIES, TerrainType } from '../terrain/TerrainType';
 import { PositionData, UnitIdentityData, HealthData, SelectionData } from '../units/UnitComponents';
 import { BuildingIdentityData, ConstructionData } from '../buildings/BuildingComponents';
-import { ResourceManager, ResourceSnapshot } from '../resources/ResourceManager';
+import { ResourceManager } from '../resources/ResourceManager';
 import { ResourceType } from '../resources/ResourceType';
 import { Vector2 } from '../math/Vector2';
 import { Rectangle } from '../math/Rectangle';

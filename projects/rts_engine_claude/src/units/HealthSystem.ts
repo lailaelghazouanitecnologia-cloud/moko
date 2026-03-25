@@ -5,19 +5,17 @@
 import { System } from '../core/System';
 import { Entity } from '../core/Entity';
 import { EventBus, GameEventType } from '../core/EventBus';
-import { HealthData, PositionData } from './UnitComponents';
+import { HealthData } from './UnitComponents';
 import { ComponentData } from '../core/Component';
 import { TileMap } from '../terrain/TileMap';
 
 export class HealthSystem extends System<ComponentData> {
   private readonly _eventBus: EventBus;
-  private readonly _tileMap: TileMap;
   private readonly _pendingDeaths: Array<{ entityId: number; killerId: number | null }> = [];
 
-  constructor(eventBus: EventBus, tileMap: TileMap) {
+  constructor(eventBus: EventBus, _tileMap: TileMap) {
     super('HealthSystem', 20);
     this._eventBus = eventBus;
-    this._tileMap = tileMap;
   }
 
   get requiredComponents(): readonly string[] {
@@ -88,9 +86,6 @@ export class HealthSystem extends System<ComponentData> {
     const deadIds: number[] = [];
 
     for (const death of this._pendingDeaths) {
-      const entity = this._tileMap ? undefined : undefined; // Lookup deferred
-      // Clear tilemap occupancy
-      // (We try to find position before removal)
       deadIds.push(death.entityId);
 
       this._eventBus.emit({

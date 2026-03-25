@@ -32,10 +32,9 @@ import { ConstructionSystem } from '../buildings/ConstructionSystem';
 import { ProductionSystem } from '../buildings/ProductionSystem';
 import { ConsoleRenderer } from '../renderer/ConsoleRenderer';
 import { AIController, AIDifficulty } from '../ai/AIController';
-import { Player, PlayerType, PlayerStatus } from './Player';
+import { Player, PlayerType } from './Player';
 import {
   WinConditionCheck,
-  WinConditionResult,
   checkElimination,
 } from './WinCondition';
 import {
