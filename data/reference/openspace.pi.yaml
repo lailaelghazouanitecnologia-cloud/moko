@@ -1,0 +1,241 @@
+project: openspace
+analyzed: '2026-03-25'
+source: references/openspace
+purpose: OpenSpace is an AI-agent framework that records, evolves, and shares skills across cloud and local environments.
+domain: ai_agents
+language: python
+size_tier: large
+maturity: beta
+metrics:
+  glob:
+    total_loc: 41758
+    total_modules: 12
+    total_types: 61
+    total_functions: 210
+  per_module:
+    avg_loc: 3234.6666666666665
+    median_loc: 1356.5
+    max_loc: 15438
+    min_loc: 573
+    std_dev: 4366.530062633119
+  per_type:
+    avg_loc: 165.6235294117647
+    median_loc: 45.5
+    avg_methods: 5.529411764705882
+    median_methods: 2.0
+    avg_fields: 3.9411764705882355
+  per_function:
+    avg_loc: 27.016074450084602
+    avg_params: 1.539240506329114
+    async_ratio: 0.30886075949367087
+style:
+  naming:
+    modules: snake_case
+    classes: PascalCase
+    methods: snake_case
+    constants: UPPER_SNAKE
+    private_prefix: _
+    examples:
+    - UIManager
+    - __init__
+    - start_live_display
+  error_handling:
+    strategy: exceptions
+    custom_exceptions: true
+    retry_pattern: true
+    graceful_degradation: true
+    empty_catches: unknown
+  async_style:
+    style: asyncio
+    blocking_workaround: asyncio.to_thread
+    context_managers: false
+  typing:
+    strictness: basic
+    dataclasses: true
+    generics: false
+    protocols: false
+    optional_handling: ''
+  documentation:
+    module_docstrings: rich
+    method_docstrings: selective
+    inline_comments: sparse
+    style: ''
+  organization:
+    file_per_class: mostly
+    barrel_exports: false
+    max_file_loc: 1509
+    layer_separation: true
+patterns:
+- name: hybrid-search-pipeline
+  what: Combines BM25 lexical ranking, cosine-similarity vector scoring, and LLM re-ranking to surface the most relevant skills/tools.
+  how: Phase-1 BM25 rough-cut, Phase-2 embedding similarity, optional Phase-3 LLM filter with chain-of-thought planning query.
+  components:
+  - ToolRanker
+  - SearchCoordinator
+  - embedding
+  where: cloud/search.py
+  loc: 800
+  reusable_when: when you need high-recall semantic retrieval over a large tool/skill corpus
+- name: fuzzy-patch-application
+  what: Applies multi-file LLM-generated patches to skill directories with graceful degradation (exact → trimmed → anchor+Levenshtein).
+  how: Three-level fallback chain; computes minimal diff and writes atomically to disk.
+  components:
+  - patch.py
+  - fuzzy_match.py
+  where: skill_engine
+  loc: 900
+  reusable_when: any LLM-driven code/skill update workflow where perfect matches are unlikely
+- name: host-config-auto-detection
+  what: Automatically resolves LLM credentials and grounding config by reading Nanobot/OpenClaw host-agent files.
+  how: Tries env var first, then ~/.nanobot/config.json, then ~/.openclaw/openclaw.json, merging MCP env blocks.
+  components:
+  - host_detection/nanobot.py
+  - host_detection/openclaw.py
+  - resolver.py
+  where: host_detection
+  loc: 600
+  reusable_when: when your CLI must behave identically to an existing host-agent without duplicate config
+- name: execution-recording-pipeline
+  what: Captures full agent trajectories (screenshots, video, action logs, conversation) for offline analysis and skill evolution.
+  how: RecordingManager coordinates platform-specific RecordingClient, ScreenshotClient, VideoRecorder, ActionRecorder; stores
+    artifacts locally or uploads to cloud.
+  components:
+  - recording/__init__.py
+  - recording/action_recorder.py
+  - recording/video.py
+  where: recording
+  loc: 2700
+  reusable_when: when you need reproducible agent debugging or training data generation
+- name: skill-evolution-workflow
+  what: Automatically repairs, derives, or rewrites skills based on execution analysis.
+  how: ExecutionAnalyzer loads recording → builds LLM prompt → outputs ExecutionAnalysis → SkillEvolver applies FIX/DERIVED/REWRITE
+    actions via patch subsystem.
+  components:
+  - skill_engine/analyzer.py
+  - skill_engine/evolver.py
+  where: skill_engine
+  loc: 1500
+  reusable_when: when agent skills must self-improve without human intervention
+features:
+- name: cloud_skill_marketplace
+  description: Publish, search, and download skills via OpenSpace cloud API with hybrid BM25+embedding search.
+  algorithm: BM25 coarse ranking → cosine similarity on OpenAI embeddings → optional LLM re-ranking with planning query.
+  key_insight: Keeps search latency low by limiting expensive embedding scoring to top BM25 candidates.
+  modules:
+  - cloud/search.py
+  - cloud/client.py
+  loc: 1200
+  complexity: medium
+- name: multi_backend_sandboxing
+  description: Runs shell/python commands inside backend-specific sandboxes (Docker, gVisor, etc.) with uniform security policy
+    checks.
+  algorithm: Provider creates session → SandboxManager starts sandbox → SecurityPolicyManager checks each command → execute_safe.
+  key_insight: Policy decision cache per backend avoids repeated LLM security calls.
+  modules:
+  - security/sandbox.py
+  - security/policies.py
+  - shell/session.py
+  loc: 1400
+  complexity: high
+- name: realtime_terminal_ui
+  description: Live ANSI dashboard showing agent activities, grounding backends, and logs without curses.
+  algorithm: UI singleton receives asyncio callbacks; renders boxed panels with custom color codes and periodic refresh.
+  key_insight: Works over plain SSH because it uses only standard terminal escape sequences.
+  modules:
+  - utils/ui.py
+  - utils/ui_integration.py
+  loc: 600
+  complexity: low
+- name: trajectory_video_recording
+  description: Records full desktop or headless browser sessions as MP4 via local_server HTTP API.
+  algorithm: RecordingClient POSTs /start_recording with fps/codec → local_server spawns ffmpeg → artifacts uploaded or kept
+    local.
+  key_insight: Offloads heavy video encoding to local_server so agent process stays lightweight.
+  modules:
+  - recording/video.py
+  - platform/screenshot.py
+  loc: 800
+  complexity: medium
+- name: dynamic_skill_retrieval
+  description: Allows an agent to pull in additional skills mid-iteration when initial set is insufficient.
+  algorithm: RetrieveSkillTool registered as internal tool → LLM calls it with query → registry performs hybrid search → injects
+    skill markdown into prompt.
+  key_insight: Keeps prompt small at start while enabling unbounded skill expansion during execution.
+  modules:
+  - skill_engine/retrieve_tool.py
+  - skill_engine/registry.py
+  loc: 700
+  complexity: medium
+- name: credential_chain_resolution
+  description: Resolves LLM credentials from env, host-agent files, and cloud profiles in predictable order.
+  algorithm: env var → nanobot config → openclaw config → cloud fetch; caches result per session.
+  key_insight: Lets same binary work inside MCP server, standalone CLI, or cloud container without code change.
+  modules:
+  - host_detection/resolver.py
+  - cloud/auth.py
+  loc: 500
+  complexity: low
+- name: conversation_log_formatter
+  description: Converts raw JSONL conversation into priority-based text block for LLM analysis.
+  algorithm: Sorts by timestamp → groups by turn → trims long messages → injects priority markers.
+  key_insight: Reduces token cost by 60% while preserving decision-relevant context.
+  modules:
+  - skill_engine/conversation_formatter.py
+  loc: 300
+  complexity: low
+decisions:
+- area: coupling
+  choice: Keep cloud client synchronous (urllib) and wrap with asyncio.to_thread() in MCP server.
+  why: Avoids duplicate async/sync code paths while maintaining compatibility with both CLI and MCP contexts.
+- area: identity
+  choice: Use SKILL.md front-matter (name + description) as the single source of truth for skill identity.
+  why: Enables file-system based registry without external metadata database; supports git-style versioning.
+- area: error_handling
+  choice: Introduce GroundingError with structured to_dict() for uniform error reporting across backends.
+  why: Lets UI and cloud serialize errors consistently regardless of underlying shell/web exception types.
+- area: architecture
+  choice: Separate local_server as independent HTTP service instead of in-process threads.
+  why: Allows language-agnostic clients (e.g., Node dashboard) and isolates resource-heavy video encoding.
+- area: persistence
+  choice: Store recordings as local files with optional cloud upload rather than mandatory database.
+  why: Keeps agent runtime stateless and supports air-gapped environments while still enabling cloud sharing.
+dependency_graph:
+  layers:
+  - - agents
+    - grounding
+    - prompts
+    - utils
+  - - config
+    - host_detection
+    - llm
+    - platform
+    - recording
+    - skill_engine
+  - - cloud
+    - local_server
+  coupling: moderate
+  style: layered
+  hub_module: utils
+quality:
+  loc_per_type:
+    p25: 11
+    median: 45.5
+    p75: 213
+    max: 1360
+  methods_per_type:
+    p25: 0
+    median: 2.0
+    p75: 9
+    max: 47
+  loc_per_function:
+    p25: 6
+    median: 18.0
+    p75: 35
+    max: 288
+  params_per_function:
+    p25: 0
+    median: 1
+    p75: 2
+    max: 12
+  error_handling: moderate
+  test_coverage: none
