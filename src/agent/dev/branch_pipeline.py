@@ -145,6 +145,10 @@ class BranchPipelineOrchestrator:
                     n = self.quality_engine.learn_style_from_project(str(ref_dir / "src"))
                     if n > 0:
                         self._log(f"learned style from {ref}: {n} files")
+                    # Learn reference profile for intelligent scoring
+                    profile = self.quality_engine.learn_reference_profile(str(ref_dir), ref)
+                    if profile:
+                        self._log(f"learned quality profile from {ref}: {profile.total_loc} LOC")
 
         # Style hints (Claude defaults + learned from refs if any)
         style_hints = self.quality_engine.get_style_hints()
@@ -249,6 +253,17 @@ class BranchPipelineOrchestrator:
                 self._log(f"persist failed: {e}")
 
         print(f"\n{result.format_report()}")
+
+        # 9. Quality report (learned scorer if reference available)
+        if self.quality_engine and self.quality_engine.learned_scorer.dimensions:
+            try:
+                score, report = self.quality_engine.score_project(str(project_dir), target)
+                print(f"\n  Quality: {score:.0%} (learned from references)")
+                if self.verbose:
+                    print(f"  {report}")
+            except Exception as e:
+                self._log(f"quality report failed: {e}")
+
         return result
 
     def _process_module(self, task: ModuleTask, project_dir: Path,

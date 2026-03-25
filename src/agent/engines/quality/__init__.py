@@ -39,6 +39,9 @@ from .style_profile import (
     StyleProfile, StyleAnalyzer, StylePreference,
     build_style_context, STYLE_DIMENSIONS, CLAUDE_DEFAULT_STYLE,
 )
+from .learned_scorer import (
+    LearnedScorer, ProfileExtractor, CodeProfile,
+)
 
 __all__ = (
     "QualityEngine",
@@ -51,6 +54,9 @@ __all__ = (
     "StyleProfile",
     "StyleAnalyzer",
     "build_style_context",
+    "LearnedScorer",
+    "ProfileExtractor",
+    "CodeProfile",
 )
 
 
@@ -120,6 +126,12 @@ class QualityEngine:
         self.error_handling_strategy = ErrorHandlingStrategy()
         self.doc_strategy = DocStrategy()
         self.prompt_builder = PromptHintStrategy()
+
+        # Learned scorer — intelligent evaluation from reference profiles
+        self.profile_extractor = ProfileExtractor()
+        scorer_path = str(self.project_dir / ".learned_scorer.json")
+        self.learned_scorer = LearnedScorer.load(scorer_path)
+        self._scorer_path = scorer_path
 
         # Retrain classifier if enough data
         if len(self.db.records) >= 30:
@@ -501,6 +513,129 @@ class QualityEngine:
             self.style_profile, original, corrected, filename
         )
         self.style_profile.save(self.style_path)
+
+    def learn_reference_profile(self, project_dir: str, name: str = "") -> Optional[CodeProfile]:
+        """Profile a reference project to calibrate quality scoring.
+
+        Call with gold-standard (Claude) projects. The scorer learns what
+        "good code" looks like: pattern densities, architecture ratios,
+        coherence metrics. All future scoring compares against this profile.
+        """
+        profile = self.profile_extractor.extract_project(project_dir, name=name)
+        if profile.total_loc < 10:
+            return None
+
+        # Add to scorer's reference pool
+        existing = [self.learned_scorer.reference] if self.learned_scorer.reference else []
+        existing.append(profile)
+        self.learned_scorer.learn_from_profiles(existing)
+        self.learned_scorer.save(self._scorer_path)
+        return profile
+
+    def score_project(self, project_dir: str, name: str = "") -> Tuple[float, str]:
+        """Score a project using the learned reference profile.
+
+        Returns (score, detailed_report).
+        If no reference profile learned yet, falls back to feature-based scoring.
+        """
+        profile = self.profile_extractor.extract_project(project_dir, name=name)
+        if not self.learned_scorer.dimensions:
+            # Fallback to old scorer
+            files = self._read_project_files(project_dir)
+            features = self.extractor.extract_module(files)
+            score = self._compute_score(features)
+            return score, f"Quality: {score:.0%} (feature-based, no reference profile)"
+
+        overall, details = self.learned_scorer.score(profile)
+        report = self.learned_scorer.score_comparison(profile)
+        return overall, report
+
+    def compare_projects(self, dir_a: str, dir_b: str,
+                         name_a: str = "A", name_b: str = "B") -> str:
+        """Compare two projects side by side with learned scoring.
+
+        Great for AVA vs Claude comparisons.
+        """
+        prof_a = self.profile_extractor.extract_project(dir_a, name=name_a)
+        prof_b = self.profile_extractor.extract_project(dir_b, name=name_b)
+
+        lines = [
+            f"{'Metric':<30} {name_a:>12} {name_b:>12} {'Gap':>10}",
+            "─" * 66,
+        ]
+
+        comparisons = [
+            ("LOC", prof_a.total_loc, prof_b.total_loc, "n"),
+            ("Files", prof_a.total_files, prof_b.total_files, "n"),
+            ("readonly/100 LOC", prof_a.readonly_density, prof_b.readonly_density, "h"),
+            ("generics/100 LOC", prof_a.generic_density, prof_b.generic_density, "h"),
+            ("unions/100 LOC", prof_a.union_density, prof_b.union_density, "h"),
+            ("type aliases/100 LOC", prof_a.type_alias_density, prof_b.type_alias_density, "h"),
+            ("any/100 LOC", prof_a.any_density, prof_b.any_density, "l"),
+            ("discriminated unions", prof_a.discriminated_union_count, prof_b.discriminated_union_count, "h"),
+            ("branded types", prof_a.branded_type_count, prof_b.branded_type_count, "h"),
+            ("private ratio", prof_a.private_ratio, prof_b.private_ratio, "h"),
+            ("interface/class ratio", prof_a.interface_to_class_ratio, prof_b.interface_to_class_ratio, "h"),
+            ("avg complexity", prof_a.avg_complexity, prof_b.avg_complexity, "n"),
+            ("error handling/100 LOC", prof_a.error_handling_density, prof_b.error_handling_density, "h"),
+            ("validation/100 LOC", prof_a.validation_density, prof_b.validation_density, "h"),
+            ("pattern consistency", prof_a.naming_consistency, prof_b.naming_consistency, "h"),
+            ("import coherence", prof_a.import_coherence, prof_b.import_coherence, "h"),
+            ("type reuse", prof_a.type_reuse_ratio, prof_b.type_reuse_ratio, "h"),
+        ]
+
+        for metric, val_a, val_b, direction in comparisons:
+            if isinstance(val_a, int):
+                s_a, s_b = f"{val_a}", f"{val_b}"
+            else:
+                s_a, s_b = f"{val_a:.2f}", f"{val_b:.2f}"
+
+            if isinstance(val_a, (int, float)) and isinstance(val_b, (int, float)):
+                if val_b > 0.001:
+                    ratio = val_a / val_b
+                    if direction == "h":
+                        if ratio >= 1:
+                            gap = f"{ratio:.1f}x"
+                        elif ratio > 0:
+                            gap = f"{1/ratio:.1f}x behind"
+                        else:
+                            gap = "missing"
+                    elif direction == "l":
+                        gap = f"{ratio:.1f}x" if ratio <= 1 else f"{ratio:.1f}x worse"
+                    else:
+                        gap = f"{ratio:.1f}x"
+                elif val_a > 0:
+                    gap = f"{name_a} only"
+                else:
+                    gap = "—"
+            else:
+                gap = "—"
+
+            lines.append(f"{metric:<30} {s_a:>12} {s_b:>12} {gap:>10}")
+
+        # Score both if reference exists
+        if self.learned_scorer.dimensions:
+            score_a, _ = self.learned_scorer.score(prof_a)
+            score_b, _ = self.learned_scorer.score(prof_b)
+            lines.extend([
+                "─" * 66,
+                f"{'Learned Score':<30} {score_a:>11.0%} {score_b:>11.0%}",
+            ])
+
+        return "\n".join(lines)
+
+    def _read_project_files(self, project_dir: str) -> Dict[str, str]:
+        """Read all .ts files from a project."""
+        files = {}
+        src_dir = Path(project_dir)
+        if (src_dir / "src").exists():
+            src_dir = src_dir / "src"
+        for ts_file in src_dir.rglob("*.ts"):
+            try:
+                files[str(ts_file)] = ts_file.read_text()
+            except Exception:
+                pass
+        return files
 
     def get_style_hints(self) -> List[str]:
         """Get current style hints for LLM prompts."""
