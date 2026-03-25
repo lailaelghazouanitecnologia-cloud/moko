@@ -1,14 +1,16 @@
 """
 PostGenValidator — validate generated code using ProjectGraph as ground truth.
 
+DEPRECATED: Prefer engines/context/validator.py (PreWriteValidator) which validates
+BEFORE writing to disk and checks more conditions (signatures, types, duplicates,
+invariants). PostGenValidator is kept for backward compatibility with the
+DevSupervisor flow where context engine may not be initialized.
+
 Runs after each code generation step to catch:
   1. Phantom imports (import paths that don't resolve)
   2. Phantom symbols (imported names not exported by target)
   3. Phantom enums (enum values used but not defined)
   4. Import/type density (ratio of resolvable imports)
-
-Returns structured validation results that can be fed back to the LLM
-for self-correction.
 """
 from __future__ import annotations
 

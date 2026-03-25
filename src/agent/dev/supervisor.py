@@ -1007,7 +1007,6 @@ class DevSupervisor:
         try:
             from ..engines.tool.graph import ProjectGraph
             from ..engines.tool.import_resolver import ImportResolver
-            from ..engines.tool.validator import PostGenValidator
 
             code_path = project_dir / file_path
             if code_path.exists():
@@ -1028,15 +1027,22 @@ class DevSupervisor:
                         for fix in report.fixes[:3]:
                             self._log(f"  {fix.reason}")
 
-                    # Validate remaining issues
-                    validator = PostGenValidator(graph)
-                    val_result = validator.validate(
-                        report.code if report.fixes else generated_code, rel_file
-                    )
-                    if not val_result.is_clean:
-                        self._log(f"validation: {len(val_result.issues)} issues in {type_name}")
-                        for issue in val_result.issues[:5]:
-                            self._log(f"  {issue.kind}: {issue.message}")
+                    # Validate: prefer context engine, fallback to PostGenValidator
+                    code_to_check = report.code if report.fixes else generated_code
+                    if self.context_engine and self.context_engine.is_initialized:
+                        val_result = self.context_engine.validate(code_to_check, rel_file)
+                        if not val_result.ok:
+                            self._log(f"validation: {val_result.summary()} in {type_name}")
+                            for issue in val_result.issues[:5]:
+                                self._log(f"  {issue.kind}: {issue.message}")
+                    else:
+                        from ..engines.tool.validator import PostGenValidator
+                        validator = PostGenValidator(graph)
+                        val_result = validator.validate(code_to_check, rel_file)
+                        if not val_result.is_clean:
+                            self._log(f"validation: {len(val_result.issues)} issues in {type_name}")
+                            for issue in val_result.issues[:5]:
+                                self._log(f"  {issue.kind}: {issue.message}")
         except Exception as e:
             self._log(f"import-fix: skipped ({e})")
 

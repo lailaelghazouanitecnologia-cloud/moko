@@ -96,6 +96,8 @@ class BranchPipelineOrchestrator:
         self.fix_loop: Optional[CompileFixLoop] = None
         self.emission_index: Optional[EmissionIndex] = None
         self.engine: Optional[ContextEngine] = None
+        self.semantic_store = None   # SemanticStore for reference matching
+        self.block_store = None      # CodeBlockStore for reusable code blocks
         self.total_tokens = 0
 
         # Guardrails
@@ -133,8 +135,9 @@ class BranchPipelineOrchestrator:
         # Wire context engine into fix loop
         self.fix_loop.context_engine = self.engine
 
-        # 3. Build emission index if references exist
+        # 3. Build emission index + retrieval engines if references exist
         self._build_emission_index(references)
+        self._build_retrieval_engines(references)
 
         # 4. Decompose into module tasks
         print(f"\n  Decomposing: {goal}")
@@ -307,6 +310,10 @@ class BranchPipelineOrchestrator:
         if self.engine:
             translator.context_engine = self.engine
 
+        # Provide retrieval engines to translator
+        if self.semantic_store:
+            translator.semantic_store = self.semantic_store
+
         # Load prior module blueprints for cross-module context
         bp_dir = project_dir / "blueprints"
         prior_modules = []
@@ -373,6 +380,10 @@ class BranchPipelineOrchestrator:
         # Normalize target files
         for t in bp.types:
             t.target_file = f"src/{task.name}/{to_kebab_case(t.name)}.ts"
+
+        # Selective discussion: debate blueprint if module has >2 dependents
+        discussion_tokens = self._run_selective_discussion(task, bp, project_dir)
+        bp_tokens += discussion_tokens
 
         # Save blueprint
         bp_dir.mkdir(parents=True, exist_ok=True)
@@ -523,6 +534,93 @@ class BranchPipelineOrchestrator:
                     pass
         return context
 
+    def _run_selective_discussion(self, task: ModuleTask,
+                                    bp: ModuleBlueprint,
+                                    project_dir: Path) -> int:
+        """Run a lightweight blueprint discussion if module has >2 dependents.
+
+        Returns tokens used. Modifies blueprint constraints in-place.
+        """
+        if not self.engine or not self.engine.is_initialized:
+            return 0
+
+        # Count how many other modules depend on this one
+        dep_graph = self.engine.index.dependency_graph()
+        dependents = [m for m, deps in dep_graph.items() if task.name in deps]
+
+        if len(dependents) < 2:
+            return 0
+
+        self._log(f"  discussion: {task.name} has {len(dependents)} dependents "
+                  f"({', '.join(dependents)}), debating blueprint...")
+
+        # Build context about what depends on this module
+        dep_context = f"Modules that depend on {task.name}: {', '.join(dependents)}"
+        type_list = ", ".join(t.name for t in bp.types)
+
+        system = (
+            "You are reviewing a TypeScript module blueprint BEFORE code generation.\n"
+            "This module is a FOUNDATION — multiple other modules depend on it.\n\n"
+            "Evaluate the blueprint from 3 angles:\n"
+            "1. ADVOCATE: What's good about these types for downstream consumers?\n"
+            "2. CRITIC: What interfaces might cause problems for dependents?\n"
+            "3. ARCHITECT: Are the types well-designed for extensibility?\n\n"
+            "Output JSON with:\n"
+            "- verdict: 'good' | 'needs_constraints'\n"
+            "- constraints: list of 0-3 SHORT rules the translator MUST follow\n"
+            "  (e.g. 'All public methods must return typed results, not any')\n"
+            "- reasoning: one sentence explaining your verdict"
+        )
+
+        import yaml as _yaml
+        bp_summary = _yaml.dump(
+            {"types": [{"name": t.name, "kind": t.kind,
+                        "fields": len(t.fields), "methods": len(t.methods)}
+                       for t in bp.types]},
+            default_flow_style=False,
+        )
+
+        user = (
+            f"## Module: {task.name}\n"
+            f"## Types: {type_list}\n"
+            f"## {dep_context}\n\n"
+            f"## Blueprint summary\n```yaml\n{bp_summary}```\n\n"
+            f"Evaluate and output JSON only."
+        )
+
+        from ..llm.providers import LLMMessage
+        try:
+            resp = self.llm.complete_with_usage(
+                [LLMMessage("system", system), LLMMessage("user", user)],
+                temperature=0.3, max_tokens=1024,
+            )
+            tokens = resp.usage.total_tokens
+            self.total_tokens += tokens
+
+            import json
+            text = resp.content.strip()
+            if "```" in text:
+                # Strip markdown fences
+                import re
+                text = re.sub(r'```\w*\n?', '', text).strip()
+            data = json.loads(text)
+
+            constraints = data.get("constraints", [])
+            if constraints:
+                for c in constraints[:3]:
+                    bp.constraints.append(f"CONTRACT: {c}")
+                self._log(f"  discussion result: {data.get('verdict', '?')} "
+                          f"+ {len(constraints)} constraints")
+                for c in constraints[:3]:
+                    self._log(f"    → {c}")
+            else:
+                self._log(f"  discussion result: {data.get('verdict', 'good')} (no constraints)")
+
+            return tokens
+        except Exception as e:
+            self._log(f"  discussion failed: {e}")
+            return 0
+
     def _fix_imports(self, project_dir: Path, module_bp: ModuleBlueprint):
         """Run import resolver on generated code."""
         try:
@@ -609,6 +707,54 @@ class BranchPipelineOrchestrator:
             self.emission_index.build(references)
             self.emission_index.save(index_path)
             self._log(f"emission index built: {self.emission_index.format_stats()}")
+
+    def _build_retrieval_engines(self, references: list[str]):
+        """Build or load SemanticStore + CodeBlockStore for reference enrichment."""
+        try:
+            from ..engines.embedding.store import SemanticStore
+            from ..engines.memory.block_store import CodeBlockStore
+            import yaml
+
+            # SemanticStore: TF-IDF index of descriptors
+            store_path = OUT_DIR / ".semantic_store.json"
+            if store_path.exists():
+                try:
+                    self.semantic_store = SemanticStore.load(store_path)
+                    self._log(f"semantic store loaded: {self.semantic_store.format_stats()}")
+                except Exception:
+                    self.semantic_store = None
+
+            if not self.semantic_store and references:
+                self.semantic_store = SemanticStore()
+                for proj in references:
+                    proj_dir = OUT_DIR / proj
+                    if not proj_dir.is_dir():
+                        continue
+                    for yaml_path in proj_dir.rglob("*.yaml"):
+                        if yaml_path.name in ("workspace.yaml", "deps.yaml", "meta.yaml"):
+                            continue
+                        try:
+                            text = yaml_path.read_text()
+                            lines = [l for l in text.split("\n") if not l.startswith("##")]
+                            data = yaml.safe_load("\n".join(lines))
+                            if data and isinstance(data, dict):
+                                rel_path = str(yaml_path.relative_to(OUT_DIR))
+                                self.semantic_store.index_descriptor(rel_path, data)
+                        except Exception:
+                            continue
+                self.semantic_store.save(store_path)
+                self._log(f"semantic store built: {self.semantic_store.format_stats()}")
+
+            # CodeBlockStore: reusable code blocks
+            block_store_path = OUT_DIR / ".block_store.json"
+            if block_store_path.exists():
+                try:
+                    self.block_store = CodeBlockStore.load(block_store_path)
+                    self._log(f"block store loaded: {self.block_store.format_stats()}")
+                except Exception:
+                    self.block_store = None
+        except Exception as e:
+            self._log(f"retrieval engines skipped: {e}")
 
     def _get_ref_paths(self, references: list[str]) -> list[str]:
         """Collect descriptor paths from reference projects."""

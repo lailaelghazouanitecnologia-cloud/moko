@@ -1,14 +1,17 @@
 """
 SourceExtractor — extracts real method signatures and hints from source code.
 
+DEPRECATED: For generated project indexing, use engines/context/index.py (LiveIndex)
+instead. SourceExtractor is still used by BlueprintComposer for REFERENCE project
+extraction (reading source from repos/, not from generated code). It will be
+replaced when LiveIndex gains reference-project support.
+
 Instead of letting the LLM invent APIs, we read the ACTUAL source code of
 reference projects and extract:
   - Method signatures with real parameter types and return types
   - First few lines of method body as implementation hint
   - Field declarations with types
   - Class hierarchy (extends, implements)
-
-This is the foundation of quality: blueprints built from real code, not invention.
 
 Supports: TypeScript, JavaScript, Python (regex-based, no AST dependency).
 """
