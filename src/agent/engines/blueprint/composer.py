@@ -87,6 +87,31 @@ class BlueprintComposer:
         if self.verbose:
             print(f"  [composer] {msg}")
 
+    @staticmethod
+    def _sanitize_yaml_values(text: str) -> str:
+        """Quote YAML values that contain characters that break parsing."""
+        import re
+        result_lines = []
+        for line in text.split('\n'):
+            m = re.match(r'^(\s*)(type|sig|hint|default|description):\s*(.+)$', line)
+            if m:
+                indent, key, value = m.group(1), m.group(2), m.group(3)
+                if not ((value.startswith('"') and value.endswith('"')) or
+                        (value.startswith("'") and value.endswith("'"))):
+                    needs_quote = (
+                        ':' in value or '<' in value or '>' in value or
+                        '[' in value or ']' in value or '{' in value or
+                        '}' in value or '#' in value or '|' in value or
+                        value.lower() in ('true', 'false', 'yes', 'no', 'null',
+                                          'on', 'off', 'string', 'boolean',
+                                          'number', 'object', 'array')
+                    )
+                    if needs_quote:
+                        escaped = value.replace('\\', '\\\\').replace('"', '\\"')
+                        line = f'{indent}{key}: "{escaped}"'
+            result_lines.append(line)
+        return '\n'.join(result_lines)
+
     # ── Main API ────────────────────────────────────────────
 
     def compose_module(self, module_name: str, type_names: list[str],
@@ -367,6 +392,8 @@ class BlueprintComposer:
             if clean.startswith("yaml"):
                 clean = clean[4:].strip()
 
+            # Sanitize YAML values that break parsing (unquoted types with colons, etc.)
+            clean = self._sanitize_yaml_values(clean)
             enriched_data = yaml.safe_load(clean)
             if enriched_data and isinstance(enriched_data, dict):
                 enriched = TypeBlueprint.from_dict(enriched_data)

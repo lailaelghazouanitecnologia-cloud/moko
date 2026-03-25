@@ -241,7 +241,7 @@ types:
     description: "what this class does"
     fields:
       - name: fieldName
-        type: fieldType
+        type: "fieldType"
     methods:
       - name: methodName
         sig: "(param: Type): ReturnType"
@@ -792,12 +792,13 @@ class BlueprintTranslator:
             "description: \"brief purpose\"\n"
             "fields:\n"
             "  - name: fieldName\n"
-            "    type: fieldType\n"
+            "    type: \"fieldType\"\n"
             "methods:\n"
             "  - name: methodName\n"
             "    sig: \"(param: Type): ReturnType\"\n"
             "    hint: \"3-5 words max\"\n"
             "```\n\n"
+            "IMPORTANT: ALWAYS quote 'type' values with double quotes. Example: type: \"Map<string, number>\"\n\n"
             "Rules:\n"
             "- Target 5-10 methods per class, 3-6 for interfaces.\n"
             "- Keep hints to 3-5 words MAX.\n"
