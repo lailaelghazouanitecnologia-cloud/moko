@@ -16,7 +16,7 @@ import {
   UnitIdentityData,
 } from '../units/UnitComponents';
 import { getDamageMultiplier } from '../combat/DamageCalculator';
-import { ArmorType, AttackType } from '../units/UnitType';
+import { ArmorType } from '../units/UnitType';
 
 /** Summary of military strength in a region */
 export interface ThreatInfo {
