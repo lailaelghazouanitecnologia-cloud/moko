@@ -1,50 +1,43 @@
 import { IMemory } from './imemory';
 
 /**
- * 4KB RAM with fontset and ROM loading capabilities.
- * Provides memory operations for the Chip-8 emulator.
+ * 4 KB RAM with ROM loader and font storage.
+ * Provides read/write access to memory and automatic font loading.
  */
 export class Memory implements IMemory {
-  readonly size = 4096;
   private readonly ram: Uint8Array;
-  private readonly fontsetAddress = 0x50;
 
   constructor() {
-    this.ram = new Uint8Array(this.size);
+    this.ram = new Uint8Array(4096);
+    this.loadFont();
   }
 
-  read(address: number): number {
-    if (!Number.isInteger(address)) {
-      throw new TypeError('Address must be an integer');
+  loadRom(bytes: Uint8Array): void {
+    if (0x200 + bytes.length > this.ram.length) {
+      throw new RangeError('ROM too large for memory');
     }
-    if (address < 0 || address >= this.size) {
-      throw new RangeError(`Address out of bounds: ${address}`);
-    }
-    return this.ram[address];
+    this.ram.set(bytes, 0x200);
   }
 
-  write(address: number, value: number): void {
-    if (!Number.isInteger(address)) {
-      throw new TypeError('Address must be an integer');
+  read(addr: number): number {
+    if (!Number.isInteger(addr) || addr < 0 || addr >= this.ram.length) {
+      throw new RangeError(`Address must be an integer between 0 and ${this.ram.length - 1}`);
     }
-    if (!Number.isInteger(value)) {
+    return this.ram[addr];
+  }
+
+  write(addr: number, val: number): void {
+    if (!Number.isInteger(addr) || addr < 0 || addr >= this.ram.length) {
+      throw new RangeError(`Address must be an integer between 0 and ${this.ram.length - 1}`);
+    }
+    if (!Number.isInteger(val)) {
       throw new TypeError('Value must be an integer');
     }
-    if (address < 0 || address >= this.size) {
-      throw new RangeError(`Address out of bounds: ${address}`);
-    }
-    if (value < 0 || value > 255) {
-      throw new RangeError(`Value out of range: ${value}`);
-    }
-    this.ram[address] = value;
+    this.ram[addr] = val & 0xFF;
   }
 
-  /**
-   * Loads the built-in fontset into memory at the fontset address.
-   * Each character is 5 bytes tall.
-   */
-  loadFontset(): void {
-    const fontset = new Uint8Array([
+  loadFont(): void {
+    const hexSprites = [
       0xF0, 0x90, 0x90, 0x90, 0xF0, // 0
       0x20, 0x60, 0x20, 0x20, 0x70, // 1
       0xF0, 0x10, 0xF0, 0x80, 0xF0, // 2
@@ -61,35 +54,12 @@ export class Memory implements IMemory {
       0xE0, 0x90, 0x90, 0x90, 0xE0, // D
       0xF0, 0x80, 0xF0, 0x80, 0xF0, // E
       0xF0, 0x80, 0xF0, 0x80, 0x80  // F
-    ]);
-    for (let i = 0; i < fontset.length; i++) {
-      this.ram[this.fontsetAddress + i] = fontset[i];
-    }
-  }
-
-  loadRom(rom: Uint8Array): void {
-    if (rom.length === 0) {
-      throw new RangeError('ROM cannot be empty');
-    }
-    if (rom.length > this.size - 0x200) {
-      throw new RangeError('ROM too large');
-    }
-    for (let i = 0; i < rom.length; i++) {
-      this.ram[0x200 + i] = rom[i];
-    }
+    ];
+    this.ram.set(hexSprites, 0x50);
   }
 
   reset(): void {
     this.ram.fill(0);
-  }
-
-  getFontAddress(digit: number): number {
-    if (!Number.isInteger(digit)) {
-      throw new TypeError('Digit must be an integer');
-    }
-    if (digit < 0 || digit > 15) {
-      throw new RangeError(`Digit must be 0-15: ${digit}`);
-    }
-    return this.fontsetAddress + digit * 5;
+    this.loadFont();
   }
 }

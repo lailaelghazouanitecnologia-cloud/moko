@@ -1,22 +1,20 @@
-export interface IInstruction {
-  readonly opcode: number;
-  readonly mnemonic: string;
-  execute(cpu: any): void;
-}
-
-export interface ICPU {
-  readonly v: Uint8Array;
-  readonly i: number;
-  readonly pc: number;
-  readonly sp: number;
+export interface ICpu {
+  readonly V: Uint8Array;
+  readonly I: number;
+  readonly PC: number;
+  readonly SP: number;
   readonly stack: Uint16Array;
-  readonly delay: number;
-  readonly sound: number;
+  readonly delayTimer: number;
+  readonly soundTimer: number;
 
-  reset(): void;
-  step(): void;
   fetch(): number;
-  decode(opcode: number): IInstruction;
-  execute(instruction: IInstruction): void;
-  tickTimers(): void;
+  execute(opcode: number): void;
+  op00E0(): void;
+  op00EE(): void;
+  op1nnn(nnn: number): void;
+  op2nnn(nnn: number): void;
+  op3xkk(x: number, kk: number): void;
+  op4xkk(x: number, kk: number): void;
+  op5xy0(x: number, y: number): void;
+  op6xkk(x: number, kk: number): void;
 }
