@@ -107,12 +107,10 @@ class QualityEngine:
         self.classifier = QualityClassifier(self.db)
         self.context_engine: Optional["ContextEngine"] = None
 
-        # Style profile — adapts to user preferences
-        self.style_profile = StyleProfile()
+        # Style profile — global, persists across sessions and projects
         self.style_analyzer = StyleAnalyzer()
-        style_path = str(self.project_dir / ".style_profile.json")
-        if os.path.exists(style_path):
-            self.style_profile = StyleProfile.load(style_path)
+        self.style_path = self._resolve_style_path()
+        self.style_profile = StyleProfile.load(self.style_path) if os.path.exists(self.style_path) else StyleProfile()
 
         # Strategies (0-token fixes)
         self.type_strategy = TypeStrategy()
@@ -124,6 +122,27 @@ class QualityEngine:
         # Retrain classifier if enough data
         if len(self.db.records) >= 30:
             self.classifier.train()
+
+    def _resolve_style_path(self) -> str:
+        """Find the workspace-level style profile.
+
+        Walks up from project_dir to find the workspace root (has src/agent/),
+        then stores .style_profile.json there. Falls back to project_dir.
+        """
+        current = self.project_dir
+        for _ in range(5):
+            candidate = current / ".style_profile.json"
+            if candidate.exists():
+                return str(candidate)
+            # Check if this looks like workspace root
+            if (current / "src" / "agent").exists():
+                return str(candidate)
+            parent = current.parent
+            if parent == current:
+                break
+            current = parent
+        # Fallback: store in project dir
+        return str(self.project_dir / ".style_profile.json")
 
     def set_context_engine(self, ctx: "ContextEngine"):
         """Wire context engine for cross-module type info."""
@@ -435,8 +454,7 @@ class QualityEngine:
             self.style_profile, project_dir
         )
         if count > 0:
-            style_path = str(self.project_dir / ".style_profile.json")
-            self.style_profile.save(style_path)
+            self.style_profile.save(self.style_path)
         return count
 
     def learn_style_from_correction(
@@ -449,16 +467,26 @@ class QualityEngine:
         self.style_analyzer.learn_from_correction(
             self.style_profile, original, corrected, filename
         )
-        style_path = str(self.project_dir / ".style_profile.json")
-        self.style_profile.save(style_path)
+        self.style_profile.save(self.style_path)
 
     def get_style_hints(self) -> List[str]:
         """Get current style hints for LLM prompts."""
         return self.style_profile.to_prompt_hints()
 
-    def get_style_context(self) -> str:
-        """Get style context block for injection into generation prompts."""
-        return build_style_context(self.style_profile)
+    def get_style_context(
+        self, existing_context: str = "",
+        type_name: str = "", module_name: str = "",
+    ) -> str:
+        """Get style hints that add value beyond what context already shows.
+
+        If the LLM already sees reference code demonstrating readonly, OOP,
+        unions — those hints are skipped. Only emits what the context
+        doesn't already demonstrate.
+        """
+        return build_style_context(
+            self.style_profile, existing_context,
+            type_name, module_name,
+        )
 
     def style_report(self) -> str:
         """Report current style profile."""

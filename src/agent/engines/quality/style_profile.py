@@ -471,16 +471,96 @@ class StyleAnalyzer:
         })
 
 
-def build_style_context(profile: StyleProfile) -> str:
-    """Build a compact style context string for LLM prompts.
+def build_style_context(
+    profile: StyleProfile,
+    existing_context: str = "",
+    type_name: str = "",
+    module_name: str = "",
+) -> str:
+    """Build style hints that ADD VALUE beyond what context already shows.
 
-    Used by the translator to inject user style into generation prompts.
+    If the LLM already sees reference code with readonly fields, OOP classes,
+    and unions — it doesn't need hints for those. Only emit hints for
+    dimensions the context doesn't demonstrate.
+
+    Args:
+        profile: The user's style profile
+        existing_context: The full prompt context (sibling code, cross-module, etc.)
+        type_name: The type being generated (for specific hints)
+        module_name: The module being generated
     """
-    hints = profile.to_prompt_hints()
-    if not hints:
+    if not profile:
         return ""
 
-    parts = ["## User Style Preferences"]
-    for hint in hints:
-        parts.append(f"- {hint}")
+    all_hints = profile.to_prompt_hints()
+    if not all_hints:
+        return ""
+
+    # If no existing context, emit all hints
+    if not existing_context:
+        parts = ["## Style"]
+        for h in all_hints:
+            parts.append(f"- {h}")
+        return "\n".join(parts)
+
+    # Filter: only keep hints for things NOT visible in context
+    ctx_lower = existing_context.lower()
+    filtered = []
+    for hint in all_hints:
+        if _hint_already_visible(hint, ctx_lower):
+            continue
+        filtered.append(hint)
+
+    if not filtered:
+        return ""
+
+    parts = ["## Style"]
+    for h in filtered:
+        parts.append(f"- {h}")
     return "\n".join(parts)
+
+
+def _hint_already_visible(hint: str, context_lower: str) -> bool:
+    """Check if a hint's concept is already demonstrated in the context code.
+
+    Returns True if the context already shows this pattern → skip the hint.
+    Returns False if the pattern is NOT visible → keep the hint.
+    """
+    hint_lower = hint.lower()
+
+    # Type safety: always emit (absence of 'any' is hard to demonstrate)
+    if "'any'" in hint_lower or "unknown" in hint_lower:
+        return False
+
+    # Naming: can't infer from context, always emit
+    if "domain-specific" in hint_lower or "semantic" in hint_lower:
+        return False
+
+    # Small functions: can't see from signatures alone
+    if "small and focused" in hint_lower:
+        return False
+
+    # These CAN be verified in context
+    checks = [
+        ("readonly", ["readonly "]),
+        ("opp", ["export class ", "class "]),      # typo-safe
+        ("oop", ["export class ", "class "]),
+        ("classes", ["export class ", "class "]),
+        ("functional", ["=> {"]),
+        ("dependency injection", ["constructor(private", "constructor( private"]),
+        ("event-driven", ["emit(", ".on(", "subscribe(", "listener"]),
+        ("event pattern", ["emit(", ".on(", "subscribe(", "listener"]),
+        ("typed exception", ["typeerror", "rangeerror", "syntaxerror"]),
+        ("early return", ["if (", "return "]),     # too common, usually visible
+        ("jsdoc", ["/**"]),
+        ("discriminated union", [" | '", ' | "']),
+        ("union", [" | '"]),
+        ("fluent", ["return this"]),
+    ]
+
+    for keyword, patterns in checks:
+        if keyword in hint_lower:
+            if any(p in context_lower for p in patterns):
+                return True  # visible → skip
+
+    return False  # not visible → keep

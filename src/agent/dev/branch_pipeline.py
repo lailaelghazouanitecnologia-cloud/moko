@@ -350,9 +350,9 @@ class BranchPipelineOrchestrator:
         if self.semantic_store:
             translator.semantic_store = self.semantic_store
 
-        # Inject user style preferences into generation
+        # Wire quality engine for style-aware generation
         if self.quality_engine:
-            translator.style_context = self.quality_engine.get_style_context()
+            translator.quality_engine = self.quality_engine
 
         # Load prior module blueprints for cross-module context
         bp_dir = project_dir / "blueprints"
