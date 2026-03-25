@@ -102,6 +102,7 @@ class BranchPipelineOrchestrator:
         self.engine: Optional[ContextEngine] = None
         self.semantic_store = None   # SemanticStore for reference matching
         self.block_store = None      # CodeBlockStore for reusable code blocks
+        self.style_rules = None      # StyleRules for user-configurable style
         self.total_tokens = 0
 
         # Guardrails
@@ -155,6 +156,12 @@ class BranchPipelineOrchestrator:
         if style_hints:
             source = "learned" if self.quality_engine.style_profile.has_user_observations() else "default"
             self._log(f"style hints ({source}): {', '.join(style_hints[:3])}")
+
+        # 2b2. Load user style rules (.ava/ + ava.md)
+        from ..engines.quality.style_rules import StyleRules
+        self.style_rules = StyleRules.load(project_dir)
+        if self.style_rules.has_custom_rules():
+            self._log(f"loaded style rules: {len(self.style_rules.raw_markdown)} rule files")
 
         # 2c. Initialize context engine
         self.engine = ContextEngine(project_dir / "src")
@@ -439,6 +446,10 @@ class BranchPipelineOrchestrator:
         # Wire quality engine for style-aware generation
         if self.quality_engine:
             translator.quality_engine = self.quality_engine
+
+        # Wire user style rules
+        if self.style_rules:
+            translator.style_rules = self.style_rules
 
         # Load prior module blueprints for cross-module context
         bp_dir = project_dir / "blueprints"

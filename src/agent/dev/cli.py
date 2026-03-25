@@ -41,6 +41,12 @@ def register_subparser(subparsers: argparse._SubParsersAction):
     p.add_argument("--plan", action="store_true",
                    help="Plan mode: show scope and blueprint for approval before generating")
 
+    # Style rules
+    p.add_argument("--init", metavar="PROJECT",
+                   help="Initialize .ava/ style config for a project")
+    p.add_argument("--score", metavar="PROJECT",
+                   help="Run rich quality analysis on a project")
+
 
 def cmd_dev(args: argparse.Namespace):
     """Execute dev command."""
@@ -53,6 +59,64 @@ def cmd_dev(args: argparse.Namespace):
         "verbose": args.verbose,
         "budget_chars": args.budget,
     }
+
+    # Style init
+    if args.init:
+        from pathlib import Path
+        from ..engines.quality.style_rules import StyleRules
+
+        project_dir = Path("projects") / args.init
+        project_dir.mkdir(parents=True, exist_ok=True)
+        StyleRules.generate_template(project_dir)
+        print(f"Initialized .ava/ style config in {project_dir}")
+        print(f"  .ava/style.yaml    — edit style preferences")
+        print(f"  .ava/rules/        — add rule files (*.md)")
+        print(f"  ava.md             — free-form project instructions")
+        return
+
+    # Rich quality score
+    if args.score:
+        from pathlib import Path
+        from ..engines.quality.learned_scorer import ProfileExtractor, LearnedScorer, CodeProfile
+        from ..engines.quality.style_rules import StyleRules
+
+        project_dir = Path("projects") / args.score
+        if not project_dir.exists():
+            print(f"Project not found: {project_dir}")
+            sys.exit(1)
+
+        extractor = ProfileExtractor()
+        profile = extractor.extract_project(str(project_dir), name=args.score)
+
+        print(f"{'━' * 70}")
+        print(f"  QUALITY REPORT: {args.score}")
+        print(f"{'━' * 70}")
+        print(f"  Files: {profile.total_files}  LOC: {profile.total_loc}")
+        print()
+
+        # Print metrics by category
+        _print_profile_report(profile)
+
+        # Check style rules
+        rules = StyleRules.load(project_dir)
+        if rules.has_custom_rules():
+            print(f"\n  Style Rules: loaded from .ava/")
+            # Validate code against rules
+            src_dir = project_dir / "src" if (project_dir / "src").exists() else project_dir
+            total_violations = 0
+            for ts_file in src_dir.rglob("*.ts"):
+                code = ts_file.read_text()
+                violations = rules.validate_code(code, str(ts_file.relative_to(project_dir)))
+                total_violations += len(violations)
+                for v in violations[:3]:  # show first 3 per file
+                    print(f"    {v}")
+            if total_violations > 0:
+                print(f"    ... {total_violations} total violations")
+        else:
+            print(f"\n  No .ava/ style rules (run: ava dev --init {args.score})")
+
+        print(f"{'━' * 70}")
+        return
 
     # Density analysis
     if args.density:
@@ -389,3 +453,69 @@ def cmd_duel(args: argparse.Namespace):
             types=args.types,
             goal=args.goal,
         )
+
+
+def _print_profile_report(profile):
+    """Print a rich quality report organized by metric category."""
+    categories = [
+        ("Type System", [
+            ("readonly_density", profile.readonly_density, "/100 LOC"),
+            ("generic_density", profile.generic_density, "/100 LOC"),
+            ("union_density", profile.union_density, "/100 LOC"),
+            ("any_density", profile.any_density, "/100 LOC (lower=better)"),
+            ("discriminated_unions", profile.discriminated_union_count, ""),
+            ("branded_types", profile.branded_type_count, ""),
+        ]),
+        ("Complexity & Structure", [
+            ("cognitive_complexity_avg", profile.cognitive_complexity_avg, "per func"),
+            ("max_nesting_depth", profile.max_nesting_depth, ""),
+            ("avg_nesting_depth", profile.avg_nesting_depth, ""),
+            ("max_function_length", profile.max_function_length, "LOC"),
+            ("long_function_ratio", profile.long_function_ratio, ""),
+            ("parameter_count_avg", profile.parameter_count_avg, "per func"),
+            ("early_return_ratio", profile.early_return_ratio, ""),
+        ]),
+        ("Coupling & Cohesion", [
+            ("afferent_coupling_avg", profile.afferent_coupling_avg, "fan-in"),
+            ("efferent_coupling_avg", profile.efferent_coupling_avg, "fan-out"),
+            ("instability_index", profile.instability_index, "0-1"),
+            ("circular_dependencies", profile.circular_dependency_count, ""),
+            ("cohesion_ratio", profile.cohesion_ratio, "0-1"),
+            ("god_class_count", profile.god_class_count, ""),
+        ]),
+        ("Naming & Legibility", [
+            ("avg_identifier_length", profile.avg_identifier_length, "chars"),
+            ("short_name_ratio", profile.short_name_ratio, ""),
+            ("semantic_name_score", profile.semantic_name_score, "0-1"),
+            ("naming_uniformity", profile.naming_convention_uniformity, "0-1"),
+            ("magic_number_density", profile.magic_number_density, "/100 LOC"),
+        ]),
+        ("Error Handling", [
+            ("error_boundary_coverage", profile.error_boundary_coverage, ""),
+            ("empty_catch_count", profile.empty_catch_count, ""),
+            ("null_safety_coverage", profile.null_safety_coverage, ""),
+        ]),
+        ("Duplication & Dead Code", [
+            ("duplicate_block_ratio", profile.duplicate_block_ratio, ""),
+            ("dead_code_ratio", profile.dead_code_ratio, ""),
+            ("unused_parameter_ratio", profile.unused_parameter_ratio, ""),
+            ("commented_code_ratio", profile.commented_code_ratio, ""),
+        ]),
+        ("Design Patterns", [
+            ("dependency_injection_ratio", profile.dependency_injection_ratio, ""),
+            ("immutability_score", profile.immutability_score, ""),
+            ("guard_clause_ratio", profile.guard_clause_ratio, ""),
+            ("factory_pattern_count", profile.factory_pattern_count, ""),
+        ]),
+    ]
+
+    for cat_name, metrics in categories:
+        print(f"  {cat_name}:")
+        for name, value, unit in metrics:
+            if isinstance(value, float):
+                val_str = f"{value:.2f}"
+            else:
+                val_str = str(value)
+            suffix = f" {unit}" if unit else ""
+            print(f"    {name:<30} {val_str:>8}{suffix}")
+        print()

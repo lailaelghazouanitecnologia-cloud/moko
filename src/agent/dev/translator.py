@@ -300,6 +300,7 @@ class BlueprintTranslator:
         self.rich_mode = rich_mode  # When True, use higher token budget
         self.context_engine = None  # Optional ContextEngine for richer snapshots
         self.quality_engine = None # Optional QualityEngine for style-aware hints
+        self.style_rules = None    # Optional StyleRules for user-configurable style
 
     def _log(self, msg: str):
         if self.verbose:
@@ -314,6 +315,19 @@ class BlueprintTranslator:
         )
         self.total_tokens += resp.usage.total_tokens
         return resp.content, resp.usage.total_tokens
+
+    def _build_system_prompt(self, file_path: str = "") -> str:
+        """Build system prompt, optionally augmented with user style rules."""
+        base = TRANSLATE_SYSTEM
+        if self.style_rules and self.style_rules.has_custom_rules():
+            style_section = (
+                self.style_rules.to_system_prompt_for_file(file_path)
+                if file_path
+                else self.style_rules.to_system_prompt()
+            )
+            if style_section:
+                base += "\n\n## User Style Rules (follow these preferences)\n" + style_section
+        return base
 
     # ── Reference Loading ───────────────────────────────────
 
@@ -463,7 +477,9 @@ class BlueprintTranslator:
 
         # 4. LLM call — all token budget for this one type
         max_tok = 12000 if self.rich_mode else 6000
-        code, tokens = self._llm_call(TRANSLATE_SYSTEM, user, max_tokens=max_tok)
+        target_file = type_bp.target_file or f"{module_bp.target_dir}/{to_kebab_case(type_bp.name)}.ts"
+        system_prompt = self._build_system_prompt(target_file)
+        code, tokens = self._llm_call(system_prompt, user, max_tokens=max_tok)
 
         # 5. Clean output (strip markdown fences only — no YAML heuristics)
         clean = self._strip_code_fences(code)
@@ -472,7 +488,7 @@ class BlueprintTranslator:
         clean = self._fix_orphaned_class_body(clean, type_bp, module_bp)
 
         # 6. Write to disk
-        target = type_bp.target_file or f"{module_bp.target_dir}/{to_kebab_case(type_bp.name)}.ts"
+        target = target_file
         full_path = project_dir / target
         full_path.parent.mkdir(parents=True, exist_ok=True)
         full_path.write_text(clean + "\n")

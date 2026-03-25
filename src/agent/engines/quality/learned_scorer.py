@@ -73,7 +73,7 @@ class CodeProfile:
     type_reuse_ratio: float = 0.0       # types used across modules / total types
     dead_export_ratio: float = 0.0      # exports never imported elsewhere
 
-    # Code conciseness (NEW — differentiate Claude vs AVA)
+    # Code conciseness
     comment_density: float = 0.0        # comment lines / 100 LOC
     unnecessary_comment_ratio: float = 0.0  # trivial comments / total comments (lower=better)
     optional_chaining_density: float = 0.0  # ?. operators / 100 LOC
@@ -83,6 +83,56 @@ class CodeProfile:
     literal_type_density: float = 0.0   # string literal types / 100 LOC
     avg_exports_per_file: float = 0.0   # exports per file (higher=consolidated)
     void_method_ratio: float = 0.0      # void methods / total methods (lower=better)
+
+    # ── Complexity & Structure (ts_analyzer) ──
+    cognitive_complexity_avg: float = 0.0    # SonarQube-style per function
+    max_nesting_depth: int = 0               # deepest nesting in codebase
+    avg_nesting_depth: float = 0.0           # average nesting per function
+    max_function_length: int = 0             # longest function LOC
+    long_function_ratio: float = 0.0         # % functions > 50 LOC
+    parameter_count_avg: float = 0.0         # average params per function
+    high_param_ratio: float = 0.0            # % functions with > 4 params
+    return_point_count_avg: float = 0.0      # avg return statements per function
+    early_return_ratio: float = 0.0          # % functions with guard clauses
+    single_responsibility: float = 0.0       # class cohesion (LCOM-style, 0-1)
+
+    # ── Coupling & Cohesion ──
+    afferent_coupling_avg: float = 0.0       # avg fan-in per module
+    efferent_coupling_avg: float = 0.0       # avg fan-out per module
+    instability_index: float = 0.0           # avg Ce/(Ca+Ce) per module
+    dependency_depth: int = 0                # longest path in dep graph
+    circular_dependency_count: int = 0       # circular deps detected
+    cohesion_ratio: float = 0.0              # avg class cohesion (0-1)
+    module_size_variance: float = 0.0        # stddev of module LOC / mean
+    god_class_count: int = 0                 # classes > 10 methods or > 200 LOC
+
+    # ── Naming & Legibility ──
+    avg_identifier_length: float = 0.0       # mean length of identifiers
+    short_name_ratio: float = 0.0            # % names < 3 chars (excl i,j,k,e,_)
+    semantic_name_score: float = 0.0         # 0-1, penalize generic names
+    naming_convention_uniformity: float = 0.0  # dominant convention ratio
+    magic_number_density: float = 0.0        # magic numbers / 100 LOC
+    meaningful_constant_ratio: float = 0.0   # named consts / total numeric literals
+
+    # ── Error Handling & Robustness ──
+    error_boundary_coverage: float = 0.0     # % public funcs with error handling
+    empty_catch_count: int = 0               # empty catch blocks
+    assertion_density: float = 0.0           # assertions per function
+    null_safety_coverage: float = 0.0        # ?. + null checks / potential null accesses
+    unhandled_promise_ratio: float = 0.0     # unhandled async / total async
+
+    # ── Duplication & Dead Code ──
+    duplicate_block_ratio: float = 0.0       # duplicate blocks / total
+    dead_code_ratio: float = 0.0             # unused exports / total exports
+    unused_parameter_ratio: float = 0.0      # unused params / total params
+    commented_code_ratio: float = 0.0        # commented code lines / total comments
+
+    # ── Design Patterns ──
+    interface_segregation_score: float = 0.0 # avg methods per interface (lower=better)
+    dependency_injection_ratio: float = 0.0  # % classes using DI
+    immutability_score: float = 0.0          # readonly+const / total declarations
+    factory_pattern_count: int = 0           # factory/builder patterns found
+    guard_clause_ratio: float = 0.0          # % functions with guard clauses
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -290,7 +340,219 @@ class ProfileExtractor:
         all_methods = len(re.findall(r"\):\s*\w+", all_code))
         p.void_method_ratio = void_methods / max(all_methods, 1)
 
+        # ── Rich metrics via TypeScriptAnalyzer ──────────────────
+        self._extract_rich_metrics(p, files, all_code, total_loc, scale)
+
         return p
+
+    def _extract_rich_metrics(self, p: CodeProfile, files: Dict[str, str],
+                               all_code: str, total_loc: int, scale: float):
+        """Extract rich metrics using the TypeScript static analyzer."""
+        from .ts_analyzer import TypeScriptAnalyzer
+
+        analyzer = TypeScriptAnalyzer()
+        result = analyzer.analyze(files)
+
+        # ── Complexity & Structure ──
+        if result.functions:
+            ccs = [analyzer._cognitive_for_block(f.body) for f in result.functions]
+            p.cognitive_complexity_avg = sum(ccs) / len(ccs)
+            func_lengths = [f.loc for f in result.functions]
+            p.max_function_length = max(func_lengths)
+            p.long_function_ratio = sum(1 for l in func_lengths if l > 50) / len(func_lengths)
+            param_counts = [f.param_count for f in result.functions]
+            p.parameter_count_avg = sum(param_counts) / len(param_counts)
+            p.high_param_ratio = sum(1 for c in param_counts if c > 4) / len(param_counts)
+            return_counts = [f.body.count("return ") + f.body.count("return;")
+                             for f in result.functions]
+            p.return_point_count_avg = sum(return_counts) / len(return_counts)
+            guards = [analyzer.has_guard_clauses(f) for f in result.functions]
+            p.early_return_ratio = sum(guards) / len(guards)
+            p.guard_clause_ratio = p.early_return_ratio  # alias
+
+        # Nesting
+        p.max_nesting_depth = result.nesting.max_depth
+        p.avg_nesting_depth = result.nesting.avg_depth
+
+        # ── Coupling & Cohesion ──
+        coupling = result.coupling
+        if coupling.afferent:
+            p.afferent_coupling_avg = sum(coupling.afferent.values()) / len(coupling.afferent)
+        if coupling.efferent:
+            p.efferent_coupling_avg = sum(coupling.efferent.values()) / len(coupling.efferent)
+        if coupling.instability:
+            p.instability_index = sum(coupling.instability.values()) / len(coupling.instability)
+        p.dependency_depth = coupling.max_depth
+        p.circular_dependency_count = coupling.circular_count
+
+        # Class cohesion
+        if result.classes:
+            cohesions = [analyzer.class_cohesion(c) for c in result.classes]
+            p.cohesion_ratio = sum(cohesions) / len(cohesions)
+            p.single_responsibility = p.cohesion_ratio
+
+            # God classes
+            p.god_class_count = sum(
+                1 for c in result.classes
+                if c.method_count > 10 or c.loc > 200
+            )
+
+            # DI ratio
+            di_count = sum(1 for c in result.classes if analyzer.uses_dependency_injection(c))
+            p.dependency_injection_ratio = di_count / len(result.classes)
+
+        # Module size variance
+        module_locs: Dict[str, int] = {}
+        for filename, code in files.items():
+            mod = analyzer._module_from_path(filename)
+            loc = len([l for l in code.split("\n") if l.strip()])
+            module_locs[mod] = module_locs.get(mod, 0) + loc
+        if len(module_locs) > 1:
+            mean_ml = sum(module_locs.values()) / len(module_locs)
+            if mean_ml > 0:
+                variance = sum((v - mean_ml) ** 2 for v in module_locs.values()) / len(module_locs)
+                p.module_size_variance = math.sqrt(variance) / mean_ml  # coefficient of variation
+
+        # ── Naming & Legibility ──
+        identifiers = re.findall(r'\b([a-zA-Z_]\w{2,})\b', all_code)
+        # Filter out keywords and common tokens
+        _keywords = {'import', 'export', 'class', 'interface', 'type', 'function',
+                     'const', 'let', 'var', 'return', 'from', 'this', 'new', 'null',
+                     'undefined', 'true', 'false', 'void', 'string', 'number', 'boolean',
+                     'private', 'public', 'protected', 'readonly', 'static', 'async',
+                     'await', 'extends', 'implements', 'throw', 'catch', 'try', 'finally',
+                     'break', 'continue', 'switch', 'case', 'default', 'enum', 'abstract'}
+        idents = [i for i in identifiers if i.lower() not in _keywords]
+        if idents:
+            p.avg_identifier_length = sum(len(i) for i in idents) / len(idents)
+            short_excluded = {'i', 'j', 'k', 'e', '_', 'x', 'y', 'id'}
+            short = [i for i in idents if len(i) < 3 and i not in short_excluded]
+            p.short_name_ratio = len(short) / len(idents)
+
+            # Semantic naming: penalize generic names
+            generic_names = {'data', 'result', 'item', 'items', 'temp', 'val', 'value',
+                             'values', 'obj', 'list', 'arr', 'map', 'set', 'info',
+                             'stuff', 'thing', 'things', 'input', 'output', 'args'}
+            generic_count = sum(1 for i in idents if i.lower() in generic_names)
+            p.semantic_name_score = 1.0 - (generic_count / len(idents))
+
+            # Naming convention uniformity
+            camel = sum(1 for i in idents if re.match(r'^[a-z][a-zA-Z0-9]*$', i))
+            pascal = sum(1 for i in idents if re.match(r'^[A-Z][a-zA-Z0-9]*$', i))
+            snake = sum(1 for i in idents if re.match(r'^[a-z][a-z0-9_]*$', i) and '_' in i)
+            dominant = max(camel, pascal, snake)
+            p.naming_convention_uniformity = dominant / len(idents) if idents else 1.0
+
+        # Magic numbers
+        all_numeric_literals = re.findall(r'(?<!\w)(\d+\.?\d*)(?!\w)', all_code)
+        non_trivial = [n for n in all_numeric_literals if n not in ('0', '1', '2', '0.0', '1.0')]
+        named_consts = len(re.findall(r'\bconst\s+\w+\s*[:=]\s*\d', all_code))
+        p.magic_number_density = len(non_trivial) * scale
+        p.meaningful_constant_ratio = named_consts / max(named_consts + len(non_trivial), 1)
+
+        # ── Error Handling & Robustness ──
+        if result.functions:
+            public_funcs = [f for f in result.functions if f.is_public]
+            if public_funcs:
+                error_handled = sum(
+                    1 for f in public_funcs
+                    if re.search(r'\btry\b|\bthrow\b|\bcatch\b', f.body)
+                )
+                p.error_boundary_coverage = error_handled / len(public_funcs)
+
+        # Empty catches
+        p.empty_catch_count = len(re.findall(
+            r'catch\s*\([^)]*\)\s*\{\s*\}', all_code
+        ))
+
+        # Assertion density
+        assertion_count = len(re.findall(
+            r'\b(?:assert|console\.assert|expect)\b', all_code
+        ))
+        func_count = len(result.functions) if result.functions else 1
+        p.assertion_density = assertion_count / func_count
+
+        # Null safety coverage
+        potential_null_access = len(re.findall(r'\.\w+', all_code))
+        safe_access = len(re.findall(r'\?\.\w+', all_code))
+        null_checks = len(re.findall(r'!==?\s*null|!==?\s*undefined|\?\?', all_code))
+        p.null_safety_coverage = (safe_access + null_checks) / max(potential_null_access, 1)
+
+        # Unhandled promises
+        async_calls = len(re.findall(r'\bawait\b', all_code))
+        promise_then = len(re.findall(r'\.then\(', all_code))
+        promise_catch = len(re.findall(r'\.catch\(', all_code))
+        unhandled = max(0, promise_then - promise_catch)
+        total_async = async_calls + promise_then
+        p.unhandled_promise_ratio = unhandled / max(total_async, 1)
+
+        # ── Duplication & Dead Code ──
+        p.duplicate_block_ratio = result.duplicates.ratio
+
+        # Dead code: exports not imported elsewhere
+        all_exports: Set[str] = set()
+        all_imports: Set[str] = set()
+        for imp_list in result.imports_by_file.values():
+            for imp in imp_list:
+                all_imports.update(imp.names)
+        for m in re.finditer(r'\bexport\s+(?:class|interface|type|function|const|enum)\s+(\w+)', all_code):
+            all_exports.add(m.group(1))
+        dead_exports = all_exports - all_imports
+        p.dead_code_ratio = len(dead_exports) / max(len(all_exports), 1)
+
+        # Unused parameters
+        total_params = 0
+        unused_params = 0
+        for func in result.functions:
+            for param in func.params:
+                param_name = param.split(":")[0].strip()
+                param_name = re.sub(r'^(private|public|protected|readonly)\s+', '', param_name).strip()
+                if not param_name or param_name == '_':
+                    continue
+                total_params += 1
+                if param_name not in func.body.split("{", 1)[-1] if "{" in func.body else "":
+                    unused_params += 1
+        p.unused_parameter_ratio = unused_params / max(total_params, 1)
+
+        # Commented code ratio
+        comment_lines_code = 0
+        comment_lines_total = 0
+        for line in all_code.split("\n"):
+            stripped = line.strip()
+            if stripped.startswith("//") or stripped.startswith("*"):
+                comment_lines_total += 1
+                # Detect commented-out code
+                text = re.sub(r'^[/*\s]+', '', stripped)
+                if re.match(r'(if|for|while|return|const|let|var|import|export|class|function)\b', text):
+                    comment_lines_code += 1
+                elif text.endswith(';') or text.endswith('{') or text.endswith('}'):
+                    comment_lines_code += 1
+        p.commented_code_ratio = comment_lines_code / max(comment_lines_total, 1)
+
+        # ── Design Patterns ──
+        # Interface segregation: avg methods per interface
+        interfaces = re.findall(
+            r'interface\s+\w+[^{]*\{([^}]*)\}', all_code, re.DOTALL
+        )
+        if interfaces:
+            methods_per_iface = []
+            for iface_body in interfaces:
+                method_count = len(re.findall(r'\w+\s*\(', iface_body))
+                methods_per_iface.append(method_count)
+            p.interface_segregation_score = sum(methods_per_iface) / len(methods_per_iface)
+
+        # Immutability score
+        readonly_count = len(re.findall(r'\breadonly\b', all_code))
+        const_count = len(re.findall(r'\bconst\b', all_code))
+        let_count = len(re.findall(r'\blet\b', all_code))
+        var_count = len(re.findall(r'\bvar\b', all_code))
+        p.immutability_score = (readonly_count + const_count) / max(
+            readonly_count + const_count + let_count + var_count, 1)
+
+        # Factory patterns
+        p.factory_pattern_count = len(re.findall(
+            r'\b(?:static\s+)?(?:create|build|from|of|make)\w*\s*[<(]', all_code
+        ))
 
     def _extract_file_metrics(self, code: str, loc: int) -> Dict[str, float]:
         """Extract per-file metrics for aggregation."""
@@ -626,6 +888,107 @@ class LearnedScorer:
                            reference_value=ref.void_method_ratio,
                            tolerance=tol("void_method_ratio", 0.15),
                            direction="closer_better"),
+
+            # ── Rich metrics: Complexity & Structure ──
+            ScoreDimension("cognitive_complexity", weight=2.0,
+                           reference_value=ref.cognitive_complexity_avg,
+                           tolerance=tol("cognitive_complexity_avg", 3.0),
+                           direction="closer_better"),
+            ScoreDimension("max_nesting_depth", weight=1.5,
+                           reference_value=float(ref.max_nesting_depth),
+                           tolerance=tol("max_nesting_depth", 2.0),
+                           direction="closer_better"),
+            ScoreDimension("max_function_length", weight=1.5,
+                           reference_value=float(ref.max_function_length),
+                           tolerance=tol("max_function_length", 30.0),
+                           direction="lower_better"),
+            ScoreDimension("long_function_ratio", weight=1.5,
+                           reference_value=ref.long_function_ratio,
+                           direction="lower_better"),
+            ScoreDimension("parameter_count_avg", weight=1.0,
+                           reference_value=ref.parameter_count_avg,
+                           tolerance=tol("parameter_count_avg", 1.0),
+                           direction="closer_better"),
+            ScoreDimension("high_param_ratio", weight=1.0,
+                           reference_value=ref.high_param_ratio,
+                           direction="lower_better"),
+            ScoreDimension("early_return_ratio", weight=1.0,
+                           reference_value=ref.early_return_ratio,
+                           direction="higher_better"),
+            ScoreDimension("single_responsibility", weight=1.5,
+                           reference_value=ref.single_responsibility,
+                           tolerance=tol("single_responsibility", 0.2),
+                           direction="higher_better"),
+
+            # ── Rich metrics: Coupling & Cohesion ──
+            ScoreDimension("instability_index", weight=1.5,
+                           reference_value=ref.instability_index,
+                           tolerance=tol("instability_index", 0.2),
+                           direction="closer_better"),
+            ScoreDimension("circular_dependencies", weight=2.0,
+                           reference_value=float(ref.circular_dependency_count),
+                           direction="lower_better"),
+            ScoreDimension("cohesion_ratio", weight=1.5,
+                           reference_value=ref.cohesion_ratio,
+                           direction="higher_better"),
+            ScoreDimension("god_class_count", weight=2.0,
+                           reference_value=float(ref.god_class_count),
+                           direction="lower_better"),
+
+            # ── Rich metrics: Naming & Legibility ──
+            ScoreDimension("avg_identifier_length", weight=1.0,
+                           reference_value=ref.avg_identifier_length,
+                           tolerance=tol("avg_identifier_length", 4.0),
+                           direction="closer_better"),
+            ScoreDimension("short_name_ratio", weight=1.0,
+                           reference_value=ref.short_name_ratio,
+                           direction="lower_better"),
+            ScoreDimension("semantic_name_score", weight=1.0,
+                           reference_value=ref.semantic_name_score,
+                           direction="higher_better"),
+            ScoreDimension("naming_uniformity", weight=1.0,
+                           reference_value=ref.naming_convention_uniformity,
+                           direction="higher_better"),
+            ScoreDimension("magic_number_density", weight=1.5,
+                           reference_value=ref.magic_number_density,
+                           direction="lower_better"),
+
+            # ── Rich metrics: Error Handling & Robustness ──
+            ScoreDimension("error_boundary_coverage", weight=1.5,
+                           reference_value=ref.error_boundary_coverage,
+                           direction="higher_better"),
+            ScoreDimension("empty_catch_count", weight=2.0,
+                           reference_value=float(ref.empty_catch_count),
+                           direction="lower_better"),
+            ScoreDimension("null_safety_coverage", weight=1.5,
+                           reference_value=ref.null_safety_coverage,
+                           direction="higher_better"),
+
+            # ── Rich metrics: Duplication & Dead Code ──
+            ScoreDimension("duplicate_block_ratio", weight=2.0,
+                           reference_value=ref.duplicate_block_ratio,
+                           direction="lower_better"),
+            ScoreDimension("unused_parameter_ratio", weight=1.0,
+                           reference_value=ref.unused_parameter_ratio,
+                           direction="lower_better"),
+            ScoreDimension("commented_code_ratio", weight=1.0,
+                           reference_value=ref.commented_code_ratio,
+                           direction="lower_better"),
+
+            # ── Rich metrics: Design Patterns ──
+            ScoreDimension("interface_segregation", weight=1.0,
+                           reference_value=ref.interface_segregation_score,
+                           tolerance=tol("interface_segregation_score", 3.0),
+                           direction="lower_better"),
+            ScoreDimension("dependency_injection", weight=1.5,
+                           reference_value=ref.dependency_injection_ratio,
+                           direction="higher_better"),
+            ScoreDimension("immutability_score", weight=1.5,
+                           reference_value=ref.immutability_score,
+                           direction="higher_better"),
+            ScoreDimension("guard_clause_ratio", weight=1.0,
+                           reference_value=ref.guard_clause_ratio,
+                           direction="higher_better"),
         ]
 
     def score(self, target: CodeProfile) -> Tuple[float, Dict[str, Tuple[float, float, str]]]:
@@ -755,6 +1118,39 @@ class LearnedScorer:
             "unnecessary_comments": profile.unnecessary_comment_ratio,
             "exports_per_file": profile.avg_exports_per_file,
             "void_method_ratio": profile.void_method_ratio,
+            # Rich metrics: Complexity & Structure
+            "cognitive_complexity": profile.cognitive_complexity_avg,
+            "max_nesting_depth": float(profile.max_nesting_depth),
+            "max_function_length": float(profile.max_function_length),
+            "long_function_ratio": profile.long_function_ratio,
+            "parameter_count_avg": profile.parameter_count_avg,
+            "high_param_ratio": profile.high_param_ratio,
+            "early_return_ratio": profile.early_return_ratio,
+            "single_responsibility": profile.single_responsibility,
+            # Rich metrics: Coupling & Cohesion
+            "instability_index": profile.instability_index,
+            "circular_dependencies": float(profile.circular_dependency_count),
+            "cohesion_ratio": profile.cohesion_ratio,
+            "god_class_count": float(profile.god_class_count),
+            # Rich metrics: Naming & Legibility
+            "avg_identifier_length": profile.avg_identifier_length,
+            "short_name_ratio": profile.short_name_ratio,
+            "semantic_name_score": profile.semantic_name_score,
+            "naming_uniformity": profile.naming_convention_uniformity,
+            "magic_number_density": profile.magic_number_density,
+            # Rich metrics: Error Handling & Robustness
+            "error_boundary_coverage": profile.error_boundary_coverage,
+            "empty_catch_count": float(profile.empty_catch_count),
+            "null_safety_coverage": profile.null_safety_coverage,
+            # Rich metrics: Duplication & Dead Code
+            "duplicate_block_ratio": profile.duplicate_block_ratio,
+            "unused_parameter_ratio": profile.unused_parameter_ratio,
+            "commented_code_ratio": profile.commented_code_ratio,
+            # Rich metrics: Design Patterns
+            "interface_segregation": profile.interface_segregation_score,
+            "dependency_injection": profile.dependency_injection_ratio,
+            "immutability_score": profile.immutability_score,
+            "guard_clause_ratio": profile.guard_clause_ratio,
         }
         return mapping.get(dim_name, 0.0)
 
