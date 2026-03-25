@@ -18,6 +18,8 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 from ..llm.providers import LLMProvider, LLMMessage
+from .config import DecomposerConfig
+from .errors import YAMLParseError, DecompositionError
 
 try:
     import yaml
@@ -45,13 +47,15 @@ class TaskDecomposer:
     """Decompose a large goal into branch-per-module tasks with dependencies."""
 
     def __init__(self, llm: LLMProvider, verbose: bool = False,
-                 out_dir: Path = None):
+                 out_dir: Path = None,
+                 config: DecomposerConfig = None):
         self.llm = llm
         self.verbose = verbose
-        self.total_tokens = 0
+        self.total_tokens: int = 0
         self.out_dir = out_dir  # Where reference descriptors live
+        self.config = config or DecomposerConfig()
 
-    def _log(self, msg: str):
+    def _log(self, msg: str) -> None:
         if self.verbose:
             print(f"  [decomposer] {msg}")
 
@@ -199,10 +203,9 @@ class TaskDecomposer:
 
             # Cap types per module to avoid overwhelming the pipeline
             # Keep the most important types (first ones tend to be core classes)
-            MAX_TYPES_PER_MODULE = 12
-            if len(types) > MAX_TYPES_PER_MODULE:
-                self._log(f"  {mod_id}: capping {len(types)} types to {MAX_TYPES_PER_MODULE}")
-                types = types[:MAX_TYPES_PER_MODULE]
+            if len(types) > self.config.max_types_per_module:
+                self._log(f"  {mod_id}: capping {len(types)} types to {self.config.max_types_per_module}")
+                types = types[:self.config.max_types_per_module]
 
             # Get dependencies for this module
             module_deps = deps_map.get(mod_id, [])
@@ -210,8 +213,9 @@ class TaskDecomposer:
             module_deps = [d for d in module_deps if d != "__root__" and d != mod_id]
 
             # Calculate target LOC per type based on reference density
-            loc_per_type = max(100, mod_lines // max(len(types), 1))
-            loc_per_type = min(loc_per_type, 400)  # cap at 400
+            loc_per_type = max(self.config.target_loc_per_type_min,
+                               mod_lines // max(len(types), 1))
+            loc_per_type = min(loc_per_type, self.config.target_loc_per_type_max)
 
             task = ModuleTask(
                 name=mod_id,
@@ -377,15 +381,18 @@ class TaskDecomposer:
                 types = list(node.ref_types)
 
             # Scale LOC: target is 20-40% of reference for a new project
-            scale = 0.3
+            scale = self.config.feature_loc_scale
             if (intelligence and hasattr(intelligence, 'quality')
                     and hasattr(intelligence.quality, 'loc_per_type')
                     and intelligence.quality.loc_per_type.median > 0):
                 # If we know the reference's actual median, use that as guide
-                scale = min(0.5, max(0.15, 150 / max(intelligence.quality.loc_per_type.median, 1)))
+                scale = min(self.config.feature_loc_scale_max,
+                            max(self.config.feature_loc_scale_min,
+                                150 / max(intelligence.quality.loc_per_type.median, 1)))
 
-            target_loc = max(80, int(node.ref_loc * scale / max(len(types), 1)))
-            target_loc = min(target_loc, 400)  # cap
+            target_loc = max(self.config.target_loc_per_type_min,
+                             int(node.ref_loc * scale / max(len(types), 1)))
+            target_loc = min(target_loc, self.config.target_loc_per_type_max)
 
             adapt_note = ""
             if node.adapt:

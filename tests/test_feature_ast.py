@@ -265,6 +265,40 @@ def test_build_thief_engine():
     print(f"  PASS  test_build_thief_engine ({len(list(ast.walk()))} nodes, {ast.ref_loc:,} LOC)")
 
 
+def test_build_openspace():
+    """Test building AST from openspace workspace (types as int counts)."""
+    out_dir = Path("out")
+    if not (out_dir / "openspace" / "workspace.yaml").exists():
+        print("  SKIP  test_build_openspace (no workspace.yaml)")
+        return
+    ast = build_feature_ast("openspace", out_dir)
+    assert ast.name == "openspace"
+    assert ast.ref_loc > 30000
+    # Should extract actual type names from descriptors (not just counts)
+    nodes = {n.name: n for n in ast.walk()}
+    assert "skill_engine" in nodes
+    assert len(nodes["skill_engine"].ref_types) > 0, "should extract type names from descriptors"
+    print(f"  PASS  test_build_openspace ({len(list(ast.walk()))} nodes, {ast.ref_loc:,} LOC, "
+          f"skill_engine has {len(nodes['skill_engine'].ref_types)} types)")
+
+
+def test_goal_ai_agent():
+    """AI agent goal should select AI-relevant modules."""
+    out_dir = Path("out")
+    if not (out_dir / "openspace" / "workspace.yaml").exists():
+        print("  SKIP  test_goal_ai_agent (no workspace.yaml)")
+        return
+    ast = build_feature_ast("openspace", out_dir)
+    analysis = analyze_goal("AI agent framework with self-evolving skills", ast)
+    auto_select(ast, analysis)
+    selected = {n.name for n in ast.selected_nodes()}
+    assert "skill_engine" in selected, "skill_engine should be selected for AI goal"
+    assert "agents" in selected, "agents should be selected for AI goal"
+    assert "llm" in selected, "llm should be selected for AI goal"
+    assert "config" in selected, "config (foundational) should be selected"
+    print(f"  PASS  test_goal_ai_agent ({len(selected)} nodes selected)")
+
+
 # ── Run all ──────────────────────────────────────────────
 
 if __name__ == "__main__":
@@ -301,6 +335,8 @@ if __name__ == "__main__":
 
     test_build_playcanvas()
     test_build_thief_engine()
+    test_build_openspace()
+    test_goal_ai_agent()
 
     print()
     print("  ALL TESTS PASSED")

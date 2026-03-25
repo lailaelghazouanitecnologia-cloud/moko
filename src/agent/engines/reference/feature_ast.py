@@ -204,13 +204,28 @@ def build_feature_ast(project_name: str, out_dir: Path) -> FeatureNode:
     mod_nodes: Dict[str, FeatureNode] = {}
     for mod in modules:
         name = mod["name"]
+        # Handle both formats: types as list of names OR int count
+        raw_types = mod.get("types", [])
+        if isinstance(raw_types, int):
+            ref_types = _extract_type_names(out_dir / project_name, name)
+            type_count = raw_types
+        elif isinstance(raw_types, list):
+            ref_types = raw_types
+            type_count = len(raw_types)
+        else:
+            ref_types = []
+            type_count = 0
+
+        raw_funcs = mod.get("functions", [])
+        ref_functions = raw_funcs if isinstance(raw_funcs, list) else []
+
         node = FeatureNode(
             name=name.split("/")[-1],  # short name: "math", "webgl"
             path=name,                  # full path: "core/math"
             kind="subsystem",
             ref_loc=mod.get("lines", 0),
-            ref_types=mod.get("types", []),
-            ref_functions=mod.get("functions", []),
+            ref_types=ref_types,
+            ref_functions=ref_functions,
             ref_module=name,
             layer=mod.get("layer", ""),
         )
@@ -279,6 +294,56 @@ def build_feature_ast(project_name: str, out_dir: Path) -> FeatureNode:
             node.ref_loc = sum(c.ref_loc for c in node.children)
 
     return root
+
+
+def _extract_type_names(ref_dir: Path, module_name: str) -> List[str]:
+    """Extract actual type names from module descriptors when workspace only has counts."""
+    types: List[str] = []
+    mod_dir = ref_dir / module_name
+    if not mod_dir.exists() or yaml is None:
+        return types
+
+    # Read module.yaml for file list
+    mod_yaml = mod_dir / "module.yaml"
+    if mod_yaml.exists():
+        try:
+            data = yaml.safe_load(mod_yaml.read_text())
+            if isinstance(data, dict):
+                for file_entry in data.get("files", []):
+                    file_path = file_entry.get("file", "")
+                    if not file_path:
+                        continue
+                    stem = Path(file_path).stem
+                    desc_file = mod_dir / f"{stem}.yaml"
+                    if desc_file.exists():
+                        try:
+                            desc = yaml.safe_load(desc_file.read_text())
+                            if isinstance(desc, dict):
+                                for t in desc.get("types", []):
+                                    name = t.get("name", "")
+                                    if name and not name.startswith("_") and name not in types:
+                                        types.append(name)
+                        except Exception:
+                            continue
+        except Exception:
+            pass
+
+    # Fallback: scan all yaml files in module dir
+    if not types:
+        for yaml_file in sorted(mod_dir.rglob("*.yaml")):
+            if yaml_file.name == "module.yaml":
+                continue
+            try:
+                data = yaml.safe_load(yaml_file.read_text())
+                if isinstance(data, dict):
+                    for t in data.get("types", []):
+                        name = t.get("name", "")
+                        if name and not name.startswith("_") and name not in types:
+                            types.append(name)
+            except Exception:
+                continue
+
+    return types
 
 
 def _infer_dependencies(root: FeatureNode, mod_nodes: Dict[str, FeatureNode]):
@@ -392,9 +457,13 @@ def analyze_goal(goal: str, ast: FeatureNode, llm=None) -> GoalAnalysis:
 
 
 def _score_relevance(node: FeatureNode, analysis: GoalAnalysis) -> str:
-    """Score a single node's relevance to the goal."""
+    """Score a single node's relevance to the goal.
 
-    # Explicitly mentioned → always yes
+    Strategy: check explicit mentions first, then domain-specific rules,
+    then generic heuristics for ANY project type.
+    """
+
+    # ── 1. Explicitly mentioned → always yes ──────────────
     if node.path in analysis.explicit_features:
         return "yes"
 
@@ -404,25 +473,24 @@ def _score_relevance(node: FeatureNode, analysis: GoalAnalysis) -> str:
             return "yes"
 
     goal_lower = analysis.goal.lower()
+    goal_words = set(goal_lower.split())
+
+    # ── 2. Foundational modules → always yes ──────────────
+    foundational = {"math", "geom", "event", "events", "config", "utils", "llm"}
+    if node.name in foundational:
+        return "yes"
+
+    # ── 3. Domain-specific: Game Engine ───────────────────
     goal_wants_render = "render" in goal_lower or "graphics" in goal_lower
     goal_wants_engine = "engine" in goal_lower or "game" in goal_lower
 
-    # Math/events are ALWAYS needed — foundational
-    if node.name in ("math", "geom", "event", "events"):
-        return "yes"
-
-    # 2D goal → exclude modules that are PURELY 3D
-    # A module is purely 3D only if ALL its types are 3D-only
+    # 2D goal → exclude purely 3D modules
     if analysis.is_2d and not analysis.is_3d:
         if node.ref_types:
-            useful_types = [t for t in node.ref_types if t not in _TYPES_3D_ONLY]
-            all_3d = len(useful_types) == 0
-            if all_3d:
+            useful = [t for t in node.ref_types if t not in _TYPES_3D_ONLY]
+            if len(useful) == 0:
                 return "no"
-            # Mixed module (has both 2D and 3D types) → yes, will adapt
-            # e.g., scene has GraphNode (useful) + Light (3D only)
 
-    # Rendering-related when goal mentions rendering or engine
     if goal_wants_render or goal_wants_engine:
         render_layers = {"graphics", "scene"}
         render_names = {"graphics", "renderer", "materials", "shader-lib",
@@ -431,39 +499,74 @@ def _score_relevance(node: FeatureNode, analysis: GoalAnalysis) -> str:
         if node.name in render_names or node.layer in render_layers:
             return "yes"
 
-    # Input system when goal says "engine"
-    if goal_wants_engine and node.layer == "input":
-        return "maybe"
-
-    # ECS/framework when goal says "engine"
-    if goal_wants_engine and node.layer == "framework":
-        return "maybe"
-
-    # Physics when goal says "engine" or "game"
-    if goal_wants_engine and node.layer == "physics":
-        return "maybe"
-
-    # Core systems (engine, canvas, time, loader) when building a game
     if goal_wants_engine:
         core_names = {"core", "engine", "canvas", "time", "loader"}
         if node.name in core_names or node.layer == "core":
             return "yes"
-
-    # Game objects / scene when building a game
-    if goal_wants_engine:
+        if node.layer in ("input", "framework", "physics", "gameobject",
+                          "builder", "script"):
+            return "maybe"
         go_names = {"gameobject", "scene", "transform", "entity", "component"}
-        if node.name in go_names or node.layer == "gameobject":
+        if node.name in go_names:
             return "maybe"
 
-    # Builder/factory patterns when building a game
-    if goal_wants_engine and node.layer == "builder":
-        return "maybe"
+    # ── 4. Domain-specific: AI Agent / Framework ──────────
+    _AI_KEYWORDS = {"agent", "ai", "llm", "skill", "tool", "evolv",
+                    "framework", "workflow", "pipeline", "orchestrat"}
+    goal_wants_ai = any(kw in goal_lower for kw in _AI_KEYWORDS)
 
-    # Script system when building a game
-    if goal_wants_engine and node.layer == "script":
-        return "maybe"
+    if goal_wants_ai:
+        # Core agent infrastructure → yes
+        ai_core = {"agents", "agent", "llm", "config", "prompts",
+                    "skill_engine", "skill", "grounding", "cloud",
+                    "recording", "platform", "utils", "__root__"}
+        if node.name in ai_core:
+            return "yes"
 
-    # Not mentioned, not inferred → no
+        # Modules with AI-relevant types
+        ai_types = {"Agent", "BaseAgent", "LLMClient", "SkillEvolver",
+                     "SkillStore", "ExecutionAnalyzer", "GroundingAgent",
+                     "Provider", "Registry", "Evolver", "Analyzer"}
+        if node.ref_types:
+            overlap = [t for t in node.ref_types
+                       if any(at.lower() in t.lower() for at in ai_types)]
+            if overlap:
+                return "yes"
+
+        # Infra-adjacent → maybe
+        infra_names = {"local_server", "host_detection", "recording"}
+        if node.name in infra_names:
+            return "maybe"
+
+    # ── 5. Domain-specific: Editor / CLI ──────────────────
+    _EDITOR_KEYWORDS = {"editor", "lsp", "ide", "syntax", "highlight",
+                        "buffer", "tab", "vim"}
+    goal_wants_editor = any(kw in goal_lower for kw in _EDITOR_KEYWORDS)
+
+    if goal_wants_editor:
+        editor_names = {"editor", "buffer", "syntax", "lsp", "renderer",
+                        "input", "keyboard", "commands", "extensions"}
+        if node.name in editor_names or node.layer in editor_names:
+            return "yes"
+        if node.name in ("config", "utils", "core"):
+            return "yes"
+
+    # ── 6. Generic heuristic: "casi idéntico" ─────────────
+    # If goal says "like X" or "similar to X" or "inspired by X",
+    # or the goal broadly matches the reference, select everything
+    clone_phrases = {"identical", "identic", "like", "similar", "clone",
+                     "replica", "same as", "based on", "inspired"}
+    if any(kw in goal_lower for kw in clone_phrases):
+        return "yes"
+
+    # ── 7. Generic: name overlap with goal words ──────────
+    # If the node name appears in the goal, it's likely wanted
+    name_lower = node.name.lower().replace("_", " ")
+    name_parts = set(name_lower.split())
+    if name_parts & goal_words:
+        return "yes"
+
+    # ── 8. Default: no ────────────────────────────────────
     return "no"
 
 

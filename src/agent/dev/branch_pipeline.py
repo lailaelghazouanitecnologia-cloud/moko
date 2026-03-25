@@ -16,6 +16,11 @@ from typing import Optional
 from ..llm.providers import LLMProvider
 from .. import OUT_DIR
 
+from .config import PipelineConfig
+from .errors import (
+    AVAError, ReferenceNotFoundError, FeatureASTError,
+    CompilationError as AVACompilationError,
+)
 from .git_manager import GitManager
 from .compile_fix_loop import CompileFixLoop
 from .task_decomposer import TaskDecomposer, ModuleTask
@@ -123,30 +128,34 @@ class BranchPipelineOrchestrator:
     """Branch-per-module pipeline: decompose -> branch -> generate -> fix -> merge."""
 
     def __init__(self, config: dict = None):
-        config = config or {}
+        raw = config or {}
+        self.cfg = PipelineConfig.from_dict(raw)
         self.llm = LLMProvider(
-            provider=config.get("provider", "groq"),
-            model=config.get("model"),
+            provider=self.cfg.llm.provider,
+            model=self.cfg.llm.model,
         )
-        self.verbose = config.get("verbose", False)
+        self.verbose: bool = self.cfg.verbose
         self.projects_dir = Path("projects")
 
         self.git: Optional[GitManager] = None
-        self.decomposer = TaskDecomposer(self.llm, verbose=self.verbose, out_dir=OUT_DIR)
-        self.fix_loop: Optional[CompileFixLoop] = None   # Legacy, kept for compat
-        self.fix_engine: Optional[FixEngine] = None       # New intelligent fix engine
-        self.quality_engine: Optional[QualityEngine] = None  # Code quality learning engine
+        self.decomposer = TaskDecomposer(
+            self.llm, verbose=self.verbose, out_dir=OUT_DIR,
+            config=self.cfg.decomposer,
+        )
+        self.fix_loop: Optional[CompileFixLoop] = None
+        self.fix_engine: Optional[FixEngine] = None
+        self.quality_engine: Optional[QualityEngine] = None
         self.emission_index: Optional[EmissionIndex] = None
         self.engine: Optional[ContextEngine] = None
-        self.semantic_store = None   # SemanticStore for reference matching
-        self.block_store = None      # CodeBlockStore for reusable code blocks
-        self.style_rules = None      # StyleRules for user-configurable style
+        self.semantic_store = None
+        self.block_store = None
+        self.style_rules = None
         self.intelligence = None     # ProjectIntelligence from reference
         self.feature_ast = None      # FeatureNode tree from reference
         self.selected_features = None  # User-selected FeatureNode list
-        self.interactive = config.get("interactive", True)
-        self.pre_features = config.get("pre_features", None)  # Pre-selected feature names
-        self.total_tokens = 0
+        self.interactive: bool = self.cfg.interactive
+        self.pre_features = self.cfg.pre_features
+        self.total_tokens: int = 0
 
         # Guardrails
         from .guardrails import RunGuard, RunLimits
@@ -182,8 +191,11 @@ class BranchPipelineOrchestrator:
                 self.feature_ast.save(cached)
                 self._log(f"built feature AST for {ref}: "
                           f"{sum(1 for _ in self.feature_ast.walk())} nodes")
-            except FileNotFoundError:
+            except FileNotFoundError as e:
                 self._log(f"no workspace.yaml for {ref}, skipping feature AST")
+                return
+            except Exception as e:
+                self._log(f"feature AST build failed for {ref}: {e}")
                 return
 
         # Analyze goal → auto-select relevant features
@@ -234,7 +246,7 @@ class BranchPipelineOrchestrator:
             self._log("no features selected, will use fallback decomposition")
             self.feature_ast = None
 
-    def _load_intelligence(self, references: list[str]):
+    def _load_intelligence(self, references: list[str]) -> None:
         """Load Project Intelligence from reference .pi.yaml files."""
         if not references:
             return
