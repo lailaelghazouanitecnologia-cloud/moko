@@ -9,12 +9,18 @@ Same architecture as FixClassifier:
 Predictions: what action to take for a detected quality issue.
 """
 
+from __future__ import annotations
+
+import time
 from dataclasses import dataclass
-from typing import List, Dict, Optional, Tuple
+from typing import List, Dict, Optional, Tuple, TYPE_CHECKING
 import math
 
 from .quality_db import QualityDB
 from .quality_features import QualityFeatures, FEATURE_NAMES
+
+if TYPE_CHECKING:
+    from .global_db import GlobalQualityDB
 
 
 @dataclass
@@ -40,12 +46,18 @@ class TreeNode:
 
 
 class QualityClassifier:
-    """Predict quality fixes using rules + learned decision tree."""
+    """Predict quality fixes using rules + learned decision tree.
 
-    def __init__(self, db: Optional[QualityDB] = None):
+    Supports both local QualityDB and global GlobalQualityDB for cross-project learning.
+    """
+
+    def __init__(self, db: Optional[QualityDB] = None, global_db: Optional["GlobalQualityDB"] = None):
         self.db = db
+        self.global_db = global_db
         self.tree: Optional[TreeNode] = None
         self.trained_on: int = 0
+        self._last_trained_at: float = 0
+        self._last_record_count: int = 0
 
     def predict(
         self, issue_type: str, features: QualityFeatures
@@ -87,7 +99,22 @@ class QualityClassifier:
                         hint=self._generate_hint(issue_type, action, features),
                     )
 
-        # 2. Try DB similarity (only if action is valid)
+        # 2. Try global DB similarity (cross-project, if available)
+        if self.global_db:
+            result = self.global_db.best_action_for(issue_type, feat_dict)
+            if result:
+                action, strategy, conf = result
+                if conf >= 0.4 and (not valid or action in valid):
+                    return QualityPrediction(
+                        issue_type=issue_type,
+                        action=action,
+                        strategy=strategy,
+                        confidence=conf,
+                        source="global_db",
+                        hint=self._generate_hint(issue_type, action, features),
+                    )
+
+        # 3. Try local DB similarity (backwards compat)
         if self.db:
             result = self.db.best_action_for(issue_type, feat_dict)
             if result:
@@ -102,7 +129,7 @@ class QualityClassifier:
                         hint=self._generate_hint(issue_type, action, features),
                     )
 
-        # 3. Rule-based fallback
+        # 4. Rule-based fallback
         return self._rule_based(issue_type, features)
 
     def predict_all(
@@ -125,28 +152,46 @@ class QualityClassifier:
         return predictions
 
     def train(self, db: Optional[QualityDB] = None):
-        """Train decision tree from QualityDB records."""
-        source = db or self.db
-        if not source or len(source.records) < 30:
-            return
+        """Train decision tree from global DB (cross-project) or local DB.
 
-        # Build training data from successful records
+        Prefers global DB for cross-project learning. Falls back to local.
+        Re-trains when 50+ new records arrive or 7+ days since last training.
+        """
+        # Try global DB first (cross-project)
         X: List[List[float]] = []
         y: List[str] = []
 
-        for rec in source.records:
-            if not rec.success or not rec.features:
-                continue
-            vec = [rec.features.get(name, 0.0) for name in FEATURE_NAMES]
-            label = f"{rec.action}|{rec.strategy}"
-            X.append(vec)
-            y.append(label)
+        if self.global_db:
+            records = self.global_db.training_records(limit=5000)
+            for rec in records:
+                if not rec.features:
+                    continue
+                vec = [rec.features.get(name, 0.0) for name in FEATURE_NAMES]
+                label = f"{rec.action}|{rec.strategy}"
+                X.append(vec)
+                y.append(label)
 
-        if len(X) < 20:
+        # Fall back to local DB if global has insufficient data
+        if len(X) < 10:
+            source = db or self.db
+            if not source or len(source.records) < 30:
+                return
+            X, y = [], []
+            for rec in source.records:
+                if not rec.success or not rec.features:
+                    continue
+                vec = [rec.features.get(name, 0.0) for name in FEATURE_NAMES]
+                label = f"{rec.action}|{rec.strategy}"
+                X.append(vec)
+                y.append(label)
+
+        if len(X) < 10:
             return
 
         self.tree = self._build_tree(X, y, max_depth=6, min_leaf=3)
         self.trained_on = len(X)
+        self._last_trained_at = time.time()
+        self._last_record_count = len(X)
 
     # ── Rule-based classifier ────────────────────────────────
 

@@ -350,6 +350,77 @@ class StyleProfile:
         profile.source_projects = data.get("source_projects", [])
         return profile
 
+    @classmethod
+    def from_project_intelligence(
+        cls, pi_path, initial_confidence: float = 0.3
+    ) -> "StyleProfile":
+        """Initialize StyleProfile from a reference project's .pi.yaml.
+
+        Uses the style_profile section from ProjectIntelligence to seed
+        preferences with low confidence (0.3) — real observations override.
+        """
+        pi_path = Path(pi_path)
+        if not pi_path.exists():
+            return cls()
+
+        try:
+            import yaml as _yaml
+        except ImportError:
+            # Try JSON fallback
+            try:
+                with open(pi_path) as f:
+                    pi = json.load(f)
+            except Exception:
+                return cls()
+        else:
+            try:
+                with open(pi_path) as f:
+                    pi = _yaml.safe_load(f)
+            except Exception:
+                return cls()
+
+        if not pi or not isinstance(pi, dict):
+            return cls()
+
+        ref_style = pi.get("style_profile", {})
+        if not ref_style:
+            return cls()
+
+        profile = cls(name=f"from_pi:{pi_path.stem}")
+
+        # Map PI style dimensions to quality StyleProfile dimensions
+        _PI_MAPPING = {
+            "type_verbosity": {
+                "explicit": [("types_strict", 0.9), ("style_explicit_returns", 0.8)],
+                "inferred": [("types_strict", 0.5), ("style_explicit_returns", 0.4)],
+            },
+            "error_handling": {
+                "result_types": [("errors_typed", 0.9)],
+                "exceptions": [("errors_typed", 0.4), ("errors_graceful", 0.7)],
+            },
+            "doc_density": {
+                "heavy": [("docs_jsdoc", 0.9), ("docs_param", 0.8)],
+                "moderate": [("docs_jsdoc", 0.6), ("docs_param", 0.5)],
+                "minimal": [("docs_minimal", 0.9)],
+            },
+            "naming_convention": {
+                "camelCase": [("naming_camel_case", 0.9)],
+                "snake_case": [("naming_camel_case", 0.1)],
+            },
+            "async_style": {
+                "async_await": [("struct_functional", 0.3)],
+                "callbacks": [("struct_events", 0.8)],
+            },
+        }
+
+        for pi_key, values_map in _PI_MAPPING.items():
+            pi_value = ref_style.get(pi_key)
+            if pi_value and pi_value in values_map:
+                for dim, value in values_map[pi_value]:
+                    profile.update(dim, value, weight=initial_confidence)
+
+        return profile
+
 
 class StyleAnalyzer:
     """Analyzes code to extract style preferences."""

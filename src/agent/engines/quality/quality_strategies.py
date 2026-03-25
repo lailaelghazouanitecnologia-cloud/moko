@@ -16,17 +16,31 @@ Strategies:
 """
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import List, Dict, Optional, Tuple
 
 
 @dataclass
 class StrategyResult:
     """Result of applying a quality strategy."""
-    fixed_code: Optional[str]    # None if strategy can't handle
-    changes_made: int            # number of modifications
-    description: str             # human-readable summary
-    tokens_used: int = 0         # 0 for programmatic, >0 for LLM
+    code: str                            # resulting code (original if not applied)
+    applied: bool                        # whether the strategy actually modified code
+    changes: List[str] = field(default_factory=list)  # descriptions of changes
+    lines_modified: int = 0              # lines that changed
+    tokens_used: int = 0                 # 0 for programmatic, >0 for LLM
+
+    # Backwards compat properties
+    @property
+    def fixed_code(self) -> Optional[str]:
+        return self.code if self.applied else None
+
+    @property
+    def changes_made(self) -> int:
+        return self.lines_modified if self.applied else 0
+
+    @property
+    def description(self) -> str:
+        return "; ".join(self.changes) if self.changes else ("Applied" if self.applied else "No changes")
 
 
 class TypeStrategy:
@@ -66,22 +80,25 @@ class TypeStrategy:
 
     def apply(self, code: str, features: Dict[str, float]) -> StrategyResult:
         """Replace obvious 'any' types with 'unknown' or specific types."""
-        changes = 0
+        total = 0
         result = code
+        change_descs = []
 
         for pattern, replacement in self.REPLACEMENTS:
             new_result, count = re.subn(pattern, replacement, result)
             if count > 0:
-                changes += count
+                total += count
                 result = new_result
 
-        if changes == 0:
-            return StrategyResult(None, 0, "No auto-fixable type issues")
+        if total == 0:
+            return StrategyResult(code=code, applied=False)
 
+        change_descs.append(f"Replaced {total} weak type annotations")
+        lines_orig = set(code.splitlines())
+        lines_new = set(result.splitlines())
         return StrategyResult(
-            fixed_code=result,
-            changes_made=changes,
-            description=f"Replaced {changes} weak type annotations",
+            code=result, applied=True, changes=change_descs,
+            lines_modified=len(lines_orig.symmetric_difference(lines_new)),
         )
 
 
@@ -164,12 +181,14 @@ class NamingStrategy:
                 result = "\n".join(new_lines)
 
         if changes == 0:
-            return StrategyResult(None, 0, "No auto-renameable variables")
+            return StrategyResult(code=code, applied=False)
 
+        lines_orig = set(code.splitlines())
+        lines_new = set(result.splitlines())
         return StrategyResult(
-            fixed_code=result,
-            changes_made=changes,
-            description=f"Renamed {changes} generic variables to descriptive names",
+            code=result, applied=True,
+            changes=[f"Renamed {changes} generic variables"],
+            lines_modified=len(lines_orig.symmetric_difference(lines_new)),
         )
 
     def _detect_context(self, line: str, all_lines: List[str]) -> str:
@@ -200,12 +219,12 @@ class StructureStrategy:
             changes += bracket_changes
 
         if changes == 0:
-            return StrategyResult(None, 0, "No auto-fixable structure issues")
+            return StrategyResult(code=code, applied=False)
 
         return StrategyResult(
-            fixed_code=result,
-            changes_made=changes,
-            description=f"Fixed {changes} structural anti-patterns",
+            code=result, applied=True,
+            changes=[f"Fixed {changes} bracket access patterns"],
+            lines_modified=changes,
         )
 
 
@@ -235,12 +254,15 @@ class EncapsulationStrategy:
         changes += private_changes
 
         if changes == 0:
-            return StrategyResult(None, 0, "No encapsulation improvements found")
+            return StrategyResult(code=code, applied=False)
 
+        descs = []
+        if readonly_changes:
+            descs.append(f"{readonly_changes} readonly added")
+        if private_changes:
+            descs.append(f"{private_changes} public→private")
         return StrategyResult(
-            fixed_code=result,
-            changes_made=changes,
-            description=f"Improved encapsulation: {readonly_changes} readonly, {private_changes} private",
+            code=result, applied=True, changes=descs, lines_modified=changes,
         )
 
     def _add_readonly(self, code: str) -> Tuple[str, int]:
@@ -375,12 +397,15 @@ class ErrorHandlingStrategy:
         changes += io_changes
 
         if changes == 0:
-            return StrategyResult(None, 0, "No error handling improvements found")
+            return StrategyResult(code=code, applied=False)
 
+        descs = []
+        if ctor_changes:
+            descs.append(f"{ctor_changes} constructor validations")
+        if io_changes:
+            descs.append(f"{io_changes} try/catch wrappers")
         return StrategyResult(
-            fixed_code=result,
-            changes_made=changes,
-            description=f"Added error handling: {ctor_changes} validations, {io_changes} try/catch",
+            code=result, applied=True, changes=descs, lines_modified=changes,
         )
 
     def _add_constructor_validation(self, code: str) -> Tuple[str, int]:
@@ -578,12 +603,12 @@ class DocStrategy:
             i += 1
 
         if changes == 0:
-            return StrategyResult(None, 0, "All public methods documented")
+            return StrategyResult(code=code, applied=False)
 
         return StrategyResult(
-            fixed_code="\n".join(new_lines),
-            changes_made=changes,
-            description=f"Added JSDoc stubs for {changes} undocumented methods",
+            code="\n".join(new_lines), applied=True,
+            changes=[f"Added JSDoc for {changes} undocumented methods"],
+            lines_modified=changes * 3,  # ~3 lines per JSDoc stub
         )
 
     def _describe_method(self, name: str) -> str:

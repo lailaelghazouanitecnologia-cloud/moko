@@ -19,6 +19,7 @@ Each project improves the next.
 from __future__ import annotations
 
 import os
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple, TYPE_CHECKING
@@ -42,10 +43,13 @@ from .style_profile import (
 from .code_profile import CodeProfile
 from .profile_extractor import ProfileExtractor
 from .learned_scorer import LearnedScorer, ScoreDimension
+from .global_db import GlobalQualityDB, GlobalQualityRecord
+from .context_metrics import extract_context_metrics, ModuleContextMetrics
 
 __all__ = (
     "QualityEngine",
     "QualityResult",
+    "ImprovementReport",
     "QualityDB",
     "QualityClassifier",
     "QualityFeatureExtractor",
@@ -57,6 +61,8 @@ __all__ = (
     "LearnedScorer",
     "ProfileExtractor",
     "CodeProfile",
+    "GlobalQualityDB",
+    "GlobalQualityRecord",
 )
 
 
@@ -77,10 +83,10 @@ class QualityResult:
     module: str
     issues_found: int = 0
     issues_fixed: int = 0
-    auto_fixes: int = 0          # 0-token fixes
-    prompt_fixes: int = 0        # LLM-assisted fixes
+    auto_fixes: int = 0
+    prompt_fixes: int = 0
     tokens_used: int = 0
-    quality_before: float = 0.0  # 0-1 score
+    quality_before: float = 0.0
     quality_after: float = 0.0
     issues: List[QualityIssue] = field(default_factory=list)
 
@@ -94,26 +100,81 @@ class QualityResult:
         )
 
 
+@dataclass
+class ImprovementReport:
+    """Complete observability for improve_module()."""
+    module_name: str
+    score_before: float = 0.0
+    score_after: float = 0.0
+
+    @property
+    def delta(self) -> float:
+        return self.score_after - self.score_before
+
+    @property
+    def improved(self) -> bool:
+        return self.delta > 0.01
+
+    # Issues
+    issues_detected: Dict[str, int] = field(default_factory=dict)
+    issues_resolved: Dict[str, int] = field(default_factory=dict)
+
+    # Strategies
+    auto_fixes_applied: Dict[str, int] = field(default_factory=dict)
+    auto_fixes_failed: Dict[str, int] = field(default_factory=dict)
+    escalated_to_llm: List[str] = field(default_factory=list)
+
+    # LLM
+    llm_calls_made: int = 0
+    tokens_used: int = 0
+
+    # Per-strategy delta
+    delta_by_strategy: Dict[str, float] = field(default_factory=dict)
+
+    # Per-file
+    files_improved: List[str] = field(default_factory=list)
+    files_unchanged: List[str] = field(default_factory=list)
+
+    def summary(self) -> str:
+        return (
+            f"{self.module_name}: {self.score_before:.2f} → {self.score_after:.2f} "
+            f"(Δ{self.delta:+.2f}) | "
+            f"issues: {sum(self.issues_detected.values())} detected, "
+            f"{sum(self.issues_resolved.values())} resolved | "
+            f"LLM: {self.llm_calls_made} calls ({self.tokens_used} tokens)"
+        )
+
+
 class QualityEngine:
     """Main orchestrator for code quality analysis and improvement.
 
     Usage in pipeline:
-        engine = QualityEngine(project_dir)
+        engine = QualityEngine(project_dir, project_name="x86vm")
         result = engine.analyze_module("search", files)
-        result = engine.improve_module("search", files, llm=provider)
+        files, report = engine.improve_module("search", files, llm=provider)
     """
 
-    def __init__(self, project_dir: str, db_path: str = ""):
+    def __init__(
+        self,
+        project_dir: str,
+        db_path: str = "",
+        project_name: str = "",
+        context_engine: Optional["ContextEngine"] = None,
+    ):
         self.project_dir = Path(project_dir)
+        self.project_name = project_name or self.project_dir.name
         self.db_path = db_path or str(self.project_dir / ".quality_db.jsonl")
 
-        # Core components
+        # Local JSONL (audit log) + Global SQLite (cross-project learning)
         self.db = QualityDB(self.db_path)
-        self.extractor = QualityFeatureExtractor()
-        self.classifier = QualityClassifier(self.db)
-        self.context_engine: Optional["ContextEngine"] = None
+        self.global_db = GlobalQualityDB()
+        self._run_id = GlobalQualityDB.new_run_id()
 
-        # Style profile — global, persists across sessions and projects
+        self.extractor = QualityFeatureExtractor()
+        self.classifier = QualityClassifier(self.db, self.global_db)
+        self.context_engine: Optional["ContextEngine"] = context_engine
+
+        # Style profile
         self.style_analyzer = StyleAnalyzer()
         self.style_path = self._resolve_style_path()
         self.style_profile = StyleProfile.load(self.style_path) if os.path.exists(self.style_path) else StyleProfile()
@@ -127,14 +188,14 @@ class QualityEngine:
         self.doc_strategy = DocStrategy()
         self.prompt_builder = PromptHintStrategy()
 
-        # Learned scorer — intelligent evaluation from reference profiles
+        # Learned scorer
         self.profile_extractor = ProfileExtractor()
         scorer_path = str(self.project_dir / ".learned_scorer.json")
         self.learned_scorer = LearnedScorer.load(scorer_path)
         self._scorer_path = scorer_path
 
-        # Retrain classifier if enough data
-        if len(self.db.records) >= 30:
+        # Retrain classifier if enough cross-project data
+        if self.global_db.total_records() >= 10 or len(self.db.records) >= 30:
             self.classifier.train()
 
     def _resolve_style_path(self) -> str:
@@ -206,178 +267,205 @@ class QualityEngine:
         files: Dict[str, str],
         llm=None,
         max_llm_calls: int = 3,
-    ) -> Tuple[Dict[str, str], QualityResult]:
+    ) -> Tuple[Dict[str, str], ImprovementReport]:
         """Analyze and improve all files in a module.
 
-        Returns (improved_files, result).
+        Returns (improved_files, report) with full observability.
         """
-        result = QualityResult(module=module_name)
-        improved_files = dict(files)  # mutable copy
+        report = ImprovementReport(module_name=module_name)
+        improved_files = dict(files)
 
         # Step 1: Analyze
         agg_features = self.extractor.extract_module(files)
-        result.quality_before = self._compute_score(agg_features)
+        report.score_before = self._compute_score(agg_features)
 
-        # Detect issues per file
         file_issues: Dict[str, List[Tuple[str, str, str]]] = {}
-        all_issues: List[QualityIssue] = []
-
         for filename, code in files.items():
             _, issues = self.analyze_file(code, filename)
             if issues:
                 file_issues[filename] = issues
             for itype, severity, desc in issues:
-                prediction = self.classifier.predict(itype, agg_features)
-                all_issues.append(QualityIssue(
-                    issue_type=itype,
-                    severity=severity,
-                    description=f"[{filename}] {desc}",
-                    prediction=prediction,
-                ))
+                report.issues_detected[itype] = report.issues_detected.get(itype, 0) + 1
 
-        result.issues = all_issues
-        result.issues_found = len(all_issues)
-
-        # Step 2: Apply auto-fixes (0 tokens)
+        # Step 2: Auto-fixes (0 tokens)
         for filename, issues in file_issues.items():
             code = improved_files[filename]
-            features_dict = self.extractor.extract(code, filename).to_dict()
+            ctx = extract_context_metrics(filename, self.context_engine)
+            file_changed = False
 
             for itype, severity, desc in issues:
                 prediction = self.classifier.predict(
                     itype, self.extractor.extract(code, filename)
                 )
 
-                if prediction.strategy == "auto":
-                    fix_result = self._apply_auto_fix(code, prediction)
-                    if fix_result and fix_result.fixed_code:
-                        # Measure real quality delta
-                        score_before = self._compute_score(
-                            self.extractor.extract(code, filename)
-                        )
-                        code = fix_result.fixed_code
-                        score_after = self._compute_score(
-                            self.extractor.extract(code, filename)
-                        )
-                        real_delta = score_after - score_before
-                        result.auto_fixes += fix_result.changes_made
+                if prediction.strategy != "auto":
+                    continue
 
-                        self.db.record_quality(
-                            issue_type=itype,
-                            severity=severity,
-                            features=features_dict,
-                            action=prediction.action,
-                            strategy="auto",
-                            success=True,
-                            quality_delta=real_delta,
-                            tokens_cost=0,
-                            module=module_name,
-                            file_pattern=filename,
-                        )
+                features_before = self.extractor.extract(code, filename)
+                score_before = self._compute_score(features_before)
+
+                fix_result = self._apply_auto_fix(code, prediction)
+
+                if fix_result.applied:
+                    code = fix_result.code
+                    features_after = self.extractor.extract(code, filename)
+                    score_after = self._compute_score(features_after)
+                    real_delta = score_after - score_before
+                    file_changed = True
+
+                    report.auto_fixes_applied[prediction.action] = \
+                        report.auto_fixes_applied.get(prediction.action, 0) + 1
+                    report.issues_resolved[itype] = \
+                        report.issues_resolved.get(itype, 0) + 1
+                    report.delta_by_strategy[prediction.action] = \
+                        report.delta_by_strategy.get(prediction.action, 0) + real_delta
+                else:
+                    score_before = self._compute_score(features_before)
+                    score_after = score_before
+                    real_delta = 0.0
+                    report.auto_fixes_failed[prediction.action] = \
+                        report.auto_fixes_failed.get(prediction.action, 0) + 1
+
+                # Record in both local audit log and global DB
+                self.db.record_quality(
+                    issue_type=itype, severity=severity,
+                    features=features_before.to_dict(),
+                    action=prediction.action, strategy="auto",
+                    success=fix_result.applied and real_delta > 0,
+                    quality_delta=real_delta, tokens_cost=0,
+                    module=module_name, file_pattern=filename,
+                )
+                self.global_db.record(GlobalQualityRecord(
+                    project_name=self.project_name,
+                    issue_type=itype, severity=severity,
+                    features=features_before.to_dict(),
+                    action=prediction.action, strategy="auto",
+                    applied=fix_result.applied,
+                    score_before=score_before, score_after=score_after,
+                    quality_delta=real_delta, tokens_used=0,
+                    module_role=ctx.module_role,
+                    consumers_count=ctx.consumers_count,
+                    dependency_depth=ctx.dependency_depth,
+                    run_id=self._run_id,
+                ))
 
             improved_files[filename] = code
+            if file_changed:
+                report.files_improved.append(filename)
 
-        # Step 3: Build LLM prompts for remaining issues (if LLM available)
-        llm_calls = 0
+        # Step 3: LLM fixes for remaining critical/major issues
         if llm and max_llm_calls > 0:
             for filename, issues in file_issues.items():
-                if llm_calls >= max_llm_calls:
+                if report.llm_calls_made >= max_llm_calls:
                     break
 
                 code = improved_files[filename]
                 features = self.extractor.extract(code, filename)
-                remaining_issues = detect_issues(features)
-
-                # Filter to issues that need LLM
+                remaining = detect_issues(features)
                 llm_issues = [
-                    (it, sev, desc) for it, sev, desc in remaining_issues
+                    (it, sev, desc) for it, sev, desc in remaining
                     if sev in ("critical", "major")
                 ]
-
                 if not llm_issues:
                     continue
 
-                # Build targeted prompt
+                for it, _, _ in llm_issues:
+                    report.escalated_to_llm.append(it)
+
                 predictions = self.classifier.predict_all(llm_issues, features)
                 hints = [p.hint for p in predictions if p.hint]
+                hints.extend(self.style_profile.to_prompt_hints())
 
-                # Inject user style preferences into hints
-                style_hints = self.style_profile.to_prompt_hints()
-                hints.extend(style_hints)
-
-                # Get examples from DB
+                # Get examples from global DB first, fallback to local
                 examples = []
                 for p in predictions[:2]:
-                    pairs = self.db.patterns_for_type(p.issue_type)
-                    examples.extend(pairs[:1])
+                    global_patterns = self.global_db.patterns_for_type(p.issue_type, limit=1)
+                    if global_patterns:
+                        examples.extend([(gp["action"], str(gp["delta"])) for gp in global_patterns[:1]])
+                    else:
+                        pairs = self.db.patterns_for_type(p.issue_type)
+                        examples.extend(pairs[:1])
 
-                prompt = self.prompt_builder.build_prompt(
-                    code, llm_issues, hints, examples
-                )
+                prompt = self.prompt_builder.build_prompt(code, llm_issues, hints, examples)
 
-                # Call LLM
                 try:
                     improved_code = self._call_llm(llm, prompt, code)
                     if improved_code and len(improved_code) > len(code) * 0.5:
-                        # Measure real quality delta
                         score_before = self._compute_score(features)
                         new_features = self.extractor.extract(improved_code, filename)
                         score_after = self._compute_score(new_features)
                         real_delta = score_after - score_before
 
                         improved_files[filename] = improved_code
-                        result.prompt_fixes += len(llm_issues)
-                        llm_calls += 1
+                        report.llm_calls_made += 1
+                        if filename not in report.files_improved:
+                            report.files_improved.append(filename)
 
+                        ctx = extract_context_metrics(filename, self.context_engine)
                         for itype, sev, desc in llm_issues:
+                            report.issues_resolved[itype] = \
+                                report.issues_resolved.get(itype, 0) + 1
                             self.db.record_quality(
-                                issue_type=itype,
-                                severity=sev,
+                                issue_type=itype, severity=sev,
                                 features=features.to_dict(),
-                                action="llm_rewrite",
-                                strategy="llm_rewrite",
-                                success=real_delta > 0,
-                                quality_delta=real_delta,
-                                module=module_name,
-                                file_pattern=filename,
+                                action="llm_rewrite", strategy="llm_rewrite",
+                                success=real_delta > 0, quality_delta=real_delta,
+                                module=module_name, file_pattern=filename,
                             )
+                            self.global_db.record(GlobalQualityRecord(
+                                project_name=self.project_name,
+                                issue_type=itype, severity=sev,
+                                features=features.to_dict(),
+                                action="llm_rewrite", strategy="llm_rewrite",
+                                applied=True,
+                                score_before=score_before, score_after=score_after,
+                                quality_delta=real_delta,
+                                module_role=ctx.module_role,
+                                consumers_count=ctx.consumers_count,
+                                dependency_depth=ctx.dependency_depth,
+                                run_id=self._run_id,
+                            ))
                 except Exception:
                     pass
 
-        # Step 4: Compute final quality
+        # Step 4: Final scoring
         final_features = self.extractor.extract_module(improved_files)
-        result.quality_after = self._compute_score(final_features)
-        result.issues_fixed = result.auto_fixes + result.prompt_fixes
-        result.tokens_used = 0  # TODO: track from LLM calls
+        report.score_after = self._compute_score(final_features)
+
+        # Track unchanged files
+        for filename in files:
+            if filename not in report.files_improved:
+                report.files_unchanged.append(filename)
 
         # Step 5: Retrain if enough data
-        if len(self.db.records) >= 30:
+        if self.global_db.total_records() >= 10:
             self.classifier.train()
+        if len(self.db.records) >= 30:
             self.db.save()
 
-        return improved_files, result
+        return improved_files, report
 
     # ── Auto-fix dispatch ────────────────────────────────────
 
     def _apply_auto_fix(
         self, code: str, prediction: QualityPrediction
-    ) -> Optional[StrategyResult]:
-        """Apply the predicted auto-fix strategy."""
+    ) -> StrategyResult:
+        """Apply the predicted auto-fix strategy. Always returns StrategyResult."""
         features_dict = self.extractor.extract(code).to_dict()
 
-        if prediction.action == "add_types":
-            return self.type_strategy.apply(code, features_dict)
-        elif prediction.action == "rename":
-            return self.naming_strategy.apply(code, features_dict)
-        elif prediction.action == "restructure" or prediction.action == "extract_constants":
-            return self.structure_strategy.apply(code, features_dict)
-        elif prediction.action == "encapsulate":
-            return self.encapsulation_strategy.apply(code, features_dict)
-        elif prediction.action == "add_error_handling":
-            return self.error_handling_strategy.apply(code, features_dict)
-        elif prediction.action == "add_docs":
-            return self.doc_strategy.apply(code, features_dict)
-        return None
+        strategies = {
+            "add_types": self.type_strategy,
+            "rename": self.naming_strategy,
+            "restructure": self.structure_strategy,
+            "extract_constants": self.structure_strategy,
+            "encapsulate": self.encapsulation_strategy,
+            "add_error_handling": self.error_handling_strategy,
+            "add_docs": self.doc_strategy,
+        }
+        strategy = strategies.get(prediction.action)
+        if strategy:
+            return strategy.apply(code, features_dict)
+        return StrategyResult(code=code, applied=False)
 
     # ── Quality scoring ──────────────────────────────────────
 
