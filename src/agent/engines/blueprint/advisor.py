@@ -71,12 +71,16 @@ CATEGORIES: Dict[str, Dict] = {
         "estimated_loc": 800,
         "modules": [
             ModuleSuggestion("core", "Types, enums, constants, interfaces",
+                             suggested_types=["GameState", "GameConfig", "Position", "Direction"],
                              depends_on=[], estimated_loc=150),
-            ModuleSuggestion("game", "Core game logic, state, rules",
+            ModuleSuggestion("game", "Core game logic, state machine, rules, scoring",
+                             suggested_types=["GameBoard", "GameLogic", "ScoreTracker"],
                              depends_on=["core"], estimated_loc=300),
-            ModuleSuggestion("renderer", "Terminal/console display",
+            ModuleSuggestion("renderer", "Terminal/console display, board visualization",
+                             suggested_types=["Renderer", "BoardDisplay"],
                              depends_on=["core", "game"], estimated_loc=200),
             ModuleSuggestion("engine", "Game loop, input handling, entry point",
+                             suggested_types=["GameEngine", "InputHandler"],
                              depends_on=["core", "game", "renderer"], estimated_loc=200),
         ],
     },
@@ -88,14 +92,19 @@ CATEGORIES: Dict[str, Dict] = {
         "estimated_loc": 1200,
         "modules": [
             ModuleSuggestion("core", "Types, vector math, constants",
+                             suggested_types=["Vector2D", "GameConfig", "Entity"],
                              depends_on=[], estimated_loc=200),
-            ModuleSuggestion("game", "Game entities, state, collision",
+            ModuleSuggestion("game", "Game entities, state, collision detection",
+                             suggested_types=["GameWorld", "CollisionDetector", "EntityManager"],
                              depends_on=["core"], estimated_loc=350),
-            ModuleSuggestion("renderer", "Console/terminal rendering",
+            ModuleSuggestion("renderer", "Console/terminal rendering with double buffering",
+                             suggested_types=["ScreenBuffer", "Renderer"],
                              depends_on=["core"], estimated_loc=250),
-            ModuleSuggestion("input", "Keyboard handling",
+            ModuleSuggestion("input", "Keyboard handling, input queue",
+                             suggested_types=["InputHandler", "KeyMapper"],
                              depends_on=["core"], estimated_loc=150),
-            ModuleSuggestion("engine", "Game loop, main entry point",
+            ModuleSuggestion("engine", "Game loop with fixed timestep, main entry point",
+                             suggested_types=["GameLoop", "Application"],
                              depends_on=["core", "game", "renderer", "input"],
                              estimated_loc=200),
         ],
@@ -169,17 +178,23 @@ CATEGORIES: Dict[str, Dict] = {
         ],
     },
     "cli_tool": {
-        "keywords": ["cli", "command line", "terminal tool", "shell"],
+        "keywords": ["cli", "command line", "terminal tool", "shell", "todo"],
         "complexity": "simple",
-        "estimated_modules": 3,
-        "estimated_loc": 600,
+        "estimated_modules": 4,
+        "estimated_loc": 800,
         "modules": [
-            ModuleSuggestion("core", "Types, configuration, constants",
+            ModuleSuggestion("core", "Domain types, enums, interfaces, configuration",
+                             suggested_types=["Config", "Result", "ValidationError"],
                              depends_on=[], estimated_loc=150),
-            ModuleSuggestion("commands", "Command implementations",
-                             depends_on=["core"], estimated_loc=300),
-            ModuleSuggestion("cli", "Argument parsing, entry point",
-                             depends_on=["core", "commands"], estimated_loc=150),
+            ModuleSuggestion("store", "Data persistence, CRUD operations, filtering, sorting",
+                             suggested_types=["Store", "Repository", "Serializer"],
+                             depends_on=["core"], estimated_loc=250),
+            ModuleSuggestion("commands", "Command implementations with execute/validate pattern",
+                             suggested_types=["CommandExecutor", "CommandParser"],
+                             depends_on=["core", "store"], estimated_loc=250),
+            ModuleSuggestion("cli", "Argument parsing, terminal formatting, entry point",
+                             suggested_types=["CLI", "Formatter"],
+                             depends_on=["core", "commands"], estimated_loc=200),
         ],
     },
     "api_server": {
@@ -190,15 +205,20 @@ CATEGORIES: Dict[str, Dict] = {
         "estimated_loc": 1500,
         "modules": [
             ModuleSuggestion("core", "Types, config, errors, middleware interfaces",
+                             suggested_types=["AppConfig", "ApiError", "Middleware"],
                              depends_on=[], estimated_loc=200),
             ModuleSuggestion("models", "Data models, schemas, validation",
+                             suggested_types=["Schema", "Validator", "Repository"],
                              depends_on=["core"], estimated_loc=300),
-            ModuleSuggestion("services", "Business logic, data access",
+            ModuleSuggestion("services", "Business logic, data access, domain operations",
+                             suggested_types=["Service", "DataStore"],
                              depends_on=["core", "models"], estimated_loc=400),
-            ModuleSuggestion("routes", "HTTP handlers, request/response",
+            ModuleSuggestion("routes", "HTTP handlers, request/response, route definitions",
+                             suggested_types=["Router", "RouteHandler", "ResponseBuilder"],
                              depends_on=["core", "models", "services"],
                              estimated_loc=350),
-            ModuleSuggestion("server", "Server setup, middleware, entry point",
+            ModuleSuggestion("server", "Server setup, middleware chain, entry point",
+                             suggested_types=["Server", "Application"],
                              depends_on=["core", "routes"], estimated_loc=200),
         ],
     },
@@ -327,14 +347,19 @@ class ProjectAdvisor:
                 # Full types from suggestion
                 for type_name in mod.suggested_types:
                     types.append(LayerType(type_name, "class", ""))
-            # In guide mode: no types specified, LLM decides
+            # In guide mode: no types forced, but enrich description with
+            # suggested types so LLM knows what domain concepts to implement
+            description = mod.description
+            if scope.mode == "guide" and mod.suggested_types:
+                type_hints = ", ".join(mod.suggested_types)
+                description = f"{mod.description}. Key types: {type_hints}"
 
             layer = Layer(
                 name=mod.name,
                 order=i,
                 types=types,
                 requires=mod.depends_on,
-                description=mod.description,
+                description=description,
             )
             layers.append(layer)
 
