@@ -190,9 +190,29 @@ class BranchPipelineOrchestrator:
                 result.total_tokens += branch_result.tokens_used
                 result.total_loc += branch_result.total_loc
 
-        # 7. Final tsc check on main
+        # 7. Final tsc check on main — fix cross-module errors
         self.git.checkout("main")
         final_errors, final_clean, _ = self.fix_engine.check_tsc()
+
+        if not final_clean and final_errors:
+            print(f"\n  Post-merge: {len(final_errors)} cross-module errors, running fix loop...")
+            src_dir = project_dir / "src"
+            fix_result = self.fix_engine.fix_module(
+                src_dir,
+                context_files=self._gather_context_files(project_dir),
+            )
+            post_merge_tokens = sum(it.tokens_used for it in fix_result.iterations)
+            result.total_tokens += post_merge_tokens
+
+            # Re-check after fix
+            final_errors, final_clean, _ = self.fix_engine.check_tsc()
+            if final_clean:
+                self.git.commit_all("fix: resolve cross-module errors after merge")
+                print(f"  Post-merge: CLEAN ({post_merge_tokens:,} tokens)")
+            else:
+                self.git.commit_all("fix: partial cross-module error fixes")
+                print(f"  Post-merge: {len(final_errors)} errors remain")
+
         result.final_tsc_errors = len(final_errors)
         result.elapsed_s = time.time() - start
         result.total_tokens += self.total_tokens
@@ -584,6 +604,22 @@ class BranchPipelineOrchestrator:
                     context[rel] = ts_file.read_text()
                 except Exception:
                     pass
+        return context
+
+    def _gather_context_files(self, project_dir: Path) -> dict[str, str]:
+        """Collect ALL .ts files in the project for post-merge cross-module fix."""
+        context: dict[str, str] = {}
+        src_dir = project_dir / "src"
+        if not src_dir.exists():
+            return context
+        for ts_file in src_dir.rglob("*.ts"):
+            rel = str(ts_file.relative_to(project_dir))
+            try:
+                content = ts_file.read_text()
+                if len(content) < 50_000:  # skip huge files
+                    context[rel] = content
+            except Exception:
+                pass
         return context
 
     def _run_selective_discussion(self, task: ModuleTask,
