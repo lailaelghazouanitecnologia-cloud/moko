@@ -8,7 +8,7 @@ import { Entity } from '../core/Entity';
 import { EventBus, GameEventType } from '../core/EventBus';
 import { ComponentData } from '../core/Component';
 import { ConstructionData, BuildingIdentityData } from './BuildingComponents';
-import { HealthData, PositionData } from '../units/UnitComponents';
+import { HealthData } from '../units/UnitComponents';
 
 export class ConstructionSystem extends System<ComponentData> {
   private readonly _eventBus: EventBus;
@@ -27,7 +27,6 @@ export class ConstructionSystem extends System<ComponentData> {
       const constComp = entity.getComponent<ConstructionData>('Construction')!;
       const identComp = entity.getComponent<BuildingIdentityData>('BuildingIdentity')!;
       const healthComp = entity.getComponent<HealthData>('Health')!;
-      const posComp = entity.getComponent<PositionData>('Position')!;
       const construction = constComp.data;
 
       if (construction.isComplete) continue;
