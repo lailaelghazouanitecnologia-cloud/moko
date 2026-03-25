@@ -37,7 +37,7 @@ from .quality_strategies import (
 )
 from .style_profile import (
     StyleProfile, StyleAnalyzer, StylePreference,
-    build_style_context, STYLE_DIMENSIONS,
+    build_style_context, STYLE_DIMENSIONS, CLAUDE_DEFAULT_STYLE,
 )
 
 __all__ = (

@@ -84,20 +84,83 @@ STYLE_DIMENSIONS = [
 ]
 
 
+# ── Default Style (Claude-like) ─────────────────────────────
+# These are the defaults when no user profile exists.
+# Based on analysis of Claude-generated TypeScript code:
+#   - Strict types: no 'any', heavy use of generics/unions
+#   - Strong encapsulation: readonly, private fields
+#   - OOP with DI and events
+#   - Moderate documentation (JSDoc on public, algorithm notes)
+#   - Early returns, const-first
+#
+# Inheritance: user observations override these. If confidence > 0
+# on a dimension, the user's value takes precedence.
+
+CLAUDE_DEFAULT_STYLE: Dict[str, float] = {
+    # Naming — descriptive, semantic, camelCase
+    "naming_camel_case": 0.9,
+    "naming_verbose": 0.7,
+    "naming_semantic": 0.8,
+    "naming_hungarian": 0.05,
+
+    # Types — strict, no any, generics + unions everywhere
+    "types_strict": 0.95,
+    "types_unions": 0.85,
+    "types_generics": 0.8,
+    "types_aliases": 0.7,
+
+    # Documentation — moderate (JSDoc on public, algorithm notes)
+    "docs_jsdoc": 0.7,
+    "docs_inline": 0.4,
+    "docs_algorithm": 0.6,
+    "docs_param": 0.6,
+    "docs_minimal": 0.2,
+
+    # Structure — OOP with DI, events, small functions
+    "struct_small_functions": 0.8,
+    "struct_helpers": 0.7,
+    "struct_di": 0.8,
+    "struct_events": 0.7,
+    "struct_fluent": 0.3,
+    "struct_functional": 0.3,
+    "struct_oop": 0.8,
+
+    # Errors — typed exceptions, defensive
+    "errors_typed": 0.8,
+    "errors_defensive": 0.6,
+    "errors_graceful": 0.5,
+
+    # Code style — readonly, const, early returns
+    "style_explicit_returns": 0.8,
+    "style_early_return": 0.7,
+    "style_ternary": 0.5,
+    "style_readonly": 0.9,
+    "style_const": 0.9,
+}
+
+
 @dataclass
 class StyleProfile:
-    """Persistent coding style profile for a user/project."""
+    """Persistent coding style profile for a user/project.
+
+    Inheritance model:
+      - CLAUDE_DEFAULT_STYLE provides sensible defaults
+      - User observations (from reference projects, corrections) override defaults
+      - If confidence > 0 on a dimension, user's value wins
+      - If confidence == 0, Claude default is used
+    """
     name: str = "default"
     preferences: Dict[str, StylePreference] = field(default_factory=dict)
     correction_history: List[Dict] = field(default_factory=list)
     source_projects: List[str] = field(default_factory=list)
 
     def __post_init__(self):
-        # Initialize all dimensions with neutral defaults
+        # Initialize dimensions with Claude defaults (not neutral 0.5)
         for dim in STYLE_DIMENSIONS:
             if dim not in self.preferences:
+                default_val = CLAUDE_DEFAULT_STYLE.get(dim, 0.5)
                 self.preferences[dim] = StylePreference(
-                    dimension=dim, value=0.5, confidence=0.0
+                    dimension=dim, value=default_val, confidence=0.0
                 )
 
     def get(self, dimension: str) -> float:
@@ -126,61 +189,84 @@ class StyleProfile:
             if pref.confidence >= threshold
         }
 
-    def to_prompt_hints(self) -> List[str]:
-        """Convert strong preferences to LLM prompt hints.
+    def effective_preferences(self) -> Dict[str, float]:
+        """Get effective preferences using inheritance model.
 
-        Only emits hints for dimensions where we have enough confidence
-        AND the preference is clearly strong (>0.7) or clearly weak (<0.3).
-        Returns max 6 hints to avoid prompt bloat.
+        For each dimension:
+          - If user has observations (confidence > 0), use their learned value
+          - Otherwise, use CLAUDE_DEFAULT_STYLE value
+        This ensures hints are always emitted even without user data.
+        """
+        result: Dict[str, float] = {}
+        for dim in STYLE_DIMENSIONS:
+            pref = self.preferences.get(dim)
+            if pref and pref.confidence > 0:
+                result[dim] = pref.value  # user override
+            else:
+                result[dim] = CLAUDE_DEFAULT_STYLE.get(dim, 0.5)  # default
+        return result
+
+    def has_user_observations(self) -> bool:
+        """Check if any dimension has been learned from user data."""
+        return any(
+            pref.confidence > 0 for pref in self.preferences.values()
+        )
+
+    def to_prompt_hints(self) -> List[str]:
+        """Convert preferences to LLM prompt hints.
+
+        Uses inheritance: Claude defaults when no user data,
+        user preferences when learned. Returns max 6 hints.
         """
         hints = []
-        strong = self.strong_preferences(0.6)  # need ≥12 observations
+        # Use effective preferences (defaults + user overrides)
+        eff = self.effective_preferences()
 
         # Naming
-        if strong.get("naming_verbose", 0.5) > 0.7:
+        if eff.get("naming_verbose", 0.5) > 0.7:
             hints.append("Use verbose, descriptive variable and method names.")
-        elif strong.get("naming_verbose", 0.5) < 0.3:
+        elif eff.get("naming_verbose", 0.5) < 0.3:
             hints.append("Keep names concise but clear.")
 
-        if strong.get("naming_semantic", 0.5) > 0.7:
+        if eff.get("naming_semantic", 0.5) > 0.7:
             hints.append("Use domain-specific names (finding, evidence, hypothesis) not generic ones.")
 
         # Types
-        if strong.get("types_strict", 0.5) > 0.7:
+        if eff.get("types_strict", 0.5) > 0.7:
             hints.append("Never use 'any'. Prefer unknown, generics, or specific interfaces.")
-        if strong.get("types_unions", 0.5) > 0.7:
+        if eff.get("types_unions", 0.5) > 0.7:
             hints.append("Use discriminated unions for state/status types.")
 
         # Documentation
-        if strong.get("docs_minimal", 0.5) > 0.7:
+        if eff.get("docs_minimal", 0.5) > 0.7:
             hints.append("Minimal documentation. Let the code speak for itself.")
-        elif strong.get("docs_jsdoc", 0.5) > 0.7:
+        elif eff.get("docs_jsdoc", 0.5) > 0.7:
             hints.append("Add JSDoc to all public methods with @param descriptions.")
-        if strong.get("docs_algorithm", 0.5) > 0.7:
+        if eff.get("docs_algorithm", 0.5) > 0.7:
             hints.append("Document algorithm complexity and mathematical foundations.")
 
         # Structure
-        if strong.get("struct_small_functions", 0.5) > 0.7:
+        if eff.get("struct_small_functions", 0.5) > 0.7:
             hints.append("Keep functions small and focused. Extract helpers.")
-        if strong.get("struct_di", 0.5) > 0.7:
+        if eff.get("struct_di", 0.5) > 0.7:
             hints.append("Use dependency injection in constructors.")
-        if strong.get("struct_events", 0.5) > 0.7:
+        if eff.get("struct_events", 0.5) > 0.7:
             hints.append("Use event-driven patterns (callbacks, emitters).")
-        if strong.get("struct_functional", 0.5) > 0.7:
+        if eff.get("struct_functional", 0.5) > 0.7:
             hints.append("Prefer functional style: pure functions, immutable data.")
-        elif strong.get("struct_oop", 0.5) > 0.7:
+        elif eff.get("struct_oop", 0.5) > 0.7:
             hints.append("Use OOP with classes, encapsulation, and inheritance.")
 
         # Error handling
-        if strong.get("errors_typed", 0.5) > 0.7:
+        if eff.get("errors_typed", 0.5) > 0.7:
             hints.append("Use typed exceptions (TypeError, RangeError) not generic Error.")
-        if strong.get("errors_defensive", 0.5) > 0.7:
+        if eff.get("errors_defensive", 0.5) > 0.7:
             hints.append("Validate all inputs defensively.")
 
         # Code style
-        if strong.get("style_early_return", 0.5) > 0.7:
+        if eff.get("style_early_return", 0.5) > 0.7:
             hints.append("Use early returns (guard clauses) to reduce nesting.")
-        if strong.get("style_readonly", 0.5) > 0.7:
+        if eff.get("style_readonly", 0.5) > 0.7:
             hints.append("Mark fields readonly where possible.")
 
         return hints[:6]  # cap to avoid prompt bloat

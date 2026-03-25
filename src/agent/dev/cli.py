@@ -37,6 +37,10 @@ def register_subparser(subparsers: argparse._SubParsersAction):
     p.add_argument("--max-parallel", type=int, default=3,
                    help="Max parallel evaluation branches")
 
+    # Plan mode — show scope estimation for user acceptance before generation
+    p.add_argument("--plan", action="store_true",
+                   help="Plan mode: show scope and blueprint for approval before generating")
+
 
 def cmd_dev(args: argparse.Namespace):
     """Execute dev command."""
@@ -196,6 +200,46 @@ def cmd_dev(args: argparse.Namespace):
                   f"{len(project_bp.layers)} layers")
         else:
             print("  → no blueprint, using non-layered LLM plan")
+
+    # ── Plan mode: show scope for user acceptance ──────────
+    if args.plan:
+        print(f"\n{'━' * 60}")
+        print(f"  PLAN: {args.goal}")
+        print(f"{'━' * 60}")
+        print(f"  Target:     {args.target}")
+        print(f"  Category:   {scope.category}")
+        print(f"  Mode:       {scope.mode}")
+        print(f"  Confidence: {scope.confidence:.0%}")
+        if scope.estimated_modules:
+            print(f"  Modules:    ~{scope.estimated_modules}")
+        if scope.estimated_loc:
+            print(f"  Est. LOC:   ~{scope.estimated_loc}")
+        if project_bp:
+            print(f"\n  Blueprint layers:")
+            for layer in project_bp.layers:
+                types_info = f" ({len(layer.types)} types)" if layer.types else " (LLM decides)"
+                print(f"    • {layer.name}: {layer.description}{types_info}")
+        if args.ref:
+            print(f"\n  References: {', '.join(args.ref)}")
+
+        # Style hints that will guide generation
+        from ..engines.quality.style_profile import StyleProfile, CLAUDE_DEFAULT_STYLE
+        style = StyleProfile()
+        hints = style.to_prompt_hints()
+        if hints:
+            print(f"\n  Style hints:")
+            for h in hints:
+                print(f"    - {h}")
+
+        print(f"{'━' * 60}")
+        answer = input("\n  Proceed? [Y/n/edit] ").strip().lower()
+        if answer in ("n", "no"):
+            print("  Cancelled.")
+            return
+        if answer in ("e", "edit"):
+            print("  (Edit support coming soon — rerun with adjusted flags)")
+            return
+        print()
 
     # Branch pipeline mode
     if args.branches:
