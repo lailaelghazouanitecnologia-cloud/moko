@@ -209,7 +209,13 @@ CODE ORGANIZATION (STRICT):
 20. Same-module imports: use relative path to the file. Example: import { VertexBuffer } from './vertex-buffer';
 21. NEVER add .js extension to imports.
 22. NEVER use PascalCase or camelCase for file names in import paths.
-23. If an IMPORT MAP is provided, use EXACTLY those paths. Do not invent import paths."""
+23. If an IMPORT MAP is provided, use EXACTLY those paths. Do not invent import paths.
+
+TYPE REUSE (IMPORTANT):
+24. ALWAYS import and use types from dependency modules. Do NOT redefine types that already exist.
+25. When a method accepts or returns domain objects (e.g., Task, Player, Config), use the imported type — NEVER use generic Record<string, unknown> or inline object literals as substitutes.
+26. Reference types listed in 'Available from other modules' section. Import and use them in method signatures, fields, and generics.
+27. Create interfaces for abstractions that other modules should depend on. Prefer interface over class for pure contracts."""
 
 BLUEPRINT_SYSTEM = """You are a software architect. You generate detailed YAML blueprints from reference Roska descriptors.
 
@@ -905,6 +911,48 @@ class BlueprintTranslator:
 
     # ── Helpers ──────────────────────────────────────────────
 
+    def _sanitize_yaml_values(self, text: str) -> str:
+        """Quote YAML values that contain characters that break parsing.
+
+        LLM-generated blueprint YAML often has unquoted values like:
+          type: Map<string, Task>   → colon inside <> breaks YAML
+          type: boolean             → parsed as Python True
+          type: string[]            → brackets confuse parser
+          sig: "(p: Type): Ret"     → already quoted, leave alone
+
+        This quotes the 'type:', 'sig:', 'hint:', and 'default:' field values.
+        """
+        result_lines = []
+        for line in text.split('\n'):
+            # Match lines like "    type: someValue" or "    sig: something"
+            m = re.match(r'^(\s*)(type|sig|hint|default|description):\s*(.+)$', line)
+            if m:
+                indent, key, value = m.group(1), m.group(2), m.group(3)
+                # Skip if already quoted
+                if not ((value.startswith('"') and value.endswith('"')) or
+                        (value.startswith("'") and value.endswith("'"))):
+                    # Quote if value contains YAML-breaking chars or is a YAML keyword
+                    needs_quote = (
+                        ':' in value or
+                        '<' in value or
+                        '>' in value or
+                        '[' in value or
+                        ']' in value or
+                        '{' in value or
+                        '}' in value or
+                        '#' in value or
+                        '|' in value or
+                        value.lower() in ('true', 'false', 'yes', 'no', 'null',
+                                          'on', 'off', 'string', 'boolean',
+                                          'number', 'object', 'array')
+                    )
+                    if needs_quote:
+                        # Escape existing double quotes in the value
+                        escaped = value.replace('\\', '\\\\').replace('"', '\\"')
+                        line = f'{indent}{key}: "{escaped}"'
+            result_lines.append(line)
+        return '\n'.join(result_lines)
+
     def _parse_yaml_tolerant(self, text: str) -> dict | None:
         """Parse YAML, handling truncated output from token limits.
 
@@ -913,10 +961,16 @@ class BlueprintTranslator:
         failing completely.
         """
         import yaml
+
+        # Pre-sanitize: quote values that break YAML parsing
+        text = self._sanitize_yaml_values(text)
+
         # Try full text first
         try:
             data = yaml.safe_load(text)
             if isinstance(data, dict):
+                # Fix any values that YAML parsed as non-string (bool, etc.)
+                self._fix_yaml_types(data)
                 self._log(f"  yaml: direct parse OK, keys={list(data.keys())[:5]}")
                 return data
         except yaml.YAMLError as e:
@@ -932,6 +986,7 @@ class BlueprintTranslator:
             try:
                 data = yaml.safe_load(cleaned)
                 if isinstance(data, dict):
+                    self._fix_yaml_types(data)
                     self._log(f"  recovered YAML after removing stray fences")
                     return data
             except yaml.YAMLError:
@@ -952,6 +1007,7 @@ class BlueprintTranslator:
                 try:
                     data = yaml.safe_load(truncated)
                     if isinstance(data, dict) and data.get("types") and len(data["types"]) > 0:
+                        self._fix_yaml_types(data)
                         self._log(f"  recovered at type boundary (line {end_idx}, {len(data['types'])} types)")
                         return data
                 except yaml.YAMLError:
@@ -964,6 +1020,7 @@ class BlueprintTranslator:
             try:
                 data = yaml.safe_load(truncated)
                 if isinstance(data, dict) and data.get("types") and len(data["types"]) > 0:
+                    self._fix_yaml_types(data)
                     self._log(f"  recovered truncated YAML (cut {cut} lines, {len(data['types'])} types)")
                     return data
             except yaml.YAMLError:
@@ -971,6 +1028,42 @@ class BlueprintTranslator:
 
         self._log(f"  yaml: all recovery attempts failed ({len(lines)} lines, tried {max_cut} cuts)")
         return None
+
+    def _fix_yaml_types(self, data: dict):
+        """Fix values that YAML parsed incorrectly (bool instead of string).
+
+        YAML parses 'type: boolean' as True, 'type: true' as True, etc.
+        Walk the data tree and convert non-string values back to strings
+        where they should be strings (type, sig, hint, description fields).
+        """
+        str_fields = {'type', 'sig', 'hint', 'description', 'default', 'name', 'kind'}
+
+        def fix_dict(d):
+            if not isinstance(d, dict):
+                return
+            for key, val in d.items():
+                if key in str_fields and not isinstance(val, str):
+                    if isinstance(val, bool):
+                        d[key] = 'boolean' if val else 'false'
+                    elif val is None:
+                        d[key] = ''
+                    else:
+                        d[key] = str(val)
+                elif isinstance(val, dict):
+                    fix_dict(val)
+                elif isinstance(val, list):
+                    for item in val:
+                        if isinstance(item, dict):
+                            fix_dict(item)
+
+        fix_dict(data)
+        # Also fix items in 'types', 'fields', 'methods' lists
+        for key in ('types', 'fields', 'methods'):
+            items = data.get(key, [])
+            if isinstance(items, list):
+                for item in items:
+                    if isinstance(item, dict):
+                        fix_dict(item)
 
     def _strip_fences(self, text: str) -> str:
         """Remove markdown code fences from LLM output.

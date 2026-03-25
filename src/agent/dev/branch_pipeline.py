@@ -200,15 +200,59 @@ class BranchPipelineOrchestrator:
 
         if not final_clean and final_errors:
             print(f"\n  Post-merge: {len(final_errors)} cross-module errors, running fix loop...")
-            src_dir = project_dir / "src"
-            fix_result = self.fix_engine.fix_module(
-                src_dir,
-                context_files=self._gather_context_files(project_dir),
-            )
-            post_merge_tokens = sum(it.tokens_used for it in fix_result.iterations)
+            post_merge_tokens = 0
+            context_files = self._gather_context_files(project_dir)
+
+            # Fix cross-module errors iteratively: fix one file, re-check,
+            # update context, fix next. This prevents cascading breakage
+            # from fixing multiple interdependent files in one batch.
+            for fix_round in range(4):
+                final_errors, final_clean, _ = self.fix_engine.check_tsc()
+                if final_clean or not final_errors:
+                    break
+
+                # Group by file, fix only the file with most errors first
+                by_file: dict[str, list] = {}
+                for err in final_errors:
+                    by_file.setdefault(err.file, []).append(err)
+
+                # Pick file with most errors
+                target_file = max(by_file, key=lambda f: len(by_file[f]))
+                target_errors = by_file[target_file]
+                abs_path = project_dir / target_file
+
+                if not abs_path.exists():
+                    continue
+
+                code = abs_path.read_text()
+                prompt = self.fix_engine._intel.build_smart_prompt(
+                    code, target_errors, context_files,
+                    self.fix_engine.context_engine,
+                )
+                fixed, tokens = self.fix_engine._llm_fix(prompt)
+                post_merge_tokens += tokens
+
+                if fixed.strip():
+                    # Snapshot for revert
+                    original = code
+                    abs_path.write_text(fixed + "\n")
+
+                    # Check if it helped
+                    new_errors, new_clean, _ = self.fix_engine.check_tsc()
+                    if len(new_errors) > len(final_errors):
+                        # Worsened — revert this file
+                        abs_path.write_text(original)
+                        self._log(f"  post-merge fix {target_file} WORSENED, reverted")
+                    else:
+                        # Update context with the fixed file
+                        rel = str(abs_path.relative_to(project_dir))
+                        context_files[rel] = fixed
+                        self._log(f"  post-merge fixed {target_file}: "
+                                  f"{len(final_errors)}→{len(new_errors)} errors")
+
             result.total_tokens += post_merge_tokens
 
-            # Re-check after fix
+            # Final check
             final_errors, final_clean, _ = self.fix_engine.check_tsc()
             if final_clean:
                 self.git.commit_all("fix: resolve cross-module errors after merge")
