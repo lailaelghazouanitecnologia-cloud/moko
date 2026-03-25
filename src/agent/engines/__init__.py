@@ -15,7 +15,7 @@ from .memory.block_store import CodeBlockStore, CodeBlock
 from .blueprint.extractor import SourceExtractor, ExtractedType, ExtractedMethod
 from .blueprint.composer import BlueprintComposer, CompositionPlan
 from .context import ContextEngine, LiveIndex, PreWriteValidator, ValidationResult
-from .fix import FixEngine, FixResult, ErrorIntelligence
+from .fix import FixEngine, FixResult, ErrorIntelligence, ErrorDB, FixClassifier
 from .tool import (
     FileScanner, ProjectGraph, SharedTypeDetector,
     ImportResolver, PostGenValidator,
@@ -23,7 +23,7 @@ from .tool import (
 
 __all__ = [
     "ContextEngine", "LiveIndex", "PreWriteValidator", "ValidationResult",
-    "FixEngine", "FixResult", "ErrorIntelligence",
+    "FixEngine", "FixResult", "ErrorIntelligence", "ErrorDB", "FixClassifier",
     "SemanticStore",
     "CodeBlockStore", "CodeBlock",
     "SourceExtractor", "ExtractedType", "ExtractedMethod",

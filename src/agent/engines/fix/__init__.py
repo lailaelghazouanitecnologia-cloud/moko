@@ -1,17 +1,18 @@
 """
-FixEngine — intelligent compile-fix pipeline.
+FixEngine — intelligent compile-fix pipeline with learning.
 
-Unlike the old CompileFixLoop which naively dumps all TSC errors to the LLM,
-FixEngine applies layered intelligence:
+Layered intelligence, each layer reduces work for the next:
 
-  Layer 0: Auto-fix — programmatic repairs (no LLM, no tokens)
-           Missing braces, double dots, constructor typos, missing semicolons
-  Layer 1: Index-assisted — resolve imports using LiveIndex (no LLM)
-  Layer 2: Cascade detection — deduplicate 47 errors into 3 root causes
-  Layer 3: Smart prompt — show root causes with hints, not raw error spam
-  Layer 4: LLM fix — only for errors that survive layers 0-2
+  Layer -1: Classifier — predicts fix action from ErrorDB (learned, 0 tokens)
+  Layer 0:  Auto-fix — programmatic repairs (syntax, typos — 0 tokens)
+  Layer 1:  Index-assisted — resolve imports via LiveIndex (0 tokens)
+  Layer 2:  Cascade detection — 47 errors → 3 root causes (0 tokens)
+  Layer 3:  Smart prompt — root causes + hints (fewer tokens)
+  Layer 4:  LLM fix — only errors that survive layers -1 to 2
 
-Each layer reduces the work for the next. Result: fewer tokens, better fixes.
+Learning loop: every resolution (success or failure) is recorded in ErrorDB.
+After 30+ records, the classifier trains a decision tree from features.
+Each project generated makes the engine smarter.
 """
 from __future__ import annotations
 
@@ -28,6 +29,9 @@ from .intelligence import TscError, ErrorCluster, ErrorIntelligence
 from .strategies import (
     SyntaxStrategy, ImportStrategy, ConstructorTypoStrategy, StrategyResult,
 )
+from .error_db import ErrorDB, ErrorRecord
+from .features import FeatureExtractor, ErrorFeatures
+from .classifier import FixClassifier, Prediction
 
 __all__ = (
     "FixEngine",
@@ -35,6 +39,8 @@ __all__ = (
     "TscError",
     "ErrorCluster",
     "ErrorIntelligence",
+    "ErrorDB",
+    "FixClassifier",
 )
 
 # Regex to parse tsc error output
@@ -111,6 +117,18 @@ class FixEngine:
         self._syntax = SyntaxStrategy()
         self._typo = ConstructorTypoStrategy()
         self._import: Optional[ImportStrategy] = None
+
+        # Learning components
+        self._db = ErrorDB(project_dir / ".error_db.jsonl")
+        self._db.load()
+        self._features = FeatureExtractor()
+        self._classifier = FixClassifier(self._db, min_samples=30)
+        # Train if enough data exists from previous runs
+        if len(self._db.records) >= 30:
+            if self._classifier.train():
+                self._log(f"classifier trained on {len(self._db.records)} records")
+        if self._db.records:
+            self._log(f"error db: {self._db.format_stats()}")
 
     def _log(self, msg: str):
         if self.verbose:
@@ -274,6 +292,14 @@ class FixEngine:
                     abs_path.write_text(fixed + "\n")
                     iter_record.changes.append(rel_file)
 
+                # Record LLM fixes for learning
+                for err in file_errors[:10]:
+                    features = self._features.extract(
+                        err.code, err.line, err.message, code, file_errors
+                    )
+                    self._record_resolution(err, features, "llm_fix", "llm",
+                                           True, tokens=tokens // max(len(file_errors), 1))
+
             # ── Step 7: Re-check, revert if worse ──
             module_errors_final, clean = self.check_module(module_dir)
             errors_after = len(module_errors_final)
@@ -295,45 +321,103 @@ class FixEngine:
         final_errors, _ = self.check_module(module_dir)
         result.final_errors = len(final_errors)
         result.total_tokens = sum(it.tokens_used for it in result.iterations)
+
+        # Persist ErrorDB and retrain classifier
+        self._db.save()
+        if len(self._db.records) >= 30 and not self._classifier._trained:
+            if self._classifier.train():
+                self._log(f"classifier trained: {self._classifier.stats()}")
+
+        if self._db.records:
+            self._log(f"error db after module: {self._db.format_stats()}")
+
         return result
 
     # ── Layer 0: Auto-fix pipeline ───────────────────────────────
 
     def _apply_auto_fixes(self, code: str, errors: list[TscError],
                           file_path: str) -> tuple[int, str]:
-        """Apply all programmatic fix strategies. Returns (fixes_count, new_code)."""
+        """Apply fix strategies guided by classifier. Returns (fixes_count, new_code).
+
+        For each error: extract features → classify → apply predicted strategy.
+        Record every resolution in ErrorDB for future learning.
+        """
         total_fixes = 0
         clusters = self._intel.detect_cascades(errors)
 
         for cluster in clusters:
-            # Try syntax strategy
-            if self._syntax.can_handle(cluster):
+            root = cluster.root
+
+            # Extract features for classifier
+            features = self._features.extract(
+                root.code, root.line, root.message, code, errors
+            )
+            prediction = self._classifier.predict(features)
+
+            # Skip cascades (classifier or rule says this resolves with root)
+            if prediction.should_skip:
+                self._log(f"  ⊘ skip cascade: line {root.line} ({prediction.source})")
+                self._record_resolution(root, features, "skip_cascade", "none", True)
+                continue
+
+            # Try predicted strategy first
+            result = None
+            strategy_used = prediction.strategy
+
+            if prediction.action == "insert_brace" and self._syntax.can_handle(cluster):
                 result = self._syntax.apply(code, cluster)
-                if result and result.fixed_code:
-                    code = result.fixed_code
-                    total_fixes += result.errors_addressed
-                    self._log(f"  ✓ syntax: {result.description}")
-                    continue
-
-            # Try constructor typo strategy
-            if self._typo.can_handle(cluster):
+            elif prediction.action == "fix_typo_constructor" and self._typo.can_handle(cluster):
                 result = self._typo.apply(code, cluster)
-                if result and result.fixed_code:
-                    code = result.fixed_code
-                    total_fixes += result.errors_addressed
-                    self._log(f"  ✓ typo: {result.description}")
-                    continue
+            elif prediction.action == "fix_double_dot" and self._syntax.can_handle(cluster):
+                result = self._syntax.apply(code, cluster)
+            elif prediction.action == "add_semicolon" and self._syntax.can_handle(cluster):
+                result = self._syntax.apply(code, cluster)
+            elif prediction.action == "add_import" and self._import:
+                if self._import.can_handle(cluster):
+                    result = self._import.apply(code, cluster, file_path)
+                    strategy_used = "import"
 
-            # Try import strategy
-            if self._import and self._import.can_handle(cluster):
-                result = self._import.apply(code, cluster, file_path)
-                if result and result.fixed_code:
-                    code = result.fixed_code
-                    total_fixes += result.errors_addressed
-                    self._log(f"  ✓ import: {result.description}")
-                    continue
+            # Fallback: try all strategies if prediction didn't work
+            if not result or not result.fixed_code:
+                for strat_name, strat in [("syntax", self._syntax), ("typo", self._typo)]:
+                    if strat.can_handle(cluster):
+                        result = strat.apply(code, cluster)
+                        if result and result.fixed_code:
+                            strategy_used = strat_name
+                            break
+                if (not result or not result.fixed_code) and self._import:
+                    if self._import.can_handle(cluster):
+                        result = self._import.apply(code, cluster, file_path)
+                        strategy_used = "import"
+
+            # Apply if we got a fix
+            if result and result.fixed_code:
+                code = result.fixed_code
+                total_fixes += result.errors_addressed
+                self._log(f"  ✓ {strategy_used}: {result.description} "
+                          f"[{prediction.source}:{prediction.confidence:.0%}]")
+                self._record_resolution(root, features, prediction.action,
+                                       strategy_used, True)
+            else:
+                # No auto-fix available — will go to LLM
+                self._record_resolution(root, features, "llm_fix", "llm", True)
 
         return total_fixes, code
+
+    def _record_resolution(self, error: TscError, features: ErrorFeatures,
+                           action: str, strategy: str, success: bool,
+                           tokens: int = 0) -> None:
+        """Record a fix resolution in ErrorDB for learning."""
+        self._db.record_fix(
+            error_code=error.code,
+            message=error.message,
+            features=features.to_dict(),
+            action=action,
+            strategy=strategy,
+            success=success,
+            tokens=tokens,
+            project=str(self.project_dir.name),
+        )
 
     # ── LLM interaction ──────────────────────────────────────────
 
