@@ -380,6 +380,12 @@ class TaskDecomposer:
             else:
                 types = list(node.ref_types)
 
+            # Cap types per node to keep modules manageable
+            if len(types) > self.config.max_types_per_module:
+                self._log(f"  {node.name}: capping {len(types)} types "
+                          f"to {self.config.max_types_per_module}")
+                types = types[:self.config.max_types_per_module]
+
             # Scale LOC: target is 20-40% of reference for a new project
             scale = self.config.feature_loc_scale
             if (intelligence and hasattr(intelligence, 'quality')
@@ -437,16 +443,19 @@ class TaskDecomposer:
             f"Design {len(leaves)} modules with YOUR OWN names, inspired by these features."
         )
 
+        # More tokens for larger feature sets
+        max_tok = min(6000, 500 + len(leaves) * 400)
         resp = self.llm.complete_with_usage(
             [LLMMessage("system", system), LLMMessage("user", user)],
-            temperature=0.4, max_tokens=3000,
+            temperature=0.4, max_tokens=max_tok,
         )
         self.total_tokens += resp.usage.total_tokens
 
         try:
             data = self._parse_json(resp.content)
-        except (json.JSONDecodeError, ValueError):
-            self._log("feature-selection decomposition failed, falling back to LLM")
+        except (json.JSONDecodeError, ValueError) as e:
+            self._log(f"feature-selection JSON parse failed: {e}")
+            self._log(f"  LLM response (first 500 chars): {resp.content[:500]}")
             return self._from_llm(goal, target, [])
 
         tasks = []

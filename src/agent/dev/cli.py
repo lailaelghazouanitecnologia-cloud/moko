@@ -317,11 +317,14 @@ def cmd_dev(args: argparse.Namespace):
         config["interactive"] = not getattr(args, "no_interactive", False)
         config["pre_features"] = getattr(args, "features", None)
         orchestrator = BranchPipelineOrchestrator(config)
+        # When references are provided, let Feature AST handle decomposition
+        # instead of the generic advisor blueprint
+        bp_for_pipeline = None if args.ref else project_bp
         result = orchestrator.run(
             goal=args.goal,
             target=args.target,
             references=args.ref or None,
-            project_bp=project_bp,
+            project_bp=bp_for_pipeline,
         )
         print(result.format_report())
         return
