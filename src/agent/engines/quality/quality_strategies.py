@@ -304,39 +304,35 @@ class PromptHintStrategy:
     ) -> str:
         """Build a targeted quality improvement prompt.
 
-        Args:
-            code: The source code to improve
-            issues: List of (issue_type, severity, description)
-            hints: Classifier-generated hints
-            examples: Optional (before, after) pairs from QualityDB
+        Only includes what's relevant to the detected issues.
+        Style hints come from the user's profile — no hardcoded rules
+        that might contradict user preferences.
         """
         parts = []
-        parts.append("Improve this TypeScript code. Specific issues to fix:\n")
+        parts.append("Improve this TypeScript code. Fix these issues:\n")
 
         for i, (itype, severity, desc) in enumerate(issues, 1):
             parts.append(f"  {i}. [{severity}] {itype}: {desc}")
 
+        # Deduplicate hints (style hints may overlap with classifier hints)
         if hints:
-            parts.append("\nGuidance:")
+            seen = set()
+            unique_hints = []
             for hint in hints:
-                if hint:
+                if hint and hint not in seen:
+                    seen.add(hint)
+                    unique_hints.append(hint)
+            if unique_hints:
+                parts.append("\nGuidance:")
+                for hint in unique_hints[:8]:  # cap at 8
                     parts.append(f"  - {hint}")
 
         if examples:
-            parts.append("\nLearned patterns (from past corrections):")
-            for orig, improved in examples[:3]:  # max 3 examples
+            parts.append("\nLearned patterns:")
+            for orig, improved in examples[:2]:  # max 2 (not 3)
                 parts.append(f"  Before: {orig}")
                 parts.append(f"  After:  {improved}")
 
-        parts.append("\nRules:")
-        parts.append("  - Use discriminated unions for state/status types")
-        parts.append("  - Replace 'any' with specific interfaces")
-        parts.append("  - Use semantic names (not data/result/item)")
-        parts.append("  - Implement real algorithms (not heuristic stubs)")
-        parts.append("  - Add JSDoc with algorithm descriptions")
-        parts.append("  - Use dependency injection, not private field access")
-        parts.append("  - Return 'this' for fluent/builder APIs")
-        parts.append("  - Handle errors with typed exceptions")
         parts.append("\nReturn ONLY the improved code, no explanation.")
 
         return "\n".join(parts)

@@ -127,9 +127,14 @@ class StyleProfile:
         }
 
     def to_prompt_hints(self) -> List[str]:
-        """Convert strong preferences to LLM prompt hints."""
+        """Convert strong preferences to LLM prompt hints.
+
+        Only emits hints for dimensions where we have enough confidence
+        AND the preference is clearly strong (>0.7) or clearly weak (<0.3).
+        Returns max 6 hints to avoid prompt bloat.
+        """
         hints = []
-        strong = self.strong_preferences(0.5)
+        strong = self.strong_preferences(0.6)  # need ≥12 observations
 
         # Naming
         if strong.get("naming_verbose", 0.5) > 0.7:
@@ -178,7 +183,7 @@ class StyleProfile:
         if strong.get("style_readonly", 0.5) > 0.7:
             hints.append("Mark fields readonly where possible.")
 
-        return hints
+        return hints[:6]  # cap to avoid prompt bloat
 
     def to_quality_weights(self) -> Dict[str, float]:
         """Convert preferences to QualityEngine scoring weights.

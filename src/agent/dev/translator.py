@@ -413,8 +413,8 @@ class BlueprintTranslator:
                 user += f"\n## Semantic hints (similar patterns in reference code)\n"
                 user += "\n".join(sem_lines) + "\n"
 
-        # Style context from user's profile
-        if self.style_context:
+        # Style context — only if profile has confident preferences
+        if self.style_context and len(self.style_context) > 30:
             user += f"\n{self.style_context}\n"
 
         # 4. LLM call — all token budget for this one type
