@@ -1,4 +1,6 @@
-
+// z86 engine — public API
 export * from './core';
-export * from './middleware';
-export * from './devtools';
+export * from './diff';
+export * from './storage';
+export * from './index';
+export * from './transport';
