@@ -348,59 +348,125 @@ def cmd_dev(args: argparse.Namespace):
 # ── Features subcommand ────────────────────────────────────
 
 def register_features_subparser(subparsers: argparse._SubParsersAction):
-    """Register 'features' subcommand."""
+    """Register 'features' subcommand — Feature AST navigation."""
     p = subparsers.add_parser("features",
-                              help="Analyze references, discover features, discuss & propose evals")
-    p.add_argument("-t", "--target", required=True, help="Target project name")
-    p.add_argument("-r", "--ref", nargs="+", required=True, help="Reference projects to analyze")
-    p.add_argument("-g", "--goal", default="", help="Target project goal (for relevance scoring)")
-    p.add_argument("--provider", default="groq", help="LLM provider")
-    p.add_argument("--model", help="Override model")
-    p.add_argument("-v", "--verbose", action="store_true", help="Verbose output")
-    p.add_argument("--no-discuss", action="store_true",
-                   help="Skip discussions, only list features")
-    p.add_argument("--max-features", type=int, default=15,
-                   help="Max features to discover")
-    p.add_argument("--run", action="store_true",
-                   help="After generating proposals, run evaluations immediately")
-    p.add_argument("--max-parallel", type=int, default=3,
-                   help="Max parallel eval branches (with --run)")
+                              help="Browse feature tree of reference projects")
+    p.add_argument("projects", nargs="+", help="Reference project(s) to browse")
+    p.add_argument("-g", "--goal", default="",
+                   help="Goal to filter features (e.g., '2D sprite rendering')")
+    p.add_argument("--path", default="",
+                   help="Show specific subtree (e.g., 'rendering/forward-renderer')")
+    p.add_argument("--expand", action="store_true",
+                   help="Expand all nodes (show full tree)")
+    p.add_argument("--compare", action="store_true",
+                   help="Compare feature trees of two projects")
+    p.add_argument("--save", action="store_true",
+                   help="Save .features.yaml to data/reference/")
 
 
 def cmd_features(args: argparse.Namespace):
-    """Execute features command."""
-    from .features import FeatureAnalyzer
-
-    config = {
-        "provider": args.provider,
-        "model": args.model,
-        "verbose": args.verbose,
-    }
-
-    analyzer = FeatureAnalyzer(config)
-    report = analyzer.run(
-        target=args.target,
-        references=args.ref,
-        goal=args.goal,
-        discuss=not args.no_discuss,
-        max_features=args.max_features,
+    """Browse feature trees of reference projects."""
+    from pathlib import Path
+    from ..engines.reference.feature_ast import (
+        build_feature_ast, analyze_goal, auto_select,
+        print_tree, print_plan,
     )
+    from .. import OUT_DIR
 
-    # Optionally run evaluations on the generated proposals
-    if args.run and report.discussions:
-        proposals = sum(len(d.eval_proposals) for d in report.discussions)
-        if proposals > 0:
-            print(f"\nRunning {proposals} evaluation branches...")
-            from .manager import DevManager
+    data_dir = Path("data/reference")
+    data_dir.mkdir(parents=True, exist_ok=True)
 
-            config["max_parallel"] = args.max_parallel
-            manager = DevManager(config)
-            manager.run_eval_only(
-                target=args.target,
-                references=args.ref,
-            )
+    if args.compare and len(args.projects) >= 2:
+        _cmd_features_compare(args, OUT_DIR, data_dir)
+        return
+
+    project = args.projects[0]
+
+    # Load or build AST
+    cached = data_dir / f"{project}.features.yaml"
+    if cached.exists() and not args.save:
+        from ..engines.reference.feature_ast import FeatureNode
+        ast = FeatureNode.load(cached)
+        print(f"  Loaded feature tree: {project}")
+    else:
+        ast = build_feature_ast(project, OUT_DIR)
+        if args.save:
+            ast.save(cached)
+            print(f"  Saved: {cached}")
+
+    # If a specific path requested, show subtree
+    if args.path:
+        subtree = ast.find(args.path)
+        if subtree:
+            print_tree(subtree, max_depth=10)
         else:
-            print("\nNo proposals generated, nothing to evaluate.")
+            print(f"  Not found: {args.path}")
+            print(f"  Available: {', '.join(n.path for n in ast.walk() if n.kind != 'root')}")
+        return
+
+    # If goal provided, analyze and show filtered view
+    if args.goal:
+        analysis = analyze_goal(args.goal, ast)
+        maybes = auto_select(ast, analysis)
+        print(f"\n  Goal: \"{args.goal}\"")
+        print_tree(ast, show_selection=True, analysis=analysis,
+                   max_depth=10 if args.expand else 3)
+        print_plan(ast, analysis)
+        if maybes:
+            unique_maybes = list(dict.fromkeys(maybes))  # dedup preserving order
+            print(f"  Optional (not auto-selected): {', '.join(unique_maybes)}")
+        return
+
+    # Default: show full tree
+    print_tree(ast, max_depth=10 if args.expand else 3)
+
+
+def _cmd_features_compare(args, out_dir, data_dir):
+    """Compare feature trees of two projects side by side."""
+    from ..engines.reference.feature_ast import build_feature_ast, FeatureNode
+
+    p1, p2 = args.projects[0], args.projects[1]
+
+    # Load/build both ASTs
+    trees = {}
+    for proj in [p1, p2]:
+        cached = data_dir / f"{proj}.features.yaml"
+        if cached.exists():
+            trees[proj] = FeatureNode.load(cached)
+        else:
+            trees[proj] = build_feature_ast(proj, out_dir)
+
+    ast1, ast2 = trees[p1], trees[p2]
+
+    print(f"\n  {'━' * 66}")
+    print(f"    FEATURE COMPARISON: {p1} vs {p2}")
+    print(f"  {'━' * 66}")
+    print(f"\n  {'':>22} {p1:>20} {p2:>20}")
+    print(f"  {'─' * 66}")
+    print(f"  {'Total LOC':>22} {ast1.ref_loc:>17,} {ast2.ref_loc:>17,}")
+
+    # Collect all unique domain/subsystem names
+    def _leaf_nodes(ast):
+        return {n.name: n for n in ast.walk()
+                if n.kind not in ("root", "domain") and not n.children}
+
+    nodes1 = _leaf_nodes(ast1)
+    nodes2 = _leaf_nodes(ast2)
+    all_names = sorted(set(nodes1.keys()) | set(nodes2.keys()))
+
+    print(f"\n  {'Feature':<22} {p1:>20} {p2:>20}")
+    print(f"  {'─' * 66}")
+
+    for name in all_names:
+        n1 = nodes1.get(name)
+        n2 = nodes2.get(name)
+        loc1 = f"{n1.ref_loc:,} LOC" if n1 else "—"
+        loc2 = f"{n2.ref_loc:,} LOC" if n2 else "—"
+        types1 = f"({len(n1.ref_types)}t)" if n1 else ""
+        types2 = f"({len(n2.ref_types)}t)" if n2 else ""
+        print(f"  {name:<22} {loc1:>14} {types1:>5} {loc2:>14} {types2:>5}")
+
+    print(f"  {'━' * 66}\n")
 
 
 # ── Duel subcommand ─────────────────────────────────────────

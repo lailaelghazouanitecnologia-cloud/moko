@@ -5,3 +5,8 @@ from .models import (
     MetricsPerType, MetricsPerFunction, DependencyGraph,
 )
 from .intelligence import IntelligenceGenerator
+from .feature_ast import (
+    FeatureNode, GoalAnalysis, build_feature_ast,
+    analyze_goal, auto_select, interactive_select,
+    print_tree, print_plan,
+)
