@@ -57,18 +57,23 @@ class TaskDecomposer:
 
     def decompose(self, goal: str, target: str,
                   references: list[str] = None,
-                  project_bp=None) -> list[ModuleTask]:
+                  project_bp=None,
+                  intelligence=None) -> list[ModuleTask]:
         """Decompose into ModuleTasks.
 
         Priority:
           1. ProjectBlueprint (if provided)
-          2. Reference-aware extraction (if references have meta.yaml)
-          3. LLM-based fallback
+          2. Intelligence-informed (PI: goal-driven, calibrated by reference)
+          3. Reference-aware extraction (clone mode — fallback)
+          4. LLM-based fallback
 
         Returns topologically sorted list of ModuleTasks.
         """
         if project_bp:
             tasks = self._from_project_blueprint(project_bp, target)
+        elif intelligence:
+            # PI mode: goal-driven, calibrated by reference intelligence
+            tasks = self._from_goal_with_intelligence(goal, target, intelligence)
         elif references and self.out_dir:
             ref_tasks = self._from_reference(references, goal)
             if ref_tasks:
@@ -330,6 +335,157 @@ class TaskDecomposer:
             else:
                 merged[task.name] = task
         return list(merged.values())
+
+    # ── Intelligence-Informed Decomposition ─────────────────
+
+    def _from_goal_with_intelligence(self, goal: str, target: str,
+                                     intelligence) -> list[ModuleTask]:
+        """Goal-driven decomposition calibrated by reference intelligence.
+
+        Uses the PI to CALIBRATE (not copy):
+          - Module count and size from metrics
+          - Applicable patterns as inspiration
+          - Style conventions to follow
+          - Quality targets for LOC/type calibration
+        """
+        pi = intelligence  # ProjectIntelligence
+
+        # Build calibration context from PI
+        calibration = self._build_calibration_context(pi)
+
+        system = (
+            "You are a software architect. Design a module architecture for a NEW project.\n\n"
+            "You are given a GOAL and CALIBRATION DATA from a reference project.\n"
+            "Use the reference for CALIBRATION (depth, complexity, style) — NOT for copying.\n"
+            "Design YOUR OWN modules with YOUR OWN names.\n\n"
+            "Output JSON array: [\n"
+            '  {"module": "name", "types": ["Type1", "Type2"], '
+            '"depends_on": ["other_module"], '
+            '"description": "brief purpose", '
+            '"target_loc_per_type": 150}\n]\n\n'
+            "Rules:\n"
+            "- Create 3-8 modules covering the full architecture for the GOAL\n"
+            "- Each module: 2-6 types (classes + interfaces). Match reference depth.\n"
+            "- For each module with public API, include BOTH concrete classes AND interfaces (prefix I).\n"
+            "- Order by dependency: foundations first, no circular deps\n"
+            "- Use the reference's LOC/type and methods/type as CALIBRATION for target_loc_per_type\n"
+            "- Apply APPLICABLE PATTERNS as inspiration (implement YOUR version)\n"
+            "- Do NOT copy module names or type names from the reference\n"
+            "- Output ONLY the JSON array.\n"
+        )
+
+        user = (
+            f"Goal: {goal}\n"
+            f"Target project: {target}\n\n"
+            f"{calibration}"
+        )
+
+        resp = self.llm.complete_with_usage(
+            [LLMMessage("system", system), LLMMessage("user", user)],
+            temperature=0.4, max_tokens=3000,
+        )
+        self.total_tokens += resp.usage.total_tokens
+
+        try:
+            data = self._parse_json(resp.content)
+        except (json.JSONDecodeError, ValueError):
+            self._log("PI-informed decomposition failed, falling back to LLM")
+            return self._from_llm(goal, target, [])
+
+        # Extract quality targets for LOC calibration
+        default_loc = 150
+        if hasattr(pi, 'quality') and pi.quality.loc_per_type.median > 0:
+            default_loc = int(pi.quality.loc_per_type.median)
+
+        tasks = []
+        for mod in data:
+            mod_name = mod.get("module", "core")
+            loc_target = mod.get("target_loc_per_type", default_loc)
+            loc_target = max(80, min(loc_target, 500))  # clamp
+
+            tasks.append(ModuleTask(
+                name=mod_name,
+                branch_name=f"feature/{mod_name}",
+                types=mod.get("types", []),
+                depends_on=mod.get("depends_on", []),
+                description=mod.get("description", ""),
+                estimated_types=len(mod.get("types", [])),
+                target_loc_per_type=loc_target,
+            ))
+
+        self._log(f"PI-informed decomposition: {len(tasks)} modules "
+                  f"(calibrated from {pi.project})")
+        return tasks
+
+    def _build_calibration_context(self, pi) -> str:
+        """Build calibration context from ProjectIntelligence for the LLM."""
+        lines = ["## Reference Calibration (for DEPTH, not for copying)\n"]
+
+        # Identity
+        lines.append(f"Reference: {pi.project} ({pi.domain}, {pi.language})")
+        lines.append(f"Size: {pi.size_tier} | Maturity: {pi.maturity}")
+        lines.append(f"Purpose: {pi.purpose}\n")
+
+        # Metrics
+        m = pi.metrics
+        lines.append("### Scale")
+        lines.append(f"- {m.glob.total_modules} modules, {m.glob.total_types} types, "
+                     f"{m.glob.total_functions} functions")
+        lines.append(f"- {m.glob.total_loc:,} total LOC")
+        lines.append(f"- Avg {m.per_module.avg_loc:.0f} LOC/module "
+                     f"(median {m.per_module.median_loc:.0f})")
+        lines.append(f"- Avg {m.per_type.avg_methods:.1f} methods/type")
+        lines.append(f"- {m.per_function.async_ratio:.0%} async functions\n")
+
+        # Quality targets
+        q = pi.quality
+        lines.append("### Depth Calibration")
+        lines.append(f"- LOC/type: p25={q.loc_per_type.p25:.0f}, "
+                     f"median={q.loc_per_type.median:.0f}, "
+                     f"p75={q.loc_per_type.p75:.0f}")
+        lines.append(f"- Methods/type: p25={q.methods_per_type.p25:.0f}, "
+                     f"median={q.methods_per_type.median:.0f}, "
+                     f"p75={q.methods_per_type.p75:.0f}")
+        lines.append(f"- Error handling: {q.error_handling}\n")
+
+        # Style
+        s = pi.style
+        lines.append("### Style Conventions")
+        lines.append(f"- Naming: {s.naming.modules} modules, {s.naming.classes} classes, "
+                     f"{s.naming.methods} methods")
+        lines.append(f"- Error handling: {s.error_handling.strategy}"
+                     + (", retry patterns" if s.error_handling.retry_pattern else "")
+                     + (", custom exceptions" if s.error_handling.custom_exceptions else ""))
+        lines.append(f"- Async: {s.async_style.style}")
+        lines.append(f"- Typing: {s.typing.strictness}")
+        lines.append(f"- Organization: {s.organization.file_per_class} file-per-class\n")
+
+        # Applicable patterns
+        if pi.patterns:
+            lines.append("### Patterns (apply YOUR version if relevant to goal)")
+            for p in pi.patterns:
+                lines.append(f"- **{p.name}**: {p.what}")
+                lines.append(f"  Algorithm: {p.how}")
+                lines.append(f"  Reusable when: {p.reusable_when}")
+            lines.append("")
+
+        # Key features as inspiration
+        if pi.features:
+            lines.append("### Features (for inspiration, not copying)")
+            for f in pi.features[:6]:
+                lines.append(f"- {f.name}: {f.description} "
+                             f"[{f.complexity}, {f.loc} LOC]")
+            lines.append("")
+
+        # Dependency graph style
+        dg = pi.dependency_graph
+        if dg.layers:
+            lines.append("### Architecture Style")
+            lines.append(f"- Style: {dg.style} | Coupling: {dg.coupling}")
+            lines.append(f"- Layers: {' → '.join('[' + ', '.join(l) + ']' for l in dg.layers)}")
+            lines.append("")
+
+        return "\n".join(lines)
 
     # ── Existing paths ───────────────────────────────────────
 

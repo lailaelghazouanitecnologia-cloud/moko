@@ -301,6 +301,7 @@ class BlueprintTranslator:
         self.context_engine = None  # Optional ContextEngine for richer snapshots
         self.quality_engine = None # Optional QualityEngine for style-aware hints
         self.style_rules = None    # Optional StyleRules for user-configurable style
+        self.pi_context = ""       # Optional PI pattern/style context for generation
 
     def _log(self, msg: str):
         if self.verbose:
@@ -464,6 +465,10 @@ class BlueprintTranslator:
                     )
                 user += f"\n## Semantic hints (similar patterns in reference code)\n"
                 user += "\n".join(sem_lines) + "\n"
+
+        # PI pattern context — architectural inspiration from reference intelligence
+        if self.pi_context:
+            user += f"\n{self.pi_context}\n"
 
         # Style hints — only what the existing context doesn't already show
         if self.quality_engine:
@@ -856,6 +861,8 @@ class BlueprintTranslator:
                 f"Sibling types in this module: {sibling_list}\n"
                 f"Language: {language}\n"
             )
+            if self.pi_context:
+                user += f"\n{self.pi_context}\n"
             if ref_context:
                 user += f"\n## Reference descriptors\n{ref_context}\n"
             user += f"\nGenerate the YAML for {type_name} ONLY."

@@ -141,6 +141,7 @@ class BranchPipelineOrchestrator:
         self.semantic_store = None   # SemanticStore for reference matching
         self.block_store = None      # CodeBlockStore for reusable code blocks
         self.style_rules = None      # StyleRules for user-configurable style
+        self.intelligence = None     # ProjectIntelligence from reference
         self.total_tokens = 0
 
         # Guardrails
@@ -150,6 +151,75 @@ class BranchPipelineOrchestrator:
     def _log(self, msg: str):
         if self.verbose:
             print(f"  [pipeline] {msg}")
+
+    def _load_intelligence(self, references: list[str]):
+        """Load Project Intelligence from reference .pi.yaml files."""
+        if not references:
+            return
+
+        from ..engines.reference.models import ProjectIntelligence
+        data_dir = Path("data/reference")
+
+        for ref in references:
+            pi_path = data_dir / f"{ref}.pi.yaml"
+            if pi_path.exists():
+                try:
+                    self.intelligence = ProjectIntelligence.load(pi_path)
+                    self._log(f"loaded PI for {ref}: {self.intelligence.metrics.glob.total_loc:,} LOC, "
+                              f"{len(self.intelligence.patterns)} patterns")
+                    return
+                except Exception as e:
+                    self._log(f"failed to load PI for {ref}: {e}")
+
+        # Try to generate PI if Roska descriptors exist
+        for ref in references:
+            ref_dir = OUT_DIR / ref
+            if ref_dir.exists():
+                try:
+                    from ..engines.reference.intelligence import IntelligenceGenerator
+                    gen = IntelligenceGenerator(OUT_DIR, self.llm, verbose=self.verbose)
+                    self.intelligence = gen.generate(ref)
+                    self._log(f"generated PI for {ref}")
+                    return
+                except Exception as e:
+                    self._log(f"PI generation failed for {ref}: {e}")
+
+    def _build_pi_context(self) -> str:
+        """Build pattern/style context string from PI for the translator."""
+        if not self.intelligence:
+            return ""
+
+        pi = self.intelligence
+        lines = ["## Architectural Inspiration (from reference analysis)\n"]
+
+        # Applicable patterns
+        if pi.patterns:
+            lines.append("### Patterns to apply (implement YOUR version)")
+            for p in pi.patterns[:4]:
+                lines.append(f"- **{p.name}**: {p.what}")
+                lines.append(f"  How: {p.how}")
+            lines.append("")
+
+        # Style conventions
+        s = pi.style
+        lines.append("### Style Conventions")
+        lines.append(f"- Error handling: {s.error_handling.strategy}"
+                     + (", retry patterns" if s.error_handling.retry_pattern else ""))
+        lines.append(f"- Async: {s.async_style.style}")
+        lines.append(f"- Typing: {s.typing.strictness}")
+        if s.documentation.module_docstrings:
+            lines.append(f"- Docs: {s.documentation.module_docstrings} module docs, "
+                         f"{s.documentation.inline_comments} comments")
+        lines.append("")
+
+        # Quality targets
+        q = pi.quality
+        lines.append("### Quality Targets")
+        lines.append(f"- Target LOC/type: {q.loc_per_type.median:.0f} (median)")
+        lines.append(f"- Target methods/type: {q.methods_per_type.median:.0f} (median)")
+        lines.append(f"- Error handling level: {q.error_handling}")
+
+        return "\n".join(lines)
 
     def run(self, goal: str, target: str,
             references: list[str] = None,
@@ -213,11 +283,15 @@ class BranchPipelineOrchestrator:
         self._build_emission_index(references)
         self._build_retrieval_engines(references)
 
-        # 4. Decompose into module tasks
+        # 3b. Load or generate Project Intelligence from references
+        self._load_intelligence(references)
+
+        # 4. Decompose into module tasks (PI-informed if available)
         print(f"\n  Decomposing: {goal}")
         tasks = self.decomposer.decompose(
             goal=goal, target=target,
             references=references, project_bp=project_bp,
+            intelligence=self.intelligence,
         )
         self.total_tokens += self.decomposer.total_tokens
 
@@ -529,6 +603,10 @@ class BranchPipelineOrchestrator:
         # Wire user style rules
         if self.style_rules:
             translator.style_rules = self.style_rules
+
+        # Wire PI context for pattern-aware generation
+        if self.intelligence:
+            translator.pi_context = self._build_pi_context()
 
         # Load prior module blueprints for cross-module context
         bp_dir = project_dir / "blueprints"
