@@ -178,7 +178,7 @@ def _extract_rich_api(code: str, type_name: str, file_path: str) -> str:
 
 # ── System Prompts ──────────────────────────────────────────
 
-TRANSLATE_SYSTEM = """You are a code translator. You convert YAML blueprints into complete, production-ready source code.
+TRANSLATE_SYSTEM = """You are a code translator. You convert YAML blueprints into complete, production-ready TypeScript code.
 
 Rules:
 1. Implement EVERY method listed in the blueprint. No stubs, no TODOs.
@@ -188,20 +188,28 @@ Rules:
 5. Reference the provided Roska descriptors for patterns and conventions.
 6. Output ONLY the source code. No markdown fences, no explanations.
 7. Include proper imports at the top.
-8. Use idiomatic style for the target language.
-9. Make the code complete and runnable — someone should be able to import it directly.
+8. Make the code complete and runnable — someone should be able to import it directly.
+
+TYPE SAFETY (CRITICAL — follow these strictly):
+9. NEVER use 'any'. Use 'unknown', generics, or specific interfaces instead.
+10. Use generic type parameters <T> for reusable containers, handlers, and factories.
+11. Use discriminated unions for state/status types: type Result = { kind: 'ok'; value: T } | { kind: 'error'; error: string }.
+12. Mark ALL fields that are only set in the constructor as 'readonly'.
+13. Use 'private readonly' for injected dependencies.
+14. Define type aliases for domain concepts: type PlayerId = string & { readonly __brand: 'PlayerId' }.
+15. Use ReadonlyArray<T> for arrays that should not be mutated.
 
 NAMING (STRICT):
-10. The exported type MUST use the EXACT name from the blueprint. Do NOT rename it.
-11. The main export MUST be: export class/interface/enum <BlueprintName>.
+16. The exported type MUST use the EXACT name from the blueprint. Do NOT rename it.
+17. The main export MUST be: export class/interface/enum <BlueprintName>.
 
 CODE ORGANIZATION (STRICT):
-12. File naming: kebab-case ONLY (e.g., graphics-device.ts, vertex-buffer.ts, event-emitter.ts).
-13. Cross-module imports: ALWAYS use barrel imports via index. Example: import { Vec3, Mat4 } from '../math';
-14. Same-module imports: use relative path to the file. Example: import { VertexBuffer } from './vertex-buffer';
-15. NEVER add .js extension to imports.
-16. NEVER use PascalCase or camelCase for file names in import paths.
-17. If an IMPORT MAP is provided, use EXACTLY those paths. Do not invent import paths."""
+18. File naming: kebab-case ONLY (e.g., graphics-device.ts, vertex-buffer.ts, event-emitter.ts).
+19. Cross-module imports: ALWAYS use barrel imports via index. Example: import { Vec3, Mat4 } from '../math';
+20. Same-module imports: use relative path to the file. Example: import { VertexBuffer } from './vertex-buffer';
+21. NEVER add .js extension to imports.
+22. NEVER use PascalCase or camelCase for file names in import paths.
+23. If an IMPORT MAP is provided, use EXACTLY those paths. Do not invent import paths."""
 
 BLUEPRINT_SYSTEM = """You are a software architect. You generate detailed YAML blueprints from reference Roska descriptors.
 
@@ -241,6 +249,13 @@ Include key methods that define the class API. Skip trivial getters/setters. Tar
 Keep method hints to 3-5 words MAX. Do NOT write long descriptions.
 CRITICAL: Generate ONLY the types listed in the task goal. Do NOT invent extra interfaces, enums, or type aliases.
 If a supporting type is needed, define it inline (e.g. as a field type) — do NOT create a separate type entry.
+
+TYPE QUALITY:
+- Use generic parameters <T> where a type is reusable (e.g., EventEmitter<T>, Store<T>).
+- Mark constructor-injected fields as 'private readonly' in the field type.
+- Use discriminated unions in method signatures (e.g., Result<T> = {kind:'ok',value:T}|{kind:'error',error:string}).
+- Prefer ReadonlyArray<T> over T[] for immutable collections.
+
 IMPORTANT: Keep total YAML under 150 lines to avoid truncation."""
 
 

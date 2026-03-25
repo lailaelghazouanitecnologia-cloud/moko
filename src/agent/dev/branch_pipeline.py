@@ -516,16 +516,21 @@ class BranchPipelineOrchestrator:
 
         system = (
             "You are enhancing TypeScript code. The code below is functionally correct "
-            "but sparse. Add: complete error handling, edge case coverage, JSDoc comments, "
-            "private helper methods, and any missing method implementations from the blueprint.\n\n"
+            "but sparse. Enhance it to production quality.\n\n"
             "Rules:\n"
             "1. Output the COMPLETE enhanced file.\n"
             "2. Keep all existing functionality intact — do NOT corrupt declarations.\n"
             "3. Add missing methods from the blueprint.\n"
             "4. Add JSDoc for public methods.\n"
-            "5. Add input validation and error handling.\n"
+            "5. Add input validation with typed errors (TypeError, RangeError).\n"
             "6. Preserve ALL field declarations exactly as they are.\n"
-            "7. Output ONLY the source code. No markdown fences."
+            "7. Output ONLY the source code. No markdown fences.\n\n"
+            "Type quality (IMPORTANT):\n"
+            "8. Replace ALL 'any' with 'unknown', generics, or specific types.\n"
+            "9. Add 'readonly' to fields only set in constructor.\n"
+            "10. Use generic type parameters <T> for reusable patterns.\n"
+            "11. Use discriminated unions for state/result types.\n"
+            "12. Use 'private readonly' for injected dependencies."
         )
 
         user = (

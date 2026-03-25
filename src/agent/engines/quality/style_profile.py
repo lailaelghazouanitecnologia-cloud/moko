@@ -216,26 +216,28 @@ class StyleProfile:
         """Convert preferences to LLM prompt hints.
 
         Uses inheritance: Claude defaults when no user data,
-        user preferences when learned. Returns max 6 hints.
+        user preferences when learned. Returns max 8 hints.
+        Ordered by impact: type safety > encapsulation > structure > naming.
         """
         hints = []
         # Use effective preferences (defaults + user overrides)
         eff = self.effective_preferences()
 
-        # Naming
-        if eff.get("naming_verbose", 0.5) > 0.7:
-            hints.append("Use verbose, descriptive variable and method names.")
-        elif eff.get("naming_verbose", 0.5) < 0.3:
-            hints.append("Keep names concise but clear.")
-
-        if eff.get("naming_semantic", 0.5) > 0.7:
-            hints.append("Use domain-specific names (finding, evidence, hypothesis) not generic ones.")
-
-        # Types
+        # Types & encapsulation FIRST — biggest quality gap vs Claude
         if eff.get("types_strict", 0.5) > 0.7:
             hints.append("Never use 'any'. Prefer unknown, generics, or specific interfaces.")
+        if eff.get("style_readonly", 0.5) > 0.7:
+            hints.append("Mark ALL constructor-only fields as 'private readonly'. Use ReadonlyArray<T>.")
+        if eff.get("types_generics", 0.5) > 0.7:
+            hints.append("Use generic type parameters <T> for reusable containers, handlers, and stores.")
         if eff.get("types_unions", 0.5) > 0.7:
-            hints.append("Use discriminated unions for state/status types.")
+            hints.append("Use discriminated unions: type Result = {kind:'ok';value:T}|{kind:'error';error:string}.")
+        if eff.get("types_aliases", 0.5) > 0.7:
+            hints.append("Define type aliases for domain concepts (e.g., type TaskId = string & {__brand:'TaskId'}).")
+
+        # Naming
+        if eff.get("naming_semantic", 0.5) > 0.7:
+            hints.append("Use domain-specific names, not generic ones (data, result, item).")
 
         # Documentation
         if eff.get("docs_minimal", 0.5) > 0.7:
@@ -266,10 +268,7 @@ class StyleProfile:
         # Code style
         if eff.get("style_early_return", 0.5) > 0.7:
             hints.append("Use early returns (guard clauses) to reduce nesting.")
-        if eff.get("style_readonly", 0.5) > 0.7:
-            hints.append("Mark fields readonly where possible.")
-
-        return hints[:6]  # cap to avoid prompt bloat
+        return hints[:8]  # cap to avoid prompt bloat
 
     def to_quality_weights(self) -> Dict[str, float]:
         """Convert preferences to QualityEngine scoring weights.
