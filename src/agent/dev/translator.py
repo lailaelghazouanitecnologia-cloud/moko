@@ -261,6 +261,7 @@ class BlueprintTranslator:
         self.semantic_store = None  # Optional SemanticStore for enriched context
         self.rich_mode = rich_mode  # When True, use higher token budget
         self.context_engine = None  # Optional ContextEngine for richer snapshots
+        self.style_context = ""    # Optional user style hints from QualityEngine
 
     def _log(self, msg: str):
         if self.verbose:
@@ -411,6 +412,10 @@ class BlueprintTranslator:
                     )
                 user += f"\n## Semantic hints (similar patterns in reference code)\n"
                 user += "\n".join(sem_lines) + "\n"
+
+        # Style context from user's profile
+        if self.style_context:
+            user += f"\n{self.style_context}\n"
 
         # 4. LLM call — all token budget for this one type
         max_tok = 12000 if self.rich_mode else 6000

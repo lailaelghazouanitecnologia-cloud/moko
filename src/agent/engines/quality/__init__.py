@@ -35,6 +35,10 @@ from .quality_strategies import (
     TypeStrategy, NamingStrategy, StructureStrategy,
     DocStrategy, PromptHintStrategy, StrategyResult,
 )
+from .style_profile import (
+    StyleProfile, StyleAnalyzer, StylePreference,
+    build_style_context, STYLE_DIMENSIONS,
+)
 
 __all__ = (
     "QualityEngine",
@@ -44,6 +48,9 @@ __all__ = (
     "QualityFeatureExtractor",
     "QualityFeatures",
     "QualityPrediction",
+    "StyleProfile",
+    "StyleAnalyzer",
+    "build_style_context",
 )
 
 
@@ -99,6 +106,13 @@ class QualityEngine:
         self.extractor = QualityFeatureExtractor()
         self.classifier = QualityClassifier(self.db)
         self.context_engine: Optional["ContextEngine"] = None
+
+        # Style profile — adapts to user preferences
+        self.style_profile = StyleProfile()
+        self.style_analyzer = StyleAnalyzer()
+        style_path = str(self.project_dir / ".style_profile.json")
+        if os.path.exists(style_path):
+            self.style_profile = StyleProfile.load(style_path)
 
         # Strategies (0-token fixes)
         self.type_strategy = TypeStrategy()
@@ -247,6 +261,10 @@ class QualityEngine:
                 predictions = self.classifier.predict_all(llm_issues, features)
                 hints = [p.hint for p in predictions if p.hint]
 
+                # Inject user style preferences into hints
+                style_hints = self.style_profile.to_prompt_hints()
+                hints.extend(style_hints)
+
                 # Get examples from DB
                 examples = []
                 for p in predictions[:2]:
@@ -317,16 +335,18 @@ class QualityEngine:
     def _compute_score(self, features: QualityFeatures) -> float:
         """Compute overall quality score 0-1 from features.
 
-        Weighted formula based on what makes Claude's code better:
+        Weights adapt to user's style profile. Default:
           - Type safety: 25%
           - Naming quality: 20%
           - Algorithm depth: 20%
           - Documentation: 15%
           - Structure: 20%
         """
+        # Get style-adjusted weights
+        w = self.style_profile.to_quality_weights()
         score = 0.0
 
-        # Type safety (25%): penalize any, reward unions/generics
+        # Type safety: penalize any, reward unions/generics
         type_score = 1.0
         if features.loc > 0:
             any_ratio = features.any_count / max(features.loc / 50, 1)
@@ -338,7 +358,7 @@ class QualityEngine:
         if features.type_alias_count > 0:
             type_score += 0.1
         type_score = max(0, min(type_score, 1.0))
-        score += type_score * 0.25
+        score += type_score * w.get("type_safety", 0.25)
 
         # Naming quality (20%)
         name_score = features.camel_case_ratio * 0.4
@@ -346,23 +366,23 @@ class QualityEngine:
         name_score += (1.0 - features.generic_name_ratio) * 0.3
         name_score += features.descriptive_param_ratio * 0.3
         name_score = max(0, min(name_score, 1.0))
-        score += name_score * 0.20
+        score += name_score * w.get("naming", 0.20)
 
-        # Algorithm depth (20%): complexity + no stubs
+        # Algorithm depth: complexity + no stubs
         algo_score = min(features.file_complexity * 20, 1.0)  # 0.05 branches/LOC = 1.0
         algo_score *= (1.0 - features.stub_indicator_score)
         algo_score += features.has_algorithm_docs * 0.3
         algo_score = max(0, min(algo_score, 1.0))
-        score += algo_score * 0.20
+        score += algo_score * w.get("algorithm", 0.20)
 
-        # Documentation (15%)
+        # Documentation
         doc_score = features.jsdoc_coverage * 0.5
         doc_score += features.has_algorithm_docs * 0.3
         doc_score += min(features.inline_comment_density * 10, 0.2)
         doc_score = max(0, min(doc_score, 1.0))
-        score += doc_score * 0.15
+        score += doc_score * w.get("documentation", 0.15)
 
-        # Structure (20%): DI, events, helpers, no private access
+        # Structure: DI, events, helpers, no private access
         struct_score = features.has_dependency_injection * 0.3
         struct_score += features.has_event_pattern * 0.2
         struct_score += features.helper_ratio * 0.3
@@ -370,7 +390,7 @@ class QualityEngine:
         if features.private_field_access > 0:
             struct_score -= 0.2
         struct_score = max(0, min(struct_score, 1.0))
-        score += struct_score * 0.20
+        score += struct_score * w.get("structure", 0.20)
 
         return max(0, min(score, 1.0))
 
@@ -403,10 +423,60 @@ class QualityEngine:
 
         return text.strip() if text.strip() else None
 
+    # ── Style learning ─────────────────────────────────────
+
+    def learn_style_from_project(self, project_dir: str) -> int:
+        """Analyze an existing project to learn user's coding style.
+
+        Call this with reference projects before generation.
+        Returns number of files analyzed.
+        """
+        count = self.style_analyzer.learn_from_project(
+            self.style_profile, project_dir
+        )
+        if count > 0:
+            style_path = str(self.project_dir / ".style_profile.json")
+            self.style_profile.save(style_path)
+        return count
+
+    def learn_style_from_correction(
+        self, original: str, corrected: str, filename: str = ""
+    ):
+        """Learn from a manual user correction (high weight).
+
+        Call this whenever the user edits generated code.
+        """
+        self.style_analyzer.learn_from_correction(
+            self.style_profile, original, corrected, filename
+        )
+        style_path = str(self.project_dir / ".style_profile.json")
+        self.style_profile.save(style_path)
+
+    def get_style_hints(self) -> List[str]:
+        """Get current style hints for LLM prompts."""
+        return self.style_profile.to_prompt_hints()
+
+    def get_style_context(self) -> str:
+        """Get style context block for injection into generation prompts."""
+        return build_style_context(self.style_profile)
+
+    def style_report(self) -> str:
+        """Report current style profile."""
+        strong = self.style_profile.strong_preferences(0.4)
+        if not strong:
+            return "Style profile: not enough data yet."
+
+        lines = ["Style Profile (confident preferences):"]
+        for dim, value in sorted(strong.items(), key=lambda x: -x[1]):
+            conf = self.style_profile.confidence(dim)
+            bar = "█" * int(value * 10) + "░" * (10 - int(value * 10))
+            lines.append(f"  {dim:<30} {bar} {value:.2f} (conf: {conf:.0%})")
+        return "\n".join(lines)
+
     # ── Reporting ────────────────────────────────────────────
 
     def report(self) -> str:
-        """Generate a summary report of quality DB stats."""
+        """Generate a summary report of quality DB stats + style."""
         stats = self.db.stats()
         lines = [
             "QualityEngine Report",
@@ -429,5 +499,9 @@ class QualityEngine:
 
         if self.classifier.trained_on > 0:
             lines.append(f"\nClassifier: trained on {self.classifier.trained_on} records")
+
+        # Style profile summary
+        lines.append("")
+        lines.append(self.style_report())
 
         return "\n".join(lines)

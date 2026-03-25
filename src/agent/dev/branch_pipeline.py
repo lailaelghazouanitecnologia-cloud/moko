@@ -136,8 +136,18 @@ class BranchPipelineOrchestrator:
             max_iterations=4, verbose=self.verbose,
         )
 
-        # 2b. Initialize quality engine
+        # 2b. Initialize quality engine + learn style from references
         self.quality_engine = QualityEngine(str(project_dir))
+        if references:
+            for ref in references:
+                ref_dir = self.projects_dir / ref
+                if ref_dir.exists():
+                    n = self.quality_engine.learn_style_from_project(str(ref_dir / "src"))
+                    if n > 0:
+                        self._log(f"learned style from {ref}: {n} files")
+            style_hints = self.quality_engine.get_style_hints()
+            if style_hints:
+                self._log(f"style hints: {', '.join(style_hints[:3])}")
 
         # 2c. Initialize context engine
         self.engine = ContextEngine(project_dir / "src")
@@ -339,6 +349,10 @@ class BranchPipelineOrchestrator:
         # Provide retrieval engines to translator
         if self.semantic_store:
             translator.semantic_store = self.semantic_store
+
+        # Inject user style preferences into generation
+        if self.quality_engine:
+            translator.style_context = self.quality_engine.get_style_context()
 
         # Load prior module blueprints for cross-module context
         bp_dir = project_dir / "blueprints"
