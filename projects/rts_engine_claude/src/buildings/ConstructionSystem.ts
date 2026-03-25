@@ -19,7 +19,7 @@ export class ConstructionSystem extends System<ComponentData> {
   }
 
   get requiredComponents(): readonly string[] {
-    return ['Construction', 'BuildingIdentity', 'Health', 'Position'];
+    return ['Construction', 'BuildingIdentity', 'Health'];
   }
 
   update(entities: readonly Entity[], deltaTime: number): void {
