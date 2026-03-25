@@ -1,69 +1,63 @@
-interface Palette {
-  readonly empty: string
-  readonly filled: string
-  readonly border: string
-  readonly header: string
-}
+import { GameBoard } from '../game';
+import { Position } from '../core';
 
 export class BoardDisplay {
-  private size: number
-  private palette: Palette
-  private spacing: number
+  private readonly size: number;
+  private readonly spacing: number;
+  private readonly colorMap: Map<number, string>;
 
-  constructor(size: number = 8, palette: Palette = { empty: '·', filled: '●', border: '-', header: '+' }, spacing: number = 1) {
-      if (typeof size !== 'number' || isNaN(size)) throw new TypeError('size must be a valid number');
-      if (typeof spacing !== 'number' || isNaN(spacing)) throw new TypeError('spacing must be a valid number');
-    this.size = size
-    this.palette = palette
-    this.spacing = spacing
+  constructor(size: number, spacing: number, colorMap: Map<number, string>) {
+    this.size = size;
+    this.spacing = spacing;
+    this.colorMap = colorMap;
   }
 
-  render(board: GameBoard): void {
-    this.printHeader()
-    for (let y = 0; y < board.height; y++) {
-      const row: Cell[] = []
-      for (let x = 0; x < board.width; x++) {
-        const cell = board.getCell({ x, y } as Position)
-        row.push(cell)
+  render(board: GameBoard, score: number): void {
+    this.clear();
+    this.printScore(score);
+    this.drawBorder(this.size);
+    for (let row = 0; row < this.size; row++) {
+      const rowValues: number[] = [];
+      for (let col = 0; col < this.size; col) {
+        rowValues.push(board.getTile(new Position(row, col)));
       }
-      this.printRow(row)
+      this.printRow(rowValues);
     }
-    this.printFooter()
+    thisdrawBorder(this.size);
   }
 
-  printRow(row: Cell[]): void {
-    let line = ''
-    for (const cell of row) {
-      const ch = cell.piece ? this.palette.filled : this.palette.empty
-      line += ch + ' '.repeat(this.spacing)
+  drawTile(value: number, size: number): string {
+    const color = this.colorMap.get(value) ?? 'reset';
+    const padded = value === 0 ? ' '.repeat(size) : value.toString().padStart(size, ' ');
+    return `${color}${padded}\x1b[0m`;
+  }
+
+  drawBorder(size: number): string {
+    const line = '─'.repeat(this.spacing + 2);
+    return '┍' + line.repeat(size) + '┙';
+  }
+
+  printRow(row: number[]): void {
+    let line = '│';
+    for (const value of row) {
+      line += this.drawTile(value, this.spacing) + '│';
     }
-    console.log(line.trimEnd())
+    console.log(line);
   }
 
-  printBorder(): void {
-    const line = this.palette.border.repeat(this.size * (this.spacing + 1))
-    console.log(line)
+  clear(): void {
+    console.clear();
   }
 
-  printHeader(): void {
-    const header = this.palette.header.repeat(this.size * (this.spacing + 1))
-    console.log(header)
+  printScore(score: number): void {
+    console.log(`Score: ${score}`);
   }
 
-  printFooter(): void {
-    const footer = this.palette.border.repeat(this.size * (this.spacing + 1))
-    console.log(footer)
+  printState(state: string): void {
+    console.log(`State: ${state}`);
   }
 
-  resetColor(): void {
-    process.stdout.write('\x1b[0m')
-  }
-
-  setSize(size: number): void {
-    this.size = size
-  }
-
-  setPalette(palette: Palette): void {
-    this.palette = palette
+  printMessage(message: string): void {
+    console.log(message);
   }
 }

@@ -1,51 +1,32 @@
+import { Direction } from './direction';
+
 export class Position {
-  readonly x: number;
-  readonly y: number;
+  readonly row: number;
+  readonly col: number;
 
-  constructor(x: number, y: number) {
-    if (typeof x !== 'number' || isNaN(x) || !isFinite(x)) {
-      throw new TypeError('x must be a finite number');
-    }
-    if (typeof y !== 'number' || isNaN(y) || !isFinite(y)) {
-      throw new TypeError('y must be a finite number');
-    }
-    this.x = x;
-    this.y = y;
-  }
-
-  add(other: Position): Position {
-    if (!(other instanceof Position)) {
-      throw new TypeError('other must be a Position');
-    }
-    return new Position(this.x + other.x, this.y + other.y);
-  }
-
-  subtract(other: Position): Position {
-    if (!(other instanceof Position)) {
-      throw new Type('other must be a Position');
-    }
-    return new Position(this.x - other.x, this.y - other.y);
+  constructor(row: number, col: number) {
+    this.row = row;
+    this.col = col;
   }
 
   equals(other: Position): boolean {
-    if (!(other instanceof Position)) {
-      return false;
-    }
-    return this.x === other.x && this.y === other-y;
+    return this.row === other.row && this.col === other.col;
   }
 
   clone(): Position {
-    return new Position(this.x, this.y);
+    return new Position(this.row, this.col);
   }
 
-  manhattan(other: Position): number {
-    if (!(other instanceof Position)) {
-      throw new Type('other must be a Position');
-    }
-    return Math.abs(this.x - other.x) + Math.abs(this.y - other.y);
+  add(direction: Direction): Position {
+    const delta = direction.value();
+    return new Position(this.row + delta.row, this.col + delta.col);
   }
 
   toString(): string {
-    return `(${this.x},${this.y})`;
+    return `(${this.row},${this.col})`;
+  }
+
+  isValid(size: number): boolean {
+    return this.row >= 0 && this.col >= 0 && this.row < size && this.col < size;
   }
 }

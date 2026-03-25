@@ -1,125 +1,98 @@
-import { BoardDisplay } from './index';
+import { GameBoard } from '../game';
 
-/**
- * Terminal board display engine.
- */
 export class Renderer {
-  private theme: string;
-  private width: number;
-  private height: number;
+  readonly width: number;
+  readonly height: number;
+  readonly colors: Map<number, string>;
 
-  constructor() {
-    this.theme = 'default';
-    this.width = 80;
-    this.height = 24;
+  constructor(width: number, height: number) {
+    this.width = width;
+    this.height = height;
+    this.colors = new Map<number, string>([
+      [0, '\x1b[90m'],
+      [2, '\x1b[37m'],
+      [4, '\x1b[36m'],
+      [8, '\x1b[35m'],
+      [16, '\x1b[34m'],
+      [32, '\x1b[33m'],
+      [64, '\x1b[31m'],
+      [128, '\x1b[32m'],
+      [256, '\x1b[93m'],
+      [512, '\x1b[92m'],
+      [1024, '\x1b[91m'],
+      [2048, '\x1b[95m']
+    ]);
   }
 
-  /**
-   * Draw board to console.
-   * @param board - The board display data
-   */
-  renderBoard(board: BoardDisplay): void {
-    if (!board || typeof board !== 'object') {
-      throw new TypeError('board must be a valid BoardDisplay object');
-    }
-    this.clear();
-    for (let y = 0; y < this.height; y++) {
-      let row = '';
-      for (let x = 0; x < this.width; x++) {
-        row += ' ';
-      }
-      console.log(row);
-    }
-  }
-
-  /**
-   * Wipe screen buffer.
-   */
   clear(): void {
     console.clear();
   }
 
-  /**
-   * Switch color palette.
-   * @param theme - The theme identifier
-   */
-  setTheme(theme: string): void {
-    if (typeof theme !== 'string') {
-      throw new TypeError('theme must be a string');
-    }
-    this.theme = theme;
-  }
-
-  /**
-   * Adjust canvas size.
-   * @param w - Width in characters
-   * @param h - Height in characters
-   */
-  resize(w: number, h: number): void {
-    if (typeof w !== 'number' || !Number.isInteger(w) || w <= 0) {
-      throw new RangeError('w must be a positive integer');
-    }
-    if (typeof h !== 'number' || !Number.isInteger(h) || h <= 0) {
-      throw new RangeError('h must be a positive integer');
-    }
-    this.width = w;
-    this.height = h;
-  }
-
-  /**
-   * Paint single tile.
-   * @param x - Column index
-   * @param y - Row index
-   * @param cell - Character to display
-   */
-  drawCell(x: number, y: number, cell: string): void {
-    if (typeof x !== 'number' || !Number.isInteger(x)) {
-      throw new TypeError('x must be an integer');
-    }
-    if (typeof y !== 'number' || !Number.isInteger(y)) {
-      throw new TypeError('y must be an integer');
-    }
-    if (typeof cell !== 'string') {
-      throw new TypeError('cell must be a string');
-    }
-    const lines = (process.stdout as unknown as { rows?: number }).rows || 24;
-    const cols = (process.stdout as unknown as { columns?: number }).columns || 80;
-    if (x < 0 || y < 0 || x >= cols || y >= lines) return;
-    const blank = ' '.repeat(cols);
-    const arr = new Array(lines).fill(blank);
-    arr[y] = arr[y].slice(0, x) + cell + arr[y].slice(x + 1);
+  drawBoard(board: GameBoard): void {
+    const size = board.size;
+    const cellWidth = 6;
+    const cellHeight = 3;
+    
     this.clear();
-    console.log(arr.join('\n'));
+    
+    const topBorder = '┌' + '──────'.repeat(size) + '┐';
+    const bottomBorder = '└' + '──────'.repeat(size) + '┘';
+    const middleBorder = '├' + '──────'.repeat(size) + '┤';
+    
+    console.log(topBorder);
+    
+    for (let row = 0; row < size; row++) {
+      const rowLines: string[] = ['│', '│', '│'];
+      
+      for (let col = 0; col < size; col++) {
+        const value = board.getTile({ row, col });
+        const color = this.getTileColor(value);
+        const reset = '\x1b[0m';
+        const paddedValue = value === 0 ? '' : value.toString();
+        const centered = paddedValue.padStart(3).padEnd(6);
+        
+        rowLines[0] += '      │';
+        rowLines[1] += color + centered + reset + '│';
+        rowLines[2] += '      │';
+      }
+      
+      console.log(rowLines[0]);
+      console.log(rowLines[1]);
+      console.log(rowLines[2]);
+      
+      if (row < size - 1) {
+        console.log(middleBorder);
+      }
+    }
+    
+    console.log(bottomBorder);
   }
 
-  /**
-   * Push buffer out.
-   */
-  flush(): void {
-    if (typeof process !== 'undefined' && process.stdout && 'write' in process.stdout) {
-      (process.stdout as unknown as { write: (s: string) => void }).write('');
-    }
+  drawScore(score: number): void {
+    console.log(`\nScore: ${score}`);
   }
 
-  /**
-   * Highlight active spot.
-   * @param x - Column index
-   * @param y - Row index
-   */
-  showCursor(x: number, y: number): void {
-    if (typeof x !== 'number' || !Number.isInteger(x)) {
-      throw new TypeError('x must be an integer');
-    }
-    if (typeof y !== 'number' || !Number.isInteger(y)) {
-      throw new TypeError('y must be an integer');
-    }
-    const lines = (process.stdout as unknown as { rows?: number }).rows || 24;
-    const cols = (process.stdout as unknown as { columns?: number }).columns || 80;
-    if (x < 0 || y < 0 || x >= cols || y >= lines) return;
-    const blank = ' '.repeat(cols);
-    const arr = new Array(lines).fill(blank);
-    arr[y] = arr[y].slice(0, x) + '▪' + arr[y].slice(x + 1);
-    this.clear();
-    console.log(arr.join('\n'));
+  drawState(state: 'idle' | 'playing' | 'won' | 'lost'): void {
+    const stateText = state === 'idle' ? 'Press arrow keys to start' :
+                     state === 'playing' ? 'Use arrow keys to move tiles' :
+                     state === 'won' ? 'You won! Press R to restart' :
+                     'Game over! Press R to restart';
+    
+    console.log(`\n${stateText}`);
+  }
+
+  drawHelp(): void {
+    console.log('\nControls:');
+    console.log('  Arrow keys - Move tiles');
+    console.log('  R          - Restart game');
+    console.log('  Q          - Quit');
+  }
+
+  drawMessage(msg: string): void {
+    console.log(`\n${msg}`);
+  }
+
+  getTileColor(value: number): string {
+    return this.colors.get(value) ?? '\x1b[90m';
   }
 }

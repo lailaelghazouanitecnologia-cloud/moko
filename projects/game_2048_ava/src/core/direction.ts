@@ -1,66 +1,36 @@
+import { Position } from './position';
+
 export enum Direction {
-  Right = 'right',
-  Left = 'left',
-  Up = 'up',
-  Down = 'down',
+  Up = 'Up',
+  Down = 'Down',
+  Left = 'Left',
+  Right = 'Right'
 }
 
-Direction.prototype.toVector = function(): { x: number, y: number } {
-  switch (this) {
-    case Direction.Right:
-      return { x: 1, y: 0 };
-    case Direction.Left:
-      return { x: -1, y: 0 };
-    case DirectionUp:
-      return { x: 0, y: -1 };
-    case DirectionDown:
-      return { x: 0, y: 1 );
+export namespace Direction {
+  export function delta(dir: Direction): Position {
+    switch (dir) {
+      case Direction.Up: return new Position(-1, 0);
+      case Direction.Down: return new Position(1, 0);
+      case Direction.Left: return new Position(0, -1);
+      case Direction.Right: return new Position(0, 1);
+    }
   }
-};
 
-Direction.prototype.opposite = function(): Direction {
-  switch (this) {
-    case DirectionRight:
-      return DirectionLeft;
-    case DirectionLeft:
-      return DirectionRight;
-    case DirectionUp:
-      return DirectionDown;
-    case directionDown:
-      return DirectionUp;
+  export function name(dir: Direction): string {
+    return dir;
   }
-};
 
-Direction.prototype.isHorizontal = function(): boolean {
-  return this === DirectionLeft || this === DirectionRight;
-};
-
-Direction.prototype.isVertical = function(): boolean {
-  return this === DirectionUp || this === directionDown;
-};
-
-Direction.prototype.rotateClockwise = function(): Direction {
-  switch (this) {
-    case DirectionUp:
-      return DirectionRight;
-    case DirectionRight:
-      return directionDown;
-    case directionDown:
-      return DirectionLeft;
-    case DirectionLeft:
-      return DirectionUp;
+  export function value(dir: Direction): Position {
+    return delta(dir);
   }
-};
 
-Direction.prototype.rotateCounterclockwise = function(): Direction {
-  switch (this) {
-    case DirectionUp:
-      return DirectionLeft;
-    case DirectionLeft:
-      return directionDown;
-    case directionDown:
-      return DirectionRight;
-    case DirectionRight:
-      return DirectionUp;
+  export function opposite(dir: Direction): Direction {
+    switch (dir) {
+      case Direction.Up: return Direction.Down;
+      case Direction.Down: return Direction.Up;
+      case Direction.Left: return Direction.Right;
+      case Direction.Right: return Direction.Left;
+    }
   }
 }

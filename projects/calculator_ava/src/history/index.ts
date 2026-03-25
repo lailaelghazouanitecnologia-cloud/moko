@@ -1,1 +1,1 @@
-export { HistoryManager } from './history-manager';
+export { HistoryStore } from './history-store';
