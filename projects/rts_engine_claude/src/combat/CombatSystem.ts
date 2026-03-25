@@ -97,7 +97,7 @@ export class CombatSystem extends System<ComponentData> {
 
       // Attack if we have a target
       if (combat.targetId !== null && combat.attackCooldown <= 0) {
-        this._attemptAttack(entity, combatComp, posComp);
+        this._attemptAttack(entity);
       }
     }
   }
@@ -128,14 +128,13 @@ export class CombatSystem extends System<ComponentData> {
   }
 
   /** Attempt to attack the current target */
-  private _attemptAttack(
-    attacker: Entity,
-    combatComp: ReturnType<Entity['getComponent']>,
-    posComp: ReturnType<Entity['getComponent']>,
-  ): void {
+  private _attemptAttack(attacker: Entity): void {
+    const combatComp = attacker.getComponent<CombatData>('Combat');
+    const posComp = attacker.getComponent<PositionData>('Position');
     if (!combatComp || !posComp) return;
-    const combat = (combatComp as { data: CombatData }).data;
-    const pos = (posComp as { data: PositionData }).data;
+
+    const combat = combatComp.data;
+    const pos = posComp.data;
 
     if (combat.targetId === null) return;
 
@@ -201,9 +200,7 @@ export class CombatSystem extends System<ComponentData> {
 
     // Reset cooldown
     const cooldown = 1 / combat.attackSpeed;
-    (combatComp as { setData(d: Partial<CombatData>): void }).setData({
-      attackCooldown: cooldown,
-    });
+    combatComp.setData({ attackCooldown: cooldown });
   }
 
   /** Apply splash damage around an impact point */
