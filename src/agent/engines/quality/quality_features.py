@@ -16,6 +16,8 @@ import re
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Tuple
 
+from .metrics import extract_metrics, CodeMetrics, GENERIC_NAMES, SEMANTIC_INDICATORS
+
 
 FEATURE_NAMES = [
     # Structure
@@ -142,13 +144,34 @@ class QualityFeatureExtractor:
         lines = code.split("\n")
         features.loc = len(lines)
 
-        self._extract_structure(features, code, lines)
-        self._extract_types(features, code, lines)
-        self._extract_naming(features, code, lines)
-        self._extract_documentation(features, code, lines)
-        self._extract_patterns(features, code, lines)
+        # Use shared metrics for common counts (eliminates regex duplication)
+        cm = extract_metrics(code)
+        self._apply_shared_metrics(features, cm)
+        self._extract_structure(features, code, lines, cm)
+        self._extract_types(features, code, lines, cm)
+        self._extract_naming(features, code, lines, cm)
+        self._extract_documentation(features, code, lines, cm)
+        self._extract_patterns(features, code, lines, cm)
 
         return features
+
+    def _apply_shared_metrics(self, f: QualityFeatures, cm: CodeMetrics):
+        """Copy shared metrics into QualityFeatures."""
+        f.any_count = cm.any_count
+        f.unknown_count = cm.unknown_count
+        f.generic_usage = cm.generic_count
+        f.union_type_count = cm.union_count
+        f.type_alias_count = cm.type_alias_count
+        f.record_any_count = cm.record_any_count
+        f.class_count = cm.class_count
+        f.interface_count = cm.interface_count
+        f.import_count = cm.import_count
+        f.export_count = cm.export_count
+        f.function_count = cm.function_count
+        f.camel_case_ratio = cm.camel_case_ratio
+        f.semantic_name_score = cm.semantic_name_score
+        f.generic_name_ratio = cm.generic_name_ratio
+        f.has_algorithm_docs = cm.algo_doc_score
 
     def extract_module(self, files: Dict[str, str]) -> QualityFeatures:
         """Aggregate features across all files in a module."""
@@ -188,27 +211,16 @@ class QualityFeatureExtractor:
 
     # ── Structure ────────────────────────────────────────────
 
-    def _extract_structure(self, f: QualityFeatures, code: str, lines: List[str]):
-        # Functions
+    def _extract_structure(self, f: QualityFeatures, code: str, lines: List[str], cm: CodeMetrics):
+        # function_count, class_count, interface_count, import_count, export_count
+        # already set from shared metrics
+
+        # Find function start lines for avg length calculation
         func_pattern = re.compile(
             r"(?:async\s+)?(?:private\s+|protected\s+|public\s+|static\s+)*"
             r"(?:function\s+\w+|(?:\w+)\s*\([^)]*\)\s*(?::\s*[^{]+)?\s*\{)"
         )
-        func_starts = []
-        for i, line in enumerate(lines):
-            if func_pattern.search(line):
-                func_starts.append(i)
-        f.function_count = len(func_starts)
-
-        # Classes
-        f.class_count = len(re.findall(r"\bclass\s+\w+", code))
-
-        # Interfaces
-        f.interface_count = len(re.findall(r"\binterface\s+\w+", code))
-
-        # Imports / Exports
-        f.import_count = len(re.findall(r"^\s*import\s+", code, re.MULTILINE))
-        f.export_count = len(re.findall(r"^\s*export\s+", code, re.MULTILINE))
+        func_starts = [i for i, line in enumerate(lines) if func_pattern.search(line)]
 
         # Max nesting depth (brace counting)
         max_depth = 0
@@ -221,35 +233,26 @@ class QualityFeatureExtractor:
                 depth = max(0, depth - 1)
         f.max_nesting = max_depth
 
-        # Average function length (rough: lines between function starts)
+        # Average function length
         if len(func_starts) >= 2:
-            lengths = []
-            for i in range(len(func_starts) - 1):
-                lengths.append(func_starts[i + 1] - func_starts[i])
+            lengths = [func_starts[i + 1] - func_starts[i] for i in range(len(func_starts) - 1)]
             f.avg_function_length = sum(lengths) / len(lengths)
         elif len(func_starts) == 1:
             f.avg_function_length = float(f.loc - func_starts[0])
 
-        # Helper ratio: private methods / total methods
-        private_count = len(re.findall(r"\bprivate\s+\w+\s*\(", code))
-        total_methods = f.function_count
-        f.helper_ratio = private_count / total_methods if total_methods > 0 else 0.0
+        # Helper ratio
+        f.helper_ratio = cm.private_count / cm.function_count if cm.function_count > 0 else 0.0
 
         # Complexity: branches per LOC
-        branches = len(re.findall(r"\b(if|else|for|while|switch|case|catch)\b", code))
-        f.file_complexity = branches / max(f.loc, 1)
+        f.file_complexity = cm.branch_count / max(f.loc, 1)
 
     # ── Types ────────────────────────────────────────────────
 
-    def _extract_types(self, f: QualityFeatures, code: str, lines: List[str]):
-        f.any_count = len(re.findall(r"\bany\b", code))
-        f.unknown_count = len(re.findall(r"\bunknown\b", code))
-        f.generic_usage = len(re.findall(r"<\s*[A-Z]\w*(?:\s*,\s*[A-Z]\w*)*\s*>", code))
-        f.union_type_count = len(re.findall(r"\w+\s*\|\s*\w+", code))
-        f.type_alias_count = len(re.findall(r"^\s*(?:export\s+)?type\s+\w+\s*=", code, re.MULTILINE))
-        f.record_any_count = len(re.findall(r"Record<[^>]*,\s*any\s*>", code))
+    def _extract_types(self, f: QualityFeatures, code: str, lines: List[str], cm: CodeMetrics):
+        # any_count, unknown_count, generic_usage, union_type_count,
+        # type_alias_count, record_any_count already set from shared metrics
 
-        # Return type coverage
+        # Return type coverage (specific to quality_features, not shared)
         func_sigs = re.findall(r"\)\s*(?::\s*([^{=]+))?\s*[{=]", code)
         if func_sigs:
             typed = sum(1 for sig in func_sigs if sig and sig.strip())
@@ -259,39 +262,11 @@ class QualityFeatureExtractor:
 
     # ── Naming ───────────────────────────────────────────────
 
-    def _extract_naming(self, f: QualityFeatures, code: str, lines: List[str]):
-        # Extract all identifiers (simplified)
-        identifiers = re.findall(r"\b([a-zA-Z_]\w*)\b", code)
-        # Filter out keywords and very short
-        keywords = {
-            "import", "export", "from", "const", "let", "var", "function", "class",
-            "interface", "type", "extends", "implements", "return", "if", "else",
-            "for", "while", "switch", "case", "break", "continue", "new", "this",
-            "true", "false", "null", "undefined", "void", "async", "await",
-            "private", "public", "protected", "static", "readonly", "string",
-            "number", "boolean", "any", "unknown", "never", "try", "catch",
-            "throw", "typeof", "instanceof", "in", "of", "as", "is",
-            "default", "super", "constructor",
-        }
-        user_ids = [id for id in identifiers if id not in keywords and len(id) > 1]
+    def _extract_naming(self, f: QualityFeatures, code: str, lines: List[str], cm: CodeMetrics):
+        # camel_case_ratio, semantic_name_score, generic_name_ratio
+        # already set from shared metrics
 
-        if user_ids:
-            # camelCase consistency
-            camel = sum(1 for id in user_ids if re.match(r"^[a-z][a-zA-Z0-9]*$", id))
-            f.camel_case_ratio = camel / len(user_ids)
-
-            # Semantic names
-            semantic = sum(
-                1 for id in user_ids
-                if any(s in id.lower() for s in SEMANTIC_INDICATORS)
-            )
-            f.semantic_name_score = semantic / len(user_ids)
-
-            # Generic names
-            generic = sum(1 for id in user_ids if id.lower() in GENERIC_NAMES)
-            f.generic_name_ratio = generic / len(user_ids)
-
-        # Single-char variables
+        # Single-char variables (specific to quality_features)
         f.single_char_vars = len(re.findall(
             r"(?:const|let|var)\s+([a-z])\s*[=:]", code
         ))
@@ -311,47 +286,25 @@ class QualityFeatureExtractor:
 
     # ── Documentation ────────────────────────────────────────
 
-    def _extract_documentation(self, f: QualityFeatures, code: str, lines: List[str]):
-        # JSDoc blocks
-        jsdoc_blocks = re.findall(r"/\*\*[\s\S]*?\*/", code)
-        public_methods = re.findall(
-            r"^\s*(?:public\s+|async\s+)*\w+\s*\([^)]*\)", code, re.MULTILINE
-        )
-        # Exclude constructor
-        public_methods = [m for m in public_methods if "constructor" not in m]
+    def _extract_documentation(self, f: QualityFeatures, code: str, lines: List[str], cm: CodeMetrics):
+        # has_algorithm_docs already set from shared metrics
 
-        if public_methods:
-            f.jsdoc_coverage = min(len(jsdoc_blocks) / len(public_methods), 1.0)
-
-        # Algorithm documentation (mentions math/algorithm concepts)
-        algo_words = [
-            "algorithm", "complexity", "O(", "formula", "theorem",
-            "bayesian", "probability", "coefficient", "entropy",
-            "heuristic", "logarithm", "exponential", "decay",
-            "weighted", "normalized", "TF-IDF", "bigram", "dice",
-        ]
-        algo_count = sum(
-            1 for word in algo_words if word.lower() in code.lower()
-        )
-        f.has_algorithm_docs = min(algo_count / 3.0, 1.0)
+        # JSDoc coverage
+        if cm.public_method_count > 0:
+            f.jsdoc_coverage = min(cm.jsdoc_count / cm.public_method_count, 1.0)
 
         # @param documentation
-        param_docs = len(re.findall(r"@param\s+\w+", code))
         total_params = len(re.findall(r"\((?:[^)]*,)*[^)]+\)", code))
-        f.param_doc_ratio = param_docs / max(total_params, 1)
+        f.param_doc_ratio = cm.param_doc_count / max(total_params, 1)
 
-        # Inline comments
-        inline_comments = len(re.findall(r"//\s*\S", code))
-        f.inline_comment_density = inline_comments / max(f.loc, 1)
+        # Inline comment density
+        f.inline_comment_density = cm.inline_comment_count / max(f.loc, 1)
 
     # ── Patterns ─────────────────────────────────────────────
 
-    def _extract_patterns(self, f: QualityFeatures, code: str, lines: List[str]):
-        # Error handling
-        try_count = len(re.findall(r"\btry\s*\{", code))
-        catch_count = len(re.findall(r"\bcatch\s*\(", code))
-        throw_count = len(re.findall(r"\bthrow\s+new\s+\w+Error", code))
-        f.has_error_handling = min((try_count + catch_count + throw_count) / 3.0, 1.0)
+    def _extract_patterns(self, f: QualityFeatures, code: str, lines: List[str], cm: CodeMetrics):
+        # Error handling (from shared metrics)
+        f.has_error_handling = min((cm.try_count + cm.catch_count + cm.throw_count) / 3.0, 1.0)
 
         # Dependency injection (constructor params that are stored)
         constructor = re.search(r"constructor\s*\(([^)]*)\)", code)
@@ -362,19 +315,15 @@ class QualityFeatureExtractor:
                 if param_count > 0:
                     f.has_dependency_injection = min(param_count / 3.0, 1.0)
 
-        # Event pattern (callbacks, listeners, emit)
-        event_indicators = len(re.findall(
-            r"\b(emit|on[A-Z]\w+|addEventListener|subscribe|callback|listener)\b", code
-        ))
-        f.has_event_pattern = min(event_indicators / 2.0, 1.0)
+        # Event pattern (from shared metrics)
+        f.has_event_pattern = min(cm.event_indicator_count / 2.0, 1.0)
 
-        # Hardcoded strings (string literals > 20 chars, excluding imports)
+        # Hardcoded strings (specific — not in shared metrics)
         hardcoded = re.findall(r"['\"]([^'\"]{20,})['\"]", code)
-        # Exclude import paths
         hardcoded = [h for h in hardcoded if not h.startswith("./") and not h.startswith("../")]
         f.hardcoded_string_count = len(hardcoded)
 
-        # Stub indicators
+        # Stub indicators (specific)
         stub_score = 0
         for pattern in STUB_PATTERNS:
             matches = len(re.findall(pattern, code, re.IGNORECASE))
@@ -384,17 +333,15 @@ class QualityFeatureExtractor:
         # Private field bracket access (anti-pattern)
         f.private_field_access = len(re.findall(r"this\.\w+\[", code))
 
-        # Magic numbers (numeric literals not 0, 1, -1, 2)
+        # Magic numbers
         numbers = re.findall(r"(?<!=\s)(?<!\w)(\d+\.?\d*)", code)
         magic = [n for n in numbers if n not in ("0", "1", "2", "-1", "0.0", "1.0")]
         f.magic_number_count = len(magic)
 
-        # Fluent API (methods returning this)
-        return_this = len(re.findall(r"return\s+this\s*;", code))
-        f.fluent_api_score = min(return_this / max(f.function_count, 1), 1.0)
+        # Fluent API (from shared metrics)
+        f.fluent_api_score = min(cm.return_this_count / max(f.function_count, 1), 1.0)
 
-        # Encapsulation: public fields that should be private
-        # Class fields without private/protected/readonly
+        # Encapsulation: public fields (specific analysis)
         all_fields = re.findall(
             r"^\s+((?:public|private|protected|readonly|static)\s+)*(\w+)\s*[:=]",
             code, re.MULTILINE
@@ -407,16 +354,13 @@ class QualityFeatureExtractor:
             )
             f.public_field_ratio = public_fields / max(len(all_fields), 1)
 
-        # Readonly ratio
-        readonly_count = len(re.findall(r"\breadonly\b", code))
+        # Readonly ratio (from shared metrics)
         total_fields = len(re.findall(r"^\s+\w+\s*[:=]", code, re.MULTILINE))
-        f.readonly_ratio = readonly_count / max(total_fields, 1)
+        f.readonly_ratio = cm.readonly_count / max(total_fields, 1)
 
-        # Typo detection: doubled words in identifiers (TypeTypeError, EventEventEmitter)
+        # Typo detection (specific)
         typo_indicators = 0
-        # Doubled type names: new TypeError → good, new TypeTypeError → typo
-        typo_indicators += len(re.findall(r"\b(\w{3,})\1", code))  # repeated substrings
-        # Common LLM typos
+        typo_indicators += len(re.findall(r"\b(\w{3,})\1", code))
         typo_patterns = [
             r"\bsnange\b", r"\bsements\b", r"\bpPressedKeys\b",
             r"\bTypeTypeError\b", r"\bEventEventEmitter\b",

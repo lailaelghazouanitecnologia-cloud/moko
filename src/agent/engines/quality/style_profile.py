@@ -22,6 +22,8 @@ from dataclasses import dataclass, field, asdict
 from typing import Dict, List, Optional, Tuple
 from pathlib import Path
 
+from .metrics import extract_metrics, CodeMetrics
+
 
 @dataclass
 class StylePreference:
@@ -356,84 +358,48 @@ class StyleAnalyzer:
         """Extract style signals from a code sample.
 
         Returns dict of dimension -> observed_value (0-1).
+        Uses shared CodeMetrics to avoid duplicating regex patterns.
         """
         signals: Dict[str, float] = {}
-        lines = code.split("\n")
-        loc = len(lines)
+        loc = len(code.split("\n"))
         if loc < 5:
             return signals
 
-        # ── Naming ───────────────────────────────────────────
-        identifiers = re.findall(r"\b([a-zA-Z_]\w{2,})\b", code)
-        if identifiers:
-            # camelCase ratio
-            camel = sum(1 for i in identifiers if re.match(r"^[a-z][a-zA-Z0-9]*$", i))
-            signals["naming_camel_case"] = camel / len(identifiers)
+        cm = extract_metrics(code)
 
-            # Verbose: average identifier length
-            avg_len = sum(len(i) for i in identifiers) / len(identifiers)
-            signals["naming_verbose"] = min(avg_len / 15.0, 1.0)
-
-            # Semantic names
-            semantic_words = {
-                "score", "weight", "threshold", "confidence", "priority",
-                "finding", "evidence", "hypothesis", "step", "plan",
-                "node", "edge", "graph", "coverage", "similarity",
-            }
-            semantic = sum(
-                1 for i in identifiers
-                if any(s in i.lower() for s in semantic_words)
+        # ── Naming (from shared metrics) ─────────────────────
+        if cm.identifier_count > 0:
+            signals["naming_camel_case"] = cm.camel_case_ratio
+            signals["naming_verbose"] = min(cm.avg_identifier_length / 15.0, 1.0)
+            signals["naming_semantic"] = min(
+                cm.semantic_name_score * cm.identifier_count / max(cm.identifier_count * 0.05, 1), 1.0
             )
-            signals["naming_semantic"] = min(semantic / max(len(identifiers) * 0.05, 1), 1.0)
 
-        # ── Types ────────────────────────────────────────────
-        any_count = len(re.findall(r"\bany\b", code))
-        signals["types_strict"] = 1.0 - min(any_count / max(loc / 20, 1), 1.0)
+        # ── Types (from shared metrics) ──────────────────────
+        signals["types_strict"] = 1.0 - min(cm.any_count / max(loc / 20, 1), 1.0)
+        signals["types_unions"] = min(cm.union_count / max(loc / 50, 1), 1.0)
+        signals["types_generics"] = min(cm.generic_count / max(loc / 30, 1), 1.0)
+        signals["types_aliases"] = min(cm.type_alias_count / max(loc / 100, 1), 1.0)
 
-        union_count = len(re.findall(r"\w+\s*\|\s*\w+", code))
-        signals["types_unions"] = min(union_count / max(loc / 50, 1), 1.0)
+        # ── Documentation (from shared metrics) ──────────────
+        signals["docs_jsdoc"] = cm.jsdoc_count / max(cm.public_method_count, 1)
+        signals["docs_inline"] = min(cm.inline_comment_count / max(loc / 10, 1), 1.0)
+        signals["docs_algorithm"] = min(cm.algo_doc_score * 3 / 2.0, 1.0)
+        signals["docs_param"] = min(cm.param_doc_count / max(cm.public_method_count, 1), 1.0)
 
-        generic_count = len(re.findall(r"<\s*[A-Z]\w*(?:\s*,\s*[A-Z]\w*)*\s*>", code))
-        signals["types_generics"] = min(generic_count / max(loc / 30, 1), 1.0)
-
-        alias_count = len(re.findall(r"^\s*(?:export\s+)?type\s+\w+\s*=", code, re.MULTILINE))
-        signals["types_aliases"] = min(alias_count / max(loc / 100, 1), 1.0)
-
-        # ── Documentation ────────────────────────────────────
-        jsdoc_count = len(re.findall(r"/\*\*", code))
-        public_methods = len(re.findall(
-            r"^\s*(?:public\s+|async\s+)*\w+\s*\([^)]*\)", code, re.MULTILINE
-        ))
-        signals["docs_jsdoc"] = jsdoc_count / max(public_methods, 1)
-
-        inline_comments = len(re.findall(r"//\s*\S", code))
-        signals["docs_inline"] = min(inline_comments / max(loc / 10, 1), 1.0)
-
-        algo_words = ["algorithm", "O(", "formula", "bayesian", "entropy", "weighted"]
-        algo_count = sum(1 for w in algo_words if w.lower() in code.lower())
-        signals["docs_algorithm"] = min(algo_count / 2.0, 1.0)
-
-        param_docs = len(re.findall(r"@param\s+\w+", code))
-        signals["docs_param"] = min(param_docs / max(public_methods, 1), 1.0)
-
-        # Minimal docs: low jsdoc + low inline = minimal preference
         if signals.get("docs_jsdoc", 0) < 0.2 and signals.get("docs_inline", 0) < 0.1:
             signals["docs_minimal"] = 0.8
         else:
             signals["docs_minimal"] = 0.2
 
-        # ── Structure ────────────────────────────────────────
-        func_count = len(re.findall(r"(?:function\s+\w+|\w+\s*\([^)]*\)\s*[:{])", code))
+        # ── Structure (from shared metrics) ──────────────────
+        func_count = cm.function_count
         if func_count > 0:
-            # Avg function length (rough)
-            signals["struct_small_functions"] = 1.0 - min(
-                (loc / func_count) / 50.0, 1.0
-            )
+            signals["struct_small_functions"] = 1.0 - min((loc / func_count) / 50.0, 1.0)
 
-        private_count = len(re.findall(r"\bprivate\s+\w+\s*\(", code))
-        signals["struct_helpers"] = min(private_count / max(func_count, 1), 1.0)
+        signals["struct_helpers"] = min(cm.private_count / max(func_count, 1), 1.0)
 
-        # DI: constructor with injected params
+        # DI: constructor with injected params (specific check)
         constructor = re.search(r"constructor\s*\(([^)]+)\)", code)
         if constructor:
             params = len([p for p in constructor.group(1).split(",") if p.strip()])
@@ -441,37 +407,26 @@ class StyleAnalyzer:
         else:
             signals["struct_di"] = 0.0
 
-        # Events
-        event_words = len(re.findall(r"\b(emit|on[A-Z]\w+|subscribe|callback|listener)\b", code))
-        signals["struct_events"] = min(event_words / 3.0, 1.0)
+        signals["struct_events"] = min(cm.event_indicator_count / 3.0, 1.0)
+        signals["struct_fluent"] = min(cm.return_this_count / max(func_count, 1), 1.0)
 
-        # Fluent
-        return_this = len(re.findall(r"return\s+this\s*;", code))
-        signals["struct_fluent"] = min(return_this / max(func_count, 1), 1.0)
-
-        # OOP vs functional
-        class_count = len(re.findall(r"\bclass\s+\w+", code))
+        # OOP vs functional (specific — arrow funcs not in shared metrics)
         arrow_funcs = len(re.findall(r"=>\s*[{\(]", code))
-        if class_count > 0 or arrow_funcs > 0:
-            oop_signal = class_count / (class_count + max(arrow_funcs / 5, 0.1))
+        if cm.class_count > 0 or arrow_funcs > 0:
+            oop_signal = cm.class_count / (cm.class_count + max(arrow_funcs / 5, 0.1))
             signals["struct_oop"] = oop_signal
             signals["struct_functional"] = 1.0 - oop_signal
 
-        # ── Error handling ───────────────────────────────────
-        typed_errors = len(re.findall(r"new\s+(?:Type|Range|Reference|Syntax)Error", code))
-        generic_errors = len(re.findall(r"new\s+Error\(", code))
-        if typed_errors + generic_errors > 0:
-            signals["errors_typed"] = typed_errors / (typed_errors + generic_errors)
+        # ── Error handling (from shared metrics) ─────────────
+        if cm.typed_error_count + cm.generic_error_count > 0:
+            signals["errors_typed"] = cm.typed_error_count / (cm.typed_error_count + cm.generic_error_count)
 
-        try_count = len(re.findall(r"\btry\s*\{", code))
-        signals["errors_defensive"] = min(try_count / max(func_count / 3, 1), 1.0)
+        signals["errors_defensive"] = min(cm.try_count / max(func_count / 3, 1), 1.0)
         signals["errors_graceful"] = signals["errors_defensive"]
 
-        # ── Code style ───────────────────────────────────────
+        # ── Code style (from shared metrics) ─────────────────
         explicit_returns = len(re.findall(r"\)\s*:\s*\w+", code))
-        signals["style_explicit_returns"] = min(
-            explicit_returns / max(func_count, 1), 1.0
-        )
+        signals["style_explicit_returns"] = min(explicit_returns / max(func_count, 1), 1.0)
 
         early_returns = len(re.findall(r"^\s*if\s*\([^)]*\)\s*return\b", code, re.MULTILINE))
         signals["style_early_return"] = min(early_returns / max(func_count / 2, 1), 1.0)
@@ -479,13 +434,10 @@ class StyleAnalyzer:
         ternary_count = len(re.findall(r"\?\s*[^:]+\s*:", code))
         signals["style_ternary"] = min(ternary_count / max(loc / 20, 1), 1.0)
 
-        readonly_count = len(re.findall(r"\breadonly\b", code))
-        signals["style_readonly"] = min(readonly_count / max(loc / 50, 1), 1.0)
+        signals["style_readonly"] = min(cm.readonly_count / max(loc / 50, 1), 1.0)
 
-        const_count = len(re.findall(r"\bconst\b", code))
-        let_count = len(re.findall(r"\blet\b", code))
-        if const_count + let_count > 0:
-            signals["style_const"] = const_count / (const_count + let_count)
+        if cm.const_count + cm.let_count > 0:
+            signals["style_const"] = cm.const_count / (cm.const_count + cm.let_count)
 
         return signals
 

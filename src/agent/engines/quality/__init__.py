@@ -39,9 +39,9 @@ from .style_profile import (
     StyleProfile, StyleAnalyzer, StylePreference,
     build_style_context, STYLE_DIMENSIONS, CLAUDE_DEFAULT_STYLE,
 )
-from .learned_scorer import (
-    LearnedScorer, ProfileExtractor, CodeProfile,
-)
+from .code_profile import CodeProfile
+from .profile_extractor import ProfileExtractor
+from .learned_scorer import LearnedScorer, ScoreDimension
 
 __all__ = (
     "QualityEngine",
@@ -251,10 +251,17 @@ class QualityEngine:
                 if prediction.strategy == "auto":
                     fix_result = self._apply_auto_fix(code, prediction)
                     if fix_result and fix_result.fixed_code:
+                        # Measure real quality delta
+                        score_before = self._compute_score(
+                            self.extractor.extract(code, filename)
+                        )
                         code = fix_result.fixed_code
+                        score_after = self._compute_score(
+                            self.extractor.extract(code, filename)
+                        )
+                        real_delta = score_after - score_before
                         result.auto_fixes += fix_result.changes_made
 
-                        # Record success
                         self.db.record_quality(
                             issue_type=itype,
                             severity=severity,
@@ -262,7 +269,7 @@ class QualityEngine:
                             action=prediction.action,
                             strategy="auto",
                             success=True,
-                            quality_delta=0.1,
+                            quality_delta=real_delta,
                             tokens_cost=0,
                             module=module_name,
                             file_pattern=filename,
@@ -312,11 +319,16 @@ class QualityEngine:
                 try:
                     improved_code = self._call_llm(llm, prompt, code)
                     if improved_code and len(improved_code) > len(code) * 0.5:
+                        # Measure real quality delta
+                        score_before = self._compute_score(features)
+                        new_features = self.extractor.extract(improved_code, filename)
+                        score_after = self._compute_score(new_features)
+                        real_delta = score_after - score_before
+
                         improved_files[filename] = improved_code
                         result.prompt_fixes += len(llm_issues)
                         llm_calls += 1
 
-                        # Record
                         for itype, sev, desc in llm_issues:
                             self.db.record_quality(
                                 issue_type=itype,
@@ -324,8 +336,8 @@ class QualityEngine:
                                 features=features.to_dict(),
                                 action="llm_rewrite",
                                 strategy="llm_rewrite",
-                                success=True,
-                                quality_delta=0.2,
+                                success=real_delta > 0,
+                                quality_delta=real_delta,
                                 module=module_name,
                                 file_pattern=filename,
                             )
