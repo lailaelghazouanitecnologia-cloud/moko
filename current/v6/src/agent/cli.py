@@ -215,6 +215,10 @@ def _handle_command(cmd: str, supervisor: Supervisor, show_report: bool):
             print(f"  {warning('Fast mode: OFF')} {muted('(full quality)')}")
         return
 
+    if command.startswith("/gpu"):
+        _handle_gpu_command(parts, supervisor)
+        return
+
     if command == "/help":
         _show_help()
 
@@ -314,10 +318,147 @@ def _handle_command(cmd: str, supervisor: Supervisor, show_report: bool):
         print(f"  {warning('Unknown command:')} {command}. Type {accent('/help')} for commands.")
 
 
+# ── GPU rental commands ─────────────────────────────────────
+
+# Lazy-init GPU manager (shared across commands)
+_gpu_manager = None
+
+
+def _get_gpu_manager():
+    global _gpu_manager
+    if _gpu_manager is None:
+        from .core.gpu import GpuManager
+        _gpu_manager = GpuManager()
+    return _gpu_manager
+
+
+def _handle_gpu_command(parts: list[str], supervisor: Supervisor):
+    """Handle /gpu models, /gpu start, /gpu stop, /gpu status, /gpu ssh."""
+    from .core.gpu import list_models, get_model, RENTAL_PRICE_PER_HOUR, GpuStatus
+
+    sub = parts[1] if len(parts) > 1 else "help"
+
+    if sub == "models":
+        print(f"\n  {bold('Available models')} {muted(f'· ${RENTAL_PRICE_PER_HOUR:.2f}/hr unlimited tokens')}\n")
+        for m in list_models():
+            rec = f" {success('*')}" if "recommended" in m.tags else ""
+            tags = " ".join(f"{muted(t)}" for t in m.tags if t != "recommended")
+            print(f"  {accent(m.id):20s} {m.name:35s} {dim(m.gpu):15s} {tags}{rec}")
+        print(f"\n  {muted('Usage: /gpu start <model_id>')}")
+        print(f"  {muted('Example: /gpu start qwen-32b')}\n")
+
+    elif sub == "start":
+        if len(parts) < 3:
+            print(f"  {muted('Usage: /gpu start <model_id>')}")
+            print(f"  {muted('Run /gpu models to see available models.')}")
+            return
+
+        model_id = parts[2]
+        model = get_model(model_id)
+        if model is None:
+            print(f"  {error(f'Unknown model: {model_id}')}")
+            print(f"  {muted('Run /gpu models to see available models.')}")
+            return
+
+        mgr = _get_gpu_manager()
+        print(f"  {bold('Renting GPU...')} {model.name} on {model.gpu}")
+        print(f"  {muted(f'Cost: ${RENTAL_PRICE_PER_HOUR:.2f}/hr · unlimited tokens · SSH access')}")
+
+        spinner = Spinner("Provisioning GPU and loading model")
+        spinner.start()
+        try:
+            session = mgr.start(model_id)
+        finally:
+            spinner.stop()
+
+        if session.status == GpuStatus.ERROR:
+            print(f"  {error(f'Failed: {session.error}')}")
+            return
+
+        if session.status == GpuStatus.READY:
+            # Switch supervisor to use GPU endpoint
+            supervisor.llm.provider = "local"
+            supervisor.llm.model = model.hf_repo
+            supervisor.llm._base_url = session.endpoint_url + "/v1"
+            supervisor.llm._client = None  # force re-init
+
+            print(f"\n  {success('GPU ready!')} {model.name}")
+            print(f"  {muted('Endpoint:')} {session.endpoint_url}")
+            print(f"  {muted('Expires:')}  {session.remaining_minutes:.0f} min remaining")
+            if session.ssh_host:
+                print(f"  {muted('SSH:')}      {accent(session.ssh_command)}")
+            print(f"\n  {muted('All queries now use your GPU. Unlimited tokens.')}")
+            print(f"  {muted('Run /gpu stop when done.')}\n")
+        else:
+            print(f"  {warning(f'Status: {session.status.value}')} — model still loading.")
+            print(f"  {muted('Run /gpu status to check when ready.')}")
+
+    elif sub == "stop":
+        mgr = _get_gpu_manager()
+        if not mgr.session:
+            print(f"  {muted('No active GPU session.')}")
+            return
+
+        summary = mgr.stop()
+
+        # Restore supervisor to default provider
+        supervisor.llm.provider = supervisor.llm.provider  # keep or reset
+        supervisor.llm._client = None
+
+        print(f"\n  {success('GPU released.')}")
+        for line in summary.split("\n"):
+            print(f"  {line}")
+        print()
+
+    elif sub == "status":
+        mgr = _get_gpu_manager()
+        if not mgr.session:
+            print(f"  {muted('No active GPU session. Use /gpu start <model>.')}")
+            return
+
+        s = mgr.status()
+        status_color = success if s.status == GpuStatus.READY else warning
+        print(f"\n  {bold('GPU Session')}")
+        print(f"  Model:     {s.model.name}")
+        print(f"  GPU:       {s.model.gpu}")
+        print(f"  Status:    {status_color(s.status.value)}")
+        print(f"  Endpoint:  {s.endpoint_url or muted('pending')}")
+        print(f"  Elapsed:   {s.elapsed_minutes:.1f} min")
+        print(f"  Remaining: {s.remaining_minutes:.0f} min")
+        print(f"  Tokens:    {s.tokens_generated:,}")
+        print(f"  Requests:  {s.requests_made}")
+        if s.ssh_host:
+            print(f"  SSH:       {accent(s.ssh_command)}")
+        if s.is_expired:
+            print(f"  {warning('Session expired! Run /gpu stop and start a new one.')}")
+        print()
+
+    elif sub == "ssh":
+        mgr = _get_gpu_manager()
+        if not mgr.session or not mgr.session.ssh_host:
+            print(f"  {muted('No active GPU session with SSH.')}")
+            return
+        s = mgr.session
+        print(f"\n  {accent(s.ssh_command)}")
+        if s.ssh_password:
+            print(f"  {muted(f'Password: {s.ssh_password}')}")
+        print()
+
+    else:
+        print(f"  {bold('GPU Rental')} {muted(f'· ${RENTAL_PRICE_PER_HOUR:.2f}/hr unlimited tokens')}\n")
+        print(f"  {accent('/gpu models')}          List available models")
+        print(f"  {accent('/gpu start')} <model>   Rent GPU + load model")
+        print(f"  {accent('/gpu stop')}            Release GPU")
+        print(f"  {accent('/gpu status')}          Session info")
+        print(f"  {accent('/gpu ssh')}             SSH connection command")
+        print()
+
+
 def _show_help():
     print(f"""
   {bold('Mode')}
     {accent('/fast')}                  Toggle fast mode (cheap · cache · compress)
+    {accent('/gpu')} models|start|stop  Rent a GPU ($1/hr unlimited tokens)
 
   {bold('Session')}
     {accent('/snapshot')} [label]      Save session state

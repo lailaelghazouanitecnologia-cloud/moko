@@ -85,11 +85,13 @@ class LLMProvider:
             print(chunk, end="", flush=True)
     """
 
-    def __init__(self, provider: str = "groq", model: str = None):
+    def __init__(self, provider: str = "groq", model: str = None,
+                 base_url: str = None):
         self.provider = provider
         self.model = model or _DEFAULT_MODELS.get(provider, "")
         self._client = None
         self._caps = _MODEL_CAPS.get(self.model, _DEFAULT_CAPS)
+        self._base_url = base_url  # for local/GPU endpoints
 
     @property
     def context_window(self) -> int:
@@ -110,14 +112,23 @@ class LLMProvider:
         if self._client is not None:
             return self._client
 
-        api_key = os.environ.get(_ENV_KEYS.get(self.provider, ""), "")
-        if not api_key:
-            raise ValueError(
-                f"Missing {_ENV_KEYS.get(self.provider, '???')} environment variable. "
-                f"Export it: export {_ENV_KEYS.get(self.provider, 'API_KEY')}=..."
-            )
+        # Local provider doesn't need an API key
+        if self.provider == "local":
+            api_key = "not-needed"
+        else:
+            api_key = os.environ.get(_ENV_KEYS.get(self.provider, ""), "")
+            if not api_key:
+                raise ValueError(
+                    f"Missing {_ENV_KEYS.get(self.provider, '???')} environment variable. "
+                    f"Export it: export {_ENV_KEYS.get(self.provider, 'API_KEY')}=..."
+                )
 
-        if self.provider == "groq":
+        if self.provider == "local":
+            # Local vLLM/Ollama endpoint — OpenAI-compatible, no API key needed
+            from openai import OpenAI
+            base = self._base_url or "http://localhost:8000/v1"
+            self._client = OpenAI(api_key="not-needed", base_url=base)
+        elif self.provider == "groq":
             from groq import Groq
             self._client = Groq(api_key=api_key)
         elif self.provider == "anthropic":
@@ -142,7 +153,7 @@ class LLMProvider:
         """Complete and capture real usage from API (non-streaming for accuracy)."""
         t0 = time.time()
 
-        if self.provider in ("groq", "openai"):
+        if self.provider in ("groq", "openai", "local"):
             return self._complete_openai_compat(messages, temperature, max_tokens, t0)
         elif self.provider == "anthropic":
             return self._complete_anthropic(messages, temperature, max_tokens, t0)
@@ -153,7 +164,7 @@ class LLMProvider:
     def stream(self, messages: list[LLMMessage], temperature: float = 0.6,
                max_tokens: int = 4096) -> Iterator[str]:
         """Yield content chunks for live display."""
-        if self.provider in ("groq", "openai"):
+        if self.provider in ("groq", "openai", "local"):
             yield from self._stream_openai_compat(messages, temperature, max_tokens)
         elif self.provider == "anthropic":
             yield from self._stream_anthropic(messages, temperature, max_tokens)
