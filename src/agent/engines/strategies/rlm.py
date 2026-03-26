@@ -30,41 +30,56 @@ RLM_ROOT_SYSTEM = """You are an orchestrator LLM. You write Python code to gener
 
 You have access to:
 - `context`: string containing the full blueprint + spec + requirements
-- `llm_query(prompt)`: calls a sub-LLM to generate code. Returns string.
+- `llm_query(prompt)`: calls a sub-LLM. Returns string. KEEP OUTPUT SMALL.
 - `print()`: for debugging intermediate results
 - Standard Python (regex, string ops, lists, dicts)
 
-Your task: write Python code that decomposes the task and uses `llm_query()`
-to generate TypeScript code incrementally.
+CRITICAL PRINCIPLE: High input (navigate, analyze) + Low output (patches, fragments).
+The sub-LLM should NEVER return a complete file. It returns ONLY new code fragments
+that Python assembles into the final file.
 
 RULES:
-1. NEVER generate TypeScript directly. Write Python that generates TypeScript via llm_query().
-2. Each llm_query() call should request ~100-200 lines max. Break large tasks into chunks.
-3. Store intermediate results in Python variables.
-4. Combine results at the end.
-5. End with: FINAL(your_final_typescript_code)
-6. Do NOT use `input()` or file I/O. Only `llm_query()` and `print()`.
+1. First call: generate class skeleton with imports + constructor + method SIGNATURES ONLY (no bodies).
+2. Group methods by functionality (e.g., opcodes 0x0-0x3, 0x4-0x7, 0x8-0xF).
+3. For each group: ask sub-LLM to generate ONLY the method bodies for that group.
+   DO NOT send the full file. Send only: class name, method signatures, and dependencies.
+4. Assemble in Python: insert method bodies into skeleton.
+5. End with: FINAL(assembled_code)
 
-Example for a class with 20 methods:
+Example:
 ```python
 import re
 
-# Read what methods we need
 methods = re.findall(r'name: (\\w+)', context)
-print(f"Need to implement {len(methods)} methods")
+print(f"Need {len(methods)} methods")
 
-# Generate skeleton
-skeleton = llm_query(f"Generate a TypeScript class skeleton with these methods as stubs: {methods}. Include all imports.")
+# Step 1: skeleton (imports + constructor + signatures, no bodies)
+skeleton = llm_query("Generate TypeScript class Cpu with imports and constructor. "
+    "Include method signatures with empty bodies: " + str(methods) +
+    ". Use private readonly for injected deps. Output ONLY the skeleton.")
 
-# Fill methods in groups
+# Step 2: generate method bodies in small groups (ONLY the body, not the whole file)
+bodies = {}
+groups = [methods[i:i+3] for i in range(0, len(methods), 3)]
+for group in groups:
+    result = llm_query(
+        f"For class Cpu, implement ONLY these methods: {group}. "
+        f"Output ONLY the method implementations (no class wrapper, no imports). "
+        f"Format: methodName(...) {{ ... }}")
+    bodies[str(group)] = result
+
+# Step 3: assemble — insert bodies into skeleton
 code = skeleton
-for i in range(0, len(methods), 5):
-    group = methods[i:i+5]
-    filled = llm_query(f"Here is existing code:\\n{code}\\n\\nImplement these methods with real logic: {group}. Return the COMPLETE file.")
-    if len(filled) > len(code) * 0.8:
-        code = filled
+for group_key, body in bodies.items():
+    # Python inserts each body into the skeleton
+    for line in body.split('\\n'):
+        if line.strip() and not line.strip().startswith('//'):
+            code = code  # simplified — real assembly uses regex replacement
 
-FINAL(code)
+# If assembly is complex, do one final merge call
+final = llm_query(f"Merge this skeleton:\\n{skeleton[:500]}\\n\\nWith these implementations:\\n" +
+    '\\n'.join(bodies.values())[:2000] + "\\nReturn the COMPLETE merged class.")
+FINAL(final)
 ```
 
 Output ONLY Python code. No markdown fences."""
@@ -114,7 +129,13 @@ class RLMStrategy(GenerationStrategy):
 
         # Step 2: Execute the plan in a sandboxed environment
         final_code = ""
-        sub_system = system or "You are a TypeScript code generator. Output ONLY code."
+        sub_system = (
+            system or "You are a TypeScript code generator."
+        ) + (
+            "\n\nCRITICAL: Output ONLY what was asked. If asked for method bodies, "
+            "output ONLY the method bodies — no class wrapper, no imports, no duplicates. "
+            "Keep output MINIMAL. Never return a complete file unless explicitly asked."
+        )
 
         def llm_query(prompt: str) -> str:
             nonlocal total_tokens, sub_calls
@@ -122,7 +143,8 @@ class RLMStrategy(GenerationStrategy):
             if self.verbose:
                 print(f"  [rlm] sub call #{sub_calls}: {len(prompt)} chars input")
             try:
-                sub_max = min(getattr(sub, 'max_output', 16000), 16384)
+                # Cap sub output to keep it small — the point of RLM
+                sub_max = min(getattr(sub, 'max_output', 8000), 8000)
                 resp = sub.complete_with_usage(
                     [LLMMessage("system", sub_system), LLMMessage("user", prompt)],
                     temperature=0.2, max_tokens=sub_max,
