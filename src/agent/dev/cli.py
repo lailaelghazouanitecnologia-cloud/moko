@@ -25,6 +25,8 @@ def register_subparser(subparsers: argparse._SubParsersAction):
     p.add_argument("--compose", action="store_true", help="Use blueprint composer (extraction-first)")
     p.add_argument("--branches", action="store_true",
                    help="Use branch-per-module pipeline (generate -> tsc fix -> merge)")
+    p.add_argument("--tui", action="store_true",
+                   help="Full-screen terminal UI (Textual) — like Codex")
 
     # Branch & evaluation flags
     p.add_argument("--eval", action="store_true",
@@ -426,6 +428,7 @@ def cmd_dev(args: argparse.Namespace):
         config["interactive"] = not getattr(args, "no_interactive", False)
         config["pre_features"] = getattr(args, "features", None)
         orchestrator = BranchPipelineOrchestrator(config)
+        orchestrator.use_tui = getattr(args, "tui", False)
         # When references are provided, let Feature AST handle decomposition
         # instead of the generic advisor blueprint
         bp_for_pipeline = None if args.ref else project_bp

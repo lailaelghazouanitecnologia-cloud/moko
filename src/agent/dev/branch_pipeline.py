@@ -163,11 +163,14 @@ class BranchPipelineOrchestrator:
 
     def _log(self, msg: str):
         if self.verbose:
-            # Route to LiveView if available
+            # Route to view if available
             if hasattr(self, '_view') and self._view:
-                self._view.log(msg)
-            else:
-                print(f"  [pipeline] {msg}")
+                # AvaTUI uses write_log, LiveView uses log
+                log_fn = getattr(self._view, 'write_log', None) or getattr(self._view, 'log', None)
+                if log_fn:
+                    log_fn(msg)
+                    return
+            print(f"  [pipeline] {msg}")
 
     def _build_feature_ast(self, references: list[str], goal: str):
         """Build Feature AST from reference and run goal-based selection."""
@@ -474,18 +477,33 @@ class BranchPipelineOrchestrator:
                 depends_on=t.depends_on,
             )
 
-        # 6. Initialize LiveView (rich TUI — like Codex ChatWidget)
+        # 6. Initialize View (rich LiveView or Textual TUI)
+        self._view = None
+        self._tui_thread = None
+        use_tui = getattr(self, 'use_tui', False)
         try:
-            from ..views.live import LiveView
-            self._view = LiveView(
-                goal=goal,
-                modules=all_module_names,
-                provider=self.runtime_config.provider,
-                model=self.runtime_config.get_model("worker"),
-                token_budget=session.token_budget,
-                verbose=self.verbose,
-            )
-        except ImportError:
+            if use_tui:
+                from ..views.tui import AvaTUI
+                self._view = AvaTUI(
+                    goal=goal,
+                    modules=all_module_names,
+                    provider=self.runtime_config.provider,
+                    model=self.runtime_config.get_model("worker"),
+                    token_budget=session.token_budget,
+                )
+                self._tui_thread = self._view.run_in_thread()
+                import time as _t; _t.sleep(0.5)  # let TUI initialize
+            else:
+                from ..views.live import LiveView
+                self._view = LiveView(
+                    goal=goal,
+                    modules=all_module_names,
+                    provider=self.runtime_config.provider,
+                    model=self.runtime_config.get_model("worker"),
+                    token_budget=session.token_budget,
+                    verbose=self.verbose,
+                )
+        except Exception:
             self._view = None
 
         # 6. Process tasks in dependency order
@@ -769,9 +787,17 @@ class BranchPipelineOrchestrator:
             if "calls=" in report:
                 print(f"\n{report}")
 
-        # 15. LiveView summary (rich final report)
+        # 15. View cleanup
         if hasattr(self, '_view') and self._view:
-            self._view.summary()
+            if hasattr(self._view, 'summary'):
+                # LiveView — print summary
+                self._view.summary()
+            if hasattr(self._view, 'stop') and hasattr(self, '_tui_thread'):
+                # AvaTUI — stop the TUI
+                import time as _t; _t.sleep(2)  # let user see results
+                self._view.stop()
+                if self._tui_thread:
+                    self._tui_thread.join(timeout=3)
 
         self.state_mgr.save()
         return result

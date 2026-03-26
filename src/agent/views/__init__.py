@@ -17,5 +17,6 @@ from .plan import PlanView
 from .blocks import BlockView
 from .inspect import InspectView
 from .status import StatusLine
+from .tui import AvaTUI
 
-__all__ = ["LiveView", "PlanView", "BlockView", "InspectView", "StatusLine"]
+__all__ = ["LiveView", "PlanView", "BlockView", "InspectView", "StatusLine", "AvaTUI"]
