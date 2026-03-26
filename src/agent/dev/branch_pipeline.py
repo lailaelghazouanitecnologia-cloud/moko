@@ -409,6 +409,18 @@ class BranchPipelineOrchestrator:
         self._generate_project_config(target, tasks, project_dir)
         self.git.commit_all(f"chore: project config for {target}")
 
+        # 5b. Initialize RunState for persistence + resume
+        from ..session.run_state import RunState
+        run_state = RunState(
+            goal=goal, target=target,
+            provider=getattr(self.llm, "provider", "groq"),
+            model=getattr(self.llm, "model", ""),
+            module_order=[t.name for level in self.decomposer.topo_sort(tasks) for t in level],
+            max_iterations=50,
+        )
+        if functional_spec:
+            run_state.functional_spec_json = functional_spec.to_prompt_context()
+
         # 6. Process tasks in dependency order
         result = PipelineResult()
         levels = self.decomposer.topo_sort(tasks)
@@ -416,12 +428,23 @@ class BranchPipelineOrchestrator:
         for level_idx, level in enumerate(levels):
             print(f"\n  Level {level_idx}: {', '.join(t.name for t in level)}")
             for task in level:
+                run_state.mark_started(task.name)
                 branch_result = self._process_module(
                     task, project_dir, target, references, project_bp,
                 )
                 result.branches.append(branch_result)
                 result.total_tokens += branch_result.tokens_used
                 result.total_loc += branch_result.total_loc
+
+                # Persist run state after each module
+                run_state.mark_done(
+                    task.name,
+                    loc=branch_result.total_loc,
+                    tsc_errors=branch_result.tsc_errors,
+                    tokens=branch_result.tokens_used,
+                    fix_rounds=branch_result.fix_iterations,
+                )
+                run_state.save(project_dir)
 
         # 7. Final tsc check on main — fix cross-module errors
         self.git.checkout("main")

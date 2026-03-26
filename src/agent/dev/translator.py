@@ -318,8 +318,54 @@ class BlueprintTranslator:
         self.total_tokens += resp.usage.total_tokens
         return resp.content, resp.usage.total_tokens
 
-    def _build_system_prompt(self, file_path: str = "") -> str:
-        """Build system prompt, optionally augmented with user style rules."""
+    def _build_system_prompt(self, file_path: str = "", task: str = "translate") -> str:
+        """Build system prompt using modular PromptEngine when available.
+
+        Falls back to monolithic TRANSLATE_SYSTEM for backwards compatibility.
+        """
+        try:
+            from ..prompts.engine import PromptEngine, PromptContext
+
+            engine = PromptEngine(
+                project_dir=self.out_dir.parent if self.out_dir else None
+            )
+
+            # Collect style hints
+            style_hints = []
+            if self.quality_engine:
+                style_hints = self.quality_engine.get_style_hints()
+
+            ctx = PromptContext(
+                task=task,
+                model=getattr(self.llm, "model", ""),
+                functional_spec=self.functional_spec_context,
+                style_hints=style_hints,
+                target_file=file_path,
+            )
+
+            # Inject invariants if available
+            if self.context_engine:
+                inv_store = getattr(self.context_engine, "invariant_store", None)
+                if inv_store and hasattr(inv_store, "rules"):
+                    ctx.invariants = [r.text for r in inv_store.rules[:5]]
+
+            prompt = engine.build(ctx)
+            if prompt and len(prompt) > 100:
+                # Add style rules on top if available
+                if self.style_rules and self.style_rules.has_custom_rules():
+                    style_section = (
+                        self.style_rules.to_system_prompt_for_file(file_path)
+                        if file_path
+                        else self.style_rules.to_system_prompt()
+                    )
+                    if style_section:
+                        prompt += "\n\n## User Style Rules\n" + style_section
+                return prompt
+
+        except Exception:
+            pass
+
+        # Fallback to monolithic prompt
         base = TRANSLATE_SYSTEM
         if self.style_rules and self.style_rules.has_custom_rules():
             style_section = (
