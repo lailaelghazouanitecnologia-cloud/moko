@@ -5,11 +5,14 @@ engines/
   context/     — real-time project state, snapshots, pre-write validation
   fix/         — intelligent compile-fix (auto-fix, cascade detection, smart LLM)
   quality/     — code quality analysis, auto-fix, and learning (types, naming, stubs)
+  experiment/  — variant A/B generation, metric evaluation, feature store
+  workspace/   — depth-forced workspaces with improvement proposals
   tool/        — project introspection (scanner, graph, import resolver)
   embedding/   — semantic search with TF-IDF + optional API embeddings
   memory/      — persistent code block storage for reuse across runs
   prompt/      — structured prompts for blueprint composition
   blueprint/   — source extraction + multi-source blueprint composition
+  reference/   — project intelligence + feature AST
 """
 from .embedding.store import SemanticStore
 from .memory.block_store import CodeBlockStore, CodeBlock
