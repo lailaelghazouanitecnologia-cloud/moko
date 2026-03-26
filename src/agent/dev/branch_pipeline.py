@@ -752,6 +752,44 @@ class BranchPipelineOrchestrator:
                 except Exception as e:
                     self._log(f"  quality pass failed: {e}")
 
+            # 5c. Module review (actor — reports findings, does NOT modify code)
+            try:
+                from ..actors.module_reviewer import ModuleReviewer
+                reviewer = ModuleReviewer(self.llm, verbose=self.verbose)
+                module_files = self._read_module_files(module_dir)
+                if module_files:
+                    # Collect dependency interfaces for cross-module validation
+                    dep_interfaces = {}
+                    for dep_name in task.depends_on:
+                        dep_dir = project_dir / "src" / dep_name
+                        for iface_file in dep_dir.glob("i*.ts"):
+                            try:
+                                dep_interfaces[str(iface_file.relative_to(project_dir))] = iface_file.read_text()
+                            except Exception:
+                                pass
+
+                    spec_ctx = getattr(self, '_functional_spec', None)
+                    spec_text = spec_ctx.to_prompt_context() if spec_ctx else ""
+                    review = reviewer.review(task.name, module_files, dep_interfaces, spec_text)
+
+                    if review.has_issues:
+                        # Log issues as proposals — do NOT auto-fix
+                        for issue in review.issues:
+                            self._log(f"  [review] issue: {issue}")
+                        for iissue in review.integration_issues:
+                            self._log(f"  [review] integration: {iissue}")
+
+                    # Store review in session history
+                    if hasattr(self, 'state_mgr') and self.state_mgr.session:
+                        self.state_mgr.session.add_history(
+                            "review", module=task.name,
+                            detail=f"{len(review.issues)} issues, {len(review.suggestions)} suggestions",
+                            tokens=review.tokens_used,
+                        )
+                    br.tokens_used += review.tokens_used
+            except Exception as e:
+                self._log(f"  review failed: {e}")
+
             # 6. Merge to main
             merged = self.git.merge(
                 task.branch_name, "main",
