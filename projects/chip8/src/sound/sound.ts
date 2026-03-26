@@ -1,81 +1,89 @@
 import { ISound } from './isound';
 
 /**
- * CHIP-8 square-wave buzzer implementation using Web Audio API.
- * Provides real-time control over tone generation with adjustable frequency and volume.
+ * Generates square wave tone for CHIP-8 sound timer.
+ * Manages Web Audio API resources to produce a beep when the sound timer is active.
  */
 export class Sound implements ISound {
+  private frequency: number;
+  private isPlaying: boolean;
   private readonly audioContext: AudioContext;
-  private oscillator: OscillatorNode | null = null;
-  private gainNode: GainNode | null = null;
-  private isActive = false;
-  private frequency = 440;
-  private volume = 0.3;
+  private oscillator: OscillatorNode | null;
+  private gainNode: GainNode | null;
 
   constructor() {
-    const AudioContextConstructor = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+    this.frequency = 440;
+    this.isPlaying = false;
+
+    const AudioContextConstructor = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
     this.audioContext = new AudioContextConstructor();
+    this.oscillator = null;
+    this.gainNode = null;
   }
 
-  setBuzzer(active: boolean): void {
-    if (active === this.isActive) return;
-
-    this.isActive = active;
-    if (active) {
-      this.start();
-    } else {
-      this.stop();
+  public play(): void {
+    if (this.isPlaying) {
+      return;
     }
-  }
-
-  isPlaying(): boolean {
-    return this.isActive;
-  }
-
-  setFrequency(hz: number): void {
-    if (hz <= 0) throw new RangeError('Frequency must be positive');
-    this.frequency = hz;
-    if (this.oscillator) {
-      this.oscillator.frequency.setValueAtTime(hz, this.audioContext.currentTime);
-    }
-  }
-
-  setVolume(level: number): void {
-    if (level < 0 || level > 1) throw new RangeError('Volume must be between 0 and 1');
-    this.volume = level;
-    if (this.gainNode) {
-      this.gainNode.gain.setValueAtTime(level, this.audioContext.currentTime);
-    }
-  }
-
-  private start(): void {
-    if (this.oscillator) return;
 
     this.oscillator = this.audioContext.createOscillator();
     this.gainNode = this.audioContext.createGain();
 
     this.oscillator.type = 'square';
     this.oscillator.frequency.setValueAtTime(this.frequency, this.audioContext.currentTime);
-    this.gainNode.gain.setValueAtTime(this.volume, this.audioContext.currentTime);
+
+    this.gainNode.gain.setValueAtTime(0.1, this.audioContext.currentTime);
 
     this.oscillator.connect(this.gainNode);
     this.gainNode.connect(this.audioContext.destination);
 
     this.oscillator.start();
+    this.isPlaying = true;
   }
 
   /**
-   * Stop and disconnect audio nodes to cease tone generation.
-   * @private
+   * Stop sound output.
+   * Stops and disconnects the oscillator and gain nodes.
    */
-  private stop(): void {
-    if (!this.oscillator) return;
+  public stop(): void {
+    if (!this.isPlaying) {
+      return;
+    }
 
-    this.oscillator.stop();
-    this.oscillator.disconnect();
-    this.gainNode?.disconnect();
+    if (this.oscillator) {
+      this.oscillator.stop();
+      this.oscillator.disconnect();
+      this.oscillator = null;
+    }
 
-    this.oscillator = null;
-    this.gainNode = null;
+    if (this.gainNode) {
+      this.gainNode.disconnect();
+      this.gainNode = null;
+    }
+
+    this.isPlaying = false;
+  }
+
+  public setFrequency(hz: number): void {
+    if (!Number.isFinite(hz)) {
+      throw new TypeError('Frequency must be a finite number');
+    }
+    if (hz <= 0) {
+      throw new RangeError('Frequency must be positive');
+    }
+
+    this.frequency = hz;
+
+    if (this.oscillator && this.isPlaying) {
+      this.oscillator.frequency.setValueAtTime(this.frequency, this.audioContext.currentTime);
+    }
+  }
+
+  public isPlayingSound(): boolean {
+    return this.isPlaying;
+  }
+
+  public getFrequency(): number {
+    return this.frequency;
   }
 }

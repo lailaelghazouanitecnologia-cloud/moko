@@ -1,6 +1,5 @@
 export interface ISound {
-  setBuzzer(active: boolean): void;
-  isPlaying(): boolean;
+  play(): void;
+  stop(): void;
   setFrequency(hz: number): void;
-  setVolume(level: number): void;
 }

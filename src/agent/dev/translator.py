@@ -527,11 +527,72 @@ class BlueprintTranslator:
             if style_ctx:
                 user += f"\n{style_ctx}\n"
 
-        # 4. LLM call — use model-aware token budget
-        model_max = getattr(self.llm, 'max_output', 8000)
-        max_tok = min(model_max, 16384) if self.rich_mode else min(model_max, 12000)
+        # 4. Strategy selection — pick the right approach for this type
         target_file = type_bp.target_file or f"{module_bp.target_dir}/{to_kebab_case(type_bp.name)}.ts"
         system_prompt = self._build_system_prompt(target_file)
+        model_max = getattr(self.llm, 'max_output', 8000)
+
+        # Check if a non-default strategy should be used
+        method_count = len(type_bp.methods) if type_bp.methods else 0
+        output_estimate = method_count * 30  # ~30 tokens per method rough estimate
+
+        try:
+            from ..engines.strategies.selector import StrategySelector, TaskProfile, StrategyChoice
+            selector = StrategySelector(verbose=self.verbose)
+            profile = TaskProfile(
+                task_type="translate",
+                input_tokens=len(user) // 4,
+                output_tokens_estimate=output_estimate,
+                method_count=method_count,
+                complexity="complex" if method_count > 10 else "medium" if method_count > 5 else "simple",
+                context_window=getattr(self.llm, 'context_window', 131072),
+                max_output=model_max,
+                has_sub_llm=True,  # Groq always has llama-3.1-8b available
+            )
+            choice = selector.select(profile)
+
+            if choice == StrategyChoice.RLM and method_count > 20:
+                from ..engines.strategies.rlm import RLMStrategy
+                from ..core.llm.providers import LLMProvider
+                sub_llm = LLMProvider("groq", model="llama-3.1-8b-instant")
+                rlm = RLMStrategy(root_llm=self.llm, sub_llm=sub_llm, verbose=self.verbose)
+                result = rlm.execute({
+                    "llm": self.llm, "sub_llm": sub_llm,
+                    "blueprint_yaml": bp_yaml, "spec_context": self.functional_spec_context,
+                    "system_prompt": system_prompt, "user_prompt": user,
+                })
+                if result.success and result.code:
+                    code = result.code
+                    tokens = result.tokens_used
+                    clean = self._strip_code_fences(code)
+                    clean = self._fix_orphaned_class_body(clean, type_bp, module_bp)
+                    # Jump to write phase
+                    self._write_output(clean, target_file, type_bp, module_bp, project_dir, tokens, [])
+                    return (target_file, tokens, [])
+
+            if choice == StrategyChoice.SKELETON_FILL and method_count > 10:
+                from ..engines.strategies.skeleton_fill import SkeletonFillStrategy
+                skel = SkeletonFillStrategy()
+                max_tok = min(model_max, 16384)
+                result = skel.execute({
+                    "llm": self.llm, "system_prompt": system_prompt,
+                    "user_prompt": user, "blueprint_yaml": bp_yaml,
+                    "spec_context": self.functional_spec_context,
+                    "max_tokens": max_tok,
+                })
+                if result.success and result.code:
+                    code = result.code
+                    tokens = result.tokens_used
+                    clean = self._strip_code_fences(code)
+                    clean = self._fix_orphaned_class_body(clean, type_bp, module_bp)
+                    self._write_output(clean, target_file, type_bp, module_bp, project_dir, tokens, [])
+                    return (target_file, tokens, [])
+        except Exception as e:
+            if self.verbose:
+                self._log(f"  strategy selection failed ({e}), using default")
+
+        # Default: BigContext — 1 call
+        max_tok = min(model_max, 16384) if self.rich_mode else min(model_max, 12000)
         code, tokens = self._llm_call(system_prompt, user, max_tokens=max_tok)
 
         # 5. Clean output (strip markdown fences only — no YAML heuristics)
@@ -551,6 +612,15 @@ class BlueprintTranslator:
 
         self._log(f"  wrote {target} ({len(clean)} chars, {tokens} tokens, {len(refs_used)} refs)")
         return (target, tokens, refs_used)
+
+    def _write_output(self, code: str, target_file: str, type_bp, module_bp,
+                      project_dir, tokens: int, refs_used: list):
+        """Write generated code to disk and mark as translated."""
+        full_path = project_dir / target_file
+        full_path.parent.mkdir(parents=True, exist_ok=True)
+        full_path.write_text(code + "\n")
+        type_bp.status = "translated"
+        self._log(f"  wrote {target_file} ({len(code)} chars, {tokens} tokens, {len(refs_used)} refs)")
 
     def translate_type_rich(self, type_bp: TypeBlueprint,
                             module_bp: ModuleBlueprint,
