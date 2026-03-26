@@ -796,47 +796,13 @@ class BranchPipelineOrchestrator:
             if self.git.has_uncommitted():
                 self.git.commit_all(f"fix({task.name}): resolve tsc errors")
 
-            # 5b. S4: Safe quality enhancement with rollback
-            if self.quality_engine:
-                try:
-                    module_files = self._read_module_files(module_dir)
-                    if module_files:
-                        # Snapshot error count before enhancement
-                        pre_errors, _ = self.fix_engine.check_module(module_dir)
-                        pre_error_count = len(pre_errors)
-
-                        improved, q_result = self.quality_engine.improve_module(
-                            task.name, module_files, llm=self.llm, max_llm_calls=2,
-                        )
-                        if q_result.issues_fixed > 0:
-                            self._write_module_files(module_dir, improved)
-
-                            # S4: Verify enhancement didn't break compilation
-                            post_errors, _ = self.fix_engine.check_module(module_dir)
-                            post_error_count = len(post_errors)
-
-                            if post_error_count > pre_error_count:
-                                # Enhancement introduced errors — rollback
-                                self._log(f"  quality enhancement WORSENED compilation "
-                                          f"({pre_error_count}→{post_error_count}), reverting")
-                                self._write_module_files(module_dir, module_files)
-                            else:
-                                if self.git.has_uncommitted():
-                                    self.git.commit_all(
-                                        f"quality({task.name}): {q_result.auto_fixes} auto-fixes, "
-                                        f"{q_result.prompt_fixes} LLM-fixes"
-                                    )
-                                self._log(f"  quality: {q_result.summary()}")
-                except Exception as e:
-                    self._log(f"  quality pass failed: {e}")
-
-            # 5c. Module review (actor — reports findings, does NOT modify code)
+            # 5b. Module review FIRST (detect before fixing)
+            review_issues = []
             try:
                 from ..actors.module_reviewer import ModuleReviewer
                 reviewer = ModuleReviewer(self.llm, verbose=self.verbose)
                 module_files = self._read_module_files(module_dir)
                 if module_files:
-                    # Collect dependency interfaces for cross-module validation
                     dep_interfaces = {}
                     for dep_name in task.depends_on:
                         dep_dir = project_dir / "src" / dep_name
@@ -851,13 +817,12 @@ class BranchPipelineOrchestrator:
                     review = reviewer.review(task.name, module_files, dep_interfaces, spec_text)
 
                     if review.has_issues:
-                        # Log issues as proposals — do NOT auto-fix
+                        review_issues = review.issues + review.integration_issues
                         for issue in review.issues:
                             self._log(f"  [review] issue: {issue}")
                         for iissue in review.integration_issues:
                             self._log(f"  [review] integration: {iissue}")
 
-                    # Store review in session history
                     if hasattr(self, 'state_mgr') and self.state_mgr.session:
                         self.state_mgr.session.add_history(
                             "review", module=task.name,
@@ -867,6 +832,53 @@ class BranchPipelineOrchestrator:
                     br.tokens_used += review.tokens_used
             except Exception as e:
                 self._log(f"  review failed: {e}")
+
+            # 5c. Quality pass — informed by reviewer findings
+            if self.quality_engine:
+                try:
+                    module_files = self._read_module_files(module_dir)
+                    if module_files:
+                        pre_errors, _ = self.fix_engine.check_module(module_dir)
+                        pre_error_count = len(pre_errors)
+
+                        improved, q_result = self.quality_engine.improve_module(
+                            task.name, module_files, llm=self.llm, max_llm_calls=2,
+                        )
+
+                        # If reviewer found critical issues that quality didn't fix,
+                        # do a targeted LLM pass with the reviewer findings
+                        if review_issues and q_result.issues_fixed == 0:
+                            improved = self._fix_reviewer_issues(
+                                task.name, improved, review_issues, project_dir
+                            )
+
+                        # Check if we have changes to write
+                        has_changes = q_result.issues_fixed > 0 or (
+                            review_issues and any(
+                                improved.get(f) != module_files.get(f)
+                                for f in improved
+                            )
+                        )
+
+                        if has_changes:
+                            self._write_module_files(module_dir, improved)
+
+                            post_errors, _ = self.fix_engine.check_module(module_dir)
+                            post_error_count = len(post_errors)
+
+                            if post_error_count > pre_error_count:
+                                self._log(f"  quality enhancement WORSENED compilation "
+                                          f"({pre_error_count}→{post_error_count}), reverting")
+                                self._write_module_files(module_dir, module_files)
+                            else:
+                                if self.git.has_uncommitted():
+                                    self.git.commit_all(
+                                        f"quality({task.name}): {q_result.auto_fixes} auto-fixes, "
+                                        f"{q_result.prompt_fixes} LLM-fixes"
+                                    )
+                                self._log(f"  quality: {q_result.summary()}")
+                except Exception as e:
+                    self._log(f"  quality pass failed: {e}")
 
             # 6. Merge to main
             merged = self.git.merge(
@@ -1314,6 +1326,62 @@ class BranchPipelineOrchestrator:
                     pass
 
         return total_tokens
+
+    def _fix_reviewer_issues(
+        self, module_name: str, files: dict, review_issues: list,
+        project_dir: Path,
+    ) -> dict:
+        """Use LLM to fix critical issues found by the ModuleReviewer.
+
+        This is the bridge: reviewer detects → quality engine acts.
+        Targets: missing DI, as-any casts, empty interfaces, integration gaps.
+        """
+        if not review_issues or not files:
+            return files
+
+        # Build a targeted fix prompt from reviewer findings
+        issues_text = "\n".join(f"- {issue}" for issue in review_issues[:5])
+
+        from ..core.llm.providers import LLMMessage
+        for filename, code in files.items():
+            if filename.endswith("index.ts"):
+                continue
+
+            system = (
+                "You are a code quality fixer. Fix the specific issues listed below. "
+                "Keep ALL existing logic intact. Only fix what's listed. "
+                "Return the COMPLETE fixed file."
+            )
+            user = (
+                f"## Issues to fix in {filename}:\n{issues_text}\n\n"
+                f"## Current code:\n```typescript\n{code}\n```\n\n"
+                f"Fix ONLY the listed issues. Return the COMPLETE file."
+            )
+
+            try:
+                budget = getattr(self, 'dispatch', None)
+                max_tok = budget.budget_for("quality_improve") if budget else 12000
+                resp = self.llm.complete_with_usage(
+                    [LLMMessage("system", system), LLMMessage("user", user)],
+                    temperature=0.2, max_tokens=max_tok,
+                )
+                fixed = resp.content.strip()
+
+                # Strip fences
+                if fixed.startswith("```"):
+                    lines = fixed.split("\n")
+                    lines = [l for l in lines if not l.strip().startswith("```")]
+                    fixed = "\n".join(lines)
+
+                # Only accept if it didn't shrink drastically
+                if len(fixed.splitlines()) >= len(code.splitlines()) * 0.7:
+                    files[filename] = fixed
+                    self._log(f"  [quality] fixed {len(review_issues)} reviewer issues in {filename}")
+
+            except Exception as e:
+                self._log(f"  [quality] reviewer fix failed for {filename}: {e}")
+
+        return files
 
     def _should_experiment(self, task: ModuleTask) -> bool:
         """Decide if a module should use the experiment engine (variants A/B).
