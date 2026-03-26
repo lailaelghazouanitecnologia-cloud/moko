@@ -591,7 +591,7 @@ class IntelligenceGenerator:
         if not self.llm:
             return None
 
-        from ...llm.providers import LLMMessage
+        from ...core.llm.providers import LLMMessage
 
         system = """You are a software architect analyzing a codebase. Given Roska descriptors
 (module structure, types, methods, signatures), extract:

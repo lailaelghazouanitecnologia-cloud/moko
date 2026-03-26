@@ -18,7 +18,7 @@ from typing import Optional
 
 from .agents.base import AgentContext, AgentResult, BaseAgent
 from .agents import ALL_AGENTS
-from .llm.providers import LLMProvider, LLMMessage, LLMUsage
+from .core.llm.providers import LLMProvider, LLMMessage, LLMUsage
 from .vectorstore.search import VectorStore
 from .prompts.registry import PromptRegistry
 from .session.state import SessionState

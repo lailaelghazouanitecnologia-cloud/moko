@@ -27,7 +27,7 @@ import time
 from pathlib import Path
 from typing import Optional
 
-from ..llm.providers import LLMProvider, LLMMessage
+from ..core.llm.providers import LLMProvider, LLMMessage
 from .. import OUT_DIR
 
 from .plan import (

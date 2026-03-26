@@ -17,7 +17,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
-from ..llm.providers import LLMProvider, LLMMessage
+from ..core.llm.providers import LLMProvider, LLMMessage
 from .config import DecomposerConfig
 from .errors import YAMLParseError, DecompositionError
 

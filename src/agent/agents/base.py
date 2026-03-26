@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from ..llm.providers import LLMProvider, LLMUsage
+    from ..core.llm.providers import LLMProvider, LLMUsage
     from ..vectorstore.search import VectorStore
     from ..prompts.registry import PromptRegistry
     from ..session.state import SessionState

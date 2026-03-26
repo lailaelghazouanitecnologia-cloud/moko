@@ -61,7 +61,7 @@ def build_import_map(module_bp, prior_modules: list = None) -> str:
         return ""
     return "## Import map (use EXACTLY these paths)\n" + "\n".join(lines)
 
-from ..llm.providers import LLMProvider, LLMMessage
+from ..core.llm.providers import LLMProvider, LLMMessage
 from .. import OUT_DIR
 
 from .blueprint import ModuleBlueprint, TypeBlueprint

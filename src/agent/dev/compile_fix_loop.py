@@ -25,7 +25,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
-from ..llm.providers import LLMProvider, LLMMessage
+from ..core.llm.providers import LLMProvider, LLMMessage
 
 
 @dataclass

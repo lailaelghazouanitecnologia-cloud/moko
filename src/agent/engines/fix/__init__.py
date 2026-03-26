@@ -423,7 +423,7 @@ class FixEngine:
 
     def _llm_fix(self, prompt: str) -> tuple[str, int]:
         """Send fix prompt to LLM. Returns (fixed_code, tokens_used)."""
-        from ...llm.providers import LLMMessage
+        from ...core.llm.providers import LLMMessage
 
         resp = self.llm.complete_with_usage(
             [LLMMessage("system", FIX_SYSTEM), LLMMessage("user", prompt)],

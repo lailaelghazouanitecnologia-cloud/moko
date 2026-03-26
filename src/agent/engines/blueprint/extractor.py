@@ -23,7 +23,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
-from ...dev.blueprint import FieldSpec, MethodSpec
+from ...core.models import FieldSpec, MethodSpec
 
 
 @dataclass

@@ -9,7 +9,7 @@ import sys
 from pathlib import Path
 
 from .base import BaseAgent, AgentContext, AgentResult
-from ..llm.providers import LLMMessage
+from ..core.llm.providers import LLMMessage
 from ..pipeline.actions import ActionPipeline, PipelineContext
 
 

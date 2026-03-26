@@ -21,9 +21,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
-from ...dev.blueprint import ModuleBlueprint, TypeBlueprint, MethodSpec, FieldSpec
-from ...dev.emission import EmissionIndex
-from ...llm.providers import LLMProvider, LLMMessage
+from ...core.models import ModuleBlueprint, TypeBlueprint, MethodSpec, FieldSpec
+from ...tools.emission import EmissionIndex
+from ...core.llm.providers import LLMProvider, LLMMessage
 from ..embedding.store import SemanticStore
 from ..embedding.similarity import NameNormalizer
 from ..memory.block_store import CodeBlockStore

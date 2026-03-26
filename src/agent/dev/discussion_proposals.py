@@ -231,7 +231,7 @@ def extract_proposals_with_llm(
         f"Propose evaluation branches (or empty array if no disagreement)."
     )
 
-    from ..llm.providers import LLMMessage
+    from ..core.llm.providers import LLMMessage
     resp = llm.complete_with_usage(
         [LLMMessage("system", system), LLMMessage("user", user)],
         temperature=0.3,

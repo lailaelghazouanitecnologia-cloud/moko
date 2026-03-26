@@ -6,7 +6,7 @@ Multi-query search pattern against vector store, then compresses all results.
 """
 
 from .base import BaseAgent, AgentContext, AgentResult
-from ..llm.providers import LLMMessage
+from ..core.llm.providers import LLMMessage
 from ..pipeline.actions import (
     ActionPipeline, PipelineContext, SelectPolicy,
     MapProjects, LoadRelevantFiles, CompressAll,

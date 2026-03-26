@@ -197,7 +197,7 @@ def _estimate_scope(args):
                   f"LLM decides types")
     else:
         from ..engines.blueprint.project import generate_project_blueprint
-        from ..llm.providers import LLMProvider
+        from ..core.llm.providers import LLMProvider
         bp_llm = LLMProvider(provider=args.provider, model=args.model)
         project_bp = generate_project_blueprint(args.goal, args.target, bp_llm)
         if project_bp:
@@ -313,7 +313,7 @@ def cmd_dev(args: argparse.Namespace):
     else:
         # Free mode: LLM generates blueprint from scratch
         from ..engines.blueprint.project import generate_project_blueprint
-        from ..llm.providers import LLMProvider
+        from ..core.llm.providers import LLMProvider
         bp_llm = LLMProvider(provider=args.provider, model=args.model)
         project_bp = generate_project_blueprint(args.goal, args.target, bp_llm)
         if project_bp:
@@ -713,7 +713,7 @@ def cmd_intel(args: argparse.Namespace):
             # Generate
             llm = None
             try:
-                from ..llm.providers import LLMProvider
+                from ..core.llm.providers import LLMProvider
                 llm = LLMProvider(provider=args.provider, model=args.model)
             except Exception:
                 pass

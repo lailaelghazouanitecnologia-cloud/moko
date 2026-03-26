@@ -6,7 +6,7 @@ oldest messages are trimmed while keeping the system prompt and recent context.
 Inspired by Cline's ContextManager truncation strategy.
 """
 
-from ..llm.providers import LLMMessage
+from ..core.llm.providers import LLMMessage
 
 
 class ConversationHistory:

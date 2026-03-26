@@ -13,7 +13,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
-from ..llm.providers import LLMProvider
+from ..core.llm.providers import LLMProvider
 from .. import OUT_DIR
 
 from .config import PipelineConfig
@@ -1176,7 +1176,7 @@ class BranchPipelineOrchestrator:
             f"Enhance this code. Output the COMPLETE file."
         )
 
-        from ..llm.providers import LLMMessage
+        from ..core.llm.providers import LLMMessage
         resp = self.llm.complete_with_usage(
             [LLMMessage("system", system), LLMMessage("user", user)],
             temperature=0.2, max_tokens=12000,
@@ -1616,7 +1616,7 @@ class BranchPipelineOrchestrator:
             f"Evaluate and output JSON only."
         )
 
-        from ..llm.providers import LLMMessage
+        from ..core.llm.providers import LLMMessage
         try:
             resp = self.llm.complete_with_usage(
                 [LLMMessage("system", system), LLMMessage("user", user)],

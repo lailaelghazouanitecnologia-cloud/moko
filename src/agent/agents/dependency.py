@@ -6,7 +6,7 @@ Prioritizes deps.yaml and graph meta with a dep-focused pipeline.
 """
 
 from .base import BaseAgent, AgentContext, AgentResult
-from ..llm.providers import LLMMessage
+from ..core.llm.providers import LLMMessage
 from ..pipeline.actions import (
     ActionPipeline, PipelineContext, SelectPolicy,
     MapProjects, LoadDeps, LoadGraphMeta, CompressAll,
