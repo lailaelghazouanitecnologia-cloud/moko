@@ -163,7 +163,11 @@ class BranchPipelineOrchestrator:
 
     def _log(self, msg: str):
         if self.verbose:
-            print(f"  [pipeline] {msg}")
+            # Route to LiveView if available
+            if hasattr(self, '_view') and self._view:
+                self._view.log(msg)
+            else:
+                print(f"  [pipeline] {msg}")
 
     def _build_feature_ast(self, references: list[str], goal: str):
         """Build Feature AST from reference and run goal-based selection."""
@@ -470,12 +474,27 @@ class BranchPipelineOrchestrator:
                 depends_on=t.depends_on,
             )
 
+        # 6. Initialize LiveView (rich TUI — like Codex ChatWidget)
+        try:
+            from ..views.live import LiveView
+            self._view = LiveView(
+                goal=goal,
+                modules=all_module_names,
+                provider=self.runtime_config.provider,
+                model=self.runtime_config.get_model("worker"),
+                token_budget=session.token_budget,
+                verbose=self.verbose,
+            )
+        except ImportError:
+            self._view = None
+
         # 6. Process tasks in dependency order
         result = PipelineResult()
         levels = self.decomposer.topo_sort(tasks)
 
         for level_idx, level in enumerate(levels):
-            print(f"\n  Level {level_idx}: {', '.join(t.name for t in level)}")
+            if not self._view:
+                print(f"\n  Level {level_idx}: {', '.join(t.name for t in level)}")
             for task in level:
                 # V3: Activate workspace
                 self.workspace_mgr.activate(task.name)
@@ -750,6 +769,10 @@ class BranchPipelineOrchestrator:
             if "calls=" in report:
                 print(f"\n{report}")
 
+        # 15. LiveView summary (rich final report)
+        if hasattr(self, '_view') and self._view:
+            self._view.summary()
+
         self.state_mgr.save()
         return result
 
@@ -774,7 +797,11 @@ class BranchPipelineOrchestrator:
         except Exception:
             module_blocks = []
 
-        print(f"  ▶ {task.name} ({len(task.types)} types)...")
+        # Update LiveView
+        if hasattr(self, '_view') and self._view:
+            self._view.start_module(task.name, types=len(task.types))
+        else:
+            print(f"  ▶ {task.name} ({len(task.types)} types)...")
 
         try:
             # 1. Create branch from main
@@ -978,12 +1005,26 @@ class BranchPipelineOrchestrator:
                     pass
 
         ok = br.status == "merged"
-        icon = "✓" if ok else "✗"
-        tsc_str = f"{br.tsc_errors_initial}→{br.tsc_errors_final}"
-        blk_str = f" {len(module_blocks)}blk" if module_blocks else ""
-        print(f"  {icon} {task.name:<14} {br.total_loc:>5} LOC  "
-              f"TSC {tsc_str:<7} {br.fix_iterations} fix  "
-              f"{br.tokens_used:>7,} tok{blk_str}")
+        elapsed = br.elapsed_s
+        blk_count = len(module_blocks) if module_blocks else 0
+
+        if hasattr(self, '_view') and self._view:
+            if ok:
+                self._view.complete_module(
+                    loc=br.total_loc, errors=br.tsc_errors_final,
+                    tokens=br.tokens_used, elapsed=elapsed, blocks=blk_count,
+                )
+            else:
+                self._view.fail_module(
+                    error=f"TSC {br.tsc_errors_final} errors"
+                )
+        else:
+            icon = "✓" if ok else "✗"
+            tsc_str = f"{br.tsc_errors_initial}→{br.tsc_errors_final}"
+            blk_str = f" {blk_count}blk" if blk_count else ""
+            print(f"  {icon} {task.name:<14} {br.total_loc:>5} LOC  "
+                  f"TSC {tsc_str:<7} {br.fix_iterations} fix  "
+                  f"{br.tokens_used:>7,} tok{blk_str}")
 
         return br
 
