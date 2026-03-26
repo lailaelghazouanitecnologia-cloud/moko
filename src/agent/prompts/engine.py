@@ -106,15 +106,29 @@ VARIANT_MAP: Dict[str, PromptVariant] = {
 class PromptEngine:
     """Assembles modular prompts within budget constraints.
 
-    Like Cline's TemplateEngine but for code generation:
-    - Components are functions, not templates
-    - Budget management prioritizes critical rules
-    - Variants adapt to model capabilities
+    Unified system that combines:
+    - PromptRegistry (metadata-based template selection)
+    - Modular components (role, rules, style, spec, context, output, anti)
+    - Budget management (prioritizes critical rules)
+    - Variants per model (default, large, minimal)
+
+    The registry provides the base template for a task type.
+    Components enrich it with context-specific sections.
+    Budget ensures everything fits in the model's context window.
     """
 
-    def __init__(self, project_dir: Optional[Path] = None):
+    def __init__(self, project_dir: Optional[Path] = None,
+                 registry: Optional["PromptRegistry"] = None):
         self.project_dir = project_dir
         self._project_rules_cache: Optional[str] = None
+
+        # Unified registry — holds all registered prompts
+        if registry:
+            self.registry = registry
+        else:
+            from .registry import PromptRegistry
+            self.registry = PromptRegistry()
+            self._register_pipeline_prompts()
 
     def build(self, ctx: PromptContext) -> str:
         """Assemble system prompt from components within budget."""
@@ -214,6 +228,95 @@ class PromptEngine:
                 pass
 
         return self._project_rules_cache
+
+    def select_prompt(self, task_type: str, **render_kwargs) -> str:
+        """Select and render a prompt from the registry by task type.
+
+        This bridges the PromptRegistry (template selection) with the
+        PromptEngine (modular assembly). Use this when you want a
+        registry-managed prompt instead of component assembly.
+        """
+        prompt = self.registry.select(task_type)
+        if prompt:
+            return prompt.render(**render_kwargs)
+        return ""
+
+    def _register_pipeline_prompts(self):
+        """Register BranchPipeline prompts in the unified registry.
+
+        This integrates prompts from translator.py, goal_reasoner.py,
+        and composer_prompts.py into the PromptRegistry so everything
+        is discoverable and overridable from one place.
+        """
+        from .registry import Prompt, PromptMetadata
+
+        # Translation prompt (used by translator.translate_type)
+        try:
+            from ..dev.translator import TRANSLATE_SYSTEM
+            self.registry.register(Prompt(
+                metadata=PromptMetadata(
+                    id="translate_type",
+                    version=3,
+                    task_types=["translate"],
+                    tags=["pipeline", "code_generation"],
+                    is_hardcoded=False,  # Can be overridden by modular engine
+                    description="Translates YAML blueprint to TypeScript code",
+                ),
+                system_template=TRANSLATE_SYSTEM,
+            ))
+        except ImportError:
+            pass
+
+        # Blueprint prompt
+        try:
+            from ..dev.translator import BLUEPRINT_SYSTEM
+            self.registry.register(Prompt(
+                metadata=PromptMetadata(
+                    id="generate_blueprint",
+                    version=2,
+                    task_types=["blueprint"],
+                    tags=["pipeline", "architecture"],
+                    is_hardcoded=True,
+                    description="Generates YAML blueprints from references",
+                ),
+                system_template=BLUEPRINT_SYSTEM,
+            ))
+        except ImportError:
+            pass
+
+        # GoalReasoner prompt
+        try:
+            from ..dev.goal_reasoner import REASON_PROMPT
+            self.registry.register(Prompt(
+                metadata=PromptMetadata(
+                    id="goal_reasoning",
+                    version=2,
+                    task_types=["reasoning"],
+                    tags=["pipeline", "planning"],
+                    is_hardcoded=True,
+                    description="Analyzes goals into functional specifications",
+                ),
+                system_template=REASON_PROMPT,
+            ))
+        except ImportError:
+            pass
+
+        # Enrichment prompt (BlueprintComposer)
+        try:
+            from ..engines.prompt.composer_prompts import ENRICH_SYSTEM
+            self.registry.register(Prompt(
+                metadata=PromptMetadata(
+                    id="enrich_blueprint",
+                    version=1,
+                    task_types=["enrichment"],
+                    tags=["pipeline", "composition"],
+                    is_hardcoded=True,
+                    description="Enriches extracted blueprints with hints",
+                ),
+                system_template=ENRICH_SYSTEM,
+            ))
+        except ImportError:
+            pass
 
     @staticmethod
     def for_task(task: str, **kwargs) -> PromptContext:
