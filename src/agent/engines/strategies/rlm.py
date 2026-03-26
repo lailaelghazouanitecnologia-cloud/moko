@@ -139,6 +139,7 @@ class RLMStrategy(GenerationStrategy):
             "print": lambda *a: print("  [rlm-exec]", *a) if self.verbose else None,
             "re": re,
             "__builtins__": {
+                "__import__": __import__,
                 "len": len, "range": range, "str": str, "int": int,
                 "list": list, "dict": dict, "set": set, "tuple": tuple,
                 "min": min, "max": max, "sorted": sorted, "enumerate": enumerate,
