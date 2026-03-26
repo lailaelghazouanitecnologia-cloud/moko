@@ -26,8 +26,8 @@ from .compile_fix_loop import CompileFixLoop
 from .task_decomposer import TaskDecomposer, ModuleTask
 from .translator import BlueprintTranslator
 from .blueprint import ModuleBlueprint, TypeBlueprint
-from .emission import EmissionIndex
-from .density import DensityAnalyzer
+from ..tools.emission import EmissionIndex
+from ..tools.density import DensityAnalyzer
 from ..engines.context import ContextEngine
 from ..engines.fix import FixEngine
 from ..engines.quality import QualityEngine
@@ -324,6 +324,33 @@ class BranchPipelineOrchestrator:
         project_dir = self.projects_dir / target
         project_dir.mkdir(parents=True, exist_ok=True)
 
+        # 0. Initialize state manager (V3: SessionState + TurnState)
+        from ..engines.state import StateManager
+        self.state_mgr = StateManager(project_dir)
+        session = self.state_mgr.init_session(
+            goal=goal, target=target,
+            modules=[],  # filled after decompose
+            provider=getattr(self.llm, "provider", "groq"),
+            model=getattr(self.llm, "model", ""),
+        )
+
+        # 0b. Initialize knowledge injector (V3: cross-session learning)
+        from ..engines.knowledge import KnowledgeInjector
+        knowledge = KnowledgeInjector()
+        knowledge_ctx = knowledge.get_relevant_context(goal)
+        if knowledge_ctx:
+            session.injected_memories = [knowledge_ctx]
+            self._log(f"injected {len(knowledge_ctx)} chars of cross-session knowledge")
+
+        # 0c. Initialize guardian (V3: approval policy)
+        from ..engines.guardian import GuardianReviewer
+        self.guardian = GuardianReviewer(verbose=self.verbose)
+
+        # 0d. Initialize tool registry (V3: tools for pipeline)
+        from ..engines.tools import ToolRegistry, ToolRouter
+        self.tool_registry = ToolRegistry()
+        self.tool_router = ToolRouter(self.tool_registry, project_dir, verbose=self.verbose)
+
         # 1. Initialize git
         self.git = GitManager(project_dir, verbose=self.verbose)
         self.git.init_repo()
@@ -340,7 +367,7 @@ class BranchPipelineOrchestrator:
         )
 
         # 2b. Initialize quality engine + learn style from references
-        self.quality_engine = QualityEngine(str(project_dir))
+        self.quality_engine = QualityEngine(str(project_dir), project_name=target)
         if references:
             for ref in references:
                 ref_dir = self.projects_dir / ref
@@ -409,17 +436,17 @@ class BranchPipelineOrchestrator:
         self._generate_project_config(target, tasks, project_dir)
         self.git.commit_all(f"chore: project config for {target}")
 
-        # 5b. Initialize RunState for persistence + resume
-        from ..session.run_state import RunState
-        run_state = RunState(
-            goal=goal, target=target,
-            provider=getattr(self.llm, "provider", "groq"),
-            model=getattr(self.llm, "model", ""),
-            module_order=[t.name for level in self.decomposer.topo_sort(tasks) for t in level],
-            max_iterations=50,
-        )
+        # 5b. Update session state with module order
+        all_module_names = [t.name for level in self.decomposer.topo_sort(tasks) for t in level]
+        session.module_order = all_module_names
         if functional_spec:
-            run_state.functional_spec_json = functional_spec.to_prompt_context()
+            session.functional_spec = functional_spec.to_prompt_context()
+        self.state_mgr.save()
+
+        # 5c. Show plan to user (V3: tool_router plan handler)
+        self.tool_router.dispatch("update_plan", {
+            "steps": [{"step": f"Generate {name}", "status": "pending"} for name in all_module_names]
+        })
 
         # 6. Process tasks in dependency order
         result = PipelineResult()
@@ -428,7 +455,20 @@ class BranchPipelineOrchestrator:
         for level_idx, level in enumerate(levels):
             print(f"\n  Level {level_idx}: {', '.join(t.name for t in level)}")
             for task in level:
-                run_state.mark_started(task.name)
+                # V3: Begin turn (TurnState tracks per-module metrics)
+                turn = self.state_mgr.begin_turn(task.name)
+
+                # V3: Update visible plan
+                self.tool_router.dispatch("update_plan", {
+                    "steps": [
+                        {"step": f"Generate {name}",
+                         "status": "completed" if name in session.modules_completed
+                         else "in_progress" if name == task.name
+                         else "pending"}
+                        for name in all_module_names
+                    ]
+                })
+
                 branch_result = self._process_module(
                     task, project_dir, target, references, project_bp,
                 )
@@ -436,15 +476,16 @@ class BranchPipelineOrchestrator:
                 result.total_tokens += branch_result.tokens_used
                 result.total_loc += branch_result.total_loc
 
-                # Persist run state after each module
-                run_state.mark_done(
+                # V3: End turn (updates session + persists)
+                turn_result = turn.to_result(
                     task.name,
+                    success=branch_result.tsc_errors_final == 0,
                     loc=branch_result.total_loc,
-                    tsc_errors=branch_result.tsc_errors,
-                    tokens=branch_result.tokens_used,
+                    tsc_errors=branch_result.tsc_errors_final,
                     fix_rounds=branch_result.fix_iterations,
                 )
-                run_state.save(project_dir)
+                turn.add_tokens(branch_result.tokens_used)
+                self.state_mgr.end_turn(turn_result)
 
         # 7. Final tsc check on main — fix cross-module errors
         self.git.checkout("main")
@@ -573,6 +614,44 @@ class BranchPipelineOrchestrator:
             except Exception as e:
                 self._log(f"quality report failed: {e}")
 
+        # 10. V3: Extract and store cross-session memories
+        try:
+            from ..engines.knowledge import MemoryExtractor, KnowledgeStore
+            extractor = MemoryExtractor()
+            memory = extractor.extract(session)
+            memory.tsc_errors = result.final_tsc_errors
+            store = KnowledgeStore()
+            store.add(memory)
+            self._log(f"extracted {len(memory.learnings)} learnings → knowledge store")
+        except Exception as e:
+            self._log(f"memory extraction failed: {e}")
+
+        # 11. V3: Compact session history if needed
+        try:
+            from ..engines.compact import ContextCompactor
+            compactor = ContextCompactor()
+            if compactor.should_compact(session):
+                summary = compactor.compact(session)
+                if summary:
+                    self._log(f"compacted history: {summary[:80]}...")
+        except Exception:
+            pass
+
+        # 12. V3: Final plan update
+        self.tool_router.dispatch("update_plan", {
+            "steps": [
+                {"step": f"Generate {name}", "status": "completed" if name in session.modules_completed else "pending"}
+                for name in all_module_names
+            ]
+        })
+
+        # 13. V3: Guardian stats
+        if hasattr(self, 'guardian'):
+            stats = self.guardian.stats
+            if stats["total"] > 0:
+                self._log(f"guardian: {stats['approved']} approved, {stats['asked']} asked, {stats['denied']} denied")
+
+        self.state_mgr.save()
         return result
 
     def _process_module(self, task: ModuleTask, project_dir: Path,

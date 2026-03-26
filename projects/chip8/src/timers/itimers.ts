@@ -1,7 +1,7 @@
 export interface ITimers {
-  tick60Hz(): void;
+  tick(): void;
   getDelay(): number;
-  setDelay(val: number): void;
+  setDelay(value: number): void;
   getSound(): number;
-  setSound(val: number): void;
+  setSound(value: number): void;
 }

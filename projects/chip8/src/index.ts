@@ -1,7 +1,7 @@
 // z86 engine — public API
-export * from './display';
-export * from './keypad';
 export * from './memory';
+export * from './display';
+export * from './input';
 export * from './timers';
 export * from './cpu';
-export * from './debugger';
+export * from './frontend';

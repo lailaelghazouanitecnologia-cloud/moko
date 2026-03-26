@@ -35,11 +35,11 @@ from .plan import (
     Discussion, DiscussionPoint, RegisteredInsight,
     AbstractionResult, FeatureDecision,
 )
-from .vm import BlockVM
+from ..xvm.vm import BlockVM
 from .blueprint import ModuleBlueprint, TypeBlueprint
 from .translator import BlueprintTranslator
-from .emission import EmissionIndex
-from .density import DensityAnalyzer
+from ..tools.emission import EmissionIndex
+from ..tools.density import DensityAnalyzer
 from ..engines.blueprint.composer import BlueprintComposer
 from ..engines.blueprint.extractor import SourceExtractor
 from ..engines.blueprint.project import ProjectBlueprint, game_engine_project

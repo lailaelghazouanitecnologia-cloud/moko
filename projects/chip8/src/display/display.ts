@@ -1,86 +1,83 @@
 import { IDisplay } from './idisplay';
 
 export class Display implements IDisplay {
-  readonly width = 64;
-  readonly height = 32;
-  private readonly video: Uint8Array;
-  private scale: number;
+  private readonly buffer: Uint8Array;
+  public readonly width: number;
+  public readonly height: number;
 
-  constructor(scale = 10) {
-    if (!Number.isInteger(scale) || scale <= 0) {
-      throw new RangeError('Scale must be a positive integer');
-    }
-    this.video = new Uint8Array(this.width * this.height);
-    this.scale = scale;
+  constructor() {
+    this.width = 64;
+    this.height = 32;
+    this.buffer = new Uint8Array((this.width * this.height) >> 3);
   }
 
-  clear(): void {
-    this.video.fill(0);
+  public clear(): void {
+    this.buffer.fill(0);
   }
 
-  drawSprite(x: number, y: number, bytes: Uint8Array, n: number): number {
-    if (!Number.isInteger(n) || n < 0 || n > bytes.length) {
-      throw new RangeError('n must be an integer between 0 and bytes.length');
-    }
-    if (!Number.isInteger(x) || x < 0 || x >= this.width) {
-      throw new RangeError(`x must be an integer between 0 and ${this.width - 1}`);
-    }
-    if (!Number.isInteger(y) || y < 0 || y >= this.height) {
-      throw new RangeError(`y must be an integer between 0 and ${this.height - 1}`);
+  public draw_sprite(x: number, y: number, height: number, bytes: Uint8Array): number {
+    if (height < 0 || height > bytes.length) {
+      throw new RangeError('height must be 0..bytes.length');
     }
 
     let collision = 0;
-    for (let row = 0; row < n; row++) {
-      const byte = bytes[row];
-      for (let col = 0; col < 8; col++) {
-        const bit = (byte >> (7 - col)) & 1;
-        if (bit === 0) continue;
-        const px = (x + col) % this.width;
+    for (let row = 0; row < height; row++) {
+      const byte = bytes[row] ?? 0;
+      for (let bit = 0; bit < 8; bit++) {
+        const pixel = (byte >> (7 - bit)) & 1;
+        if (pixel === 0) continue;
+        const px = (x + bit) % this.width;
         const py = (y + row) % this.height;
         const idx = py * this.width + px;
-        const old = this.video[idx];
-        this.video[idx] ^= 1;
-        if (old === 1 && this.video[idx] === 0) collision = 1;
+        const byteIdx = idx >> 3;
+        const bitIdx = 7 - (idx & 7);
+        const oldBit = (this.buffer[byteIdx] >> bitIdx) & 1;
+        if (oldBit === 1) collision = 1;
+        this.buffer[byteIdx] ^= (1 << bitIdx);
       }
     }
     return collision;
   }
 
-  getPixel(x: number, y: number): 0 | 1 {
+  public get_pixel(x: number, y: number): number {
     if (!Number.isInteger(x) || x < 0 || x >= this.width) {
-      throw new RangeError(`x must be an integer between 0 and ${this.width - 1}`);
+      throw new RangeError('x must be an integer 0..width-1');
     }
     if (!Number.isInteger(y) || y < 0 || y >= this.height) {
-      throw new RangeError(`y must be an integer between 0 and ${this.height - 1}`);
+      throw new RangeError('y must be an integer 0..height-1');
     }
     const idx = y * this.width + x;
-    return this.video[idx] as 0 | 1;
+    const byteIdx = idx >> 3;
+    const bitIdx = 7 - (idx & 7);
+    return (this.buffer[byteIdx] >> bitIdx) & 1;
   }
 
-  getImageData(): ImageData {
-    const imageData = new ImageData(this.width * this.scale, this.height * this.scale);
-    for (let py = 0; py < this.height; py++) {
-      for (let px = 0; px < this.width; px++) {
-        const pixel = this.getPixel(px, py);
-        const color = pixel === 1 ? 255 : 0;
-        for (let dy = 0; dy < this.scale; dy++) {
-          for (let dx = 0; dx < this.scale; dx++) {
-            const idx = ((py * this.scale + dy) * (this.width * this.scale) + (px * this.scale + dx)) * 4;
-            imageData.data[idx] = color;
-            imageData.data[idx + 1] = color;
-            imageData.data[idx + 2] = color;
-            imageData.data[idx + 3] = 255;
-          }
-        }
-      }
+  public set_pixel(x: number, y: number, val: number): void {
+    if (!Number.isInteger(x) || x < 0 || x >= this.width) {
+      throw new RangeError('x must be an integer 0..width-1');
     }
-    return imageData;
+    if (!Number.isInteger(y) || y < 0 || y >= this.height) {
+      throw new RangeError('y must be an integer 0..height-1');
+    }
+    const idx = y * this.width + x;
+    const byteIdx = idx >> 3;
+    const bitIdx = 7 - (idx & 7);
+    const mask = 1 << bitIdx;
+    if (val === 0) {
+      this.buffer[byteIdx] &= ~mask;
+    } else {
+      this.buffer[byteIdx] |= mask;
+    }
   }
 
-  setScale(scale: number): void {
-    if (!Number.isInteger(scale) || scale <= 0) {
-      throw new RangeError('Scale must be a positive integer');
+  public get_buffer(): Uint8Array {
+    return new Uint8Array(this.buffer);
+  }
+
+  public set_buffer(buffer: Uint8Array): void {
+    if (buffer.length !== this.buffer.length) {
+      throw new RangeError(`buffer length must be exactly ${this.buffer.length}`);
     }
-    this.scale = scale;
+    this.buffer.set(buffer);
   }
 }

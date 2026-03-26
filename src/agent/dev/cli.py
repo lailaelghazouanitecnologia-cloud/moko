@@ -110,7 +110,7 @@ def _cmd_quality_score(args):
 def _cmd_density(args):
     """Handle --density: run density analysis."""
     from pathlib import Path
-    from .density import DensityAnalyzer
+    from ..tools.density import DensityAnalyzer
     from .. import OUT_DIR
 
     project_dir = Path("projects") / args.density
@@ -554,7 +554,7 @@ def cmd_duel(args: argparse.Namespace):
         )
     else:
         # Type-level duel (with refs)
-        from .duel import DuelRunner
+        from ..duel.runner import DuelRunner
         if not args.module or not args.types:
             print("Type-level duel requires: -m MODULE --types TYPE1 TYPE2")
             sys.exit(1)

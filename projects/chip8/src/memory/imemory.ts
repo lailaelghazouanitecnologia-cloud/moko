@@ -1,8 +1,5 @@
 export interface IMemory {
-  readonly ram: Uint8Array;
+  load_rom(data: Uint8Array): void;
   read(addr: number): number;
-  write(addr: number, val: number): void;
-  loadRom(data: Uint8Array): void;
-  getState(): { ram: Uint8Array };
-  setState(state: { ram: Uint8Array }): void;
+  write(addr: number, byte: number): void;
 }

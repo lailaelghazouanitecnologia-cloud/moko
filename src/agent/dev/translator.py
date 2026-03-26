@@ -66,7 +66,7 @@ from .. import OUT_DIR
 
 from .blueprint import ModuleBlueprint, TypeBlueprint
 from .compaction import needs_compaction, prepare_translation_context
-from .emission import EmissionIndex
+from ..tools.emission import EmissionIndex
 
 
 def _extract_rich_api(code: str, type_name: str, file_path: str) -> str:

@@ -1,64 +1,40 @@
 import { ITimers } from './itimers';
 
 export class Timers implements ITimers {
-  private delayTimer: number;
-  private soundTimer: number;
-  private readonly audioCtx: AudioContext;
-  private oscillator: OscillatorNode | null = null;
-  private gainNode: GainNode | null = null;
+  private delay_timer: number;
+  private sound_timer: number;
 
   constructor() {
-    this.delayTimer = 0;
-    this.soundTimer = 0;
-    this.audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+    this.delay_timer = 0;
+    this.sound_timer = 0;
   }
 
-  tick60Hz(): void {
-    if (this.delayTimer > 0) this.delayTimer--;
-    if (this.soundTimer > 0) {
-      this.soundTimer--;
-      if (this.soundTimer === 0) this.stopTone();
+  tick(): void {
+    if (this.delay_timer > 0) {
+      this.delay_timer--;
     }
+    if (this.sound_timer > 0) {
+      this.sound_timer--;
+    }
+  }
+
+  setDelay(value: number): void {
+    this.delay_timer = value & 0xFF;
   }
 
   getDelay(): number {
-    return this.delayTimer;
+    return this.delay_timer;
   }
 
-  setDelay(val: number): void {
-    this.delayTimer = val & 0xFF;
+  setSound(value: number): void {
+    this.sound_timer = value & 0xFF;
   }
 
   getSound(): number {
-    return this.soundTimer;
+    return this.sound_timer;
   }
 
-  setSound(val: number): void {
-    this.soundTimer = val & 0xFF;
-    if (this.soundTimer > 0) this.startTone();
-  }
-
-  startTone(): void {
-    if (this.oscillator) return;
-    this.oscillator = this.audioCtx.createOscillator();
-    this.gainNode = this.audioCtx.createGain();
-    this.oscillator.type = 'square';
-    this.oscillator.frequency.value = 60;
-    this.gainNode.gain.value = 0.1;
-    this.oscillator.connect(this.gainNode);
-    this.gainNode.connect(this.audioCtx.destination);
-    this.oscillator.start();
-  }
-
-  stopTone(): void {
-    if (this.oscillator) {
-      this.oscillator.stop();
-      this.oscillator.disconnect();
-      this.oscillator = null;
-    }
-    if (this.gainNode) {
-      this.gainNode.disconnect();
-      this.gainNode = null;
-    }
+  isBeeping(): boolean {
+    return this.sound_timer > 0;
   }
 }

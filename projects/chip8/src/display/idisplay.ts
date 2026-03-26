@@ -1,9 +1,9 @@
 export interface IDisplay {
   readonly width: number;
   readonly height: number;
-
   clear(): void;
-  drawSprite(x: number, y: number, bytes: Uint8Array, n: number): number;
-  getPixel(x: number, y: number): 0 | 1;
-  getImageData(): ImageData;
+  draw_sprite(x: number, y: number, height: number, bytes: Uint8Array): number;
+  get_pixel(x: number, y: number): number;
+  set_pixel(x: number, y: number, val: number): void;
+  get_framebuffer(): Uint8Array;
 }
