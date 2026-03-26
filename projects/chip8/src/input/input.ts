@@ -1,55 +1,54 @@
 import { IInput } from './iinput';
-import { Uint8 } from '../display/idisplay';
 
 /**
- * Tracks the state of 16 hexadecimal keys (0–F).
- * Provides synchronous polling (`isPressed`), asynchronous blocking (`waitKey`),
- * and explicit press/release events (`keyDown`/`keyUp`).
+ * 16-key keypad state manager.
+ * Provides synchronous access to key states and blocking wait for key press.
  */
 export class Input implements IInput {
-  private readonly keys: boolean[];
+  private readonly _keyStates: boolean[];
 
   constructor() {
-    this.keys = new Array<boolean>(16).fill(false);
+    this._keyStates = new Array(16).fill(false);
   }
 
-  isPressed(key: Uint8): boolean {
-    if (!Number.isInteger(key) || key < 0 || key > 15) {
-      throw new RangeError('Key index must be an integer between 0 and 15');
+  get keyStates(): ReadonlyArray<boolean> {
+    return this._keyStates;
+  }
+
+  isPressed(key: number): boolean {
+    if (!Number.isInteger(key)) {
+      throw new TypeError(`Key index must be an integer, got ${typeof key}`);
     }
-    return this.keys[key];
+    if (key < 0 || key > 15) {
+      throw new RangeError(`Key index must be between 0 and 15, got ${key}`);
+    }
+    return this._keyStates[key];
   }
 
-  waitKey(): Promise<Uint8> {
-    return new Promise<Uint8>((resolve) => {
-      const checkKey = (): void => {
-        for (let i = 0; i < 16; i++) {
-          if (this.keys[i]) {
-            resolve(i as Uint8);
-            return;
-          }
+  waitForPress(): number {
+    // eslint-disable-next-line no-constant-condition
+    while (true) {
+      for (let i = 0; i < 16; i++) {
+        if (this._keyStates[i]) {
+          return i;
         }
-        requestAnimationFrame(checkKey);
-      };
-      checkKey();
-    });
+      }
+    }
   }
 
-  keyDown(key: Uint8): void {
-    if (!Number.isInteger(key) || key < 0 || key > 15) {
-      throw new RangeError('Key index must be an integer between 0 and 15');
+  setKeyState(key: number, pressed: boolean): void {
+    if (!Number.isInteger(key)) {
+      throw new TypeError(`Key index must be an integer, got ${typeof key}`);
     }
-    this.keys[key] = true;
-  }
-
-  keyUp(key: Uint8): void {
-    if (!Number.isInteger(key) || key < 0 || key > 15) {
-      throw new RangeError('Key index must be an integer between 0 and 15');
+    if (key < 0 || key > 15) {
+      throw new RangeError(`Key index must be between 0 and 15, got ${key}`);
     }
-    this.keys[key] = false;
+    this._keyStates[key] = pressed;
   }
 
   reset(): void {
-    this.keys.fill(false);
+    for (let i = 0; i < 16; i++) {
+      this._keyStates[i] = false;
+    }
   }
 }

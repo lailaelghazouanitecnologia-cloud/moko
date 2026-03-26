@@ -1,5 +1,5 @@
 export interface ISound {
+  update(): void;
   start(): void;
   stop(): void;
-  setFrequency(hz: number): void;
 }

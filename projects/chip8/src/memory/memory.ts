@@ -1,46 +1,41 @@
 import { IMemory } from './imemory';
 
-type Uint16 = number;
-type Uint8 = number;
-
-/**
- * CHIP-8 4096-byte RAM with ROM loading and font storage.
- * Memory layout:
- * - 0x000-0x1FF: Interpreter (font data occupies 0x000-0x04F)
- * - 0x200-0xFFF: Program ROM and work RAM
- */
 export class Memory implements IMemory {
   private readonly ram: Uint8Array;
 
   constructor() {
     this.ram = new Uint8Array(4096);
-    this.loadFont();
   }
 
-  read(address: Uint16): Uint8 {
-    if (address > 0xFFF) {
-      throw new RangeError(`Address 0x${address.toString(16)} out of range (max 0xFFF)`);
+  read(address: number): number {
+    if (!Number.isInteger(address)) {
+      throw new TypeError(`Address must be an integer: ${address}`);
     }
-    return this.ram[address & 0xFFF];
+    if (address < 0 || address > 0xFFF) {
+      throw new RangeError(`Memory address out of bounds: 0x${address.toString(16).padStart(3, '0')}`);
+    }
+    return this.ram[address];
   }
 
-  write(address: Uint16, value: Uint8): void {
-    if (address > 0xFFF) {
-      throw new RangeError(`Address 0x${address.toString(16)} out of range (max 0xFFF)`);
+  write(address: number, value: number): void {
+    if (!Number.isInteger(address)) {
+      throw new TypeError(`Address must be an integer: ${address}`);
     }
-    this.ram[address & 0xFFF] = value & 0xFF;
-  }
-
-  loadROM(data: Uint8Array): void {
-    if (data.length > 3584) {
-      throw new RangeError('ROM size exceeds maximum 3584 bytes');
+    if (!Number.isInteger(value)) {
+      throw new TypeError(`Value must be an integer: ${value}`);
     }
-    this.ram.set(data, 0x200);
+    if (address < 0 || address > 0xFFF) {
+      throw new RangeError(`Memory address out of bounds: 0x${address.toString(16).padStart(3, '0')}`);
+    }
+    if (value < 0 || value > 0xFF) {
+      throw new RangeError(`Value out of bounds: ${value}`);
+    }
+    this.ram[address] = value;
   }
 
   /**
-   * Copy the built-in 4x5 font sprites into memory at 0x000.
-   * Each sprite is 5 bytes tall; 16 sprites occupy 0x000-0x04F.
+   * Loads the built-in hexadecimal font sprites into memory starting at address 0x000.
+   * Each character is 5 bytes tall, representing a 4x5 pixel sprite.
    */
   loadFont(): void {
     const fontData = new Uint8Array([
@@ -61,11 +56,19 @@ export class Memory implements IMemory {
       0xF0, 0x80, 0xF0, 0x80, 0xF0, // E
       0xF0, 0x80, 0xF0, 0x80, 0x80  // F
     ]);
-    this.ram.set(fontData, 0x000);
+    
+    for (let i = 0; i < fontData.length; i++) {
+      this.ram[i] = fontData[i];
+    }
   }
 
-  reset(): void {
-    this.ram.fill(0);
-    this.loadFont();
+  loadROM(data: Uint8Array): void {
+    if (data.length > 3584) {
+      throw new RangeError(`ROM too large: ${data.length} bytes (max 3584)`);
+    }
+    
+    for (let i = 0; i < data.length; i++) {
+      this.ram[0x200 + i] = data[i];
+    }
   }
 }
