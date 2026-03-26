@@ -66,6 +66,9 @@ class SessionState:
     # Knowledge injection (from memories engine)
     injected_memories: List[str] = field(default_factory=list)
 
+    # Block tracking (serialized block summaries per module)
+    blocks: List[Dict[str, Any]] = field(default_factory=list)
+
     # Turn counter
     turn_count: int = 0
 
@@ -110,6 +113,21 @@ class SessionState:
         if len(self.history) > 100:
             self.history = self.history[-100:]
 
+    def record_blocks(self, module_blocks: list):
+        """Record completed blocks from a module run."""
+        for b in module_blocks:
+            self.blocks.append({
+                "index": b.index,
+                "type": b.block_type.value,
+                "objective": b.objective,
+                "status": b.status.value,
+                "branch": b.branch_name,
+                "files_changed": b.files_changed or [],
+                "tokens_used": b.tokens_used,
+                "output": (b.output or "")[:200],
+                "hash": b.hash or "",
+            })
+
     def history_summary(self, max_entries: int = 20) -> str:
         """Compact summary of recent history for context injection."""
         recent = self.history[-max_entries:]
@@ -142,6 +160,7 @@ class SessionState:
             "invariants": self.invariants,
             "injected_memories": self.injected_memories,
             "history": [asdict(h) for h in self.history[-50:]],  # Save last 50
+            "blocks": self.blocks[-200:],  # Save last 200 blocks
         }
         path.write_text(json.dumps(data, indent=2))
 
@@ -170,6 +189,7 @@ class SessionState:
                 functional_spec=data.get("functional_spec", ""),
                 invariants=data.get("invariants", []),
                 injected_memories=data.get("injected_memories", []),
+                blocks=data.get("blocks", []),
             )
             for h_data in data.get("history", []):
                 state.history.append(HistoryEntry(**h_data))

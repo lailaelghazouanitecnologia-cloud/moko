@@ -85,16 +85,17 @@ def _cmd_quality_score(args):
     extractor = ProfileExtractor()
     profile = extractor.extract_project(str(project_dir), name=args.score)
 
-    print(f"{'━' * 70}")
-    print(f"  QUALITY REPORT: {args.score}")
-    print(f"{'━' * 70}")
-    print(f"  Files: {profile.total_files}  LOC: {profile.total_loc}")
+    W = 70
+    print(f"{'━' * W}")
+    print(f"  ava quality ─ {args.score}")
+    print(f"{'━' * W}")
+    print(f"  {profile.total_files} files · {profile.total_loc:,} LOC")
     print()
     _print_profile_report(profile)
 
     rules = StyleRules.load(project_dir)
     if rules.has_custom_rules():
-        print(f"\n  Style Rules: loaded from .ava/")
+        print(f"\n  style: .ava/ rules loaded")
         src_dir = project_dir / "src" if (project_dir / "src").exists() else project_dir
         total_violations = 0
         for ts_file in src_dir.rglob("*.ts"):
@@ -104,10 +105,10 @@ def _cmd_quality_score(args):
             for v in violations[:3]:
                 print(f"    {v}")
         if total_violations > 0:
-            print(f"    ... {total_violations} total violations")
+            print(f"    +{total_violations} violations")
     else:
-        print(f"\n  No .ava/ style rules (run: ava dev --init {args.score})")
-    print(f"{'━' * 70}")
+        print(f"\n  (no .ava/ rules ─ run: ava dev --init {args.score})")
+    print(f"{'━' * W}")
 
 
 def _cmd_density(args):
@@ -128,20 +129,43 @@ def _cmd_density(args):
         print("No modules analyzed.")
         return
 
-    print(f"{'━' * 66}")
-    print(f"  DENSITY REPORT: {args.density}")
-    print(f"{'━' * 66}")
+    W = 66
+    print(f"{'━' * W}")
+    print(f"  ava density ─ {args.density}")
+    print(f"{'━' * W}")
+    print(f"  {'module':<14} {'density':>8}  {'LOC':>5}  bar")
+    print(f"  {'─' * 50}")
     for mod_d in densities:
-        print(mod_d.format())
+        d = mod_d.avg_density
+        print(f"  {mod_d.module_name:<14} {d:>7.0%}  {mod_d.total_lines:>5}  {_bar(d, 15)}")
     avg = sum(d.avg_density for d in densities) / len(densities)
     total_loc = sum(d.total_lines for d in densities)
-    print(f"{'─' * 66}")
-    print(f"  Overall: density={avg:.0%}, {total_loc} LOC")
-    print(f"{'━' * 66}")
+    print(f"  {'─' * 50}")
+    print(f"  {'total':<14} {avg:>7.0%}  {total_loc:>5}")
+    print(f"{'━' * W}")
+
+
+def _bar(value: float, width: int = 20, filled: str = "█", empty: str = "░") -> str:
+    """Render a progress bar."""
+    n = int(value * width)
+    return filled * n + empty * (width - n)
+
+
+def _sparkline(values: list, width: int = 8) -> str:
+    """Render a mini sparkline from values."""
+    if not values:
+        return ""
+    chars = "▁▂▃▄▅▆▇█"
+    mn, mx = min(values), max(values)
+    rng = mx - mn if mx != mn else 1
+    # Sample down to width
+    step = max(1, len(values) // width)
+    sampled = values[::step][:width]
+    return "".join(chars[min(int((v - mn) / rng * 7), 7)] for v in sampled)
 
 
 def _cmd_inspect(args):
-    """Handle --inspect: show complete run introspection."""
+    """Handle --inspect: visual run introspection."""
     from pathlib import Path
     import json
 
@@ -150,116 +174,175 @@ def _cmd_inspect(args):
         print(f"Project not found: {project_dir}")
         sys.exit(1)
 
-    print(f"{'━' * 70}")
-    print(f"  INSPECT: {args.inspect}")
-    print(f"{'━' * 70}")
+    W = 70
+    print(f"{'━' * W}")
+    print(f"  ava inspect ─ {args.inspect}")
+    print(f"{'━' * W}")
 
     # Session state
     session_file = project_dir / ".session_state.json"
+    s = {}
     if session_file.exists():
         s = json.loads(session_file.read_text())
-        print(f"\n  SESSION {s.get('session_id', '?')}")
-        print(f"    Goal: {s.get('goal', '?')}")
-        print(f"    Status: {len(s.get('modules_completed', []))}/{len(s.get('module_order', []))} modules")
-        print(f"    Tokens: {s.get('total_tokens', 0):,} | LOC: {s.get('total_loc', 0)}")
-        print(f"    Turn count: {s.get('turn_count', 0)}")
+        done = len(s.get("modules_completed", []))
+        total = len(s.get("module_order", []))
+        pct = done / max(total, 1)
+        tokens = s.get("total_tokens", 0)
+        loc = s.get("total_loc", 0)
+        budget = s.get("token_budget", 500_000)
+        tok_pct = tokens / max(budget, 1)
 
-        # History
-        history = s.get("history", [])
-        if history:
-            print(f"\n  HISTORY ({len(history)} events):")
-            for h in history[-15:]:
-                mod = f"[{h.get('module', '')}] " if h.get('module') else ""
-                print(f"    T{h.get('turn', '?')} {mod}{h.get('kind', '?')}: {h.get('detail', '')[:60]}")
+        print(f"\n  {s.get('goal', '?')}")
+        print(f"  ┌─ modules  {_bar(pct, 15)} {done}/{total}")
+        print(f"  ├─ tokens   {_bar(tok_pct, 15)} {tokens:,}/{budget:,}")
+        print(f"  └─ output   {loc:,} LOC  T{s.get('turn_count', 0)} turns")
 
-        # Injected knowledge
+        # Knowledge
         memories = s.get("injected_memories", [])
         if memories:
-            total_chars = sum(len(m) for m in memories)
-            print(f"\n  KNOWLEDGE: {total_chars} chars injected from previous runs")
+            print(f"  ┊  knowledge: {sum(len(m) for m in memories):,} chars injected")
     else:
-        print(f"\n  No session state found (.session_state.json)")
+        print(f"\n  (no session state)")
 
-    # Workspace state
-    project_yaml = project_dir / "project.yaml"
-    if project_yaml.exists():
-        try:
-            import yaml
-            ws_data = yaml.safe_load(project_yaml.read_text())
-            workspaces = ws_data.get("workspaces", [])
-            if workspaces:
-                print(f"\n  WORKSPACES ({len(workspaces)}):")
-                for ws in workspaces:
-                    status = ws.get("status", "?").upper()
-                    bl = ws.get("baseline", {})
-                    loc = bl.get("loc", 0)
-                    errors = bl.get("tsc_errors", 0)
-                    proposals = ws.get("improvements_proposed", 0)
-                    print(f"    {ws.get('name', '?'):<15} [{status:<10}] "
-                          f"{loc} LOC, {errors} errors, {proposals} proposals")
-        except Exception:
-            pass
-
-    # Pipeline report
+    # Pipeline report — modules table
     report_file = project_dir / "pipeline-report.json"
     if report_file.exists():
         try:
             r = json.loads(report_file.read_text())
             branches = r.get("branches", [])
             if branches:
-                print(f"\n  MODULES ({len(branches)}):")
+                print(f"\n  {'module':<14} {'LOC':>5}  {'TSC':>7}  {'tok':>8}  quality")
+                print(f"  {'─' * 55}")
+                token_vals = []
                 for b in branches:
-                    status = "✓" if b.get("tsc_final", 0) == 0 else "⚠"
-                    print(f"    {status} {b.get('module', '?'):<15} "
-                          f"{b.get('loc', 0):>5} LOC  "
-                          f"TSC: {b.get('tsc_initial', 0)}→{b.get('tsc_final', 0)}  "
-                          f"tokens: {b.get('tokens', 0):,}")
-            print(f"\n  TOTAL: {r.get('total_loc', 0)} LOC, "
-                  f"{r.get('total_tokens', 0):,} tokens, "
-                  f"{r.get('elapsed_s', 0):.0f}s")
+                    ok = b.get("tsc_final", 0) == 0
+                    icon = "✓" if ok else "✗"
+                    tsc = f"{b.get('tsc_initial', 0)}→{b.get('tsc_final', 0)}"
+                    tok = b.get("tokens", 0)
+                    token_vals.append(tok)
+                    # Quality bar from LOC ratio (rough proxy)
+                    loc = b.get("loc", 0)
+                    q = min(loc / 200, 1.0) if loc else 0
+                    print(f"  {icon} {b.get('module', '?'):<12} {loc:>5}  {tsc:>7}  "
+                          f"{tok:>7,}  {_bar(q, 8)}")
+                if token_vals:
+                    print(f"  {'─' * 55}")
+                    total_loc = r.get("total_loc", 0)
+                    total_tok = r.get("total_tokens", 0)
+                    elapsed = r.get("elapsed_s", 0)
+                    print(f"  Σ {total_loc:,} LOC  {total_tok:,} tok  "
+                          f"{elapsed:.0f}s  {_sparkline(token_vals)}")
         except Exception:
             pass
 
-    # Health
+    # Health — compact
     try:
         from ..engines.analysis import ProjectAnalyzer
         analyzer = ProjectAnalyzer(project_dir)
         health = analyzer.analyze()
-        print(f"\n  HEALTH: {health.score():.0f}/100")
+        score = health.score()
+        print(f"\n  health {_bar(score / 100, 20)} {score:.0f}/100")
+        issues = []
         if health.empty_interfaces:
-            print(f"    ⚠ {len(health.empty_interfaces)} empty interfaces")
+            issues.append(f"{len(health.empty_interfaces)} empty-iface")
         if health.missing_di:
-            print(f"    ⚠ {len(health.missing_di)} missing DI")
+            issues.append(f"{len(health.missing_di)} no-DI")
         if health.dead_exports:
-            print(f"    ⚠ {len(health.dead_exports)} dead exports")
-        print(f"    cohesion: {health.cohesion_score:.2f} | "
-              f"any: {health.total_any} | as_any: {health.total_as_any}")
+            issues.append(f"{len(health.dead_exports)} dead-export")
+        if health.total_any:
+            issues.append(f"{health.total_any} any")
+        if issues:
+            print(f"         {' · '.join(issues)}")
     except Exception:
         pass
 
-    # Config used
+    # Config — one line
     try:
         from ..core.runtime_config import RuntimeConfig
         config = RuntimeConfig.from_project(project_dir)
-        print(f"\n  CONFIG:")
-        print(f"    Provider: {config.provider}")
-        print(f"    Root model: {config.get_model('root')}")
-        print(f"    Worker model: {config.get_model('worker')}")
-        print(f"    Embedding: {config.embedding_backend}")
-        print(f"    ast-grep: {config.use_ast_grep}")
+        print(f"\n  config: {config.provider}/{config.get_model('root')} "
+              f"emb={config.embedding_backend} ast-grep={'on' if config.use_ast_grep else 'off'}")
     except Exception:
         pass
 
-    # Blueprints
+    # Blocks — visual chain
+    blocks_data = s.get("blocks", [])
+    if blocks_data:
+        print(f"\n  blocks ({len(blocks_data)})")
+        # Group by module
+        by_module = {}
+        for bd in blocks_data:
+            branch = bd.get("branch", "?")
+            by_module.setdefault(branch, []).append(bd)
+
+        for branch, bds in by_module.items():
+            icons = []
+            total_tok = 0
+            for bd in bds:
+                st = bd.get("status", "")
+                btype = bd.get("type", "?")[0]  # First letter: A, I, R, T...
+                if st == "completed":
+                    icons.append(f"[{btype}]")
+                elif st == "failed":
+                    icons.append(f"({btype})")
+                else:
+                    icons.append(f" {btype} ")
+                total_tok += bd.get("tokens_used", 0)
+            chain_str = "→".join(icons)
+            # Extract module name from branch (e.g., "mod/memory" → "memory")
+            mod = branch.split("/")[-1] if "/" in branch else branch
+            print(f"  {mod:<12} {chain_str}  {total_tok:,} tok")
+
+        # Compact chain preview (what LLM receives)
+        try:
+            from ..core.models import Block, BlockType, BlockStatus
+            blocks = []
+            for bd in blocks_data[-20:]:  # Last 20 blocks
+                b = Block(
+                    index=bd.get("index", 0),
+                    block_type=BlockType(bd.get("type", "IMPLEMENT")),
+                    objective=bd.get("objective", ""),
+                    branch_name=bd.get("branch", ""),
+                )
+                b.status = BlockStatus(bd.get("status", "pending"))
+                b.files_changed = bd.get("files_changed", [])
+                b.tokens_used = bd.get("tokens_used", 0)
+                b.output = bd.get("output", "")
+                blocks.append(b)
+            chain = Block.compact_chain(blocks)
+            if chain:
+                chain_lines = chain.split("\n")
+                print(f"\n  llm context ({len(chain)} chars):")
+                for line in chain_lines[:10]:
+                    print(f"  │ {line}")
+                if len(chain_lines) > 10:
+                    print(f"  │ ... +{len(chain_lines) - 10} lines")
+        except Exception:
+            pass
+
+    # Blueprints — just count
     bp_dir = project_dir / "blueprints"
     if bp_dir.exists():
         bps = list(bp_dir.glob("*.yaml"))
         if bps:
-            print(f"\n  BLUEPRINTS ({len(bps)}):")
-            for bp in sorted(bps):
-                print(f"    {bp.name}")
+            names = ", ".join(bp.stem for bp in sorted(bps))
+            print(f"\n  blueprints: {names}")
 
-    print(f"\n{'━' * 70}")
+    # History — compact timeline
+    history = s.get("history", [])
+    if history:
+        print(f"\n  timeline ({len(history)} events)")
+        for h in history[-10:]:
+            mod = h.get("module", "")
+            kind = h.get("kind", "?")
+            detail = h.get("detail", "")[:45]
+            tok = h.get("tokens", 0)
+            icon = {"module_start": "▶", "module_done": "■", "module_failed": "✗",
+                    "fix": "⚡", "quality": "◆", "decision": "◇"}.get(kind, "·")
+            tok_str = f" {tok:,}t" if tok else ""
+            print(f"  {icon} {mod:<12} {detail}{tok_str}")
+
+    print(f"\n{'━' * W}")
 
 
 def _cmd_config(args):

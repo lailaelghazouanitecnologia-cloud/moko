@@ -406,8 +406,14 @@ class BlueprintTranslator:
 
     def translate_type(self, type_bp: TypeBlueprint,
                        module_bp: ModuleBlueprint,
-                       project_dir: Path) -> tuple[str, int, list[str]]:
+                       project_dir: Path,
+                       prior_blocks: list | None = None) -> tuple[str, int, list[str]]:
         """Translate ONE type from blueprint to code. Self-contained call.
+
+        Args:
+            prior_blocks: Completed Blocks from earlier steps in this module.
+                          Injected as compact context (~50 tokens each) to avoid
+                          loading full generated code into the LLM context.
 
         Returns (relative_file_path, tokens_used, references_used).
         """
@@ -526,6 +532,13 @@ class BlueprintTranslator:
             )
             if style_ctx:
                 user += f"\n{style_ctx}\n"
+
+        # 3b. Block chain context — compact summaries of previous steps
+        if prior_blocks:
+            from ..core.models import Block
+            chain_ctx = Block.compact_chain(prior_blocks)
+            if chain_ctx:
+                user += f"\n{chain_ctx}\n"
 
         # 4. Strategy selection — pick the right approach for this type
         target_file = type_bp.target_file or f"{module_bp.target_dir}/{to_kebab_case(type_bp.name)}.ts"

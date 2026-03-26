@@ -774,8 +774,7 @@ class BranchPipelineOrchestrator:
         except Exception:
             module_blocks = []
 
-        print(f"\n    [{task.branch_name}] Generating {task.name} "
-              f"({len(task.types)} types)...")
+        print(f"  ▶ {task.name} ({len(task.types)} types)...")
 
         try:
             # 1. Create branch from main
@@ -787,7 +786,7 @@ class BranchPipelineOrchestrator:
 
             # 2. Generate module code
             self._last_blueprint_source = "llm"  # default
-            tokens = self._generate_module(task, project_dir, target, references, project_bp)
+            tokens = self._generate_module(task, project_dir, target, references, project_bp, module_blocks)
             br.tokens_used = tokens
             br.blueprint_source = self._last_blueprint_source
 
@@ -947,10 +946,10 @@ class BranchPipelineOrchestrator:
             try:
                 prev_block = None
                 for block in module_blocks:
-                    if block.status.value == "pending":
-                        block.status = block.status.__class__("completed")
+                    # Preserve per-step output from _generate_module if already set
+                    existing_output = block.output if block.output else None
                     block.complete(
-                        output=f"{task.name}: {br.total_loc} LOC, {br.tsc_errors_final} errors",
+                        output=existing_output or f"{task.name}: {br.total_loc} LOC, {br.tsc_errors_final} errors",
                         files_changed=block.files_changed,
                         tokens_used=block.tokens_used,
                         prev_block=prev_block,
@@ -970,16 +969,27 @@ class BranchPipelineOrchestrator:
                 if self.verbose:
                     self._log(f"  block chain failed: {e}")
 
-        status_icon = "OK" if br.status == "merged" else "FAIL"
-        print(f"    [{task.branch_name}] {status_icon}: {br.total_loc} LOC, "
-              f"{br.tsc_errors_initial}->{br.tsc_errors_final} errors, "
-              f"{br.fix_iterations} fix rounds, {br.tokens_used:,} tokens")
+            # Persist blocks to session state
+            if hasattr(self, 'state_mgr') and self.state_mgr.session:
+                try:
+                    self.state_mgr.session.record_blocks(module_blocks)
+                    self.state_mgr.save()
+                except Exception:
+                    pass
+
+        ok = br.status == "merged"
+        icon = "✓" if ok else "✗"
+        tsc_str = f"{br.tsc_errors_initial}→{br.tsc_errors_final}"
+        blk_str = f" {len(module_blocks)}blk" if module_blocks else ""
+        print(f"  {icon} {task.name:<14} {br.total_loc:>5} LOC  "
+              f"TSC {tsc_str:<7} {br.fix_iterations} fix  "
+              f"{br.tokens_used:>7,} tok{blk_str}")
 
         return br
 
     def _generate_module(self, task: ModuleTask, project_dir: Path,
                          target: str, references: list[str],
-                         project_bp) -> int:
+                         project_bp, module_blocks: list | None = None) -> int:
         """Generate all types for a module using BlueprintTranslator."""
         # Sync context engine index before generation
         if self.engine:
@@ -1107,15 +1117,39 @@ class BranchPipelineOrchestrator:
         bp_dir.mkdir(parents=True, exist_ok=True)
         bp.save(bp_dir / f"{task.name}.bp.yaml")
 
-        # Translate each type
+        # Update ANALYZE block with blueprint results
+        analyze_blocks = [b for b in (module_blocks or [])
+                          if b.block_type.value == "ANALYZE"]
+        if analyze_blocks:
+            ab = analyze_blocks[0]
+            ab.tokens_used = bp_tokens
+            ab.output = f"Blueprint: {len(bp.types)} types for {task.name}"
+            ab.files_changed = [f"blueprints/{task.name}.bp.yaml"]
+
+        # Translate each type — inject completed blocks as compact context
         total_tokens = bp_tokens
-        for type_bp in bp.types:
+        completed_blocks = list(analyze_blocks)  # Start with ANALYZE as prior context
+        # Map type index → block for tracking
+        impl_blocks = [b for b in (module_blocks or [])
+                       if b.block_type.value == "IMPLEMENT"]
+
+        for type_idx, type_bp in enumerate(bp.types):
             try:
                 file_path, tokens, refs_used = translator.translate_type(
                     type_bp, bp, project_dir,
+                    prior_blocks=completed_blocks if completed_blocks else None,
                 )
                 total_tokens += tokens
                 self._log(f"  translated {type_bp.name} -> {file_path}")
+
+                # Update corresponding IMPLEMENT block with results
+                if type_idx < len(impl_blocks):
+                    blk = impl_blocks[type_idx]
+                    blk.files_changed = [file_path] if file_path else []
+                    blk.tokens_used = tokens
+                    blk.references_used = refs_used or []
+                    blk.output = f"Translated {type_bp.name} → {file_path}"
+                    completed_blocks.append(blk)
 
                 # Update context engine index after each file write
                 if self.engine and file_path:

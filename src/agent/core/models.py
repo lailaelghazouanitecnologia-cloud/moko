@@ -447,6 +447,140 @@ class Block:
         self.output = f"FAILED: {error}"
         self.compute_hash()
 
+    def to_compact_context(self, max_chars: int = 200) -> str:
+        """Compact representation for LLM context injection.
+
+        ~50 tokens instead of full code. Includes what was done,
+        what files changed, what issues found, and key decisions.
+        """
+        parts = [f"Block {self.index} [{self.block_type.value}] {self.objective}"]
+
+        if self.status == BlockStatus.COMPLETED:
+            parts.append(f"  Status: completed ({self.tokens_used} tokens)")
+        elif self.status == BlockStatus.FAILED:
+            parts.append(f"  Status: FAILED")
+        else:
+            parts.append(f"  Status: {self.status.value}")
+
+        if self.files_changed:
+            parts.append(f"  Files: {', '.join(self.files_changed[:5])}")
+
+        if self.quality_score > 0:
+            parts.append(f"  Quality: {self.quality_score:.0%}")
+
+        if self.test_results:
+            parts.append(f"  Tests: {self.test_results}")
+
+        # Key insights from abstraction
+        if self.abstraction:
+            if self.abstraction.achievements:
+                parts.append(f"  Done: {'; '.join(self.abstraction.achievements[:3])}")
+            if self.abstraction.improvements:
+                parts.append(f"  Issues: {'; '.join(self.abstraction.improvements[:3])}")
+
+        # Truncate to max_chars
+        result = "\n".join(parts)
+        if len(result) > max_chars:
+            result = result[:max_chars - 3] + "..."
+        return result
+
+    def to_prompt_md(self) -> str:
+        """Generate a prompt.md file for this Block.
+
+        Contains everything needed to reproduce or understand what happened.
+        Useful for debugging, auditing, and knowledge extraction.
+        """
+        lines = [
+            f"# Block {self.index}: {self.block_type.value}",
+            f"",
+            f"**Objective**: {self.objective}",
+            f"**Status**: {self.status.value}",
+            f"**Branch**: {self.branch_name}",
+            f"**Hash**: {self.hash}",
+            f"**Prev Hash**: {self.prev_hash or 'NONE (first block)'}",
+            f"**Tokens**: {self.tokens_used:,}",
+            f"",
+        ]
+
+        # Meta
+        if self.meta:
+            lines.append("## Metadata")
+            for k, v in self.meta.items():
+                lines.append(f"- {k}: {v}")
+            lines.append("")
+
+        # Files
+        if self.files_changed:
+            lines.append("## Files Changed")
+            for f in self.files_changed:
+                lines.append(f"- {f}")
+            lines.append("")
+
+        # References
+        if self.references_used:
+            lines.append("## References Used")
+            for r in self.references_used:
+                lines.append(f"- {r}")
+            lines.append("")
+
+        # Output summary
+        if self.output:
+            lines.append("## Output")
+            lines.append(f"```")
+            lines.append(self.output[:500])
+            if len(self.output) > 500:
+                lines.append(f"... ({len(self.output)} chars total)")
+            lines.append(f"```")
+            lines.append("")
+
+        # Discussions
+        if self.discussions:
+            lines.append("## Discussions")
+            for d in self.discussions:
+                lines.append(f"- {d.topic}: {d.consensus}")
+            lines.append("")
+
+        # Quality
+        if self.quality_score > 0:
+            lines.append(f"## Quality: {self.quality_score:.0%}")
+
+        # Test results
+        if self.test_results:
+            lines.append("## Test Results")
+            for k, v in self.test_results.items():
+                lines.append(f"- {k}: {v}")
+            lines.append("")
+
+        # Abstraction
+        if self.abstraction:
+            lines.append("## Abstraction")
+            if self.abstraction.achievements:
+                lines.append("### Achievements")
+                for a in self.abstraction.achievements:
+                    lines.append(f"- {a}")
+            if self.abstraction.improvements:
+                lines.append("### Improvements Needed")
+                for i in self.abstraction.improvements:
+                    lines.append(f"- {i}")
+            lines.append("")
+
+        return "\n".join(lines)
+
+    @staticmethod
+    def compact_chain(blocks: list) -> str:
+        """Generate compact context from a chain of blocks.
+
+        For injecting into LLM prompts — shows what happened so far
+        without loading full code/output.
+        """
+        if not blocks:
+            return ""
+        parts = ["## Previous blocks in this module:"]
+        for b in blocks:
+            if b.status == BlockStatus.COMPLETED:
+                parts.append(b.to_compact_context(max_chars=150))
+        return "\n".join(parts)
+
     @property
     def elapsed_s(self) -> float:
         if self.completed_at and self.started_at:
