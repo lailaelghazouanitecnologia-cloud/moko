@@ -2,7 +2,7 @@
 ProjectAnalyzer — deep introspection of generated (or external) projects.
 
 Combines ALL available analysis tools into one comprehensive report:
-  - Roska (lyzed-ts): AST, module graph, O-levels, layers
+  - Roska: AST, module graph, O-levels, layers
   - LiveIndex: imports, exports, call graph, types, dead code
   - QualityEngine: per-file quality metrics (38 features)
   - tsc: compilation errors

@@ -13,7 +13,7 @@ use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
 
 #[derive(ClapParser)]
-#[command(name = "lyzed-ts", about = "Tree-sitter Python analyzer → Roska YAML")]
+#[command(name = "roska", about = "Tree-sitter source analyzer → Roska YAML descriptors")]
 struct Cli {
     /// Root directory of Python package to analyze
     #[arg(short, long)]
@@ -105,7 +105,7 @@ fn real_main() {
         .map(|e| e.path().to_path_buf())
         .collect();
 
-    eprintln!("[lyzed-ts] Found {} {:?} files in {:?}", source_files.len(), lang, cli.input);
+    eprintln!("[roska] Found {} {:?} files in {:?}", source_files.len(), lang, cli.input);
 
     // Build module tree from directory structure
     let mut workspace = match lang {
@@ -121,7 +121,7 @@ fn real_main() {
 
     // Extract opcodes if requested (Depth 3) — Python only for now
     if cli.opcodes && lang == Lang::Python {
-        eprintln!("[lyzed-ts] Extracting opcodes (iterative)...");
+        eprintln!("[roska] Extracting opcodes (iterative)...");
         let mut py_parser = parse::create_parser();
         extract_all_opcodes(&mut workspace, &cli.input, &mut py_parser);
     }
@@ -129,37 +129,37 @@ fn real_main() {
     // Apply O-level filtering
     let o = olevel::OLevel::from_u8(cli.olevel);
     if o != olevel::OLevel::O0 {
-        eprintln!("[lyzed-ts] Applying O{} filter...", cli.olevel);
+        eprintln!("[roska] Applying O{} filter...", cli.olevel);
         olevel::apply_olevel(&mut workspace, o);
     }
 
     // Emit YAML descriptors
     if let Err(e) = emit::emit_workspace(&workspace, &cli.output) {
-        eprintln!("[lyzed-ts] Error emitting YAML: {}", e);
+        eprintln!("[roska] Error emitting YAML: {}", e);
         std::process::exit(1);
     }
 
     // Build and emit MicroGraphs
     if cli.graph || cli.dot {
-        eprintln!("[lyzed-ts] Building workspace graph...");
+        eprintln!("[roska] Building workspace graph...");
         let wg = graph::build_workspace_graph(&workspace);
 
         if cli.graph {
             if let Err(e) = emit::emit_workspace_graph(&wg, &cli.output) {
-                eprintln!("[lyzed-ts] Error emitting graphs: {}", e);
+                eprintln!("[roska] Error emitting graphs: {}", e);
                 std::process::exit(1);
             }
         }
 
         if cli.dot {
             if let Err(e) = dot::emit_dot(&wg, &cli.output) {
-                eprintln!("[lyzed-ts] Error emitting DOT: {}", e);
+                eprintln!("[roska] Error emitting DOT: {}", e);
                 std::process::exit(1);
             }
         }
 
         eprintln!(
-            "[lyzed-ts] Graph: {} module graphs, {} meta-nodes, {} meta-edges",
+            "[roska] Graph: {} module graphs, {} meta-nodes, {} meta-edges",
             wg.module_graphs.len(),
             wg.meta_graph.stats.node_count,
             wg.meta_graph.stats.edge_count,
@@ -167,7 +167,7 @@ fn real_main() {
     }
 
     eprintln!(
-        "[lyzed-ts] Done: {} modules, {} files, {} total lines → {:?}",
+        "[roska] Done: {} modules, {} files, {} total lines → {:?}",
         workspace.modules.len(),
         workspace.total_files,
         workspace.total_lines,
@@ -195,7 +195,7 @@ fn extract_module_opcodes(
         let source = match std::fs::read_to_string(&file_path) {
             Ok(s) => s,
             Err(e) => {
-                eprintln!("[lyzed-ts] Warning: cannot read {}: {}", file_path.display(), e);
+                eprintln!("[roska] Warning: cannot read {}: {}", file_path.display(), e);
                 continue;
             }
         };
@@ -203,7 +203,7 @@ fn extract_module_opcodes(
         let tree = match parser.parse(&source, None) {
             Some(t) => t,
             None => {
-                eprintln!("[lyzed-ts] Warning: failed to parse {}", file_path.display());
+                eprintln!("[roska] Warning: failed to parse {}", file_path.display());
                 continue;
             }
         };

@@ -282,7 +282,7 @@ pub fn emit_workspace_graph(wg: &WorkspaceGraph, out_dir: &Path) -> Result<(), S
     }
 
     eprintln!(
-        "[lyzed-ts] Graphs: meta.yaml + {} module graphs → {:?}",
+        "[roska] Graphs: meta.yaml + {} module graphs → {:?}",
         wg.module_graphs.len(),
         graph_dir
     );

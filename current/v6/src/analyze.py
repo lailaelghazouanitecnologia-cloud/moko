@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """
-Roska LLM Analyzer — feeds lyzed-ts YAML descriptors to Groq/Kimi K2
+Roska LLM Analyzer — feeds roska YAML descriptors to Groq/Kimi K2
 for intelligent codebase analysis.
 
 Usage:
     # First generate descriptors:
-    lyzed-ts -i /path/to/repo -o /tmp/output -n project --graph --dot --olevel 2
+    roska -i /path/to/repo -o /tmp/output -n project --graph --dot --olevel 2
 
     # Then analyze with LLM:
     python analyze.py /tmp/output "What is the architecture of this project?"
@@ -86,7 +86,7 @@ PRESETS = {
 # ── Load descriptors ───────────────────────────────────────────────
 
 def load_descriptors(output_dir: str, max_tokens: int = 12000) -> str:
-    """Load YAML descriptors from lyzed-ts output, respecting token budget."""
+    """Load YAML descriptors from roska output, respecting token budget."""
     output_dir = Path(output_dir)
     parts = []
     total_chars = 0
@@ -263,9 +263,9 @@ def analyze(descriptors: str, question: str, model: str = MODEL) -> dict:
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Analyze lyzed-ts YAML descriptors with Groq LLM"
+        description="Analyze roska YAML descriptors with Groq LLM"
     )
-    parser.add_argument("output_dir", help="Directory with lyzed-ts YAML output")
+    parser.add_argument("output_dir", help="Directory with roska YAML output")
     parser.add_argument("question", nargs="?", help="Free-form question about the codebase")
     parser.add_argument(
         "--mode", "-m",

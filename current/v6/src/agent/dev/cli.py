@@ -707,7 +707,7 @@ def cmd_intel(args: argparse.Namespace):
             # Check if Roska descriptors exist
             ref_dir = OUT_DIR / project_name
             if not ref_dir.exists():
-                print(f"No Roska descriptors for '{project_name}'. Run: lyzed-ts -i <repo> -o out -n {project_name}")
+                print(f"No Roska descriptors for '{project_name}'. Run: roska -i <repo> -o out -n {project_name}")
                 continue
 
             # Generate

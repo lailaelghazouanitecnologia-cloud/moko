@@ -28,7 +28,7 @@ pub fn emit_dot(wg: &WorkspaceGraph, out_dir: &Path) -> Result<(), String> {
         .map_err(|e| format!("Failed to write combined.dot: {}", e))?;
 
     eprintln!(
-        "[lyzed-ts] DOT: workspace.dot + {} module graphs + combined.dot → {:?}",
+        "[roska] DOT: workspace.dot + {} module graphs + combined.dot → {:?}",
         wg.module_graphs.len(),
         out_dir
     );

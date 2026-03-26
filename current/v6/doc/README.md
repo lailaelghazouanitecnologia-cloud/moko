@@ -43,7 +43,7 @@ python ava dev "Build x86 VM emulator with CPU, ALU, decoder, memory, I/O" -t x8
                      └──────────┬───────────────────┬──────────────┘
                                 │                   │
               ┌─────────────────▼──────┐   ┌───────▼──────────────────────┐
-              │  lyzed-ts (Rust)       │   │  Agent System (Python)       │
+              │  Roska (Rust)       │   │  Agent System (Python)       │
               │  tree-sitter parsing   │   │  LLM-driven code generation  │
               │  → YAML descriptors    │   │  → TypeScript projects       │
               └────────────────────────┘   └──────────────────────────────┘
@@ -58,7 +58,7 @@ moko/
 ├── ava                              ← CLI principal (Python script)
 ├── projects.json                    ← Registro de 23 proyectos analizados
 ├── src/
-│   ├── Cargo.toml                   ← Rust crate "lyzed-ts"
+│   ├── Cargo.toml                   ← Rust crate "Roska"
 │   ├── src/                         ← Rust engine (4,533 LOC)
 │   │   ├── main.rs          (426)   ← CLI + workspace builder
 │   │   ├── parse.rs         (940)   ← Python parser (tree-sitter)
@@ -289,7 +289,7 @@ Workers con asyncio queues para ejecucion paralela.
 
 ---
 
-## 5. Rust Engine — lyzed-ts (4,533 LOC)
+## 5. Rust Engine — Roska (4,533 LOC)
 
 Parsea codigo fuente con tree-sitter y genera descriptores YAML.
 
@@ -334,7 +334,7 @@ Store, Load, FieldAccess, Yield, Await, Assert, Br, Label
 # Registrar proyecto
 python ava add my-project /path/to/repo
 
-# Generar descriptores (usa lyzed-ts internamente)
+# Generar descriptores (usa Roska internamente)
 python ava refresh my-project
 
 # Listar proyectos registrados
@@ -429,7 +429,7 @@ LiveIndex(file_states) → FileState(imports, signatures, types, issues)
 
 ## 10. Limitaciones Actuales
 
-1. **Solo Python y TypeScript** como lenguajes de entrada para lyzed-ts
+1. **Solo Python y TypeScript** como lenguajes de entrada para Roska
 2. **Solo genera TypeScript** como lenguaje de salida
 3. **Opcodes solo para Python** — TypeScript sin extraccion de opcodes
 4. **Budget de tokens es estimacion** — usa chars/4, no un tokenizer real

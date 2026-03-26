@@ -31,7 +31,7 @@ proyectos de referencia, no de la imaginacion del LLM.
        │ subprocess                           │ Python directo
        ▼                                      ▼
 ┌────────────────┐          ┌──────────────────────────────────────┐
-│ lyzed-ts       │          │        Agent System (Python)          │
+│ Roska       │          │        Agent System (Python)          │
 │ (Rust binary)  │          │                                       │
 │                │          │  ┌────────┐ ┌────────┐ ┌──────────┐  │
 │ tree-sitter    │ YAML     │  │ core/  │ │  dev/  │ │ engines/ │  │
@@ -50,7 +50,7 @@ proyectos de referencia, no de la imaginacion del LLM.
 
 ---
 
-## 3. lyzed-ts — El Motor Rust (4,533 LOC)
+## 3. Roska — El Motor Rust (4,533 LOC)
 
 Parsea repositorios con tree-sitter y genera descriptores YAML.
 
@@ -59,7 +59,7 @@ Codigo fuente (.py, .ts)
     │
     ▼
 ┌────────────────────────────┐
-│  lyzed-ts                   │
+│  Roska                   │
 │  9 modulos Rust:            │
 │  parse.rs     (940) Python  │
 │  parse_ts.rs  (908) TS      │
