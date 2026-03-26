@@ -54,8 +54,150 @@ def register_subparser(subparsers: argparse._SubParsersAction):
                    help="Run rich quality analysis on a project")
 
 
+def _cmd_init_style(args):
+    """Handle --init: initialize .ava/ style config."""
+    from pathlib import Path
+    from ..engines.quality.style_rules import StyleRules
+
+    project_dir = Path("projects") / args.init
+    project_dir.mkdir(parents=True, exist_ok=True)
+    StyleRules.generate_template(project_dir)
+    print(f"Initialized .ava/ style config in {project_dir}")
+    print(f"  .ava/style.yaml    — edit style preferences")
+    print(f"  .ava/rules/        — add rule files (*.md)")
+    print(f"  ava.md             — free-form project instructions")
+
+
+def _cmd_quality_score(args):
+    """Handle --score: run rich quality analysis."""
+    from pathlib import Path
+    from ..engines.quality.learned_scorer import ProfileExtractor
+    from ..engines.quality.style_rules import StyleRules
+
+    project_dir = Path("projects") / args.score
+    if not project_dir.exists():
+        print(f"Project not found: {project_dir}")
+        sys.exit(1)
+
+    extractor = ProfileExtractor()
+    profile = extractor.extract_project(str(project_dir), name=args.score)
+
+    print(f"{'━' * 70}")
+    print(f"  QUALITY REPORT: {args.score}")
+    print(f"{'━' * 70}")
+    print(f"  Files: {profile.total_files}  LOC: {profile.total_loc}")
+    print()
+    _print_profile_report(profile)
+
+    rules = StyleRules.load(project_dir)
+    if rules.has_custom_rules():
+        print(f"\n  Style Rules: loaded from .ava/")
+        src_dir = project_dir / "src" if (project_dir / "src").exists() else project_dir
+        total_violations = 0
+        for ts_file in src_dir.rglob("*.ts"):
+            code = ts_file.read_text()
+            violations = rules.validate_code(code, str(ts_file.relative_to(project_dir)))
+            total_violations += len(violations)
+            for v in violations[:3]:
+                print(f"    {v}")
+        if total_violations > 0:
+            print(f"    ... {total_violations} total violations")
+    else:
+        print(f"\n  No .ava/ style rules (run: ava dev --init {args.score})")
+    print(f"{'━' * 70}")
+
+
+def _cmd_density(args):
+    """Handle --density: run density analysis."""
+    from pathlib import Path
+    from .density import DensityAnalyzer
+    from .. import OUT_DIR
+
+    project_dir = Path("projects") / args.density
+    bp_dir = project_dir / "blueprints"
+    if not bp_dir.exists():
+        print(f"No blueprints found: {bp_dir}")
+        sys.exit(1)
+
+    analyzer = DensityAnalyzer(project_dir, OUT_DIR)
+    densities = analyzer.analyze_project(bp_dir)
+    if not densities:
+        print("No modules analyzed.")
+        return
+
+    print(f"{'━' * 66}")
+    print(f"  DENSITY REPORT: {args.density}")
+    print(f"{'━' * 66}")
+    for mod_d in densities:
+        print(mod_d.format())
+    avg = sum(d.avg_density for d in densities) / len(densities)
+    total_loc = sum(d.total_lines for d in densities)
+    print(f"{'─' * 66}")
+    print(f"  Overall: density={avg:.0%}, {total_loc} LOC")
+    print(f"{'━' * 66}")
+
+
+def _cmd_eval_report(args):
+    """Handle --eval-report."""
+    from pathlib import Path
+    from .branch import Project
+    from .evaluation import format_eval_report
+
+    project_file = Path("projects") / args.eval_report / "project.json"
+    if not project_file.exists():
+        print(f"No project found: {project_file}")
+        sys.exit(1)
+    project = Project.load(project_file)
+    print(format_eval_report(project))
+
+
+def _estimate_scope(args):
+    """Estimate project scope via ProjectAdvisor. Returns (scope, project_bp)."""
+    from ..engines.blueprint.advisor import ProjectAdvisor
+    from pathlib import Path
+
+    advisor_db = str(Path("projects") / ".advisor_history.jsonl")
+    advisor = ProjectAdvisor(db_path=advisor_db)
+    scope = advisor.estimate(args.goal, references=args.ref)
+    print(f"[advisor] {scope.summary()}")
+
+    project_bp = None
+    if scope.mode == "strict":
+        project_bp = advisor.to_blueprint(scope, args.target, args.goal)
+        if project_bp and project_bp.total_types == 0:
+            if scope.category == "game_engine":
+                from ..engines.blueprint.project import game_engine_project
+                project_bp = game_engine_project(args.target, args.goal)
+        if project_bp:
+            print(f"  → strict blueprint: {project_bp.total_types} types, "
+                  f"{len(project_bp.layers)} layers")
+    elif scope.mode == "guide":
+        project_bp = advisor.to_blueprint(scope, args.target, args.goal)
+        if project_bp:
+            bp_path = Path("projects") / args.target / "project.bp.yaml"
+            bp_path.parent.mkdir(parents=True, exist_ok=True)
+            project_bp.save(bp_path)
+            print(f"  → guide blueprint: {len(project_bp.layers)} modules suggested, "
+                  f"LLM decides types")
+    else:
+        from ..engines.blueprint.project import generate_project_blueprint
+        from ..llm.providers import LLMProvider
+        bp_llm = LLMProvider(provider=args.provider, model=args.model)
+        project_bp = generate_project_blueprint(args.goal, args.target, bp_llm)
+        if project_bp:
+            bp_path = Path("projects") / args.target / "project.bp.yaml"
+            bp_path.parent.mkdir(parents=True, exist_ok=True)
+            project_bp.save(bp_path)
+            print(f"  → free blueprint (LLM): {project_bp.total_types} types, "
+                  f"{len(project_bp.layers)} layers")
+        else:
+            print("  → no blueprint, using non-layered LLM plan")
+
+    return scope, project_bp
+
+
 def cmd_dev(args: argparse.Namespace):
-    """Execute dev command."""
+    """Execute dev command. Dispatches to sub-handlers."""
     from .supervisor import DevSupervisor
     from .. import OUT_DIR
 
@@ -66,111 +208,18 @@ def cmd_dev(args: argparse.Namespace):
         "budget_chars": args.budget,
     }
 
-    # Style init
+    # Dispatch to sub-commands (each is a separate function)
     if args.init:
-        from pathlib import Path
-        from ..engines.quality.style_rules import StyleRules
-
-        project_dir = Path("projects") / args.init
-        project_dir.mkdir(parents=True, exist_ok=True)
-        StyleRules.generate_template(project_dir)
-        print(f"Initialized .ava/ style config in {project_dir}")
-        print(f"  .ava/style.yaml    — edit style preferences")
-        print(f"  .ava/rules/        — add rule files (*.md)")
-        print(f"  ava.md             — free-form project instructions")
-        return
-
-    # Rich quality score
+        return _cmd_init_style(args)
     if args.score:
-        from pathlib import Path
-        from ..engines.quality.learned_scorer import ProfileExtractor, LearnedScorer, CodeProfile
-        from ..engines.quality.style_rules import StyleRules
-
-        project_dir = Path("projects") / args.score
-        if not project_dir.exists():
-            print(f"Project not found: {project_dir}")
-            sys.exit(1)
-
-        extractor = ProfileExtractor()
-        profile = extractor.extract_project(str(project_dir), name=args.score)
-
-        print(f"{'━' * 70}")
-        print(f"  QUALITY REPORT: {args.score}")
-        print(f"{'━' * 70}")
-        print(f"  Files: {profile.total_files}  LOC: {profile.total_loc}")
-        print()
-
-        # Print metrics by category
-        _print_profile_report(profile)
-
-        # Check style rules
-        rules = StyleRules.load(project_dir)
-        if rules.has_custom_rules():
-            print(f"\n  Style Rules: loaded from .ava/")
-            # Validate code against rules
-            src_dir = project_dir / "src" if (project_dir / "src").exists() else project_dir
-            total_violations = 0
-            for ts_file in src_dir.rglob("*.ts"):
-                code = ts_file.read_text()
-                violations = rules.validate_code(code, str(ts_file.relative_to(project_dir)))
-                total_violations += len(violations)
-                for v in violations[:3]:  # show first 3 per file
-                    print(f"    {v}")
-            if total_violations > 0:
-                print(f"    ... {total_violations} total violations")
-        else:
-            print(f"\n  No .ava/ style rules (run: ava dev --init {args.score})")
-
-        print(f"{'━' * 70}")
-        return
-
-    # Density analysis
+        return _cmd_quality_score(args)
     if args.density:
-        from pathlib import Path
-        from .density import DensityAnalyzer
-
-        project_dir = Path("projects") / args.density
-        bp_dir = project_dir / "blueprints"
-        if not bp_dir.exists():
-            print(f"No blueprints found: {bp_dir}")
-            sys.exit(1)
-
-        analyzer = DensityAnalyzer(project_dir, OUT_DIR)
-        densities = analyzer.analyze_project(bp_dir)
-
-        if not densities:
-            print("No modules analyzed.")
-            return
-
-        print(f"{'━' * 66}")
-        print(f"  DENSITY REPORT: {args.density}")
-        print(f"{'━' * 66}")
-        for mod_d in densities:
-            print(mod_d.format())
-        avg = sum(d.avg_density for d in densities) / len(densities)
-        total_loc = sum(d.total_lines for d in densities)
-        print(f"{'─' * 66}")
-        print(f"  Overall: density={avg:.0%}, {total_loc} LOC")
-        print(f"{'━' * 66}")
-        return
-
-    # Evaluation report
+        return _cmd_density(args)
     if args.eval_report:
-        from pathlib import Path
-        from .branch import Project
-        from .evaluation import format_eval_report
+        return _cmd_eval_report(args)
 
-        project_file = Path("projects") / args.eval_report / "project.json"
-        if not project_file.exists():
-            print(f"No project found: {project_file}")
-            sys.exit(1)
-
-        project = Project.load(project_file)
-        print(format_eval_report(project))
-        return
-
-    # List plans
     supervisor = DevSupervisor(config)
+
     if args.plans:
         plans = supervisor.list_plans()
         if not plans:
@@ -183,7 +232,6 @@ def cmd_dev(args: argparse.Namespace):
                   f"{p['blocks']:>6} {p['tokens']:>8,}")
         return
 
-    # Resume plan
     if args.resume:
         plan_path = OUT_DIR / ".plans" / f"{args.resume}.json"
         if not plan_path.exists():
@@ -192,39 +240,27 @@ def cmd_dev(args: argparse.Namespace):
         supervisor.resume(plan_path)
         return
 
-    # Eval-only mode (skip main, just run evaluations)
     if args.eval_only:
         if not args.target:
             print("Error: --target (-t) is required for --eval-only")
             sys.exit(1)
-
         from pathlib import Path
         from .manager import DevManager
-
         config["max_parallel"] = args.max_parallel
         manager = DevManager(config)
-
         eval_yaml = Path(args.eval_file) if args.eval_file else None
-        manager.run_eval_only(
-            target=args.target,
-            references=args.ref or None,
-            eval_yaml=eval_yaml,
-        )
+        manager.run_eval_only(target=args.target, references=args.ref or None, eval_yaml=eval_yaml)
         return
 
-    # New plan
     if not args.goal:
         print("Usage: ava dev \"goal\" -t target [-r ref1 ref2 ...]")
-        print("       ava dev \"goal\" -t target --eval")
-        print("       ava dev --eval-only -t target")
-        print("       ava dev --eval-report PROJECT")
-        print("       ava dev --plans")
-        print("       ava dev --resume PLAN_ID")
+        print("       ava dev --plans | --resume ID | --eval-report PROJECT")
         sys.exit(1)
-
     if not args.target:
         print("Error: --target (-t) is required")
         sys.exit(1)
+
+    scope, project_bp = _estimate_scope(args)
 
     # Intelligent project scope estimation via ProjectAdvisor
     from ..engines.blueprint.advisor import ProjectAdvisor
