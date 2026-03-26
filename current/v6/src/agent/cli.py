@@ -1,6 +1,9 @@
 """
 CLI — ava agent subcommand + interactive REPL.
 
+Modern terminal experience inspired by Claude Code / Gemini CLI.
+Streaming display, markdown rendering, spinner, compact status.
+
 Usage:
     ava agent "What is the architecture of cline?"
     ava agent -p cline-core "architecture?"
@@ -8,15 +11,28 @@ Usage:
     ava agent --index               # build vector index
     ava agent --index --embedding voyage
 """
+from __future__ import annotations
 
-import argparse
-import json
 import sys
 import time
+import threading
 from pathlib import Path
 
-from . import OUT_DIR, REGISTRY_PATH, VECTORDB_PATH
+from . import OUT_DIR, REGISTRY_PATH, VECTORDB_PATH, __version__
 from .supervisor import Supervisor, _available_projects
+from .views.theme import (
+    bold, dim, muted, accent, error, success, warning,
+    CYAN, GREEN, GRAY, RESET, COLORS_ENABLED, clear_line,
+)
+from .views.banner import welcome, farewell
+from .views.spinner import Spinner
+from .views.markdown import render as md_render
+from .views.status import format_status
+
+
+# ── Prompt ──────────────────────────────────────────────────
+
+_PROMPT = f"{CYAN}>{RESET} " if COLORS_ENABLED else "> "
 
 
 def register_subparser(subparsers):
@@ -43,6 +59,8 @@ def register_subparser(subparsers):
     return p
 
 
+# ── Entry point ─────────────────────────────────────────────
+
 def cmd_agent(args):
     """Entry point for `ava agent`."""
     if args.index:
@@ -59,7 +77,7 @@ def cmd_agent(args):
     try:
         supervisor = Supervisor(config)
     except Exception as e:
-        print(f"Error initializing agent: {e}", file=sys.stderr)
+        print(error(f"  Error initializing agent: {e}"), file=sys.stderr)
         sys.exit(1)
 
     show_report = not getattr(args, 'no_report', False)
@@ -67,190 +85,274 @@ def cmd_agent(args):
     if args.interactive:
         _interactive_loop(supervisor, args, show_report)
     elif args.query:
-        projects = args.project or _available_projects()
-        result = supervisor.run(args.query, projects, verbose=args.verbose)
-        print(result)
-        if show_report and supervisor.last_report:
-            print(f"\n{supervisor.last_report.format()}")
+        _one_shot(supervisor, args, show_report)
     else:
-        print("Provide a query or use --interactive/-i for REPL mode")
-        print("Examples:")
-        print('  ava agent "What is the architecture of cline?"')
-        print('  ava agent -p crewai "architecture?"')
-        print('  ava agent -i')
-        print('  ava agent --index')
+        print(f"\n  {bold('ava agent')} — Code intelligence agent\n")
+        print(f"  {muted('Usage:')}")
+        q1 = accent('"What is the architecture of cline?"')
+        q2 = accent('"architecture?"')
+        print(f"    ava agent {q1}")
+        print(f"    ava agent -p crewai {q2}")
+        print(f"    ava agent {accent('-i')}              {muted('# interactive REPL')}")
+        print(f"    ava agent {accent('--index')}         {muted('# build vector index')}")
+        print()
 
 
-def _build_index(args):
-    """Build the vector index from all descriptors."""
-    from .vectorstore.embeddings import EmbeddingProvider
-    from .vectorstore.indexer import Indexer
+# ── One-shot query ──────────────────────────────────────────
 
-    print(f"[moko] Building vector index...")
-    print(f"  Embedding: {args.embedding}")
-    print(f"  DB path:   {VECTORDB_PATH}")
-    print(f"  Source:     {OUT_DIR}")
-    print()
-
-    projects = args.project or None
-
-    t0 = time.time()
-    try:
-        embedder = EmbeddingProvider(args.embedding)
-        indexer = Indexer(str(VECTORDB_PATH), embedder)
-        total = indexer.index_all(OUT_DIR, projects=projects, verbose=True)
-        elapsed = time.time() - t0
-        print(f"\n[moko] Index built: {total} chunks in {elapsed:.1f}s")
-    except ImportError as e:
-        print(f"Error: {e}", file=sys.stderr)
-        print("Install required packages:", file=sys.stderr)
-        print("  pip install lancedb sentence-transformers", file=sys.stderr)
-        sys.exit(1)
-    except Exception as e:
-        print(f"Error building index: {e}", file=sys.stderr)
-        sys.exit(1)
-
-
-def _interactive_loop(supervisor: Supervisor, args, show_report: bool):
-    """REPL with session commands."""
+def _one_shot(supervisor: Supervisor, args, show_report: bool):
+    """Handle a single query, print result, exit."""
     projects = args.project or _available_projects()
 
-    print(f"[moko] Agent ready. Session {supervisor.session.session_id}")
-    print(f"[moko] {len(supervisor.agents)} agents | {len(projects)} projects")
-    print(f"[moko] Provider: {args.provider} | Model: {supervisor.llm.model}")
+    spinner = Spinner("Thinking")
+    spinner.start()
+    try:
+        result = supervisor.run(args.query, projects, verbose=args.verbose)
+    finally:
+        spinner.stop()
 
+    # Render with markdown
+    print()
+    print(md_render(result))
+
+    # Compact status
+    if show_report and supervisor.last_report:
+        rpt = supervisor.last_report
+        print(format_status(
+            total_tokens=rpt.total_tokens,
+            elapsed_s=rpt.elapsed_s,
+            agents_used=rpt.agents_used,
+            is_estimated=rpt.is_estimated,
+        ))
+    print()
+
+
+# ── Interactive REPL ────────────────────────────────────────
+
+def _interactive_loop(supervisor: Supervisor, args, show_report: bool):
+    """REPL with streaming feel, markdown rendering, session commands."""
+    projects = args.project or _available_projects()
+
+    # Index info
+    index_chunks = 0
     if supervisor.vector_store and supervisor.vector_store.is_indexed():
-        count = supervisor.vector_store.count()
-        print(f"[moko] Vector index: {count} chunks")
-    else:
-        print(f"[moko] Vector index: not built (run: ava agent --index)")
+        index_chunks = supervisor.vector_store.count()
 
-    print(f"[moko] Type /help for commands.\n")
+    # Welcome banner
+    print()
+    print(welcome(
+        provider=args.provider,
+        model=supervisor.llm.model,
+        project_count=len(projects),
+        agent_count=len(supervisor.agents),
+        index_chunks=index_chunks,
+    ))
 
     while True:
         try:
-            query = input("you> ").strip()
+            query = input(_PROMPT).strip()
         except (EOFError, KeyboardInterrupt):
-            print("\n[moko] Session ended.")
+            print(farewell())
             break
 
         if not query:
             continue
 
         if query.startswith("/"):
-            _handle_session_command(query, supervisor)
+            _handle_command(query, supervisor, show_report)
             continue
 
+        # Run query with spinner
+        spinner = Spinner("Thinking")
+        spinner.start()
         try:
             result = supervisor.run(query, projects, verbose=args.verbose)
-            print(f"\n{result}")
-
-            # Always show usage report in REPL
-            if show_report and supervisor.last_report:
-                print(f"\n{supervisor.last_report.format()}")
-            print()
+        except KeyboardInterrupt:
+            spinner.stop()
+            print(f"\n  {warning('Cancelled.')}\n")
+            continue
         except Exception as e:
-            print(f"\n[error] {e}\n")
+            spinner.stop()
+            print(f"\n  {error(str(e))}\n")
+            continue
+        finally:
+            spinner.stop()
+
+        # Render response
+        print()
+        print(md_render(result))
+
+        # Compact status line
+        if show_report and supervisor.last_report:
+            rpt = supervisor.last_report
+            print(format_status(
+                total_tokens=rpt.total_tokens,
+                elapsed_s=rpt.elapsed_s,
+                agents_used=rpt.agents_used,
+                is_estimated=rpt.is_estimated,
+            ))
+        print()
 
 
-def _handle_session_command(cmd: str, supervisor: Supervisor):
-    """Handle /snapshot, /branch, /rollback, /branches, /history, /report, /help."""
+# ── Session commands ────────────────────────────────────────
+
+def _handle_command(cmd: str, supervisor: Supervisor, show_report: bool):
+    """Handle /snapshot, /branch, /report, /help, etc."""
     parts = cmd.split()
     command = parts[0].lower()
 
-    if command == "/snapshot":
+    if command == "/help":
+        _show_help()
+
+    elif command == "/report":
+        if supervisor.last_report:
+            print(f"\n{supervisor.last_report.format()}\n")
+        else:
+            print(f"  {muted('No report yet — run a query first.')}")
+
+    elif command == "/agents":
+        print()
+        for name, agent in supervisor.agents.items():
+            print(f"  {accent(name):20s} {muted(agent.description)}")
+        print()
+
+    elif command == "/projects":
+        print()
+        for p in _available_projects():
+            print(f"  {p}")
+        print()
+
+    elif command == "/history":
+        print()
+        for t in supervisor.session.turns[-10:]:
+            tokens = t.token_usage.get("total_tokens", "?")
+            est = " ~" if t.token_usage.get("is_estimated", True) else ""
+            print(f"  {muted(t.id)} {t.task_type}: {t.query[:50]}... {dim(f'[{tokens}{est} tok]')}")
+        print()
+
+    elif command == "/snapshot":
         label = parts[1] if len(parts) > 1 else "manual"
         snap_id = supervisor.session.snapshot(label)
-        print(f"  [session] Snapshot {snap_id} ({label})")
+        print(f"  {success('Snapshot')} {snap_id} ({label})")
 
     elif command == "/branch":
         if len(parts) < 2:
-            print("  Usage: /branch <name> [snapshot_id]")
+            print(f"  {muted('Usage: /branch <name> [snapshot_id]')}")
             return
         name = parts[1]
         from_snap = parts[2] if len(parts) > 2 else None
         try:
             supervisor.session.branch(name, from_snap)
-            print(f"  [session] Switched to branch '{name}'")
+            print(f"  {success('Switched to branch')} {accent(name)}")
         except ValueError as e:
-            print(f"  [error] {e}")
+            print(f"  {error(str(e))}")
 
     elif command == "/switch":
         if len(parts) < 2:
-            print("  Usage: /switch <branch_name>")
+            print(f"  {muted('Usage: /switch <branch_name>')}")
             return
         try:
             supervisor.session.switch_branch(parts[1])
-            print(f"  [session] Switched to '{parts[1]}'")
+            print(f"  {success('Switched to')} {accent(parts[1])}")
         except ValueError as e:
-            print(f"  [error] {e}")
+            print(f"  {error(str(e))}")
 
     elif command == "/rollback":
         if len(parts) < 2:
-            print("  Usage: /rollback <snapshot_id>")
+            print(f"  {muted('Usage: /rollback <snapshot_id>')}")
             return
         try:
             supervisor.session.rollback(parts[1])
-            print(f"  [session] Rolled back to {parts[1]}")
+            print(f"  {success('Rolled back to')} {parts[1]}")
         except ValueError as e:
-            print(f"  [error] {e}")
+            print(f"  {error(str(e))}")
 
     elif command == "/branches":
+        print()
         for b in supervisor.session.list_branches():
-            marker = "*" if b["is_current"] else " "
-            print(f"  {marker} {b['name']} ({b['turns']} turns)")
+            marker = f"{GREEN}*{RESET}" if b["is_current"] else " "
+            turns = b["turns"]
+            print(f"  {marker} {b['name']} {dim(f'({turns} turns)')}")
+        print()
 
     elif command == "/snapshots":
         branch = parts[1] if len(parts) > 1 else None
+        print()
         for s in supervisor.session.list_snapshots(branch):
-            print(f"  {s['id']} [{s['branch']}] {s['label']} ({s['turns']} turns)")
-
-    elif command == "/history":
-        for t in supervisor.session.turns[-10:]:
-            tokens = t.token_usage.get("total_tokens", "?")
-            est = " (est)" if t.token_usage.get("is_estimated", True) else ""
-            print(f"  [{t.id}] {t.task_type}: {t.query[:50]}... [{tokens}{est} tokens]")
-
-    elif command == "/report":
-        if supervisor.last_report:
-            print(supervisor.last_report.format())
-        else:
-            print("  No report yet — run a query first.")
-
-    elif command == "/agents":
-        for name, agent in supervisor.agents.items():
-            print(f"  {name:12s} {agent.description}")
+            turns = s["turns"]
+            print(f"  {muted(s['id'])} [{accent(s['branch'])}] {s['label']} {dim(f'({turns} turns)')}")
+        print()
 
     elif command == "/prompts":
+        print()
         for meta in supervisor.prompt_registry.list_all():
-            hc = " [hardcoded]" if meta.is_hardcoded else ""
-            print(f"  {meta.id:30s} {','.join(meta.task_types):20s}{hc}")
-
-    elif command == "/projects":
-        for p in _available_projects():
-            print(f"  {p}")
+            hc = f" {dim('[hardcoded]')}" if meta.is_hardcoded else ""
+            print(f"  {meta.id:30s} {muted(','.join(meta.task_types))}{hc}")
+        print()
 
     elif command == "/export":
         path = parts[1] if len(parts) > 1 else str(Path.home() / ".moko" / "session.json")
+        Path(path).parent.mkdir(parents=True, exist_ok=True)
         supervisor.session.save(Path(path))
-        print(f"  [session] Exported to {path}")
-
-    elif command == "/help":
-        print("  Session commands:")
-        print("    /snapshot [label]      Take a snapshot")
-        print("    /branch <name> [snap]  Create branch")
-        print("    /switch <branch>       Switch branch")
-        print("    /rollback <snap_id>    Rollback to snapshot")
-        print("    /branches              List branches")
-        print("    /snapshots [branch]    List snapshots")
-        print("    /history               Show recent turns + token usage")
-        print("    /report                Show last query's usage report")
-        print("    /export [path]         Export session to JSON")
-        print("  Info commands:")
-        print("    /agents                List available agents")
-        print("    /prompts               List registered prompts")
-        print("    /projects              List available projects")
-        print("    /help                  This help")
+        print(f"  {success('Exported to')} {path}")
 
     else:
-        print(f"  Unknown command: {command}. Type /help for commands.")
+        print(f"  {warning('Unknown command:')} {command}. Type {accent('/help')} for commands.")
+
+
+def _show_help():
+    print(f"""
+  {bold('Session')}
+    {accent('/snapshot')} [label]      Save session state
+    {accent('/branch')} <name> [snap]  Branch conversation
+    {accent('/switch')} <branch>       Switch branch
+    {accent('/rollback')} <snap_id>    Restore snapshot
+    {accent('/branches')}              List branches
+    {accent('/snapshots')} [branch]    List snapshots
+    {accent('/history')}               Recent turns + tokens
+    {accent('/export')} [path]         Export session JSON
+
+  {bold('Info')}
+    {accent('/agents')}                Available agents
+    {accent('/prompts')}               Registered prompts
+    {accent('/projects')}              Available projects
+    {accent('/report')}                Full usage report
+    {accent('/help')}                  This help
+""")
+
+
+# ── Vector index builder ────────────────────────────────────
+
+def _build_index(args):
+    """Build the vector index from all descriptors."""
+    from .vectorstore.embeddings import EmbeddingProvider
+    from .vectorstore.indexer import Indexer
+
+    print(f"\n  {bold('Building vector index...')}")
+    print(f"  Embedding: {accent(args.embedding)}")
+    print(f"  DB path:   {muted(str(VECTORDB_PATH))}")
+    print(f"  Source:     {muted(str(OUT_DIR))}")
+    print()
+
+    projects = args.project or None
+
+    spinner = Spinner("Indexing descriptors")
+    spinner.start()
+    t0 = time.time()
+    try:
+        embedder = EmbeddingProvider(args.embedding)
+        indexer = Indexer(str(VECTORDB_PATH), embedder)
+        total = indexer.index_all(OUT_DIR, projects=projects, verbose=True)
+        spinner.stop()
+        elapsed = time.time() - t0
+        print(f"  {success(f'Index built: {total} chunks in {elapsed:.1f}s')}")
+    except ImportError as e:
+        spinner.stop()
+        print(f"  {error(str(e))}", file=sys.stderr)
+        print(f"  {muted('pip install lancedb sentence-transformers')}", file=sys.stderr)
+        sys.exit(1)
+    except Exception as e:
+        spinner.stop()
+        print(f"  {error(f'Error building index: {e}')}", file=sys.stderr)
+        sys.exit(1)
+    print()
