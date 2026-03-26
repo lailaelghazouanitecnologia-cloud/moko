@@ -336,6 +336,11 @@ class Supervisor:
         # Store last usage report for CLI access
         self.last_report: Optional[UsageReport] = None
 
+        # /fast mode state
+        self.fast_mode: bool = False
+        self._response_cache = None  # lazy init
+        self._default_model = self.llm.model  # preserve original model
+
     @property
     def vector_store(self) -> Optional[VectorStore]:
         if self._vector_store is None:
@@ -347,11 +352,50 @@ class Supervisor:
                 self._vector_store = None
         return self._vector_store
 
+    def toggle_fast(self) -> bool:
+        """Toggle /fast mode on/off. Returns new state."""
+        self.fast_mode = not self.fast_mode
+        if self.fast_mode:
+            # Lazy-init response cache
+            if self._response_cache is None:
+                from .engines.cache import ResponseCache
+                embedder = None
+                if self.vector_store and hasattr(self.vector_store, 'embedder'):
+                    embedder = self.vector_store.embedder
+                self._response_cache = ResponseCache(embedder=embedder)
+        return self.fast_mode
+
     def run(self, query: str, projects: list[str] = None,
             verbose: bool = False) -> str:
-        """Main orchestration loop."""
+        """Main orchestration loop.
+
+        In /fast mode, applies 7 optimization layers:
+          1. Semantic cache check
+          2. Model routing (cheap models for simple queries)
+          3. Agent short-circuit (skip unnecessary agents)
+          4. Compact handoff (structured inter-agent data)
+          5. Aggressive prompt compression
+          6. Adaptive max_tokens
+          7. Cache response for future hits
+        """
         t0 = time.time()
         all_projects = projects or _available_projects()
+
+        # ── FAST Layer 1: Cache check ────────────────────────────
+        if self.fast_mode and self._response_cache:
+            hit = self._response_cache.get(query)
+            if hit is not None:
+                elapsed = time.time() - t0
+                self.last_report = UsageReport(
+                    query=query, task_type="cached",
+                    agents_used=hit.agents_used,
+                    total_tokens=0, elapsed_s=round(elapsed, 2),
+                    classification_method="cache",
+                    classification_confidence=1.0,
+                    model=self.llm.model, provider=self.llm.provider,
+                    projects_in_scope=all_projects[:5],
+                )
+                return hit.response
 
         # 1. Snapshot
         if self.session.turns:
@@ -365,9 +409,28 @@ class Supervisor:
                   f"scope={classification.scope[:3]} "
                   f"confidence={classification.confidence:.2f}")
 
+        # ── FAST Layer 2: Model routing ──────────────────────────
+        original_model = self.llm.model
+        routing_reason = "normal"
+        fast_max_tokens = 4096
+        if self.fast_mode:
+            from .core.router import route_model
+            decision = route_model(
+                query, classification.task_type,
+                self.llm.provider, self._default_model,
+                fast_mode=True,
+            )
+            self.llm.model = decision.model
+            fast_max_tokens = decision.max_tokens
+            routing_reason = decision.reason
+            if verbose:
+                print(f"  [fast] {decision.reason}: model={decision.model} "
+                      f"max_tokens={decision.max_tokens}")
+
         # 3. LLM fallback for low-confidence classification
+        # FAST: skip LLM reclassification entirely (save tokens)
         classify_method = "keywords"
-        if classification.confidence < 0.4:
+        if not self.fast_mode and classification.confidence < 0.4:
             classification = self._classify_with_llm(
                 query, all_projects, classification
             )
@@ -386,16 +449,37 @@ class Supervisor:
             llm=self.llm,
             prompt_registry=self.prompt_registry,
             session=self.session,
+            fast_mode=self.fast_mode,
         )
+
+        # ── FAST Layer 3: Agent short-circuit ────────────────────
+        skip_search = False
+        if self.fast_mode:
+            # Skip search for high-confidence simple queries
+            if classification.confidence > 0.8 and classification.task_type != "search":
+                skip_search = True
+            # Skip search for compare (goes direct)
+            if classification.task_type == "compare":
+                skip_search = True
 
         # 5. Pre-search
         results: list[AgentResult] = []
-        if classification.requires_search and "search" in self.agents:
+        if not skip_search and classification.requires_search and "search" in self.agents:
             search_result = self.agents["search"].run(ctx)
             results.append(search_result)
-            ctx.search_context = search_result.content
+
+            # ── FAST Layer 4: Compact handoff ────────────────────
+            if self.fast_mode:
+                from .agents.base import CompactHandoff
+                handoff = CompactHandoff.from_search_result(
+                    search_result.content, search_result.sources)
+                ctx.search_context = handoff.to_context()
+            else:
+                ctx.search_context = search_result.content
+
             if verbose:
-                print(f"  [search] {len(search_result.sources)} sources found")
+                print(f"  [search] {len(search_result.sources)} sources found"
+                      + (" (compact)" if self.fast_mode else ""))
 
         # 6. Dispatch
         primary_name = _TASK_AGENT_MAP.get(classification.task_type, "architect")
@@ -411,16 +495,29 @@ class Supervisor:
             final = primary_result.content
 
         # 7. Synthesize if needed
+        # FAST: skip synthesis (save an LLM call)
         llm_results = [r for r in results if r.usage is not None]
-        if len(llm_results) > 1:
+        if not self.fast_mode and len(llm_results) > 1:
             final = self._synthesize(query, llm_results)
 
         elapsed = time.time() - t0
+
+        # Restore original model after fast routing
+        if self.fast_mode:
+            self.llm.model = original_model
 
         # 8. Build usage report
         self.last_report = self._build_report(
             query, classification, results, elapsed, classify_method
         )
+
+        # ── FAST Layer 7: Cache response ─────────────────────────
+        if self.fast_mode and self._response_cache and final:
+            self._response_cache.put(
+                query, final,
+                agents_used=[r.agent_name for r in results],
+                total_tokens=self.last_report.total_tokens,
+            )
 
         # 9. Record turn
         self.session.record_turn(

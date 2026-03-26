@@ -30,6 +30,50 @@ class AgentContext:
     session: "SessionState"
     search_context: str = ""                # injected by SearchAgent pre-pass
     max_tokens: int = 12000
+    fast_mode: bool = False                 # /fast: token-optimized mode
+
+
+@dataclass
+class CompactHandoff:
+    """Compressed inter-agent handoff for /fast mode.
+
+    Instead of passing raw text between agents, pass structured
+    summaries to save 60-80% of inter-agent tokens.
+    """
+    files: list[str] = field(default_factory=list)
+    types: list[str] = field(default_factory=list)
+    functions: list[str] = field(default_factory=list)
+    key_findings: list[str] = field(default_factory=list)
+    total_lines: int = 0
+    total_sources: int = 0
+
+    def to_context(self) -> str:
+        """Convert to a compact string for LLM context injection."""
+        parts = []
+        if self.files:
+            parts.append(f"Files: {', '.join(self.files[:10])}")
+        if self.types:
+            parts.append(f"Types: {', '.join(self.types[:15])}")
+        if self.functions:
+            parts.append(f"Functions: {', '.join(self.functions[:15])}")
+        if self.key_findings:
+            parts.append("Findings: " + "; ".join(self.key_findings[:5]))
+        if self.total_lines:
+            parts.append(f"Scope: {self.total_lines} LOC across {self.total_sources} files")
+        return "\n".join(parts)
+
+    @classmethod
+    def from_search_result(cls, content: str, sources: list[str]) -> "CompactHandoff":
+        """Extract structured summary from SearchAgent output."""
+        import re
+        types = re.findall(r'\b(?:class|interface|enum|type)\s+(\w+)', content)
+        functions = re.findall(r'\b(?:function|def|async)\s+(\w+)', content)
+        return cls(
+            files=sources[:10],
+            types=types[:15],
+            functions=functions[:15],
+            total_sources=len(sources),
+        )
 
 
 @dataclass

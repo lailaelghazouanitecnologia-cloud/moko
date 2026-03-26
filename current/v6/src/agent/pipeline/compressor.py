@@ -52,6 +52,21 @@ class CompressionPolicy:
     detail_level: int = 1            # 0=overview, 1=names, 2=full
 
     @classmethod
+    def fast(cls) -> "CompressionPolicy":
+        """/fast mode — extreme compression, only essential structure."""
+        return cls(
+            target_tokens=2000,
+            max_tokens_per_file=200,
+            max_sig_length=40,
+            keep_constructor_params=False,
+            drop_defaults=True,
+            drop_detail_block=True,
+            keep_imports=False,
+            keep_calls=False,
+            detail_level=0,
+        )
+
+    @classmethod
     def aggressive(cls) -> "CompressionPolicy":
         """Maximum compression — for large projects or tight budgets."""
         return cls(

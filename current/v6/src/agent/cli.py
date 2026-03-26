@@ -118,11 +118,14 @@ def _one_shot(supervisor: Supervisor, args, show_report: bool):
     # Compact status
     if show_report and supervisor.last_report:
         rpt = supervisor.last_report
+        is_cached = rpt.task_type == "cached"
         print(format_status(
             total_tokens=rpt.total_tokens,
             elapsed_s=rpt.elapsed_s,
             agents_used=rpt.agents_used,
             is_estimated=rpt.is_estimated,
+            fast_mode=supervisor.fast_mode,
+            cached=is_cached,
         ))
     print()
 
@@ -185,11 +188,14 @@ def _interactive_loop(supervisor: Supervisor, args, show_report: bool):
         # Compact status line
         if show_report and supervisor.last_report:
             rpt = supervisor.last_report
+            is_cached = rpt.task_type == "cached"
             print(format_status(
                 total_tokens=rpt.total_tokens,
                 elapsed_s=rpt.elapsed_s,
                 agents_used=rpt.agents_used,
                 is_estimated=rpt.is_estimated,
+                fast_mode=supervisor.fast_mode,
+                cached=is_cached,
             ))
         print()
 
@@ -197,9 +203,17 @@ def _interactive_loop(supervisor: Supervisor, args, show_report: bool):
 # ── Session commands ────────────────────────────────────────
 
 def _handle_command(cmd: str, supervisor: Supervisor, show_report: bool):
-    """Handle /snapshot, /branch, /report, /help, etc."""
+    """Handle /snapshot, /branch, /report, /fast, /help, etc."""
     parts = cmd.split()
     command = parts[0].lower()
+
+    if command == "/fast":
+        is_fast = supervisor.toggle_fast()
+        if is_fast:
+            print(f"  {success('Fast mode: ON')} {muted('(cheap models · cache · compress)')}")
+        else:
+            print(f"  {warning('Fast mode: OFF')} {muted('(full quality)')}")
+        return
 
     if command == "/help":
         _show_help()
@@ -302,6 +316,9 @@ def _handle_command(cmd: str, supervisor: Supervisor, show_report: bool):
 
 def _show_help():
     print(f"""
+  {bold('Mode')}
+    {accent('/fast')}                  Toggle fast mode (cheap · cache · compress)
+
   {bold('Session')}
     {accent('/snapshot')} [label]      Save session state
     {accent('/branch')} <name> [snap]  Branch conversation
