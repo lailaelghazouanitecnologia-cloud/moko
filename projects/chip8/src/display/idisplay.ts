@@ -3,8 +3,7 @@ export interface IDisplay {
   readonly height: number;
 
   clear(): void;
-  draw(x: number, y: number, row: number): boolean;
-  render(): void;
-  getPixel(x: number, y: number): number;
-  setPixel(x: number, y: number, val: number): void;
+  drawSprite(x: number, y: number, bytes: Uint8Array, n: number): number;
+  getPixel(x: number, y: number): 0 | 1;
+  getImageData(): ImageData;
 }

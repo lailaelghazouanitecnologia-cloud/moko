@@ -1,10 +1,7 @@
 export interface ITimers {
-  readonly delayTimer: number;
-  readonly soundTimer: number;
-
   tick60Hz(): void;
-  setDelay(value: number): void;
-  setSound(value: number): void;
   getDelay(): number;
+  setDelay(val: number): void;
   getSound(): number;
+  setSound(val: number): void;
 }

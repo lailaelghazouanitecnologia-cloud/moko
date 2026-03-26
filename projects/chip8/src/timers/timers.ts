@@ -1,46 +1,64 @@
 import { ITimers } from './itimers';
 
 export class Timers implements ITimers {
-  delayTimer: number;
-  soundTimer: number;
+  private delayTimer: number;
+  private soundTimer: number;
+  private readonly audioCtx: AudioContext;
+  private oscillator: OscillatorNode | null = null;
+  private gainNode: GainNode | null = null;
 
   constructor() {
     this.delayTimer = 0;
     this.soundTimer = 0;
+    this.audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
   }
 
-  /**
-   * Decrement both timers at 60 Hz.
-   * Timers are clamped to zero and will not underflow.
-   */
   tick60Hz(): void {
     if (this.delayTimer > 0) this.delayTimer--;
-    if (this.soundTimer > 0) this.soundTimer--;
-  }
-
-  setDelay(value: number): void {
-    if (!Number.isFinite(value)) {
-      throw new TypeError('Delay value must be a finite number');
+    if (this.soundTimer > 0) {
+      this.soundTimer--;
+      if (this.soundTimer === 0) this.stopTone();
     }
-    this.delayTimer = Math.max(0, Math.floor(value)) & 0xFF;
   }
 
   getDelay(): number {
     return this.delayTimer;
   }
 
-  setSound(value: number): void {
-    if (!Number.isFinite(value)) {
-      throw new TypeError('Sound value must be a finite number');
-    }
-    this.soundTimer = Math.max(0, Math.floor(value)) & 0xFF;
+  setDelay(val: number): void {
+    this.delayTimer = val & 0xFF;
   }
 
   getSound(): number {
     return this.soundTimer;
   }
 
-  isBuzzing(): boolean {
-    return this.soundTimer > 0;
+  setSound(val: number): void {
+    this.soundTimer = val & 0xFF;
+    if (this.soundTimer > 0) this.startTone();
+  }
+
+  startTone(): void {
+    if (this.oscillator) return;
+    this.oscillator = this.audioCtx.createOscillator();
+    this.gainNode = this.audioCtx.createGain();
+    this.oscillator.type = 'square';
+    this.oscillator.frequency.value = 60;
+    this.gainNode.gain.value = 0.1;
+    this.oscillator.connect(this.gainNode);
+    this.gainNode.connect(this.audioCtx.destination);
+    this.oscillator.start();
+  }
+
+  stopTone(): void {
+    if (this.oscillator) {
+      this.oscillator.stop();
+      this.oscillator.disconnect();
+      this.oscillator = null;
+    }
+    if (this.gainNode) {
+      this.gainNode.disconnect();
+      this.gainNode = null;
+    }
   }
 }
