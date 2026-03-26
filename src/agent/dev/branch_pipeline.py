@@ -1245,8 +1245,9 @@ class BranchPipelineOrchestrator:
             )
 
             from .translator import TRANSLATE_SYSTEM
+            depth_max = min(getattr(self.llm, 'max_output', 8000), 16384)
             expanded, tokens = translator._llm_call(
-                TRANSLATE_SYSTEM, user_prompt, max_tokens=8000
+                TRANSLATE_SYSTEM, user_prompt, max_tokens=depth_max
             )
             total_tokens += tokens
 

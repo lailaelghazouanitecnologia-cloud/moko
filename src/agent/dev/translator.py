@@ -527,8 +527,9 @@ class BlueprintTranslator:
             if style_ctx:
                 user += f"\n{style_ctx}\n"
 
-        # 4. LLM call — all token budget for this one type
-        max_tok = 12000 if self.rich_mode else 6000
+        # 4. LLM call — use model-aware token budget
+        model_max = getattr(self.llm, 'max_output', 8000)
+        max_tok = min(model_max, 16384) if self.rich_mode else min(model_max, 12000)
         target_file = type_bp.target_file or f"{module_bp.target_dir}/{to_kebab_case(type_bp.name)}.ts"
         system_prompt = self._build_system_prompt(target_file)
         code, tokens = self._llm_call(system_prompt, user, max_tokens=max_tok)

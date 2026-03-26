@@ -50,6 +50,27 @@ _ENV_KEYS = {
     "openai": "OPENAI_API_KEY",
 }
 
+# Model capabilities — context window and max output per model
+_MODEL_CAPS = {
+    # Groq
+    "moonshotai/kimi-k2-instruct-0905": {"context": 262144, "max_output": 16384},
+    "moonshotai/kimi-k2-instruct": {"context": 131072, "max_output": 16384},
+    "llama-3.3-70b-versatile": {"context": 131072, "max_output": 32768},
+    "meta-llama/llama-4-scout-17b-16e-instruct": {"context": 131072, "max_output": 8192},
+    "qwen/qwen3-32b": {"context": 131072, "max_output": 40960},
+    "llama-3.1-8b-instant": {"context": 131072, "max_output": 131072},
+    "openai/gpt-oss-120b": {"context": 131072, "max_output": 65536},
+    # Anthropic
+    "claude-sonnet-4-20250514": {"context": 200000, "max_output": 8192},
+    "claude-opus-4-20250514": {"context": 200000, "max_output": 8192},
+    # OpenAI
+    "gpt-4o": {"context": 128000, "max_output": 16384},
+    "gpt-4o-mini": {"context": 128000, "max_output": 16384},
+}
+
+# Default caps for unknown models
+_DEFAULT_CAPS = {"context": 32000, "max_output": 4096}
+
 
 class LLMProvider:
     """Uniform interface over Groq, Anthropic, OpenAI.
@@ -68,6 +89,21 @@ class LLMProvider:
         self.provider = provider
         self.model = model or _DEFAULT_MODELS.get(provider, "")
         self._client = None
+        self._caps = _MODEL_CAPS.get(self.model, _DEFAULT_CAPS)
+
+    @property
+    def context_window(self) -> int:
+        """Total context window size in tokens."""
+        return self._caps["context"]
+
+    @property
+    def max_output(self) -> int:
+        """Maximum output tokens the model can generate."""
+        return self._caps["max_output"]
+
+    def safe_max_tokens(self, requested: int) -> int:
+        """Clamp requested max_tokens to model's actual limit."""
+        return min(requested, self.max_output)
 
     def _get_client(self):
         """Lazy init — only create client when first needed."""
