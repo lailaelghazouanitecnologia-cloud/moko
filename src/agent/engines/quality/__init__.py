@@ -187,16 +187,24 @@ class QualityEngine:
         db_path: str = "",
         project_name: str = "",
         context_engine: Optional["ContextEngine"] = None,
+        runtime_config=None,
     ):
         self.project_dir = Path(project_dir)
         self.project_name = project_name or self.project_dir.name
         self.db_path = db_path or str(self.project_dir / ".quality_db.jsonl")
 
+        # Read config (from RuntimeConfig or defaults)
+        emb_backend = "auto"
+        self._use_ast_grep = True
+        if runtime_config:
+            emb_backend = getattr(runtime_config, 'embedding_backend', 'auto')
+            self._use_ast_grep = getattr(runtime_config, 'use_ast_grep', True)
+
         # Local JSONL (audit log) + Global SQLite (cross-project learning)
         self.db = QualityDB(self.db_path)
 
-        # Embedder (TF-IDF default, MiniLM if available)
-        self.embedder = build_embedder(EmbedderConfig(backend="auto"))
+        # Embedder — configurable via RuntimeConfig
+        self.embedder = build_embedder(EmbedderConfig(backend=emb_backend))
         self.global_db = GlobalQualityDB(embedding_dim=self.embedder.dimension)
         self._run_id = GlobalQualityDB.new_run_id()
 
@@ -271,7 +279,7 @@ class QualityEngine:
         features = self.extractor.extract(code, filename)
 
         # Override with ast-grep counts (more accurate, no false positives)
-        if HAS_AST_GREP:
+        if HAS_AST_GREP and self._use_ast_grep:
             ast_result = detect_with_ast(code, "typescript")
             if ast_result:
                 features.any_count = ast_result.any_type_count
@@ -378,6 +386,8 @@ class QualityEngine:
                     real_delta = 0.0
                     report.auto_fixes_failed[prediction.action] = \
                         report.auto_fixes_failed.get(prediction.action, 0) + 1
+                    # Escalate if this action fails repeatedly
+                    self._check_strategy_escalation(prediction.action, features_before)
 
                 # Record in both local audit log and global DB
                 self.db.record_quality(
@@ -517,6 +527,19 @@ class QualityEngine:
         return improved_files, report
 
     # ── Auto-fix dispatch ────────────────────────────────────
+
+    def _check_strategy_escalation(self, action: str, features):
+        """If an auto-fix fails repeatedly, escalate to prompt_hint.
+
+        Checks last 30 days of failed attempts for this action.
+        If >=3 failures → mark for upgrade in classifier.
+        """
+        try:
+            failed = self.global_db.count_failed(action, days=30)
+            if failed >= 3:
+                self.classifier.mark_action_for_upgrade(action, "auto", "prompt_hint")
+        except Exception:
+            pass
 
     def _apply_auto_fix(
         self, code: str, prediction: QualityPrediction

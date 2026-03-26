@@ -377,7 +377,10 @@ class BranchPipelineOrchestrator:
         )
 
         # 2b. Initialize quality engine + learn style from references
-        self.quality_engine = QualityEngine(str(project_dir), project_name=target)
+        self.quality_engine = QualityEngine(
+            str(project_dir), project_name=target,
+            runtime_config=getattr(self, 'runtime_config', None),
+        )
         if references:
             for ref in references:
                 ref_dir = self.projects_dir / ref

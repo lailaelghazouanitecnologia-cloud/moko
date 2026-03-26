@@ -299,6 +299,15 @@ class GlobalQualityDB:
         scored.sort(key=lambda x: x[0], reverse=True)
         return scored[:k]
 
+    def count_failed(self, action: str, days: int = 30) -> int:
+        """Count failed auto-fix attempts for an action in recent days."""
+        cutoff = time.time() - days * 86400
+        row = self._conn.execute("""
+            SELECT COUNT(*) FROM quality_records
+            WHERE action = ? AND applied = 0 AND timestamp > ?
+        """, (action, cutoff)).fetchone()
+        return row[0] if row else 0
+
     def best_action_for(
         self,
         issue_type: str,

@@ -129,8 +129,13 @@ class QualityClassifier:
                         hint=self._generate_hint(issue_type, action, features),
                     )
 
-        # 4. Rule-based fallback
-        return self._rule_based(issue_type, features)
+        # 4. Check strategy upgrades (from escalation)
+        prediction = self._rule_based(issue_type, features)
+        upgrades = getattr(self, '_upgrades', {})
+        if prediction.action in upgrades:
+            prediction.strategy = upgrades[prediction.action]
+            prediction.source = "escalated"
+        return prediction
 
     def predict_all(
         self, issues: List[Tuple[str, str, str]], features: QualityFeatures
@@ -192,6 +197,16 @@ class QualityClassifier:
         self.trained_on = len(X)
         self._last_trained_at = time.time()
         self._last_record_count = len(X)
+
+    def mark_action_for_upgrade(self, action: str, from_strategy: str, to_strategy: str):
+        """Mark an action for strategy upgrade (e.g., auto → prompt_hint).
+
+        Called when auto-fix fails repeatedly. Next predict() for this
+        action returns the upgraded strategy.
+        """
+        if not hasattr(self, '_upgrades'):
+            self._upgrades = {}
+        self._upgrades[action] = to_strategy
 
     # ── Rule-based classifier ────────────────────────────────
 
