@@ -1,35 +1,41 @@
 import { IDisplay } from './idisplay';
 
-/**
- * 64×32 monochrome framebuffer with XOR sprite drawing.
- * Pixels are packed into 256 bytes (64×32 ÷ 8).
- */
 export class Display implements IDisplay {
-  private readonly framebuffer: Uint8Array;
   private readonly width: number;
   private readonly height: number;
+  private readonly pixels: Uint8Array;
+  private dirty: boolean;
 
   constructor() {
     this.width = 64;
     this.height = 32;
-    this.framebuffer = new Uint8Array(256);
+    this.pixels = new Uint8Array(this.width * this.height);
+    this.dirty = false;
   }
 
-  drawSprite(x: number, y: number, sprite: Uint8Array, height: number): boolean {
-    if (!Number.isInteger(x) || x < 0 || x >= this.width) {
-      throw new RangeError(`x must be an integer in [0, ${this.width})`);
-    }
-    if (!Number.isInteger(y) || y < 0 || y >= this.height) {
-      throw new RangeError(`y must be an integer in [0, ${this.height})`);
-    }
-    if (!Number.isInteger(height) || height <= 0 || height > this.height) {
-      throw new RangeError(`height must be an integer in (0, ${this.height}]`);
+  /**
+   * Draws an 8-pixel-wide sprite starting at (x, y) with the given height.
+   * Each byte in spriteData represents a row of 8 pixels (MSB left).
+   * Pixels are XORed onto the display; if any pixel is erased (1→0),
+   * the return value is 1 (collision), otherwise 0.
+   *
+   * @param x - Left column (0–63)
+   * @param y - Top row (0–31)
+   * @param spriteData - Array of height bytes
+   * @param height - Number of rows to draw (0–15)
+   * @returns 1 if any pixel was erased, 0 otherwise
+   * @throws {TypeError} If spriteData is not a Uint8Array
+   * @throws {RangeError} If height is out of range
+   */
+  drawSprite(x: number, y: number, spriteData: Uint8Array, height: number): number {
+    if (height > 15) {
+      throw new RangeError('height must be ≤ 15');
     }
 
-    let collision = false;
+    let collision = 0;
 
     for (let row = 0; row < height; row++) {
-      const spriteByte = sprite[row];
+      const spriteByte = spriteData[row];
       const screenY = (y + row) % this.height;
 
       for (let col = 0; col < 8; col++) {
@@ -38,18 +44,14 @@ export class Display implements IDisplay {
 
         const screenX = (x + col) % this.width;
         const pixelIndex = screenY * this.width + screenX;
-        const byteIndex = Math.floor(pixelIndex / 8);
-        const bitIndex = 7 - (pixelIndex % 8);
+        const currentPixel = this.pixels[pixelIndex];
 
-        const currentBit = (this.framebuffer[byteIndex] >> bitIndex) & 1;
-        if (currentBit === 1 && spritePixel === 1) {
-          collision = true;
+        if (currentPixel === 1) {
+          collision = 1;
         }
 
-        const newBit = currentBit ^ spritePixel;
-        const mask = 1 << bitIndex;
-        this.framebuffer[byteIndex] =
-          (this.framebuffer[byteIndex] & ~mask) | (newBit << bitIndex);
+        this.pixels[pixelIndex] ^= 1;
+        this.dirty = true;
       }
     }
 
@@ -57,29 +59,34 @@ export class Display implements IDisplay {
   }
 
   clear(): void {
-    this.framebuffer.fill(0);
+    this.pixels.fill(0);
+    this.dirty = true;
   }
 
-  getPixel(x: number, y: number): boolean {
-    if (!Number.isInteger(x) || x < 0 || x >= this.width) {
-      throw new RangeError(`x must be an integer in [0, ${this.width})`);
-    }
-    if (!Number.isInteger(y) || y < 0 || y >= this.height) {
-      throw new RangeError(`y must be an integer in [0, ${this.height})`);
-    }
-
-    const pixelIndex = y * this.width + x;
-    const byteIndex = Math.floor(pixelIndex / 8);
-    const bitIndex = 7 - (pixelIndex % 8);
-
-    return ((this.framebuffer[byteIndex] >> bitIndex) & 1) === 1;
+  getPixel(x: number, y: number): number {
+    const index = y * this.width + x;
+    return this.pixels[index];
   }
 
-  getFramebuffer(): Uint8Array {
-    return new Uint8Array(this.framebuffer);
+  setPixel(x: number, y: number, value: number): void {
+    const index = y * this.width + x;
+    this.pixels[index] = value & 1;
+    this.dirty = true;
   }
 
-  reset(): void {
-    this.framebuffer.fill(0);
+  render(): void {
+    this.dirty = false;
+  }
+
+  getWidth(): number {
+    return this.width;
+  }
+
+  getHeight(): number {
+    return this.height;
+  }
+
+  isDirty(): boolean {
+    return this.dirty;
   }
 }

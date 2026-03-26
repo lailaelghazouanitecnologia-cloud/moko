@@ -1,6 +1,9 @@
+export type Uint8 = number;
+
 export interface IInput {
-  readonly keyStates: ReadonlyArray<boolean>;
-  isPressed(key: number): boolean;
-  waitForPress(): number;
-  setKeyState(key: number, pressed: boolean): void;
+  isKeyPressed(key: Uint8): boolean;
+  waitForKeyPress(): Uint8;
+  keyPressed(key: Uint8): void;
+  keyReleased(key: Uint8): void;
+  reset(): void;
 }

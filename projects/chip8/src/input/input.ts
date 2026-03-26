@@ -1,54 +1,49 @@
 import { IInput } from './iinput';
 
 /**
- * 16-key keypad state manager.
- * Provides synchronous access to key states and blocking wait for key press.
+ * CHIP-8 16-key input handler.
+ * Manages the state of 16 hexadecimal keys (0–F).
  */
 export class Input implements IInput {
-  private readonly _keyStates: boolean[];
+  private readonly keyStates: Uint8Array;
 
   constructor() {
-    this._keyStates = new Array(16).fill(false);
+    this.keyStates = new Uint8Array(16);
   }
 
-  get keyStates(): ReadonlyArray<boolean> {
-    return this._keyStates;
-  }
-
-  isPressed(key: number): boolean {
-    if (!Number.isInteger(key)) {
-      throw new TypeError(`Key index must be an integer, got ${typeof key}`);
+  isKeyPressed(key: number): boolean {
+    if (!Number.isInteger(key) || key < 0 || key > 15) {
+      throw new RangeError('Key must be an integer between 0 and 15');
     }
-    if (key < 0 || key > 15) {
-      throw new RangeError(`Key index must be between 0 and 15, got ${key}`);
-    }
-    return this._keyStates[key];
+    return this.keyStates[key] === 1;
   }
 
-  waitForPress(): number {
+  waitForKeyPress(): number {
     // eslint-disable-next-line no-constant-condition
     while (true) {
       for (let i = 0; i < 16; i++) {
-        if (this._keyStates[i]) {
+        if (this.keyStates[i] === 1) {
           return i;
         }
       }
     }
   }
 
-  setKeyState(key: number, pressed: boolean): void {
-    if (!Number.isInteger(key)) {
-      throw new TypeError(`Key index must be an integer, got ${typeof key}`);
+  keyPressed(key: number): void {
+    if (!Number.isInteger(key) || key < 0 || key > 15) {
+      throw new RangeError('Key must be an integer between 0 and 15');
     }
-    if (key < 0 || key > 15) {
-      throw new RangeError(`Key index must be between 0 and 15, got ${key}`);
+    this.keyStates[key] = 1;
+  }
+
+  keyReleased(key: number): void {
+    if (!Number.isInteger(key) || key < 0 || key > 15) {
+      throw new RangeError('Key must be an integer between 0 and 15');
     }
-    this._keyStates[key] = pressed;
+    this.keyStates[key] = 0;
   }
 
   reset(): void {
-    for (let i = 0; i < 16; i++) {
-      this._keyStates[i] = false;
-    }
+    this.keyStates.fill(0);
   }
 }

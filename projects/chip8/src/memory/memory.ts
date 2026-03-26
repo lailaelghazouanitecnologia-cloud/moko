@@ -1,44 +1,13 @@
 import { IMemory } from './imemory';
+import { Uint8 } from '../input/iinput';
 
 export class Memory implements IMemory {
   private readonly ram: Uint8Array;
+  private readonly fontData: Uint8Array;
 
   constructor() {
     this.ram = new Uint8Array(4096);
-  }
-
-  read(address: number): number {
-    if (!Number.isInteger(address)) {
-      throw new TypeError(`Address must be an integer: ${address}`);
-    }
-    if (address < 0 || address > 0xFFF) {
-      throw new RangeError(`Memory address out of bounds: 0x${address.toString(16).padStart(3, '0')}`);
-    }
-    return this.ram[address];
-  }
-
-  write(address: number, value: number): void {
-    if (!Number.isInteger(address)) {
-      throw new TypeError(`Address must be an integer: ${address}`);
-    }
-    if (!Number.isInteger(value)) {
-      throw new TypeError(`Value must be an integer: ${value}`);
-    }
-    if (address < 0 || address > 0xFFF) {
-      throw new RangeError(`Memory address out of bounds: 0x${address.toString(16).padStart(3, '0')}`);
-    }
-    if (value < 0 || value > 0xFF) {
-      throw new RangeError(`Value out of bounds: ${value}`);
-    }
-    this.ram[address] = value;
-  }
-
-  /**
-   * Loads the built-in hexadecimal font sprites into memory starting at address 0x000.
-   * Each character is 5 bytes tall, representing a 4x5 pixel sprite.
-   */
-  loadFont(): void {
-    const fontData = new Uint8Array([
+    this.fontData = new Uint8Array([
       0xF0, 0x90, 0x90, 0x90, 0xF0, // 0
       0x20, 0x60, 0x20, 0x20, 0x70, // 1
       0xF0, 0x10, 0xF0, 0x80, 0xF0, // 2
@@ -56,19 +25,54 @@ export class Memory implements IMemory {
       0xF0, 0x80, 0xF0, 0x80, 0xF0, // E
       0xF0, 0x80, 0xF0, 0x80, 0x80  // F
     ]);
-    
-    for (let i = 0; i < fontData.length; i++) {
-      this.ram[i] = fontData[i];
+    this.reset();
+  }
+
+  read(address: number): number {
+    if (!Number.isInteger(address) || address < 0 || address > 0xFFFF) {
+      throw new RangeError('Address must be a 16-bit unsigned integer');
+    }
+    const addr = address & 0xFFF;
+    return this.ram[addr];
+  }
+
+  /**
+   * Write a byte to memory at the specified address.
+   * Only writable in the range 0x200–0xFFE.
+   * @param address - 12-bit address (0x000–0xFFF)
+   * @param value - 8-bit value to write
+   * @throws {RangeError} If address is not a 16-bit unsigned integer
+   * @throws {TypeError} If value is not an 8-bit unsigned integer
+   */
+  write(address: number, value: number): void {
+    if (!Number.isInteger(address) || address < 0 || address > 0xFFFF) {
+      throw new RangeError('Address must be a 16-bit unsigned integer');
+    }
+    if (!Number.isInteger(value) || value < 0 || value > 0xFF) {
+      throw new TypeError('Value must be an 8-bit unsigned integer');
+    }
+    const addr = address & 0xFFF;
+    if (addr >= 0x200 && addr < 0xFFF) {
+      this.ram[addr] = value;
     }
   }
 
-  loadROM(data: Uint8Array): void {
-    if (data.length > 3584) {
-      throw new RangeError(`ROM too large: ${data.length} bytes (max 3584)`);
+  loadRom(data: Uint8Array): void {
+    const startAddress = 0x200;
+    const endAddress = Math.min(startAddress + data.length, 0xFFF);
+    for (let i = startAddress; i < endAddress; i++) {
+      this.ram[i] = data[i - startAddress];
     }
-    
-    for (let i = 0; i < data.length; i++) {
-      this.ram[0x200 + i] = data[i];
+  }
+
+  reset(): void {
+    this.ram.fill(0);
+    for (let i = 0; i < this.fontData.length; i++) {
+      this.ram[0x050 + i] = this.fontData[i];
     }
+  }
+
+  getSize(): number {
+    return 4096;
   }
 }

@@ -448,6 +448,15 @@ class BranchPipelineOrchestrator:
             "steps": [{"step": f"Generate {name}", "status": "pending"} for name in all_module_names]
         })
 
+        # 5d. V3: Initialize workspace manager
+        from ..engines.workspace import WorkspaceManager
+        self.workspace_mgr = WorkspaceManager(project_dir, verbose=self.verbose)
+        for t in [t for level in self.decomposer.topo_sort(tasks) for t in level]:
+            self.workspace_mgr.create(
+                name=t.name, goal=t.description or f"Generate {t.name}",
+                depends_on=t.depends_on,
+            )
+
         # 6. Process tasks in dependency order
         result = PipelineResult()
         levels = self.decomposer.topo_sort(tasks)
@@ -455,6 +464,9 @@ class BranchPipelineOrchestrator:
         for level_idx, level in enumerate(levels):
             print(f"\n  Level {level_idx}: {', '.join(t.name for t in level)}")
             for task in level:
+                # V3: Activate workspace
+                self.workspace_mgr.activate(task.name)
+
                 # V3: Begin turn (TurnState tracks per-module metrics)
                 turn = self.state_mgr.begin_turn(task.name)
 
@@ -469,12 +481,43 @@ class BranchPipelineOrchestrator:
                     ]
                 })
 
-                branch_result = self._process_module(
-                    task, project_dir, target, references, project_bp,
-                )
+                # V3: Experiment engine — use variants for complex modules
+                use_experiment = self._should_experiment(task)
+                if use_experiment:
+                    branch_result = self._process_module_with_experiment(
+                        task, project_dir, target, references, project_bp,
+                    )
+                else:
+                    branch_result = self._process_module(
+                        task, project_dir, target, references, project_bp,
+                    )
                 result.branches.append(branch_result)
                 result.total_tokens += branch_result.tokens_used
                 result.total_loc += branch_result.total_loc
+
+                # V3: Set workspace baseline
+                ws = self.workspace_mgr.workspaces.get(task.name)
+                if ws:
+                    ws.set_baseline(
+                        compiles=branch_result.tsc_errors_final == 0,
+                        tsc_errors=branch_result.tsc_errors_final,
+                        loc=branch_result.total_loc,
+                        method_count=0,
+                        density=0.0,
+                        quality=0.0,
+                    )
+                    # Generate proposals (data-driven, no LLM)
+                    try:
+                        from ..engines.workspace.proposals import ProposalGenerator
+                        proposer = ProposalGenerator(verbose=self.verbose)
+                        module_dir = project_dir / "src" / task.name
+                        proposals = proposer.analyze(module_dir, self.engine, self.quality_engine)
+                        ws.improvements_proposed = len(proposals)
+                        if proposals and self.verbose:
+                            print(proposer.format_proposals(proposals[:3]))
+                    except Exception:
+                        pass
+                    self.workspace_mgr.close(task.name)
 
                 # V3: End turn (updates session + persists)
                 turn_result = turn.to_result(
@@ -1235,6 +1278,132 @@ class BranchPipelineOrchestrator:
                     pass
 
         return total_tokens
+
+    def _should_experiment(self, task: ModuleTask) -> bool:
+        """Decide if a module should use the experiment engine (variants A/B).
+
+        Triggers when:
+        - Module has >2 dependents (core module, high impact)
+        - FunctionalSpec marks component as "complex"
+        - Module has >8 types in blueprint
+        """
+        spec = getattr(self, '_functional_spec', None)
+        if spec:
+            for comp in spec.components:
+                if comp.name == task.name and comp.complexity == "complex":
+                    # Only experiment if we have dependents
+                    # (no point experimenting on leaf modules)
+                    if task.depends_on:
+                        return False  # Complex leaf — depth loop handles it
+                    # Complex with dependents — experiment
+                    return True
+        return False
+
+    def _process_module_with_experiment(
+        self, task: ModuleTask, project_dir: Path,
+        target: str, references: list, project_bp
+    ) -> "BranchResult":
+        """Process a module using the experiment engine (variants A/B).
+
+        1. Generate 2 variants with different approaches
+        2. Evaluate both without LLM
+        3. Pick winner or combine
+        4. Continue with normal fix pipeline
+        """
+        from ..engines.experiment import VariantGenerator, VariantEvaluator, VariantCombiner
+
+        self._log(f"  [experiment] generating variants for {task.name}...")
+
+        # Generate blueprint first (same for both variants)
+        br = self._process_module(task, project_dir, target, references, project_bp)
+
+        # If module already clean, no need to experiment
+        if br.tsc_errors_final == 0 and br.total_loc > 50:
+            self._log(f"  [experiment] {task.name} already clean, skipping variants")
+            return br
+
+        # Read the generated code
+        module_dir = project_dir / "src" / task.name
+        files = self._read_module_files(module_dir)
+        if not files:
+            return br
+
+        # Generate variant B with different approach
+        try:
+            generator = VariantGenerator(self.llm, verbose=self.verbose)
+            bp_file = project_dir / "blueprints" / f"{task.name}.bp.yaml"
+            bp_yaml = bp_file.read_text() if bp_file.exists() else ""
+
+            spec_ctx = ""
+            spec = getattr(self, '_functional_spec', None)
+            if spec:
+                spec_ctx = spec.to_prompt_context()
+
+            variants = generator.generate_variants(
+                blueprint_yaml=bp_yaml,
+                context=f"Module: {task.name}\nDependencies: {task.depends_on}",
+                spec_context=spec_ctx,
+                max_variants=2,
+            )
+
+            if len(variants) < 2:
+                self._log(f"  [experiment] only {len(variants)} variant(s), keeping original")
+                return br
+
+            # Evaluate
+            evaluator = VariantEvaluator(project_dir, verbose=self.verbose)
+            results = evaluator.evaluate_all(variants)
+
+            # Compare with existing code
+            from ..engines.experiment.variants import Variant
+            original_variant = Variant(id="original", approach="pipeline default",
+                                       code=list(files.values())[0] if files else "")
+            original_result = evaluator.evaluate(original_variant)
+
+            # If original is better, keep it
+            if original_result.score() >= results[0].score():
+                self._log(f"  [experiment] original wins "
+                          f"({original_result.score():.2f} vs {results[0].score():.2f})")
+                return br
+
+            # Combine best variant with original
+            combiner = VariantCombiner(self.llm, verbose=self.verbose)
+            combined = combiner.combine(
+                [original_variant, variants[0]],
+                [original_result, results[0]],
+            )
+
+            if combined and combined.code:
+                # Write combined code
+                main_file = next(
+                    (f for f in sorted(files.keys()) if not f.endswith("index.ts") and f.startswith("i")),
+                    list(files.keys())[0] if files else None
+                )
+                if main_file:
+                    (module_dir / Path(main_file).name).write_text(combined.code)
+                    br.tokens_used += generator.total_tokens + combiner.tokens_used
+                    self._log(f"  [experiment] combined variant applied")
+
+                    # Store as feature
+                    try:
+                        from ..engines.experiment.features import FeatureStore, Feature
+                        store = FeatureStore()
+                        store.add(Feature(
+                            id=f"{target}_{task.name}",
+                            pattern=f"Best approach for {task.name}",
+                            domain=getattr(spec, 'domain', '') if spec else '',
+                            loc=len(combined.code.splitlines()),
+                            quality_score=results[0].score(),
+                            approach=variants[0].approach,
+                            method_names=[],
+                        ))
+                    except Exception:
+                        pass
+
+        except Exception as e:
+            self._log(f"  [experiment] failed: {e}")
+
+        return br
 
     def _collect_dependency_context(self, task: ModuleTask,
                                     project_dir: Path) -> dict[str, str]:
