@@ -836,6 +836,14 @@ class BranchPipelineOrchestrator:
                 # Post-translate: verify the exported name matches the blueprint
                 self._verify_export_name(type_bp, project_dir)
 
+                # DepthLoop: adaptive expansion for complex types
+                if self._needs_depth(type_bp, task, file_path, project_dir):
+                    depth_tokens = self._depth_loop(
+                        type_bp, bp, task, project_dir, translator,
+                        max_passes=3,
+                    )
+                    total_tokens += depth_tokens
+
                 # Two-pass enhancement for richer output
                 if task.generation_passes >= 2:
                     enhanced_tokens = self._enhance_type(
@@ -947,6 +955,146 @@ class BranchPipelineOrchestrator:
                       f"{len(code.splitlines())} -> {len(enhanced.splitlines())} LOC")
 
         return resp.usage.total_tokens
+
+    def _needs_depth(self, type_bp, task, file_path: str,
+                     project_dir: Path) -> bool:
+        """Detect if a type needs additional generation passes.
+
+        Triggers when:
+        - FunctionalSpec marks component as "complex"
+        - Blueprint has >10 methods
+        - Generated code is <50% of target LOC
+        - Type is a class (not interface/enum)
+        """
+        if type_bp.kind in ("interface", "enum", "type"):
+            return False
+
+        # Check FunctionalSpec
+        spec = getattr(self, '_functional_spec', None)
+        if spec:
+            for comp in spec.components:
+                if comp.name == task.name and comp.complexity == "complex":
+                    return True
+
+        # Blueprint method count
+        methods = getattr(type_bp, 'methods', [])
+        if methods and len(methods) > 10:
+            return True
+
+        # LOC vs target
+        code_path = project_dir / file_path if file_path else None
+        if code_path and code_path.exists():
+            loc = len(code_path.read_text().splitlines())
+            target = getattr(task, 'target_loc_per_type', 150)
+            if loc < target * 0.5 and target > 100:
+                return True
+
+        return False
+
+    def _depth_loop(self, type_bp, module_bp, task, project_dir: Path,
+                    translator, max_passes: int = 3) -> int:
+        """Adaptive depth loop for complex types.
+
+        Reads current code, finds missing methods from blueprint,
+        asks LLM to add them. Stops when complete or stalled.
+        """
+        import re as _re
+
+        total_tokens = 0
+        file_path = project_dir / type_bp.target_file
+        if not file_path.exists():
+            return 0
+
+        target_loc = getattr(task, 'target_loc_per_type', 150)
+        bp_methods = {m.name for m in (type_bp.methods or [])}
+
+        for pass_num in range(max_passes):
+            current_code = file_path.read_text()
+            current_loc = len(current_code.splitlines())
+
+            # Find implemented methods (rough regex — matches method declarations)
+            impl_methods = set(_re.findall(
+                r'(?:async\s+)?(?:private\s+|protected\s+|public\s+|static\s+)?'
+                r'(\w+)\s*\([^)]*\)\s*(?::\s*[^{]+)?\s*\{',
+                current_code
+            ))
+            missing = bp_methods - impl_methods - {"constructor"}
+
+            # Stop conditions
+            if not missing:
+                self._log(f"  depth[{pass_num}] complete: all {len(bp_methods)} methods present")
+                break
+            if current_loc >= target_loc * 1.2:
+                self._log(f"  depth[{pass_num}] LOC target met ({current_loc}/{target_loc})")
+                break
+
+            self._log(f"  depth[{pass_num}] {len(missing)} methods missing, expanding...")
+
+            # Build expansion prompt with missing methods
+            missing_descs = []
+            for m in type_bp.methods or []:
+                if m.name in missing:
+                    sig = getattr(m, 'sig', '') or getattr(m, 'signature', '')
+                    hint = getattr(m, 'hint', '')
+                    missing_descs.append(f"- {m.name}{sig}: {hint}" if hint else f"- {m.name}{sig}")
+
+            # Also inject spec context for domain knowledge
+            spec_ctx = ""
+            spec = getattr(self, '_functional_spec', None)
+            if spec:
+                for comp in spec.components:
+                    if comp.name == task.name:
+                        if comp.methods:
+                            spec_ctx = "\n## Domain requirements\n" + "\n".join(
+                                f"- {m}" for m in comp.methods[:20]
+                            )
+                        break
+
+            user_prompt = (
+                f"## Existing code ({current_loc} LOC)\n"
+                f"```typescript\n{current_code}\n```\n\n"
+                f"## Methods NOT YET implemented (MUST add ALL of these):\n"
+                + "\n".join(missing_descs) +
+                f"{spec_ctx}\n\n"
+                f"Add ALL missing methods to the existing class. "
+                f"Keep ALL existing code intact — do not remove or rewrite anything. "
+                f"Return the COMPLETE file with all methods."
+            )
+
+            from .translator import TRANSLATE_SYSTEM
+            expanded, tokens = translator._llm_call(
+                TRANSLATE_SYSTEM, user_prompt, max_tokens=8000
+            )
+            total_tokens += tokens
+
+            # Validate expansion
+            expanded_clean = translator._strip_code_fences(expanded)
+            new_loc = len(expanded_clean.splitlines())
+
+            # Revert if code shrank significantly
+            if new_loc < current_loc * 0.8:
+                self._log(f"  depth[{pass_num}] REVERTED: code shrank {current_loc}→{new_loc}")
+                break
+
+            # Revert if it's just the same size (stalled)
+            if new_loc - current_loc < 10 and pass_num > 0:
+                self._log(f"  depth[{pass_num}] stalled: only {new_loc - current_loc} LOC added")
+                break
+
+            file_path.write_text(expanded_clean)
+            self._log(f"  depth[{pass_num}] expanded: {current_loc}→{new_loc} LOC")
+
+            # Update context engine
+            if self.engine and type_bp.target_file:
+                rel = type_bp.target_file
+                if rel.startswith("src/"):
+                    rel = rel[4:]
+                try:
+                    self.engine.update(rel)
+                except Exception:
+                    pass
+
+        return total_tokens
 
     def _collect_dependency_context(self, task: ModuleTask,
                                     project_dir: Path) -> dict[str, str]:
