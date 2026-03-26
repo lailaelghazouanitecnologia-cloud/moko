@@ -1,49 +1,49 @@
 import { IMemory } from './imemory';
 
+type Uint16 = number;
+type Uint8 = number;
+
 /**
- * 4KB RAM with built-in font sprites and ROM loading capabilities.
+ * CHIP-8 4096-byte RAM with ROM loading and font storage.
  * Memory layout:
- * - 0x000-0x1FF: Font sprites (80 bytes)
- * - 0x200-0xFFF: Program ROM (max 3583 bytes)
+ * - 0x000-0x1FF: Interpreter (font data occupies 0x000-0x04F)
+ * - 0x200-0xFFF: Program ROM and work RAM
  */
 export class Memory implements IMemory {
   private readonly ram: Uint8Array;
 
   constructor() {
     this.ram = new Uint8Array(4096);
-    this.load_font_sprites();
+    this.loadFont();
   }
 
-  load_rom(data: Uint8Array): void {
-    if (data.length > 3583) {
-      throw new RangeError('ROM too large: max 3583 bytes');
+  read(address: Uint16): Uint8 {
+    if (address > 0xFFF) {
+      throw new RangeError(`Address 0x${address.toString(16)} out of range (max 0xFFF)`);
+    }
+    return this.ram[address & 0xFFF];
+  }
+
+  write(address: Uint16, value: Uint8): void {
+    if (address > 0xFFF) {
+      throw new RangeError(`Address 0x${address.toString(16)} out of range (max 0xFFF)`);
+    }
+    this.ram[address & 0xFFF] = value & 0xFF;
+  }
+
+  loadROM(data: Uint8Array): void {
+    if (data.length > 3584) {
+      throw new RangeError('ROM size exceeds maximum 3584 bytes');
     }
     this.ram.set(data, 0x200);
   }
 
-  read(addr: number): number {
-    if (addr < 0) {
-      throw new RangeError('Address cannot be negative');
-    }
-    return this.ram[addr & 0xFFF];
-  }
-
-  write(addr: number, byte: number): void {
-    if (addr < 0) {
-      throw new RangeError('Address cannot be negative');
-    }
-    if (byte < 0 || byte > 0xFF) {
-      throw new RangeError('Byte must be in range 0-255');
-    }
-    this.ram[addr & 0xFFF] = byte & 0xFF;
-  }
-
   /**
-   * Load the built-in hexadecimal font sprites into memory.
-   * Each sprite is 5 bytes tall, representing characters 0-F.
+   * Copy the built-in 4x5 font sprites into memory at 0x000.
+   * Each sprite is 5 bytes tall; 16 sprites occupy 0x000-0x04F.
    */
-  load_font_sprites(): void {
-    const sprites: ReadonlyArray<number> = [
+  loadFont(): void {
+    const fontData = new Uint8Array([
       0xF0, 0x90, 0x90, 0x90, 0xF0, // 0
       0x20, 0x60, 0x20, 0x20, 0x70, // 1
       0xF0, 0x10, 0xF0, 0x80, 0xF0, // 2
@@ -60,12 +60,12 @@ export class Memory implements IMemory {
       0xE0, 0x90, 0x90, 0x90, 0xE0, // D
       0xF0, 0x80, 0xF0, 0x80, 0xF0, // E
       0xF0, 0x80, 0xF0, 0x80, 0x80  // F
-    ];
-    this.ram.set(sprites, 0x000);
+    ]);
+    this.ram.set(fontData, 0x000);
   }
 
   reset(): void {
     this.ram.fill(0);
-    this.load_font_sprites();
+    this.loadFont();
   }
 }

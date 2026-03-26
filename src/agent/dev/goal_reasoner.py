@@ -48,6 +48,9 @@ class FunctionalSpec:
     # Per-component breakdown
     components: List[ComponentSpec] = field(default_factory=list)
 
+    # Integration constraints — HOW components must communicate
+    integration_constraints: List[str] = field(default_factory=list)
+
     # Total estimated LOC
     estimated_loc: int = 0
 
@@ -79,12 +82,47 @@ class FunctionalSpec:
                     parts.append(f"  - REQ: {r}")
             parts.append("")
 
+        # Integration constraints — prevent state duplication
+        constraints = list(self.integration_constraints)
+        constraints.extend(self._infer_integration_constraints())
+        if constraints:
+            parts.append("### Integration Rules (CRITICAL)")
+            for c in constraints:
+                parts.append(f"- {c}")
+            parts.append("")
+
         if self.acceptance_criteria:
             parts.append("### Acceptance Criteria")
             for a in self.acceptance_criteria:
                 parts.append(f"- {a}")
 
         return "\n".join(parts)
+
+    def _infer_integration_constraints(self) -> List[str]:
+        """Auto-generate integration constraints from component structure."""
+        constraints = []
+        comp_names = {c.name for c in self.components}
+
+        # If a component receives dependencies, it must USE them
+        for c in self.components:
+            deps = [d for d in c.data if any(other in d.lower() for other in comp_names - {c.name})]
+            if deps:
+                constraints.append(
+                    f"{c.name} MUST use injected dependencies via their interfaces. "
+                    f"Do NOT duplicate state that other modules own."
+                )
+
+        # Universal constraints
+        if len(self.components) > 2:
+            constraints.append(
+                "Each component owns its own state. Other components access it "
+                "ONLY through the public interface — never copy internal data."
+            )
+            constraints.append(
+                "Use camelCase for all method names. No snake_case."
+            )
+
+        return constraints
 
 
 REASON_PROMPT = """You are a domain expert and software architect.
@@ -102,6 +140,13 @@ For each major component, list:
 Be EXHAUSTIVE. If something is an emulator, list EVERY instruction/opcode.
 If it's a game, list EVERY mechanic. If it's a tool, list EVERY command.
 
+CRITICAL for multi-component systems:
+- Each component OWNS specific state. Other components access it via interface only.
+- A component that receives a dependency MUST use it — never duplicate the dependency's state.
+- Example: if CPU receives Memory, CPU reads via memory.read() — it does NOT have its own Uint8Array(4096).
+- Example: if CPU receives Display, CPU draws via display.drawSprite() — it does NOT have its own framebuffer.
+- All method names use camelCase.
+
 Output ONLY valid JSON:
 {
   "domain": "emulator|game|tool|api|framework|...",
@@ -118,14 +163,18 @@ Output ONLY valid JSON:
     "can load and execute a ROM file",
     "all 35 opcodes produce correct results"
   ],
+  "integration_constraints": [
+    "CPU reads memory via memory.read(), does NOT own RAM",
+    "CPU draws via display.drawSprite(), does NOT own framebuffer"
+  ],
   "components": [
     {
       "name": "cpu",
       "complexity": "complex",
       "target_loc": 300,
       "requirements": ["execute 35 specific opcodes with real logic"],
-      "methods": ["fetch(): read 2 bytes big-endian from PC", "execute(opcode): switch on all 35 opcodes"],
-      "data": ["Uint8Array(16) for V0-VF", "Uint16Array(16) for stack"]
+      "methods": ["fetch(): read 2 bytes big-endian from PC via memory.read()", "execute(opcode): switch on all 35 opcodes"],
+      "data": ["Uint8Array(16) for V0-VF (OWNED)", "Uint16Array(16) for stack (OWNED)", "memory: IMemory (INJECTED)", "display: IDisplay (INJECTED)"]
     }
   ],
   "estimated_loc": 800
@@ -191,6 +240,7 @@ class GoalReasoner:
             requirements=data.get("requirements", []),
             data_structures=data.get("data_structures", []),
             acceptance_criteria=data.get("acceptance_criteria", []),
+            integration_constraints=data.get("integration_constraints", []),
             estimated_loc=data.get("estimated_loc", 500),
         )
 

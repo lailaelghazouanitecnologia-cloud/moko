@@ -1,9 +1,11 @@
+export type Uint8 = number;
+
 export interface IDisplay {
-  readonly width: number;
-  readonly height: number;
+  drawSprite(x: Uint8, y: Uint8, bytes: Uint8Array, n: Uint8): Uint8;
   clear(): void;
-  draw_sprite(x: number, y: number, height: number, bytes: Uint8Array): number;
-  get_pixel(x: number, y: number): number;
-  set_pixel(x: number, y: number, val: number): void;
-  get_framebuffer(): Uint8Array;
+  getPixel(x: Uint8, y: Uint8): Uint8;
+  setPixel(x: Uint8, y: Uint8, value: Uint8): void;
+  render(): ImageData;
+  getWidth(): Uint8;
+  getHeight(): Uint8;
 }

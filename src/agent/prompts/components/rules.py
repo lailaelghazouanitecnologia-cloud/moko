@@ -14,7 +14,14 @@ TYPE SAFETY:
 NAMING:
 - The exported type MUST use the EXACT name from the blueprint.
 - File naming: kebab-case ONLY.
+- Method naming: camelCase ONLY (getPixel, drawSprite — NOT get_pixel, draw_sprite).
 - Cross-module imports via barrel (index). Same-module via relative path.
+
+INTEGRATION:
+- A class that receives dependencies via constructor MUST use them.
+- Do NOT duplicate state owned by another module.
+- Example: if CPU receives IMemory, use memory.read() — do NOT create a separate Uint8Array for RAM.
+- Each module owns its data. Other modules access it through the interface only.
 
 OUTPUT:
 - Output ONLY source code. No markdown fences, no explanations.

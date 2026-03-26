@@ -1,5 +1,7 @@
 export interface IMemory {
-  load_rom(data: Uint8Array): void;
-  read(addr: number): number;
-  write(addr: number, byte: number): void;
+  read(address: number): number;
+  write(address: number, value: number): void;
+  loadROM(data: Uint8Array): void;
+  loadFont(): void;
+  reset(): void;
 }

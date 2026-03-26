@@ -1,2 +1,2 @@
-export { ICpu } from './icpu';
-export { Cpu } from './cpu';
+export { ICPU } from './icpu';
+export { CPU } from './cpu';

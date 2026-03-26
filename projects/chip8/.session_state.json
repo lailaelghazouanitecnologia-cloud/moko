@@ -1,50 +1,62 @@
 {
-  "session_id": "7cc897e3dd34",
+  "session_id": "cd94606483dd",
   "goal": "Build a CHIP-8 emulator",
   "target": "chip8",
-  "started_at": 1774488612.6780581,
+  "started_at": 1774489262.4570782,
   "provider": "groq",
   "model": "moonshotai/kimi-k2-instruct-0905",
   "module_order": [
-    "display",
     "memory",
+    "display",
     "input",
+    "sound",
     "timers",
     "cpu",
-    "frontend"
+    "emulator"
   ],
   "modules_completed": [
     "memory",
-    "input",
-    "timers"
-  ],
-  "modules_failed": [
     "display",
+    "input",
+    "sound",
+    "timers",
     "cpu",
-    "frontend"
+    "emulator"
   ],
+  "modules_failed": [],
   "current_module": "",
   "total_tokens": 0,
-  "total_loc": 784,
+  "total_loc": 811,
   "token_budget": 500000,
-  "turn_count": 6,
-  "functional_spec": "## Functional Specification\n\nDomain: emulator\nSummary: A cycle-accurate CHIP-8 interpreter that loads ROM files and executes the complete 1970s instruction set with graphics, sound, and input.\n\n### Requirements (MUST implement)\n- Load .ch8 files up to 3583 bytes into RAM starting at 0x200\n- Maintain 60 Hz timer decrements for delay and sound\n- Generate 64x32 1-bit framebuffer refreshed at 60 Hz\n- Emit 60 Hz buzz when sound timer > 0\n- Accept 16-key hex keypad input mapped to PC keyboard\n\n### Data Structures\n- Uint8Array(4096) RAM\n- Uint8Array(64*32/8) framebuffer (1 bit per pixel)\n- Uint8Array(16) V0-VF general-purpose registers\n- Uint16 register I (12-bit address)\n- Uint16 register PC (program counter)\n- Uint8 register SP (stack pointer 0-15)\n- Uint16Array(16) stack\n- Uint8 delay_timer (60 Hz countdown)\n- Uint8 sound_timer (60 Hz countdown)\n- 16-key keypad state array Uint8Array(16)\n\n### Components\n- **cpu** (complex, ~400 LOC)\n  - fetch(): read big-endian 16-bit word at PC, increment PC by 2\n  - decode(opcode): extract nibble fields: nnn, n, x, y, kk\n  - execute(opcode): switch-case for 0x0NNN-0xFFFF\n  - opcode_00E0(): clear screen\n  - opcode_00EE(): return from subroutine\n  - opcode_1NNN(): jump to NNN\n  - opcode_2NNN(): call subroutine at NNN\n  - opcode_3XKK(): skip next if VX == KK\n  - opcode_4XKK(): skip next if VX != KK\n  - opcode_5XY0(): skip next if VX == VY\n  - REQ: Implement all 35 opcodes exactly per COSMAC VIP behavior\n  - REQ: Handle 8-bit overflow/underflow for arithmetic\n  - REQ: Set VF on carry/borrow for ADD/SUB\n  - REQ: Set VF on pixel collision for DXYN\n- **memory** (simple, ~50 LOC)\n  - load_rom(Uint8Array data): copy data into RAM starting at 0x200\n  - read(addr): return RAM[addr & 0xFFF]\n  - write(addr, byte): RAM[addr & 0xFFF] = byte\n  - REQ: Hold 4096 bytes RAM\n  - REQ: Load font sprites 0-9A-F at 0x000-0x04F\n  - REQ: Read/write with no wait states\n- **display** (medium, ~120 LOC)\n  - clear(): zero framebuffer\n  - draw_sprite(x, y, height, bytes): return collision bit\n  - get_pixel(x, y): return 0/1\n  - set_pixel(x, y, val): XOR into buffer\n  - REQ: Maintain 64x32 1-bit buffer\n  - REQ: Draw 8xN sprite rows with XOR and collision detection\n  - REQ: Provide 60 Hz refresh callback\n- **input** (simple, ~60 LOC)\n  - key_down(chip8_key): set pressed\n  - key_up(chip8_key): set released\n  - is_pressed(chip8_key): return bool\n  - wait_key(): promise that resolves when any key pressed\n  - REQ: Track 16-key hex keypad state\n  - REQ: Provide blocking wait for FX0A\n  - REQ: Map to PC keyboard 1-4,Q-R,A-F,Z-V\n- **timers** (simple, ~40 LOC)\n  - tick(): if delay_timer>0 delay_timer--, if sound_timer>0 sound_timer-- & beep\n  - REQ: Decrement delay_timer at 60 Hz\n  - REQ: Decrement sound_timer at 60 Hz\n  - REQ: Emit buzz when sound_timer > 0\n- **frontend** (medium, ~200 LOC)\n  - draw_framebuffer(buffer): map 1-bit to black/white pixels\n  - play_beep(): start 440 Hz tone\n  - stop_beep(): silence\n  - REQ: Canvas 640x320 pixels (10x scale)\n  - REQ: File picker to load .ch8 ROM\n  - REQ: Run/Pause/Reset buttons\n  - REQ: Speed slider 1-30 MHz\n  - REQ: Trace log checkbox\n\n### Acceptance Criteria\n- Executes the full COSMAC VIP CHIP-8 test suite without errors\n- Pong, Space Invaders, and Tetris ROMs run at original speed\n- All graphics, sound, and input behave identically to reference videos",
+  "turn_count": 7,
+  "functional_spec": "## Functional Specification\n\nDomain: emulator\nSummary: A complete CHIP-8 interpreter that accurately emulates the 1970s virtual machine with all 35 opcodes, timers, and I/O\n\n### Requirements (MUST implement)\n- Must execute all 35 CHIP-8 opcodes with cycle-accurate behavior\n- Must implement 60Hz delay timer and sound timer\n- Must support 64x32 monochrome display with sprite drawing\n- Must handle 16-key hexadecimal keypad input\n- Must load ROM files up to 3584 bytes (0xE00-0xFFF)\n- Must implement big-endian 16-bit instruction fetch\n- Must handle sprite collision detection for XOR drawing\n- Must generate sound buzzer when sound timer > 0\n\n### Data Structures\n- 16 8-bit registers V0-VF where VF is carry flag\n- 16-bit index register I (0x000-0xFFF)\n- 16-bit program counter PC (0x200-0xFFF)\n- 8-bit stack pointer SP (0-15)\n- 16 16-bit stack values for CALL/RET\n- 8-bit delay timer (60Hz countdown)\n- 8-bit sound timer (60Hz countdown)\n- 4096 bytes RAM (0x000-0xFFF)\n- 64x32 pixel framebuffer (1-bit per pixel)\n- 16-key keypad state (0-15 mapped to keys)\n\n### Components\n- **cpu** (complex, ~350 LOC)\n  - fetch(): Uint16 - read 2 bytes from PC via memory.read(), increment PC\n  - execute(opcode: Uint16): void - decode and execute all 35 opcodes\n  - step(): void - fetch and execute one instruction\n  - getRegister(index: Uint8): Uint8 - return V[index]\n  - setRegister(index: Uint8, value: Uint8): void - set V[index] = value & 0xFF\n  - getI(): Uint16 - return index register\n  - setI(value: Uint16): void - set I = value & 0xFFF\n  - getPC(): Uint16 - return program counter\n  - setPC(value: Uint16): void - set PC = value & 0xFFF\n  - getSP(): Uint8 - return stack pointer\n  - REQ: Implement all 35 CHIP-8 opcodes with accurate behavior\n  - REQ: Handle 16-bit big-endian instruction fetch\n  - REQ: Manage program counter, index register, and stack\n  - REQ: Update timers and handle sound generation\n  - REQ: Process input waits and sprite drawing\n- **memory** (simple, ~80 LOC)\n  - read(address: Uint16): Uint8 - return ram[address & 0xFFF]\n  - write(address: Uint16, value: Uint8): void - ram[address & 0xFFF] = value\n  - loadROM(data: Uint8Array): void - copy to 0x200, validate size \u2264 3584\n  - loadFont(): void - copy 80-byte font to 0x000-0x04F\n  - reset(): void - clear RAM and reload font\n  - REQ: Provide 4096 bytes of RAM\n  - REQ: Load ROM files up to 3584 bytes at 0x200\n  - REQ: Store font sprites at 0x000-0x050\n  - REQ: Validate memory access ranges\n- **display** (medium, ~120 LOC)\n  - drawSprite(x: Uint8, y: Uint8, bytes: Uint8Array, n: Uint8): Uint8 - XOR draw n bytes at (x,y), return collision (0/1)\n  - clear(): void - set all pixels to 0\n  - getPixel(x: Uint8, y: Uint8): Uint8 - return pixel at (x&63, y&31)\n  - setPixel(x: Uint8, y: Uint8, value: Uint8): void - set pixel to value&1\n  - render(): ImageData - return ImageData for canvas\n  - getWidth(): Uint8 - return 64\n  - getHeight(): Uint8 - return 32\n  - REQ: Implement 64x32 monochrome display\n  - REQ: Draw sprites using XOR with collision detection\n  - REQ: Handle sprite wrapping at edges\n  - REQ: Provide clear screen functionality\n- **input** (simple, ~60 LOC)\n  - isPressed(key: Uint8): boolean - return state of key (0-15)\n  - waitKey(): Promise<Uint8> - resolve when any key pressed, return key\n  - keyDown(key: Uint8): void - mark key as pressed\n  - keyUp(key: Uint8): void - mark key as released\n  - reset(): void - release all keys\n  - REQ: Track state of 16 hexadecimal keys 0-F\n  - REQ: Provide blocking wait for key press\n  - REQ: Map to keyboard keys (typically 1-4,Q-R,A-F,Z-V)\n- **timers** (simple, ~50 LOC)\n  - update(deltaTime: number): void - decrement timers at 60Hz rate\n  - getSpeed(): number - return 60 (Hz)\n  - isSounding(): boolean - return soundTimer > 0\n  - REQ: Implement 60Hz countdown timers\n  - REQ: Trigger sound when sound timer > 0\n  - REQ: Provide accurate delta time updates\n- **sound** (simple, ~40 LOC)\n  - start(): void - start buzzer sound\n  - stop(): void - stop buzzer sound\n  - setFrequency(hz: number): void - set tone frequency\n  - REQ: Generate square wave buzzer sound\n  - REQ: Start/stop based on sound timer\n  - REQ: Use Web Audio API or similar\n- **emulator** (medium, ~150 LOC)\n  - loadROM(data: Uint8Array): void - load ROM into memory and reset\n  - run(): void - start emulation loop\n  - pause(): void - pause emulation\n  - reset(): void - reset all components to initial state\n  - isRunning(): boolean - return running state\n  - getFPS(): number - return current frames per second\n  - REQ: Coordinate all components\n  - REQ: Provide run/pause/reset controls\n  - REQ: Handle ROM loading and execution\n  - REQ: Manage main emulation loop\n\n### Integration Rules (CRITICAL)\n- CPU reads memory via memory.read(address), never direct access\n- CPU draws via display.drawSprite(x,y,bytes,n), never framebuffer\n- CPU reads input via input.isPressed(key), never key state array\n- Memory loads ROM via memory.loadROM(bytes), validates size\n- Display renders via display.render(), never direct pixel access\n- Timers update via timers.update(deltaTime), never direct decrement\n- cpu MUST use injected dependencies via their interfaces. Do NOT duplicate state that other modules own.\n- timers MUST use injected dependencies via their interfaces. Do NOT duplicate state that other modules own.\n- emulator MUST use injected dependencies via their interfaces. Do NOT duplicate state that other modules own.\n- Each component owns its own state. Other components access it ONLY through the public interface \u2014 never copy internal data.\n- Use camelCase for all method names. No snake_case.\n\n### Acceptance Criteria\n- Can load and execute IBM logo ROM showing correct pattern\n- Can run CHIP-8 games like Pong, Space Invaders, Tetris\n- All 35 opcodes pass test suite with correct flags/timers\n- Sound buzzer activates when sound timer > 0\n- Sprites wrap correctly at screen edges\n- Collision detection sets VF=1 when pixels erased\n- Timers decrement at exactly 60Hz",
   "invariants": [],
-  "injected_memories": [],
+  "injected_memories": [
+    "## Learnings from previous runs\n\n### chip8 (emulator)\n- memory: clean generation (78 LOC, 0 errors)\n\n- input: clean generation (76 LOC, 0 errors)\n\n- timers: clean generation (49 LOC, 0 errors)\n\n- Failed modules: display, cpu, frontend \u2014 investigate interface mismatches"
+  ],
   "history": [
     {
       "turn": 1,
-      "timestamp": 1774488619.8357668,
+      "timestamp": 1774489271.3887231,
       "kind": "module_start",
-      "module": "display",
+      "module": "memory",
       "detail": "",
       "tokens": 0,
       "metadata": {}
     },
     {
       "turn": 1,
-      "timestamp": 1774488636.0939965,
-      "kind": "module_failed",
+      "timestamp": 1774489286.9328575,
+      "kind": "module_done",
+      "module": "memory",
+      "detail": "80 LOC, 0 errors",
+      "tokens": 0,
+      "metadata": {}
+    },
+    {
+      "turn": 2,
+      "timestamp": 1774489286.9331136,
+      "kind": "module_start",
       "module": "display",
       "detail": "",
       "tokens": 0,
@@ -52,25 +64,16 @@
     },
     {
       "turn": 2,
-      "timestamp": 1774488636.0942333,
-      "kind": "module_start",
-      "module": "memory",
-      "detail": "",
-      "tokens": 0,
-      "metadata": {}
-    },
-    {
-      "turn": 2,
-      "timestamp": 1774488645.7351635,
+      "timestamp": 1774489303.108416,
       "kind": "module_done",
-      "module": "memory",
-      "detail": "78 LOC, 0 errors",
+      "module": "display",
+      "detail": "93 LOC, 0 errors",
       "tokens": 0,
       "metadata": {}
     },
     {
       "turn": 3,
-      "timestamp": 1774488645.7354004,
+      "timestamp": 1774489303.1086614,
       "kind": "module_start",
       "module": "input",
       "detail": "",
@@ -79,16 +82,34 @@
     },
     {
       "turn": 3,
-      "timestamp": 1774488654.1937938,
+      "timestamp": 1774489314.6165004,
       "kind": "module_done",
       "module": "input",
-      "detail": "76 LOC, 0 errors",
+      "detail": "66 LOC, 0 errors",
       "tokens": 0,
       "metadata": {}
     },
     {
       "turn": 4,
-      "timestamp": 1774488654.194077,
+      "timestamp": 1774489314.6167758,
+      "kind": "module_start",
+      "module": "sound",
+      "detail": "",
+      "tokens": 0,
+      "metadata": {}
+    },
+    {
+      "turn": 4,
+      "timestamp": 1774489323.2959998,
+      "kind": "module_done",
+      "module": "sound",
+      "detail": "57 LOC, 0 errors",
+      "tokens": 0,
+      "metadata": {}
+    },
+    {
+      "turn": 5,
+      "timestamp": 1774489323.2964137,
       "kind": "module_start",
       "module": "timers",
       "detail": "",
@@ -96,17 +117,17 @@
       "metadata": {}
     },
     {
-      "turn": 4,
-      "timestamp": 1774488661.161234,
+      "turn": 5,
+      "timestamp": 1774489333.7874448,
       "kind": "module_done",
       "module": "timers",
-      "detail": "49 LOC, 0 errors",
+      "detail": "96 LOC, 0 errors",
       "tokens": 0,
       "metadata": {}
     },
     {
-      "turn": 5,
-      "timestamp": 1774488661.1615899,
+      "turn": 6,
+      "timestamp": 1774489333.7878215,
       "kind": "module_start",
       "module": "cpu",
       "detail": "",
@@ -114,29 +135,29 @@
       "metadata": {}
     },
     {
-      "turn": 5,
-      "timestamp": 1774488716.4675224,
-      "kind": "module_failed",
+      "turn": 6,
+      "timestamp": 1774489356.8952978,
+      "kind": "module_done",
       "module": "cpu",
-      "detail": "",
+      "detail": "286 LOC, 0 errors",
       "tokens": 0,
       "metadata": {}
     },
     {
-      "turn": 6,
-      "timestamp": 1774488716.4678423,
+      "turn": 7,
+      "timestamp": 1774489356.895727,
       "kind": "module_start",
-      "module": "frontend",
+      "module": "emulator",
       "detail": "",
       "tokens": 0,
       "metadata": {}
     },
     {
-      "turn": 6,
-      "timestamp": 1774488751.819878,
-      "kind": "module_failed",
-      "module": "frontend",
-      "detail": "",
+      "turn": 7,
+      "timestamp": 1774489369.7410083,
+      "kind": "module_done",
+      "module": "emulator",
+      "detail": "133 LOC, 0 errors",
       "tokens": 0,
       "metadata": {}
     }

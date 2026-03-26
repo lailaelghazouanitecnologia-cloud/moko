@@ -1,67 +1,55 @@
 import { IInput } from './iinput';
+import { Uint8 } from '../display/idisplay';
 
 /**
- * 16-key hex keypad state manager for CHIP-8 emulation.
- * Tracks pressed/released states and supports blocking until a key is pressed.
+ * Tracks the state of 16 hexadecimal keys (0–F).
+ * Provides synchronous polling (`isPressed`), asynchronous blocking (`waitKey`),
+ * and explicit press/release events (`keyDown`/`keyUp`).
  */
 export class Input implements IInput {
-  public readonly keypad: Uint8Array;
-  private resolveKey: ((key: number) => void) | null = null;
+  private readonly keys: boolean[];
 
   constructor() {
-    this.keypad = new Uint8Array(16);
+    this.keys = new Array<boolean>(16).fill(false);
   }
 
-  public key_down(chip8_key: number): void {
-    if (!Number.isInteger(chip8_key)) {
-      throw new TypeError('chip8_key must be an integer');
+  isPressed(key: Uint8): boolean {
+    if (!Number.isInteger(key) || key < 0 || key > 15) {
+      throw new RangeError('Key index must be an integer between 0 and 15');
     }
-    if (chip8_key < 0 || chip8_key > 15) {
-      throw new RangeError('chip8_key must be 0-15');
-    }
-    this.keypad[chip8_key] = 1;
-    if (this.resolveKey) {
-      this.resolveKey(chip8_key);
-      this.resolveKey = null;
-    }
+    return this.keys[key];
   }
 
-  public key_up(chip8_key: number): void {
-    if (!Number.isInteger(chip8_key)) {
-      throw new TypeError('chip8_key must be an integer');
-    }
-    if (chip8_key < 0 || chip8_key > 15) {
-      throw new RangeError('chip8_key must be 0-15');
-    }
-    this.keypad[chip8_key] = 0;
-  }
-
-  public is_pressed(chip8_key: number): boolean {
-    if (!Number.isInteger(chip8_key)) {
-      throw new TypeError('chip8_key must be an integer');
-    }
-    if (chip8_key < 0 || chip8_key > 15) {
-      throw new RangeError('chip8_key must be 0-15');
-    }
-    return this.keypad[chip8_key] === 1;
-  }
-
-  public wait_key(): Promise<number> {
-    return new Promise<number>((resolve) => {
-      for (let i = 0; i < 16; i++) {
-        if (this.keypad[i] === 1) {
-          resolve(i);
-          return;
+  waitKey(): Promise<Uint8> {
+    return new Promise<Uint8>((resolve) => {
+      const checkKey = (): void => {
+        for (let i = 0; i < 16; i++) {
+          if (this.keys[i]) {
+            resolve(i as Uint8);
+            return;
+          }
         }
-      }
-      this.resolveKey = resolve;
+        requestAnimationFrame(checkKey);
+      };
+      checkKey();
     });
   }
 
-  public reset(): void {
-    this.keypad.fill(0);
-    if (this.resolveKey) {
-      this.resolveKey = null;
+  keyDown(key: Uint8): void {
+    if (!Number.isInteger(key) || key < 0 || key > 15) {
+      throw new RangeError('Key index must be an integer between 0 and 15');
     }
+    this.keys[key] = true;
+  }
+
+  keyUp(key: Uint8): void {
+    if (!Number.isInteger(key) || key < 0 || key > 15) {
+      throw new RangeError('Key index must be an integer between 0 and 15');
+    }
+    this.keys[key] = false;
+  }
+
+  reset(): void {
+    this.keys.fill(false);
   }
 }
