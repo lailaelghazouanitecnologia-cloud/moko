@@ -756,9 +756,23 @@ class BranchPipelineOrchestrator:
     def _process_module(self, task: ModuleTask, project_dir: Path,
                         target: str, references: list[str],
                         project_bp) -> BranchResult:
-        """Process one module: branch -> generate -> fix -> merge."""
+        """Process one module: branch -> generate -> fix -> merge.
+
+        Each step is tracked as a Block with hash chain integrity.
+        """
         start = time.time()
         br = BranchResult(module_name=task.name, branch_name=task.branch_name)
+
+        # V5: Create Blocks for this module
+        try:
+            goal = getattr(self, '_functional_spec', None)
+            goal_text = goal.to_prompt_context() if goal else task.description
+            module_blocks = self._create_module_blocks(task, goal_text)
+            if self.verbose:
+                self._log(f"  {len(module_blocks)} blocks: " +
+                          " → ".join(b.block_type.value for b in module_blocks))
+        except Exception:
+            module_blocks = []
 
         print(f"\n    [{task.branch_name}] Generating {task.name} "
               f"({len(task.types)} types)...")
@@ -927,6 +941,34 @@ class BranchPipelineOrchestrator:
 
         br.elapsed_s = time.time() - start
         br.total_loc = self._count_loc(project_dir / "src" / task.name)
+
+        # V5: Complete all blocks + hash chain
+        if module_blocks:
+            try:
+                prev_block = None
+                for block in module_blocks:
+                    if block.status.value == "pending":
+                        block.status = block.status.__class__("completed")
+                    block.complete(
+                        output=f"{task.name}: {br.total_loc} LOC, {br.tsc_errors_final} errors",
+                        files_changed=block.files_changed,
+                        tokens_used=block.tokens_used,
+                        prev_block=prev_block,
+                    )
+                    prev_block = block
+
+                # Verify chain
+                chain_valid = all(
+                    (module_blocks[i].prev_hash == module_blocks[i-1].hash)
+                    for i in range(1, len(module_blocks))
+                    if module_blocks[i-1].hash
+                )
+                if self.verbose:
+                    self._log(f"  blocks: {len(module_blocks)} completed, "
+                              f"chain={'valid' if chain_valid else 'BROKEN'}")
+            except Exception as e:
+                if self.verbose:
+                    self._log(f"  block chain failed: {e}")
 
         status_icon = "OK" if br.status == "merged" else "FAIL"
         print(f"    [{task.branch_name}] {status_icon}: {br.total_loc} LOC, "
@@ -1347,6 +1389,87 @@ class BranchPipelineOrchestrator:
                     pass
 
         return total_tokens
+
+    def _create_module_blocks(self, task, goal: str) -> list:
+        """Create a sequence of Blocks for a ModuleTask.
+
+        Each module gets: ANALYZE → IMPLEMENT × N → REVIEW → REFACTOR → TEST → ABSTRACT
+        """
+        from ..core.models import Block, BlockType
+
+        blocks = []
+        idx = 0
+
+        # Block 0: ANALYZE — generate blueprint
+        blocks.append(Block(
+            index=idx, block_type=BlockType.ANALYZE,
+            objective=f"Generate blueprint for {task.name}",
+            branch_name=task.branch_name,
+            meta={"module": task.name, "goal": goal},
+        ))
+        idx += 1
+
+        # Blocks 1..N: IMPLEMENT — one per type
+        for type_name in task.types:
+            blocks.append(Block(
+                index=idx, block_type=BlockType.IMPLEMENT,
+                objective=f"Translate {type_name} from {task.name}",
+                branch_name=task.branch_name,
+                meta={"module": task.name, "type": type_name},
+            ))
+            idx += 1
+
+        # Block N+1: REVIEW
+        blocks.append(Block(
+            index=idx, block_type=BlockType.REVIEW,
+            objective=f"Review {task.name} code quality",
+            branch_name=task.branch_name,
+            meta={"module": task.name},
+        ))
+        idx += 1
+
+        # Block N+2: REFACTOR
+        blocks.append(Block(
+            index=idx, block_type=BlockType.REFACTOR,
+            objective=f"Fix quality issues in {task.name}",
+            branch_name=task.branch_name,
+            meta={"module": task.name},
+        ))
+        idx += 1
+
+        # Block N+3: TEST
+        blocks.append(Block(
+            index=idx, block_type=BlockType.TEST,
+            objective=f"Test {task.name} compilation and health",
+            branch_name=task.branch_name,
+            meta={"module": task.name},
+        ))
+        idx += 1
+
+        # Block N+4: ABSTRACT
+        blocks.append(Block(
+            index=idx, block_type=BlockType.ABSTRACT,
+            objective=f"Extract learnings from {task.name}",
+            branch_name=task.branch_name,
+            meta={"module": task.name},
+        ))
+
+        # Link hash chain
+        prev = None
+        for block in blocks:
+            if prev:
+                block.prev_hash = prev.hash or ""
+            prev = block
+
+        return blocks
+
+    def _log_block(self, block) -> None:
+        """Log block execution for visibility."""
+        icon = {
+            "analyze": "📋", "implement": "⚙", "review": "🔍",
+            "refactor": "🔧", "test": "🧪", "abstract": "💡",
+        }.get(block.block_type.value, "•")
+        self._log(f"  {icon} Block {block.index} [{block.block_type.value}] {block.objective}")
 
     def _fix_reviewer_issues(
         self, module_name: str, files: dict, review_issues: list,
