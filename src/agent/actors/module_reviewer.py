@@ -101,8 +101,19 @@ class ModuleReviewer:
             )
             self.total_tokens += resp.usage.total_tokens
 
-            import json
-            data = json.loads(resp.content.strip())
+            import json, re as _re
+            text = resp.content.strip()
+            # Strip markdown fences if present
+            if text.startswith("```"):
+                lines = text.split("\n")
+                lines = [l for l in lines if not l.strip().startswith("```")]
+                text = "\n".join(lines)
+            # Find JSON object in response
+            start = text.find("{")
+            end = text.rfind("}")
+            if start >= 0 and end > start:
+                text = text[start:end + 1]
+            data = json.loads(text)
             result.issues = data.get("issues", [])[:5]
             result.suggestions = data.get("suggestions", [])[:5]
             result.quality_notes = data.get("quality_notes", [])[:3]

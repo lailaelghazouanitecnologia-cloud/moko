@@ -1,72 +1,34 @@
-import { ICpu } from '../cpu';
-import { ISound } from '../sound';
 import { ITimer } from './itimer';
+import { ICpu } from '../cpu';
 
 export class Timer implements ITimer {
-  private isRunning: boolean;
-  private intervalId: number | null;
-  private delayTimer: number;
-  private soundTimer: number;
+  private readonly cpu: ICpu;
+  private intervalId: number | null = null;
 
-  constructor(
-    private readonly cpu: ICpu,
-    private readonly sound: ISound
-  ) {
-    this.isRunning = false;
-    this.intervalId = null;
-    this.delayTimer = 0;
-    this.soundTimer = 0;
+  constructor(cpu: ICpu) {
+    this.cpu = cpu;
   }
 
-  start(): void {
-    if (this.isRunning) return;
-    this.isRunning = true;
-    this.intervalId = window.setInterval(() => this.update(), 1000 / 60);
+  public get isRunning(): boolean {
+    return this.intervalId !== null;
   }
 
-  stop(): void {
-    if (!this.isRunning) return;
-    this.isRunning = false;
+  public start(): void {
     if (this.intervalId !== null) {
-      window.clearInterval(this.intervalId);
-      this.intervalId = null;
+      return;
     }
+    this.intervalId = window.setInterval(() => this.tick(), 1000 / 60);
   }
 
-  update(): void {
-    if (this.delayTimer > 0) {
-      this.delayTimer--;
+  public stop(): void {
+    if (this.intervalId === null) {
+      return;
     }
-    if (this.soundTimer > 0) {
-      this.soundTimer--;
-      if (this.soundTimer === 0) {
-        this.sound.stop();
-      }
-    }
+    window.clearInterval(this.intervalId);
+    this.intervalId = null;
   }
 
-  getDelayTimer(): number {
-    return this.delayTimer;
-  }
-
-  setDelayTimer(value: number): void {
-    if (value < 0 || value > 0xFF) {
-      throw new RangeError('value must be between 0 and 255');
-    }
-    this.delayTimer = value & 0xFF;
-  }
-
-  getSoundTimer(): number {
-    return this.soundTimer;
-  }
-
-  setSoundTimer(value: number): void {
-    if (value < 0 || value > 0xFF) {
-      throw new RangeError('value must be between 0 and 255');
-    }
-    this.soundTimer = value & 0xFF;
-    if (this.soundTimer > 0) {
-      this.sound.play();
-    }
+  public tick(): void {
+    this.cpu.updateTimers();
   }
 }

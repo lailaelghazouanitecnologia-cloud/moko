@@ -1,7 +1,7 @@
 export interface IInput {
   isKeyPressed(key: number): boolean;
-  waitKey(): Promise<number>;
-  pressKey(key: number): void;
-  releaseKey(key: number): void;
+  waitForKey(): number;
+  keyDown(key: number): void;
+  keyUp(key: number): void;
   reset(): void;
 }

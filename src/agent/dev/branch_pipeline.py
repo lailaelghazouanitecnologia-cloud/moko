@@ -324,14 +324,24 @@ class BranchPipelineOrchestrator:
         project_dir = self.projects_dir / target
         project_dir.mkdir(parents=True, exist_ok=True)
 
-        # 0. Initialize state manager (V3: SessionState + TurnState)
+        # 0. Initialize RuntimeConfig + ModelDispatcher
+        from ..core.runtime_config import RuntimeConfig
+        from ..core.dispatcher import ModelDispatcher
+        self.runtime_config = RuntimeConfig.from_project(project_dir)
+        self.runtime_config.provider = getattr(self.llm, "provider", "groq")
+        self.dispatch = ModelDispatcher(self.runtime_config)
+        self._log(f"dispatch: root={self.runtime_config.get_model('root').split('/')[-1]}, "
+                  f"worker={self.runtime_config.get_model('worker').split('/')[-1]}, "
+                  f"micro={self.runtime_config.get_model('micro').split('/')[-1]}")
+
+        # 0a. Initialize state manager
         from ..engines.state import StateManager
         self.state_mgr = StateManager(project_dir)
         session = self.state_mgr.init_session(
             goal=goal, target=target,
-            modules=[],  # filled after decompose
-            provider=getattr(self.llm, "provider", "groq"),
-            model=getattr(self.llm, "model", ""),
+            modules=[],
+            provider=self.runtime_config.provider,
+            model=self.runtime_config.get_model("worker"),
         )
 
         # 0b. Initialize knowledge injector (V3: cross-session learning)
@@ -530,6 +540,25 @@ class BranchPipelineOrchestrator:
                 turn.add_tokens(branch_result.tokens_used)
                 self.state_mgr.end_turn(turn_result)
 
+                # V3: Compact mid-generation if history growing
+                try:
+                    from ..engines.compact import ContextCompactor
+                    compactor = ContextCompactor()
+                    if compactor.should_compact(session):
+                        summary = compactor.compact(session)
+                        if summary:
+                            self._log(f"  [compact] mid-run: {summary[:60]}...")
+                except Exception:
+                    pass
+
+                # V3: Track usage in dispatcher
+                if hasattr(self, 'dispatch'):
+                    self.dispatch.track_usage(
+                        "translate_type",
+                        branch_result.tokens_used // 3,  # rough input estimate
+                        branch_result.tokens_used * 2 // 3,  # rough output estimate
+                    )
+
         # 7. Final tsc check on main — fix cross-module errors
         self.git.checkout("main")
         final_errors, final_clean, _ = self.fix_engine.check_tsc()
@@ -693,6 +722,12 @@ class BranchPipelineOrchestrator:
             stats = self.guardian.stats
             if stats["total"] > 0:
                 self._log(f"guardian: {stats['approved']} approved, {stats['asked']} asked, {stats['denied']} denied")
+
+        # 14. V3: Dispatcher usage report
+        if hasattr(self, 'dispatch'):
+            report = self.dispatch.usage_report()
+            if "calls=" in report:
+                print(f"\n{report}")
 
         self.state_mgr.save()
         return result
@@ -1900,10 +1935,20 @@ class BranchPipelineOrchestrator:
         return files
 
     def _write_module_files(self, module_dir: Path, files: dict[str, str]):
-        """Write improved files back to disk."""
+        """Write improved files back to disk. Guardian checks before write."""
         for filename, code in files.items():
             path = module_dir / filename
             try:
+                # Guardian check
+                if hasattr(self, 'guardian'):
+                    from ..engines.guardian.policy import Decision
+                    decision = self.guardian.review(
+                        "write_file", path=str(path),
+                        turn_state=getattr(self.state_mgr, 'current_turn', None),
+                    )
+                    if decision == Decision.DENY:
+                        self._log(f"  [guardian] DENIED write to {filename}")
+                        continue
                 path.write_text(code)
             except Exception:
                 pass

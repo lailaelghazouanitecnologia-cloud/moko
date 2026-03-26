@@ -1,28 +1,25 @@
 import { ISound } from './isound';
 
 /**
- * Generates square wave tone for CHIP-8 sound timer.
- * Manages Web Audio API resources to produce a beep when the sound timer is active.
+ * CHIP-8 square-wave sound generator.
+ * Uses the Web Audio API to produce a 440 Hz square wave by default.
  */
 export class Sound implements ISound {
-  private frequency: number;
-  private isPlaying: boolean;
   private readonly audioContext: AudioContext;
-  private oscillator: OscillatorNode | null;
-  private gainNode: GainNode | null;
+  private oscillator: OscillatorNode | null = null;
+  private gainNode: GainNode | null = null;
+  private frequency: number = 440;
 
   constructor() {
-    this.frequency = 440;
-    this.isPlaying = false;
-
-    const AudioContextConstructor = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-    this.audioContext = new AudioContextConstructor();
-    this.oscillator = null;
-    this.gainNode = null;
+    this.audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
   }
 
+  /**
+   * Start the square-wave oscillator if it is not already playing.
+   * @public
+   */
   public play(): void {
-    if (this.isPlaying) {
+    if (this.isPlaying()) {
       return;
     }
 
@@ -38,52 +35,44 @@ export class Sound implements ISound {
     this.gainNode.connect(this.audioContext.destination);
 
     this.oscillator.start();
-    this.isPlaying = true;
   }
 
   /**
-   * Stop sound output.
-   * Stops and disconnects the oscillator and gain nodes.
+   * Stop and clean up the oscillator and gain node.
+   * @public
    */
   public stop(): void {
-    if (!this.isPlaying) {
+    if (!this.isPlaying()) {
       return;
     }
 
-    if (this.oscillator) {
-      this.oscillator.stop();
-      this.oscillator.disconnect();
-      this.oscillator = null;
-    }
+    this.oscillator!.stop();
+    this.oscillator!.disconnect();
+    this.gainNode!.disconnect();
 
-    if (this.gainNode) {
-      this.gainNode.disconnect();
-      this.gainNode = null;
-    }
-
-    this.isPlaying = false;
+    this.oscillator = null;
+    this.gainNode = null;
   }
 
+  /**
+   * Change the oscillator frequency.
+   * @param hz - Desired frequency in hertz. Must be a finite positive number.
+   * @throws {RangeError} If hz is not a positive finite number.
+   * @public
+   */
   public setFrequency(hz: number): void {
-    if (!Number.isFinite(hz)) {
-      throw new TypeError('Frequency must be a finite number');
-    }
-    if (hz <= 0) {
-      throw new RangeError('Frequency must be positive');
+    if (!Number.isFinite(hz) || hz <= 0) {
+      throw new RangeError('Frequency must be a positive finite number');
     }
 
     this.frequency = hz;
 
-    if (this.oscillator && this.isPlaying) {
-      this.oscillator.frequency.setValueAtTime(this.frequency, this.audioContext.currentTime);
+    if (this.isPlaying() && this.oscillator) {
+      this.oscillator.frequency.setValueAtTime(hz, this.audioContext.currentTime);
     }
   }
 
-  public isPlayingSound(): boolean {
-    return this.isPlaying;
-  }
-
-  public getFrequency(): number {
-    return this.frequency;
+  public isPlaying(): boolean {
+    return this.oscillator !== null;
   }
 }

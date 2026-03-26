@@ -143,8 +143,14 @@ class RuntimeConfig:
     use_module_reviewer: bool = True
     use_workspace_model: bool = True
 
-    def get_model(self, role: ModelRole) -> str:
-        """Get model for a role. Uses overrides, then provider defaults."""
+    def get_model(self, role) -> str:
+        """Get model for a role. Accepts ModelRole enum or string."""
+        if isinstance(role, str):
+            try:
+                role = ModelRole(role)
+            except ValueError:
+                return self.models.get(role, "")
+
         # Check explicit override
         override = self.models.get(role.value)
         if override:

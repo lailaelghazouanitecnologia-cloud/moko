@@ -1,65 +1,66 @@
 import { IMemory } from './imemory';
 
-/**
- * Manages 4096 bytes of CHIP-8 memory with font set and ROM loading.
- * Memory layout:
- * - 0x000–0x1FF: Reserved for interpreter (font set stored here)
- * - 0x200–0xFFF: Program ROM and runtime memory
- */
 export class Memory implements IMemory {
-  private readonly memory: Uint8Array;
+  private readonly ram: Uint8Array;
 
   constructor() {
-    this.memory = new Uint8Array(4096);
+    this.ram = new Uint8Array(4096);
     this.reset();
   }
 
   read(address: number): number {
-    if (!this.isValidAddress(address)) {
+    if (address < 0 || address > 0xFFF) {
       throw new RangeError(`Invalid memory address: ${address}`);
     }
-    return this.memory[address];
+    return this.ram[address];
   }
 
   write(address: number, value: number): void {
-    if (!this.isValidAddress(address)) {
+    if (address < 0 || address > 0xFFF) {
       throw new RangeError(`Invalid memory address: ${address}`);
     }
-    if (address < 0x200) {
-      throw new TypeError(`Cannot write to reserved memory at address: ${address}`);
+    if (value < 0 || value > 0xFF) {
+      throw new RangeError(`Invalid byte value: ${value}`);
     }
-    this.memory[address] = value & 0xFF;
+    this.ram[address] = value;
   }
 
-  loadROM(data: Uint8Array): void {
-    if (data.length > 3584) {
-      throw new TypeError(`ROM too large: ${data.length} bytes (max 3584)`);
+  readWord(address: number): number {
+    if (address < 0 || address > 0xFFE) {
+      throw new RangeError(`Invalid word address: ${address}`);
     }
-    this.memory.set(data, 0x200);
+    const high = this.read(address);
+    const low = this.read(address + 1);
+    return (high << 8) | low;
+  }
+
+  writeWord(address: number, value: number): void {
+    if (address < 0 || address > 0xFFE) {
+      throw new RangeError(`Invalid word address: ${address}`);
+    }
+    if (value < 0 || value > 0xFFFF) {
+      throw new RangeError(`Invalid word value: ${value}`);
+    }
+    this.write(address, (value >> 8) & 0xFF);
+    this.write(address + 1, value & 0xFF);
+  }
+
+  loadRom(data: Uint8Array): void {
+    if (data.length > 3584) {
+      throw new RangeError(`ROM too large: ${data.length} bytes (max 3584)`);
+    }
+    for (let i = 0; i < data.length; i++) {
+      this.write(0x200 + i, data[i]);
+    }
   }
 
   reset(): void {
-    this.memory.fill(0);
-    this.loadFontSet();
+    this.ram.fill(0);
+    this.loadFonts();
   }
 
-  getFontAddress(digit: number): number {
-    if (digit < 0 || digit > 15) {
-      throw new RangeError(`Invalid font digit: ${digit}`);
-    }
-    return digit * 5;
-  }
-
-  isValidAddress(address: number): boolean {
-    return address >= 0 && address < 4096;
-  }
-
-  /**
-   * Load the built-in font set into memory at 0x000.
-   * Each digit (0–F) is represented by a 5-byte sprite.
-   */
-  private loadFontSet(): void {
-    const fontSet = new Uint8Array([
+  loadFonts(): void {
+    const fonts = new Uint8Array([
       0xF0, 0x90, 0x90, 0x90, 0xF0, // 0
       0x20, 0x60, 0x20, 0x20, 0x70, // 1
       0xF0, 0x10, 0xF0, 0x80, 0xF0, // 2
@@ -77,6 +78,8 @@ export class Memory implements IMemory {
       0xF0, 0x80, 0xF0, 0x80, 0xF0, // E
       0xF0, 0x80, 0xF0, 0x80, 0x80  // F
     ]);
-    this.memory.set(fontSet, 0x000);
+    for (let i = 0; i < fonts.length; i++) {
+      this.write(i, fonts[i]);
+    }
   }
 }
