@@ -130,6 +130,10 @@ class RuntimeConfig:
         "sub_max_output": 8000,        # Sub: RLM chunks
     })
 
+    # Quality engine
+    embedding_backend: str = "auto"      # "auto", "tfidf", "minilm"
+    use_ast_grep: bool = True            # Use ast-grep for precise detection
+
     # Guardrails
     max_tokens_per_run: int = 500_000
     max_iterations: int = 50

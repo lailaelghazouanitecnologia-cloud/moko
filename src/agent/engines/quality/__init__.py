@@ -259,8 +259,28 @@ class QualityEngine:
     # ── Analysis (read-only, no modifications) ───────────────
 
     def analyze_file(self, code: str, filename: str = "") -> Tuple[QualityFeatures, List[Tuple[str, str, str]]]:
-        """Extract features and detect issues for a single file."""
+        """Extract features and detect issues for a single file.
+
+        Uses ast-grep for precise detection when available,
+        falls back to regex-based extraction.
+        """
+        # Use adapter (ast-grep enhanced) when available
+        metrics = self.adapter.extract_metrics(code, filename)
+
+        # Still use the full extractor for QualityFeatures (38 fields)
         features = self.extractor.extract(code, filename)
+
+        # Override with ast-grep counts (more accurate, no false positives)
+        if HAS_AST_GREP:
+            ast_result = detect_with_ast(code, "typescript")
+            if ast_result:
+                features.any_count = ast_result.any_type_count
+                features.generic_usage = ast_result.generic_usage_count
+                features.union_type_count = ast_result.union_type_count
+                features.type_alias_count = ast_result.type_alias_count
+                features.interface_count = ast_result.interface_count
+                features.class_count = ast_result.class_count
+
         issues = detect_issues(features)
         return features, issues
 
@@ -368,6 +388,13 @@ class QualityEngine:
                     quality_delta=real_delta, tokens_cost=0,
                     module=module_name, file_pattern=filename,
                 )
+                # Generate embedding for KNN (sqlite-vec)
+                embedding = None
+                try:
+                    embedding = self.embedder.embed_issue(code, 0, itype)
+                except Exception:
+                    pass
+
                 self.global_db.record(GlobalQualityRecord(
                     project_name=self.project_name,
                     issue_type=itype, severity=severity,
@@ -379,8 +406,9 @@ class QualityEngine:
                     module_role=ctx.module_role,
                     consumers_count=ctx.consumers_count,
                     dependency_depth=ctx.dependency_depth,
+                    emb_model=self.embedder.name,
                     run_id=self._run_id,
-                ))
+                ), embedding=embedding)
 
             improved_files[filename] = code
             if file_changed:
@@ -445,6 +473,15 @@ class QualityEngine:
                                 success=real_delta > 0, quality_delta=real_delta,
                                 module=module_name, file_pattern=filename,
                             )
+                            # Embedding for KNN
+                            llm_embedding = None
+                            try:
+                                llm_embedding = self.embedder.embed_issue(
+                                    improved_code, 0, itype
+                                )
+                            except Exception:
+                                pass
+
                             self.global_db.record(GlobalQualityRecord(
                                 project_name=self.project_name,
                                 issue_type=itype, severity=sev,
@@ -456,8 +493,9 @@ class QualityEngine:
                                 module_role=ctx.module_role,
                                 consumers_count=ctx.consumers_count,
                                 dependency_depth=ctx.dependency_depth,
+                                emb_model=self.embedder.name,
                                 run_id=self._run_id,
-                            ))
+                            ), embedding=llm_embedding)
                 except Exception:
                     pass
 
