@@ -686,6 +686,24 @@ class BranchPipelineOrchestrator:
             except Exception as e:
                 self._log(f"quality report failed: {e}")
 
+        # 9b. ProjectAnalyzer — deep introspection post-generation
+        try:
+            from ..engines.analysis import ProjectAnalyzer
+            analyzer = ProjectAnalyzer(project_dir, verbose=self.verbose)
+            health = analyzer.analyze()
+            print(f"\n{health.format()}")
+
+            # Store health score in session
+            if hasattr(self, 'state_mgr') and self.state_mgr.session:
+                self.state_mgr.session.add_history(
+                    "analysis", detail=f"Score: {health.score():.0f}/100, "
+                    f"{len(health.empty_interfaces)} empty ifaces, "
+                    f"{len(health.missing_di)} missing DI, "
+                    f"{health.total_any} any, cohesion={health.cohesion_score:.2f}",
+                )
+        except Exception as e:
+            self._log(f"analysis failed: {e}")
+
         # 10. V3: Extract and store cross-session memories
         try:
             from ..engines.knowledge import MemoryExtractor, KnowledgeStore

@@ -19,6 +19,7 @@ def register_subparser(subparsers: argparse._SubParsersAction):
     p.add_argument("--resume", metavar="PLAN_ID", help="Resume a saved plan")
     p.add_argument("--plans", action="store_true", help="List saved plans")
     p.add_argument("--density", metavar="PROJECT", help="Run density analysis on a project")
+    p.add_argument("--health", metavar="PROJECT", help="Run deep project health analysis")
     p.add_argument("--compose", action="store_true", help="Use blueprint composer (extraction-first)")
     p.add_argument("--branches", action="store_true",
                    help="Use branch-per-module pipeline (generate -> tsc fix -> merge)")
@@ -137,6 +138,21 @@ def _cmd_density(args):
     print(f"{'━' * 66}")
 
 
+def _cmd_health(args):
+    """Handle --health: run deep project health analysis."""
+    from pathlib import Path
+    from ..engines.analysis import ProjectAnalyzer
+
+    project_dir = Path("projects") / args.health
+    if not project_dir.exists():
+        print(f"Project not found: {project_dir}")
+        sys.exit(1)
+
+    analyzer = ProjectAnalyzer(project_dir, verbose=True)
+    report = analyzer.analyze()
+    print(report.format())
+
+
 def _cmd_eval_report(args):
     """Handle --eval-report."""
     from pathlib import Path
@@ -215,6 +231,8 @@ def cmd_dev(args: argparse.Namespace):
         return _cmd_quality_score(args)
     if args.density:
         return _cmd_density(args)
+    if args.health:
+        return _cmd_health(args)
     if args.eval_report:
         return _cmd_eval_report(args)
 
