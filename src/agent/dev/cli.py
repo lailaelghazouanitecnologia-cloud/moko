@@ -20,6 +20,8 @@ def register_subparser(subparsers: argparse._SubParsersAction):
     p.add_argument("--plans", action="store_true", help="List saved plans")
     p.add_argument("--density", metavar="PROJECT", help="Run density analysis on a project")
     p.add_argument("--health", metavar="PROJECT", help="Run deep project health analysis")
+    p.add_argument("--inspect", metavar="PROJECT", help="Inspect last run (prompts, blocks, strategies)")
+    p.add_argument("--config", action="store_true", help="Show current runtime config")
     p.add_argument("--compose", action="store_true", help="Use blueprint composer (extraction-first)")
     p.add_argument("--branches", action="store_true",
                    help="Use branch-per-module pipeline (generate -> tsc fix -> merge)")
@@ -138,6 +140,139 @@ def _cmd_density(args):
     print(f"{'━' * 66}")
 
 
+def _cmd_inspect(args):
+    """Handle --inspect: show complete run introspection."""
+    from pathlib import Path
+    import json
+
+    project_dir = Path("projects") / args.inspect
+    if not project_dir.exists():
+        print(f"Project not found: {project_dir}")
+        sys.exit(1)
+
+    print(f"{'━' * 70}")
+    print(f"  INSPECT: {args.inspect}")
+    print(f"{'━' * 70}")
+
+    # Session state
+    session_file = project_dir / ".session_state.json"
+    if session_file.exists():
+        s = json.loads(session_file.read_text())
+        print(f"\n  SESSION {s.get('session_id', '?')}")
+        print(f"    Goal: {s.get('goal', '?')}")
+        print(f"    Status: {len(s.get('modules_completed', []))}/{len(s.get('module_order', []))} modules")
+        print(f"    Tokens: {s.get('total_tokens', 0):,} | LOC: {s.get('total_loc', 0)}")
+        print(f"    Turn count: {s.get('turn_count', 0)}")
+
+        # History
+        history = s.get("history", [])
+        if history:
+            print(f"\n  HISTORY ({len(history)} events):")
+            for h in history[-15:]:
+                mod = f"[{h.get('module', '')}] " if h.get('module') else ""
+                print(f"    T{h.get('turn', '?')} {mod}{h.get('kind', '?')}: {h.get('detail', '')[:60]}")
+
+        # Injected knowledge
+        memories = s.get("injected_memories", [])
+        if memories:
+            total_chars = sum(len(m) for m in memories)
+            print(f"\n  KNOWLEDGE: {total_chars} chars injected from previous runs")
+    else:
+        print(f"\n  No session state found (.session_state.json)")
+
+    # Workspace state
+    project_yaml = project_dir / "project.yaml"
+    if project_yaml.exists():
+        try:
+            import yaml
+            ws_data = yaml.safe_load(project_yaml.read_text())
+            workspaces = ws_data.get("workspaces", [])
+            if workspaces:
+                print(f"\n  WORKSPACES ({len(workspaces)}):")
+                for ws in workspaces:
+                    status = ws.get("status", "?").upper()
+                    bl = ws.get("baseline", {})
+                    loc = bl.get("loc", 0)
+                    errors = bl.get("tsc_errors", 0)
+                    proposals = ws.get("improvements_proposed", 0)
+                    print(f"    {ws.get('name', '?'):<15} [{status:<10}] "
+                          f"{loc} LOC, {errors} errors, {proposals} proposals")
+        except Exception:
+            pass
+
+    # Pipeline report
+    report_file = project_dir / "pipeline-report.json"
+    if report_file.exists():
+        try:
+            r = json.loads(report_file.read_text())
+            branches = r.get("branches", [])
+            if branches:
+                print(f"\n  MODULES ({len(branches)}):")
+                for b in branches:
+                    status = "✓" if b.get("tsc_final", 0) == 0 else "⚠"
+                    print(f"    {status} {b.get('module', '?'):<15} "
+                          f"{b.get('loc', 0):>5} LOC  "
+                          f"TSC: {b.get('tsc_initial', 0)}→{b.get('tsc_final', 0)}  "
+                          f"tokens: {b.get('tokens', 0):,}")
+            print(f"\n  TOTAL: {r.get('total_loc', 0)} LOC, "
+                  f"{r.get('total_tokens', 0):,} tokens, "
+                  f"{r.get('elapsed_s', 0):.0f}s")
+        except Exception:
+            pass
+
+    # Health
+    try:
+        from ..engines.analysis import ProjectAnalyzer
+        analyzer = ProjectAnalyzer(project_dir)
+        health = analyzer.analyze()
+        print(f"\n  HEALTH: {health.score():.0f}/100")
+        if health.empty_interfaces:
+            print(f"    ⚠ {len(health.empty_interfaces)} empty interfaces")
+        if health.missing_di:
+            print(f"    ⚠ {len(health.missing_di)} missing DI")
+        if health.dead_exports:
+            print(f"    ⚠ {len(health.dead_exports)} dead exports")
+        print(f"    cohesion: {health.cohesion_score:.2f} | "
+              f"any: {health.total_any} | as_any: {health.total_as_any}")
+    except Exception:
+        pass
+
+    # Config used
+    try:
+        from ..core.runtime_config import RuntimeConfig
+        config = RuntimeConfig.from_project(project_dir)
+        print(f"\n  CONFIG:")
+        print(f"    Provider: {config.provider}")
+        print(f"    Root model: {config.get_model('root')}")
+        print(f"    Worker model: {config.get_model('worker')}")
+        print(f"    Embedding: {config.embedding_backend}")
+        print(f"    ast-grep: {config.use_ast_grep}")
+    except Exception:
+        pass
+
+    # Blueprints
+    bp_dir = project_dir / "blueprints"
+    if bp_dir.exists():
+        bps = list(bp_dir.glob("*.yaml"))
+        if bps:
+            print(f"\n  BLUEPRINTS ({len(bps)}):")
+            for bp in sorted(bps):
+                print(f"    {bp.name}")
+
+    print(f"\n{'━' * 70}")
+
+
+def _cmd_config(args):
+    """Handle --config: show current runtime config."""
+    from pathlib import Path
+    from ..core.runtime_config import RuntimeConfig
+
+    # Try project config first, then global
+    project_dir = Path("projects") / args.target if args.target else Path(".")
+    config = RuntimeConfig.from_project(project_dir)
+    print(config.summary())
+
+
 def _cmd_health(args):
     """Handle --health: run deep project health analysis."""
     from pathlib import Path
@@ -233,6 +368,10 @@ def cmd_dev(args: argparse.Namespace):
         return _cmd_density(args)
     if args.health:
         return _cmd_health(args)
+    if args.inspect:
+        return _cmd_inspect(args)
+    if getattr(args, 'config', False) and not args.goal:
+        return _cmd_config(args)
     if args.eval_report:
         return _cmd_eval_report(args)
 
